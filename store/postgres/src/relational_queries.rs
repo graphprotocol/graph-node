@@ -1008,16 +1008,22 @@ pub struct FilterQuery<'a> {
     table_filter_pairs: Vec<(&'a Table, Option<QueryFilter<'a>>)>,
     order: Option<(&'a SqlName, EntityOrder)>,
     range: EntityRange,
+    window: Option<&'a SqlName>,
     block: BlockNumber,
 }
 
+// The queries are a little tricky because we need to defer generating
+// JSONB until we actually know which rows we really need to make these
+// queries fast; otherwise, Postgres spends too much time generating
+// JSONB, most of which will never get used
 impl<'a> FilterQuery<'a> {
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql("\n order by ");
+        out.push_sql("order by ");
         if let Some((name, direction)) = &self.order {
             out.push_identifier(name.as_str())?;
             out.push_sql(" ");
             out.push_sql(direction.to_sql());
+            out.push_sql(" nulls last");
             if name.as_str() != PRIMARY_KEY_COLUMN {
                 out.push_sql(", ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
@@ -1028,9 +1034,14 @@ impl<'a> FilterQuery<'a> {
         }
     }
 
-    fn add_sort_key(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn select_sort_key_and_window(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        if let Some(window) = self.window {
+            out.push_sql(", e.");
+            out.push_identifier(window.as_str())?;
+        }
+
         if let Some((name, _)) = self.order {
-            if name.as_str() != PRIMARY_KEY_COLUMN {
+            if name.as_str() != PRIMARY_KEY_COLUMN && Some(name) != self.window {
                 out.push_sql(", e.");
                 out.push_identifier(name.as_str())?;
             }
@@ -1046,6 +1057,45 @@ impl<'a> FilterQuery<'a> {
         if self.range.skip > 0 {
             out.push_sql("\noffset ");
             out.push_sql(&self.range.skip.to_string());
+        }
+    }
+
+    fn rank_window(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        if let Some(window) = self.window {
+            out.push_sql(", rank() over (partition by ");
+            out.push_identifier(window.as_str())?;
+            out.push_sql(" ");
+            self.order_by(out)?;
+            out.push_sql(") as pos");
+        }
+        Ok(())
+    }
+
+    // Generate (taking optionality of either clause into account)
+    //    where {pos} > {order.skip} and {pos} <= {order.first + order.skip}
+    //  `pos` must be the name of the column we order by and 'conj' must be
+    // either 'and ' or 'where ' depending on where we add this clause
+    fn limit_per_window(&self, pos: &str, conj: &str, out: &mut AstPass<Pg>) {
+        if self.window.is_some() {
+            let have_first = self.range.first.is_some();
+            let have_skip = self.range.skip > 0;
+            if have_first || have_skip {
+                out.push_sql("\n ");
+                out.push_sql(conj);
+            }
+            if have_skip {
+                out.push_sql(pos);
+                out.push_sql(" > ");
+                out.push_sql(&self.range.skip.to_string());
+                if self.range.first.is_some() {
+                    out.push_sql(" and ");
+                }
+            }
+            if let Some(first) = self.range.first {
+                out.push_sql(pos);
+                out.push_sql(" <= ");
+                out.push_sql(&(first + self.range.skip).to_string());
+            }
         }
     }
 
@@ -1068,9 +1118,199 @@ impl<'a> FilterQuery<'a> {
         BlockRangeContainsClause::new(self.block).walk_ast(out.reborrow())?;
         if let Some(filter) = filter {
             out.push_sql(" and ");
-            filter.walk_ast(out)?;
+            filter.walk_ast(out.reborrow())?;
+        }
+        out.push_sql("\n");
+        Ok(())
+    }
+
+    fn select_entity_and_data(table: &Table, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("select ");
+        out.push_bind_param::<Text, _>(&table.object)?;
+        out.push_sql(" as entity, to_jsonb(e.*) as data");
+        Ok(())
+    }
+
+    /// Generate the `matches` CTE for `query_window` and `query_no_window`
+    /// When there is no window, we can already order and limit the results
+    /// of this `union all` query
+    fn select_matches(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        for (i, (table, filter)) in self.table_filter_pairs.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object)?;
+            out.push_sql(" as entity, e.id, e.vid");
+            self.select_sort_key_and_window(out)?;
+            self.filtered_rows(table, filter, out.reborrow())?;
+        }
+        out.push_sql("\n ");
+        if self.window.is_none() {
+            self.order_by(out)?;
+            self.limit(out);
         }
         Ok(())
+    }
+
+    fn matches_to_json(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        for (i, (table, _)) in self.table_filter_pairs.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select m.entity, to_jsonb(e.*) as data, e.id");
+            self.select_sort_key_and_window(out)?;
+            out.push_sql("\n  from ");
+            out.push_identifier(&self.schema)?;
+            out.push_sql(".");
+            out.push_identifier(table.name.as_str())?;
+            out.push_sql(" e,");
+            out.push_sql(" matches m");
+            out.push_sql("\n where e.vid = m.vid and m.entity = ");
+            out.push_bind_param::<Text, _>(&table.object)?;
+            self.limit_per_window("m.pos", "\n   and ", out);
+        }
+        out.push_sql("\n ");
+        Ok(())
+    }
+    /// Only one table/filter pair, and no window
+    ///
+    /// Generate a query
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from table e
+    ///    where filter
+    ///    order by .. limit .. skip ..
+    fn query_no_window_one_entity(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        let (table, filter) = self
+            .table_filter_pairs
+            .first()
+            .expect("we already checked that there is exactly one table");
+        Self::select_entity_and_data(table, &mut out)?;
+        self.filtered_rows(table, filter, out.reborrow())?;
+        self.order_by(&mut out)?;
+        self.limit(&mut out);
+        Ok(())
+    }
+
+    /// Only one table/filter pair, and a window
+    ///
+    /// Generate a query
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from (select *, rank() over (partition by window order by ..) as pos
+    ///             from table e
+    ///            where filter) e
+    ///     where e.pos > skip and e.pos <= first + skip
+    ///     order by ..
+    fn query_window_one_entity(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        let (table, filter) = self
+            .table_filter_pairs
+            .first()
+            .expect("we already checked that there is exactly one table");
+        Self::select_entity_and_data(table, &mut out)?;
+        out.push_sql(" from (\n");
+        out.push_sql("select *");
+        self.rank_window(&mut out)?;
+        self.filtered_rows(table, filter, out.reborrow())?;
+        out.push_sql(") e");
+        self.limit_per_window("e.pos", "where ", &mut out);
+        out.push_sql("\n ");
+        self.order_by(&mut out)
+    }
+
+    fn query_no_window(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        // We have multiple tables which might have different schemas since
+        // the entity_types come from implementing the same interface. We
+        // need to do the query in two steps: first we build a CTE with the
+        // id's of entities matching the filter and order/limit. As a second
+        // step, we get matching rows from the underlying tables and convert
+        // them to JSONB.
+        //
+        // Overall, we generate a query
+        //
+        // with matches as (
+        //   select '...' as entity, id, vid
+        //     from table1
+        //    where entity_filter
+        //    union all
+        //    ...
+        //    order by ...
+        //    limit n offset m)
+        // select m.entity, to_jsonb(e.*) as data, sort_key, id
+        //   from table1 e, matches m
+        //  where e.vid = matches.vid and m.entity = '...'
+        //  union all
+        //  ...
+        //  order by ...
+        //
+        // If we have a window, we change the `matches` in the outer
+        // select to
+        //   (select *, rank() over (partition by {window} order by {order}) as pos
+        //    from matches m)
+        // We also do not do order by/limit inside the `matches` CTE, and
+        // replace the order by/limit on the outer query with
+        //    and m.pos > {skip} and m.pos <= {range.first + range.skip}
+
+        // Step 1: build matches CTE
+        out.push_sql("with matches as (");
+        self.select_matches(&mut out)?;
+        out.push_sql(")\n");
+
+        // Step 2: convert to JSONB
+        self.matches_to_json(&mut out)?;
+        self.order_by(&mut out)?;
+        Ok(())
+    }
+
+    fn query_window(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        // This is almost the same as `query_no_window`, except that we need to
+        // rank results in the `matches` CTE, and use `matches.pos` to restrict
+        // the rows that we return rather than use an `order by`
+        //
+        // Note that a CTE is an optimization fence, and since we use
+        // `matches` multiple times, we actually want to materialize it first
+        // before we fill in JSON data in the main query. As a consequence, we
+        // restrict the matches results per window in the `matches` CTE to
+        // avoid a possibly gigantic materialized `matches` view rather than
+        // leave that to the main query
+        //
+        // Overall, we generate a query
+        //
+        // with matches as (
+        //   -- limit the matches in each window
+        //   select e.*
+        //     from (
+        //       -- rank matches in the overall set of matching rows
+        //       select e.*,
+        //              rank() over (partition by window order by ..)
+        //         from (
+        //           -- find matching rows across all entity types
+        //           select '...' as entity, id, vid
+        //             from table1
+        //            where entity_filter
+        //            union all
+        //                  ...) e) e
+        //    where e.pos > skip and e.pos <= first + skip)
+        // select m.entity, to_jsonb(e.*) as data, sort_key, id
+        //   from table1 e, matches m
+        //  where e.vid = matches.vid and m.entity = '...'
+        //  union all
+        //  ...
+        //  order by ...
+
+        // Step 1: build matches CTE
+        out.push_sql("with matches as (");
+        out.push_sql("select e.* from (");
+        out.push_sql("select e.*");
+        self.rank_window(&mut out)?;
+        out.push_sql("\n from (");
+        self.select_matches(&mut out)?;
+        out.push_sql(") e) e\n");
+        self.limit_per_window("e.pos", " where ", &mut out);
+        out.push_sql(")\n");
+        // Step 2: convert to JSONB
+        self.matches_to_json(&mut out)?;
+        out.push_sql("\n ");
+        self.order_by(&mut out)
     }
 }
 
@@ -1081,96 +1321,12 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             return Ok(());
         }
 
-        // The queries are a little tricky because we need to defer generating
-        // JSONB until we actually know which rows we really need to make these
-        // queries fast; otherwise, Postgres spends too much time generating
-        // JSONB, most of which will never get used
-        if self.table_filter_pairs.len() == 1 {
-            // The common case is that we have just one table; for that we
-            // can generate a simpler/faster query. We generate
-            // select '..' as entity, to_jsonb(e.*) as data
-            // from (
-            //   select *
-            //     from schema.table
-            //    where entity_filter
-            //      and block_range @> INTMAX
-            //    order by ...
-            //    limit n offset m
-            // ) e
-            let (table, filter) = self
-                .table_filter_pairs
-                .first()
-                .expect("we just checked that there is exactly one");
-            out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object)?;
-            out.push_sql(
-                " as entity, to_jsonb(e.*) as data\n  from (\n  select *\
-                 \n",
-            );
-            self.filtered_rows(table, filter, out.reborrow())?;
-            self.order_by(&mut out)?;
-            self.limit(&mut out);
-            // close the outer select
-            out.push_sql(") e");
-        } else {
-            // We have multiple tables which might have different schemas since
-            // the entity_types come from implementing the same interface. We
-            // need to do the query in two steps: first we build a CTE with the
-            // id's of entities matching the filter and order/limit. As a second
-            // step, we get matching rows from the underlying tables and convert
-            // them to JSONB.
-            //
-            // Overall, we generate a query
-            //
-            // with matches as (
-            //   select '...' as entity, id, vid
-            //     from table1
-            //    where entity_filter
-            //    union all
-            //    ...
-            //    order by ...
-            //    limit n offset m)
-            // select matches.entity, to_jsonb(e.*) as data, sort_key, id
-            //   from table1 e, matches
-            //  where e.vid = matches.vid and matches.entity = '...'
-            //  union all
-            //  ...
-            //  order by ...
-
-            // Step 1: build matches CTE
-            out.push_sql("with matches as (");
-            for (i, (table, filter)) in self.table_filter_pairs.iter().enumerate() {
-                if i > 0 {
-                    out.push_sql("\nunion all\n");
-                }
-                out.push_sql("select ");
-                out.push_bind_param::<Text, _>(&table.object)?;
-                out.push_sql(" as entity, e.id, e.vid");
-                self.add_sort_key(&mut out)?;
-                self.filtered_rows(table, filter, out.reborrow())?;
-            }
-            self.order_by(&mut out)?;
-            self.limit(&mut out);
-            out.push_sql(")\n");
-
-            // Step 2: convert to JSONB
-            for (i, (table, _)) in self.table_filter_pairs.iter().enumerate() {
-                if i > 0 {
-                    out.push_sql("\nunion all\n");
-                }
-                out.push_sql("select matches.entity, to_jsonb(e.*) as data, e.id");
-                self.add_sort_key(&mut out)?;
-                out.push_sql("\n  from ");
-                out.push_identifier(&self.schema)?;
-                out.push_sql(".");
-                out.push_identifier(table.name.as_str())?;
-                out.push_sql(" e, matches");
-                out.push_sql("\n where e.vid = matches.vid and matches.entity = ");
-                out.push_bind_param::<Text, _>(&table.object)?;
-            }
-            self.order_by(&mut out)?;
+        match (self.table_filter_pairs.len(), self.window) {
+            (1, None) => self.query_no_window_one_entity(out),
+            (1, Some(_)) => self.query_window_one_entity(out),
+            (_, None) => self.query_no_window(out),
+            (_, Some(_)) => self.query_window(out),
         }
-        Ok(())
     }
 }
 

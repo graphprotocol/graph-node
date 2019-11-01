@@ -451,13 +451,22 @@ impl Connection {
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
+        window: Option<String>,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         match &*self.storage {
-            Storage::Json(json) => json.query(&self.conn, entity_types, filter, order, range),
-            Storage::Relational(layout) => {
-                layout.query(&self.conn, entity_types, filter, order, range, block)
+            Storage::Json(json) => {
+                json.query(&self.conn, entity_types, filter, order, range, window)
             }
+            Storage::Relational(layout) => layout.query(
+                &self.conn,
+                entity_types,
+                filter,
+                order,
+                range,
+                window,
+                block,
+            ),
         }
     }
 
@@ -907,13 +916,14 @@ impl JsonStorage {
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
+        window: Option<String>,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let query = FilterQuery::new(&self.table, entity_types, filter, order, range)?;
+        let query = FilterQuery::new(&self.table, entity_types, filter, order, range, window)?;
 
         let query_debug_info = debug_query(&query).to_string();
 
         let values = query
-            .load::<(serde_json::Value, String)>(conn)
+            .load::<(String, serde_json::Value, String)>(conn)
             .map_err(|e| {
                 QueryExecutionError::ResolveEntitiesError(format!(
                     "{}, query = {:?}",
@@ -922,7 +932,7 @@ impl JsonStorage {
             })?;
         values
             .into_iter()
-            .map(|(value, entity_type)| {
+            .map(|(_, value, entity_type)| {
                 entity_from_json(value, &entity_type).map_err(QueryExecutionError::from)
             })
             .collect()

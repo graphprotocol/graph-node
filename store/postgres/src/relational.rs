@@ -392,6 +392,7 @@ impl Layout {
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
+        window: Option<String>,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let filter = filter.as_ref();
@@ -413,18 +414,30 @@ impl Layout {
         // table, we are querying an interface, and the order is on an attribute
         // in that interface so that all tables have a column for that. It is
         // therefore enough to just look at the first table to get the name
-        let order = match (order, table_filter_pairs.first()) {
-            (_, None) => {
-                unreachable!("an entity query always contains at least one entity type/table");
-            }
-            (Some((ref attribute, _, direction)), Some((table, _))) => {
-                let column = table.column_for_field(&attribute)?;
+        let first_table = table_filter_pairs
+            .first()
+            .expect("an entity query always contains at least one entity type/table")
+            .0;
+        let order = match order {
+            Some((ref attribute, _, direction)) => {
+                let column = first_table.column_for_field(&attribute)?;
                 Some((&column.name, direction))
             }
-            (None, _) => None,
+            None => None,
         };
 
-        let query = FilterQuery::new(&self.schema, table_filter_pairs, order, range, block);
+        let window = window
+            .map(|window| first_table.column_for_field(&window))
+            .transpose()?
+            .map(|column| &column.name);
+        let query = FilterQuery::new(
+            &self.schema,
+            table_filter_pairs,
+            order,
+            range,
+            window,
+            block,
+        );
         let query_debug_info = query.clone();
 
         let values = query.load::<EntityData>(conn).map_err(|e| {

@@ -19,7 +19,13 @@ use graph_store_postgres::Store as DieselStore;
 use web3::types::{Address, H256};
 
 const USER_GQL: &str = "
-    type User @entity {
+    interface ColorAndAge {
+        id: ID!,
+        age: Int,
+        favorite_color: String
+    }
+
+    type User implements ColorAndAge @entity {
         id: ID!,
         name: String,
         bin_name: Bytes,
@@ -28,6 +34,13 @@ const USER_GQL: &str = "
         seconds_age: BigInt,
         weight: BigDecimal,
         coffee: Boolean,
+        favorite_color: String
+    }
+
+    type Person implements ColorAndAge @entity {
+        id: ID!,
+        name: String,
+        age: Int,
         favorite_color: String
     }
 
@@ -2337,4 +2350,192 @@ fn handle_large_string_with_index() {
 
         Ok(())
     })
+}
+
+#[derive(Clone)]
+struct WindowQuery(EntityQuery, Arc<DieselStore>);
+
+impl WindowQuery {
+    fn new(store: &Arc<DieselStore>) -> Self {
+        WindowQuery(
+            EntityQuery {
+                subgraph_id: TEST_SUBGRAPH_ID.clone(),
+                entity_types: vec![USER.to_owned()],
+                filter: Some(EntityFilter::GreaterThan("age".into(), Value::from(0))),
+                order_by: None,
+                order_direction: None,
+                range: EntityRange::first(10),
+                window: Some("favorite_color".to_owned()),
+            },
+            store.clone(),
+        )
+    }
+
+    fn first(self, first: u32) -> Self {
+        WindowQuery(
+            EntityQuery {
+                range: EntityRange::first(first),
+                ..self.0
+            },
+            self.1,
+        )
+    }
+
+    fn skip(self, skip: u32) -> Self {
+        WindowQuery(
+            EntityQuery {
+                range: EntityRange {
+                    first: self.0.range.first,
+                    skip,
+                },
+                ..self.0
+            },
+            self.1,
+        )
+    }
+
+    fn order(self, attr: &str, dir: EntityOrder) -> Self {
+        WindowQuery(
+            EntityQuery {
+                order_by: Some((attr.to_owned(), ValueType::String)),
+                order_direction: Some(dir),
+                ..self.0
+            },
+            self.1,
+        )
+    }
+
+    fn above(self, age: i32) -> Self {
+        WindowQuery(
+            EntityQuery {
+                filter: Some(EntityFilter::GreaterThan("age".into(), Value::from(age))),
+                ..self.0
+            },
+            self.1,
+        )
+    }
+
+    fn against_color_and_age(self) -> Self {
+        WindowQuery(
+            EntityQuery {
+                entity_types: vec![USER.to_owned(), "Person".to_owned()],
+                ..self.0
+            },
+            self.1,
+        )
+    }
+
+    fn expect(&self, expected_ids: Vec<&str>, qid: &str) {
+        let query = self.0.clone();
+        let store = &self.1;
+        let entity_ids = store
+            .find(query)
+            .expect("store.find failed to execute query")
+            .into_iter()
+            .map(|entity| match entity.get("id") {
+                Some(Value::String(id)) => id.to_owned(),
+                Some(_) => panic!("store.find returned entity with non-string ID attribute"),
+                None => panic!("store.find returned entity with no ID attribute"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(expected_ids, entity_ids, "Failed query: {}", qid);
+    }
+}
+
+#[test]
+fn window() {
+    fn make_color_end_age(entity_type: &str, id: &str, color: &str, age: i32) -> EntityOperation {
+        let mut entity = Entity::new();
+
+        entity.set("id", id.to_owned());
+        entity.set("age", age);
+        entity.set("favorite_color", color);
+        EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: TEST_SUBGRAPH_ID.clone(),
+                entity_type: entity_type.to_owned(),
+                entity_id: id.to_owned(),
+            },
+            data: entity,
+        }
+    }
+
+    fn make_user(id: &str, color: &str, age: i32) -> EntityOperation {
+        make_color_end_age(USER, id, color, age)
+    }
+
+    fn make_person(id: &str, color: &str, age: i32) -> EntityOperation {
+        make_color_end_age("Person", id, color, age)
+    }
+
+    let ops = vec![
+        make_user("4", "green", 34),
+        make_user("5", "green", 17),
+        make_user("6", "green", 41),
+        make_user("7", "red", 25),
+        make_user("8", "red", 45),
+        make_user("9", "yellow", 37),
+        make_user("10", "blue", 27),
+        make_user("11", "blue", 19),
+        make_person("p1", "green", 12),
+        make_person("p2", "red", 15),
+    ];
+
+    run_test(|store| -> Result<(), ()> {
+        use EntityOrder::*;
+
+        transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
+            .expect("Failed to create test users");
+
+        // Get the first 2 entries in each 'color group'
+        WindowQuery::new(&store)
+            .first(2)
+            .expect(vec!["1", "10", "11", "2", "3", "4", "5", "7", "9"], "q1");
+
+        WindowQuery::new(&store)
+            .first(1)
+            .expect(vec!["1", "10", "2", "4", "9"], "q2");
+
+        WindowQuery::new(&store)
+            .first(1)
+            .skip(1)
+            .expect(vec!["11", "3", "5", "7"], "q3");
+
+        WindowQuery::new(&store)
+            .first(1)
+            .skip(1)
+            .order("id", Descending)
+            .expect(vec!["7", "5", "10", "1"], "q4");
+
+        WindowQuery::new(&store)
+            .first(1)
+            .skip(1)
+            .order("favorite_color", Descending)
+            .expect(vec!["7", "5", "11", "3"], "q5");
+
+        WindowQuery::new(&store)
+            .first(1)
+            .skip(1)
+            .order("favorite_color", Descending)
+            .above(25)
+            .expect(vec!["8", "6", "3"], "q6");
+
+        // Check queries for interfaces
+        WindowQuery::new(&store)
+            .first(1)
+            .skip(1)
+            .order("favorite_color", Descending)
+            .above(12)
+            .against_color_and_age()
+            .expect(vec!["7", "5", "11", "3"], "q7");
+
+        WindowQuery::new(&store)
+            .first(1)
+            .order("age", Ascending)
+            .above(12)
+            .against_color_and_age()
+            .expect(vec!["p2", "5", "11", "3", "9"], "q8");
+
+        Ok(())
+    });
 }
