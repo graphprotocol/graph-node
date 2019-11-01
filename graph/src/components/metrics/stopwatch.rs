@@ -17,7 +17,7 @@ impl Section {
 impl Drop for Section {
     fn drop(&mut self) {
         self.stopwatch
-            .section_end(std::mem::replace(&mut self.id, String::new()))
+            .end_section(std::mem::replace(&mut self.id, String::new()))
     }
 }
 
@@ -40,22 +40,22 @@ impl StopwatchMetrics {
         };
 
         // Start a base section so that all time is accounted for.
-        inner.section_start("unknown".to_owned());
+        inner.start_section("unknown".to_owned());
 
         StopwatchMetrics(Arc::new(Mutex::new(inner)))
     }
 
-    pub fn section_start(&self, id: &str) -> Section {
+    pub fn start_section(&self, id: &str) -> Section {
         let id = id.to_owned();
-        self.0.lock().unwrap().section_start(id.clone());
+        self.0.lock().unwrap().start_section(id.clone());
         Section {
             id,
             stopwatch: self.clone(),
         }
     }
 
-    fn section_end(&self, id: String) {
-        self.0.lock().unwrap().section_end(id)
+    fn end_section(&self, id: String) {
+        self.0.lock().unwrap().end_section(id)
     }
 }
 
@@ -108,22 +108,22 @@ impl StopwatchInner {
         self.timer = Instant::now();
     }
 
-    fn section_start(&mut self, id: String) {
+    fn start_section(&mut self, id: String) {
         self.record_and_reset();
         self.section_stack.push(id);
     }
 
-    fn section_end(&mut self, id: String) {
+    fn end_section(&mut self, id: String) {
         // Validate that the expected section is running.
         match self.section_stack.last() {
             Some(current_section) if current_section == &id => {
                 self.record_and_reset();
                 self.section_stack.pop();
             }
-            Some(current_section) => error!(self.logger, "`section_end` with mismatched section";
+            Some(current_section) => error!(self.logger, "`end_section` with mismatched section";
                                                         "current" => current_section,
                                                         "received" => id),
-            None => error!(self.logger, "`section_end` with no current section";
+            None => error!(self.logger, "`end_section` with no current section";
                                         "received" => id),
         }
     }
