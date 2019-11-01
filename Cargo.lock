@@ -857,7 +857,7 @@ dependencies = [
 
 [[package]]
 name = "graph"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "bigdecimal 0.0.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -898,13 +898,13 @@ dependencies = [
 
 [[package]]
 name = "graph-core"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-graphql 0.15.1",
- "graph-mock 0.15.1",
+ "graph 0.16.0",
+ "graph-graphql 0.16.0",
+ "graph-mock 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)",
@@ -921,12 +921,12 @@ dependencies = [
 
 [[package]]
 name = "graph-datasource-ethereum"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-mock 0.15.1",
+ "graph 0.16.0",
+ "graph-mock 0.16.0",
  "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "jsonrpc-core 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -934,10 +934,10 @@ dependencies = [
 
 [[package]]
 name = "graph-graphql"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "Inflector 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
+ "graph 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "indexmap 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -948,19 +948,19 @@ dependencies = [
 
 [[package]]
 name = "graph-mock"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-graphql 0.15.1",
+ "graph 0.16.0",
+ "graph-graphql 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "graph-node"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "assert_cli 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -968,17 +968,17 @@ dependencies = [
  "env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "git-testament 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-core 0.15.1",
- "graph-datasource-ethereum 0.15.1",
- "graph-mock 0.15.1",
- "graph-runtime-wasm 0.15.1",
- "graph-server-http 0.15.1",
- "graph-server-index-node 0.15.1",
- "graph-server-json-rpc 0.15.1",
- "graph-server-metrics 0.0.1",
- "graph-server-websocket 0.15.1",
- "graph-store-postgres 0.15.1",
+ "graph 0.16.0",
+ "graph-core 0.16.0",
+ "graph-datasource-ethereum 0.16.0",
+ "graph-mock 0.16.0",
+ "graph-runtime-wasm 0.16.0",
+ "graph-server-http 0.16.0",
+ "graph-server-index-node 0.16.0",
+ "graph-server-json-rpc 0.16.0",
+ "graph-server-metrics 0.16.0",
+ "graph-server-websocket 0.16.0",
+ "graph-store-postgres 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)",
@@ -989,7 +989,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-derive"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "quote 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 0.15.42 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -997,16 +997,16 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-wasm"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "bs58 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethabi 8.0.0 (git+https://github.com/graphprotocol/ethabi.git?branch=graph-patches)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-core 0.15.1",
- "graph-graphql 0.15.1",
- "graph-mock 0.15.1",
- "graph-runtime-derive 0.15.1",
+ "graph 0.16.0",
+ "graph-core 0.16.0",
+ "graph-graphql 0.16.0",
+ "graph-mock 0.16.0",
+ "graph-runtime-derive 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)",
@@ -1020,12 +1020,12 @@ dependencies = [
 
 [[package]]
 name = "graph-server-http"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-graphql 0.15.1",
- "graph-mock 0.15.1",
+ "graph 0.16.0",
+ "graph-graphql 0.16.0",
+ "graph-mock 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.35 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1034,11 +1034,11 @@ dependencies = [
 
 [[package]]
 name = "graph-server-index-node"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-graphql 0.15.1",
+ "graph 0.16.0",
+ "graph-graphql 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.35 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1048,9 +1048,9 @@ dependencies = [
 
 [[package]]
 name = "graph-server-json-rpc"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
- "graph 0.15.1",
+ "graph 0.16.0",
  "jsonrpc-http-server 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1058,10 +1058,10 @@ dependencies = [
 
 [[package]]
 name = "graph-server-metrics"
-version = "0.0.1"
+version = "0.16.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
+ "graph 0.16.0",
  "http 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1071,11 +1071,11 @@ dependencies = [
 
 [[package]]
 name = "graph-server-websocket"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-graphql 0.15.1",
+ "graph 0.16.0",
+ "graph-graphql 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.12.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1087,7 +1087,7 @@ dependencies = [
 
 [[package]]
 name = "graph-store-postgres"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "Inflector 0.11.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "derive_more 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1098,8 +1098,8 @@ dependencies = [
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "fallible-iterator 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.15.1",
- "graph-graphql 0.15.1",
+ "graph 0.16.0",
+ "graph-graphql 0.16.0",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2768,8 +2768,8 @@ dependencies = [
 name = "test-store"
 version = "0.1.0"
 dependencies = [
- "graph 0.15.1",
- "graph-store-postgres 0.15.1",
+ "graph 0.16.0",
+ "graph-store-postgres 0.16.0",
  "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

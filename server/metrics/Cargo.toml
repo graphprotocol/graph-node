@@ -1,6 +1,6 @@
 [package]
 name = "graph-server-metrics"
-version = "0.0.1"
+version = "0.16.0"
 edition = "2018"
 
 [dependencies]
