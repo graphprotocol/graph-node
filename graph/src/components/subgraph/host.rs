@@ -53,6 +53,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
 pub struct HostMetrics {
     handler_execution_time: Box<HistogramVec>,
     host_fn_execution_time: Box<HistogramVec>,
+    pub stopwatch: StopwatchMetrics,
 }
 
 impl fmt::Debug for HostMetrics {
@@ -63,7 +64,11 @@ impl fmt::Debug for HostMetrics {
 }
 
 impl HostMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>, subgraph_hash: String) -> Self {
+    pub fn new<M: MetricsRegistry>(
+        registry: Arc<M>,
+        subgraph_hash: String,
+        stopwatch: StopwatchMetrics,
+    ) -> Self {
         let handler_execution_time = registry
             .new_histogram_vec(
                 format!("subgraph_handler_execution_time_{}", subgraph_hash),
@@ -85,6 +90,7 @@ impl HostMetrics {
         Self {
             handler_execution_time,
             host_fn_execution_time,
+            stopwatch,
         }
     }
 

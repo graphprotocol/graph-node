@@ -387,6 +387,7 @@ where
                                 cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit)
                             };
 
+                            let section = ctx.metrics.stopwatch.start_section("scan_blocks");
                             info!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                             Box::new(
                                 ctx.eth_adapter
@@ -400,7 +401,10 @@ where
                                         call_filter.clone(),
                                         block_filter.clone(),
                                     )
-                                    .map(ReconciliationStep::ProcessDescendantBlocks),
+                                    .map(move |blocks| {
+                                        section.end();
+                                        ReconciliationStep::ProcessDescendantBlocks(blocks)
+                                    }),
                             )
                         },
                     ),

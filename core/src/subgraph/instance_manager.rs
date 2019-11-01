@@ -32,7 +32,6 @@ struct IndexingState<T: RuntimeHostBuilder> {
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
-    stopwatch_metrics: StopwatchMetrics,
     restarts: u64,
 }
 
@@ -344,6 +343,8 @@ impl SubgraphInstanceManager {
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
+        let stopwatch_metrics =
+            StopwatchMetrics::new(logger.clone(), deployment_id.clone(), registry.clone());
         let subgraph_metrics = Arc::new(SubgraphInstanceMetrics::new(
             registry.clone(),
             deployment_id.clone().to_string(),
@@ -352,6 +353,7 @@ impl SubgraphInstanceManager {
         let host_metrics = Arc::new(HostMetrics::new(
             registry.clone(),
             deployment_id.clone().to_string(),
+            stopwatch_metrics.clone(),
         ));
         let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(
             registry.clone(),
@@ -361,11 +363,10 @@ impl SubgraphInstanceManager {
             registry.clone(),
             ethrpc_metrics.clone(),
             deployment_id.clone(),
+            stopwatch_metrics,
         ));
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
-        let stopwatch_metrics =
-            StopwatchMetrics::new(logger.clone(), deployment_id.clone(), registry.clone());
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
@@ -386,7 +387,6 @@ impl SubgraphInstanceManager {
                 log_filter,
                 call_filter,
                 block_filter,
-                stopwatch_metrics,
                 restarts: 0,
             },
             subgraph_metrics,
@@ -750,6 +750,7 @@ where
 
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
+        let _section = ctx.host_metrics.stopwatch.start_section("transact_block");
         let start = Instant::now();
         ctx.inputs
             .store
