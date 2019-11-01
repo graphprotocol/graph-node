@@ -27,6 +27,7 @@ pub struct FilterQuery<'a> {
     filter: Option<Box<dyn BoxableExpression<EntityTable, Pg, SqlType = Bool>>>,
     order: Option<OrderDetails>,
     range: EntityRange,
+    window: Option<String>,
 }
 
 impl<'a> FilterQuery<'a> {
@@ -36,6 +37,7 @@ impl<'a> FilterQuery<'a> {
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
+        window: Option<String>,
     ) -> Result<Self, QueryExecutionError> {
         let order = if let Some((attribute, value_type, direction)) = order {
             let cast = match value_type {
@@ -75,7 +77,27 @@ impl<'a> FilterQuery<'a> {
             filter,
             order,
             range,
+            window,
         })
+    }
+
+    fn entity_types(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        if self.entity_types.len() == 1 {
+            // If there is only one entity_type, which is the case in all
+            // queries that do not involve interfaces, leaving out `any`
+            // lets Postgres use the primary key index on the entities table
+            let entity_type = self
+                .entity_types
+                .first()
+                .expect("we checked that there is exactly one entity_type");
+            out.push_sql("entity = ");
+            out.push_bind_param::<Text, _>(&entity_type)?;
+        } else {
+            out.push_sql("entity = any(");
+            out.push_bind_param::<Array<Text>, _>(&self.entity_types)?;
+            out.push_sql(")");
+        }
+        Ok(())
     }
 
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
@@ -118,31 +140,66 @@ impl<'a> FilterQuery<'a> {
 
 impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        // We generate two somewhat different queries depending on whether
+        // we need to window over a field or not. Without a window,
+        // we generate
+        //    select data, entity
+        //      from {table}
+        //     where entity = any({entity_types})
+        //       and {filter}
+        //     order by {order}
+        //     limit {range.first} offset {range.skip}
+        //
+        // When there is a window, we generate a query
+        //     select data, entity
+        //       from (select data, entity,
+        //                    rank() over (partition by {window} order by {order}) as pos
+        //                from {inner_query}) a
+        //      where a.pos > {range.skip} and a.pos <= {range.skip} + {range.first}
+        //      order by {order}
+        // Here, inner_query are the corresponding parts from the first query,
+        // but without the order by or limit clauses
         out.unsafe_to_cache_prepared();
-        out.push_sql("select data, entity\n  from ");
+        if self.window.is_some() {
+            out.push_sql("select id, data, entity\n  from (");
+        }
+
+        out.push_sql("select id, data, entity");
+        if let Some(window) = &self.window {
+            out.push_sql(", rank() over (partition by data->");
+            out.push_bind_param::<Text, _>(window)?;
+            out.push_sql("->>'data' ");
+            self.order_by(&mut out)?;
+            out.push_sql(") as pos");
+        }
+        out.push_sql("\n  from ");
         self.table.walk_ast(out.reborrow())?;
         out.push_sql(" \n where ");
-        if self.entity_types.len() == 1 {
-            // If there is only one entity_type, which is the case in all
-            // queries that do not involve interfaces, leaving out `any`
-            // lets Postgres use the primary key index on the entities table
-            let entity_type = self
-                .entity_types
-                .first()
-                .expect("we checked that there is exactly one entity_type");
-            out.push_sql("entity = ");
-            out.push_bind_param::<Text, _>(&entity_type)?;
-        } else {
-            out.push_sql("entity = any(");
-            out.push_bind_param::<Array<Text>, _>(&self.entity_types)?;
-            out.push_sql(")")
-        }
+        self.entity_types(&mut out)?;
         if let Some(filter) = &self.filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
         }
-        self.order_by(&mut out)?;
-        self.limit(&mut out);
+
+        if self.window.is_some() {
+            out.push_sql(") a\n where ");
+            if self.range.skip > 0 {
+                out.push_sql("a.pos > ");
+                out.push_sql(&self.range.skip.to_string());
+                if self.range.first.is_some() {
+                    out.push_sql(" and ");
+                }
+            }
+            if let Some(first) = self.range.first {
+                let pos = self.range.skip + first;
+                out.push_sql("a.pos <= ");
+                out.push_sql(&pos.to_string());
+            }
+            self.order_by(&mut out)?;
+        } else {
+            self.order_by(&mut out)?;
+            self.limit(&mut out);
+        }
         Ok(())
     }
 }
@@ -154,7 +211,7 @@ impl<'a> QueryId for FilterQuery<'a> {
 }
 
 impl<'a> Query for FilterQuery<'a> {
-    type SqlType = (Jsonb, Text);
+    type SqlType = (Text, Jsonb, Text);
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
