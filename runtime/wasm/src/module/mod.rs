@@ -156,7 +156,7 @@ where
             ctx,
             valid_module: valid_module.clone(),
             task_sink,
-            host_metrics: host_metrics.clone(),
+            host_metrics,
             start_time: Instant::now(),
             running_start: true,
 
@@ -454,6 +454,7 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        let _section = self.host_metrics.stopwatch.start_section("store_get");
         let entity_ptr = self.asc_get(entity_ptr);
         let id_ptr = self.asc_get(id_ptr);
         let entity_option = self.ctx.host_exports.store_get(
@@ -950,6 +951,7 @@ where
         index: usize,
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
+        let _section = self.host_metrics.stopwatch.start_section("host_export");
         let start = Instant::now();
         let res = match index {
             ABORT_FUNC_INDEX => self.abort(

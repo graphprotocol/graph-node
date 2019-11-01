@@ -557,6 +557,7 @@ pub struct BlockStreamMetrics {
     pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     pub blocks_behind: Box<Gauge>,
     pub reverted_blocks: Box<Gauge>,
+    pub stopwatch: StopwatchMetrics,
 }
 
 impl BlockStreamMetrics {
@@ -564,6 +565,7 @@ impl BlockStreamMetrics {
         registry: Arc<M>,
         ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
         deployment_id: SubgraphDeploymentId,
+        stopwatch: StopwatchMetrics,
     ) -> Self {
         let blocks_behind = registry
             .new_gauge(
@@ -585,6 +587,7 @@ impl BlockStreamMetrics {
             ethrpc_metrics,
             blocks_behind,
             reverted_blocks,
+            stopwatch,
         }
     }
 }

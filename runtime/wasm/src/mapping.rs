@@ -48,13 +48,16 @@ pub fn spawn_module(
                 } = request;
 
                 // Start the WASMI module runtime.
+                let section = host_metrics.stopwatch.start_section("module_init");
                 let module = WasmiModule::from_valid_module_with_ctx(
                     valid_module.clone(),
                     ctx,
                     task_sender.clone(),
                     host_metrics.clone(),
                 )?;
+                section.end();
 
+                let _section = host_metrics.stopwatch.start_section("run_handler");
                 let result = match trigger {
                     MappingTrigger::Log {
                         transaction,
