@@ -364,7 +364,8 @@ impl SubgraphInstanceManager {
         ));
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
-        let stopwatch_metrics = StopwatchMetrics::new(deployment_id.clone(), logger.clone());
+        let stopwatch_metrics =
+            StopwatchMetrics::new(logger.clone(), deployment_id.clone(), registry.clone());
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
