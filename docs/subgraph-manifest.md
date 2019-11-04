@@ -47,9 +47,9 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 
 ### 1.5.2 Mapping
 The `mapping` field may be one of the following supported mapping manifests:
- - [Ethereum Events Mapping](#1521-ethereum-events-mapping)
+ - [Ethereum Mapping](#1521-ethereum-mapping)
 
-#### 1.5.2.1 Ethereum Events Mapping
+#### 1.5.2.1 Ethereum Mapping
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -58,8 +58,12 @@ The `mapping` field may be one of the following supported mapping manifests:
 | **language** | *String* | The language of the runtime for the Mapping API. Possible values: *wasm/assemblyscript*. |
 | **entities** | *[String]* | A list of entities that will be ingested as part of this mapping. Must correspond to names of entities in the GraphQL IDL. |
 | **abis** | *ABI* | ABIs for the contract classes that should be generated in the Mapping ABI. Name is also used to reference the ABI elsewhere in the manifest. |
-| **eventHandlers** | *EventHandler* | Handlers for specific events, which will be defined in the mapping script. |
+| **eventHandlers** | optional *EventHandler* | Handlers for specific events, which will be defined in the mapping script. |
+| **callHandlers** | optional *CallHandler* | A list of functions that will trigger a  handler and the name of the corresponding handlers in the mapping. |
+| **blockHandlers** | optional *BlocktHandler* | Defines a list of blocks to respond to and the handlers in the mapping to run for each. |
 | **file** | [*Path*](#16-path) | The path of the mapping script. |
+
+> **Note:** Each mapping is required to supply one or more handler type, available types: `EventHandler`, `CallHandler`, or `BlockHandler`. 
 
 #### 1.5.2.2 EventHandler
 
@@ -68,6 +72,21 @@ The `mapping` field may be one of the following supported mapping manifests:
 | **event** | *String* | An identifier for an event that will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to distinguish from events that may share the same name. No alias types can be used. For example, uint will not work, uint256 must be used.|
 | **handler** | *String* | The name of an exported function in the mapping script that should handle the specified event. |
 | **topic0** | optional *String* | A `0x` prefixed hex string. If provided, events whose topic0 is equal to this value will be processed by the given handler. When topic0 is provided, _only_ the topic0 value will be matched, and not the hash of the event signature. This is useful for processing anonymous events in Solidity, which can have their topic0 set to anything.  By default, topic0 is equal to the hash of the event signature. |
+
+#### 1.5.2.3 CallHandler
+
+| Field | Type | Description |
+| --- | --- | --- |
+| **function** | *String* | An identifier for a function that will be handled in the mapping script. For Ethereum contracts, this is the normalized function signature to filter calls by. |
+| **handler** | *String* | The name of an exported function in the mapping script that should handle the specified event. |
+
+#### 1.5.2.4 BlockHandler
+
+| Field | Type | Description |
+| --- | --- | --- |
+| **handler** | *String* | The name of an exported function in the mapping script that should handle the specified event. |
+| **filter** | optional *String* | The name of the filter that will be applied to decide on which blocks will trigger the mapping. If none is supplied, the handler will be called on every block. |
+
 
 ## 1.6 Path
 A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).
