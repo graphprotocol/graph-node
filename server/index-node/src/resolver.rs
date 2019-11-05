@@ -1,6 +1,5 @@
 use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap};
-use std::str::FromStr;
 
 use graph::data::graphql::{TryFromValue, ValueList, ValueMap};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
@@ -149,22 +148,9 @@ impl IndexingStatusWithoutNode {
         let number_key = format!("{}Number", prefix);
 
         match (
+            value.get_optional::<H256>(hash_key.as_ref())?,
             value
-                .get_optional::<q::Value>(hash_key.as_ref())?
-                .and_then(|value| match value {
-                    q::Value::String(s) => Some(s),
-                    _ => None,
-                })
-                .map(|s| H256::from_str(s.as_ref()))
-                .transpose()?,
-            value
-                .get_optional::<q::Value>(number_key.as_ref())?
-                .and_then(|value| match value {
-                    q::Value::String(s) => Some(s),
-                    _ => None,
-                })
-                .map(|s| BigInt::from_str(s.as_ref()))
-                .transpose()?
+                .get_optional::<BigInt>(number_key.as_ref())?
                 .map(|n| n.to_u64()),
         ) {
             // Only return an Ethereum block if we can parse both the block hash and number

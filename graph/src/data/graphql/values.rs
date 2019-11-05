@@ -3,7 +3,7 @@ use graphql_parser::query::{Name, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
-use crate::prelude::format_err;
+use crate::prelude::{format_err, BigInt};
 use web3::types::{H160, H256};
 
 pub trait TryFromValue: Sized {
@@ -80,6 +80,19 @@ impl TryFromValue for H256 {
                     .map_err(|e| format_err!("Cannot parse H256 value from string `{}`: {}", s, e))
             }
             _ => Err(format_err!("Cannot parse value into an H256: {:?}", value)),
+        }
+    }
+}
+
+impl TryFromValue for BigInt {
+    fn try_from_value(value: &Value) -> Result<Self, Error> {
+        match value {
+            Value::String(s) => BigInt::from_str(s)
+                .map_err(|e| format_err!("Cannot parse BigInt value from string `{}`: {}", s, e)),
+            _ => Err(format_err!(
+                "Cannot parse value into an BigInt: {:?}",
+                value
+            )),
         }
     }
 }
