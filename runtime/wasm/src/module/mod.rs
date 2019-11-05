@@ -374,7 +374,7 @@ where
         + Sync
         + 'static,
 {
-    fn gas(&mut self, _gas_spent: u32) -> Result<Option<RuntimeValue>, Trap> {
+    fn gas(&mut self) -> Result<Option<RuntimeValue>, Trap> {
         self.ctx.host_exports.check_timeout(self.start_time)?;
         Ok(None)
     }
@@ -454,7 +454,6 @@ where
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let _section = self.host_metrics.stopwatch.start_section("store_get");
         let entity_ptr = self.asc_get(entity_ptr);
         let id_ptr = self.asc_get(id_ptr);
         let entity_option = self.ctx.host_exports.store_get(
@@ -951,7 +950,14 @@ where
         index: usize,
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let _section = self.host_metrics.stopwatch.start_section("host_export");
+        // This function is hot, so avoid the cost of registering metrics.
+        if index == GAS_FUNC_INDEX {
+            return self.gas();
+        }
+
+        // Start a catch-all section for exports that don't have their own section.
+        let stopwatch = self.host_metrics.stopwatch.clone();
+        let _section = stopwatch.start_section("host_export_other");
         let start = Instant::now();
         let res = match index {
             ABORT_FUNC_INDEX => self.abort(
@@ -960,16 +966,25 @@ where
                 args.nth_checked(2)?,
                 args.nth_checked(3)?,
             ),
-            STORE_SET_FUNC_INDEX => self.store_set(
-                args.nth_checked(0)?,
-                args.nth_checked(1)?,
-                args.nth_checked(2)?,
-            ),
-            STORE_GET_FUNC_INDEX => self.store_get(args.nth_checked(0)?, args.nth_checked(1)?),
+            STORE_SET_FUNC_INDEX => {
+                let _section = stopwatch.start_section("host_export_store_set");
+                self.store_set(
+                    args.nth_checked(0)?,
+                    args.nth_checked(1)?,
+                    args.nth_checked(2)?,
+                )
+            }
+            STORE_GET_FUNC_INDEX => {
+                let _section = stopwatch.start_section("host_export_store_get");
+                self.store_get(args.nth_checked(0)?, args.nth_checked(1)?)
+            }
             STORE_REMOVE_FUNC_INDEX => {
                 self.store_remove(args.nth_checked(0)?, args.nth_checked(1)?)
             }
-            ETHEREUM_CALL_FUNC_INDEX => self.ethereum_call(args.nth_checked(0)?),
+            ETHEREUM_CALL_FUNC_INDEX => {
+                let _section = stopwatch.start_section("host_export_ethereum_call");
+                self.ethereum_call(args.nth_checked(0)?)
+            }
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
                 self.bytes_to_string(args.nth_checked(0)?)
             }
@@ -986,7 +1001,10 @@ where
             JSON_TO_U64_FUNC_INDEX => self.json_to_u64(args.nth_checked(0)?),
             JSON_TO_F64_FUNC_INDEX => self.json_to_f64(args.nth_checked(0)?),
             JSON_TO_BIG_INT_FUNC_INDEX => self.json_to_big_int(args.nth_checked(0)?),
-            IPFS_CAT_FUNC_INDEX => self.ipfs_cat(args.nth_checked(0)?),
+            IPFS_CAT_FUNC_INDEX => {
+                let _section = stopwatch.start_section("host_export_ipfs_cat");
+                self.ipfs_cat(args.nth_checked(0)?)
+            }
             CRYPTO_KECCAK_256_INDEX => self.crypto_keccak_256(args.nth_checked(0)?),
             BIG_INT_PLUS => self.big_int_plus(args.nth_checked(0)?, args.nth_checked(1)?),
             BIG_INT_MINUS => self.big_int_minus(args.nth_checked(0)?, args.nth_checked(1)?),
@@ -999,7 +1017,6 @@ where
             }
             BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
             BIG_INT_POW => self.big_int_pow(args.nth_checked(0)?, args.nth_checked(1)?),
-            GAS_FUNC_INDEX => self.gas(args.nth_checked(0)?),
             TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX => self.bytes_to_base58(args.nth_checked(0)?),
             BIG_DECIMAL_PLUS => self.big_decimal_plus(args.nth_checked(0)?, args.nth_checked(1)?),
             BIG_DECIMAL_MINUS => self.big_decimal_minus(args.nth_checked(0)?, args.nth_checked(1)?),
@@ -1012,12 +1029,15 @@ where
             }
             BIG_DECIMAL_TO_STRING => self.big_decimal_to_string(args.nth_checked(0)?),
             BIG_DECIMAL_FROM_STRING => self.big_decimal_from_string(args.nth_checked(0)?),
-            IPFS_MAP_FUNC_INDEX => self.ipfs_map(
-                args.nth_checked(0)?,
-                args.nth_checked(1)?,
-                args.nth_checked(2)?,
-                args.nth_checked(3)?,
-            ),
+            IPFS_MAP_FUNC_INDEX => {
+                let _section = stopwatch.start_section("host_export_ipfs_map");
+                self.ipfs_map(
+                    args.nth_checked(0)?,
+                    args.nth_checked(1)?,
+                    args.nth_checked(2)?,
+                    args.nth_checked(3)?,
+                )
+            }
             DATA_SOURCE_CREATE_INDEX => {
                 self.data_source_create(args.nth_checked(0)?, args.nth_checked(1)?)
             }
