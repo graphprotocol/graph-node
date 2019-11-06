@@ -31,6 +31,13 @@ impl StopwatchMetrics {
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let mut inner = StopwatchInner {
+            total_counter: *registry
+                .new_counter(
+                    format!("{}_total_secs", subgraph_id),
+                    format!("total time spent syncing"),
+                    HashMap::new(),
+                )
+                .expect("failed to register total_secs prometheus counter"),
             logger,
             subgraph_id,
             registry,
@@ -67,6 +74,9 @@ struct StopwatchInner {
     subgraph_id: SubgraphDeploymentId,
     registry: Arc<dyn MetricsRegistry>,
 
+    // Counter for the total time the subgraph spent syncing.
+    total_counter: Counter,
+
     // Counts the seconds spent in each section of the indexing code.
     counters: HashMap<String, Counter>,
 
@@ -101,7 +111,9 @@ impl StopwatchInner {
             };
 
             // Register the current timer.
-            counter.inc_by(self.timer.elapsed().as_secs_f64());
+            let elapsed = self.timer.elapsed().as_secs_f64();
+            self.total_counter.inc_by(elapsed);
+            counter.inc_by(elapsed);
         }
 
         // Reset the timer.
