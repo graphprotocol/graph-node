@@ -63,7 +63,8 @@ where
                 resolver
                     .as_ref()
                     .clone()
-                    .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT),
+                    .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT)
+                    .with_retries(),
             ),
             provider,
             store,
