@@ -24,6 +24,11 @@ pub trait LinkResolver: Send + Sync + 'static {
     where
         Self: Sized;
 
+    /// Enables infinite retries.
+    fn with_retries(self) -> Self
+    where
+        Self: Sized;
+
     /// Fetches the link contents as bytes.
     fn cat(
         &self,

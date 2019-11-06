@@ -85,6 +85,7 @@ pub struct LinkResolver {
     client: ipfs_api::IpfsClient,
     cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
     timeout: Duration,
+    retry: bool,
 }
 
 impl From<ipfs_api::IpfsClient> for LinkResolver {
@@ -95,6 +96,7 @@ impl From<ipfs_api::IpfsClient> for LinkResolver {
                 *MAX_IPFS_CACHE_SIZE as usize,
             ))),
             timeout: *IPFS_TIMEOUT,
+            retry: false,
         }
     }
 }
@@ -102,6 +104,11 @@ impl From<ipfs_api::IpfsClient> for LinkResolver {
 impl LinkResolverTrait for LinkResolver {
     fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    fn with_retries(mut self) -> Self {
+        self.retry = true;
         self
     }
 
@@ -113,6 +120,7 @@ impl LinkResolverTrait for LinkResolver {
     ) -> Box<dyn Future<Item = Vec<u8>, Error = failure::Error> + Send> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
+        let path_for_error = path.clone();
 
         if let Some(data) = self.cache.lock().unwrap().get(&path) {
             trace!(logger, "IPFS cache hit"; "hash" => &path);
@@ -121,36 +129,56 @@ impl LinkResolverTrait for LinkResolver {
             trace!(logger, "IPFS cache miss"; "hash" => &path);
         }
 
-        let cat = self
-            .client
-            .cat(&path)
-            .concat2()
-            .timeout(self.timeout)
-            .map(|x| x.to_vec())
-            .map_err(|e| failure::err_msg(e.to_string()));
-
+        let client_for_cat = self.client.clone();
+        let client_for_file_size = self.client.clone();
         let cache_for_writing = self.cache.clone();
 
         let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
+        let timeout_for_file_size = self.timeout.clone();
+
+        let retry_fut = if self.retry {
+            retry("ipfs.cat", &logger).no_limit()
+        } else {
+            retry("ipfs.cat", &logger).limit(1)
+        };
 
         Box::new(
-            restrict_file_size(
-                &self.client,
-                path.clone(),
-                self.timeout,
-                max_file_size,
-                Box::new(cat),
-            )
-            .map(move |data| {
-                // Only cache files if they are not too large
-                if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
-                    let mut cache = cache_for_writing.lock().unwrap();
-                    if !cache.contains_key(&path) {
-                        cache.insert(path, data.clone());
-                    }
-                }
-                data
-            }),
+            retry_fut
+                .timeout(self.timeout)
+                .run(move || {
+                    let cache_for_writing = cache_for_writing.clone();
+                    let path = path.clone();
+
+                    let cat = client_for_cat
+                        .cat(&path)
+                        .concat2()
+                        .map(|x| x.to_vec())
+                        .map_err(|e| failure::err_msg(e.to_string()));
+
+                    restrict_file_size(
+                        &client_for_file_size,
+                        path.clone(),
+                        timeout_for_file_size,
+                        max_file_size,
+                        Box::new(cat),
+                    )
+                    .map(move |data| {
+                        // Only cache files if they are not too large
+                        if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
+                            let mut cache = cache_for_writing.lock().unwrap();
+                            if !cache.contains_key(&path) {
+                                cache.insert(path, data.clone());
+                            }
+                        }
+                        data
+                    })
+                })
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or(format_err!(
+                        "ipfs.cat took too long or failed to load `{}`",
+                        path_for_error,
+                    ))
+                }),
         )
     }
 
