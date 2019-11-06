@@ -63,6 +63,7 @@ where
         variable_values: Arc::new(coerced_variable_values),
         deadline: None,
         max_first: options.max_first,
+        mode: ExecutionMode::Prefetch,
     };
 
     match operation {
@@ -218,6 +219,7 @@ where
         variable_values,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
+        mode: ExecutionMode::Prefetch,
     };
 
     // We have established that this exists earlier in the subscription execution

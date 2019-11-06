@@ -61,6 +61,16 @@ where
             Err(errors) => return QueryResult::from(errors),
         };
 
+    let mode = if let q::OperationDefinition::Query(query) = operation {
+        if query.directives.iter().any(|dir| dir.name == "verify") {
+            ExecutionMode::Verify
+        } else {
+            ExecutionMode::Prefetch
+        }
+    } else {
+        ExecutionMode::Prefetch
+    };
+
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: query_logger.clone(),
@@ -71,6 +81,7 @@ where
         variable_values: Arc::new(coerced_variable_values),
         deadline: options.deadline,
         max_first: options.max_first,
+        mode,
     };
 
     let result = match operation {

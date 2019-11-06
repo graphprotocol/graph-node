@@ -9,6 +9,7 @@ use std::fmt;
 use std::string::FromUtf8Error;
 
 use crate::components::store::StoreError;
+use crate::data::graphql::SerializableValue;
 use crate::data::subgraph::*;
 
 /// Error caused while executing a [Query](struct.Query.html).
@@ -53,6 +54,11 @@ pub enum QueryExecutionError {
     ScalarCoercionError(Pos, String, q::Value, String),
     TooComplex(u64, u64), // (complexity, max_complexity)
     TooDeep(u8),          // max_depth
+    // Using single query and prefetch resolution yield different results
+    IncorrectPrefetchResult {
+        single: q::Value,
+        prefetch: q::Value,
+    },
 }
 
 impl Error for QueryExecutionError {
@@ -191,7 +197,9 @@ impl fmt::Display for QueryExecutionError {
                            of the query, querying fewer relationships or using `first` to \
                            return smaller collections", complexity, max_complexity)
             }
-            TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth)
+            TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth),
+            IncorrectPrefetchResult{ .. } => write!(f, "Running query with prefetch and single query resolution yielded different results. \
+                    This is a bug. Please open an issue at https://github.com/graphprotocol/graph-node")
         }
     }
 }
@@ -283,7 +291,16 @@ impl Serialize for QueryError {
     {
         use self::QueryExecutionError::*;
 
-        let mut map = serializer.serialize_map(Some(1))?;
+        let entry_count =
+            if let QueryError::ExecutionError(QueryExecutionError::IncorrectPrefetchResult {
+                ..
+            }) = self
+            {
+                3
+            } else {
+                1
+            };
+        let mut map = serializer.serialize_map(Some(entry_count))?;
 
         let msg = match self {
             // Serialize parse errors with their location (line, column) to make it easier
@@ -336,6 +353,12 @@ impl Serialize for QueryError {
                 location.insert("line", pos.line);
                 location.insert("column", pos.column);
                 map.serialize_entry("locations", &vec![location])?;
+                format!("{}", self)
+            }
+            QueryError::ExecutionError(IncorrectPrefetchResult { single, prefetch }) => {
+                map.serialize_entry("incorrectPrefetch", &true)?;
+                map.serialize_entry("single", &SerializableValue(&single))?;
+                map.serialize_entry("prefetch", &SerializableValue(&prefetch))?;
                 format!("{}", self)
             }
             _ => format!("{}", self),
