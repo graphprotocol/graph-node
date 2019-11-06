@@ -15,6 +15,12 @@ use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ExecutionMode {
+    Prefetch,
+    Verify,
+}
+
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
 pub struct ExecutionContext<'a, R>
@@ -44,6 +50,8 @@ where
 
     /// Max value for `first`.
     pub max_first: u32,
+
+    pub mode: ExecutionMode,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -96,6 +104,7 @@ where
             variable_values: self.variable_values.clone(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
+            mode: ExecutionMode::Prefetch,
         }
     }
 
@@ -340,30 +349,32 @@ where
     }
 
     // If we are getting 'normal' data, prefetch it from the database
-    let initial_data = if data_set.items.is_empty() {
-        None
+    let mut values = if data_set.items.is_empty() {
+        BTreeMap::default()
     } else {
-        ctx.resolver.prefetch(&ctx, &data_set)?
+        let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
+        let values = execute_selection_set_to_map(&ctx, &data_set, query_type, &initial_data)?;
+        if ctx.mode == ExecutionMode::Verify {
+            let single_values = execute_selection_set_to_map(&ctx, &data_set, query_type, &None)?;
+            if values != single_values {
+                return Err(vec![QueryExecutionError::IncorrectPrefetchResult {
+                    single: q::Value::Object(single_values),
+                    prefetch: q::Value::Object(values),
+                }]);
+            }
+        }
+        values
     };
 
-    // Execute the root selection set against the root query type
-    if data_set.items.is_empty() {
-        // Only introspection
-        execute_selection_set(&ictx, &intro_set, introspection_query_type, &None)
-    } else if intro_set.items.is_empty() {
-        // Only data
-        execute_selection_set(&ctx, &data_set, query_type, &initial_data)
-    } else {
-        // Both introspection and data
-        let mut values = execute_selection_set_to_map(&ctx, &data_set, query_type, &initial_data)?;
+    if !intro_set.items.is_empty() {
         values.extend(execute_selection_set_to_map(
             &ictx,
             &intro_set,
             introspection_query_type,
             &None,
         )?);
-        Ok(q::Value::Object(values))
     }
+    Ok(q::Value::Object(values))
 }
 
 /// Executes a selection set, requiring the result to be of the given object type.
