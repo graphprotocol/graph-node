@@ -49,7 +49,8 @@ where
                 resolver
                     .as_ref()
                     .clone()
-                    .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT),
+                    .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT)
+                    .with_retries(),
             ),
             subgraphs_running: Arc::new(Mutex::new(HashSet::new())),
             store,
