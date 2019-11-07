@@ -5,3 +5,5 @@ pub mod api;
 pub mod ast;
 
 pub use self::api::{api_schema, APISchemaError};
+
+pub mod ext;
