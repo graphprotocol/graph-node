@@ -10,6 +10,9 @@ use crate::schema::ast as sast;
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
 
+/// Extension traits
+pub mod ext;
+
 /// Options available for query execution.
 pub struct QueryExecutionOptions<R>
 where
