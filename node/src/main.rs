@@ -511,6 +511,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                             &logger,
                             network_identifier,
                             postgres_conn_pool.clone(),
+                            metrics_registry.clone(),
                         )),
                     )
                 }

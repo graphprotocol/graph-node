@@ -1,7 +1,7 @@
 use crate::tokio::runtime::Runtime;
 use graph::log;
-#[allow(unused_imports)]
 use graph::prelude::{Store as _, *};
+use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{Store, StoreConfig};
 use hex_literal::hex;
@@ -19,6 +19,7 @@ pub fn postgres_test_url() -> String {
 
 pub const NETWORK_NAME: &str = "fake_network";
 pub const NETWORK_VERSION: &str = "graph test suite";
+
 lazy_static! {
     pub static ref LOGGER:Logger = match env::var_os("GRAPH_LOG") {
         Some(_) => log::logger(false),
@@ -52,6 +53,7 @@ lazy_static! {
                 &logger,
                 net_identifiers,
                 postgres_conn_pool,
+                Arc::new(MockMetricsRegistry::new()),
             )))
         })).expect("could not create Diesel Store instance for test suite")
     };

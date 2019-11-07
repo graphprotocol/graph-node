@@ -39,9 +39,15 @@ fn test_valid_module_and_store(
     let store = Arc::new(MockStore::user_store());
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let deployment_id = MockStore::user_subgraph_id();
+    let stopwatch_metrics = StopwatchMetrics::new(
+        Logger::root(slog::Discard, o!()),
+        deployment_id.clone(),
+        metrics_registry.clone(),
+    );
     let host_metrics = Arc::new(HostMetrics::new(
         metrics_registry,
         deployment_id.to_string(),
+        stopwatch_metrics,
     ));
 
     let (task_sender, task_receiver) = channel(100);
