@@ -78,6 +78,28 @@ impl EntityFilter {
             attribute_values.into_iter().map(Into::into).collect(),
         )
     }
+
+    pub fn and_maybe(self, other: Option<Self>) -> Self {
+        use EntityFilter as f;
+        match other {
+            Some(other) => match (self, other) {
+                (f::And(mut fs1), f::And(mut fs2)) => {
+                    fs1.append(&mut fs2);
+                    f::And(fs1)
+                }
+                (f::And(mut fs1), f2) => {
+                    fs1.push(f2);
+                    f::And(fs1)
+                }
+                (f1, f::And(mut fs2)) => {
+                    fs2.push(f1);
+                    f::And(fs2)
+                }
+                (f1, f2) => f::And(vec![f1, f2]),
+            },
+            None => self,
+        }
+    }
 }
 
 /// The order in which entities should be restored from a store.

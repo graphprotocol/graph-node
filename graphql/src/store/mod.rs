@@ -1,3 +1,4 @@
+mod prefetch;
 mod query;
 mod resolver;
 

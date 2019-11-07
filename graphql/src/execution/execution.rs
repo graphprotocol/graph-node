@@ -963,7 +963,7 @@ where
 }
 
 /// Merges the selection sets of several fields into a single selection set.
-fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
+pub fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
     let (span, items) = fields
         .iter()
         .fold((None, vec![]), |(span, mut items), field| {

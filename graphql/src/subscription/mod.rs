@@ -120,7 +120,7 @@ where
     let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
-    let grouped_field_set = collect_fields(ctx.clone(), &subscription_type, &selection_set, None);
+    let grouped_field_set = collect_fields(ctx, &subscription_type, &selection_set, None);
 
     if grouped_field_set.is_empty() {
         return Err(SubscriptionError::from(QueryExecutionError::EmptyQuery));

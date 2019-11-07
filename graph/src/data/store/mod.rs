@@ -204,6 +204,14 @@ impl Value {
         }
     }
 
+    pub fn as_str(&self) -> Option<&str> {
+        if let Value::String(s) = self {
+            Some(s.as_str())
+        } else {
+            None
+        }
+    }
+
     pub fn is_string(&self) -> bool {
         match self {
             Value::String(_) => true,
@@ -484,13 +492,19 @@ impl DerefMut for Entity {
     }
 }
 
-impl Into<query::Value> for Entity {
-    fn into(self) -> query::Value {
+impl Into<BTreeMap<String, query::Value>> for Entity {
+    fn into(self) -> BTreeMap<String, query::Value> {
         let mut fields = BTreeMap::new();
         for (attr, value) in self.iter() {
             fields.insert(attr.to_string(), value.clone().into());
         }
-        query::Value::Object(fields)
+        fields
+    }
+}
+
+impl Into<query::Value> for Entity {
+    fn into(self) -> query::Value {
+        query::Value::Object(self.into())
     }
 }
 
