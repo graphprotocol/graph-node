@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Mutex};
 use std::time::Instant;
 
 /// This is a "section guard", that closes the section on drop.
@@ -10,7 +10,7 @@ pub struct Section {
 }
 
 impl Section {
-    // A more readable `drop`.
+    /// A more readable `drop`.
     pub fn end(self) {}
 }
 
@@ -22,7 +22,10 @@ impl Drop for Section {
 }
 
 #[derive(Clone)]
-pub struct StopwatchMetrics(Arc<Mutex<StopwatchInner>>);
+pub struct StopwatchMetrics {
+    disabled: Arc<AtomicBool>,
+    inner: Arc<Mutex<StopwatchInner>>,
+}
 
 impl StopwatchMetrics {
     pub fn new(
@@ -49,20 +52,31 @@ impl StopwatchMetrics {
         // Start a base section so that all time is accounted for.
         inner.start_section("unknown".to_owned());
 
-        StopwatchMetrics(Arc::new(Mutex::new(inner)))
+        StopwatchMetrics {
+            disabled: Arc::new(AtomicBool::new(false)),
+            inner: Arc::new(Mutex::new(inner)),
+        }
     }
 
     pub fn start_section(&self, id: &str) -> Section {
         let id = id.to_owned();
-        self.0.lock().unwrap().start_section(id.clone());
+        if !self.disabled.load(Ordering::SeqCst) {
+            self.inner.lock().unwrap().start_section(id.clone())
+        }
         Section {
             id,
             stopwatch: self.clone(),
         }
     }
 
+    pub fn disable(&self) {
+        self.disabled.store(true, Ordering::SeqCst)
+    }
+
     fn end_section(&self, id: String) {
-        self.0.lock().unwrap().end_section(id)
+        if !self.disabled.load(Ordering::SeqCst) {
+            self.inner.lock().unwrap().end_section(id)
+        }
     }
 }
 

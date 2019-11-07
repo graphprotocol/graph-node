@@ -585,6 +585,10 @@ where
             Ok(())
         } else {
             // Synced
+
+            // Stop recording time-to-sync metrics.
+            self.metrics.stopwatch.disable();
+
             let mut ops = vec![];
 
             // Set deployment synced flag
