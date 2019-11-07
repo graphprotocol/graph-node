@@ -7,7 +7,9 @@ use graph::components::store::*;
 use graph::prelude::*;
 
 use crate::prelude::*;
+use crate::query::ast as qast;
 use crate::schema::ast as sast;
+
 use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 
 /// A resolver that fetches entities from a `Store`.
@@ -154,6 +156,16 @@ where
             })
             .unwrap_or(true)
     }
+
+    fn get_child<'a>(parent: &'a Option<q::Value>, field: &q::Field) -> Option<&'a q::Value> {
+        match parent {
+            Some(q::Value::Object(map)) => {
+                let key = format!("r:{}", qast::get_response_key(field));
+                map.get(&key)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl<S> Resolver for StoreResolver<S>
@@ -162,22 +174,26 @@ where
 {
     fn prefetch<'r>(
         &self,
-        _: &ExecutionContext<'r, Self>,
-        _: &q::SelectionSet,
+        ctx: &ExecutionContext<'r, Self>,
+        selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, QueryExecutionError> {
-        Ok(None)
+        super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))
     }
 
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
-        _field: &q::Field,
+        field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
         max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
+        if let Some(child) = Self::get_child(parent, field) {
+            return Ok(child.clone());
+        }
+
         let object_type = object_type.into();
         let mut query = build_query(object_type, arguments, types_for_interface, max_first)?;
 
@@ -219,6 +235,31 @@ where
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
+        if let Some(q::Value::List(children)) = Self::get_child(parent, field) {
+            if children.len() > 1 {
+                let derived_from_field =
+                    sast::get_derived_from_field(object_type, field_definition);
+
+                match derived_from_field {
+                    Some(derived_from_field) => {
+                        return Err(QueryExecutionError::AmbiguousDerivedFromResult(
+                            field.position.clone(),
+                            field.name.to_owned(),
+                            object_type.name().to_owned(),
+                            derived_from_field.name.to_owned(),
+                        ));
+                    }
+                    None => return Ok(q::Value::Null),
+                }
+            } else {
+                return Ok(children
+                    .into_iter()
+                    .next()
+                    .map(|value| value.clone())
+                    .unwrap_or(q::Value::Null));
+            }
+        }
+
         let id = arguments.get(&"id".to_string()).and_then(|id| match id {
             q::Value::String(s) => Some(s),
             _ => None,

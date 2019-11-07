@@ -44,6 +44,10 @@ impl<'a> ObjectOrInterface<'a> {
             ObjectOrInterface::Interface(interface) => &interface.fields,
         }
     }
+
+    pub fn field(&self, name: &s::Name) -> Option<&s::Field> {
+        self.fields().iter().find(|field| &field.name == name)
+    }
 }
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
