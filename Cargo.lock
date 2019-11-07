@@ -2749,6 +2749,7 @@ name = "test-store"
 version = "0.1.0"
 dependencies = [
  "graph 0.16.1",
+ "graph-mock 0.16.1",
  "graph-store-postgres 0.16.1",
  "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",

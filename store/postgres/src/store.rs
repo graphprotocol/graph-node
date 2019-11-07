@@ -116,17 +116,22 @@ struct SchemaPair {
 pub struct Store {
     logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
-    // listen to StoreEvents generated when applying entity operations
+
+    /// listen to StoreEvents generated when applying entity operations
     listener: StoreEventListener,
     chain_head_update_listener: ChainHeadUpdateListener,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
     schema_cache: Mutex<LruCache<SubgraphDeploymentId, SchemaPair>>,
+
     /// A cache for the storage metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
     pub(crate) storage_cache: e::StorageCache,
+
+    registry: Arc<dyn MetricsRegistry>,
+    get_entity_conn_timers: Arc<Mutex<HashMap<SubgraphDeploymentId, Counter>>>,
 }
 
 impl Store {
@@ -135,6 +140,7 @@ impl Store {
         logger: &Logger,
         net_identifiers: EthereumNetworkIdentifier,
         pool: Pool<ConnectionManager<PgConnection>>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
@@ -163,6 +169,8 @@ impl Store {
             conn: pool,
             schema_cache: Mutex::new(LruCache::with_capacity(100)),
             storage_cache: e::make_storage_cache(),
+            registry,
+            get_entity_conn_timers: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Add network to store and check network identifiers
@@ -641,7 +649,24 @@ impl Store {
     }
 
     fn get_entity_conn(&self, subgraph: &SubgraphDeploymentId) -> Result<e::Connection, Error> {
+        let start = Instant::now();
         let conn = self.get_conn()?;
+        self.get_entity_conn_timers
+            .lock()
+            .unwrap()
+            .entry(subgraph.clone())
+            .or_insert_with(|| {
+                *self
+                    .registry
+                    .new_counter(
+                        format!("{}_get_conn_secs", subgraph),
+                        format!("total time spent waiting for a DB connection"),
+                        HashMap::new(),
+                    )
+                    .expect("failed to register get_conn_secs prometheus counter")
+            })
+            .inc_by(start.elapsed().as_secs_f64());
+
         let storage = self.storage(&conn, subgraph)?;
         let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;
         Ok(e::Connection::new(conn, storage, metadata))
