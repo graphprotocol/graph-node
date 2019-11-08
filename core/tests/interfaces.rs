@@ -209,7 +209,7 @@ fn follow_interface_reference() {
                     parent: Legged
                   }";
 
-    let query = "query { legged(id: \"child\") { parent { id } } }";
+    let query = "query @verify { legged(id: \"child\") { ... on Animal { parent { id } } } }";
 
     let parent = (
         Entity::from(vec![
