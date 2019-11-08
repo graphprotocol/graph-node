@@ -200,8 +200,8 @@ fn reference_interface() {
 }
 
 #[test]
-fn follow_interface_reference() {
-    let subgraph_id = "FollowInterfaceReference";
+fn follow_interface_reference_invalid() {
+    let subgraph_id = "FollowInterfaceReferenceInvalid";
     let schema = "interface Legged { legs: Int! }
                   type Animal implements Legged @entity {
                     id: ID!
@@ -210,6 +210,46 @@ fn follow_interface_reference() {
                   }";
 
     let query = "query { legged(id: \"child\") { parent { id } } }";
+
+    let parent = (
+        Entity::from(vec![
+            ("id", Value::from("parent")),
+            ("legs", Value::from(4)),
+            ("parent", Value::Null),
+        ]),
+        "Animal",
+    );
+    let child = (
+        Entity::from(vec![
+            ("id", Value::from("child")),
+            ("legs", Value::from(3)),
+            ("parent", Value::String("parent".into())),
+        ]),
+        "Animal",
+    );
+
+    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+
+    match &dbg!(res.errors).unwrap()[0] {
+        QueryError::ExecutionError(QueryExecutionError::UnknownField(type_name, field_name)) => {
+            assert_eq!(type_name, "Legged");
+            assert_eq!(field_name, "parent");
+        }
+        e => panic!("error {} is not the expected one", e),
+    }
+}
+
+#[test]
+fn follow_interface_reference() {
+    let subgraph_id = "FollowInterfaceReference";
+    let schema = "interface Legged { id: ID!, legs: Int! }
+                  type Animal implements Legged @entity {
+                    id: ID!
+                    legs: Int!
+                    parent: Legged
+                  }";
+
+    let query = "query { legged(id: \"child\") { ... on Animal { parent { id } } } }";
 
     let parent = (
         Entity::from(vec![

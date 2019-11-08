@@ -505,7 +505,7 @@ where
         &self,
         parent: &Option<q::Value>,
         field: &q::Name,
-        field_definition: &s::Field,
+        _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
@@ -533,14 +533,12 @@ where
 
             // Unknown fields on the `Query` type
             (None, _, name) => Err(QueryExecutionError::UnknownField(
-                field_definition.position.clone(),
                 "Query".into(),
                 name.into(),
             )),
 
             // Unknown fields on any other types
             (_, type_name, name) => Err(QueryExecutionError::UnknownField(
-                field_definition.position.clone(),
                 type_name.into(),
                 name.into(),
             )),
@@ -551,7 +549,7 @@ where
         &self,
         parent: &Option<q::Value>,
         field: &q::Field,
-        field_definition: &s::Field,
+        _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
@@ -572,7 +570,6 @@ where
 
             // Unknown fields on other types
             (_, type_name, name) => Err(QueryExecutionError::UnknownField(
-                field_definition.position.clone(),
                 type_name.into(),
                 name.into(),
             )),
