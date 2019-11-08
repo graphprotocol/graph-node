@@ -166,6 +166,73 @@ where
             _ => None,
         }
     }
+
+    fn was_prefetched(parent: &Option<q::Value>) -> bool {
+        match parent {
+            Some(q::Value::Object(map)) => map.contains_key(super::prefetch::PREFETCH_KEY),
+            _ => false,
+        }
+    }
+
+    fn resolve_objects_prefetch(
+        &self,
+        parent: &Option<q::Value>,
+        field: &q::Field,
+        object_type: ObjectOrInterface<'_>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        if let Some(child) = Self::get_child(parent, field) {
+            Ok(child.clone())
+        } else {
+            Err(QueryExecutionError::ResolveEntitiesError(format!(
+                "internal error resolving {}.{} for {:?}: \
+                 expected prefetched result, but found nothing",
+                object_type.name(),
+                &field.name,
+                parent
+            )))
+        }
+    }
+
+    fn resolve_object_prefetch(
+        &self,
+        parent: &Option<q::Value>,
+        field: &q::Field,
+        field_definition: &s::Field,
+        object_type: ObjectOrInterface<'_>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        if let Some(q::Value::List(children)) = Self::get_child(parent, field) {
+            if children.len() > 1 {
+                let derived_from_field =
+                    sast::get_derived_from_field(object_type, field_definition);
+
+                match derived_from_field {
+                    Some(derived_from_field) => {
+                        return Err(QueryExecutionError::AmbiguousDerivedFromResult(
+                            field.position.clone(),
+                            field.name.to_owned(),
+                            object_type.name().to_owned(),
+                            derived_from_field.name.to_owned(),
+                        ));
+                    }
+                    None => return Ok(q::Value::Null),
+                }
+            } else {
+                return Ok(children
+                    .into_iter()
+                    .next()
+                    .map(|value| value.clone())
+                    .unwrap_or(q::Value::Null));
+            }
+        } else {
+            return Err(QueryExecutionError::ResolveEntitiesError(format!(
+                "internal error resolving {}.{} for {:?}: \
+                 expected prefetched result, but found nothing",
+                object_type.name(),
+                &field.name,
+                parent
+            )));
+        }
+    }
 }
 
 impl<S> Resolver for StoreResolver<S>
@@ -190,8 +257,8 @@ where
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
         max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(child) = Self::get_child(parent, field) {
-            return Ok(child.clone());
+        if Self::was_prefetched(parent) {
+            return self.resolve_objects_prefetch(parent, field, object_type);
         }
 
         let object_type = object_type.into();
@@ -235,29 +302,8 @@ where
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(q::Value::List(children)) = Self::get_child(parent, field) {
-            if children.len() > 1 {
-                let derived_from_field =
-                    sast::get_derived_from_field(object_type, field_definition);
-
-                match derived_from_field {
-                    Some(derived_from_field) => {
-                        return Err(QueryExecutionError::AmbiguousDerivedFromResult(
-                            field.position.clone(),
-                            field.name.to_owned(),
-                            object_type.name().to_owned(),
-                            derived_from_field.name.to_owned(),
-                        ));
-                    }
-                    None => return Ok(q::Value::Null),
-                }
-            } else {
-                return Ok(children
-                    .into_iter()
-                    .next()
-                    .map(|value| value.clone())
-                    .unwrap_or(q::Value::Null));
-            }
+        if Self::was_prefetched(parent) {
+            return self.resolve_object_prefetch(parent, field, field_definition, object_type);
         }
 
         let id = arguments.get(&"id".to_string()).and_then(|id| match id {
