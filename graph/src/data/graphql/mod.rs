@@ -1,7 +1,7 @@
 mod serialization;
 
 /// Utilities for validating GraphQL schemas.
-pub(crate) mod validation;
+pub mod validation;
 
 /// Utilities for working with GraphQL values.
 mod values;

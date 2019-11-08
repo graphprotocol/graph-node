@@ -32,7 +32,7 @@ pub enum QueryExecutionError {
     OrderByNotSupportedError(String, String),
     OrderByNotSupportedForType(String),
     FilterNotSupportedError(String, String),
-    UnknownField(Pos, String, String),
+    UnknownField(String, String),
     EmptyQuery,
     MultipleSubscriptionFields,
     SubgraphDeploymentIdError(String),
@@ -53,6 +53,7 @@ pub enum QueryExecutionError {
     ScalarCoercionError(Pos, String, q::Value, String),
     TooComplex(u64, u64), // (complexity, max_complexity)
     TooDeep(u8),          // max_depth
+    UndefinedFragment(String),
 }
 
 impl Error for QueryExecutionError {
@@ -120,7 +121,7 @@ impl fmt::Display for QueryExecutionError {
             FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value `{}`: `{}`", value, filter)
             }
-            UnknownField(_, t, s) => {
+            UnknownField(t, s) => {
                 write!(f, "Type `{}` has no field `{}`", t, s)
             }
             EmptyQuery => write!(f, "The query is empty"),
@@ -191,7 +192,8 @@ impl fmt::Display for QueryExecutionError {
                            of the query, querying fewer relationships or using `first` to \
                            return smaller collections", complexity, max_complexity)
             }
-            TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth)
+            TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth),
+            UndefinedFragment(frag_name) => write!(f, "fragment `{}` is not defined", frag_name),
         }
     }
 }
