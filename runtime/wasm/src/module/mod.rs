@@ -464,7 +464,13 @@ where
         )?;
 
         Ok(Some(match entity_option {
-            Some(entity) => RuntimeValue::from(self.asc_new(&entity)),
+            Some(entity) => {
+                let _section = self
+                    .host_metrics
+                    .stopwatch
+                    .start_section("store_get_asc_new");
+                RuntimeValue::from(self.asc_new(&entity))
+            }
             None => RuntimeValue::from(0),
         }))
     }
