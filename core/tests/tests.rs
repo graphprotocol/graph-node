@@ -19,6 +19,8 @@ use graph::prelude::*;
 use graph_core::LinkResolver;
 use graph_mock::{MockEthereumAdapter, MockStore};
 
+use test_store::LOGGER;
+
 use crate::tokio::timer::Delay;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
@@ -242,7 +244,7 @@ fn subgraph_provider_events() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
     runtime
         .block_on(future::lazy(|| {
-            let logger = Logger::root(slog::Discard, o!());
+            let logger = LOGGER.clone();
             let logger_factory = LoggerFactory::new(logger.clone(), None);
             let ipfs = Arc::new(IpfsClient::default());
             let resolver = Arc::new(LinkResolver::from(IpfsClient::default()));
