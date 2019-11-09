@@ -275,7 +275,13 @@ where
     let mut values = if data_set.items.is_empty() {
         BTreeMap::default()
     } else {
-        let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
+        // Allow turning prefetch of as a safety valve. Once we are confident
+        // prefetching contains no more bugs, we should remove this env variable
+        let initial_data = if std::env::var_os("GRAPH_GRAPHQL_NO_PREFETCH").is_some() {
+            None
+        } else {
+            ctx.resolver.prefetch(&ctx, &data_set)?
+        };
         let values = execute_selection_set_to_map(&ctx, &data_set, query_type, &initial_data)?;
         if ctx.mode == ExecutionMode::Verify {
             let single_values = execute_selection_set_to_map(&ctx, &data_set, query_type, &None)?;
