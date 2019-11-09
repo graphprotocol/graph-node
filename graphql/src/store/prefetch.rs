@@ -753,8 +753,11 @@ fn fetch<S: Store>(
         };
         query.filter = Some(filter.and_maybe(query.filter));
         // Apply order by/range conditions to each batch of children, grouped
-        // by parent
-        query.window = Some(join.child_field.to_owned());
+        // by parent, but only if we have more than one parent, as the
+        // queries without a window are simpler
+        if parents.len() > 1 {
+            query.window = Some(join.child_field.to_owned());
+        }
     }
 
     store
