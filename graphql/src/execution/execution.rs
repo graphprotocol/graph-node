@@ -1,6 +1,7 @@
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use indexmap::IndexMap;
+use lazy_static::lazy_static;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Deref;
@@ -14,6 +15,10 @@ use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
+
+lazy_static! {
+    static ref NO_PREFETCH: bool = std::env::var_os("GRAPH_GRAPHQL_NO_PREFETCH").is_some();
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ExecutionMode {
@@ -323,7 +328,7 @@ where
     };
 
     // Split the toplevel fields into introspection fields and
-    // 'normal' data fields
+    // regular data fields
     let mut data_set = q::SelectionSet {
         span: selection_set.span.clone(),
         items: Vec::new(),
@@ -348,11 +353,17 @@ where
         }
     }
 
-    // If we are getting 'normal' data, prefetch it from the database
+    // If we are getting regular data, prefetch it from the database
     let mut values = if data_set.items.is_empty() {
         BTreeMap::default()
     } else {
-        let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
+        // Allow turning prefetch off as a safety valve. Once we are confident
+        // prefetching contains no more bugs, we should remove this env variable
+        let initial_data = if *NO_PREFETCH {
+            None
+        } else {
+            ctx.resolver.prefetch(&ctx, &data_set)?
+        };
         let values = execute_selection_set_to_map(&ctx, &data_set, query_type, &initial_data)?;
         if ctx.mode == ExecutionMode::Verify {
             let single_values = execute_selection_set_to_map(&ctx, &data_set, query_type, &None)?;
@@ -366,6 +377,7 @@ where
         values
     };
 
+    // Resolve introspection fields, if there are any
     if !intro_set.items.is_empty() {
         values.extend(execute_selection_set_to_map(
             &ictx,
