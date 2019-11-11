@@ -22,7 +22,7 @@ lazy_static = "1.1"
 lru_time_cache = "0.9"
 postgres = "0.15.2"
 serde = "1.0"
-uuid = { version = "0.7.4", features = ["v4"] }
+uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
 graphql-parser = "0.2.3"

@@ -9,7 +9,7 @@ graphql-parser = "0.2.3"
 indexmap = "1.2"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"
-uuid = { version = "0.7.4", features = ["v4"] }
+uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
