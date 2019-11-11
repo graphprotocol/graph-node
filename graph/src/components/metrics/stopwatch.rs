@@ -21,6 +21,19 @@ impl Drop for Section {
     }
 }
 
+/// Usage example:
+/// ```ignore
+/// // Start counting time for the "main_section".
+/// let _main_section = stopwatch.start_section("main_section");
+/// // do stuff...
+/// // Pause timer for "main_section", start for "child_section".
+/// let chid_section = stopwatch.start_section("child_section");
+/// // do stuff...
+/// // Register time spent in "child_section", implicitly going back to "main_section".
+/// section.end();
+/// // do stuff...
+/// // At the end of the scope `_main_section` is dropped, which is equivalent to calling
+/// // `_main_section.end()`.
 #[derive(Clone)]
 pub struct StopwatchMetrics {
     disabled: Arc<AtomicBool>,
