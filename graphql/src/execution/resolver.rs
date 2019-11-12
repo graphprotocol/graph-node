@@ -57,7 +57,7 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         ctx: &ExecutionContext<'a, Self>,
         selection_set: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, QueryExecutionError>;
+    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>>;
 
     /// Resolves entities referenced by a parent object.
     fn resolve_objects(
