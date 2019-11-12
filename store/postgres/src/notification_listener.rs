@@ -138,12 +138,14 @@ impl NotificationListener {
                     .filter_map(|item| match item {
                         Ok(msg) => Some(msg),
                         Err(e) => {
-                            warn!(
-                                logger,
-                                "Error receiving message";
-                                "error" => format!("{}", e)
+                            let msg = format!("{}", e);
+                            crit!(logger, "Error receiving message"; "error" => &msg);
+                            eprintln!(
+                                "Connection to Postgres lost while listening for events. \
+                                 Aborting to avoid inconsistent state. ({})",
+                                msg
                             );
-                            None
+                            std::process::exit(1);
                         }
                     })
                     .filter(|notification| notification.channel == channel_name.0)
