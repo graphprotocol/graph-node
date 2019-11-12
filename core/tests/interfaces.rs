@@ -230,7 +230,7 @@ fn follow_interface_reference_invalid() {
 
     let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
 
-    match &dbg!(res.errors).unwrap()[0] {
+    match &res.errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::UnknownField(type_name, field_name)) => {
             assert_eq!(type_name, "Legged");
             assert_eq!(field_name, "parent");
