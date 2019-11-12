@@ -32,7 +32,7 @@ pub enum QueryExecutionError {
     OrderByNotSupportedError(String, String),
     OrderByNotSupportedForType(String),
     FilterNotSupportedError(String, String),
-    UnknownField(String, String),
+    UnknownField(Pos, String, String),
     EmptyQuery,
     MultipleSubscriptionFields,
     SubgraphDeploymentIdError(String),
@@ -121,8 +121,8 @@ impl fmt::Display for QueryExecutionError {
             FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value `{}`: `{}`", value, filter)
             }
-            UnknownField(t, s) => {
-                write!(f, "Type `{}` has no field `{}`", t, s)
+            UnknownField(p, t, s) => {
+                write!(f, "Type `{}` has no field `{}`, at position {}:{}", t, s, p.line, p.column)
             }
             EmptyQuery => write!(f, "The query is empty"),
             MultipleSubscriptionFields => write!(

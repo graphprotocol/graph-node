@@ -249,6 +249,7 @@ where
                                 }
                             }
                             None => errors.push(QueryExecutionError::UnknownField(
+                                field.position,
                                 type_name.clone(),
                                 field.name.clone(),
                             )),
@@ -419,6 +420,7 @@ where
             };
         } else {
             errors.push(QueryExecutionError::UnknownField(
+                fields[0].position,
                 object_type.name.clone(),
                 fields[0].name.clone(),
             ))
