@@ -298,6 +298,7 @@ where
         // Fail if the field does not exist on the object type
         if sast::get_field(object_type, &field.name).is_none() {
             return Err(QueryExecutionError::UnknownField(
+                field.position,
                 object_type.name.clone(),
                 field.name.clone(),
             ));
