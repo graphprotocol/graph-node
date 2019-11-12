@@ -203,19 +203,15 @@ where
         if let Some(q::Value::List(children)) = Self::get_child(parent, field) {
             if children.len() > 1 {
                 let derived_from_field =
-                    sast::get_derived_from_field(object_type, field_definition);
+                    sast::get_derived_from_field(object_type, field_definition)
+                        .expect("only derived fields can lead to multiple children here");
 
-                match derived_from_field {
-                    Some(derived_from_field) => {
-                        return Err(QueryExecutionError::AmbiguousDerivedFromResult(
-                            field.position.clone(),
-                            field.name.to_owned(),
-                            object_type.name().to_owned(),
-                            derived_from_field.name.to_owned(),
-                        ));
-                    }
-                    None => return Ok(q::Value::Null),
-                }
+                return Err(QueryExecutionError::AmbiguousDerivedFromResult(
+                    field.position.clone(),
+                    field.name.to_owned(),
+                    object_type.name().to_owned(),
+                    derived_from_field.name.to_owned(),
+                ));
             } else {
                 return Ok(children
                     .into_iter()
