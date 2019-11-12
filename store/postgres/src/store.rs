@@ -659,7 +659,7 @@ impl Store {
                 *self
                     .registry
                     .new_counter(
-                        format!("{}_get_conn_secs", subgraph),
+                        format!("{}_get_entity_conn_secs", subgraph),
                         format!("total time spent waiting for a DB connection"),
                         HashMap::new(),
                     )
