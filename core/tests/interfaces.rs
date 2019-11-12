@@ -211,24 +211,7 @@ fn follow_interface_reference_invalid() {
 
     let query = "query { legged(id: \"child\") { parent { id } } }";
 
-    let parent = (
-        Entity::from(vec![
-            ("id", Value::from("parent")),
-            ("legs", Value::from(4)),
-            ("parent", Value::Null),
-        ]),
-        "Animal",
-    );
-    let child = (
-        Entity::from(vec![
-            ("id", Value::from("child")),
-            ("legs", Value::from(3)),
-            ("parent", Value::String("parent".into())),
-        ]),
-        "Animal",
-    );
-
-    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
 
     match &res.errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::UnknownField(_, type_name, field_name)) => {
@@ -440,4 +423,28 @@ fn interface_inline_fragment() {
         format!("{:?}", res.data.unwrap()),
         r#"Object({"leggeds": List([Object({"airspeed": Int(Number(24))}), Object({"name": String("cow")})])})"#
     );
+}
+
+#[test]
+fn invalid_fragment() {
+    let subgraph_id = "InvalidFragment";
+    let schema = "interface Legged { legs: Int! }
+                  type Animal implements Legged @entity {
+                    id: ID!
+                    name: String!
+                    legs: Int!
+                    parent: Legged
+                  }";
+
+    let query = "query { legged(id: \"child\") { ...{ name } } }";
+
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
+
+    match &res.errors.unwrap()[0] {
+        QueryError::ExecutionError(QueryExecutionError::UnknownField(_, type_name, field_name)) => {
+            assert_eq!(type_name, "Legged");
+            assert_eq!(field_name, "name");
+        }
+        e => panic!("error {} is not the expected one", e),
+    }
 }
