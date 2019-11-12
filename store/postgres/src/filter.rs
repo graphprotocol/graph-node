@@ -169,16 +169,29 @@ impl<QS> IntoArrayFilter<QS, SqlValue> for Vec<SqlValue> {
         U: 'static,
         Pg: HasSqlType<U>,
     {
-        Box::new(
-            sql("(data -> ")
-                .bind::<Text, _>(attribute)
-                .sql("->> 'data')")
-                .sql(coercion)
-                .sql(op)
-                .sql("(")
-                .bind::<Array<U>, _>(self)
-                .sql(")"),
-        ) as FilterExpression<QS>
+        if &attribute == "id" {
+            // Use the `id` column rather than `data->'id'->>'data'` so that
+            // Postgres can use the primary key index on the entities table
+            Box::new(
+                sql("id")
+                    .sql(coercion)
+                    .sql(op)
+                    .sql("(")
+                    .bind::<Array<U>, _>(self)
+                    .sql(")"),
+            ) as FilterExpression<QS>
+        } else {
+            Box::new(
+                sql("(data -> ")
+                    .bind::<Text, _>(attribute)
+                    .sql("->> 'data')")
+                    .sql(coercion)
+                    .sql(op)
+                    .sql("(")
+                    .bind::<Array<U>, _>(self)
+                    .sql(")"),
+            ) as FilterExpression<QS>
+        }
     }
 }
 
