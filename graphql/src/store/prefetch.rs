@@ -47,6 +47,7 @@ impl TypeCondition {
         }
     }
 
+    /// Return `true` if any of the entities matches this type condition
     fn matches(&self, entities: &Vec<Node>) -> bool {
         use TypeCondition::*;
         match self {
@@ -85,6 +86,12 @@ impl From<Option<q::TypeCondition>> for TypeCondition {
 #[derive(Debug, Clone)]
 struct Node {
     entity: Entity,
+    /// We are using an `Rc` here for two reasons: it allows us to defer
+    /// copying objects until the end, when converting to `q::Value` forces
+    /// us to copy any child that is referenced by multiple parents. It also
+    /// makes it possible to avoid unnecessary copying of a child that is
+    /// referenced by only one parent - without the `Rc` we would have to copy
+    /// since we do not know that only one parent uses it.
     children: BTreeMap<String, Vec<Rc<Node>>>,
 }
 
@@ -224,12 +231,13 @@ impl<'a> Join<'a> {
             return;
         }
 
-        // Build a map child_key -> Vec<child> for joining
+        // Build a map child_key -> Vec<child> for joining by grouping
+        // children by their child_field
         let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
         for child in children.iter() {
             match child
                 .get(self.child_field)
-                .expect("child must have a value in child_field")
+                .expect("the query that produces 'child' ensures there is always an entry")
             {
                 StoreValue::String(key) => grouped.entry(key).or_default().push(child.clone()),
                 StoreValue::List(list) => {
@@ -249,7 +257,7 @@ impl<'a> Join<'a> {
         // Add appropriate children using grouped map
         for parent in parents.iter_mut() {
             // Set the `response_key` field in `parent`. Make sure that even
-            // if `parent` has no mathcing `children`, the field gets set (to
+            // if `parent` has no matching `children`, the field gets set (to
             // an empty `Vec`)
             // This is complicated by the fact that, if there was a type
             // condition, we should only change parents that meet the type
@@ -306,7 +314,10 @@ impl<'a> Join<'a> {
 /// For the above example, the returned object would have one entry under
 /// `r:musicians`, which is a list of all the musicians; each musician has an
 /// entry `r:bands` that contains a list of the bands for that musician. Note
-/// that even for single-object fields, we return a list
+/// that even for single-object fields, we return a list so that we can spot
+/// cases where the store contains data that violates the data model by having
+/// multiple values for what should be a relationship to a single object in
+/// @derivedFrom fields
 pub fn run<'a, R, S>(
     ctx: &ExecutionContext<'a, R>,
     selection_set: &q::SelectionSet,
@@ -364,7 +375,7 @@ where
             .map(|f| q::Selection::Field((*f).clone()));
         // See if this is an introspection or data field. We don't worry about
         // nonexistant fields; those will cause an error later when we execute
-        // the data_set SelectionSet
+        // the query in `execution::execute_root_selection_set`
         if sast::get_field(query_type, &name).is_some() {
             data_set.items.extend(selections)
         }
@@ -731,6 +742,9 @@ fn fetch<S: Store>(
         ids.sort_unstable();
         ids.dedup();
         let ids = ids.into_iter().map(|id| StoreValue::from(id)).collect();
+        // We want to find all children that point to one of the parent `ids`
+        // If `child_field` is a list that is any child that has one of the
+        // parent `ids` in its `child_field`, hence the intersection
         let filter = if join.child_is_list {
             EntityFilter::Intersects(join.child_field.to_owned(), ids)
         } else {

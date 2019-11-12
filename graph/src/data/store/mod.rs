@@ -381,10 +381,10 @@ impl From<u64> for Value {
 
 impl<T> From<Vec<T>> for Value
 where
-    T: Into<Value>,
+    Value: From<T>,
 {
     fn from(list: Vec<T>) -> Value {
-        Value::List(list.into_iter().map(|v| v.into()).collect::<Vec<_>>())
+        Value::List(list.into_iter().map(Value::from).collect::<Vec<_>>())
     }
 }
 

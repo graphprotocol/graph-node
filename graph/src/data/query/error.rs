@@ -198,8 +198,10 @@ impl fmt::Display for QueryExecutionError {
                            return smaller collections", complexity, max_complexity)
             }
             TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth),
-            IncorrectPrefetchResult{ .. } => write!(f, "Running query with prefetch and single query resolution yielded different results. \
-                    This is a bug. Please open an issue at https://github.com/graphprotocol/graph-node")
+            IncorrectPrefetchResult{ .. } => write!(f, "Running query with prefetch \
+                           and single query resolution yielded different results. \
+                           This is a bug. Please open an issue at \
+                           https://github.com/graphprotocol/graph-node")
         }
     }
 }
