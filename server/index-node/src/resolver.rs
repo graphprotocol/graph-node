@@ -504,7 +504,7 @@ where
         &self,
         _: &ExecutionContext<'r, Self>,
         _: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, QueryExecutionError> {
+    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
 

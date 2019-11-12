@@ -322,7 +322,7 @@ pub fn run<'a, R, S>(
     ctx: &ExecutionContext<'a, R>,
     selection_set: &q::SelectionSet,
     store: Arc<S>,
-) -> Result<q::Value, QueryExecutionError>
+) -> Result<q::Value, Vec<QueryExecutionError>>
 where
     R: Resolver,
     S: Store,
@@ -345,7 +345,7 @@ fn execute_root_selection_set<'a, R, S>(
     ctx: &ExecutionContext<'a, R>,
     store: &S,
     selection_set: &'a q::SelectionSet,
-) -> Result<Vec<Node>, QueryExecutionError>
+) -> Result<Vec<Node>, Vec<QueryExecutionError>>
 where
     R: Resolver,
     S: Store,
@@ -353,7 +353,7 @@ where
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.schema.document) {
         Some(t) => t,
-        None => return Err(QueryExecutionError::NoRootQueryObjectType),
+        None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
     };
 
     // Split the toplevel fields into introspection fields and
@@ -383,7 +383,6 @@ where
 
     // Execute the root selection set against the root query type
     execute_selection_set(&ctx, store, make_root_node(), &data_set, &query_type.into())
-        .map_err(|mut e| e.pop().unwrap())
 }
 
 fn object_or_interface_from_type<'a>(

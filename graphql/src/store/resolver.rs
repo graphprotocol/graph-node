@@ -243,7 +243,7 @@ where
         &self,
         ctx: &ExecutionContext<'r, Self>,
         selection_set: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, QueryExecutionError> {
+    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))
     }
 
