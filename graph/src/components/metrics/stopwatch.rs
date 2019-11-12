@@ -27,7 +27,7 @@ impl Drop for Section {
 /// let _main_section = stopwatch.start_section("main_section");
 /// // do stuff...
 /// // Pause timer for "main_section", start for "child_section".
-/// let chid_section = stopwatch.start_section("child_section");
+/// let child_section = stopwatch.start_section("child_section");
 /// // do stuff...
 /// // Register time spent in "child_section", implicitly going back to "main_section".
 /// section.end();
@@ -76,12 +76,15 @@ impl StopwatchMetrics {
         if !self.disabled.load(Ordering::SeqCst) {
             self.inner.lock().unwrap().start_section(id.clone())
         }
+
+        // If disabled, this will do nothing on drop.
         Section {
             id,
             stopwatch: self.clone(),
         }
     }
 
+    /// Turns `start_section` and `end_section` into no-ops, no more metrics will be updated.
     pub fn disable(&self) {
         self.disabled.store(true, Ordering::SeqCst)
     }
@@ -107,7 +110,7 @@ struct StopwatchInner {
     // Counts the seconds spent in each section of the indexing code.
     counters: HashMap<String, Counter>,
 
-    // The top section is the one that's currently executing.
+    // The top section (last item) is the one that's currently executing.
     section_stack: Vec<String>,
 
     // The timer is reset whenever a section starts or ends.
@@ -122,7 +125,7 @@ impl StopwatchInner {
                 counter.clone()
             } else {
                 let name = format!("{}_{}_secs", self.subgraph_id, section);
-                let help = format!("indexing section {}", section);
+                let help = format!("section {}", section);
                 match self.registry.new_counter(name, help, HashMap::new()) {
                     Ok(counter) => {
                         self.counters.insert(section.clone(), (*counter).clone());
