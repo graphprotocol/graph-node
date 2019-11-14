@@ -68,7 +68,7 @@ where
         let service = self.clone();
 
         // Ask for two to find out if there is more than one
-        let entity_query = SubgraphEntity::query().range(EntityRange::first(2));
+        let entity_query = SubgraphEntity::query().first(2);
 
         Box::new(
             future::result(self.store.find(entity_query))

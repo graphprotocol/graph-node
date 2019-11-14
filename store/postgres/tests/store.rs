@@ -9,7 +9,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use test_store::*;
 
-use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityRange};
+use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
@@ -636,10 +636,8 @@ fn find_string_less_than_range() {
         user_query()
             .filter(EntityFilter::LessThan("name".to_owned(), "ZZZ".into()))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange {
-                first: Some(1),
-                skip: 1,
-            }),
+            .first(1)
+            .skip(1),
     )
 }
 
@@ -770,10 +768,8 @@ fn find_float_less_than_range() {
                 Value::BigDecimal(161.0.into()),
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange {
-                first: Some(1),
-                skip: 1,
-            }),
+            .first(1)
+            .skip(1),
     )
 }
 
@@ -790,7 +786,7 @@ fn find_float_in() {
                 ],
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange::first(5)),
+            .first(5),
     )
 }
 
@@ -807,7 +803,7 @@ fn find_float_not_in() {
                 ],
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange::first(5)),
+            .first(5),
     )
 }
 
@@ -904,10 +900,8 @@ fn find_int_less_than_range() {
                 Value::Int(67 as i32),
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange {
-                first: Some(1),
-                skip: 1,
-            }),
+            .first(1)
+            .skip(1),
     )
 }
 
@@ -921,7 +915,7 @@ fn find_int_in() {
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange::first(5)),
+            .first(5),
     )
 }
 
@@ -935,7 +929,7 @@ fn find_int_not_in() {
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange::first(5)),
+            .first(5),
     )
 }
 
@@ -969,7 +963,7 @@ fn find_bool_in() {
                 vec![Value::Bool(true)],
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange::first(5)),
+            .first(5),
     )
 }
 
@@ -983,7 +977,7 @@ fn find_bool_not_in() {
                 vec![Value::Bool(true)],
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending)
-            .range(EntityRange::first(5)),
+            .first(5),
     )
 }
 
@@ -1955,7 +1949,7 @@ fn handle_large_string_with_index() {
             .expect("Failed to insert large text");
 
         let query = user_query()
-            .range(EntityRange::first(5))
+            .first(5)
             .filter(EntityFilter::Equal(
                 NAME.to_owned(),
                 long_text.clone().into(),
@@ -1976,7 +1970,7 @@ fn handle_large_string_with_index() {
         let mut prefix = long_text.clone();
         prefix.truncate(STRING_PREFIX_SIZE);
         let query = user_query()
-            .range(EntityRange::first(5))
+            .first(5)
             .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
             .order_by(NAME, ValueType::String, EntityOrder::Ascending);
 
@@ -2003,14 +1997,14 @@ impl WindowQuery {
         WindowQuery(
             user_query()
                 .filter(EntityFilter::GreaterThan("age".into(), Value::from(0)))
-                .range(EntityRange::first(10))
+                .first(10)
                 .window_by("favorite_color".to_owned()),
             store.clone(),
         )
     }
 
     fn first(self, first: u32) -> Self {
-        WindowQuery(self.0.range(EntityRange::first(first)), self.1)
+        WindowQuery(self.0.first(first), self.1)
     }
 
     fn skip(self, skip: u32) -> Self {
