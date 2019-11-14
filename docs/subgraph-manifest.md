@@ -60,7 +60,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 | **abis** | *ABI* | ABIs for the contract classes that should be generated in the Mapping ABI. Name is also used to reference the ABI elsewhere in the manifest. |
 | **eventHandlers** | optional *EventHandler* | Handlers for specific events, which will be defined in the mapping script. |
 | **callHandlers** | optional *CallHandler* | A list of functions that will trigger a  handler and the name of the corresponding handlers in the mapping. |
-| **blockHandlers** | optional *BlocktHandler* | Defines a list of blocks to respond to and the handlers in the mapping to run for each. |
+| **blockHandlers** | optional *BlockHandler* | Defines block filters and handlers to process matching blocks. |
 | **file** | [*Path*](#16-path) | The path of the mapping script. |
 
 > **Note:** Each mapping is required to supply one or more handler type, available types: `EventHandler`, `CallHandler`, or `BlockHandler`. 
