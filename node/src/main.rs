@@ -508,10 +508,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     })
     .map(move |(network_name, network_identifier)| {
         info!(
-        stores_logger,
-        "Connected to Ethereum";
-        "network" => &network_name,
-        "network_version" => &network_identifier.net_version,
+            stores_logger,
+            "Connected to Ethereum";
+            "network" => &network_name,
+            "network_version" => &network_identifier.net_version,
         );
         (
             network_name.to_string(),
