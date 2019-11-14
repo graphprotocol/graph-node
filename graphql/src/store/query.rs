@@ -24,15 +24,18 @@ pub fn build_query<'a>(
             .map(|o| o.name.clone())
             .collect(),
     };
-    Ok(EntityQuery {
-        subgraph_id: parse_subgraph_id(entity)?,
-        entity_types,
-        range: build_range(arguments, max_first)?,
-        filter: build_filter(entity, arguments)?,
-        order_by: build_order_by(entity, arguments)?,
-        order_direction: build_order_direction(arguments)?,
-        window: None,
-    })
+    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, entity_types)
+        .range(build_range(arguments, max_first)?);
+    if let Some(filter) = build_filter(entity, arguments)? {
+        query = query.filter(filter);
+    }
+    if let Some(order_by) = build_order_by(entity, arguments)? {
+        query = query.order_by_attribute(order_by);
+    }
+    if let Some(direction) = build_order_direction(arguments)? {
+        query = query.order_direction(direction);
+    }
+    Ok(query)
 }
 
 /// Parses GraphQL arguments into a EntityRange, if present.

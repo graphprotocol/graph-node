@@ -170,27 +170,36 @@ pub struct EntityQuery {
     /// `range` many results for each of `v1`, `v2`, etc., and each ordered
     /// according to `order_by` and `order_direction`.
     pub window: Option<String>,
+
+    _force_use_of_new: (),
 }
 
 impl EntityQuery {
-    pub fn new(
-        subgraph_id: SubgraphDeploymentId,
-        entity_types: Vec<String>,
-        range: EntityRange,
-    ) -> Self {
+    pub fn new(subgraph_id: SubgraphDeploymentId, entity_types: Vec<String>) -> Self {
         EntityQuery {
             subgraph_id,
             entity_types,
             filter: None,
             order_by: None,
             order_direction: None,
-            range,
+            range: EntityRange::first(100),
             window: None,
+            _force_use_of_new: (),
         }
     }
 
     pub fn filter(mut self, filter: EntityFilter) -> Self {
         self.filter = Some(filter);
+        self
+    }
+
+    pub fn order_direction(mut self, direction: EntityOrder) -> Self {
+        self.order_direction = Some(direction);
+        self
+    }
+
+    pub fn order_by_attribute(mut self, by: (String, ValueType)) -> Self {
+        self.order_by = Some(by);
         self
     }
 
@@ -202,6 +211,16 @@ impl EntityQuery {
 
     pub fn range(mut self, range: EntityRange) -> Self {
         self.range = range;
+        self
+    }
+
+    pub fn first(mut self, first: u32) -> Self {
+        self.range.first = Some(first);
+        self
+    }
+
+    pub fn skip(mut self, skip: u32) -> Self {
+        self.range.skip = skip;
         self
     }
 

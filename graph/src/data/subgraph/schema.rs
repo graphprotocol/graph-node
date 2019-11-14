@@ -48,7 +48,7 @@ pub trait TypedEntity {
             first: None,
             skip: 0,
         };
-        EntityQuery::new(SUBGRAPHS_ID.clone(), vec![Self::TYPENAME.to_owned()], range)
+        EntityQuery::new(SUBGRAPHS_ID.clone(), vec![Self::TYPENAME.to_owned()]).range(range)
     }
 
     fn subgraph_entity_pair() -> SubgraphEntityPair {

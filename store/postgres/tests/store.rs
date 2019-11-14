@@ -571,22 +571,18 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
     })
 }
 
+fn user_query() -> EntityQuery {
+    EntityQuery::new(TEST_SUBGRAPH_ID.clone(), vec![USER.to_owned()])
+}
+
 #[test]
 fn find_string_contains() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Contains(
-                "name".into(),
-                "ind".into(),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().filter(EntityFilter::And(vec![EntityFilter::Contains(
+            "name".into(),
+            "ind".into(),
+        )])),
     )
 }
 
@@ -594,18 +590,10 @@ fn find_string_contains() {
 fn find_string_equal() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                "name".to_owned(),
-                "Cindini".into(),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().filter(EntityFilter::And(vec![EntityFilter::Equal(
+            "name".to_owned(),
+            "Cindini".into(),
+        )])),
     )
 }
 
@@ -613,18 +601,15 @@ fn find_string_equal() {
 fn find_string_not_equal() {
     test_find(
         vec!["1", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Not(
                 "name".to_owned(),
                 "Cindini".into(),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Ascending,
+            ),
     )
 }
 
@@ -632,18 +617,10 @@ fn find_string_not_equal() {
 fn find_string_greater_than() {
     test_find(
         vec!["3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
-                "name".to_owned(),
-                "Kundi".into(),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().filter(EntityFilter::And(vec![EntityFilter::GreaterThan(
+            "name".to_owned(),
+            "Kundi".into(),
+        )])),
     )
 }
 
@@ -651,18 +628,15 @@ fn find_string_greater_than() {
 fn find_string_less_than_order_by_asc() {
     test_find(
         vec!["2", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "Kundi".into(),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Ascending,
+            ),
     )
 }
 
@@ -670,18 +644,15 @@ fn find_string_less_than_order_by_asc() {
 fn find_string_less_than_order_by_desc() {
     test_find(
         vec!["1", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "Kundi".into(),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -689,21 +660,19 @@ fn find_string_less_than_order_by_desc() {
 fn find_string_less_than_range() {
     test_find(
         vec!["1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "name".to_owned(),
                 "ZZZ".into(),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange {
                 first: Some(1),
                 skip: 1,
-            },
-            window: None,
-        },
+            }),
     )
 }
 
@@ -711,18 +680,15 @@ fn find_string_less_than_range() {
 fn find_string_multiple_and() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![
+        user_query()
+            .filter(EntityFilter::And(vec![
                 EntityFilter::LessThan("name".to_owned(), "Cz".into()),
                 EntityFilter::Equal("name".to_owned(), "Cindini".into()),
-            ])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            ]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -730,18 +696,15 @@ fn find_string_multiple_and() {
 fn find_string_ends_with() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::EndsWith(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::EndsWith(
                 "name".to_owned(),
                 "ini".into(),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -749,18 +712,15 @@ fn find_string_ends_with() {
 fn find_string_not_ends_with() {
     test_find(
         vec!["3", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::NotEndsWith(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::NotEndsWith(
                 "name".to_owned(),
                 "ini".into(),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -768,18 +728,15 @@ fn find_string_not_ends_with() {
 fn find_string_in() {
     test_find(
         vec!["1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::In(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::In(
                 "name".to_owned(),
                 vec!["Johnton".into()],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -787,18 +744,15 @@ fn find_string_in() {
 fn find_string_not_in() {
     test_find(
         vec!["1", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::NotIn(
                 "name".to_owned(),
                 vec!["Shaqueeena".into()],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -806,18 +760,10 @@ fn find_string_not_in() {
 fn find_float_equal() {
     test_find(
         vec!["1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
-                "weight".to_owned(),
-                Value::BigDecimal(184.4.into()),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().filter(EntityFilter::And(vec![EntityFilter::Equal(
+            "weight".to_owned(),
+            Value::BigDecimal(184.4.into()),
+        )])),
     )
 }
 
@@ -825,18 +771,15 @@ fn find_float_equal() {
 fn find_float_not_equal() {
     test_find(
         vec!["3", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Not(
                 "weight".to_owned(),
                 Value::BigDecimal(184.4.into()),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -844,18 +787,10 @@ fn find_float_not_equal() {
 fn find_float_greater_than() {
     test_find(
         vec!["1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
-                "weight".to_owned(),
-                Value::BigDecimal(160.0.into()),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().filter(EntityFilter::And(vec![EntityFilter::GreaterThan(
+            "weight".to_owned(),
+            Value::BigDecimal(160.0.into()),
+        )])),
     )
 }
 
@@ -863,18 +798,15 @@ fn find_float_greater_than() {
 fn find_float_less_than() {
     test_find(
         vec!["2", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Ascending,
+            ),
     )
 }
 
@@ -882,18 +814,15 @@ fn find_float_less_than() {
 fn find_float_less_than_order_by_desc() {
     test_find(
         vec!["3", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -901,21 +830,19 @@ fn find_float_less_than_order_by_desc() {
 fn find_float_less_than_range() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "weight".to_owned(),
                 Value::BigDecimal(161.0.into()),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange {
                 first: Some(1),
                 skip: 1,
-            },
-            window: None,
-        },
+            }),
     )
 }
 
@@ -923,21 +850,19 @@ fn find_float_less_than_range() {
 fn find_float_in() {
     test_find(
         vec!["3", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::In(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::In(
                 "weight".to_owned(),
                 vec![
                     Value::BigDecimal(184.4.into()),
                     Value::BigDecimal(111.7.into()),
                 ],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(5),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange::first(5)),
     )
 }
 
@@ -945,21 +870,19 @@ fn find_float_in() {
 fn find_float_not_in() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::NotIn(
                 "weight".to_owned(),
                 vec![
                     Value::BigDecimal(184.4.into()),
                     Value::BigDecimal(111.7.into()),
                 ],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(5),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange::first(5)),
     )
 }
 
@@ -967,18 +890,15 @@ fn find_float_not_in() {
 fn find_int_equal() {
     test_find(
         vec!["1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Equal(
                 "age".to_owned(),
                 Value::Int(67 as i32),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -986,18 +906,15 @@ fn find_int_equal() {
 fn find_int_not_equal() {
     test_find(
         vec!["3", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Not(
                 "age".to_owned(),
                 Value::Int(67 as i32),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -1005,18 +922,10 @@ fn find_int_not_equal() {
 fn find_int_greater_than() {
     test_find(
         vec!["1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterThan(
-                "age".to_owned(),
-                Value::Int(43 as i32),
-            )])),
-            order_by: None,
-            order_direction: None,
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().filter(EntityFilter::And(vec![EntityFilter::GreaterThan(
+            "age".to_owned(),
+            Value::Int(43 as i32),
+        )])),
     )
 }
 
@@ -1024,18 +933,15 @@ fn find_int_greater_than() {
 fn find_int_greater_or_equal() {
     test_find(
         vec!["2", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::GreaterOrEqual(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::GreaterOrEqual(
                 "age".to_owned(),
                 Value::Int(43 as i32),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Ascending,
+            ),
     )
 }
 
@@ -1043,18 +949,15 @@ fn find_int_greater_or_equal() {
 fn find_int_less_than() {
     test_find(
         vec!["2", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(50 as i32),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Ascending,
+            ),
     )
 }
 
@@ -1062,18 +965,15 @@ fn find_int_less_than() {
 fn find_int_less_or_equal() {
     test_find(
         vec!["2", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessOrEqual(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessOrEqual(
                 "age".to_owned(),
                 Value::Int(43 as i32),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Ascending,
+            ),
     )
 }
 
@@ -1081,18 +981,15 @@ fn find_int_less_or_equal() {
 fn find_int_less_than_order_by_desc() {
     test_find(
         vec!["3", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(50 as i32),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -1100,21 +997,19 @@ fn find_int_less_than_order_by_desc() {
 fn find_int_less_than_range() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::LessThan(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::LessThan(
                 "age".to_owned(),
                 Value::Int(67 as i32),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange {
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange {
                 first: Some(1),
                 skip: 1,
-            },
-            window: None,
-        },
+            }),
     )
 }
 
@@ -1122,18 +1017,16 @@ fn find_int_less_than_range() {
 fn find_int_in() {
     test_find(
         vec!["1", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::In(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::In(
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(5),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange::first(5)),
     )
 }
 
@@ -1141,18 +1034,16 @@ fn find_int_in() {
 fn find_int_not_in() {
     test_find(
         vec!["3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::NotIn(
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(5),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange::first(5)),
     )
 }
 
@@ -1160,18 +1051,15 @@ fn find_int_not_in() {
 fn find_bool_equal() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Equal(
                 "coffee".to_owned(),
                 Value::Bool(true),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -1179,18 +1067,15 @@ fn find_bool_equal() {
 fn find_bool_not_equal() {
     test_find(
         vec!["1", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Not(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Not(
                 "coffee".to_owned(),
                 Value::Bool(true),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Ascending,
+            ),
     )
 }
 
@@ -1198,18 +1083,16 @@ fn find_bool_not_equal() {
 fn find_bool_in() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::In(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::In(
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(5),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange::first(5)),
     )
 }
 
@@ -1217,18 +1100,16 @@ fn find_bool_in() {
 fn find_bool_not_in() {
     test_find(
         vec!["3", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::NotIn(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::NotIn(
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(5),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            )
+            .range(EntityRange::first(5)),
     )
 }
 
@@ -1236,18 +1117,15 @@ fn find_bool_not_in() {
 fn find_bytes_equal() {
     test_find(
         vec!["1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Equal(
                 "bin_name".to_owned(),
                 Value::Bytes("Johnton".as_bytes().into()),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -1255,18 +1133,15 @@ fn find_bytes_equal() {
 fn find_null_equal() {
     test_find(
         vec!["3", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::Equal(
+        user_query()
+            .filter(EntityFilter::Equal(
                 "favorite_color".to_owned(),
                 Value::Null,
-            )),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            ))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -1274,15 +1149,12 @@ fn find_null_equal() {
 fn find_null_not_equal() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::Not("favorite_color".to_owned(), Value::Null)),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query()
+            .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -1290,18 +1162,15 @@ fn find_null_not_equal() {
 fn find_null_not_in() {
     test_find(
         vec!["2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::NotIn(
+        user_query()
+            .filter(EntityFilter::NotIn(
                 "favorite_color".to_owned(),
                 vec![Value::Null],
-            )),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            ))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            ),
     )
 }
 
@@ -1309,27 +1178,17 @@ fn find_null_not_in() {
 fn find_order_by_float() {
     test_find(
         vec!["3", "2", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("weight".to_owned(), ValueType::BigDecimal)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(
+            ("weight".to_owned(), ValueType::BigDecimal),
+            EntityOrder::Ascending,
+        ),
     );
     test_find(
         vec!["1", "2", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("weight".to_owned(), ValueType::BigDecimal)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(
+            ("weight".to_owned(), ValueType::BigDecimal),
+            EntityOrder::Descending,
+        ),
     );
 }
 
@@ -1337,27 +1196,11 @@ fn find_order_by_float() {
 fn find_order_by_id() {
     test_find(
         vec!["1", "2", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("id".to_owned(), ValueType::ID)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(("id".to_owned(), ValueType::ID), EntityOrder::Ascending),
     );
     test_find(
         vec!["3", "2", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("id".to_owned(), ValueType::ID)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(("id".to_owned(), ValueType::ID), EntityOrder::Descending),
     );
 }
 
@@ -1365,27 +1208,11 @@ fn find_order_by_id() {
 fn find_order_by_int() {
     test_find(
         vec!["3", "2", "1"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("age".to_owned(), ValueType::Int)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(("age".to_owned(), ValueType::Int), EntityOrder::Ascending),
     );
     test_find(
         vec!["1", "2", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("age".to_owned(), ValueType::Int)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(("age".to_owned(), ValueType::Int), EntityOrder::Descending),
     );
 }
 
@@ -1393,27 +1220,17 @@ fn find_order_by_int() {
 fn find_order_by_string() {
     test_find(
         vec!["2", "1", "3"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(
+            ("name".to_owned(), ValueType::String),
+            EntityOrder::Ascending,
+        ),
     );
     test_find(
         vec!["3", "1", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: None,
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+        user_query().order_by(
+            ("name".to_owned(), ValueType::String),
+            EntityOrder::Descending,
+        ),
     );
 }
 
@@ -1421,18 +1238,12 @@ fn find_order_by_string() {
 fn find_where_nested_and_or() {
     test_find(
         vec!["1", "2"],
-        EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Or(vec![
+        user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Or(vec![
                 EntityFilter::Equal("id".to_owned(), Value::from("1")),
                 EntityFilter::Equal("id".to_owned(), Value::from("2")),
-            ])])),
-            order_by: Some(("id".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Ascending),
-            range: EntityRange::first(100),
-            window: None,
-        },
+            ])]))
+            .order_by(("id".to_owned(), ValueType::String), EntityOrder::Ascending),
     )
 }
 
@@ -1547,18 +1358,15 @@ fn check_basic_revert(
     subgraph_id: &SubgraphDeploymentId,
     entity_type: &str,
 ) -> impl Future<Item = (), Error = tokio_timer::timeout::Error<()>> {
-    let this_query = EntityQuery {
-        subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_types: vec![USER.to_owned()],
-        filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+    let this_query = user_query()
+        .filter(EntityFilter::And(vec![EntityFilter::Equal(
             "name".to_owned(),
             Value::String("Shaqueeena".to_owned()),
-        )])),
-        order_by: Some(("name".to_owned(), ValueType::String)),
-        order_direction: Some(EntityOrder::Descending),
-        range: EntityRange::first(100),
-        window: None,
-    };
+        )]))
+        .order_by(
+            ("name".to_owned(), ValueType::String),
+            EntityOrder::Descending,
+        );
 
     let subscription = subscribe_and_consume(store.clone(), subgraph_id, entity_type);
 
@@ -1620,18 +1428,15 @@ fn revert_block_basic_subgraphs() {
 #[test]
 fn revert_block_with_delete() {
     run_test(|store| {
-        let this_query = EntityQuery {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_types: vec![USER.to_owned()],
-            filter: Some(EntityFilter::And(vec![EntityFilter::Equal(
+        let this_query = user_query()
+            .filter(EntityFilter::And(vec![EntityFilter::Equal(
                 "name".to_owned(),
                 Value::String("Cindini".to_owned()),
-            )])),
-            order_by: Some(("name".to_owned(), ValueType::String)),
-            order_direction: Some(EntityOrder::Descending),
-            range: EntityRange::first(100),
-            window: None,
-        };
+            )]))
+            .order_by(
+                ("name".to_owned(), ValueType::String),
+                EntityOrder::Descending,
+            );
 
         // Delete entity with id=2
         let del_key = EntityKey {
@@ -2305,16 +2110,13 @@ fn handle_large_string_with_index() {
             )
             .expect("Failed to insert large text");
 
-        let query = EntityQuery::new(
-            TEST_SUBGRAPH_ID.clone(),
-            vec![USER.to_owned()],
-            EntityRange::first(5),
-        )
-        .filter(EntityFilter::Equal(
-            NAME.to_owned(),
-            long_text.clone().into(),
-        ))
-        .order_by((NAME.to_owned(), ValueType::String), EntityOrder::Ascending);
+        let query = user_query()
+            .range(EntityRange::first(5))
+            .filter(EntityFilter::Equal(
+                NAME.to_owned(),
+                long_text.clone().into(),
+            ))
+            .order_by((NAME.to_owned(), ValueType::String), EntityOrder::Ascending);
 
         let ids = store
             .find(query)
@@ -2329,13 +2131,10 @@ fn handle_large_string_with_index() {
         // Make sure we check the full string and not just a prefix
         let mut prefix = long_text.clone();
         prefix.truncate(STRING_PREFIX_SIZE);
-        let query = EntityQuery::new(
-            TEST_SUBGRAPH_ID.clone(),
-            vec![USER.to_owned()],
-            EntityRange::first(5),
-        )
-        .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
-        .order_by((NAME.to_owned(), ValueType::String), EntityOrder::Ascending);
+        let query = user_query()
+            .range(EntityRange::first(5))
+            .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
+            .order_by((NAME.to_owned(), ValueType::String), EntityOrder::Ascending);
 
         let ids = store
             .find(query)
@@ -2358,71 +2157,41 @@ struct WindowQuery(EntityQuery, Arc<DieselStore>);
 impl WindowQuery {
     fn new(store: &Arc<DieselStore>) -> Self {
         WindowQuery(
-            EntityQuery {
-                subgraph_id: TEST_SUBGRAPH_ID.clone(),
-                entity_types: vec![USER.to_owned()],
-                filter: Some(EntityFilter::GreaterThan("age".into(), Value::from(0))),
-                order_by: None,
-                order_direction: None,
-                range: EntityRange::first(10),
-                window: Some("favorite_color".to_owned()),
-            },
+            user_query()
+                .filter(EntityFilter::GreaterThan("age".into(), Value::from(0)))
+                .range(EntityRange::first(10))
+                .window_by("favorite_color".to_owned()),
             store.clone(),
         )
     }
 
     fn first(self, first: u32) -> Self {
-        WindowQuery(
-            EntityQuery {
-                range: EntityRange::first(first),
-                ..self.0
-            },
-            self.1,
-        )
+        WindowQuery(self.0.range(EntityRange::first(first)), self.1)
     }
 
     fn skip(self, skip: u32) -> Self {
-        WindowQuery(
-            EntityQuery {
-                range: EntityRange {
-                    first: self.0.range.first,
-                    skip,
-                },
-                ..self.0
-            },
-            self.1,
-        )
+        WindowQuery(self.0.skip(skip), self.1)
     }
 
     fn order(self, attr: &str, dir: EntityOrder) -> Self {
         WindowQuery(
-            EntityQuery {
-                order_by: Some((attr.to_owned(), ValueType::String)),
-                order_direction: Some(dir),
-                ..self.0
-            },
+            self.0.order_by((attr.to_owned(), ValueType::String), dir),
             self.1,
         )
     }
 
     fn above(self, age: i32) -> Self {
         WindowQuery(
-            EntityQuery {
-                filter: Some(EntityFilter::GreaterThan("age".into(), Value::from(age))),
-                ..self.0
-            },
+            self.0
+                .filter(EntityFilter::GreaterThan("age".into(), Value::from(age))),
             self.1,
         )
     }
 
     fn against_color_and_age(self) -> Self {
-        WindowQuery(
-            EntityQuery {
-                entity_types: vec![USER.to_owned(), "Person".to_owned()],
-                ..self.0
-            },
-            self.1,
-        )
+        let mut query = self.0;
+        query.entity_types = vec![USER.to_owned(), "Person".to_owned()];
+        WindowQuery(query, self.1)
     }
 
     fn expect(&self, expected_ids: Vec<&str>, qid: &str) {
