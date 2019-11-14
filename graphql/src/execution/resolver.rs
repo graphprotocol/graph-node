@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::prelude::*;
 use crate::schema::ast::get_named_type;
-use graph::prelude::{QueryExecutionError, StoreEventStreamBox};
+use graph::prelude::{QueryExecutionError, Schema, StoreEventStreamBox};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -47,6 +47,16 @@ impl<'a> ObjectOrInterface<'a> {
 
     pub fn field(&self, name: &s::Name) -> Option<&s::Field> {
         self.fields().iter().find(|field| &field.name == name)
+    }
+
+    pub fn object_types(&'a self, schema: &'a Schema) -> Option<Vec<&'a s::ObjectType>> {
+        match self {
+            ObjectOrInterface::Object(object) => Some(vec![object]),
+            ObjectOrInterface::Interface(interface) => schema
+                .types_for_interface()
+                .get(&interface.name)
+                .map(|object_types| object_types.iter().collect()),
+        }
     }
 }
 

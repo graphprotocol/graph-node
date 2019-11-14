@@ -572,7 +572,10 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 }
 
 fn user_query() -> EntityQuery {
-    EntityQuery::new(TEST_SUBGRAPH_ID.clone(), vec![USER.to_owned()])
+    EntityQuery::new(
+        TEST_SUBGRAPH_ID.clone(),
+        EntityCollection::All(vec![USER.to_owned()]),
+    )
 }
 
 #[test]
@@ -1997,10 +2000,37 @@ impl WindowQuery {
         WindowQuery(
             user_query()
                 .filter(EntityFilter::GreaterThan("age".into(), Value::from(0)))
-                .first(10)
-                .window_by("favorite_color".to_owned()),
+                .first(10),
             store.clone(),
         )
+        .default_window()
+    }
+
+    fn default_window(mut self) -> Self {
+        let entity_types = match self.0.collection {
+            EntityCollection::All(entity_types) => entity_types,
+            EntityCollection::Window(_) => {
+                unreachable!("we do not use this method with a windowed collection")
+            }
+        };
+        let windows = entity_types
+            .into_iter()
+            .map(|child_type| {
+                let attribute = WindowAttribute::Scalar("favorite_color".to_owned());
+                let link = EntityLink::Direct(attribute);
+                let ids = vec!["red", "green", "yellow", "blue"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect();
+                EntityWindow {
+                    child_type,
+                    link,
+                    ids,
+                }
+            })
+            .collect();
+        self.0.collection = EntityCollection::Window(windows);
+        self
     }
 
     fn first(self, first: u32) -> Self {
@@ -2025,8 +2055,8 @@ impl WindowQuery {
 
     fn against_color_and_age(self) -> Self {
         let mut query = self.0;
-        query.entity_types = vec![USER.to_owned(), "Person".to_owned()];
-        WindowQuery(query, self.1)
+        query.collection = EntityCollection::All(vec![USER.to_owned(), "Person".to_owned()]);
+        WindowQuery(query, self.1).default_window()
     }
 
     fn expect(&self, expected_ids: Vec<&str>, qid: &str) {
@@ -2094,35 +2124,35 @@ fn window() {
         // Get the first 2 entries in each 'color group'
         WindowQuery::new(&store)
             .first(2)
-            .expect(vec!["1", "10", "11", "2", "3", "4", "5", "7", "9"], "q1");
+            .expect(vec!["10", "11", "4", "5", "2", "7", "9"], "q1");
 
         WindowQuery::new(&store)
             .first(1)
-            .expect(vec!["1", "10", "2", "4", "9"], "q2");
+            .expect(vec!["10", "4", "2", "9"], "q2");
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
-            .expect(vec!["11", "3", "5", "7"], "q3");
+            .expect(vec!["11", "5", "7"], "q3");
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
             .order("id", Descending)
-            .expect(vec!["7", "5", "10", "1"], "q4");
+            .expect(vec!["10", "5", "7"], "q4");
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
             .order("favorite_color", Descending)
-            .expect(vec!["7", "5", "11", "3"], "q5");
+            .expect(vec!["11", "5", "7"], "q5");
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
             .order("favorite_color", Descending)
             .above(25)
-            .expect(vec!["8", "6", "3"], "q6");
+            .expect(vec!["6", "8"], "q6");
 
         // Check queries for interfaces
         WindowQuery::new(&store)
@@ -2131,14 +2161,14 @@ fn window() {
             .order("favorite_color", Descending)
             .above(12)
             .against_color_and_age()
-            .expect(vec!["7", "5", "11", "3"], "q7");
+            .expect(vec!["11", "5", "7"], "q7");
 
         WindowQuery::new(&store)
             .first(1)
             .order("age", Ascending)
             .above(12)
             .against_color_and_age()
-            .expect(vec!["p2", "5", "11", "3", "9"], "q8");
+            .expect(vec!["11", "5", "p2", "9"], "q8");
 
         Ok(())
     });

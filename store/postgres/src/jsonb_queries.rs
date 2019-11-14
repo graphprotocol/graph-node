@@ -7,8 +7,10 @@ use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::RunQueryDsl;
 use diesel::result::QueryResult;
 use diesel::sql_types::{Array, Bool, Jsonb, Text};
-
-use graph::prelude::{EntityFilter, EntityOrder, EntityRange, QueryExecutionError, ValueType};
+use graph::prelude::{
+    EntityCollection, EntityFilter, EntityLink, EntityOrder, EntityRange, EntityWindow,
+    QueryExecutionError, ValueType, WindowAttribute,
+};
 
 use crate::entities::{EntityTable, STRING_PREFIX_SIZE};
 use crate::filter::build_filter;
@@ -23,21 +25,19 @@ pub struct OrderDetails {
 
 pub struct FilterQuery<'a> {
     table: &'a EntityTable,
-    entity_types: Vec<String>,
+    collection: EntityCollection,
     filter: Option<Box<dyn BoxableExpression<EntityTable, Pg, SqlType = Bool>>>,
     order: Option<OrderDetails>,
     range: EntityRange,
-    window: Option<String>,
 }
 
 impl<'a> FilterQuery<'a> {
     pub fn new(
         table: &'a EntityTable,
-        entity_types: Vec<String>,
+        collection: EntityCollection,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
-        window: Option<String>,
     ) -> Result<Self, QueryExecutionError> {
         let order = if let Some((attribute, value_type, direction)) = order {
             let cast = match value_type {
@@ -73,28 +73,26 @@ impl<'a> FilterQuery<'a> {
         };
         Ok(FilterQuery {
             table,
-            entity_types,
+            collection,
             filter,
             order,
             range,
-            window,
         })
     }
 
-    fn entity_types(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if self.entity_types.len() == 1 {
+    fn entities_clause(&self, entities: &Vec<String>, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        if entities.len() == 1 {
             // If there is only one entity_type, which is the case in all
             // queries that do not involve interfaces, leaving out `any`
             // lets Postgres use the primary key index on the entities table
-            let entity_type = self
-                .entity_types
+            let entity_type = entities
                 .first()
                 .expect("we checked that there is exactly one entity_type");
             out.push_sql("entity = ");
             out.push_bind_param::<Text, _>(&entity_type)?;
         } else {
             out.push_sql("entity = any(");
-            out.push_bind_param::<Array<Text>, _>(&self.entity_types)?;
+            out.push_bind_param::<Array<Text>, _>(&entities)?;
             out.push_sql(")");
         }
         Ok(())
@@ -136,71 +134,196 @@ impl<'a> FilterQuery<'a> {
             out.push_sql(&self.range.skip.to_string());
         }
     }
-}
 
-impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        // We generate two somewhat different queries depending on whether
-        // we need to window over a field or not. Without a window,
-        // we generate
-        //    select data, entity
-        //      from {table}
-        //     where entity = any({entity_types})
-        //       and {filter}
-        //     order by {order}
-        //     limit {range.first} offset {range.skip}
-        //
-        // When there is a window, we generate a query
-        //     select data, entity
-        //       from (select data, entity,
-        //                    rank() over (partition by {window} order by {order}) as pos
-        //                from {inner_query}) a
-        //      where a.pos > {range.skip} and a.pos <= {range.skip} + {range.first}
-        //      order by {order}
-        // Here, inner_query are the corresponding parts from the first query,
-        // but without the order by or limit clauses
+    fn from_window_clause(&self, window: &EntityWindow, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match &window.link {
+            EntityLink::Direct(attribute) => {
+                match attribute {
+                    WindowAttribute::List(name) => {
+                        out.push_sql(" join lateral jsonb_array_elements(data->");
+                        out.push_bind_param::<Text, _>(name)?;
+                        out.push_sql("->'data') parent on parent->>'data' = any(");
+                        out.push_bind_param::<Array<Text>, _>(&window.ids)?;
+                        out.push_sql(")");
+                    }
+                    WindowAttribute::Scalar(_) => { /* handled in window_filter */ }
+                }
+            }
+            EntityLink::Parent(parent) => {
+                out.push_sql(" inner join ");
+                self.table.walk_ast(out.reborrow())?;
+                out.push_sql(" p on (p.entity = '");
+                out.push_sql(&parent.parent_type);
+                out.push_sql("' and ");
+                match &parent.child_field {
+                    WindowAttribute::Scalar(name) => {
+                        out.push_sql("c.id = p.data->");
+                        out.push_bind_param::<Text, _>(name)?;
+                        out.push_sql("->>'data'");
+                    }
+                    WindowAttribute::List(name) => {
+                        // p.data->name->'data' is an array where each entry
+                        // is a data/type pair. We need to check if there is an
+                        // entry whose 'data' field is 'c.id' and do that with
+                        //   p.data->name->'data' @> [{"data": c.id}]
+                        out.push_sql("p.data->");
+                        out.push_bind_param::<Text, _>(name)?;
+                        out.push_sql(
+                            "->'data' @> jsonb_build_array(jsonb_build_object('data', c.id))",
+                        );
+                    }
+                }
+                out.push_sql(" and p.id = any(");
+                out.push_bind_param::<Array<Text>, _>(&window.ids)?;
+                out.push_sql("))");
+            }
+        }
+        Ok(())
+    }
+
+    fn parent_id(&self, window: &EntityWindow, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match &window.link {
+            EntityLink::Direct(attribute) => match attribute {
+                WindowAttribute::Scalar(name) => {
+                    out.push_sql("c.data->");
+                    out.push_bind_param::<Text, _>(&name)?;
+                    out.push_sql("->>'data' as parent_id");
+                }
+                WindowAttribute::List(_) => out.push_sql("parent->>'data' as parent_id"),
+            },
+            EntityLink::Parent(_) => {
+                out.push_sql("p.id as parent_id");
+            }
+        }
+        Ok(())
+    }
+
+    fn window_filter(&self, window: &EntityWindow, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match &window.link {
+            EntityLink::Direct(attribute) => {
+                match attribute {
+                    WindowAttribute::List(_) => { /* handled in from_window_clause */ }
+                    WindowAttribute::Scalar(name) => {
+                        out.push_sql("\n   and c.data->");
+                        out.push_bind_param::<Text, _>(name)?;
+                        out.push_sql("->>'data' = any(");
+                        out.push_bind_param::<Array<Text>, _>(&window.ids)?;
+                        out.push_sql(")");
+                    }
+                }
+            }
+            EntityLink::Parent(_) => { /* handled in from_window_clause */ }
+        }
+        Ok(())
+    }
+
+    /// Generate the query when there is no window. This produces
+    ///
+    ///   select data, entity
+    ///     from {table}
+    ///    where entity = any({entity_types})
+    ///      and {filter}
+    ///    order by {order}
+    ///    limit {range.first} offset {range.skip}
+    fn query_no_window(&self, entities: &Vec<String>, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
-        if self.window.is_some() {
-            out.push_sql("select id, data, entity\n  from (");
-        }
-
         out.push_sql("select id, data, entity");
-        if let Some(window) = &self.window {
-            out.push_sql(", rank() over (partition by data->");
-            out.push_bind_param::<Text, _>(window)?;
-            out.push_sql("->>'data' ");
-            self.order_by(&mut out)?;
-            out.push_sql(") as pos");
-        }
         out.push_sql("\n  from ");
         self.table.walk_ast(out.reborrow())?;
-        out.push_sql(" \n where ");
-        self.entity_types(&mut out)?;
+        out.push_sql(" c\n where ");
+        self.entities_clause(entities, &mut out)?;
         if let Some(filter) = &self.filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
         }
 
-        if self.window.is_some() {
-            out.push_sql(") a\n where ");
-            if self.range.skip > 0 {
-                out.push_sql("a.pos > ");
-                out.push_sql(&self.range.skip.to_string());
-                if self.range.first.is_some() {
-                    out.push_sql(" and ");
-                }
-            }
-            if let Some(first) = self.range.first {
-                let pos = self.range.skip + first;
-                out.push_sql("a.pos <= ");
-                out.push_sql(&pos.to_string());
-            }
-            self.order_by(&mut out)?;
-        } else {
-            self.order_by(&mut out)?;
-            self.limit(&mut out);
-        }
+        self.order_by(&mut out)?;
+        self.limit(&mut out);
         Ok(())
+    }
+
+    /// Generate the query when there is a window. Since we might have
+    /// different filters for each entity type, we need to write this as
+    /// a `union all` and can't just use `any({entity_types})` as in the
+    /// `query_no_window`
+    ///
+    /// The query we produce is
+    ///
+    ///   select id, data, entity
+    ///     from (select id, data, entity,
+    ///                  rank() over (partition by parent_id order by {order}) as pos
+    ///              from {inner_query}) a
+    ///    where a.pos > {range.skip} and a.pos <= {range.skip} + {range.first}
+    ///    order by {order}
+    ///
+    /// And `inner_query` is
+    ///   select id, data, entity, {parent_id} as parent_id
+    ///     from {table}
+    ///          [join lateral jsonb_array_elements({window.attribute}) parent_id on parent_id = any({window.ids})]
+    ///    where entity = {entity_type}
+    ///      and [{window.attribute} = any({window.ids})]
+    ///      and {filter}
+    ///    union all
+    ///      ...
+    /// where we loop this over every entry in `self.window`
+    ///
+    /// The `join lateral` clause is only needed if the `window.attribute` is a list; if it is
+    /// a scalar, we use the `[{window.attribute} = any({window.ids})]` clause instead
+    fn query_window(&self, windows: &Vec<EntityWindow>, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        out.push_sql(
+            "select id, data || jsonb_build_object('parent_id', jsonb_build_object('data', parent_id, 'type', 'String')), entity\n  from (",
+        );
+
+        out.push_sql("select id, data, entity, parent_id");
+        out.push_sql(", rank() over (partition by parent_id");
+        self.order_by(&mut out)?;
+        out.push_sql(") as pos");
+        out.push_sql("\n  from (");
+        // inner_query starts here
+        for (index, window) in windows.iter().enumerate() {
+            if index > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select c.id, c.data, c.entity, ");
+            self.parent_id(window, &mut out)?;
+            out.push_sql("\n  from ");
+            self.table.walk_ast(out.reborrow())?;
+            out.push_sql(" c");
+            self.from_window_clause(window, &mut out)?;
+            out.push_sql("\n where c.entity = ");
+            out.push_bind_param::<Text, _>(&window.child_type)?;
+            self.window_filter(window, &mut out)?;
+            if let Some(filter) = &self.filter {
+                out.push_sql("\n   and ");
+                filter.walk_ast(out.reborrow())?;
+            }
+        }
+        // back to the outer query
+        out.push_sql(") a) a\n where ");
+        if self.range.skip > 0 {
+            out.push_sql("a.pos > ");
+            out.push_sql(&self.range.skip.to_string());
+            if self.range.first.is_some() {
+                out.push_sql(" and ");
+            }
+        }
+        if let Some(first) = self.range.first {
+            let pos = self.range.skip + first;
+            out.push_sql("a.pos <= ");
+            out.push_sql(&pos.to_string());
+        }
+        out.push_sql("\n order by a.parent_id, a.pos");
+        Ok(())
+    }
+}
+
+impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
+    fn walk_ast(&self, out: AstPass<Pg>) -> QueryResult<()> {
+        match &self.collection {
+            EntityCollection::All(entities) => self.query_no_window(entities, out),
+            EntityCollection::Window(windows) => self.query_window(windows, out),
+        }
     }
 }
 

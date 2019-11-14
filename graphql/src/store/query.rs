@@ -17,13 +17,13 @@ pub fn build_query<'a>(
     max_first: u32,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
-    let entity_types = match &entity {
+    let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => vec![object.name.clone()],
         ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
             .iter()
             .map(|o| o.name.clone())
             .collect(),
-    };
+    });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, entity_types)
         .range(build_range(arguments, max_first)?);
     if let Some(filter) = build_filter(entity, arguments)? {
@@ -375,8 +375,8 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .entity_types,
-            vec!["Entity1".to_string()]
+            .collection,
+            EntityCollection::All(vec!["Entity1".to_string()])
         );
         assert_eq!(
             build_query(
@@ -386,8 +386,8 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .entity_types,
-            vec!["Entity2".to_string()]
+            .collection,
+            EntityCollection::All(vec!["Entity2".to_string()])
         );
     }
 

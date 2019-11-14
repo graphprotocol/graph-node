@@ -8,6 +8,7 @@ use std::env;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use web3::types::H256;
 
@@ -139,7 +140,88 @@ impl EntityRange {
     }
 }
 
+/// The attribute we want to window by in an `EntityWindow`. We have to
+/// distinguish between scalar and list attributes since we need to use
+/// different queries for them, and the JSONB storage scheme can not
+/// determine that by itself
+#[derive(Clone, Debug, PartialEq)]
+pub enum WindowAttribute {
+    Scalar(String),
+    List(String),
+}
+
+impl WindowAttribute {
+    pub fn name(&self) -> &str {
+        match self {
+            WindowAttribute::Scalar(name) => name,
+            WindowAttribute::List(name) => name,
+        }
+    }
+}
+
+/// How to join with the parent table when the child table does not
+/// store parent id's
+#[derive(Clone, Debug, PartialEq)]
+pub struct ParentLink {
+    /// Name of the parent entity (concrete type, not an interface)
+    pub parent_type: String,
+    /// Name of the attribute where parent stores child ids
+    pub child_field: WindowAttribute,
+}
+
+/// How to select children for their parents depending on whether the
+/// child stores parent ids (`Direct`) or the parent
+/// stores child ids (`Parent`)
+#[derive(Clone, Debug, PartialEq)]
+pub enum EntityLink {
+    /// The parent id is stored in this child attribute
+    Direct(WindowAttribute),
+    /// Join with the parents table to get at the parent id
+    Parent(ParentLink),
+}
+
+/// Window results of an `EntityQuery` query along the parent's id:
+/// the `order_by`, `order_direction`, and `range` of the query apply to
+/// entities that belong to the same parent. Only entities that belong to
+/// one of the parents listed in `ids` will be included in the query result.
+///
+/// Note that different windows can vary both by the entity type and id of
+/// the children, but also by how to get from a child to its parent, i.e.,
+/// it is possible that two windows access the same entity type, but look
+/// at different attributes to connect to parent entities
+#[derive(Clone, Debug, PartialEq)]
+pub struct EntityWindow {
+    /// The entity type for this window
+    pub child_type: String,
+    /// The ids of parents that should be considered for this window
+    pub ids: Vec<String>,
+    /// How to get the parent id
+    pub link: EntityLink,
+}
+
+/// The base collections from which we are going to get entities for use in
+/// `EntityQuery`; the result of the query comes from applying the query's
+/// filter and order etc. to the entities described in this collection. For
+/// a windowed collection order and range are applied to each individual
+/// window
+#[derive(Clone, Debug, PartialEq)]
+pub enum EntityCollection {
+    /// Use all entities of the given types
+    All(Vec<String>),
+    /// Use entities according to the windows. The set of entities that we
+    /// apply order and range to is formed by taking all entities matching
+    /// the window, and grouping them by the attribute of the window. Entities
+    /// that have the same value in the `attribute` field of their window are
+    /// grouped together. Note that it is possible to have one window for
+    /// entity type `A` and attribute `a`, and another for entity type `B` and
+    /// column `b`; they will be grouped by using `A.a` and `B.b` as the keys
+    Window(Vec<EntityWindow>),
+}
+
 /// A query for entities in a store.
+///
+/// Details of how query generation for `EntityQuery` works can be found
+/// in `docs/implementation/query-prefetching.md`
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityQuery {
     /// ID of the subgraph.
@@ -147,7 +229,7 @@ pub struct EntityQuery {
 
     /// The names of the entity types being queried. The result is the union
     /// (with repetition) of the query for each entity.
-    pub entity_types: Vec<String>,
+    pub collection: EntityCollection,
 
     /// Filter to filter entities by.
     pub filter: Option<EntityFilter>,
@@ -161,29 +243,18 @@ pub struct EntityQuery {
     /// A range to limit the size of the result.
     pub range: EntityRange,
 
-    /// A field by which to window the results. This affects how `order_by`,
-    /// `order_direction`, and `range` are interpreted. If `window` is `None`,
-    /// they are applied to the entire query. If the value is `Some("attr")`,
-    /// ordering and range limiting is applied for each distinct value of the
-    /// `attr` field separately. The latter is useful when the query has a
-    /// clause like `where attr in (v1, v2, ..)` so that the result will have
-    /// `range` many results for each of `v1`, `v2`, etc., and each ordered
-    /// according to `order_by` and `order_direction`.
-    pub window: Option<String>,
-
     _force_use_of_new: (),
 }
 
 impl EntityQuery {
-    pub fn new(subgraph_id: SubgraphDeploymentId, entity_types: Vec<String>) -> Self {
+    pub fn new(subgraph_id: SubgraphDeploymentId, collection: EntityCollection) -> Self {
         EntityQuery {
             subgraph_id,
-            entity_types,
+            collection,
             filter: None,
             order_by: None,
             order_direction: None,
             range: EntityRange::first(100),
-            window: None,
             _force_use_of_new: (),
         }
     }
@@ -229,8 +300,30 @@ impl EntityQuery {
         self
     }
 
-    pub fn window_by(mut self, window: String) -> Self {
-        self.window = Some(window);
+    pub fn simplify(mut self) -> Self {
+        // If there is one window, with one id, in a direct relation to the
+        // entities, we can simplify the query by changing the filter and
+        // getting rid of the window
+        if let EntityCollection::Window(windows) = &self.collection {
+            if windows.len() == 1 {
+                let window = windows.first().expect("we just checked");
+                if window.ids.len() == 1 {
+                    let id = window.ids.first().expect("we just checked");
+                    if let EntityLink::Direct(attribute) = &window.link {
+                        let filter = match attribute {
+                            WindowAttribute::Scalar(name) => {
+                                EntityFilter::Equal(name.to_owned(), id.into())
+                            }
+                            WindowAttribute::List(name) => {
+                                EntityFilter::Contains(name.to_owned(), Value::from(vec![id]))
+                            }
+                        };
+                        self.filter = Some(filter.and_maybe(self.filter));
+                        self.collection = EntityCollection::All(vec![window.child_type.to_owned()]);
+                    }
+                }
+            }
+        }
         self
     }
 }

@@ -10,8 +10,8 @@ use std::str::FromStr;
 
 use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
-    bigdecimal::One, web3::types::H256, Entity, EntityFilter, EntityKey, EntityOrder, EntityQuery,
-    EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
+    bigdecimal::One, web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey,
+    EntityOrder, EntityQuery, EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
 };
 use graph_store_postgres::layout_for_tests::{Layout, BLOCK_NUMBER_MAX, STRING_PREFIX_SIZE};
 
@@ -416,17 +416,17 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
     ]);
+    let collection = EntityCollection::All(vec!["Scalar".to_owned()]);
     layout
         .query(
             &conn,
-            vec!["Scalar".to_owned()],
+            collection,
             Some(filter),
             None,
             EntityRange {
                 first: None,
                 skip: 0,
             },
-            None,
             BLOCK_NUMBER_MAX,
         )
         .expect("Count query failed")
@@ -513,11 +513,10 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
         let entities = layout
             .query(
                 conn,
-                query.entity_types,
+                query.collection,
                 query.filter,
                 order,
                 query.range,
-                None,
                 BLOCK_NUMBER_MAX,
             )
             .expect("layout.query failed to execute query");
@@ -540,7 +539,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 fn query(entity_types: Vec<&str>) -> EntityQuery {
     EntityQuery::new(
         THINGS_SUBGRAPH_ID.clone(),
-        entity_types.into_iter().map(|s| s.to_owned()).collect(),
+        EntityCollection::All(entity_types.into_iter().map(|s| s.to_owned()).collect()),
     )
 }
 
@@ -1223,11 +1222,10 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
         let entities = layout
             .query(
                 conn,
-                query.entity_types,
+                query.collection,
                 query.filter,
                 order,
                 query.range,
-                None,
                 BLOCK_NUMBER_MAX,
             )
             .expect("layout.query failed to execute query");

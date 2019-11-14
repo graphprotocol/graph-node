@@ -181,6 +181,73 @@ fn reference_interface() {
 }
 
 #[test]
+fn reference_interface_derived() {
+    // Test the different ways in which interface implementations
+    // can reference another entity
+    let subgraph_id = "ReferenceInterfaceDerived";
+    let schema = "
+    type Transaction @entity {
+        id: ID!,
+        buyEvent: BuyEvent!,
+        sellEvents: [SellEvent!]!,
+        giftEvent: [GiftEvent!]! @derivedFrom(field: \"transaction\"),
+    }
+
+    interface Event {
+        id: ID!,
+        transaction: Transaction!
+    }
+
+    type BuyEvent implements Event @entity {
+        id: ID!,
+        # Derived, but only one buyEvent per Transaction
+        transaction: Transaction! @derivedFrom(field: \"buyEvent\")
+    }
+
+    type SellEvent implements Event @entity {
+        id: ID!
+        # Derived, many sellEvents per Transaction
+        transaction: Transaction! @derivedFrom(field: \"sellEvents\")
+    }
+
+    type GiftEvent implements Event @entity {
+        id: ID!,
+        # Store the transaction directly
+        transaction: Transaction!
+    }";
+
+    let query = "query { events { id transaction { id } } }";
+
+    let buy = (Entity::from(vec![("id", "buy".into())]), "BuyEvent");
+    let sell1 = (Entity::from(vec![("id", "sell1".into())]), "SellEvent");
+    let sell2 = (Entity::from(vec![("id", "sell2".into())]), "SellEvent");
+    let gift = (
+        Entity::from(vec![("id", "gift".into()), ("transaction", "txn".into())]),
+        "GiftEvent",
+    );
+    let txn = (
+        Entity::from(vec![
+            ("id", "txn".into()),
+            ("buyEvent", "buy".into()),
+            ("sellEvents", vec!["sell1", "sell2"].into()),
+        ]),
+        "Transaction",
+    );
+
+    let entities = vec![buy, sell1, sell2, gift, txn];
+    let res = insert_and_query(subgraph_id, schema, entities.clone(), query).unwrap();
+
+    assert!(res.errors.is_none());
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        "Object({\"events\": List([\
+            Object({\"id\": String(\"buy\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
+            Object({\"id\": String(\"gift\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
+            Object({\"id\": String(\"sell1\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
+            Object({\"id\": String(\"sell2\"), \"transaction\": Object({\"id\": String(\"txn\")})})])})");
+}
+
+#[test]
 fn follow_interface_reference_invalid() {
     let subgraph_id = "FollowInterfaceReferenceInvalid";
     let schema = "interface Legged { legs: Int! }

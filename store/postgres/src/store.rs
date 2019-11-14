@@ -359,11 +359,10 @@ impl Store {
 
         // Process results; deserialize JSON data
         conn.query(
-            query.entity_types,
+            query.collection,
             query.filter,
             order,
             query.range,
-            query.window,
             BLOCK_NUMBER_MAX,
         )
     }

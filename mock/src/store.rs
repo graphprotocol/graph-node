@@ -96,19 +96,26 @@ impl MockStore {
     fn execute_query(
         &self,
         entities: &HashMap<SubgraphDeploymentId, HashMap<String, HashMap<String, Entity>>>,
-        query: EntityQuery,
+        mut query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
+        query = query.simplify();
+
         let EntityQuery {
             subgraph_id,
-            entity_types,
+            collection,
             filter,
             order_by,
             order_direction,
             range: _,
-            window: _,
             ..
         } = query;
 
+        let entity_types = match collection {
+            EntityCollection::All(entities) => entities,
+            EntityCollection::Window(_) => {
+                unimplemented!("the mock store does not support windowing")
+            }
+        };
         // List all entities with correct type
         let empty1 = HashMap::default();
         let empty2 = HashMap::default();

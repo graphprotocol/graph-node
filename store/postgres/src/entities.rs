@@ -43,9 +43,9 @@ use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, Entity, EntityChange,
-    EntityChangeOperation, EntityFilter, EntityKey, EntityModification, EntityOrder, EntityRange,
-    Error, EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, SubgraphDeploymentStore, ValueType,
+    EntityChangeOperation, EntityCollection, EntityFilter, EntityKey, EntityModification,
+    EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger, QueryExecutionError, StoreError,
+    StoreEvent, SubgraphDeploymentId, SubgraphDeploymentStore, ValueType,
 };
 
 use crate::block_range::{block_number, BlockNumber};
@@ -447,26 +447,17 @@ impl Connection {
 
     pub(crate) fn query(
         &self,
-        entity_types: Vec<String>,
+        collection: EntityCollection,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
-        window: Option<String>,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         match &*self.storage {
-            Storage::Json(json) => {
-                json.query(&self.conn, entity_types, filter, order, range, window)
+            Storage::Json(json) => json.query(&self.conn, collection, filter, order, range),
+            Storage::Relational(layout) => {
+                layout.query(&self.conn, collection, filter, order, range, block)
             }
-            Storage::Relational(layout) => layout.query(
-                &self.conn,
-                entity_types,
-                filter,
-                order,
-                range,
-                window,
-                block,
-            ),
         }
     }
 
@@ -912,13 +903,12 @@ impl JsonStorage {
     fn query(
         &self,
         conn: &PgConnection,
-        entity_types: Vec<String>,
+        collection: EntityCollection,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
-        window: Option<String>,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let query = FilterQuery::new(&self.table, entity_types, filter, order, range, window)?;
+        let query = FilterQuery::new(&self.table, collection, filter, order, range)?;
 
         let query_debug_info = debug_query(&query).to_string();
 

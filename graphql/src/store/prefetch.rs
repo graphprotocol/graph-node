@@ -10,11 +10,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
-use graph::prelude::{Entity, EntityFilter, QueryExecutionError, Store, Value as StoreValue};
+use graph::prelude::{
+    Entity, EntityCollection, EntityFilter, EntityLink, EntityWindow, ParentLink,
+    QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
+};
 
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
+use crate::schema::ext::ObjectTypeExt;
 use crate::store::build_query;
 
 lazy_static! {
@@ -174,42 +178,130 @@ impl Node {
     }
 }
 
+/// Describe a field that we join on. The distinction between scalar and
+/// list is important for generating the right filter, and handling results
+/// correctly
+#[derive(Debug)]
+enum JoinField<'a> {
+    List(&'a str),
+    Scalar(&'a str),
+}
+
+impl<'a> JoinField<'a> {
+    fn new(field: &'a s::Field) -> Self {
+        let name = field.name.as_str();
+        if sast::is_list_or_non_null_list_field(field) {
+            JoinField::List(name)
+        } else {
+            JoinField::Scalar(name)
+        }
+    }
+
+    fn window_attribute(&self) -> WindowAttribute {
+        match self {
+            JoinField::Scalar(name) => WindowAttribute::Scalar(name.to_string()),
+            JoinField::List(name) => WindowAttribute::List(name.to_string()),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum JoinRelation<'a> {
+    // Name of field in which child stores parent ids
+    Direct(JoinField<'a>),
+    // Name of the field in the parent type containing child ids
+    Derived(JoinField<'a>),
+}
+
+#[derive(Debug)]
+struct JoinCond<'a> {
+    /// The (concrete) object type of the parent, interfaces will have
+    /// one `JoinCond` for each implementing type
+    parent_type: &'a str,
+    /// The (concrete) object type of the child, interfaces will have
+    /// one `JoinCond` for each implementing type
+    child_type: &'a str,
+    parent_field: JoinField<'a>,
+    relation: JoinRelation<'a>,
+}
+
+impl<'a> JoinCond<'a> {
+    fn new(
+        parent_type: &'a s::ObjectType,
+        child_type: &'a s::ObjectType,
+        field_name: &s::Name,
+    ) -> Self {
+        let field = parent_type
+            .field(field_name)
+            .expect("field_name is a valid field of parent_type");
+        let (relation, parent_field) =
+            if let Some(derived_from_field) = sast::get_derived_from_field(child_type, field) {
+                (
+                    JoinRelation::Direct(JoinField::new(derived_from_field)),
+                    JoinField::Scalar("id"),
+                )
+            } else {
+                (
+                    JoinRelation::Derived(JoinField::new(field)),
+                    JoinField::new(field),
+                )
+            };
+        JoinCond {
+            parent_type: parent_type.name.as_str(),
+            child_type: child_type.name.as_str(),
+            parent_field,
+            relation,
+        }
+    }
+
+    fn entity_link(&self) -> EntityLink {
+        match &self.relation {
+            JoinRelation::Direct(field) => EntityLink::Direct(field.window_attribute()),
+            JoinRelation::Derived(field) => EntityLink::Parent(ParentLink {
+                parent_type: self.parent_type.to_owned(),
+                child_field: field.window_attribute(),
+            }),
+        }
+    }
+}
+
 /// Encapsulate how we should join a list of parent entities with a list of
 /// child entities.
 #[derive(Debug)]
 struct Join<'a> {
     /// The object type of the child entities
     child_type: ObjectOrInterface<'a>,
-    /// The name of the field in the parent type
-    parent_field: &'a str,
-    /// Whether the parent field is a list or scalar
-    parent_is_list: bool,
-    /// The name of the field in the child type
-    child_field: &'a str,
-    /// Whether the child field is a list or a scalar
-    child_is_list: bool,
+    conds: Vec<JoinCond<'a>>,
 }
 
 impl<'a> Join<'a> {
     /// Construct a `Join` based on the parent field pointing to the child
-    fn new(schema: &'a s::Document, field: &'a s::Field) -> Self {
-        let child_type = object_or_interface_from_type(&schema, &field.field_type)
-            .expect("we only collect fields that are objects or interfaces");
+    fn new(
+        schema: &'a Schema,
+        parent_type: &'a ObjectOrInterface<'a>,
+        child_type: &'a ObjectOrInterface<'a>,
+        field_name: &s::Name,
+    ) -> Self {
+        let parent_types = parent_type
+            .object_types(schema)
+            .expect("the name of the parent type is valid");
+        let child_types = child_type
+            .object_types(schema)
+            .expect("the name of the child type is valid");
 
-        let (parent_field, parent_is_list, child_field, child_is_list) =
-            if let Some(derived_from_field) = sast::get_derived_from_field(child_type, field) {
-                let is_list = sast::is_list_or_non_null_list_field(derived_from_field);
-                ("id", false, derived_from_field.name.as_str(), is_list)
-            } else {
-                let is_list = sast::is_list_or_non_null_list_field(field);
-                (field.name.as_str(), is_list, "id", false)
-            };
+        let conds = parent_types
+            .iter()
+            .flat_map::<Vec<_>, _>(|parent_type| {
+                child_types
+                    .iter()
+                    .map(|child_type| JoinCond::new(parent_type, child_type, field_name))
+                    .collect()
+            })
+            .collect();
+
         Join {
-            child_type,
-            parent_field,
-            parent_is_list,
-            child_field,
-            child_is_list,
+            child_type: child_type.clone(),
+            conds,
         }
     }
 
@@ -223,79 +315,119 @@ impl<'a> Join<'a> {
     fn perform(&self, parents: &mut Vec<Node>, children: Vec<Node>, response_key: &str) {
         let children: Vec<_> = children.into_iter().map(|child| Rc::new(child)).collect();
 
-        if is_root_node(parents) {
-            let root = parents
-                .first_mut()
-                .expect("is_root_node checked that we have a node");
-            root.children.insert(response_key.to_owned(), children);
+        if parents.len() == 1 {
+            let parent = parents.first_mut().expect("we just checked");
+            parent.children.insert(response_key.to_owned(), children);
             return;
         }
 
-        // Build a map child_key -> Vec<child> for joining by grouping
+        // Organize the join conditions by child type. We do not precompute that
+        // in `new`, because `perform` is only called once for each instance
+        // of a `Join`. For each child type, there might be multiple parent
+        // types that require different ways of joining to them
+        let conds_by_child: HashMap<_, Vec<_>> =
+            self.conds.iter().fold(HashMap::default(), |mut map, cond| {
+                map.entry(cond.child_type).or_default().push(cond);
+                map
+            });
+
+        // Build a map (parent_type, child_key) -> Vec<child> for joining by grouping
         // children by their child_field
-        let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
+        let mut grouped: BTreeMap<(&str, &str), Vec<Rc<Node>>> = BTreeMap::default();
         for child in children.iter() {
-            match child
-                .get(self.child_field)
-                .expect("the query that produces 'child' ensures there is always an entry")
-            {
-                StoreValue::String(key) => grouped.entry(key).or_default().push(child.clone()),
-                StoreValue::List(list) => {
-                    for key in list {
-                        match key {
-                            StoreValue::String(key) => {
-                                grouped.entry(key).or_default().push(child.clone())
+            for cond in conds_by_child.get(child.typename()).expect(&format!(
+                "query results only contain known types: {}",
+                child.typename()
+            )) {
+                match child
+                    .get("parent_id")
+                    .expect("the query that produces 'child' ensures there is always a parent_id")
+                {
+                    StoreValue::String(key) => grouped
+                        .entry((cond.parent_type, key))
+                        .or_default()
+                        .push(child.clone()),
+                    StoreValue::List(list) => {
+                        for key in list {
+                            match key {
+                                StoreValue::String(key) => grouped
+                                    .entry((cond.parent_type, key))
+                                    .or_default()
+                                    .push(child.clone()),
+                                _ => unreachable!("a list of join keys contains only strings"),
                             }
-                            _ => unreachable!("a list of join keys contains only strings"),
                         }
                     }
+                    _ => unreachable!("join fields are strings or lists"),
                 }
-                _ => unreachable!("join fields are strings or lists"),
             }
         }
 
+        // Organize the join conditions by parent type.
+        let conds_by_parent: HashMap<_, Vec<_>> =
+            self.conds.iter().fold(HashMap::default(), |mut map, cond| {
+                map.entry(cond.parent_type).or_default().push(cond);
+                map
+            });
+
         // Add appropriate children using grouped map
         for parent in parents.iter_mut() {
-            // Set the `response_key` field in `parent`. Make sure that even
-            // if `parent` has no matching `children`, the field gets set (to
-            // an empty `Vec`)
-            // This is complicated by the fact that, if there was a type
-            // condition, we should only change parents that meet the type
-            // condition; we set it for all parents regardless, as that does
-            // not cause problems in later processing, but make sure that we
-            // do not clobber an entry under this `response_key` that might
-            // have been set by a previous join by appending values rather
-            // than using straight insert into the parent
-            let mut values = parent
-                .get(self.parent_field)
-                .and_then(|key| match key {
-                    StoreValue::String(key) => {
-                        grouped.get(key.as_str()).map(|values| values.clone())
-                    }
-                    StoreValue::List(keys) => {
-                        // Note that each `grouped.get` returns a vec with
-                        // at most one element, and since `key` is the id
-                        // of that element, the resulting `values` will not
-                        // contain duplicates
-                        Some(
-                            keys.iter()
-                                .filter_map(|key| key.as_str())
-                                .filter_map(|key| grouped.get(key))
-                                .flatten()
-                                .map(|rc| rc.clone())
-                                .collect::<Vec<_>>(),
-                        )
-                    }
-                    StoreValue::Null => None,
-                    _ => unreachable!("join fields must be strings or lists of strings"),
-                })
-                .unwrap_or(vec![]);
-            parent
-                .children
-                .entry(response_key.to_owned())
-                .or_default()
-                .append(&mut values);
+            for cond in conds_by_parent.get(parent.typename()).expect(&format!(
+                "query results only contain known types: parent {}",
+                parent.typename()
+            )) {
+                // Set the `response_key` field in `parent`. Make sure that even
+                // if `parent` has no matching `children`, the field gets set (to
+                // an empty `Vec`)
+                // This is complicated by the fact that, if there was a type
+                // condition, we should only change parents that meet the type
+                // condition; we set it for all parents regardless, as that does
+                // not cause problems in later processing, but make sure that we
+                // do not clobber an entry under this `response_key` that might
+                // have been set by a previous join by appending values rather
+                // than using straight insert into the parent
+                let mut values = parent
+                    .id()
+                    .ok()
+                    .and_then(|id| {
+                        grouped
+                            .get(&(cond.parent_type, &id))
+                            .map(|values| values.clone())
+                    })
+                    .unwrap_or(vec![]);
+                parent
+                    .children
+                    .entry(response_key.to_owned())
+                    .or_default()
+                    .append(&mut values);
+            }
         }
+    }
+
+    fn windows(&self, parents: &Vec<Node>) -> Vec<EntityWindow> {
+        let mut windows = vec![];
+
+        for cond in &self.conds {
+            // Get the cond.parent_field attributes from each parent that
+            // is of type cond.parent_type
+            let mut ids = parents
+                .iter()
+                .filter(|parent| parent.typename() == cond.parent_type)
+                .filter_map(|parent| parent.id().ok())
+                .collect::<Vec<_>>();
+
+            if !ids.is_empty() {
+                ids.sort_unstable();
+                ids.dedup();
+
+                windows.push(EntityWindow {
+                    child_type: cond.child_type.to_owned(),
+                    ids,
+                    link: cond.entity_link(),
+                });
+            }
+        }
+        windows
     }
 }
 
@@ -444,7 +576,16 @@ where
 
             if let Some(ref field) = concrete_type.field(&fields[0].name) {
                 let ctx = ctx.for_field(&fields[0]);
-                let join = Join::new(&ctx.schema.document, field);
+                let child_type =
+                    object_or_interface_from_type(&ctx.schema.document, &field.field_type)
+                        .expect("we only collect fields that are objects or interfaces");
+
+                let join = Join::new(
+                    ctx.schema.as_ref(),
+                    &concrete_type,
+                    &child_type,
+                    &field.name,
+                );
 
                 match execute_field(
                     &ctx,
@@ -716,47 +857,11 @@ fn fetch<S: Store>(
     if !is_root_node(parents) {
         // For anything but the root node, restrict the children we select
         // by the parent list
-        let mut ids = if join.parent_is_list {
-            parents
-                .iter()
-                .filter_map(|entity| entity.get(join.parent_field))
-                .flat_map(|list| match list {
-                    StoreValue::List(values) => values.iter().filter_map(|value| value.as_str()),
-                    _ => unreachable!("parent_field is not a list of strings"),
-                })
-                .collect::<Vec<_>>()
-        } else {
-            parents
-                .iter()
-                .filter_map(|entity| entity.get(join.parent_field))
-                .filter_map(|value| match value {
-                    StoreValue::String(s) => Some(s.as_str()),
-                    StoreValue::Null => None,
-                    _ => unreachable!("parent_field must be a string or null"),
-                })
-                .collect::<Vec<_>>()
-        };
-        if ids.is_empty() {
+        let windows = join.windows(parents);
+        if windows.len() == 0 {
             return Ok(vec![]);
         }
-        ids.sort_unstable();
-        ids.dedup();
-        let ids = ids.into_iter().map(|id| StoreValue::from(id)).collect();
-        // We want to find all children that point to one of the parent `ids`
-        // If `child_field` is a list that is any child that has one of the
-        // parent `ids` in its `child_field`, hence the intersection
-        let filter = if join.child_is_list {
-            EntityFilter::Intersects(join.child_field.to_owned(), ids)
-        } else {
-            EntityFilter::In(join.child_field.to_owned(), ids)
-        };
-        query.filter = Some(filter.and_maybe(query.filter));
-        // Apply order by/range conditions to each batch of children, grouped
-        // by parent, but only if we have more than one parent, as the
-        // queries without a window are simpler
-        if parents.len() > 1 {
-            query.window = Some(join.child_field.to_owned());
-        }
+        query.collection = EntityCollection::Window(windows);
     }
 
     store

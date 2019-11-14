@@ -18,11 +18,12 @@ use std::sync::Arc;
 
 use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindManyQuery, FindQuery,
-    InsertQuery, QueryFilter, RevertClampQuery, RevertRemoveQuery,
+    InsertQuery, RevertClampQuery, RevertRemoveQuery,
 };
 use graph::prelude::{
-    format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey, EntityOrder,
-    EntityRange, QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType,
+    format_err, Entity, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
+    EntityKey, EntityOrder, EntityRange, QueryExecutionError, StoreError, StoreEvent,
+    SubgraphDeploymentId, ValueType,
 };
 
 use crate::block_range::{BlockNumber, BLOCK_RANGE_COLUMN};
@@ -40,7 +41,7 @@ use crate::entities::STRING_PREFIX_SIZE;
 /// Postgres, we would create the same table twice. We consider this case
 /// to be pathological and so unlikely in practice that we do not try to work
 /// around it in the application.
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash)]
 pub struct SqlName(String);
 
 impl SqlName {
@@ -392,49 +393,13 @@ impl Layout {
     pub fn query(
         &self,
         conn: &PgConnection,
-        entity_types: Vec<String>,
+        collection: EntityCollection,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
-        window: Option<String>,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let filter = filter.as_ref();
-        let table_filter_pairs = entity_types
-            .into_iter()
-            .map(|entity| {
-                self.table_for_entity(&entity)
-                    .map(|rc| rc.as_ref())
-                    .and_then(|table| {
-                        filter
-                            .map(|filter| QueryFilter::new(filter, table))
-                            .transpose()
-                            .map(|filter| (table, filter))
-                    })
-            })
-            .collect::<Result<Vec<_>, StoreError>>()?;
-
-        // Get the name of the column we order by; if there is more than one
-        // table, we are querying an interface, and the order is on an attribute
-        // in that interface so that all tables have a column for that. It is
-        // therefore enough to just look at the first table to get the name
-        let first_table = table_filter_pairs
-            .first()
-            .expect("an entity query always contains at least one entity type/table")
-            .0;
-        let order = match order {
-            Some((ref attribute, _, direction)) => {
-                let column = first_table.column_for_field(&attribute)?;
-                Some((&column.name, direction))
-            }
-            None => None,
-        };
-
-        let window = window
-            .map(|window| first_table.column_for_field(&window))
-            .transpose()?
-            .map(|column| &column.name);
-        let query = FilterQuery::new(table_filter_pairs, order, range, window, block);
+        let query = FilterQuery::new(&self, collection, filter.as_ref(), order, range, block)?;
         let query_debug_info = query.clone();
 
         let values = query.load::<EntityData>(conn).map_err(|e| {

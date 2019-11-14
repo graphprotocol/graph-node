@@ -57,7 +57,7 @@ impl<QS> IntoFilter<QS> for String {
             // The first condition is there to make the index on attribute usable,
             // the second so that we only return correct results
             Box::new(
-                sql("(left(data -> ")
+                sql("(left(c.data -> ")
                     .bind::<Text, _>(attribute.clone())
                     .sql("->> 'data', ")
                     .sql(&STRING_PREFIX_SIZE.to_string())
@@ -67,7 +67,7 @@ impl<QS> IntoFilter<QS> for String {
                     .bind::<Text, _>(self.clone())
                     .sql(", ")
                     .sql(&STRING_PREFIX_SIZE.to_string())
-                    .sql(") and data -> ")
+                    .sql(") and c.data -> ")
                     .bind::<Text, _>(attribute)
                     .sql("->> 'data' ")
                     .sql(op)
@@ -81,7 +81,7 @@ impl<QS> IntoFilter<QS> for String {
 impl<QS> IntoFilter<QS> for f64 {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
-            sql("(data -> ")
+            sql("(c.data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::float")
                 .sql(op)
@@ -93,7 +93,7 @@ impl<QS> IntoFilter<QS> for f64 {
 impl<QS> IntoFilter<QS> for i32 {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
-            sql("(data -> ")
+            sql("(c.data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::int")
                 .sql(op)
@@ -105,7 +105,7 @@ impl<QS> IntoFilter<QS> for i32 {
 impl<QS> IntoFilter<QS> for bool {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
-            sql("(data -> ")
+            sql("(c.data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::boolean")
                 .sql(op)
@@ -117,7 +117,7 @@ impl<QS> IntoFilter<QS> for bool {
 impl<QS> IntoFilter<QS> for BigInt {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
-            sql("(data -> ")
+            sql("(c.data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::numeric")
                 .sql(op)
@@ -132,7 +132,7 @@ impl<QS> IntoFilter<QS> for BigInt {
 impl<QS> IntoFilter<QS> for BigDecimal {
     fn into_filter(self, attribute: String, op: &str) -> FilterExpression<QS> {
         Box::new(
-            sql("(data -> ")
+            sql("(c.data -> ")
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::numeric")
                 .sql(op)
@@ -173,7 +173,7 @@ impl<QS> IntoArrayFilter<QS, SqlValue> for Vec<SqlValue> {
             // Use the `id` column rather than `data->'id'->>'data'` so that
             // Postgres can use the primary key index on the entities table
             Box::new(
-                sql("id")
+                sql("c.id")
                     .sql(coercion)
                     .sql(op)
                     .sql("(")
@@ -182,7 +182,7 @@ impl<QS> IntoArrayFilter<QS, SqlValue> for Vec<SqlValue> {
             ) as FilterExpression<QS>
         } else {
             Box::new(
-                sql("(data -> ")
+                sql("(c.data -> ")
                     .bind::<Text, _>(attribute)
                     .sql("->> 'data')")
                     .sql(coercion)
@@ -237,7 +237,7 @@ where
                 Value::Bytes(b) => Ok(format!("%{}%", b.to_string()).into_filter(attribute, op)),
                 Value::List(lst) => {
                     let s = serde_json::to_string(&lst).expect("failed to serialize list value");
-                    let predicate = sql("data -> ")
+                    let predicate = sql("c.data -> ")
                         .bind::<Text, _>(attribute)
                         .sql("-> 'data' @> ")
                         .bind::<Text, _>(s)
@@ -279,7 +279,7 @@ where
                     let s = serde_json::to_string(&lst).expect("failed to serialize list value");
                     Ok(Box::new(
                         sql("(")
-                            .sql("data -> ")
+                            .sql("c.data -> ")
                             .bind::<Text, _>(attribute)
                             .sql("-> 'data'")
                             .sql(")::jsonb")
@@ -292,11 +292,11 @@ where
                     // Value is not null if the property is present ("IS NOT NULL") and is not a
                     // value of the 'Null' type.
                     Box::new(
-                        sql("data -> ")
+                        sql("c.data -> ")
                             .bind::<Text, _>(attribute.clone())
                             .sql(" IS NOT NULL ")
                             .and(
-                                sql("data -> ")
+                                sql("c.data -> ")
                                     .bind::<Text, _>(attribute)
                                     .sql(" ->> 'type' != 'Null' "),
                             ),
@@ -305,10 +305,10 @@ where
                     // Value is null if the property is missing ("IS NULL") or is present but is a
                     // value of the 'Null' type.
                     Box::new(
-                        sql("data -> ")
+                        sql("c.data -> ")
                             .bind::<Text, _>(attribute.clone())
                             .sql(" IS NULL ")
-                            .or(sql("data -> ")
+                            .or(sql("c.data -> ")
                                 .bind::<Text, _>(attribute)
                                 .sql(" ->> 'type' = 'Null' ")),
                     )

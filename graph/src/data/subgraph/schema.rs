@@ -24,8 +24,8 @@ use web3::types::*;
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
 use crate::components::store::{
-    AttributeIndexDefinition, EntityFilter, EntityKey, EntityOperation, EntityQuery, EntityRange,
-    MetadataOperation,
+    AttributeIndexDefinition, EntityCollection, EntityFilter, EntityKey, EntityOperation,
+    EntityQuery, EntityRange, MetadataOperation,
 };
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
@@ -48,7 +48,11 @@ pub trait TypedEntity {
             first: None,
             skip: 0,
         };
-        EntityQuery::new(SUBGRAPHS_ID.clone(), vec![Self::TYPENAME.to_owned()]).range(range)
+        EntityQuery::new(
+            SUBGRAPHS_ID.clone(),
+            EntityCollection::All(vec![Self::TYPENAME.to_owned()]),
+        )
+        .range(range)
     }
 
     fn subgraph_entity_pair() -> SubgraphEntityPair {
