@@ -113,6 +113,9 @@ pub(crate) struct WasmiModule<U> {
 
     // Number of free bytes starting from `arena_start_ptr`.
     arena_free_size: u32,
+
+    // How many times we've passed a timeout checkpoint during execution.
+    timeout_checkpoint_count: u64,
 }
 
 impl<U> WasmiModule<U>
@@ -163,6 +166,7 @@ where
             // `arena_start_ptr` will be set on the first call to `raw_new`.
             arena_free_size: 0,
             arena_start_ptr: 0,
+            timeout_checkpoint_count: 0,
         };
 
         this.module = module
@@ -375,7 +379,12 @@ where
         + 'static,
 {
     fn gas(&mut self) -> Result<Option<RuntimeValue>, Trap> {
-        self.ctx.host_exports.check_timeout(self.start_time)?;
+        // This function is called so often that the overhead of calling `Instant::now()` every
+        // time would be significant, so we spread out the checks.
+        if self.timeout_checkpoint_count % 100 == 0 {
+            self.ctx.host_exports.check_timeout(self.start_time)?;
+        }
+        self.timeout_checkpoint_count += 1;
         Ok(None)
     }
 
