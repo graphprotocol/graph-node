@@ -49,7 +49,7 @@ impl StopwatchMetrics {
         let mut inner = StopwatchInner {
             total_counter: *registry
                 .new_counter(
-                    format!("{}_total_secs", subgraph_id),
+                    format!("{}_sync_total_secs", subgraph_id),
                     format!("total time spent syncing"),
                     HashMap::new(),
                 )
