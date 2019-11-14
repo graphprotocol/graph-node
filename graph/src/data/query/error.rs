@@ -121,8 +121,8 @@ impl fmt::Display for QueryExecutionError {
             FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value `{}`: `{}`", value, filter)
             }
-            UnknownField(p, t, s) => {
-                write!(f, "Type `{}` has no field `{}`, at position {}:{}", t, s, p.line, p.column)
+            UnknownField(_, t, s) => {
+                write!(f, "Type `{}` has no field `{}`", t, s)
             }
             EmptyQuery => write!(f, "The query is empty"),
             MultipleSubscriptionFields => write!(
