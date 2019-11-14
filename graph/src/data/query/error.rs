@@ -333,7 +333,8 @@ impl Serialize for QueryError {
             | QueryError::ExecutionError(MissingVariableError(pos, _))
             | QueryError::ExecutionError(AmbiguousDerivedFromResult(pos, _, _, _))
             | QueryError::ExecutionError(EnumCoercionError(pos, _, _, _, _))
-            | QueryError::ExecutionError(ScalarCoercionError(pos, _, _, _)) => {
+            | QueryError::ExecutionError(ScalarCoercionError(pos, _, _, _))
+            | QueryError::ExecutionError(UnknownField(pos, _, _)) => {
                 let mut location = HashMap::new();
                 location.insert("line", pos.line);
                 location.insert("column", pos.column);
