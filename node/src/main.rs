@@ -486,247 +486,256 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
     let postgres_conn_pool =
         create_connection_pool(postgres_url.clone(), store_conn_pool_size, &logger);
-    let stores: HashMap<String, Arc<DieselStore>> = eth_adapters
-        .iter()
-        .map(|(network_name, eth_adapter)| {
+
+    let stores_metrics_registry = metrics_registry.clone();
+    let stores_logger = logger.clone();
+    let stores_error_logger = logger.clone();
+    let stores_eth_adapters = eth_adapters.clone();
+    futures::stream::futures_ordered(stores_eth_adapters.into_iter().map(
+        |(network_name, eth_adapter)| {
             info!(
                 logger, "Connecting to Ethereum...";
                 "network" => &network_name,
             );
-            match eth_adapter.net_identifiers(&logger).wait() {
-                Ok(network_identifier) => {
-                    info!(
-                    logger,
-                    "Connected to Ethereum";
-                    "network" => &network_name,
-                    "network_version" => &network_identifier.net_version,
-                    );
-                    (
-                        network_name.to_string(),
-                        Arc::new(DieselStore::new(
-                            StoreConfig {
-                                postgres_url: postgres_url.clone(),
-                                network_name: network_name.to_string(),
-                            },
-                            &logger,
-                            network_identifier,
-                            postgres_conn_pool.clone(),
-                            metrics_registry.clone(),
-                        )),
-                    )
-                }
-                Err(e) => {
-                    error!(logger, "Was a valid Ethereum node provided?");
-                    panic!("Failed to connect to Ethereum node: {}", e);
-                }
-            }
-        })
-        .collect();
+            eth_adapter
+                .net_identifiers(&logger)
+                .map(|network_identifier| (network_name, network_identifier))
+        },
+    ))
+    .map_err(move |e| {
+        error!(stores_error_logger, "Was a valid Ethereum node provided?");
+        panic!("Failed to connect to Ethereum node: {}", e);
+    })
+    .map(move |(network_name, network_identifier)| {
+        info!(
+        stores_logger,
+        "Connected to Ethereum";
+        "network" => &network_name,
+        "network_version" => &network_identifier.net_version,
+        );
+        (
+            network_name.to_string(),
+            Arc::new(DieselStore::new(
+                StoreConfig {
+                    postgres_url: postgres_url.clone(),
+                    network_name: network_name.to_string(),
+                },
+                &stores_logger,
+                network_identifier,
+                postgres_conn_pool.clone(),
+                stores_metrics_registry.clone(),
+            )),
+        )
+    })
+    .collect()
+    .map(|stores| HashMap::from_iter(stores.into_iter()))
+    .and_then(move |stores| {
+        let generic_store = stores.values().next().expect("error creating stores");
 
-    let generic_store = stores.values().next().expect("error creating stores");
+        let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
+            &logger,
+            generic_store.clone(),
+        ));
+        let mut graphql_server = GraphQLQueryServer::new(
+            &logger_factory,
+            graphql_runner.clone(),
+            generic_store.clone(),
+            node_id.clone(),
+        );
+        let mut subscription_server =
+            GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), generic_store.clone());
 
-    let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
-        &logger,
-        generic_store.clone(),
-    ));
-    let mut graphql_server = GraphQLQueryServer::new(
-        &logger_factory,
-        graphql_runner.clone(),
-        generic_store.clone(),
-        node_id.clone(),
-    );
-    let mut subscription_server =
-        GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), generic_store.clone());
+        let mut index_node_server = IndexNodeServer::new(
+            &logger_factory,
+            graphql_runner.clone(),
+            generic_store.clone(),
+            node_id.clone(),
+        );
 
-    let mut index_node_server = IndexNodeServer::new(
-        &logger_factory,
-        graphql_runner.clone(),
-        generic_store.clone(),
-        node_id.clone(),
-    );
+        if !disable_block_ingestor {
+            // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
+            // otherwise BlockStream will not work properly.
+            // BlockStream expects the blocks after the reorg threshold to be present in the
+            // database.
+            assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
 
-    if !disable_block_ingestor {
-        // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
-        // otherwise BlockStream will not work properly.
-        // BlockStream expects the blocks after the reorg threshold to be present in the
-        // database.
-        assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
+            info!(logger, "Starting block ingestor");
 
-        info!(logger, "Starting block ingestor");
+            // Create Ethereum block ingestors and spawn a thread to run each
+            eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
+                let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
+                    stores.get(network_name).expect("network with name").clone(),
+                    eth_adapter.clone(),
+                    *ANCESTOR_COUNT,
+                    network_name.to_string(),
+                    &logger_factory,
+                    block_polling_interval,
+                )
+                .expect("failed to create Ethereum block ingestor");
 
-        // Create Ethereum block ingestors and spawn a thread to run each
-        eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
-            let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
-                stores.get(network_name).expect("network with name").clone(),
-                eth_adapter.clone(),
-                *ANCESTOR_COUNT,
-                network_name.to_string(),
-                &logger_factory,
-                block_polling_interval,
-            )
-            .expect("failed to create Ethereum block ingestor");
+                // Run the Ethereum block ingestor in the background
+                tokio::spawn(block_ingestor.into_polling_stream());
+            });
+        }
 
-            // Run the Ethereum block ingestor in the background
-            tokio::spawn(block_ingestor.into_polling_stream());
-        });
-    }
+        let block_stream_builder = BlockStreamBuilder::new(
+            generic_store.clone(),
+            stores.clone(),
+            eth_adapters.clone(),
+            node_id.clone(),
+            *REORG_THRESHOLD,
+            metrics_registry.clone(),
+        );
+        let runtime_host_builder = WASMRuntimeHostBuilder::new(
+            eth_adapters.clone(),
+            link_resolver.clone(),
+            stores.clone(),
+        );
 
-    let block_stream_builder = BlockStreamBuilder::new(
-        generic_store.clone(),
-        stores.clone(),
-        eth_adapters.clone(),
-        node_id.clone(),
-        *REORG_THRESHOLD,
-        metrics_registry.clone(),
-    );
-    let runtime_host_builder =
-        WASMRuntimeHostBuilder::new(eth_adapters.clone(), link_resolver.clone(), stores.clone());
+        let subgraph_instance_manager = SubgraphInstanceManager::new(
+            &logger_factory,
+            stores.clone(),
+            eth_adapters.clone(),
+            runtime_host_builder,
+            block_stream_builder,
+            metrics_registry.clone(),
+        );
 
-    let subgraph_instance_manager = SubgraphInstanceManager::new(
-        &logger_factory,
-        stores.clone(),
-        eth_adapters.clone(),
-        runtime_host_builder,
-        block_stream_builder,
-        metrics_registry.clone(),
-    );
+        // Create IPFS-based subgraph provider
+        let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
+            &logger_factory,
+            link_resolver.clone(),
+            generic_store.clone(),
+            graphql_runner.clone(),
+        );
 
-    // Create IPFS-based subgraph provider
-    let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
-        &logger_factory,
-        link_resolver.clone(),
-        generic_store.clone(),
-        graphql_runner.clone(),
-    );
+        // Forward subgraph events from the subgraph provider to the subgraph instance manager
+        tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
 
-    // Forward subgraph events from the subgraph provider to the subgraph instance manager
-    tokio::spawn(forward(&mut subgraph_provider, &subgraph_instance_manager).unwrap());
+        // Check version switching mode environment variable
+        let version_switching_mode = SubgraphVersionSwitchingMode::parse(
+            env::var_os("EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE")
+                .unwrap_or_else(|| "instant".into())
+                .to_str()
+                .expect("invalid version switching mode"),
+        );
 
-    // Check version switching mode environment variable
-    let version_switching_mode = SubgraphVersionSwitchingMode::parse(
-        env::var_os("EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE")
-            .unwrap_or_else(|| "instant".into())
-            .to_str()
-            .expect("invalid version switching mode"),
-    );
+        // Create named subgraph provider for resolving subgraph name->ID mappings
+        let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
+            &logger_factory,
+            link_resolver,
+            Arc::new(subgraph_provider),
+            generic_store.clone(),
+            stores,
+            eth_adapters.clone(),
+            node_id.clone(),
+            version_switching_mode,
+        ));
+        tokio::spawn(subgraph_registrar.start().then(|start_result| {
+            Ok(start_result.expect("failed to initialize subgraph provider"))
+        }));
 
-    // Create named subgraph provider for resolving subgraph name->ID mappings
-    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
-        &logger_factory,
-        link_resolver,
-        Arc::new(subgraph_provider),
-        generic_store.clone(),
-        stores,
-        eth_adapters.clone(),
-        node_id.clone(),
-        version_switching_mode,
-    ));
-    tokio::spawn(
-        subgraph_registrar
-            .start()
-            .then(|start_result| Ok(start_result.expect("failed to initialize subgraph provider"))),
-    );
+        // Start admin JSON-RPC server.
+        let json_rpc_server = JsonRpcServer::serve(
+            json_rpc_port,
+            http_port,
+            ws_port,
+            subgraph_registrar.clone(),
+            node_id.clone(),
+            logger.clone(),
+        )
+        .expect("failed to start JSON-RPC admin server");
 
-    // Start admin JSON-RPC server.
-    let json_rpc_server = JsonRpcServer::serve(
-        json_rpc_port,
-        http_port,
-        ws_port,
-        subgraph_registrar.clone(),
-        node_id.clone(),
-        logger.clone(),
-    )
-    .expect("failed to start JSON-RPC admin server");
+        // Let the server run forever.
+        std::mem::forget(json_rpc_server);
 
-    // Let the server run forever.
-    std::mem::forget(json_rpc_server);
+        // Add the CLI subgraph with a REST request to the admin server.
+        if let Some(subgraph) = subgraph {
+            let (name, hash) = if subgraph.contains(':') {
+                let mut split = subgraph.split(':');
+                (split.next().unwrap(), split.next().unwrap().to_owned())
+            } else {
+                ("cli", subgraph)
+            };
 
-    // Add the CLI subgraph with a REST request to the admin server.
-    if let Some(subgraph) = subgraph {
-        let (name, hash) = if subgraph.contains(':') {
-            let mut split = subgraph.split(':');
-            (split.next().unwrap(), split.next().unwrap().to_owned())
-        } else {
-            ("cli", subgraph)
-        };
+            let name = SubgraphName::new(name)
+                .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
+            let subgraph_id =
+                SubgraphDeploymentId::new(hash).expect("Subgraph hash must be a valid IPFS hash");
 
-        let name = SubgraphName::new(name)
-            .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
-        let subgraph_id =
-            SubgraphDeploymentId::new(hash).expect("Subgraph hash must be a valid IPFS hash");
+            tokio::spawn(
+                subgraph_registrar
+                    .create_subgraph(name.clone())
+                    .then(|result| {
+                        Ok(result.expect("Failed to create subgraph from `--subgraph` flag"))
+                    })
+                    .and_then(move |_| {
+                        subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id)
+                    })
+                    .then(|result| {
+                        Ok(result.expect("Failed to deploy subgraph from `--subgraph` flag"))
+                    }),
+            );
+        }
+
+        // Serve GraphQL queries over HTTP
+        tokio::spawn(
+            graphql_server
+                .serve(http_port, ws_port)
+                .expect("Failed to start GraphQL query server"),
+        );
+
+        // Serve GraphQL subscriptions over WebSockets
+        tokio::spawn(
+            subscription_server
+                .serve(ws_port)
+                .expect("Failed to start GraphQL subscription server"),
+        );
+
+        // Run the index node server
+        tokio::spawn(
+            index_node_server
+                .serve(index_node_port)
+                .expect("Failed to start index node server"),
+        );
 
         tokio::spawn(
-            subgraph_registrar
-                .create_subgraph(name.clone())
-                .then(
-                    |result| Ok(result.expect("Failed to create subgraph from `--subgraph` flag")),
-                )
-                .and_then(move |_| {
-                    subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id)
-                })
-                .then(|result| {
-                    Ok(result.expect("Failed to deploy subgraph from `--subgraph` flag"))
-                }),
+            metrics_server
+                .serve(metrics_port)
+                .expect("Failed to start metrics server"),
         );
-    }
 
-    // Serve GraphQL queries over HTTP
-    tokio::spawn(
-        graphql_server
-            .serve(http_port, ws_port)
-            .expect("Failed to start GraphQL query server"),
-    );
-
-    // Serve GraphQL subscriptions over WebSockets
-    tokio::spawn(
-        subscription_server
-            .serve(ws_port)
-            .expect("Failed to start GraphQL subscription server"),
-    );
-
-    // Run the index node server
-    tokio::spawn(
-        index_node_server
-            .serve(index_node_port)
-            .expect("Failed to start index node server"),
-    );
-
-    tokio::spawn(
-        metrics_server
-            .serve(metrics_port)
-            .expect("Failed to start metrics server"),
-    );
-
-    // Periodically check for contention in the tokio threadpool. First spawn a
-    // task that simply responds to "ping" requests. Then spawn a separate
-    // thread to periodically ping it and check responsiveness.
-    let (ping_send, ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
-    tokio::spawn(
-        ping_receive
-            .for_each(move |pong_send| pong_send.clone().send(()).map(|_| ()).map_err(|_| ())),
-    );
-    let contention_logger = logger.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
-        let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
-        if ping_send.clone().send(pong_send).wait().is_err() {
-            debug!(contention_logger, "Shutting down contention checker thread");
-            break;
-        }
-        let mut timeout = Duration::from_millis(10);
-        while pong_receive.recv_timeout(timeout)
-            == Err(crossbeam_channel::RecvTimeoutError::Timeout)
-        {
-            debug!(contention_logger, "Possible contention in tokio threadpool";
+        // Periodically check for contention in the tokio threadpool. First spawn a
+        // task that simply responds to "ping" requests. Then spawn a separate
+        // thread to periodically ping it and check responsiveness.
+        let (ping_send, ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
+        tokio::spawn(
+            ping_receive
+                .for_each(move |pong_send| pong_send.clone().send(()).map(|_| ()).map_err(|_| ())),
+        );
+        let contention_logger = logger.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
+            if ping_send.clone().send(pong_send).wait().is_err() {
+                debug!(contention_logger, "Shutting down contention checker thread");
+                break;
+            }
+            let mut timeout = Duration::from_millis(10);
+            while pong_receive.recv_timeout(timeout)
+                == Err(crossbeam_channel::RecvTimeoutError::Timeout)
+            {
+                debug!(contention_logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
                                      "code" => LogCode::TokioContention);
-            if timeout < Duration::from_secs(10) {
-                timeout *= 10;
+                if timeout < Duration::from_secs(10) {
+                    timeout *= 10;
+                }
             }
-        }
-    });
+        });
 
-    future::empty()
+        future::empty()
+    })
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
