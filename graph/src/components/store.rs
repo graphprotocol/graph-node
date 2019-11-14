@@ -203,8 +203,13 @@ impl EntityQuery {
         self
     }
 
-    pub fn order_by(mut self, by: (String, ValueType), direction: EntityOrder) -> Self {
-        self.order_by = Some(by);
+    pub fn order_by(
+        mut self,
+        attribute: &str,
+        value_type: ValueType,
+        direction: EntityOrder,
+    ) -> Self {
+        self.order_by = Some((attribute.to_owned(), value_type));
         self.order_direction = Some(direction);
         self
     }

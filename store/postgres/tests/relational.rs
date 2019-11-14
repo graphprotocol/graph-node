@@ -554,35 +554,25 @@ fn find_interface() {
 
     test_find(
         vec!["pluto", "garfield"],
-        query(vec!["Cat", "Dog"]).order_by(
-            ("name".to_owned(), ValueType::String),
-            EntityOrder::Descending,
-        ),
+        query(vec!["Cat", "Dog"]).order_by("name", ValueType::String, EntityOrder::Descending),
     );
 
     test_find(
         vec!["garfield"],
         query(vec!["Cat", "Dog"])
             .filter(EntityFilter::StartsWith("name".into(), Value::from("Gar")))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     );
 
     // Test that we can order by id
     test_find(
         vec!["pluto", "garfield"],
-        query(vec!["Cat", "Dog"]).order_by(
-            ("id".to_owned(), ValueType::String),
-            EntityOrder::Descending,
-        ),
+        query(vec!["Cat", "Dog"]).order_by("id", ValueType::String, EntityOrder::Descending),
     );
 
     test_find(
         vec!["garfield", "pluto"],
-        query(vec!["Cat", "Dog"])
-            .order_by(("id".to_owned(), ValueType::String), EntityOrder::Ascending),
+        query(vec!["Cat", "Dog"]).order_by("id", ValueType::String, EntityOrder::Ascending),
     );
 }
 
@@ -630,10 +620,7 @@ fn find_string_equal() {
                 "name".to_owned(),
                 "Cindini".into(),
             )]))
-            .order_by(
-                ("id".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("id", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -646,10 +633,7 @@ fn find_string_not_equal() {
                 "name".to_owned(),
                 "Cindini".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -673,10 +657,7 @@ fn find_string_less_than_order_by_asc() {
                 "name".to_owned(),
                 "Kundi".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -689,10 +670,7 @@ fn find_string_less_than_order_by_desc() {
                 "name".to_owned(),
                 "Kundi".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -705,10 +683,7 @@ fn find_string_less_than_range() {
                 "name".to_owned(),
                 "ZZZ".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(1)
             .skip(1),
     )
@@ -723,10 +698,7 @@ fn find_string_multiple_and() {
                 EntityFilter::LessThan("name".to_owned(), "Cz".into()),
                 EntityFilter::Equal("name".to_owned(), "Cindini".into()),
             ]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -739,10 +711,7 @@ fn find_string_ends_with() {
                 "name".to_owned(),
                 "ini".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -755,10 +724,7 @@ fn find_string_not_ends_with() {
                 "name".to_owned(),
                 "ini".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -771,10 +737,7 @@ fn find_string_in() {
                 "name".to_owned(),
                 vec!["Johnton".into(), "Nobody".into(), "Still nobody".into()],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -787,10 +750,7 @@ fn find_string_not_in() {
                 "name".to_owned(),
                 vec!["Shaqueeena".into()],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -814,10 +774,7 @@ fn find_float_not_equal() {
                 "weight".to_owned(),
                 Value::BigDecimal(184.4.into()),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -841,10 +798,7 @@ fn find_float_less_than() {
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -857,10 +811,7 @@ fn find_float_less_than_order_by_desc() {
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -873,10 +824,7 @@ fn find_float_less_than_range() {
                 "weight".to_owned(),
                 Value::BigDecimal(161.0.into()),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(1)
             .skip(1),
     )
@@ -894,10 +842,7 @@ fn find_float_in() {
                     Value::BigDecimal(111.7.into()),
                 ],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -914,10 +859,7 @@ fn find_float_not_in() {
                     Value::BigDecimal(111.7.into()),
                 ],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -931,10 +873,7 @@ fn find_int_equal() {
                 "age".to_owned(),
                 Value::Int(67 as i32),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -947,10 +886,7 @@ fn find_int_not_equal() {
                 "age".to_owned(),
                 Value::Int(67 as i32),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -974,10 +910,7 @@ fn find_int_greater_or_equal() {
                 "age".to_owned(),
                 Value::Int(43 as i32),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -990,10 +923,7 @@ fn find_int_less_than() {
                 "age".to_owned(),
                 Value::Int(50 as i32),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -1006,10 +936,7 @@ fn find_int_less_or_equal() {
                 "age".to_owned(),
                 Value::Int(43 as i32),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -1022,10 +949,7 @@ fn find_int_less_than_order_by_desc() {
                 "age".to_owned(),
                 Value::Int(50 as i32),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -1038,10 +962,7 @@ fn find_int_less_than_range() {
                 "age".to_owned(),
                 Value::Int(67 as i32),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(1)
             .skip(1),
     )
@@ -1056,10 +977,7 @@ fn find_int_in() {
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -1073,10 +991,7 @@ fn find_int_not_in() {
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -1090,10 +1005,7 @@ fn find_bool_equal() {
                 "coffee".to_owned(),
                 Value::Bool(true),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -1106,10 +1018,7 @@ fn find_bool_not_equal() {
                 "coffee".to_owned(),
                 Value::Bool(true),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -1122,10 +1031,7 @@ fn find_bool_in() {
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -1139,10 +1045,7 @@ fn find_bool_not_in() {
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -1156,10 +1059,7 @@ fn find_bytes_equal() {
                 "bin_name".to_owned(),
                 Value::Bytes("Johnton".as_bytes().into()),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -1172,10 +1072,7 @@ fn find_null_equal() {
                 "favorite_color".to_owned(),
                 Value::Null,
             ))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -1185,10 +1082,7 @@ fn find_null_not_equal() {
         vec!["1", "2"],
         user_query()
             .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -1201,10 +1095,7 @@ fn find_null_not_in() {
                 "favorite_color".to_owned(),
                 vec![Value::Null],
             ))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     );
 
     test_find(
@@ -1214,10 +1105,7 @@ fn find_null_not_in() {
                 "favorite_color".to_owned(),
                 vec!["red".into(), Value::Null],
             ))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     );
 }
 
@@ -1225,17 +1113,11 @@ fn find_null_not_in() {
 fn find_order_by_float() {
     test_find(
         vec!["3", "2", "1"],
-        user_query().order_by(
-            ("weight".to_owned(), ValueType::BigDecimal),
-            EntityOrder::Ascending,
-        ),
+        user_query().order_by("weight", ValueType::BigDecimal, EntityOrder::Ascending),
     );
     test_find(
         vec!["1", "2", "3"],
-        user_query().order_by(
-            ("weight".to_owned(), ValueType::BigDecimal),
-            EntityOrder::Descending,
-        ),
+        user_query().order_by("weight", ValueType::BigDecimal, EntityOrder::Descending),
     );
 }
 
@@ -1243,11 +1125,11 @@ fn find_order_by_float() {
 fn find_order_by_id() {
     test_find(
         vec!["1", "2", "3"],
-        user_query().order_by(("id".to_owned(), ValueType::ID), EntityOrder::Ascending),
+        user_query().order_by("id", ValueType::ID, EntityOrder::Ascending),
     );
     test_find(
         vec!["3", "2", "1"],
-        user_query().order_by(("id".to_owned(), ValueType::ID), EntityOrder::Descending),
+        user_query().order_by("id", ValueType::ID, EntityOrder::Descending),
     );
 }
 
@@ -1255,11 +1137,11 @@ fn find_order_by_id() {
 fn find_order_by_int() {
     test_find(
         vec!["3", "2", "1"],
-        user_query().order_by(("age".to_owned(), ValueType::Int), EntityOrder::Ascending),
+        user_query().order_by("age", ValueType::Int, EntityOrder::Ascending),
     );
     test_find(
         vec!["1", "2", "3"],
-        user_query().order_by(("age".to_owned(), ValueType::Int), EntityOrder::Descending),
+        user_query().order_by("age", ValueType::Int, EntityOrder::Descending),
     );
 }
 
@@ -1267,17 +1149,11 @@ fn find_order_by_int() {
 fn find_order_by_string() {
     test_find(
         vec!["2", "1", "3"],
-        user_query().order_by(
-            ("name".to_owned(), ValueType::String),
-            EntityOrder::Ascending,
-        ),
+        user_query().order_by("name", ValueType::String, EntityOrder::Ascending),
     );
     test_find(
         vec!["3", "1", "2"],
-        user_query().order_by(
-            ("name".to_owned(), ValueType::String),
-            EntityOrder::Descending,
-        ),
+        user_query().order_by("name", ValueType::String, EntityOrder::Descending),
     );
 }
 
@@ -1290,7 +1166,7 @@ fn find_where_nested_and_or() {
                 EntityFilter::Equal("id".to_owned(), Value::from("1")),
                 EntityFilter::Equal("id".to_owned(), Value::from("2")),
             ])]))
-            .order_by(("id".to_owned(), ValueType::String), EntityOrder::Ascending),
+            .order_by("id", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -1303,10 +1179,7 @@ fn find_enum_equal() {
                 "favorite_color".to_owned(),
                 "red".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Descending),
     )
 }
 
@@ -1319,10 +1192,7 @@ fn find_enum_not_equal() {
                 "favorite_color".to_owned(),
                 "red".into(),
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Ascending,
-            ),
+            .order_by("name", ValueType::String, EntityOrder::Ascending),
     )
 }
 
@@ -1335,10 +1205,7 @@ fn find_enum_in() {
                 "favorite_color".to_owned(),
                 vec!["red".into()],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -1352,10 +1219,7 @@ fn find_enum_not_in() {
                 "favorite_color".to_owned(),
                 vec!["red".into()],
             )]))
-            .order_by(
-                ("name".to_owned(), ValueType::String),
-                EntityOrder::Descending,
-            )
+            .order_by("name", ValueType::String, EntityOrder::Descending)
             .first(5),
     )
 }
@@ -1387,9 +1251,11 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
         insert_pet(conn, layout, "Ferret", "a2b", &a2b);
         insert_pet(conn, layout, "Ferret", "a3", &a3);
 
-        let query = query(vec!["Ferret"])
-            .filter(filter)
-            .order_by(("id".to_owned(), ValueType::String), EntityOrder::Ascending);
+        let query = query(vec!["Ferret"]).filter(filter).order_by(
+            "id",
+            ValueType::String,
+            EntityOrder::Ascending,
+        );
 
         let order = match query.order_by {
             Some((attribute, value_type)) => {
