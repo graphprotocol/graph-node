@@ -279,6 +279,18 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 .env("STORE_CONNECTION_POOL_SIZE")
                 .help("Limits the number of connections in the store's connection pool"),
         )
+        .arg(
+            Arg::with_name("network-subgraphs")
+                .takes_value(true)
+                .multiple(true)
+                .min_values(1)
+                .long("network-subgraphs")
+                .value_name("NETWORK_NAME")
+                .help(
+                    "One or more network names to index using built-in subgraphs \
+                     (e.g. 'ethereum/mainnet').",
+                ),
+        )
         .get_matches();
 
     // Set up logger
@@ -557,6 +569,23 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 generic_store.clone(),
                 node_id.clone(),
             );
+
+            // Parse network subgraphs (if there are any)
+            let network_subgraphs = matches.values_of("network-subgraphs");
+            if let Some(network_names) = network_subgraphs {
+                let networks_to_index: Vec<_> = network_names
+                    .into_iter()
+                    .filter_map(|name| {
+                        if name.starts_with("ethereum/") {
+                            Some(name.replace("ethereum/", ""))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                println!("{:?}", networks_to_index);
+            }
 
             if !disable_block_ingestor {
                 // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
