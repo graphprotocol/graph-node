@@ -445,25 +445,16 @@ where
                     }))
                     .from_err()
                     .buffered(50)
-                    .fold(
-                        (self, latest_block),
-                        move |(ingestor, block_ptr_from), block| {
-                            let block_ptr = Some((&block.block).into());
-                            ingestor
-                                .ingest_block(block_ptr_from, block)
-                                .and_then(move |ingestor| future::ok((ingestor, block_ptr)))
-                        },
-                    )
-                    .and_then(|(ingestor, _)| future::ok(ingestor)),
+                    .fold(self, move |ingestor, block| {
+                        ingestor
+                            .ingest_block(block)
+                            .and_then(move |ingestor| future::ok(ingestor))
+                    }),
                 ) as Box<dyn Future<Item = _, Error = _> + Send>
             })
     }
 
-    fn ingest_block(
-        self,
-        block_ptr_from: Option<EthereumBlockPointer>,
-        mut block: BlockWithUncles,
-    ) -> impl Future<Item = Self, Error = Error> {
+    fn ingest_block(self, mut block: BlockWithUncles) -> impl Future<Item = Self, Error = Error> {
         let hash = block.block.block.hash.clone().expect("block has no hash");
         let number = block
             .block
@@ -541,7 +532,6 @@ where
                         .store
                         .transact_block_operations(
                             ingestor.subgraph_id.clone(),
-                            block_ptr_from,
                             EthereumBlockPointer::from(&block_for_ops.block),
                             modifications,
                         )
