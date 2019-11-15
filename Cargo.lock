@@ -897,6 +897,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-ethereum"
+version = "0.16.1"
+dependencies = [
+ "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "graph 0.16.1",
+ "graph-mock 0.16.1",
+ "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jsonrpc-core 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "graph-core"
 version = "0.16.1"
 dependencies = [
@@ -917,19 +930,6 @@ dependencies = [
  "test-store 0.1.0",
  "uuid 0.7.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "walkdir 2.2.9 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "graph-datasource-ethereum"
-version = "0.16.1"
-dependencies = [
- "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "graph 0.16.1",
- "graph-mock 0.16.1",
- "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "jsonrpc-core 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -969,8 +969,8 @@ dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "git-testament 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.16.1",
+ "graph-chain-ethereum 0.16.1",
  "graph-core 0.16.1",
- "graph-datasource-ethereum 0.16.1",
  "graph-mock 0.16.1",
  "graph-runtime-wasm 0.16.1",
  "graph-server-http 0.16.1",

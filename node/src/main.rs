@@ -15,11 +15,11 @@ use graph::prelude::{
     EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
 };
 use graph::util::security::SafeDisplay;
+use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, Transport};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
-use graph_datasource_ethereum::{BlockStreamBuilder, Transport};
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
@@ -563,7 +563,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
 
             // Create Ethereum block ingestors and spawn a thread to run each
             eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
-                let block_ingestor = graph_datasource_ethereum::BlockIngestor::new(
+                let block_ingestor = BlockIngestor::new(
                     stores.get(network_name).expect("network with name").clone(),
                     eth_adapter.clone(),
                     *ANCESTOR_COUNT,
@@ -797,7 +797,7 @@ fn parse_ethereum_networks_and_nodes(
 
                 Ok((
                     name.to_string(),
-                    Arc::new(graph_datasource_ethereum::EthereumAdapter::new(
+                    Arc::new(graph_chain_ethereum::EthereumAdapter::new(
                         transport,
                         eth_rpc_metrics.clone(),
                     )) as Arc<dyn EthereumAdapter>,

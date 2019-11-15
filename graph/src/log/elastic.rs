@@ -156,7 +156,7 @@ pub struct ElasticDrainConfig {
 ///     "timestamp": "2018-11-08T00:54:52.589258000Z",
 ///     "subgraphId": "Qmb31zcpzqga7ERaUTp83gVdYcuBasz4rXUHFufikFTJGU",
 ///     "meta": {
-///       "module": "graph_datasource_ethereum::block_stream",
+///       "module": "graph_chain_ethereum::block_stream",
 ///       "line": 220,
 ///       "column": 9
 ///     },

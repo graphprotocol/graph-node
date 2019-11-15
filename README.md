@@ -122,7 +122,7 @@ the environment variables that can be configured.
   common data.
 - `core` — A library providing implementations for core components, used by all
   nodes.
-- `datasource/ethereum` — A library with components for obtaining data from
+- `chain/ethereum` — A library with components for obtaining data from
   Ethereum.
 - `graphql` — A GraphQL implementation with API schema generation,
   introspection, and more.

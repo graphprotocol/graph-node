@@ -9,7 +9,7 @@ use ethabi::{Function, Param, ParamType, Token};
 use graph::components::ethereum::EthereumContractCall;
 use graph::prelude::EthereumAdapter as EthereumAdapterTrait;
 use graph::prelude::*;
-use graph_datasource_ethereum::EthereumAdapter;
+use graph_chain_ethereum::EthereumAdapter;
 use mock::MockMetricsRegistry;
 use web3::helpers::*;
 use web3::types::*;
