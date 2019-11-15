@@ -12,10 +12,11 @@ use std::time::Duration;
 use graph::components::forward;
 use graph::log::logger;
 use graph::prelude::{
-    EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
+    EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _,
+    NetworkIndexer as NetworkIndexerTrait, *,
 };
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, Transport};
+use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, NetworkIndexer, Transport};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -570,22 +571,34 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 node_id.clone(),
             );
 
-            // Parse network subgraphs (if there are any)
-            let network_subgraphs = matches.values_of("network-subgraphs");
-            if let Some(network_names) = network_subgraphs {
-                let networks_to_index: Vec<_> = network_names
+            // Spawn Ethereum network indexers for all networks that are to be indexed
+            if let Some(network_names) = matches.values_of("network-subgraphs") {
+                network_names
                     .into_iter()
-                    .filter_map(|name| {
-                        if name.starts_with("ethereum/") {
-                            Some(name.replace("ethereum/", ""))
+                    .filter_map(|network_name| {
+                        if network_name.starts_with("ethereum/") {
+                            Some(network_name.replace("ethereum/", ""))
                         } else {
                             None
                         }
                     })
-                    .collect();
+                    .for_each(|network_name| {
+                        let network_indexer = NetworkIndexer::new(
+                            network_name.clone(),
+                            stores
+                                .get(&network_name)
+                                .expect("store for network")
+                                .clone(),
+                            eth_adapters
+                                .get(&network_name)
+                                .expect("adapter for network")
+                                .clone(),
+                            &logger_factory,
+                        );
 
-                println!("{:?}", networks_to_index);
-            }
+                        tokio::spawn(network_indexer.into_polling_stream());
+                    })
+            };
 
             if !disable_block_ingestor {
                 // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
