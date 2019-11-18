@@ -572,19 +572,14 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
             );
 
             // Spawn Ethereum network indexers for all networks that are to be indexed
-            if let Some(network_names) = matches.values_of("network-subgraphs") {
-                network_names
+            if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
+                network_subgraphs
                     .into_iter()
-                    .filter_map(|network_name| {
-                        if network_name.starts_with("ethereum/") {
-                            Some(network_name.replace("ethereum/", ""))
-                        } else {
-                            None
-                        }
-                    })
-                    .for_each(|network_name| {
+                    .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
+                    .for_each(|network_subgraph| {
+                        let network_name = network_subgraph.replace("ethereum/", "");
                         let network_indexer = NetworkIndexer::new(
-                            network_name.clone(),
+                            network_subgraph.into(),
                             stores
                                 .get(&network_name)
                                 .expect("store for network")
