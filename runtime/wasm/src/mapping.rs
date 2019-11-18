@@ -57,7 +57,7 @@ pub fn spawn_module(
                 )?;
                 section.end();
 
-                let _section = host_metrics.stopwatch.start_section("run_handler");
+                let section = host_metrics.stopwatch.start_section("run_handler");
                 let result = match trigger {
                     MappingTrigger::Log {
                         transaction,
@@ -87,6 +87,7 @@ pub fn spawn_module(
                         module.handle_ethereum_block(handler.handler.as_str())
                     }
                 };
+                section.end();
 
                 result_sender
                     .send((result, future::ok(Instant::now())))
