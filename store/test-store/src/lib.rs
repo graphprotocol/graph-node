@@ -77,12 +77,17 @@ pub fn transact_entity_operations(
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
-    _: StopwatchMetrics,
 ) -> Result<bool, StoreError> {
     let mut entity_cache = EntityCache::new();
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications(store.as_ref())
         .expect("failed to convert to modifications");
-    store.transact_block_operations(subgraph_id, block_ptr_to, mods)
+    let metrics_registry = Arc::new(MockMetricsRegistry::new());
+    let stopwatch_metrics = StopwatchMetrics::new(
+        Logger::root(slog::Discard, o!()),
+        subgraph_id.clone(),
+        metrics_registry.clone(),
+    );
+    store.transact_block_operations(subgraph_id, block_ptr_to, mods, stopwatch_metrics)
 }

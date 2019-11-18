@@ -1,5 +1,6 @@
 use diesel::pg::PgConnection;
 use diesel::*;
+use graph_mock::MockMetricsRegistry;
 use graphql_parser::schema as s;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -2223,6 +2224,13 @@ fn handle_large_string_with_index() {
             .collect::<String>();
         let other_text = long_text.clone() + "X";
 
+        let metrics_registry = Arc::new(MockMetricsRegistry::new());
+        let stopwatch_metrics = StopwatchMetrics::new(
+            Logger::root(slog::Discard, o!()),
+            TEST_SUBGRAPH_ID.clone(),
+            metrics_registry.clone(),
+        );
+
         store
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
@@ -2231,6 +2239,7 @@ fn handle_large_string_with_index() {
                     make_insert_op(ONE, &long_text),
                     make_insert_op(TWO, &other_text),
                 ],
+                stopwatch_metrics,
             )
             .expect("Failed to insert large text");
 
