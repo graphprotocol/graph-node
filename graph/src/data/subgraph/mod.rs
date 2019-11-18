@@ -834,6 +834,13 @@ impl UnvalidatedSubgraphManifest {
     ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
         SubgraphManifest::resolve(link, resolver, logger).map(|manifest| Self(manifest))
     }
+
+    pub fn validate(
+        &self,
+        _logger: Logger,
+    ) -> impl Future<Item = (), Error = Vec<SubgraphManifestValidationError>> {
+        return future::ok(());
+    }
 }
 
 impl SubgraphManifest {
@@ -909,15 +916,6 @@ impl SubgraphManifest {
             .iter()
             .map(|data_source| data_source.source.start_block)
             .collect()
-    }
-}
-
-impl UnvalidatedSubgraphManifest {
-    pub fn validate(
-        &self,
-        _logger: Logger,
-    ) -> impl Future<Item = (), Error = Vec<SubgraphManifestValidationError>> {
-        return future::ok(());
     }
 }
 
