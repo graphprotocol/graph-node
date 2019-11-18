@@ -13,6 +13,11 @@ use graphql_parser::{
 use std::collections::BTreeMap;
 use std::iter::FromIterator;
 
+pub enum SchemaReference {
+    ByName(String),
+    ByHash(String),
+}
+
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
@@ -37,19 +42,6 @@ impl Schema {
             interfaces_for_type: BTreeMap::new(),
             types_for_interface: BTreeMap::new(),
         }
-    }
-
-    /// Creates a new schema from a parsed and validated GraphQL schema document.
-    pub fn initialize(id: SubgraphDeploymentId, document: schema::Document) -> Result<Self, Error> {
-        let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
-        let mut schema = Self {
-            id: id.clone(),
-            document,
-            interfaces_for_type,
-            types_for_interface,
-        };
-        schema.add_subgraph_id_directives(id);
-        Ok(schema)
     }
 
     pub fn collect_interfaces(
