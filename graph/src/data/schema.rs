@@ -39,6 +39,19 @@ impl Schema {
         }
     }
 
+    /// Creates a new schema from a parsed and validated GraphQL schema document.
+    pub fn initialize(id: SubgraphDeploymentId, document: schema::Document) -> Result<Self, Error> {
+        let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
+        let mut schema = Self {
+            id: id.clone(),
+            document,
+            interfaces_for_type,
+            types_for_interface,
+        };
+        schema.add_subgraph_id_directives(id);
+        Ok(schema)
+    }
+
     pub fn collect_interfaces(
         document: &schema::Document,
     ) -> Result<
