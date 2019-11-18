@@ -58,7 +58,7 @@ impl SubgraphDeploymentId {
         }
 
         // Check that the ID contains only allowed characters.
-        if !s.chars().all(|c| c.is_ascii_alphanumeric()) {
+        if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
             return Err(());
         }
 
