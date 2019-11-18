@@ -367,11 +367,11 @@ impl From<String> for Link {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct SchemaData {
+pub struct UnresolvedSchema {
     pub file: Link,
 }
 
-impl SchemaData {
+impl UnresolvedSchema {
     pub fn resolve(
         self,
         id: SubgraphDeploymentId,
@@ -812,9 +812,28 @@ impl<S, D, T> PartialEq for BaseSubgraphManifest<S, D, T> {
     }
 }
 
-pub type UnresolvedSubgraphManifest =
-    BaseSubgraphManifest<SchemaData, UnresolvedDataSource, UnresolvedDataSourceTemplate>;
+/// SubgraphManifest with IPFS links unresolved
+type UnresolvedSubgraphManifest =
+    BaseSubgraphManifest<UnresolvedSchema, UnresolvedDataSource, UnresolvedDataSourceTemplate>;
+
+/// SubgraphManifest validated with IPFS links resolved
 pub type SubgraphManifest = BaseSubgraphManifest<Schema, DataSource, DataSourceTemplate>;
+
+/// Unvalidated SubgraphManifest
+pub struct UnvalidatedSubgraphManifest(SubgraphManifest);
+
+impl UnvalidatedSubgraphManifest {
+    /// Entry point for resolving a subgraph definition.
+    /// Right now the only supported links are of the form:
+    /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
+    pub fn resolve(
+        link: Link,
+        resolver: Arc<impl LinkResolver>,
+        logger: Logger,
+    ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
+        SubgraphManifest::resolve(link, resolver, logger).map(|manifest| Self(manifest))
+    }
+}
 
 impl SubgraphManifest {
     /// Entry point for resolving a subgraph definition.
@@ -889,6 +908,15 @@ impl SubgraphManifest {
             .iter()
             .map(|data_source| data_source.source.start_block)
             .collect()
+    }
+}
+
+impl UnvalidatedSubgraphManifest {
+    pub fn validate(
+        &self,
+        _logger: Logger,
+    ) -> impl Future<Item = (), Error = Vec<SubgraphManifestValidationError>> {
+        return future::ok(());
     }
 }
 
