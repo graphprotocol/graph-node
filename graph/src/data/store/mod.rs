@@ -1,4 +1,3 @@
-use ethabi::Address;
 use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
@@ -10,13 +9,15 @@ use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-use web3::types::H256;
 
 use crate::data::subgraph::SubgraphDeploymentId;
 use crate::prelude::{format_err, QueryExecutionError};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
+
+// Ethereum compatibility.
+pub mod ethereum;
 
 /// A pair of subgraph ID and entity type name.
 pub type SubgraphEntityPair = (SubgraphDeploymentId, String);
@@ -371,40 +372,6 @@ impl From<u64> for Value {
     }
 }
 
-impl From<Vec<Value>> for Value {
-    fn from(list: Vec<Value>) -> Value {
-        Value::List(list)
-    }
-}
-
-impl From<Address> for Value {
-    fn from(address: Address) -> Value {
-        Value::Bytes(scalar::Bytes::from(address.as_ref()))
-    }
-}
-
-impl From<H256> for Value {
-    fn from(hash: H256) -> Value {
-        Value::Bytes(scalar::Bytes::from(hash.as_ref()))
-    }
-}
-
-impl TryFrom<Value> for Option<H256> {
-    type Error = Error;
-
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        match value {
-            Value::Bytes(bytes) => {
-                let hex = format!("{}", bytes);
-                Ok(Some(H256::from_str(hex.trim_start_matches("0x"))?))
-            }
-            Value::String(s) => Ok(Some(H256::from_str(s.as_str())?)),
-            Value::Null => Ok(None),
-            _ => Err(format_err!("Value is not an H256")),
-        }
-    }
-}
-
 impl TryFrom<Value> for Option<scalar::BigInt> {
     type Error = Error;
 
@@ -414,6 +381,15 @@ impl TryFrom<Value> for Option<scalar::BigInt> {
             Value::Null => Ok(None),
             _ => Err(format_err!("Value is not an BigInt")),
         }
+    }
+}
+
+impl<T> From<Vec<T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(values: Vec<T>) -> Value {
+        Value::List(values.into_iter().map(Into::into).collect())
     }
 }
 
