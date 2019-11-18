@@ -566,12 +566,16 @@ impl Store {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
                     self.check_interface_entity_uniqueness(conn, &key)?;
                     section.end();
+
+                    let _section = stopwatch.start_section("apply_entity_modifications_update");
                     conn.update(&key, &data, history_event).map(|_| 0)
                 }
                 Insert { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
                     self.check_interface_entity_uniqueness(conn, &key)?;
                     section.end();
+
+                    let _section = stopwatch.start_section("apply_entity_modifications_insert");
                     conn.insert(&key, &data, history_event).map(|_| 1)
                 }
                 Remove { key } => conn
