@@ -820,7 +820,8 @@ type UnresolvedSubgraphManifest =
 pub type SubgraphManifest = BaseSubgraphManifest<Schema, DataSource, DataSourceTemplate>;
 
 /// Unvalidated SubgraphManifest
-pub struct UnvalidatedSubgraphManifest(SubgraphManifest);
+// TODO: Make the tuple fields private
+pub struct UnvalidatedSubgraphManifest(pub SubgraphManifest);
 
 impl UnvalidatedSubgraphManifest {
     /// Entry point for resolving a subgraph definition.

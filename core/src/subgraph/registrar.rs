@@ -307,59 +307,60 @@ where
         let name_inner = name.clone();
 
         Box::new(
-            SubgraphManifest::resolve(hash.to_ipfs_link(), self.resolver.clone(), logger.clone())
-                .map_err(SubgraphRegistrarError::ResolveError)
-                .and_then(validation::validate_manifest)
-                .and_then(move |manifest| {
-                    manifest
-                        .network_name()
-                        .map_err(|e| SubgraphRegistrarError::ManifestValidationError(vec![e]))
-                        .and_then(move |network_name| {
-                            chain_stores
-                                .clone()
-                                .get(&network_name)
-                                .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                                    network_name.clone(),
-                                ))
-                                .and_then(move |chain_store| {
-                                    ethereum_adapters
-                                        .get(&network_name)
-                                        .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                                            network_name.clone(),
-                                        ))
-                                        .map(move |ethereum_adapter| {
-                                            (
-                                                manifest,
-                                                ethereum_adapter.clone(),
-                                                chain_store.clone(),
-                                            )
-                                        })
-                                })
-                        })
-                })
-                .and_then(move |(manifest, ethereum_adapter, chain_store)| {
-                    let manifest_id = manifest.id.clone();
-                    create_subgraph_version(
-                        &logger2,
-                        store,
-                        chain_store.clone(),
-                        ethereum_adapter.clone(),
-                        name,
-                        manifest,
-                        node_id,
-                        version_switching_mode,
-                    )
-                    .map(|_| manifest_id)
-                })
-                .and_then(move |manifest_id| {
-                    debug!(
-                        logger3,
-                        "Wrote new subgraph version to store";
-                        "subgraph_name" => name_inner.to_string(),
-                        "subgraph_hash" => manifest_id.to_string(),
-                    );
-                    Ok(())
-                }),
+            UnvalidatedSubgraphManifest::resolve(
+                hash.to_ipfs_link(),
+                self.resolver.clone(),
+                logger.clone(),
+            )
+            .map_err(SubgraphRegistrarError::ResolveError)
+            // .and_then(validation::validate_manifest)
+            .and_then(move |manifest| {
+                let manifest = manifest.0;
+                manifest
+                    .network_name()
+                    .map_err(|e| SubgraphRegistrarError::ManifestValidationError(vec![e]))
+                    .and_then(move |network_name| {
+                        chain_stores
+                            .clone()
+                            .get(&network_name)
+                            .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                                network_name.clone(),
+                            ))
+                            .and_then(move |chain_store| {
+                                ethereum_adapters
+                                    .get(&network_name)
+                                    .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                                        network_name.clone(),
+                                    ))
+                                    .map(move |ethereum_adapter| {
+                                        (manifest, ethereum_adapter.clone(), chain_store.clone())
+                                    })
+                            })
+                    })
+            })
+            .and_then(move |(manifest, ethereum_adapter, chain_store)| {
+                let manifest_id = manifest.id.clone();
+                create_subgraph_version(
+                    &logger2,
+                    store,
+                    chain_store.clone(),
+                    ethereum_adapter.clone(),
+                    name,
+                    manifest,
+                    node_id,
+                    version_switching_mode,
+                )
+                .map(|_| manifest_id)
+            })
+            .and_then(move |manifest_id| {
+                debug!(
+                    logger3,
+                    "Wrote new subgraph version to store";
+                    "subgraph_name" => name_inner.to_string(),
+                    "subgraph_hash" => manifest_id.to_string(),
+                );
+                Ok(())
+            }),
         )
     }
 
