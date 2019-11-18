@@ -553,6 +553,7 @@ impl Store {
         conn: &e::Connection,
         mods: Vec<EntityModification>,
         history_event: Option<&HistoryEvent>,
+        stopwatch: StopwatchMetrics,
     ) -> Result<(), StoreError> {
         let mut count = 0;
 
@@ -562,11 +563,15 @@ impl Store {
             let do_count = !modification.entity_key().subgraph_id.is_meta();
             let n = match modification {
                 Overwrite { key, data } => {
+                    let section = stopwatch.start_section("check_interface_entity_uniqueness");
                     self.check_interface_entity_uniqueness(conn, &key)?;
+                    section.end();
                     conn.update(&key, &data, history_event).map(|_| 0)
                 }
                 Insert { key, data } => {
+                    let section = stopwatch.start_section("check_interface_entity_uniqueness");
                     self.check_interface_entity_uniqueness(conn, &key)?;
+                    section.end();
                     conn.insert(&key, &data, history_event).map(|_| 1)
                 }
                 Remove { key } => conn
@@ -855,6 +860,7 @@ impl StoreTrait for Store {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
+        stopwatch: StopwatchMetrics,
     ) -> Result<bool, StoreError> {
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
@@ -890,7 +896,9 @@ impl StoreTrait for Store {
                 let event: StoreEvent = mods.iter().collect();
 
                 // Make the changes
-                self.apply_entity_modifications(&econn, mods, Some(&history_event))?;
+                let section = stopwatch.start_section("apply_entity_modifications");
+                self.apply_entity_modifications(&econn, mods, Some(&history_event), stopwatch)?;
+                section.end();
 
                 // Update the subgraph block pointer, without an event source; this way
                 // no entity history is recorded for the block pointer update itself

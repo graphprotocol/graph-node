@@ -625,6 +625,7 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
+        stopwatch: StopwatchMetrics,
     ) -> Result<bool, StoreError>;
 
     /// Apply the specified metadata operations.
