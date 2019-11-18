@@ -651,22 +651,23 @@ impl Store {
     fn get_entity_conn(&self, subgraph: &SubgraphDeploymentId) -> Result<e::Connection, Error> {
         let start = Instant::now();
         let conn = self.get_conn()?;
-        self.get_entity_conn_timers
-            .lock()
-            .unwrap()
-            .entry(subgraph.clone())
-            .or_insert_with(|| {
-                *self
-                    .registry
-                    .new_counter(
-                        format!("{}_get_entity_conn_secs", subgraph),
-                        format!("total time spent waiting for a DB connection"),
-                        HashMap::new(),
-                    )
-                    .expect("failed to register get_conn_secs prometheus counter")
-            })
-            .inc_by(start.elapsed().as_secs_f64());
-
+        if *subgraph != *SUBGRAPHS_ID {
+            self.get_entity_conn_timers
+                .lock()
+                .unwrap()
+                .entry(subgraph.clone())
+                .or_insert_with(|| {
+                    *self
+                        .registry
+                        .new_counter(
+                            format!("{}_get_entity_conn_secs", subgraph),
+                            format!("total time spent waiting for a DB connection"),
+                            HashMap::new(),
+                        )
+                        .expect("failed to register get_conn_secs prometheus counter")
+                })
+                .inc_by(start.elapsed().as_secs_f64());
+        }
         let storage = self.storage(&conn, subgraph)?;
         let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;
         Ok(e::Connection::new(conn, storage, metadata))
