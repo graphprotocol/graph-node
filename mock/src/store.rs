@@ -188,6 +188,7 @@ impl Store for MockStore {
         _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: Vec<EntityModification>,
+        _: StopwatchMetrics,
     ) -> Result<bool, StoreError> {
         unimplemented!();
     }
@@ -487,6 +488,7 @@ impl Store for FakeStore {
         _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: Vec<EntityModification>,
+        _: StopwatchMetrics,
     ) -> Result<bool, StoreError> {
         unimplemented!();
     }

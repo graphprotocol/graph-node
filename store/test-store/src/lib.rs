@@ -77,6 +77,7 @@ pub fn transact_entity_operations(
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
+    _: StopwatchMetrics,
 ) -> Result<bool, StoreError> {
     let mut entity_cache = EntityCache::new();
     entity_cache.append(ops);

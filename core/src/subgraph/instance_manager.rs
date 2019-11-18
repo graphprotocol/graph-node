@@ -751,10 +751,12 @@ where
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
         let _section = ctx.host_metrics.stopwatch.start_section("transact_block");
+        let subgraph_id = ctx.inputs.deployment_id.clone();
+        let stopwatch = ctx.host_metrics.stopwatch.clone();
         let start = Instant::now();
         ctx.inputs
             .store
-            .transact_block_operations(ctx.inputs.deployment_id.clone(), block_ptr_after, mods)
+            .transact_block_operations(subgraph_id, block_ptr_after, mods, stopwatch)
             .map(|should_migrate| {
                 let elapsed = start.elapsed().as_secs_f64();
                 metrics.block_ops_transaction_duration.observe(elapsed);
