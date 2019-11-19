@@ -275,6 +275,14 @@ where
             }
         }
 
+        if head_ptr.number < reorg_threshold {
+            panic!(
+                "The reorg threshold {} is larger than the size of the chain {}, \
+                 you probably want to set the ETHEREUM_REORG_THRESHOLD env var to 0",
+                reorg_threshold, head_ptr.number
+            )
+        }
+
         // Subgraph ptr is behind head ptr.
         // Let's try to move the subgraph ptr one step in the right direction.
         // First question: which direction should the ptr be moved?
