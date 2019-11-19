@@ -7,15 +7,17 @@ use failure::Error;
 use graphql_parser;
 use graphql_parser::{
     query::Name,
-    schema::{self, InterfaceType, ObjectType, TypeDefinition},
+    schema::{self, InterfaceType, ObjectType, TypeDefinition, Value},
     Pos,
 };
 use std::collections::BTreeMap;
 use std::iter::FromIterator;
 
+pub const SUBGRAPH_SCHEMA_TYPE_NAME: &str = "_SubgraphSchema_";
+
 pub enum SchemaReference {
     ByName(String),
-    ByHash(String),
+    ById(String),
 }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.
@@ -114,6 +116,42 @@ impl Schema {
         Ok(schema)
     }
 
+    pub fn imported_schemas(&self) -> Vec<SchemaReference> {
+        self.subgraph_schema_object_type().map_or(vec![], |object| {
+            object
+                .directives
+                .iter()
+                .filter_map(|directive| directive.arguments.iter().find(|(name, _)| name == "from"))
+                .filter_map(|(_, value)| match value {
+                    Value::Object(map) => {
+                        let id = map
+                            .get("id")
+                            .filter(|id| match id {
+                                Value::String(_) => true,
+                                _ => false,
+                            })
+                            .map(|id| match id {
+                                Value::String(i) => SchemaReference::ById(i.to_string()),
+                                _ => unreachable!(),
+                            });
+                        let name = map
+                            .get("name")
+                            .filter(|name| match name {
+                                Value::String(_) => true,
+                                _ => false,
+                            })
+                            .map(|name| match name {
+                                Value::String(n) => SchemaReference::ByName(n.to_string()),
+                                _ => unreachable!(),
+                            });
+                        id.or(name)
+                    }
+                    _ => None,
+                })
+                .collect()
+        })
+    }
+
     /// Returned map has one an entry for each interface in the schema.
     pub fn types_for_interface(&self) -> &BTreeMap<Name, Vec<ObjectType>> {
         &self.types_for_interface
@@ -159,6 +197,22 @@ impl Schema {
                 }
             };
         }
+    }
+
+    fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
+        self.document.definitions.iter().find_map(|def| match def {
+            schema::Definition::TypeDefinition(type_def) => match type_def {
+                schema::TypeDefinition::Object(object_type) => {
+                    if object_type.name == SUBGRAPH_SCHEMA_TYPE_NAME {
+                        Some(object_type)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        })
     }
 }
 
