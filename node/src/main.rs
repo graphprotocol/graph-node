@@ -589,6 +589,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                                 .expect("adapter for network")
                                 .clone(),
                             &logger_factory,
+                            metrics_registry.clone(),
                         );
 
                         tokio::spawn(network_indexer.into_polling_stream());

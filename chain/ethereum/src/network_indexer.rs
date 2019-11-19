@@ -3,7 +3,8 @@ use futures::{
     future,
     future::{loop_fn, FutureResult, Loop},
 };
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::timer::Delay;
 
@@ -41,12 +42,121 @@ trait ToEntity {
     fn to_entity(&self) -> Result<Entity, Error>;
 }
 
+struct NetworkIndexerMetrics {
+    pub stopwatch: StopwatchMetrics,
+    pub chain_head: Box<Gauge>,
+    pub subgraph_head: Box<Gauge>,
+    pub poll_chain_head: Aggregate,
+    pub poll_subgraph_head: Aggregate,
+    pub block_hash: Aggregate,
+    pub full_block: Aggregate,
+    pub ommers: Aggregate,
+    pub index_range: Aggregate,
+    pub transaction: Aggregate,
+}
+
+impl NetworkIndexerMetrics {
+    pub fn new(
+        logger: Logger,
+        subgraph_id: &SubgraphDeploymentId,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
+        let stopwatch =
+            StopwatchMetrics::new(logger.clone(), subgraph_id.clone(), registry.clone());
+
+        let chain_head = registry
+            .new_gauge(
+                format!("{}_chain_head", subgraph_id.to_string()),
+                "The latest block on the network".into(),
+                HashMap::new(),
+            )
+            .expect(
+                format!(
+                    "failed to register `{}_chain_head` metric",
+                    subgraph_id.to_string()
+                )
+                .as_str(),
+            );
+
+        let subgraph_head = registry
+            .new_gauge(
+                format!("{}_subgraph_head", subgraph_id.to_string()),
+                "The latest indexed block".into(),
+                HashMap::new(),
+            )
+            .expect(
+                format!(
+                    "failed to register `{}_subgraph_head` metric",
+                    subgraph_id.to_string()
+                )
+                .as_str(),
+            );
+
+        let poll_chain_head = Aggregate::new(
+            format!("{}_poll_chain_head", subgraph_id.to_string()),
+            "Polling the latest block from the network",
+            registry.clone(),
+        );
+
+        let poll_subgraph_head = Aggregate::new(
+            format!("{}_poll_subgraph_head", subgraph_id.to_string()),
+            "Identifying the head block of the subgraph",
+            registry.clone(),
+        );
+
+        let transaction = Aggregate::new(
+            format!("{}_transaction", subgraph_id.to_string()),
+            "Transactions of blocks to the store",
+            registry.clone(),
+        );
+
+        let block_hash = Aggregate::new(
+            format!("{}_block_hash", subgraph_id.to_string()),
+            "Resolve block number into hash",
+            registry.clone(),
+        );
+
+        let full_block = Aggregate::new(
+            format!("{}_full_block", subgraph_id.to_string()),
+            "Download full block",
+            registry.clone(),
+        );
+
+        let ommers = Aggregate::new(
+            format!("{}_ommers", subgraph_id.to_string()),
+            "Download ommers",
+            registry.clone(),
+        );
+
+        let index_range = Aggregate::new(
+            format!("{}_index_range", subgraph_id.to_string()),
+            "Fetch and index a range of blocks",
+            registry.clone(),
+        );
+
+        Self {
+            stopwatch,
+            chain_head,
+            subgraph_head,
+            poll_chain_head,
+            poll_subgraph_head,
+            block_hash,
+            full_block,
+            ommers,
+            index_range,
+            transaction,
+        }
+    }
+}
+
 pub struct NetworkIndexer<S> {
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     store: Arc<S>,
     adapter: Arc<dyn EthereumAdapter>,
+
+    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
 }
 
 /// Internal result type used to thread (NetworkIndexer, EntityCache) through
@@ -63,6 +173,7 @@ where
         store: Arc<S>,
         adapter: Arc<dyn EthereumAdapter>,
         logger_factory: &LoggerFactory,
+        metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         // Create a subgraph name and ID (base58 encoded version of the name)
         let id_str = format!(
@@ -70,8 +181,7 @@ where
             subgraph_name.replace("/", "_"),
             NETWORK_INDEXER_VERSION
         );
-        let subgraph_id =
-            SubgraphDeploymentId::new(dbg!(id_str)).expect("valid network subgraph ID");
+        let subgraph_id = SubgraphDeploymentId::new(id_str).expect("valid network subgraph ID");
         let subgraph_name = SubgraphName::new(subgraph_name).expect("valid network subgraph name");
 
         let logger = logger_factory.component_logger(
@@ -88,12 +198,19 @@ where
           "subgraph" => subgraph_id.to_string(),
         ));
 
+        let metrics = Arc::new(Mutex::new(NetworkIndexerMetrics::new(
+            logger.clone(),
+            &subgraph_id,
+            metrics_registry,
+        )));
+
         Self {
             subgraph_name,
             subgraph_id,
             logger,
             store,
             adapter,
+            metrics,
         }
     }
 
@@ -233,6 +350,7 @@ where
     fn fetch_block_and_uncles(
         logger: Logger,
         adapter: Arc<dyn EthereumAdapter>,
+        metrics: Arc<Mutex<NetworkIndexerMetrics>>,
         block_number: u64,
     ) -> impl Future<Item = BlockWithUncles, Error = Error> {
         let logger_for_block = logger.clone();
@@ -244,8 +362,21 @@ where
         let logger_for_uncles = logger.clone();
         let adapter_for_uncles = adapter.clone();
 
+        let metrics_for_block_hash = metrics.clone();
+        let metrics_for_full_block = metrics.clone();
+        let metrics_for_ommers = metrics.clone();
+
+        let block_hash_start = Instant::now();
+
         adapter
             .block_hash_by_block_number(&logger, block_number)
+            .inspect(move |_| {
+                metrics_for_block_hash
+                    .lock()
+                    .unwrap()
+                    .block_hash
+                    .update((Instant::now() - block_hash_start).as_secs_f64());
+            })
             .and_then(move |hash| {
                 let hash = hash.expect("no block hash returned for block number");
                 adapter_for_block.block_by_hash(&logger_for_block, hash)
@@ -253,13 +384,29 @@ where
             .from_err()
             .and_then(move |block| {
                 let block = block.expect("no block returned for hash");
+                let full_block_start = Instant::now();
                 adapter_for_full_block
                     .load_full_block(&logger_for_full_block, block)
+                    .inspect(move |_| {
+                        metrics_for_full_block
+                            .lock()
+                            .unwrap()
+                            .full_block
+                            .update((Instant::now() - full_block_start).as_secs_f64());
+                    })
                     .from_err()
             })
             .and_then(move |block| {
+                let ommers_start = Instant::now();
                 adapter_for_uncles
                     .uncles(&logger_for_uncles, &block.block)
+                    .inspect(move |_| {
+                        metrics_for_ommers
+                            .lock()
+                            .unwrap()
+                            .ommers
+                            .update((Instant::now() - ommers_start).as_secs_f64());
+                    })
                     .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
             })
     }
@@ -267,13 +414,22 @@ where
     fn index_next_blocks(self) -> impl Future<Item = Self, Error = Error> {
         let logger_for_head_comparison = self.logger.clone();
 
-        let logger_for_fetching = self.logger.clone();
-        let adapter_for_fetching = self.adapter.clone();
-
         let subgraph_id_for_subgraph_head = self.subgraph_id.clone();
         let store_for_subgraph_head = self.store.clone();
 
+        let measure_chain_head = {
+            self.metrics
+                .lock()
+                .unwrap()
+                .stopwatch
+                .start_section("chain_head")
+        };
+
+        let metrics_for_chain_head = self.metrics.clone();
+        let metrics_for_subgraph_head = self.metrics.clone();
+
         // Poll the latest chain head from the network
+        let chain_head_started = Instant::now();
         self.adapter
             .clone()
             .latest_block(&self.logger)
@@ -289,12 +445,38 @@ where
                     future::ok(chain_head)
                 }
             })
+            .inspect(move |chain_head| {
+                measure_chain_head.end();
+                let mut metrics = metrics_for_chain_head.lock().unwrap();
+                metrics
+                    .chain_head
+                    .set(chain_head.number.unwrap().as_u64() as f64);
+                metrics
+                    .poll_chain_head
+                    .update_duration(Instant::now() - chain_head_started);
+            })
             // Identify the block the Ethereum network subgraph is on right now
             .and_then(move |chain_head| {
+                let measure_subgraph_head = {
+                    metrics_for_subgraph_head
+                        .lock()
+                        .unwrap()
+                        .stopwatch
+                        .start_section("subgraph_head")
+                };
+                let subgraph_head_started = Instant::now();
                 store_for_subgraph_head
                     .clone()
                     .block_ptr(subgraph_id_for_subgraph_head.clone())
-                    .map(|subgraph_head| (chain_head, subgraph_head))
+                    .map(move |subgraph_head| {
+                        measure_subgraph_head.end();
+                        metrics_for_subgraph_head
+                            .lock()
+                            .unwrap()
+                            .poll_subgraph_head
+                            .update_duration(Instant::now() - subgraph_head_started);
+                        (chain_head, subgraph_head)
+                    })
             })
             // Log the this block
             .and_then(move |(chain_head, subgraph_head)| {
@@ -338,23 +520,48 @@ where
                     ..(latest_block.map_or(0u64, |ptr| ptr.number + 1) + blocks_to_ingest);
 
                 debug!(
-                    logger_for_fetching,
+                    self.logger,
                     "Fetching {} of {} remaining blocks ({:?})",
                     blocks_to_ingest,
                     remaining_blocks,
                     block_range,
                 );
 
+                let logger_for_fetching = self.logger.clone();
+                let adapter_for_fetching = self.adapter.clone();
+                let metrics_for_fetching = self.metrics.clone();
+
+                let measure_range = {
+                    self.metrics
+                        .lock()
+                        .unwrap()
+                        .stopwatch
+                        .start_section("index_range")
+                };
+                let index_range_started = Instant::now();
+
                 Box::new(
                     futures::stream::iter_ok::<_, Error>(block_range.map(move |block_number| {
                         Self::fetch_block_and_uncles(
                             logger_for_fetching.clone(),
                             adapter_for_fetching.clone(),
+                            metrics_for_fetching.clone(),
                             block_number,
                         )
                     }))
-                    .buffered(50)
-                    .fold(self, move |indexer, block| indexer.index_block(block)),
+                    .buffered(500)
+                    .fold(self, move |indexer, block| {
+                        indexer.index_block(block).map(|indexer| indexer)
+                    })
+                    .inspect(move |indexer| {
+                        measure_range.end();
+                        indexer
+                            .metrics
+                            .lock()
+                            .unwrap()
+                            .index_range
+                            .update_duration(Instant::now() - index_range_started);
+                    }),
                 )
             })
     }
@@ -382,6 +589,15 @@ where
                         Ok(mods) => mods,
                         Err(e) => return future::err(e.into()),
                     };
+                    let measure_transaction = {
+                        indexer
+                            .metrics
+                            .lock()
+                            .unwrap()
+                            .stopwatch
+                            .start_section("transact_block")
+                    };
+                    let transaction_started = Instant::now();
                     future::result(
                         indexer
                             .store
@@ -391,7 +607,20 @@ where
                                 modifications,
                             )
                             .map_err(|e| e.into())
-                            .map(|_| indexer),
+                            .map(move |_| {
+                                measure_transaction.end();
+                                {
+                                    let mut metrics = indexer.metrics.lock().unwrap();
+                                    metrics
+                                        .subgraph_head
+                                        .set((*block_for_store).inner().number.unwrap().as_u64()
+                                            as f64);
+                                    metrics
+                                        .transaction
+                                        .update_duration(Instant::now() - transaction_started);
+                                }
+                                indexer
+                            }),
                     )
                 }),
         )
