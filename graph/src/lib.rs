@@ -53,8 +53,9 @@ pub mod prelude {
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{
-        stopwatch::StopwatchMetrics, Collector, Counter, CounterVec, Gauge, GaugeVec, Histogram,
-        HistogramOpts, HistogramVec, MetricsRegistry, Opts, PrometheusError, Registry,
+        aggregate::Aggregate, stopwatch::StopwatchMetrics, Collector, Counter, CounterVec, Gauge,
+        GaugeVec, Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts, PrometheusError,
+        Registry,
     };
     pub use crate::components::server::admin::JsonRpcServer;
     pub use crate::components::server::index_node::IndexNodeServer;
