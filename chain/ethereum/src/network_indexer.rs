@@ -195,7 +195,7 @@ where
 
         let logger = logger.new(o!(
           "subgraph_name" => subgraph_name.to_string(),
-          "subgraph" => subgraph_id.to_string(),
+          "subgraph_id" => subgraph_id.to_string(),
         ));
 
         let metrics = Arc::new(Mutex::new(NetworkIndexerMetrics::new(
@@ -366,16 +366,14 @@ where
         let metrics_for_full_block = metrics.clone();
         let metrics_for_ommers = metrics.clone();
 
-        let block_hash_start = Instant::now();
-
         adapter
             .block_hash_by_block_number(&logger, block_number)
-            .inspect(move |_| {
+            .measure(move |duration| {
                 metrics_for_block_hash
                     .lock()
                     .unwrap()
                     .block_hash
-                    .update((Instant::now() - block_hash_start).as_secs_f64());
+                    .update_duration(duration);
             })
             .and_then(move |hash| {
                 let hash = hash.expect("no block hash returned for block number");
@@ -384,28 +382,26 @@ where
             .from_err()
             .and_then(move |block| {
                 let block = block.expect("no block returned for hash");
-                let full_block_start = Instant::now();
                 adapter_for_full_block
                     .load_full_block(&logger_for_full_block, block)
-                    .inspect(move |_| {
+                    .measure(move |duration| {
                         metrics_for_full_block
                             .lock()
                             .unwrap()
                             .full_block
-                            .update((Instant::now() - full_block_start).as_secs_f64());
+                            .update_duration(duration);
                     })
                     .from_err()
             })
             .and_then(move |block| {
-                let ommers_start = Instant::now();
                 adapter_for_uncles
                     .uncles(&logger_for_uncles, &block.block)
-                    .inspect(move |_| {
+                    .measure(move |duration| {
                         metrics_for_ommers
                             .lock()
                             .unwrap()
                             .ommers
-                            .update((Instant::now() - ommers_start).as_secs_f64());
+                            .update_duration(duration);
                     })
                     .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
             })
@@ -425,11 +421,11 @@ where
                 .start_section("chain_head")
         };
 
-        let metrics_for_chain_head = self.metrics.clone();
+        let metrics_for_chain_head_number = self.metrics.clone();
+        let metrics_for_chain_head_measure = self.metrics.clone();
         let metrics_for_subgraph_head = self.metrics.clone();
 
         // Poll the latest chain head from the network
-        let chain_head_started = Instant::now();
         self.adapter
             .clone()
             .latest_block(&self.logger)
@@ -447,13 +443,18 @@ where
             })
             .inspect(move |chain_head| {
                 measure_chain_head.end();
-                let mut metrics = metrics_for_chain_head.lock().unwrap();
-                metrics
+                metrics_for_chain_head_number
+                    .lock()
+                    .unwrap()
                     .chain_head
                     .set(chain_head.number.unwrap().as_u64() as f64);
-                metrics
+            })
+            .measure(move |duration| {
+                metrics_for_chain_head_measure
+                    .lock()
+                    .unwrap()
                     .poll_chain_head
-                    .update_duration(Instant::now() - chain_head_started);
+                    .update_duration(duration)
             })
             // Identify the block the Ethereum network subgraph is on right now
             .and_then(move |chain_head| {
@@ -531,6 +532,8 @@ where
                 let adapter_for_fetching = self.adapter.clone();
                 let metrics_for_fetching = self.metrics.clone();
 
+                let metrics_for_range = self.metrics.clone();
+
                 let measure_range = {
                     self.metrics
                         .lock()
@@ -538,7 +541,6 @@ where
                         .stopwatch
                         .start_section("index_range")
                 };
-                let index_range_started = Instant::now();
 
                 Box::new(
                     futures::stream::iter_ok::<_, Error>(block_range.map(move |block_number| {
@@ -553,14 +555,13 @@ where
                     .fold(self, move |indexer, block| {
                         indexer.index_block(block).map(|indexer| indexer)
                     })
-                    .inspect(move |indexer| {
+                    .measure(move |duration| {
                         measure_range.end();
-                        indexer
-                            .metrics
+                        metrics_for_range
                             .lock()
                             .unwrap()
                             .index_range
-                            .update_duration(Instant::now() - index_range_started);
+                            .update_duration(duration);
                     }),
                 )
             })
