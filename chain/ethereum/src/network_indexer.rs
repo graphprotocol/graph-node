@@ -368,7 +368,7 @@ where
 
         adapter
             .block_hash_by_block_number(&logger, block_number)
-            .measure(move |duration| {
+            .measure(move |_, duration| {
                 metrics_for_block_hash
                     .lock()
                     .unwrap()
@@ -384,7 +384,7 @@ where
                 let block = block.expect("no block returned for hash");
                 adapter_for_full_block
                     .load_full_block(&logger_for_full_block, block)
-                    .measure(move |duration| {
+                    .measure(move |_, duration| {
                         metrics_for_full_block
                             .lock()
                             .unwrap()
@@ -396,7 +396,7 @@ where
             .and_then(move |block| {
                 adapter_for_uncles
                     .uncles(&logger_for_uncles, &block.block)
-                    .measure(move |duration| {
+                    .measure(move |_, duration| {
                         metrics_for_ommers
                             .lock()
                             .unwrap()
@@ -421,8 +421,7 @@ where
                 .start_section("chain_head")
         };
 
-        let metrics_for_chain_head_number = self.metrics.clone();
-        let metrics_for_chain_head_measure = self.metrics.clone();
+        let metrics_for_chain_head = self.metrics.clone();
         let metrics_for_subgraph_head = self.metrics.clone();
 
         // Poll the latest chain head from the network
@@ -441,20 +440,13 @@ where
                     future::ok(chain_head)
                 }
             })
-            .inspect(move |chain_head| {
+            .measure(move |chain_head, duration| {
                 measure_chain_head.end();
-                metrics_for_chain_head_number
-                    .lock()
-                    .unwrap()
+                let mut metrics = metrics_for_chain_head.lock().unwrap();
+                metrics
                     .chain_head
                     .set(chain_head.number.unwrap().as_u64() as f64);
-            })
-            .measure(move |duration| {
-                metrics_for_chain_head_measure
-                    .lock()
-                    .unwrap()
-                    .poll_chain_head
-                    .update_duration(duration)
+                metrics.poll_chain_head.update_duration(duration)
             })
             // Identify the block the Ethereum network subgraph is on right now
             .and_then(move |chain_head| {
@@ -555,7 +547,7 @@ where
                     .fold(self, move |indexer, block| {
                         indexer.index_block(block).map(|indexer| indexer)
                     })
-                    .measure(move |duration| {
+                    .measure(move |_, duration| {
                         measure_range.end();
                         metrics_for_range
                             .lock()
