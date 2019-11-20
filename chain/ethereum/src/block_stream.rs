@@ -278,7 +278,7 @@ where
         if head_ptr.number < reorg_threshold {
             panic!(
                 "The reorg threshold {} is larger than the size of the chain {}, \
-                 you probably want to set the ETHEREUM_REORG_THRESHOLD env var to 0",
+                 you probably want to set the ETHEREUM_REORG_THRESHOLD environment variable to 0",
                 reorg_threshold, head_ptr.number
             )
         }
