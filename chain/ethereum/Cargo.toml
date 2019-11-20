@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 failure = "0.1.6"
 futures = "0.1.21"
-jsonrpc-core = "13.2.0"
+jsonrpc-core = "14.0.3"
 graph = { path = "../../graph" }
 mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
