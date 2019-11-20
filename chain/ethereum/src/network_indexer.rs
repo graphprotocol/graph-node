@@ -571,11 +571,19 @@ where
         debug!(logger, "Index block");
 
         let block = Arc::new(block);
+        let block_for_uncles = block.clone();
         let block_for_store = block.clone();
 
-        // Add the block entity
         Box::new(
+            // Add the block and uncle block entities
             self.set_entity(EntityCache::new(), block.as_ref())
+                .and_then(move |(indexer, cache)| {
+                    futures::stream::iter_ok::<_, Error>(block_for_uncles.uncles.clone())
+                        .fold((indexer, cache), |(indexer, cache), ommer| {
+                            indexer.set_entity(cache, ommer.unwrap())
+                        })
+                })
+                // Transact everything into the store
                 .and_then(move |(indexer, cache)| {
                     // Transact entity operations into the store
                     let modifications = match cache.as_modifications(indexer.store.as_ref()) {
@@ -676,6 +684,22 @@ impl ToEntityId for H256 {
     }
 }
 
+impl ToEntityId for Block<H256> {
+    fn to_entity_id(&self) -> String {
+        format!("{:x}", self.hash.unwrap())
+    }
+}
+
+impl ToEntityKey for Block<H256> {
+    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
+        EntityKey {
+            subgraph_id,
+            entity_type: "Block".into(),
+            entity_id: format!("{:x}", self.hash.unwrap()),
+        }
+    }
+}
+
 impl ToEntityId for BlockWithUncles {
     fn to_entity_id(&self) -> String {
         (*self).block.block.hash.unwrap().to_entity_id()
@@ -689,6 +713,46 @@ impl ToEntityKey for &BlockWithUncles {
             entity_type: "Block".into(),
             entity_id: format!("{:x}", (*self).block.block.hash.unwrap()),
         }
+    }
+}
+
+impl ToEntity for Block<H256> {
+    fn to_entity(&self) -> Result<Entity, Error> {
+        Ok(Entity::from(vec![
+            ("id", format!("{:x}", self.hash.unwrap()).into()),
+            ("number", self.number.unwrap().into()),
+            ("hash", self.hash.unwrap().into()),
+            ("parent", self.parent_hash.to_entity_id().into()),
+            (
+                "nonce",
+                self.nonce.map_or(Value::Null, |nonce| nonce.into()),
+            ),
+            ("transactionsRoot", self.transactions_root.into()),
+            ("transactionCount", (self.transactions.len() as i32).into()),
+            ("stateRoot", self.state_root.into()),
+            ("receiptsRoot", self.receipts_root.into()),
+            ("extraData", self.extra_data.clone().into()),
+            ("gasLimit", self.gas_limit.into()),
+            ("gasUsed", self.gas_used.into()),
+            ("timestamp", self.timestamp.into()),
+            ("logsBloom", self.logs_bloom.into()),
+            ("mixHash", self.mix_hash.into()),
+            ("difficulty", self.difficulty.into()),
+            ("totalDifficulty", self.total_difficulty.into()),
+            ("ommerCount", (self.uncles.len() as i32).into()),
+            ("ommerHash", self.uncles_hash.into()),
+            // ("author", self.author.to_entity_id().into()),
+            (
+                "ommers",
+                self.uncles
+                    .iter()
+                    .map(|hash| hash.to_entity_id())
+                    .collect::<Vec<_>>()
+                    .into(),
+            ),
+            ("size", self.size.into()),
+            ("sealFields", self.seal_fields.clone().into()),
+        ] as Vec<(_, Value)>))
     }
 }
 
@@ -720,7 +784,18 @@ impl ToEntity for &BlockWithUncles {
             ("ommerCount", (self.uncles.len() as i32).into()),
             ("ommerHash", inner.uncles_hash.into()),
             // ("author", inner.author.to_entity_id().into()),
-            // ("ommers", ...)
+            (
+                "ommers",
+                self.uncles
+                    .iter()
+                    .map(|ommer| {
+                        ommer
+                            .as_ref()
+                            .map_or(Value::Null, |ommer| Value::String(ommer.to_entity_id()))
+                    })
+                    .collect::<Vec<_>>()
+                    .into(),
+            ),
             ("size", inner.size.into()),
             ("sealFields", inner.seal_fields.clone().into()),
         ] as Vec<(_, Value)>))

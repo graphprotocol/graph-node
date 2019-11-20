@@ -57,12 +57,12 @@ type Block @entity {
   totalDifficulty: BigInt!
 
   """The number of ommers (AKA uncles) associated with this block."""
-  ommerCount: Int
+  ommerCount: Int!
 
   # """
   # A list of ommer (AKA uncle) blocks associated with this block.
   # """
-  # ommers: [Block]!
+  ommers: [Block]!
 
   """The keccak256 hash of all the ommers (AKA uncles) associated with this block."""
   ommerHash: Bytes!
@@ -76,7 +76,7 @@ type Block @entity {
   # logs: [Log!]!
 
   """Size of the block in bytes."""
-  size: BigInt!
+  size: BigInt
 
   """Seal fields."""
   sealFields: [Bytes!]!
