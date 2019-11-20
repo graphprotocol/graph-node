@@ -211,7 +211,7 @@ pub trait FutureExtension: Future + Sized {
     ) -> Cancelable<Self, C>;
 
     /// Measures the time it takes for the future to complete.
-    fn measure<C: FnOnce(Duration) -> ()>(self, callback: C) -> Measure<Self, C>;
+    fn measure<C: FnOnce(&Self::Item, Duration)>(self, callback: C) -> Measure<Self, C>;
 }
 
 impl<F: Future> FutureExtension for F {
@@ -229,7 +229,7 @@ impl<F: Future> FutureExtension for F {
         }
     }
 
-    fn measure<C: FnOnce(Duration) -> ()>(self, callback: C) -> Measure<Self, C> {
+    fn measure<C: FnOnce(&Self::Item, Duration)>(self, callback: C) -> Measure<Self, C> {
         Measure::new(self, callback)
     }
 }
@@ -269,6 +269,8 @@ where
 /// some_future
 ///   .measure(|duration| println!("Duration: {:?}", duration))
 /// ```
+#[derive(Debug)]
+#[must_use = "futures do nothing unless polled"]
 pub struct Measure<F, C> {
     inner: F,
     callback: Option<C>,
@@ -288,7 +290,7 @@ impl<F, C> Measure<F, C> {
 impl<F, C> Future for Measure<F, C>
 where
     F: Future,
-    C: FnOnce(Duration) -> (),
+    C: FnOnce(&F::Item, Duration),
 {
     type Item = F::Item;
     type Error = F::Error;
@@ -297,6 +299,7 @@ where
         self.inner.poll().map(|v| match v {
             Async::Ready(v) => {
                 (self.callback.take().expect("cannot poll Measure twice"))(
+                    &v,
                     Instant::now() - self.start,
                 );
                 Async::Ready(v)
