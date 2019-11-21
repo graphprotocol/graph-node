@@ -816,7 +816,9 @@ where
                             self.ctx.previous_triggers_per_block =
                                 total_triggers as f64 / block_range_size as f64;
                             self.ctx.previous_block_range_size = block_range_size;
-                            debug!(self.ctx.logger, "Processing {} triggers", total_triggers);
+                            if total_triggers > 0 {
+                                debug!(self.ctx.logger, "Processing {} triggers", total_triggers);
+                            }
 
                             // Switch to yielding state until next_blocks is depleted
                             state = BlockStreamState::YieldingBlocks(next_blocks);
