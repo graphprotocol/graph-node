@@ -300,7 +300,7 @@ where
             Async::Ready(v) => {
                 (self.callback.take().expect("cannot poll Measure twice"))(
                     &v,
-                    Instant::now() - self.start,
+                    self.start.elapsed(),
                 );
                 Async::Ready(v)
             }
