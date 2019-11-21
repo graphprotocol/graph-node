@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use graph::data::subgraph::schema::*;
 use graph::prelude::*;
 
-pub fn check_subgraph_exists<S>(
+fn check_subgraph_exists<S>(
     store: Arc<S>,
     subgraph_id: SubgraphDeploymentId,
 ) -> impl Future<Item = bool, Error = Error>
@@ -19,7 +19,7 @@ where
     )
 }
 
-pub fn create_subgraph<S>(
+fn create_subgraph<S>(
     store: Arc<S>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
@@ -122,4 +122,42 @@ where
             .create_subgraph_deployment(&manifest.schema, ops)
             .map_err(|e| e.into()),
     )
+}
+
+pub fn ensure_subgraph_exists<S>(
+    subgraph_name: SubgraphName,
+    subgraph_id: SubgraphDeploymentId,
+    logger: Logger,
+    store: Arc<S>,
+) -> impl Future<Item = (), Error = ()>
+where
+    S: Store + ChainStore,
+{
+    debug!(logger, "Ensure that the network subgraph exists");
+
+    let logger_for_created = logger.clone();
+    let logger_for_err = logger.clone();
+
+    check_subgraph_exists(store.clone(), subgraph_id.clone())
+        .from_err()
+        .and_then(move |subgraph_exists| {
+            if subgraph_exists {
+                debug!(logger, "Network subgraph deployment already exists");
+                Box::new(future::ok(())) as Box<dyn Future<Item = _, Error = _> + Send>
+            } else {
+                debug!(logger, "Network subgraph deployment needs to be created");
+                Box::new(
+                    create_subgraph(store.clone(), subgraph_name.clone(), subgraph_id.clone())
+                        .inspect(move |_| {
+                            debug!(logger_for_created, "Created Ethereum network subgraph");
+                        }),
+                )
+            }
+        })
+        .map_err(move |e| {
+            error!(
+                logger_for_err,
+                "Failed to ensure Ethereum network subgraph exists: {}", e
+            );
+        })
 }
