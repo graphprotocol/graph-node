@@ -12,8 +12,7 @@ use std::time::Duration;
 use graph::components::forward;
 use graph::log::logger;
 use graph::prelude::{
-    EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _,
-    NetworkIndexer as NetworkIndexerTrait, *,
+    EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
 };
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, NetworkIndexer, Transport};
