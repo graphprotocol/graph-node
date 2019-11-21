@@ -12,19 +12,18 @@ use graph::prelude::{
 };
 use tokio::timer::Delay;
 
-const FAST_SCAN_SPEEDUP: u64 = 10;
-
 lazy_static! {
-    /// Number of blocks to request in each chunk.
-    static ref ETHEREUM_BLOCK_RANGE_SIZE: u64 = ::std::env::var("ETHEREUM_BLOCK_RANGE_SIZE")
-        .unwrap_or("10000".into())
+    /// Maximum number of blocks to request in each chunk.
+    static ref MAX_BLOCK_RANGE_SIZE: u64 = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
+        .unwrap_or("100000".into())
         .parse::<u64>()
-        .expect("invalid Ethereum block range size");
+        .expect("invalid GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE");
 
-    static ref ETHEREUM_FAST_SCAN_END: u64 = ::std::env::var("ETHEREUM_FAST_SCAN_END")
-        .unwrap_or("4000000".into())
+    /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
+    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = std::env::var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE")
+        .unwrap_or("1000".into())
         .parse::<u64>()
-        .expect("invalid fast scan end block number");
+        .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
 }
 
 enum BlockStreamState {
@@ -37,7 +36,10 @@ enum BlockStreamState {
     ///
     /// Valid next states: YieldingBlocks, Idle
     Reconciliation(
-        Box<dyn Future<Item = Option<VecDeque<EthereumBlockWithTriggers>>, Error = Error> + Send>,
+        Box<
+            dyn Future<Item = Option<(VecDeque<EthereumBlockWithTriggers>, u64)>, Error = Error>
+                + Send,
+        >,
     ),
 
     /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
@@ -68,8 +70,8 @@ enum ReconciliationStep {
     /// Revert the current block pointed at by the subgraph pointer.
     RevertBlock(EthereumBlockPointer),
 
-    /// Move forwards, processing one or more blocks.
-    ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>),
+    /// Move forwards, processing one or more blocks. Second element is the block range size.
+    ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>, u64),
 
     /// This step is a no-op, but we need to check again for a next step.
     Retry,
@@ -82,7 +84,8 @@ enum ReconciliationStep {
 /// The result of performing a single ReconciliationStep.
 enum ReconciliationStepOutcome {
     /// These blocks must be processed before reconciliation can continue.
-    YieldBlocks(Vec<EthereumBlockWithTriggers>),
+    /// Second element is the block range size.
+    YieldBlocks(Vec<EthereumBlockWithTriggers>, u64),
 
     /// Continue to the next reconciliation step.
     MoreSteps,
@@ -106,6 +109,8 @@ struct BlockStreamContext<S, C> {
     templates_use_calls: bool,
     logger: Logger,
     metrics: Arc<BlockStreamMetrics>,
+    previous_triggers_per_block: f64,
+    previous_block_range_size: u64,
 }
 
 impl<S, C> Clone for BlockStreamContext<S, C> {
@@ -124,6 +129,8 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
             templates_use_calls: self.templates_use_calls,
             logger: self.logger.clone(),
             metrics: self.metrics.clone(),
+            previous_triggers_per_block: self.previous_triggers_per_block,
+            previous_block_range_size: self.previous_block_range_size,
         }
     }
 }
@@ -173,6 +180,10 @@ where
                 start_blocks,
                 templates_use_calls,
                 metrics,
+
+                // A high number here forces a slow start, with a range of 1.
+                previous_triggers_per_block: 1_000_000.0,
+                previous_block_range_size: 1,
             },
         }
     }
@@ -194,8 +205,9 @@ where
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     fn next_blocks(
         &self,
-    ) -> Box<dyn Future<Item = Option<VecDeque<EthereumBlockWithTriggers>>, Error = Error> + Send>
-    {
+    ) -> Box<
+        dyn Future<Item = Option<(VecDeque<EthereumBlockWithTriggers>, u64)>, Error = Error> + Send,
+    > {
         let ctx = self.clone();
 
         Box::new(future::loop_fn((), move |()| {
@@ -212,9 +224,9 @@ where
                 // Check outcome.
                 // Exit loop if done or there are blocks to process.
                 .and_then(move |outcome| match outcome {
-                    ReconciliationStepOutcome::YieldBlocks(next_blocks) => {
-                        Ok(future::Loop::Break(Some(next_blocks.into_iter().collect())))
-                    }
+                    ReconciliationStepOutcome::YieldBlocks(next_blocks, range_size) => Ok(
+                        future::Loop::Break(Some((next_blocks.into_iter().collect(), range_size))),
+                    ),
                     ReconciliationStepOutcome::MoreSteps => Ok(future::Loop::Continue(())),
                     ReconciliationStepOutcome::Done => {
                         // Reconciliation is complete, so try to mark subgraph as Synced
@@ -377,20 +389,28 @@ where
                             let to_limit =
                                 cmp::min(head_ptr.number - reorg_threshold, next_start_block - 1);
 
-                            // The range should not be too small, due to the overhead of finding
-                            // triggers for each range, neither too large, so that progress is
-                            // commited frequently and memory usage is under control.
-                            let to = {
-                                let speedup = if from < *ETHEREUM_FAST_SCAN_END {
-                                    FAST_SCAN_SPEEDUP
-                                } else {
-                                    1
-                                };
-                                cmp::min(from + speedup * *ETHEREUM_BLOCK_RANGE_SIZE - 1, to_limit)
+                            // Calculate the range size according to the target number of triggers,
+                            // respecting the global maximum and also not increasing too
+                            // drastically from the previous block range size.
+                            let max_range_size =
+                                MAX_BLOCK_RANGE_SIZE.min(ctx.previous_block_range_size * 10);
+                            let range_size = if ctx.previous_triggers_per_block == 0.0 {
+                                max_range_size
+                            } else {
+                                (*TARGET_TRIGGERS_PER_BLOCK_RANGE as f64
+                                    / ctx.previous_triggers_per_block)
+                                    .max(1.0)
+                                    .min(max_range_size as f64)
+                                    as u64
                             };
+                            let to = cmp::min(from + range_size - 1, to_limit);
 
                             let section = ctx.metrics.stopwatch.start_section("scan_blocks");
-                            info!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
+                            info!(
+                                ctx.logger,
+                                "Scanning blocks [{}, {}]", from, to;
+                                "range_size" => range_size
+                            );
                             Box::new(
                                 ctx.eth_adapter
                                     .blocks_with_triggers(
@@ -405,7 +425,9 @@ where
                                     )
                                     .map(move |blocks| {
                                         section.end();
-                                        ReconciliationStep::ProcessDescendantBlocks(blocks)
+                                        ReconciliationStep::ProcessDescendantBlocks(
+                                            blocks, range_size,
+                                        )
                                     }),
                             )
                         },
@@ -498,7 +520,7 @@ where
                                     )
                                 })
                                 .map(move |block| {
-                                    ReconciliationStep::ProcessDescendantBlocks(vec![block])
+                                    ReconciliationStep::ProcessDescendantBlocks(vec![block], 1)
                                 }),
                         )
                     } else {
@@ -566,11 +588,12 @@ where
                         }),
                 )
             }
-            ReconciliationStep::ProcessDescendantBlocks(descendant_blocks) => {
+            ReconciliationStep::ProcessDescendantBlocks(descendant_blocks, range_size) => {
                 // Advance the subgraph ptr to each of the specified descendants and yield each
                 // block with relevant events.
                 Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
                     descendant_blocks,
+                    range_size,
                 ))) as Box<dyn Future<Item = _, Error = _> + Send>
             }
         }
@@ -787,7 +810,14 @@ where
                 BlockStreamState::Reconciliation(mut next_blocks_future) => {
                     match next_blocks_future.poll() {
                         // Reconciliation found blocks to process
-                        Ok(Async::Ready(Some(next_blocks))) => {
+                        Ok(Async::Ready(Some((next_blocks, block_range_size)))) => {
+                            let total_triggers =
+                                next_blocks.iter().map(|b| b.triggers.len()).sum::<usize>();
+                            self.ctx.previous_triggers_per_block =
+                                total_triggers as f64 / block_range_size as f64;
+                            self.ctx.previous_block_range_size = block_range_size;
+                            debug!(self.ctx.logger, "Processing {} triggers", total_triggers);
+
                             // Switch to yielding state until next_blocks is depleted
                             state = BlockStreamState::YieldingBlocks(next_blocks);
 

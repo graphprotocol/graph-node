@@ -14,12 +14,10 @@ those.
   defaults to 500ms)
 - `ETHEREUM_RPC_MAX_PARALLEL_REQUESTS`: how many RPC connections to start in
   parallel for block retrieval (defaults to 64)
-- `ETHEREUM_FAST_SCAN_END`: `graph-node` locates blocks with events for a
-  particular subgraph. Most subgraphs do not have events in the first few
-  million blocks, so `graph-node` optimizes for that case by inquiring about a
-  large range. The value of this variable is the block number at which we switch
-  from probing large ranges to ranges of size `ETHEREUM_BLOCK_RANGE_SIZE`
-  (defaults to 4000000).
+- `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
+to be processed in a batch. If this is too small it may cause too many requests
+to the ethereum node, if it is too large it may cause unreasonably expensive
+calls to the ethereum node and excessive memory usage (defaults to 100).
 - `ETHEREUM_TRACE_STREAM_STEP_SIZE`: `graph-node` queries traces for a given
   block range when a subgraph defines call handlers or block handlers with a
   call filter. The value of this variable controls the number of blocks to scan
@@ -28,8 +26,8 @@ those.
   unset or set to `false` to leave block ingestion enabled.
 - `ETHEREUM_BLOCK_BATCH_SIZE`: number of Ethereum blocks to request in parallel
   (defaults to 50)
-- `ETHEREUM_BLOCK_RANGE_SIZE`: number of blocks to scan for events in each
-  request (defaults to 10000).
+- `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`: Maximum number of blocks to scan for
+triggers in each request (defaults to 100000).
 - `ETHEREUM_PARALLEL_BLOCK_RANGES`: Maximum number of parallel `eth_getLogs`
   calls to make when scanning logs for a subgraph. Defaults to 100.
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
