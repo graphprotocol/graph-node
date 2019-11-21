@@ -11,36 +11,14 @@ use tokio::timer::Delay;
 use graph::data::subgraph::schema::*;
 use graph::prelude::{NetworkIndexer as NetworkIndexerTrait, *};
 
-use web3::types::{Block, TransactionReceipt, H160, H256};
+mod block_writer;
+mod common;
+mod to_entity;
+
+use block_writer::*;
+use common::*;
 
 const NETWORK_INDEXER_VERSION: u32 = 0;
-
-/// Helper type to bundle blocks and their uncles together.
-struct BlockWithUncles {
-    block: EthereumBlock,
-    uncles: Vec<Option<Block<H256>>>,
-}
-
-impl BlockWithUncles {
-    fn inner(&self) -> &LightEthereumBlock {
-        &self.block.block
-    }
-
-    fn _transaction_receipts(&self) -> &Vec<TransactionReceipt> {
-        &self.block.transaction_receipts
-    }
-}
-
-/// Helper traits to work with network entities.
-trait ToEntityId {
-    fn to_entity_id(&self) -> String;
-}
-trait ToEntityKey {
-    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey;
-}
-trait ToEntity {
-    fn to_entity(&self) -> Result<Entity, Error>;
-}
 
 struct NetworkIndexerMetrics {
     pub stopwatch: StopwatchMetrics,
@@ -52,7 +30,7 @@ struct NetworkIndexerMetrics {
     pub full_block: Aggregate,
     pub ommers: Aggregate,
     pub index_range: Aggregate,
-    pub transaction: Aggregate,
+    pub write_block: Aggregate,
 }
 
 impl NetworkIndexerMetrics {
@@ -104,12 +82,6 @@ impl NetworkIndexerMetrics {
             registry.clone(),
         );
 
-        let transaction = Aggregate::new(
-            format!("{}_transaction", subgraph_id.to_string()),
-            "Transactions of blocks to the store",
-            registry.clone(),
-        );
-
         let block_hash = Aggregate::new(
             format!("{}_block_hash", subgraph_id.to_string()),
             "Resolve block number into hash",
@@ -125,6 +97,12 @@ impl NetworkIndexerMetrics {
         let ommers = Aggregate::new(
             format!("{}_ommers", subgraph_id.to_string()),
             "Download ommers",
+            registry.clone(),
+        );
+
+        let write_block = Aggregate::new(
+            format!("{}_write_block", subgraph_id.to_string()),
+            "Writing blocks to the store",
             registry.clone(),
         );
 
@@ -144,7 +122,7 @@ impl NetworkIndexerMetrics {
             full_block,
             ommers,
             index_range,
-            transaction,
+            write_block,
         }
     }
 }
@@ -155,14 +133,10 @@ pub struct NetworkIndexer<S> {
     logger: Logger,
     store: Arc<S>,
     adapter: Arc<dyn EthereumAdapter>,
+    block_writer: Option<BlockWriter<S>>,
 
     metrics: Arc<Mutex<NetworkIndexerMetrics>>,
 }
-
-/// Internal result type used to thread (NetworkIndexer, EntityCache) through
-/// the chain of futures when indexing network data.
-type NetworkIndexerResult<S> =
-    Box<dyn Future<Item = (NetworkIndexer<S>, EntityCache), Error = Error> + Send>;
 
 impl<S> NetworkIndexer<S>
 where
@@ -201,8 +175,15 @@ where
         let metrics = Arc::new(Mutex::new(NetworkIndexerMetrics::new(
             logger.clone(),
             &subgraph_id,
-            metrics_registry,
+            metrics_registry.clone(),
         )));
+
+        let block_writer = Some(BlockWriter::new(BlockWriterOptions {
+            logger: &logger,
+            subgraph_id: subgraph_id.clone(),
+            store: store.clone(),
+            metrics_registry,
+        }));
 
         Self {
             subgraph_name,
@@ -210,6 +191,7 @@ where
             logger,
             store,
             adapter,
+            block_writer,
             metrics,
         }
     }
@@ -559,87 +541,32 @@ where
             })
     }
 
-    fn index_block(self, block: BlockWithUncles) -> impl Future<Item = Self, Error = Error> {
-        let hash = block.inner().hash.clone().unwrap();
-        let number = block.inner().number.clone().unwrap();
+    fn index_block(mut self, block: BlockWithUncles) -> impl Future<Item = Self, Error = Error> {
+        let number = block.inner().number.unwrap();
+        let metrics = self.metrics.clone();
+        let measure_write_block = {
+            metrics
+                .lock()
+                .unwrap()
+                .stopwatch
+                .start_section("write_block")
+        };
 
-        let logger = self.logger.new(o!(
-            "block_hash" => format!("{:?}", hash),
-            "block_number" => format!("{}", number),
-        ));
+        self.block_writer
+            .take()
+            .expect("cannot write two blocks at the same time")
+            .write(block)
+            .measure(move |_, duration| {
+                measure_write_block.end();
 
-        debug!(logger, "Index block");
-
-        let block = Arc::new(block);
-        let block_for_uncles = block.clone();
-        let block_for_store = block.clone();
-
-        Box::new(
-            // Add the block and uncle block entities
-            self.set_entity(EntityCache::new(), block.as_ref())
-                .and_then(move |(indexer, cache)| {
-                    futures::stream::iter_ok::<_, Error>(block_for_uncles.uncles.clone())
-                        .fold((indexer, cache), |(indexer, cache), ommer| {
-                            indexer.set_entity(cache, ommer.unwrap())
-                        })
-                })
-                // Transact everything into the store
-                .and_then(move |(indexer, cache)| {
-                    // Transact entity operations into the store
-                    let modifications = match cache.as_modifications(indexer.store.as_ref()) {
-                        Ok(mods) => mods,
-                        Err(e) => return future::err(e.into()),
-                    };
-                    let measure_transaction = {
-                        indexer
-                            .metrics
-                            .lock()
-                            .unwrap()
-                            .stopwatch
-                            .start_section("transact_block")
-                    };
-                    let transaction_started = Instant::now();
-                    future::result(
-                        indexer
-                            .store
-                            .transact_block_operations(
-                                indexer.subgraph_id.clone(),
-                                EthereumBlockPointer::from(&block_for_store.block),
-                                modifications,
-                            )
-                            .map_err(|e| e.into())
-                            .map(move |_| {
-                                measure_transaction.end();
-                                {
-                                    let mut metrics = indexer.metrics.lock().unwrap();
-                                    metrics
-                                        .subgraph_head
-                                        .set((*block_for_store).inner().number.unwrap().as_u64()
-                                            as f64);
-                                    metrics
-                                        .transaction
-                                        .update_duration(Instant::now() - transaction_started);
-                                }
-                                indexer
-                            }),
-                    )
-                }),
-        )
-    }
-
-    fn set_entity(
-        self,
-        mut cache: EntityCache,
-        value: impl ToEntity + ToEntityKey,
-    ) -> NetworkIndexerResult<S> {
-        cache.set(
-            value.to_entity_key(self.subgraph_id.clone()),
-            match value.to_entity() {
-                Ok(entity) => entity,
-                Err(e) => return Box::new(future::err(e.into())),
-            },
-        );
-        Box::new(future::ok((self, cache)))
+                let mut metrics = metrics.lock().unwrap();
+                metrics.subgraph_head.set(number.as_u64() as f64);
+                metrics.write_block.update_duration(duration);
+            })
+            .map(move |block_writer| {
+                self.block_writer = Some(block_writer);
+                self
+            })
     }
 }
 
@@ -669,135 +596,5 @@ where
                     )
                 }),
         )
-    }
-}
-
-impl ToEntityId for H160 {
-    fn to_entity_id(&self) -> String {
-        format!("{:x}", self)
-    }
-}
-
-impl ToEntityId for H256 {
-    fn to_entity_id(&self) -> String {
-        format!("{:x}", self)
-    }
-}
-
-impl ToEntityId for Block<H256> {
-    fn to_entity_id(&self) -> String {
-        format!("{:x}", self.hash.unwrap())
-    }
-}
-
-impl ToEntityKey for Block<H256> {
-    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
-            subgraph_id,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", self.hash.unwrap()),
-        }
-    }
-}
-
-impl ToEntityId for BlockWithUncles {
-    fn to_entity_id(&self) -> String {
-        (*self).block.block.hash.unwrap().to_entity_id()
-    }
-}
-
-impl ToEntityKey for &BlockWithUncles {
-    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
-            subgraph_id,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", (*self).block.block.hash.unwrap()),
-        }
-    }
-}
-
-impl ToEntity for Block<H256> {
-    fn to_entity(&self) -> Result<Entity, Error> {
-        Ok(Entity::from(vec![
-            ("id", format!("{:x}", self.hash.unwrap()).into()),
-            ("number", self.number.unwrap().into()),
-            ("hash", self.hash.unwrap().into()),
-            ("parent", self.parent_hash.to_entity_id().into()),
-            (
-                "nonce",
-                self.nonce.map_or(Value::Null, |nonce| nonce.into()),
-            ),
-            ("transactionsRoot", self.transactions_root.into()),
-            ("transactionCount", (self.transactions.len() as i32).into()),
-            ("stateRoot", self.state_root.into()),
-            ("receiptsRoot", self.receipts_root.into()),
-            ("extraData", self.extra_data.clone().into()),
-            ("gasLimit", self.gas_limit.into()),
-            ("gasUsed", self.gas_used.into()),
-            ("timestamp", self.timestamp.into()),
-            ("logsBloom", self.logs_bloom.into()),
-            ("mixHash", self.mix_hash.into()),
-            ("difficulty", self.difficulty.into()),
-            ("totalDifficulty", self.total_difficulty.into()),
-            ("ommerCount", (self.uncles.len() as i32).into()),
-            ("ommerHash", self.uncles_hash.into()),
-            // ("author", self.author.to_entity_id().into()),
-            (
-                "ommers",
-                self.uncles
-                    .iter()
-                    .map(|hash| hash.to_entity_id())
-                    .collect::<Vec<_>>()
-                    .into(),
-            ),
-            ("size", self.size.into()),
-            ("sealFields", self.seal_fields.clone().into()),
-        ] as Vec<(_, Value)>))
-    }
-}
-
-impl ToEntity for &BlockWithUncles {
-    fn to_entity(&self) -> Result<Entity, Error> {
-        let inner = self.inner();
-
-        Ok(Entity::from(vec![
-            ("id", format!("{:x}", inner.hash.unwrap()).into()),
-            ("number", inner.number.unwrap().into()),
-            ("hash", inner.hash.unwrap().into()),
-            ("parent", inner.parent_hash.to_entity_id().into()),
-            (
-                "nonce",
-                inner.nonce.map_or(Value::Null, |nonce| nonce.into()),
-            ),
-            ("transactionsRoot", inner.transactions_root.into()),
-            ("transactionCount", (inner.transactions.len() as i32).into()),
-            ("stateRoot", inner.state_root.into()),
-            ("receiptsRoot", inner.receipts_root.into()),
-            ("extraData", inner.extra_data.clone().into()),
-            ("gasLimit", inner.gas_limit.into()),
-            ("gasUsed", inner.gas_used.into()),
-            ("timestamp", inner.timestamp.into()),
-            ("logsBloom", inner.logs_bloom.into()),
-            ("mixHash", inner.mix_hash.into()),
-            ("difficulty", inner.difficulty.into()),
-            ("totalDifficulty", inner.total_difficulty.into()),
-            ("ommerCount", (self.uncles.len() as i32).into()),
-            ("ommerHash", inner.uncles_hash.into()),
-            // ("author", inner.author.to_entity_id().into()),
-            (
-                "ommers",
-                self.uncles
-                    .iter()
-                    .map(|ommer| {
-                        ommer
-                            .as_ref()
-                            .map_or(Value::Null, |ommer| Value::String(ommer.to_entity_id()))
-                    })
-                    .collect::<Vec<_>>()
-                    .into(),
-            ),
-            ("size", inner.size.into()),
-            ("sealFields", inner.seal_fields.clone().into()),
-        ] as Vec<(_, Value)>))
     }
 }
