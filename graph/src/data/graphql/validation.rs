@@ -1,3 +1,4 @@
+use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
 use graphql_parser::schema::*;
 use serde::{Deserialize, Serialize};
