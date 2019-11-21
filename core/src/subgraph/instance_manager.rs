@@ -796,6 +796,11 @@ where
                 EthereumTrigger::Call(_) => TriggerType::Call,
                 EthereumTrigger::Block(..) => TriggerType::Block,
             };
+            let transaction_id = match &trigger {
+                EthereumTrigger::Log(log) => log.transaction_hash,
+                EthereumTrigger::Call(call) => call.transaction_hash,
+                EthereumTrigger::Block(..) => None,
+            };
             let start = Instant::now();
             ctx.state
                 .instance
@@ -805,7 +810,14 @@ where
                     subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);
                     (ctx, block_state)
                 })
-                .map_err(|e| format_err!("Failed to process trigger: {}", e))
+                .map_err(|e| match transaction_hash {
+                    Some(tx_hash) => format_err!(
+                        "Failed to process trigger for transaction {}: {}",
+                        transaction_id,
+                        e
+                    ),
+                    None => format_err!("Failed to process trigger: {}", e),
+                })
         })
 }
 
