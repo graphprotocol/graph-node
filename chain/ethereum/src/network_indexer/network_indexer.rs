@@ -22,13 +22,19 @@ where
         metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "NetworkIndexer"));
+
+        // Create a channel for incoming events.
         let (input, event_stream) = channel(100);
+
         let indexer = Self {
             logger,
             store,
             input,
         };
+
+        // Process incoming events in the background.
         indexer.process_events(subgraph_id, metrics_registry, event_stream);
+
         indexer
     }
 
@@ -40,6 +46,8 @@ where
     ) {
         let logger = self.logger.clone();
 
+        // We use a block writer to write blocks and other entities
+        // to the store.
         let block_writer = Arc::new(BlockWriter::new(
             subgraph_id,
             &self.logger,
@@ -52,9 +60,17 @@ where
             let block_writer = block_writer.clone();
 
             match event {
+                // Handle reverts by rolling the network data back to
+                // the block prior to the reorg (called the "fork base"
+                // in other parts of the code).
                 NetworkTracerEvent::RevertTo { .. } => {
                     unimplemented!("Block reversion is not implemented yet");
                 }
+
+                // Write any incoming blocks straight to the store.
+                // By the time these blocks arrive here, they have been
+                // checked for missing data and are guaranteed to represent
+                // a continuous, gapless sequence of blocks.
                 NetworkTracerEvent::AddBlocks { blocks } => stream::iter_ok::<_, Error>(blocks)
                     .for_each(move |block| block_writer.clone().write(block))
                     .map_err(move |e: Error| {

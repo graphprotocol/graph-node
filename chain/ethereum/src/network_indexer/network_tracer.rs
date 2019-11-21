@@ -9,58 +9,58 @@ use graph::prelude::*;
 use super::common::*;
 
 /**
+ * Helper types.
+ */
+
+type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
+type RemoteHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
+type BlockFuture = Box<dyn Future<Item = BlockWithUncles, Error = Error> + Send>;
+type BlockStream = Box<dyn Stream<Item = BlockWithUncles, Error = Error> + Send>;
+type EmitEventsFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
+
+/**
  * Helpers to create futures and streams.
  */
 
-fn fetch_remote_head(
-    logger: Logger,
-    adapter: Arc<dyn EthereumAdapter>,
-) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send> {
-    Box::new(adapter.latest_block(&logger).from_err().and_then(|block| {
-        match (block.number, block.hash) {
-            (Some(_), Some(_)) => future::ok(block),
-            (number, hash) => future::err(format_err!(
-                "remote head block number or hash missing: number = {:?}, hash = {:?}",
-                number,
-                hash
-            )),
-        }
-    }))
+fn fetch_remote_head(logger: Logger, adapter: Arc<dyn EthereumAdapter>) -> RemoteHeadFuture {
+    Box::new(adapter.latest_block(&logger).from_err())
 }
 
 fn fetch_block_and_uncles(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
     block_number: u64,
-) -> impl Future<Item = BlockWithUncles, Error = Error> {
+) -> BlockFuture {
     let logger_for_full_block = logger.clone();
     let adapter_for_full_block = adapter.clone();
 
     let logger_for_uncles = logger.clone();
     let adapter_for_uncles = adapter.clone();
 
-    adapter
-        .block_by_number(&logger, block_number)
-        .from_err()
-        .and_then(move |block| {
-            let block = block.expect("received no block for number");
+    Box::new(
+        adapter
+            .block_by_number(&logger, block_number)
+            .from_err()
+            .and_then(move |block| {
+                let block = block.expect("received no block for number");
 
-            adapter_for_full_block
-                .load_full_block(&logger_for_full_block, block)
-                .from_err()
-        })
-        .and_then(move |block| {
-            adapter_for_uncles
-                .uncles(&logger_for_uncles, &block.block)
-                .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
-        })
+                adapter_for_full_block
+                    .load_full_block(&logger_for_full_block, block)
+                    .from_err()
+            })
+            .and_then(move |block| {
+                adapter_for_uncles
+                    .uncles(&logger_for_uncles, &block.block)
+                    .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
+            }),
+    )
 }
 
 fn fetch_blocks(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
     block_numbers: Range<u64>,
-) -> Box<dyn Stream<Item = BlockWithUncles, Error = Error> + Send> {
+) -> BlockStream {
     Box::new(
         futures::stream::iter_ok::<_, Error>(block_numbers)
             .map(move |block_number| {
@@ -73,7 +73,7 @@ fn fetch_blocks(
 fn send_events(
     event_sink: Sender<NetworkTracerEvent>,
     events: Vec<NetworkTracerEvent>,
-) -> Box<impl Future<Item = (), Error = Error> + Send> {
+) -> EmitEventsFuture {
     Box::new(
         event_sink
             .send_all(futures::stream::iter_ok(events))
@@ -107,78 +107,165 @@ impl fmt::Display for NetworkTracerEvent {
         match self {
             NetworkTracerEvent::RevertTo { block } => write!(
                 f,
-                "(revert-to, {} [{}])",
+                "Revert to: {} [{:x}]",
                 block.inner().number.unwrap(),
                 block.inner().hash.unwrap()
             ),
-            NetworkTracerEvent::AddBlocks { blocks } => write!(
-                f,
-                "(add-blocks, {} block(s) from {} [{}] to {} [{}])",
-                blocks.len(),
-                blocks[0].inner().number.unwrap(),
-                blocks[0].inner().hash.unwrap(),
-                blocks[blocks.len() - 1].inner().number.unwrap(),
-                blocks[blocks.len() - 1].inner().hash.unwrap(),
-            ),
+            NetworkTracerEvent::AddBlocks { blocks } => {
+                if blocks.len() == 1 {
+                    write!(
+                        f,
+                        "Add blocks: {} [{:x}]",
+                        blocks[0].inner().number.unwrap(),
+                        blocks[0].inner().hash.unwrap()
+                    )
+                } else {
+                    write!(
+                        f,
+                        "Add blocks: {} [{:x}], ...,  {} [{}] ({:x} blocks)",
+                        blocks[0].inner().number.unwrap(),
+                        blocks[0].inner().hash.unwrap(),
+                        blocks[blocks.len() - 1].inner().number.unwrap(),
+                        blocks[blocks.len() - 1].inner().hash.unwrap(),
+                        blocks.len(),
+                    )
+                }
+            }
         }
     }
 }
 
+/// State machine that handles block fetching and block reorganizations.
 #[derive(StateMachineFuture)]
 #[state_machine_future(context = "Context")]
 enum StateMachine {
+    /// We start with an empty state, which immediately moves on
+    /// to identifying the local head block of the network subgraph.
     #[state_machine_future(start, transitions(IdentifyLocalHead))]
     Start,
 
+    /// This state waits until we have the local head block (we get
+    /// its pointer from the store), then moves on to identifying
+    /// the remote head block (the latest block on the network).
     #[state_machine_future(transitions(IdentifyRemoteHead, Failed))]
-    IdentifyLocalHead {
-        local_head: Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>,
-    },
+    IdentifyLocalHead { local_head: LocalHeadFuture },
 
-    #[state_machine_future(transitions(FetchBlocks, Failed))]
+    /// This state waits until the remote head block is available.
+    /// Once we have this (local head, remote head) pair, we can fetch
+    /// the blocks (local head)+1, (local head)+2, ..., (remote head).
+    /// We do this in smaller chunks however, for two reasons:
+    ///
+    /// 1. To limit the amount of blocks we keep in memory.
+    /// 2. To be able to check for reorgs frequently.
+    ///
+    /// From this state, we move on by deciding on a range of blocks
+    /// and creating a stream to pull these in with some parallelization.
+    /// The next state (`FetchBlocks`) will then read this stream block
+    /// by block.
+    #[state_machine_future(transitions(FetchBlocks, IdentifyRemoteHead, Failed))]
     IdentifyRemoteHead {
         local_head: Option<EthereumBlockPointer>,
-        remote_head: Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>,
+        remote_head: RemoteHeadFuture,
     },
 
+    /// This state takes the first block from the stream. If the stream is
+    /// exhausted, it transitions back to re-checking the remote head block
+    /// and deciding on the next chunk of blocks to fetch. If there is still
+    /// a block to read from the stream, it's passed on to the `CheckBlock`
+    /// state for reorg checking.
     #[state_machine_future(transitions(CheckBlock, IdentifyRemoteHead, Failed))]
     FetchBlocks {
         local_head: Option<EthereumBlockPointer>,
         remote_head: LightEthereumBlock,
-        fetched_blocks: Box<dyn Stream<Item = BlockWithUncles, Error = Error> + Send>,
+        incoming_blocks: BlockStream,
     },
 
-    #[state_machine_future(transitions(FindBranchBase, EmitEvents, Failed))]
+    /// This state checks whether the incoming block is the successor
+    /// of the local head block. If it is, it is emitted via the `EmitEvents`
+    /// state. If it is not a successor then we are dealing with a block
+    /// reorg, i.e., a block that is on a fork of the chain.
+    ///
+    /// Note that by checking parent/child succession, this state ensures
+    /// that there are no gaps. So if we are on block `x` and a block `f`
+    /// comes in that is not a child, it must be on a fork of the chain,
+    /// e.g.:
+    ///
+    ///    a--b--c----(x)
+    ///       \
+    ///        --d--e--f
+    ///
+    /// In that case we need to do the following:
+    ///
+    /// 1. Find the fork base block (in the above example: `b`)
+    /// 2. Fetch all blocks on the path between and including that
+    ///    fork base block and the incoming block (in the example:
+    ///    `b`, `d`, `e` and `f`)
+    ///
+    /// Once we have all necessary blocks (in the example: `b`, `d`, `e`
+    /// and `f`), there are two actions we need to perform:
+    ///
+    /// a. Revert the network data to the fork base block (`b`)
+    /// b. Add all blocks after the fork base block, including the
+    ///    incoming block, to the indexed network data (`d`, `e` and `f`)
+    ///
+    /// Steps 1 and 2 are performed by identifying the incoming
+    /// block as a reorg and transitioning to the `FindForkBase`
+    /// state. Once that has completed the above steps, it will
+    /// emit events for a) and b).
+    #[state_machine_future(transitions(FindForkBase, EmitEvents, IdentifyRemoteHead, Failed))]
     CheckBlock {
         local_head: Option<EthereumBlockPointer>,
         remote_head: LightEthereumBlock,
-        fetched_blocks: Box<dyn Stream<Item = BlockWithUncles, Error = Error> + Send>,
+        incoming_blocks: BlockStream,
         block: BlockWithUncles,
     },
 
-    #[state_machine_future(transitions(FetchMissingBlocks, Failed))]
-    FindBranchBase {
+    /// Given a block identify as being on a fork of the chain,
+    /// this state tries to identify the fork base block and collect
+    /// all blocks on the path from the incoming block to the fork
+    /// base.
+    ///
+    /// If successful, it moves on to emitting events for
+    /// the revert and for adding the new blocks via the `EmitEvents`
+    /// state. If not successful, the state machine resets to the
+    /// `IdentifyRemoteHead` block to try again.
+    ///
+    /// Note: This state carries over the incoming block stream to
+    /// not lose the blocks in it. This is because even if there was
+    /// a reorg, the blocks following the current block that made us
+    /// detect it will likely be valid successors. So once the reorg
+    /// information has been collected and RevertTo/AddBlocks events
+    /// have been emitted for it, we should be able to continue with
+    /// processing the remaining blocks on the stream.
+    ///
+    /// Only when we reset back to `IdentifyRemoteHead` do we throw
+    /// away the stream in the hope that we'll get a better remote
+    /// head with different blocks leading up to it.
+    #[state_machine_future(transitions(EmitEvents, IdentifyRemoteHead, Failed))]
+    FindForkBase {
         local_block: BlockWithUncles,
+        remote_head: LightEthereumBlock,
         forked_block: BlockWithUncles,
+        incoming_blocks: BlockStream,
     },
 
-    #[state_machine_future(transitions(EmitEvents, Failed))]
-    FetchMissingBlocks {
-        block_before: BlockWithUncles,
-        block_after: BlockWithUncles,
-    },
-
+    /// Waits until all events have been emitted/sent, then transition
+    /// back to processing blocks from the open stream of incoming blocks.
     #[state_machine_future(transitions(FetchBlocks, Failed))]
     EmitEvents {
         local_head: Option<EthereumBlockPointer>,
         remote_head: LightEthereumBlock,
-        fetched_blocks: Box<dyn Stream<Item = BlockWithUncles, Error = Error> + Send>,
-        sending: Box<dyn Future<Item = (), Error = Error> + Send>,
+        incoming_blocks: BlockStream,
+        emitting: EmitEventsFuture,
     },
 
+    /// This is unused, the indexing never ends.
     #[state_machine_future(ready)]
     Ready(()),
 
+    /// State for fatal errors that cause the indexing to terminate.
+    /// This should almost never happen. If it does, it should cause
+    /// the entire node to crash / restart.
     #[state_machine_future(error)]
     Failed(Error),
 }
@@ -190,6 +277,8 @@ impl PollStateMachine for StateMachine {
     ) -> Poll<AfterStart, Error> {
         debug!(context.logger, "Start");
 
+        // Start by pulling the local head from the store. This is the most
+        // recent block we managed to index until now.
         transition!(IdentifyLocalHead {
             local_head: Box::new(future::result(
                 context.store.clone().block_ptr(context.subgraph_id.clone())
@@ -203,6 +292,8 @@ impl PollStateMachine for StateMachine {
     ) -> Poll<AfterIdentifyLocalHead, Error> {
         debug!(context.logger, "Identify local head");
 
+        // Once we have the local head, move on and identify the latest block
+        // that's on chain.
         let local_head = try_ready!(state.local_head.poll());
         transition!(IdentifyRemoteHead {
             local_head,
@@ -216,9 +307,25 @@ impl PollStateMachine for StateMachine {
     ) -> Poll<AfterIdentifyRemoteHead, Error> {
         debug!(context.logger, "Identify remote head");
 
+        // Wait until we have the remote head.
         let remote_head = try_ready!(state.remote_head.poll());
 
-        // Pull number out of the remote head
+        // Validate the remote head.
+        if remote_head.number.is_none() || remote_head.hash.is_none() {
+            warn!(
+                context.logger,
+                "Remote head block number or hash missing; trying again";
+                "block_number" => format!("{:?}", remote_head.number),
+                "block_hash" => format!("{:?}", remote_head.hash),
+            );
+
+            transition!(IdentifyRemoteHead {
+                local_head: state.local_head,
+                remote_head: fetch_remote_head(context.logger.clone(), context.adapter.clone()),
+            })
+        }
+
+        // Pull number out of the remote head; we can safely do that now.
         let remote_head_number = remote_head.number.unwrap().as_u64();
 
         let state = state.take();
@@ -246,10 +353,11 @@ impl PollStateMachine for StateMachine {
             ),
         );
 
+        // Fetch this block range
         transition!(FetchBlocks {
             local_head: state.local_head,
             remote_head,
-            fetched_blocks: fetch_blocks(
+            incoming_blocks: fetch_blocks(
                 context.logger.clone(),
                 context.adapter.clone(),
                 block_numbers
@@ -261,9 +369,13 @@ impl PollStateMachine for StateMachine {
         state: &'a mut RentToOwn<'a, FetchBlocks>,
         context: &'c mut RentToOwn<'c, Context>,
     ) -> Poll<AfterFetchBlocks, Error> {
-        let item = try_ready!(state.fetched_blocks.poll());
+        // Wait until there is either an incoming block ready to be processed or
+        // the stream is exhausted.
+        let item = try_ready!(state.incoming_blocks.poll());
 
         match item {
+            // The stream is exhausted, update the remote head and fetch the
+            // next range of blocks for processing.
             None => {
                 let state = state.take();
 
@@ -272,13 +384,16 @@ impl PollStateMachine for StateMachine {
                     remote_head: fetch_remote_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
+
+            // There is an incoming block ready to be processed;
+            // check it before emitting it to the rest of the system
             Some(block) => {
                 let state = state.take();
 
                 transition!(CheckBlock {
                     local_head: state.local_head,
                     remote_head: state.remote_head,
-                    fetched_blocks: state.fetched_blocks,
+                    incoming_blocks: state.incoming_blocks,
                     block,
                 })
             }
@@ -291,60 +406,52 @@ impl PollStateMachine for StateMachine {
     ) -> Poll<AfterCheckBlock, Error> {
         let state = state.take();
 
-        match (state.block.inner().number, state.block.inner().hash) {
-            (Some(_), Some(_)) => {
-                // We have a valid block
-                debug!(
-                    context.logger,
-                    "Check block";
-                    "block_number" => format!("{}", state.block.inner().number.unwrap()),
-                    "block_hash" => format!("{:x}", state.block.inner().hash.unwrap())
-                );
+        // Validate the block.
+        if state.block.inner().number.is_none() || state.block.inner().hash.is_none() {
+            warn!(
+                context.logger,
+                "Block number or hash missing; trying again";
+                "block_number" => format!("{:?}", state.block.inner().number),
+                "block_hash" => format!("{:?}", state.block.inner().hash),
+            );
 
-                // Check whether we have a reorg (parent of the block != our local head)
-                let parent = state.block.inner().parent_ptr();
-                if parent != state.local_head {
-                    panic!("Reorgs are not implemented yet");
-                } else {
-                    transition!(EmitEvents {
-                        // Advance the local head to the new block
-                        local_head: Some(state.block.inner().into()),
+            // The block is invalid, throw away the entire stream and
+            // start with re-checking the remote head block again.
+            transition!(IdentifyRemoteHead {
+                local_head: state.local_head,
+                remote_head: fetch_remote_head(context.logger.clone(), context.adapter.clone()),
+            })
+        }
 
-                        remote_head: state.remote_head,
-                        fetched_blocks: state.fetched_blocks,
+        // Check whether we have a reorg (parent of the block != our local head)
+        if state.block.inner().parent_ptr() != state.local_head {
+            unimplemented!("Reorgs are not implemented yet");
+        } else {
+            transition!(EmitEvents {
+                // Advance the local head to the new block
+                local_head: Some(state.block.inner().into()),
 
-                        // Send events on the way
-                        sending: send_events(
-                            context.event_sink.clone(),
-                            vec![NetworkTracerEvent::AddBlocks {
-                                blocks: vec![state.block]
-                            }]
-                        ),
-                    })
-                }
-            }
-            (number, hash) => transition!(Failed(format_err!(
-                "block number or hash missing: number = {:?}, hash = {:?}",
-                number,
-                hash
-            ))),
+                // Carry over the current remote head and the
+                // incoming blocks stream.
+                remote_head: state.remote_head,
+                incoming_blocks: state.incoming_blocks,
+
+                // Send events on the way
+                emitting: send_events(
+                    context.event_sink.clone(),
+                    vec![NetworkTracerEvent::AddBlocks {
+                        blocks: vec![state.block]
+                    }]
+                ),
+            })
         }
     }
 
-    fn poll_find_branch_base<'a, 'c>(
-        _state: &'a mut RentToOwn<'a, FindBranchBase>,
+    fn poll_find_fork_base<'a, 'c>(
+        _state: &'a mut RentToOwn<'a, FindForkBase>,
         context: &'c mut RentToOwn<'c, Context>,
-    ) -> Poll<AfterFindBranchBase, Error> {
-        debug!(context.logger, "Find branch base for reorg");
-
-        unimplemented!();
-    }
-
-    fn poll_fetch_missing_blocks<'a, 'c>(
-        _state: &'a mut RentToOwn<'a, FetchMissingBlocks>,
-        context: &'c mut RentToOwn<'c, Context>,
-    ) -> Poll<AfterFetchMissingBlocks, Error> {
-        debug!(context.logger, "Fetch missing blocks for reorg");
+    ) -> Poll<AfterFindForkBase, Error> {
+        debug!(context.logger, "Find fork base for reorg");
 
         unimplemented!();
     }
@@ -353,15 +460,16 @@ impl PollStateMachine for StateMachine {
         state: &'a mut RentToOwn<'a, EmitEvents>,
         _context: &'c mut RentToOwn<'c, Context>,
     ) -> Poll<AfterEmitEvents, Error> {
-        // Remain in this state until all events have been sent
-        try_ready!(state.sending.poll());
+        // Remain in this state until all events have been emitted
+        try_ready!(state.emitting.poll());
 
         let state = state.take();
 
+        // We may have more incoming blocks to process, continue with that.
         transition!(FetchBlocks {
             local_head: state.local_head,
             remote_head: state.remote_head,
-            fetched_blocks: state.fetched_blocks,
+            incoming_blocks: state.incoming_blocks,
         })
     }
 }
@@ -385,14 +493,16 @@ impl NetworkTracer {
         let (event_sink, output) = channel(100);
 
         // Create state machine that emits block and revert events for the network
-        let context = Context {
+        let state_machine = StateMachine::start(Context {
             subgraph_id,
             logger,
             adapter,
             store,
             event_sink,
-        };
-        tokio::spawn(StateMachine::start(context).map_err(move |e| {
+        });
+
+        // Launch state machine
+        tokio::spawn(state_machine.map_err(move |e| {
             error!(logger_for_err, "Network tracer failed: {}", e);
         }));
 
