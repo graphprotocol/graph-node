@@ -11,3 +11,4 @@ graph = { path = "../../graph" }
 mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
 hex-literal = "0.2"
+state_machine_future = "0.2"
