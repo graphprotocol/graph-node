@@ -1,8 +1,11 @@
+use crate::components::store::{Store, SubgraphDeploymentStore};
 use crate::data::graphql::validation::{
     get_object_type_definitions, validate_interface_implementation, validate_schema,
     SchemaValidationError,
 };
-use crate::data::subgraph::SubgraphDeploymentId;
+use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
+use crate::prelude::future::{self, *};
+use crate::prelude::Fail;
 use failure::Error;
 use graphql_parser;
 use graphql_parser::{
@@ -10,14 +13,86 @@ use graphql_parser::{
     schema::{self, InterfaceType, ObjectType, TypeDefinition, Value},
     Pos,
 };
+
 use std::collections::BTreeMap;
+use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
+use std::sync::Arc;
 
 pub const SUBGRAPH_SCHEMA_TYPE_NAME: &str = "_SubgraphSchema_";
 
+#[derive(Debug, Fail, PartialEq, Eq, Clone)]
+pub enum SchemaImportError {
+    #[fail(display = "Schema for imported subgraph `{}` was not found", _0)]
+    ImportedSchemaNotFound(SchemaReference),
+    #[fail(display = "Subgraph for imported schema `{}` is not deployed", _0)]
+    ImportedSubgraphNotFound(SchemaReference),
+    #[fail(display = "Name for imported subgraph `{}` is invalid", _0)]
+    ImportedSubgraphNameInvalid(String),
+    #[fail(display = "Id for imported subgraph `{}` is invalid", _0)]
+    ImportedSubgraphIdInvalid(String),
+}
+
+impl SchemaImportError {
+    pub fn is_failure(error: &Self) -> bool {
+        match error {
+            SchemaImportError::ImportedSubgraphNameInvalid(_)
+            | SchemaImportError::ImportedSubgraphIdInvalid(_) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SchemaReference {
     ByName(String),
     ById(String),
+}
+
+impl Hash for SchemaReference {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::ById(id) => id.hash(state),
+            Self::ByName(name) => name.hash(state),
+        };
+    }
+}
+
+impl fmt::Display for SchemaReference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            SchemaReference::ByName(name) => write!(f, "{}", name),
+            SchemaReference::ById(id) => write!(f, "{}", id),
+        }
+    }
+}
+
+impl SchemaReference {
+    pub fn resolve<S: Store + SubgraphDeploymentStore>(
+        self,
+        store: Arc<S>,
+    ) -> Result<Arc<Schema>, SchemaImportError> {
+        let subgraph_id = match &self {
+            SchemaReference::ByName(name) => {
+                let subgraph_name = SubgraphName::new(name.clone())
+                    .map_err(|err| SchemaImportError::ImportedSubgraphNameInvalid(name.clone()))?;
+                store
+                    .resolve_subgraph_name_to_id(subgraph_name.clone())
+                    .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
+                    .and_then(|subgraph_id_opt| {
+                        subgraph_id_opt
+                            .ok_or(SchemaImportError::ImportedSubgraphNotFound(self.clone()))
+                    })?
+            }
+            SchemaReference::ById(id) => SubgraphDeploymentId::new(id.clone())
+                .map_err(|err| SchemaImportError::ImportedSubgraphIdInvalid(id.clone()))?,
+        };
+
+        store
+            .input_schema(&subgraph_id)
+            .map_err(|err| SchemaImportError::ImportedSchemaNotFound(self.clone()))
+    }
 }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.

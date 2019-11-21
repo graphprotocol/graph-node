@@ -18,7 +18,7 @@ use web3::types::{Address, H256};
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::StoreError;
 use crate::data::query::QueryExecutionError;
-use crate::data::schema::Schema;
+use crate::data::schema::{Schema, SchemaImportError, SchemaReference};
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
     EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
@@ -333,6 +333,8 @@ pub enum SubgraphManifestValidationError {
     DataSourceBlockHandlerLimitExceeded,
     #[fail(display = "the specified block must exist on the Ethereum network")]
     BlockNotFound(String),
+    #[fail(display = "imported schemas are invalid")]
+    SchemaImportErrors(Vec<SchemaImportError>),
 }
 
 #[derive(Fail, Debug)]
@@ -839,7 +841,19 @@ impl UnvalidatedSubgraphManifest {
         &self,
         _logger: Logger,
     ) -> impl Future<Item = (), Error = Vec<SubgraphManifestValidationError>> {
+        // Implement UnvalidatedSubgraphManifest::validate method HashMap<SchemaReference, Option<Schema>> -> Result<(SubgraphManifest, Vec<SubgraphManifestValidationWarnings>), Vec<SubgraphManifestValidationError>>
+        // Should include all logic in core/src/subgraph/validation.rs
+        // Should include all logic in graph/src/data/graphql/validation.rs
+        // Should validate that all types in the Subgraph referenced from other subgraphs exist
+        // If the referenced subgraph is not provided as an argument, do not validate those types
+        // Should validate that import directives are properly formed
+        // Should that import directives only exist on the _SubgraphSchema_ type
+        // _SubgraphSchema_ type should not have fields
         return future::ok(());
+    }
+
+    pub fn imported_schemas(&self) -> Vec<SchemaReference> {
+        self.0.schema.imported_schemas()
     }
 }
 
