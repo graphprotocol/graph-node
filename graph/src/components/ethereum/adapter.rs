@@ -640,6 +640,12 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_hash: H256,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
 
+    fn block_by_number(
+        &self,
+        logger: &Logger,
+        block_number: u64,
+    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
+
     /// Load full information for the specified `block` (in particular, transaction receipts).
     fn load_full_block(
         &self,

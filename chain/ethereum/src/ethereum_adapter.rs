@@ -672,6 +672,34 @@ where
         )
     }
 
+    fn block_by_number(
+        &self,
+        logger: &Logger,
+        block_number: u64,
+    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
+        let web3 = self.web3.clone();
+        let logger = logger.clone();
+
+        Box::new(
+            retry("eth_getBlockByNumber RPC call", &logger)
+                .no_limit()
+                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .run(move || {
+                    web3.eth()
+                        .block_with_txs(BlockId::Number(block_number.into()))
+                        .from_err()
+                })
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        format_err!(
+                            "Ethereum node took too long to return block {}",
+                            block_number
+                        )
+                    })
+                }),
+        )
+    }
+
     fn load_full_block(
         &self,
         logger: &Logger,
