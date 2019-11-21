@@ -812,7 +812,7 @@ where
                 })
                 .map_err(|e| match transaction_hash {
                     Some(tx_hash) => format_err!(
-                        "Failed to process trigger for transaction {}: {}",
+                        "Failed to process trigger in transaction {}: {}",
                         transaction_id,
                         e
                     ),
