@@ -1,18 +1,18 @@
 use futures::prelude::Future;
 use futures::{
     future,
-    future::{loop_fn, FutureResult, Loop},
+    future::{loop_fn, Loop},
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use tokio::timer::Delay;
 
-use graph::data::subgraph::schema::*;
 use graph::prelude::{NetworkIndexer as NetworkIndexerTrait, *};
 
 mod block_writer;
 mod common;
+mod subgraph;
 mod to_entity;
 
 use block_writer::*;
@@ -196,137 +196,36 @@ where
         }
     }
 
-    fn check_subgraph_exists(&self) -> impl Future<Item = bool, Error = Error> {
-        future::result(
-            self.store
-                .get(SubgraphDeploymentEntity::key(self.subgraph_id.clone()))
-                .map_err(|e| e.into())
-                .map(|entity| entity.map_or(false, |_| true)),
-        )
-    }
-
-    fn create_subgraph(self) -> FutureResult<Self, Error> {
-        let mut ops = vec![];
-
-        // Ensure the subgraph itself doesn't already exist
-        ops.push(MetadataOperation::AbortUnless {
-            description: "Subgraph entity should not exist".to_owned(),
-            query: SubgraphEntity::query().filter(EntityFilter::new_equal(
-                "name",
-                self.subgraph_name.to_string(),
-            )),
-            entity_ids: vec![],
-        });
-
-        // Create the subgraph entity (e.g. `ethereum/mainnet`)
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let subgraph_entity_id = generate_entity_id();
-        ops.extend(
-            SubgraphEntity::new(self.subgraph_name.clone(), None, None, created_at)
-                .write_operations(&subgraph_entity_id)
-                .into_iter()
-                .map(|op| op.into()),
-        );
-
-        // Ensure the subgraph version doesn't already exist
-        ops.push(MetadataOperation::AbortUnless {
-            description: "Subgraph version should not exist".to_owned(),
-            query: SubgraphVersionEntity::query()
-                .filter(EntityFilter::new_equal("id", self.subgraph_id.to_string())),
-            entity_ids: vec![],
-        });
-
-        // Create a subgraph version entity; we're using the same ID for
-        // version and deployment to make clear they belong together
-        let version_entity_id = self.subgraph_id.to_string();
-        ops.extend(
-            SubgraphVersionEntity::new(
-                subgraph_entity_id.clone(),
-                self.subgraph_id.clone(),
-                created_at,
-            )
-            .write_operations(&version_entity_id)
-            .into_iter()
-            .map(|op| op.into()),
-        );
-
-        // Immediately make this version the current one
-        ops.extend(SubgraphEntity::update_pending_version_operations(
-            &subgraph_entity_id,
-            None,
-        ));
-        ops.extend(SubgraphEntity::update_current_version_operations(
-            &subgraph_entity_id,
-            Some(version_entity_id),
-        ));
-
-        // Ensure the deployment doesn't already exist
-        ops.push(MetadataOperation::AbortUnless {
-            description: "Subgraph deployment entity must not exist".to_owned(),
-            query: SubgraphDeploymentEntity::query()
-                .filter(EntityFilter::new_equal("id", self.subgraph_id.to_string())),
-            entity_ids: vec![],
-        });
-
-        // Create a fake manifest
-        let manifest = SubgraphManifest {
-            id: self.subgraph_id.clone(),
-            location: self.subgraph_name.to_string(),
-            spec_version: String::from("0.0.1"),
-            description: None,
-            repository: None,
-            schema: Schema::parse(include_str!("./ethereum.graphql"), self.subgraph_id.clone())
-                .expect("valid Ethereum network subgraph schema"),
-            data_sources: vec![],
-            templates: vec![],
-        };
-
-        // Create deployment entity
-        let chain_head_block = match self.store.chain_head_ptr() {
-            Ok(block_ptr) => block_ptr,
-            Err(e) => return future::err(e.into()),
-        };
-        ops.extend(
-            SubgraphDeploymentEntity::new(&manifest, false, false, None, chain_head_block)
-                .create_operations(&manifest.id),
-        );
-
-        // Create a deployment assignment entity
-        ops.extend(
-            SubgraphDeploymentAssignmentEntity::new(NodeId::new("__builtin").unwrap())
-                .write_operations(&self.subgraph_id)
-                .into_iter()
-                .map(|op| op.into()),
-        );
-
-        match self.store.create_subgraph_deployment(&manifest.schema, ops) {
-            Ok(_) => {
-                debug!(self.logger, "Created Ethereum network subgraph");
-                future::ok(self)
-            }
-            Err(e) => future::err(e.into()),
-        }
-    }
-
     fn ensure_subgraph_exists(self) -> impl Future<Item = Self, Error = Error> {
         debug!(self.logger, "Ensure that the network subgraph exists");
 
+        let logger_for_created = self.logger.clone();
+
         // Do nothing if the deployment already exists
-        self.check_subgraph_exists().and_then(|subgraph_exists| {
-            if subgraph_exists {
-                debug!(self.logger, "Network subgraph deployment already exists");
-                future::ok(self)
-            } else {
-                debug!(
-                    self.logger,
-                    "Network subgraph deployment needs to be created"
-                );
-                self.create_subgraph()
-            }
-        })
+        subgraph::check_subgraph_exists(self.store.clone(), self.subgraph_id.clone())
+            .from_err()
+            .and_then(move |subgraph_exists| {
+                if subgraph_exists {
+                    debug!(self.logger, "Network subgraph deployment already exists");
+                    Box::new(future::ok(self)) as Box<dyn Future<Item = _, Error = _> + Send>
+                } else {
+                    debug!(
+                        self.logger,
+                        "Network subgraph deployment needs to be created"
+                    );
+                    Box::new(
+                        subgraph::create_subgraph(
+                            self.store.clone(),
+                            self.subgraph_name.clone(),
+                            self.subgraph_id.clone(),
+                        )
+                        .inspect(move |_| {
+                            debug!(logger_for_created, "Created Ethereum network subgraph");
+                        })
+                        .map(|_| self),
+                    )
+                }
+            })
     }
 
     fn fetch_block_and_uncles(
