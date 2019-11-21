@@ -40,24 +40,31 @@ where
       "subgraph_id" => subgraph_id.to_string(),
     ));
 
-    // Create the network tracer
-    let mut tracer = NetworkTracer::new(
-        subgraph_id.clone(),
-        &logger,
-        adapter.clone(),
-        store.clone(),
-        metrics_registry.clone(),
-    );
-
-    // Create the network indexer
-    let indexer = NetworkIndexer::new(
-        subgraph_id.clone(),
-        &logger,
-        store.clone(),
-        metrics_registry.clone(),
-    );
-
     // Ensure subgraph, the wire up the tracer and indexer
-    subgraph::ensure_subgraph_exists(subgraph_name, subgraph_id, logger.clone(), store.clone())
-        .and_then(move |_| forward(&mut tracer, &indexer).unwrap())
+    subgraph::ensure_subgraph_exists(
+        subgraph_name,
+        subgraph_id.clone(),
+        logger.clone(),
+        store.clone(),
+    )
+    .and_then(move |_| {
+        // Create the network tracer
+        let mut tracer = NetworkTracer::new(
+            subgraph_id.clone(),
+            &logger,
+            adapter.clone(),
+            store.clone(),
+            metrics_registry.clone(),
+        );
+
+        // Create the network indexer
+        let indexer = NetworkIndexer::new(
+            subgraph_id.clone(),
+            &logger,
+            store.clone(),
+            metrics_registry.clone(),
+        );
+
+        forward(&mut tracer, &indexer).unwrap()
+    })
 }
