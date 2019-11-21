@@ -15,7 +15,7 @@ use graph::prelude::{
     EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
 };
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, NetworkIndexer, Transport};
+use graph_chain_ethereum::{network_indexer, BlockIngestor, BlockStreamBuilder, Transport};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -577,7 +577,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
                     .for_each(|network_subgraph| {
                         let network_name = network_subgraph.replace("ethereum/", "");
-                        let network_indexer = NetworkIndexer::new(
+                        let network_indexer = network_indexer::create(
                             network_subgraph.into(),
                             stores
                                 .get(&network_name)
@@ -587,11 +587,10 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                                 .get(&network_name)
                                 .expect("adapter for network")
                                 .clone(),
-                            &logger_factory,
+                            &logger,
                             metrics_registry.clone(),
                         );
-
-                        tokio::spawn(network_indexer.into_polling_stream());
+                        tokio::spawn(network_indexer);
                     })
             };
 
