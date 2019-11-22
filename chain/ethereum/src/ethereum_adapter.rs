@@ -1030,7 +1030,11 @@ where
                     // support/#85 for a use case.
                     Err(EthereumContractCallError::Revert("empty response".into()))
                 } else {
-                    call.function.decode_output(&output).map_err(From::from)
+                    // Decode failures are reverts. The reasoning is that if Solidity fails to
+                    // decode an argument, that's a revert, so the same goes for the output.
+                    call.function.decode_output(&output).map_err(|e| {
+                        EthereumContractCallError::Revert(format!("failed to decode output: {}", e))
+                    })
                 }
             }),
         )
