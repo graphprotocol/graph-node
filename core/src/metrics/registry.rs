@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use graph::prelude::{MetricsRegistry as MetricsRegistryTrait, *};
 
@@ -10,6 +10,9 @@ pub struct MetricsRegistry {
     register_errors: Box<Counter>,
     unregister_errors: Box<Counter>,
     registered_metrics: Box<Gauge>,
+
+    /// Global metrics are are lazily initialized and identified by name.
+    global_counters: Arc<RwLock<HashMap<String, Counter>>>,
 }
 
 impl MetricsRegistry {
@@ -28,6 +31,7 @@ impl MetricsRegistry {
             register_errors,
             unregister_errors,
             registered_metrics,
+            global_counters: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -130,6 +134,7 @@ impl Clone for MetricsRegistry {
             register_errors: self.register_errors.clone(),
             unregister_errors: self.unregister_errors.clone(),
             registered_metrics: self.registered_metrics.clone(),
+            global_counters: self.global_counters.clone(),
         };
     }
 }
@@ -195,6 +200,21 @@ impl MetricsRegistryTrait for MetricsRegistry {
         let counter = Box::new(Counter::with_opts(opts)?);
         self.register(name, counter.clone());
         Ok(counter)
+    }
+
+    fn global_counter(&self, name: String) -> Result<Counter, PrometheusError> {
+        let maybe_counter = self.global_counters.read().unwrap().get(&name).cloned();
+        if let Some(counter) = maybe_counter {
+            Ok(counter.clone())
+        } else {
+            let help = "global counter".to_owned();
+            let counter = *self.new_counter(name.clone(), help, HashMap::new())?;
+            self.global_counters
+                .write()
+                .unwrap()
+                .insert(name.clone(), counter.clone());
+            Ok(counter)
+        }
     }
 
     fn new_counter_vec(

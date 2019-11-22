@@ -131,7 +131,6 @@ pub struct Store {
     pub(crate) storage_cache: e::StorageCache,
 
     registry: Arc<dyn MetricsRegistry>,
-    get_entity_conn_timers: Arc<Mutex<HashMap<SubgraphDeploymentId, Counter>>>,
 }
 
 impl Store {
@@ -170,7 +169,6 @@ impl Store {
             schema_cache: Mutex::new(LruCache::with_capacity(100)),
             storage_cache: e::make_storage_cache(),
             registry,
-            get_entity_conn_timers: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // Add network to store and check network identifiers
@@ -660,23 +658,9 @@ impl Store {
     fn get_entity_conn(&self, subgraph: &SubgraphDeploymentId) -> Result<e::Connection, Error> {
         let start = Instant::now();
         let conn = self.get_conn()?;
-        if *subgraph != *SUBGRAPHS_ID {
-            self.get_entity_conn_timers
-                .lock()
-                .unwrap()
-                .entry(subgraph.clone())
-                .or_insert_with(|| {
-                    *self
-                        .registry
-                        .new_counter(
-                            format!("{}_get_entity_conn_secs", subgraph),
-                            format!("total time spent waiting for a DB connection"),
-                            HashMap::new(),
-                        )
-                        .expect("failed to register get_conn_secs prometheus counter")
-                })
-                .inc_by(start.elapsed().as_secs_f64());
-        }
+        self.registry
+            .global_counter(format!("{}_get_entity_conn_secs", subgraph))?
+            .inc_by(start.elapsed().as_secs_f64());
         let storage = self.storage(&conn, subgraph)?;
         let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;
         Ok(e::Connection::new(conn, storage, metadata))
