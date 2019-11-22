@@ -810,10 +810,10 @@ where
                     subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);
                     (ctx, block_state)
                 })
-                .map_err(|e| match transaction_hash {
+                .map_err(move |e| match transaction_id {
                     Some(tx_hash) => format_err!(
                         "Failed to process trigger in transaction {}: {}",
-                        transaction_id,
+                        tx_hash,
                         e
                     ),
                     None => format_err!("Failed to process trigger: {}", e),
