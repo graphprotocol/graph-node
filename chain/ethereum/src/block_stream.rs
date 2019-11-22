@@ -233,7 +233,6 @@ where
         let call_filter = self.call_filter.clone();
         let block_filter = self.block_filter.clone();
         let start_blocks = self.start_blocks.clone();
-        let reorg_threshold = ctx.reorg_threshold;
 
         // Get pointers from database for comparison
         let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
@@ -262,6 +261,9 @@ where
             "number" => subgraph_ptr.map(|block| block.number),
         );
 
+        // Make sure not to include genesis in the reorg threshold.
+        let reorg_threshold = ctx.reorg_threshold.min(head_ptr.number);
+
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
         if let Some(ptr) = subgraph_ptr {
@@ -273,14 +275,6 @@ where
                 return Box::new(future::ok(ReconciliationStep::Done))
                     as Box<dyn Future<Item = _, Error = _> + Send>;
             }
-        }
-
-        if head_ptr.number < reorg_threshold {
-            panic!(
-                "The reorg threshold {} is larger than the size of the chain {}, \
-                 you probably want to set the ETHEREUM_REORG_THRESHOLD environment variable to 0",
-                reorg_threshold, head_ptr.number
-            )
         }
 
         // Subgraph ptr is behind head ptr.
