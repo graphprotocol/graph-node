@@ -748,7 +748,6 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindQuery<'a> {
-    schema: &'a str,
     table: &'a Table,
     id: &'a str,
     block: BlockNumber,
@@ -765,9 +764,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_bind_param::<Text, _>(&self.table.object)?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
-        out.push_identifier(self.schema)?;
-        out.push_sql(".");
-        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
         out.push_identifier(PRIMARY_KEY_COLUMN)?;
         out.push_sql(" = ");
@@ -851,7 +848,6 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct InsertQuery<'a> {
-    schema_name: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
     entity: &'a Entity,
@@ -860,7 +856,6 @@ pub struct InsertQuery<'a> {
 
 impl<'a> InsertQuery<'a> {
     pub fn new(
-        schema_name: &'a str,
         table: &'a Table,
         key: &'a EntityKey,
         entity: &'a Entity,
@@ -878,7 +873,6 @@ impl<'a> InsertQuery<'a> {
         }
 
         Ok(InsertQuery {
-            schema_name,
             table,
             key,
             entity,
@@ -896,9 +890,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         //   values ($1, ...)
         // and convert and bind the entity's values into it
         out.push_sql("insert into ");
-        out.push_identifier(self.schema_name)?;
-        out.push_sql(".");
-        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql(self.table.qualified_name.as_str());
 
         out.push_sql("(");
         for column in self.table.columns.iter() {
@@ -972,9 +964,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_sql("select ");
             out.push_bind_param::<Text, _>(&table.object)?;
             out.push_sql(" as entity from ");
-            out.push_identifier(&self.layout.schema)?;
-            out.push_sql(".");
-            out.push_identifier(table.name.as_str())?;
+            out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
             out.push_bind_param::<Text, _>(self.entity_id)?;
         }
@@ -1004,7 +994,6 @@ impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FilterQuery<'a> {
-    schema: &'a str,
     table_filter_pairs: Vec<(&'a Table, Option<QueryFilter<'a>>)>,
     order: Option<(&'a SqlName, EntityOrder)>,
     range: EntityRange,
@@ -1110,9 +1099,7 @@ impl<'a> FilterQuery<'a> {
         //    where block_range @> $block
         //      and query_filter
         out.push_sql("\n  from ");
-        out.push_identifier(&self.schema)?;
-        out.push_sql(".");
-        out.push_identifier(table.name.as_str())?;
+        out.push_sql(table.qualified_name.as_str());
         out.push_sql(" e");
         out.push_sql("\n where ");
         BlockRangeContainsClause::new(self.block).walk_ast(out.reborrow())?;
@@ -1161,9 +1148,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("select m.entity, to_jsonb(e.*) as data, e.id");
             self.select_sort_key_and_window(out)?;
             out.push_sql("\n  from ");
-            out.push_identifier(&self.schema)?;
-            out.push_sql(".");
-            out.push_identifier(table.name.as_str())?;
+            out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e,");
             out.push_sql(" matches m");
             out.push_sql("\n where e.vid = m.vid and m.entity = ");
@@ -1348,7 +1333,6 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 /// long as that does not result in an empty block range
 #[derive(Debug, Clone, Constructor)]
 pub struct ClampRangeQuery<'a> {
-    schema: &'a str,
     table: &'a Table,
     key: &'a EntityKey,
     block: BlockNumber,
@@ -1362,9 +1346,7 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         //    and block_range @> INTMAX
         out.unsafe_to_cache_prepared();
         out.push_sql("update ");
-        out.push_identifier(self.schema)?;
-        out.push_sql(".");
-        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql(self.table.qualified_name.as_str());
         out.push_sql("\n   set ");
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" = int4range(lower(");
@@ -1402,7 +1384,6 @@ pub struct RevertEntityData {
 /// beyond `block`
 #[derive(Debug, Clone, Constructor)]
 pub struct RevertRemoveQuery<'a> {
-    schema: &'a str,
     table: &'a Table,
     block: BlockNumber,
 }
@@ -1416,9 +1397,7 @@ impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
         //    where lower(block_range) >= $block
         //   returning id
         out.push_sql("delete from ");
-        out.push_identifier(&self.schema)?;
-        out.push_sql(".");
-        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql(self.table.qualified_name.as_str());
         out.push_sql("\n where lower(");
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(") >= ");
@@ -1446,7 +1425,6 @@ impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
 /// `block` by setting the upper bound of the block range to infinity
 #[derive(Debug, Clone, Constructor)]
 pub struct RevertClampQuery<'a> {
-    schema: &'a str,
     table: &'a Table,
     block: BlockNumber,
 }
@@ -1462,9 +1440,7 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         //     and not block_range @> INTMAX
         //   returning id
         out.push_sql("update ");
-        out.push_identifier(&self.schema)?;
-        out.push_sql(".");
-        out.push_identifier(self.table.name.as_str())?;
+        out.push_sql(self.table.qualified_name.as_str());
         out.push_sql("\n   set ");
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" = int4range(lower(");

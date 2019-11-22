@@ -88,6 +88,10 @@ impl SqlName {
     pub fn from_snake_case(s: String) -> Self {
         SqlName(s)
     }
+
+    pub fn qualified_name(schema: &str, name: &SqlName) -> Self {
+        SqlName(format!("\"{}\".\"{}\"", schema, name.as_str()))
+    }
 }
 
 impl From<&str> for SqlName {
@@ -326,7 +330,7 @@ impl Layout {
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
         let table = self.table_for_entity(entity)?;
-        FindQuery::new(&self.schema, table.as_ref(), id, block)
+        FindQuery::new(table.as_ref(), id, block)
             .get_result::<EntityData>(conn)
             .optional()?
             .map(|entity_data| entity_data.to_entity(self))
@@ -367,7 +371,7 @@ impl Layout {
         block: BlockNumber,
     ) -> Result<(), StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        let query = InsertQuery::new(&self.schema, table, key, entity, block)?;
+        let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
         Ok(())
     }
@@ -430,14 +434,7 @@ impl Layout {
             .map(|window| first_table.column_for_field(&window))
             .transpose()?
             .map(|column| &column.name);
-        let query = FilterQuery::new(
-            &self.schema,
-            table_filter_pairs,
-            order,
-            range,
-            window,
-            block,
-        );
+        let query = FilterQuery::new(table_filter_pairs, order, range, window, block);
         let query_debug_info = query.clone();
 
         let values = query.load::<EntityData>(conn).map_err(|e| {
@@ -462,8 +459,8 @@ impl Layout {
         block: BlockNumber,
     ) -> Result<(), StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        ClampRangeQuery::new(&self.schema, table, key, block).execute(conn)?;
-        let query = InsertQuery::new(&self.schema, table, key, entity, block)?;
+        ClampRangeQuery::new(table, key, block).execute(conn)?;
+        let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
         Ok(())
     }
@@ -475,7 +472,7 @@ impl Layout {
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
-        Ok(ClampRangeQuery::new(&self.schema, table, key, block).execute(conn)?)
+        Ok(ClampRangeQuery::new(table, key, block).execute(conn)?)
     }
 
     pub fn revert_block(
@@ -489,7 +486,7 @@ impl Layout {
         for table in self.tables.values() {
             // Remove all versions whose entire block range lies beyond
             // `block`
-            let removed = RevertRemoveQuery::new(&self.schema, table, block)
+            let removed = RevertRemoveQuery::new(table, block)
                 .get_results(conn)?
                 .into_iter()
                 .map(|data| data.id)
@@ -497,7 +494,7 @@ impl Layout {
             // Make the versions current that existed at `block - 1` but that
             // are not current yet. Those are the ones that were updated or
             // deleted at `block`
-            let unclamped = RevertClampQuery::new(&self.schema, table, block - 1)
+            let unclamped = RevertClampQuery::new(table, block - 1)
                 .get_results(conn)?
                 .into_iter()
                 .map(|data| data.id)
@@ -573,11 +570,10 @@ impl ColumnType {
         if enums.contains_key(&*name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
-            return Ok(ColumnType::Enum(SqlName(format!(
-                "\"{}\".\"{}\"",
+            return Ok(ColumnType::Enum(SqlName::qualified_name(
                 schema,
-                SqlName::from(name)
-            ))));
+                &SqlName::from(name),
+            )));
         }
 
         // It is not an enum, and therefore one of our builtin primitive types
@@ -713,6 +709,10 @@ pub struct Table {
     /// version of `object`
     pub name: SqlName,
 
+    /// The table name qualified with the schema in which the table lives,
+    /// `schema.table`
+    pub qualified_name: SqlName,
+
     pub columns: Vec<Column>,
     /// The position of this table in all the tables for this layout; this
     /// is really only needed for the tests to make the names of indexes
@@ -741,6 +741,7 @@ impl Table {
         let table = Table {
             object: defn.name.clone(),
             name: table_name.clone(),
+            qualified_name: SqlName::qualified_name(schema, &table_name),
             columns,
             position,
         };
