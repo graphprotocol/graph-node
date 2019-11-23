@@ -96,7 +96,7 @@ pub struct Context {
 }
 
 /// Events emitted by the network tracer.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum NetworkTracerEvent {
     RevertTo { block: BlockWithUncles },
     AddBlocks { blocks: Vec<BlockWithUncles> },
@@ -160,9 +160,9 @@ enum StateMachine {
     ///
     /// From this state, we move on by deciding on a range of blocks
     /// and creating a stream to pull these in with some parallelization.
-    /// The next state (`FetchBlocks`) will then read this stream block
+    /// The next state (`ReadBlocks`) will then read this stream block
     /// by block.
-    #[state_machine_future(transitions(FetchBlocks, IdentifyRemoteHead, Failed))]
+    #[state_machine_future(transitions(ReadBlocks, IdentifyRemoteHead, Failed))]
     IdentifyRemoteHead {
         local_head: Option<EthereumBlockPointer>,
         remote_head: RemoteHeadFuture,
@@ -174,7 +174,7 @@ enum StateMachine {
     /// a block to read from the stream, it's passed on to the `CheckBlock`
     /// state for reorg checking.
     #[state_machine_future(transitions(CheckBlock, IdentifyRemoteHead, Failed))]
-    FetchBlocks {
+    ReadBlocks {
         local_head: Option<EthereumBlockPointer>,
         remote_head: LightEthereumBlock,
         incoming_blocks: BlockStream,
@@ -190,9 +190,9 @@ enum StateMachine {
     /// comes in that is not a child, it must be on a fork of the chain,
     /// e.g.:
     ///
-    ///    a--b--c----(x)
-    ///       \
-    ///        --d--e--f
+    ///    a---b---c---x
+    ///        \
+    ///         +--d---e---f
     ///
     /// In that case we need to do the following:
     ///
@@ -251,7 +251,7 @@ enum StateMachine {
 
     /// Waits until all events have been emitted/sent, then transition
     /// back to processing blocks from the open stream of incoming blocks.
-    #[state_machine_future(transitions(FetchBlocks, Failed))]
+    #[state_machine_future(transitions(ReadBlocks, Failed))]
     EmitEvents {
         local_head: Option<EthereumBlockPointer>,
         remote_head: LightEthereumBlock,
@@ -307,6 +307,9 @@ impl PollStateMachine for StateMachine {
     ) -> Poll<AfterIdentifyRemoteHead, Error> {
         debug!(context.logger, "Identify remote head");
 
+        // Abort if the output stream has been closed.
+        try_ready!(context.event_sink.poll_ready());
+
         // Wait until we have the remote head.
         let remote_head = try_ready!(state.remote_head.poll());
 
@@ -325,17 +328,17 @@ impl PollStateMachine for StateMachine {
             })
         }
 
-        // Pull number out of the remote head; we can safely do that now.
-        let remote_head_number = remote_head.number.unwrap().as_u64();
-
         let state = state.take();
+
+        // Pull number out of the local and remote head; we can safely do that now.
+        let remote_head_number = remote_head.number.unwrap().as_u64();
+        let next_block_number = state.local_head.map_or(0u64, |ptr| ptr.number + 1);
 
         // Calculate the number of blocks remaining before we are in sync with the
         // remote; fetch no more than 1000 blocks at a time
-        let remaining_blocks = remote_head_number - state.local_head.map_or(0u64, |ptr| ptr.number);
+        let remaining_blocks = remote_head_number - next_block_number + 1;
         let block_range_size = remaining_blocks.min(1000);
-        let block_numbers = state.local_head.map_or(0u64, |ptr| ptr.number + 1)
-            ..(state.local_head.map_or(0u64, |ptr| ptr.number + 1) + block_range_size);
+        let block_numbers = next_block_number..(next_block_number + block_range_size);
 
         debug!(
             context.logger,
@@ -354,7 +357,7 @@ impl PollStateMachine for StateMachine {
         );
 
         // Fetch this block range
-        transition!(FetchBlocks {
+        transition!(ReadBlocks {
             local_head: state.local_head,
             remote_head,
             incoming_blocks: fetch_blocks(
@@ -365,10 +368,15 @@ impl PollStateMachine for StateMachine {
         })
     }
 
-    fn poll_fetch_blocks<'a, 'c>(
-        state: &'a mut RentToOwn<'a, FetchBlocks>,
+    fn poll_read_blocks<'a, 'c>(
+        state: &'a mut RentToOwn<'a, ReadBlocks>,
         context: &'c mut RentToOwn<'c, Context>,
-    ) -> Poll<AfterFetchBlocks, Error> {
+    ) -> Poll<AfterReadBlocks, Error> {
+        debug!(context.logger, "Read blocks");
+
+        // Abort if the output stream has been closed.
+        try_ready!(context.event_sink.poll_ready());
+
         // Wait until there is either an incoming block ready to be processed or
         // the stream is exhausted.
         let item = try_ready!(state.incoming_blocks.poll());
@@ -404,15 +412,26 @@ impl PollStateMachine for StateMachine {
         state: &'a mut RentToOwn<'a, CheckBlock>,
         context: &'c mut RentToOwn<'c, Context>,
     ) -> Poll<AfterCheckBlock, Error> {
+        // Abort if the output stream has been closed.
+        try_ready!(context.event_sink.poll_ready());
+
         let state = state.take();
+        let block = state.block;
+
+        debug!(
+            context.logger,
+            "Check block";
+            "block_number" => format!("{:?}", block.inner().number),
+            "block_hash" => format!("{:?}", block.inner().hash),
+        );
 
         // Validate the block.
-        if state.block.inner().number.is_none() || state.block.inner().hash.is_none() {
+        if block.inner().number.is_none() || block.inner().hash.is_none() {
             warn!(
                 context.logger,
                 "Block number or hash missing; trying again";
-                "block_number" => format!("{:?}", state.block.inner().number),
-                "block_hash" => format!("{:?}", state.block.inner().hash),
+                "block_number" => format!("{:?}", block.inner().number),
+                "block_hash" => format!("{:?}", block.inner().hash),
             );
 
             // The block is invalid, throw away the entire stream and
@@ -423,13 +442,25 @@ impl PollStateMachine for StateMachine {
             })
         }
 
-        // Check whether we have a reorg (parent of the block != our local head)
-        if state.block.inner().parent_ptr() != state.local_head {
+        // If we encounter a block that has a smaller number than our
+        // local head block, then we throw away the block stream and
+        // try to start over with a fresh remote head block.
+        let block_number = block.inner().number.unwrap().as_u64();
+        let local_head_number = state.local_head.map_or(0u64, |ptr| ptr.number);
+        if block_number < local_head_number {
+            transition!(IdentifyRemoteHead {
+                local_head: state.local_head,
+                remote_head: fetch_remote_head(context.logger.clone(), context.adapter.clone()),
+            })
+        }
+
+        // Check whether we have a reorg (parent of the block != our local head).
+        if block.inner().parent_ptr() != state.local_head {
             unimplemented!("Reorgs are not implemented yet");
         } else {
             transition!(EmitEvents {
                 // Advance the local head to the new block
-                local_head: Some(state.block.inner().into()),
+                local_head: Some(block.inner().into()),
 
                 // Carry over the current remote head and the
                 // incoming blocks stream.
@@ -440,7 +471,7 @@ impl PollStateMachine for StateMachine {
                 emitting: send_events(
                     context.event_sink.clone(),
                     vec![NetworkTracerEvent::AddBlocks {
-                        blocks: vec![state.block]
+                        blocks: vec![block]
                     }]
                 ),
             })
@@ -458,15 +489,20 @@ impl PollStateMachine for StateMachine {
 
     fn poll_emit_events<'a, 'c>(
         state: &'a mut RentToOwn<'a, EmitEvents>,
-        _context: &'c mut RentToOwn<'c, Context>,
+        context: &'c mut RentToOwn<'c, Context>,
     ) -> Poll<AfterEmitEvents, Error> {
+        debug!(context.logger, "Emit events");
+
+        // Abort if the output stream has been closed.
+        try_ready!(context.event_sink.poll_ready());
+
         // Remain in this state until all events have been emitted
         try_ready!(state.emitting.poll());
 
         let state = state.take();
 
         // We may have more incoming blocks to process, continue with that.
-        transition!(FetchBlocks {
+        transition!(ReadBlocks {
             local_head: state.local_head,
             remote_head: state.remote_head,
             incoming_blocks: state.incoming_blocks,
