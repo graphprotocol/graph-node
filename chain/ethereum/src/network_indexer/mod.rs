@@ -52,6 +52,12 @@ where
         None,
     )
     .and_then(move |_| {
+        let stopwatch = StopwatchMetrics::new(
+            logger.clone(),
+            subgraph_id.clone(),
+            metrics_registry.clone(),
+        );
+
         // Create the network tracer
         let mut tracer = NetworkTracer::new(
             subgraph_id.clone(),
@@ -66,6 +72,7 @@ where
             subgraph_id.clone(),
             &logger,
             store.clone(),
+            stopwatch.clone(),
             metrics_registry.clone(),
         );
 

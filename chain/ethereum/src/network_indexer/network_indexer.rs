@@ -19,6 +19,7 @@ where
         subgraph_id: SubgraphDeploymentId,
         logger: &Logger,
         store: Arc<S>,
+        stopwatch: StopwatchMetrics,
         metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "NetworkIndexer"));
@@ -33,7 +34,7 @@ where
         };
 
         // Process incoming events in the background.
-        indexer.process_events(subgraph_id, metrics_registry, event_stream);
+        indexer.process_events(subgraph_id, stopwatch, metrics_registry, event_stream);
 
         indexer
     }
@@ -41,6 +42,7 @@ where
     fn process_events(
         &self,
         subgraph_id: SubgraphDeploymentId,
+        stopwatch: StopwatchMetrics,
         metrics_registry: Arc<dyn MetricsRegistry>,
         event_stream: Receiver<NetworkTracerEvent>,
     ) {
@@ -52,6 +54,7 @@ where
             subgraph_id,
             &self.logger,
             self.store.clone(),
+            stopwatch,
             metrics_registry.clone(),
         ));
 

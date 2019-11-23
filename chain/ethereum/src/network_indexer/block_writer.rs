@@ -7,18 +7,26 @@ use super::common::*;
 use super::to_entity::*;
 
 struct BlockWriterMetrics {
+    stopwatch: StopwatchMetrics,
     transaction: Aggregate,
 }
 
 impl BlockWriterMetrics {
-    pub fn new(subgraph_id: &SubgraphDeploymentId, registry: Arc<dyn MetricsRegistry>) -> Self {
+    pub fn new(
+        subgraph_id: &SubgraphDeploymentId,
+        stopwatch: StopwatchMetrics,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
         let transaction = Aggregate::new(
             format!("{}_transaction", subgraph_id.to_string()),
             "Transactions to the store",
             registry.clone(),
         );
 
-        Self { transaction }
+        Self {
+            stopwatch,
+            transaction,
+        }
     }
 }
 
@@ -37,11 +45,13 @@ where
         subgraph_id: SubgraphDeploymentId,
         logger: &Logger,
         store: Arc<S>,
+        stopwatch: StopwatchMetrics,
         metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "BlockWriter"));
         let metrics = Arc::new(Mutex::new(BlockWriterMetrics::new(
             &subgraph_id,
+            stopwatch,
             metrics_registry,
         )));
         Self {
@@ -120,6 +130,8 @@ where
                     let store = context.store;
                     let subgraph_id = context.subgraph_id;
 
+                    let stopwatch = { metrics.lock().unwrap().stopwatch.clone() };
+
                     // Transact entity operations into the store
                     let modifications = match cache.as_modifications(store.as_ref()) {
                         Ok(mods) => mods,
@@ -133,6 +145,7 @@ where
                                 subgraph_id.clone(),
                                 EthereumBlockPointer::from(&block_for_store.block),
                                 modifications,
+                                stopwatch,
                             )
                             .map_err(|e| e.into())
                             .map(move |_| {
