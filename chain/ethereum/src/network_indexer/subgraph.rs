@@ -23,6 +23,7 @@ fn create_subgraph<S>(
     store: Arc<S>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
+    start_block: Option<EthereumBlockPointer>,
 ) -> FutureResult<(), Error>
 where
     S: Store + ChainStore,
@@ -105,7 +106,7 @@ where
         Err(e) => return future::err(e.into()),
     };
     ops.extend(
-        SubgraphDeploymentEntity::new(&manifest, false, false, None, chain_head_block)
+        SubgraphDeploymentEntity::new(&manifest, false, false, start_block, chain_head_block)
             .create_operations(&manifest.id),
     );
 
@@ -129,6 +130,7 @@ pub fn ensure_subgraph_exists<S>(
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     store: Arc<S>,
+    start_block: Option<EthereumBlockPointer>,
 ) -> impl Future<Item = (), Error = ()>
 where
     S: Store + ChainStore,
@@ -147,10 +149,15 @@ where
             } else {
                 debug!(logger, "Network subgraph deployment needs to be created");
                 Box::new(
-                    create_subgraph(store.clone(), subgraph_name.clone(), subgraph_id.clone())
-                        .inspect(move |_| {
-                            debug!(logger_for_created, "Created Ethereum network subgraph");
-                        }),
+                    create_subgraph(
+                        store.clone(),
+                        subgraph_name.clone(),
+                        subgraph_id.clone(),
+                        start_block,
+                    )
+                    .inspect(move |_| {
+                        debug!(logger_for_created, "Created Ethereum network subgraph");
+                    }),
                 )
             }
         })

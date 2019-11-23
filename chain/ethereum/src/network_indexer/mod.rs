@@ -46,6 +46,7 @@ where
         subgraph_id.clone(),
         logger.clone(),
         store.clone(),
+        None,
     )
     .and_then(move |_| {
         // Create the network tracer
