@@ -8,9 +8,12 @@ mod network_tracer;
 mod subgraph;
 mod to_entity;
 
-use self::block_writer::*;
-use self::network_indexer::*;
-use self::network_tracer::*;
+pub use self::block_writer::*;
+pub use self::common::*;
+pub use self::network_indexer::*;
+pub use self::network_tracer::*;
+pub use self::subgraph::*;
+pub use self::to_entity::*;
 
 pub use self::network_tracer::NetworkTracerEvent;
 
