@@ -133,19 +133,6 @@ impl EthereumAdapter for MockEthereumAdapter {
         unimplemented!();
     }
 
-    fn triggers_in_block(
-        self: Arc<Self>,
-        _: Logger,
-        _: Arc<dyn ChainStore>,
-        _: Arc<SubgraphEthRpcMetrics>,
-        _: EthereumLogFilter,
-        _: EthereumCallFilter,
-        _: EthereumBlockFilter,
-        _: BlockFinality,
-    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
-        unimplemented!();
-    }
-
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     fn load_blocks(
         &self,

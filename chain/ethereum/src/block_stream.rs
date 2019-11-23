@@ -4,6 +4,7 @@ use std::mem;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use graph::components::ethereum::{blocks_with_triggers, triggers_in_block};
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
 };
@@ -392,21 +393,21 @@ where
                             let section = ctx.metrics.stopwatch.start_section("scan_blocks");
                             info!(ctx.logger, "Scanning blocks [{}, {}]", from, to);
                             Box::new(
-                                ctx.eth_adapter
-                                    .blocks_with_triggers(
-                                        ctx.logger.clone(),
-                                        ctx.chain_store.clone(),
-                                        ctx.metrics.ethrpc_metrics.clone(),
-                                        from,
-                                        to,
-                                        log_filter.clone(),
-                                        call_filter.clone(),
-                                        block_filter.clone(),
-                                    )
-                                    .map(move |blocks| {
-                                        section.end();
-                                        ReconciliationStep::ProcessDescendantBlocks(blocks)
-                                    }),
+                                blocks_with_triggers(
+                                    ctx.eth_adapter,
+                                    ctx.logger.clone(),
+                                    ctx.chain_store.clone(),
+                                    ctx.metrics.ethrpc_metrics.clone(),
+                                    from,
+                                    to,
+                                    log_filter.clone(),
+                                    call_filter.clone(),
+                                    block_filter.clone(),
+                                )
+                                .map(move |blocks| {
+                                    section.end();
+                                    ReconciliationStep::ProcessDescendantBlocks(blocks)
+                                }),
                             )
                         },
                     ),
@@ -487,7 +488,8 @@ where
                         Box::new(
                             block_with_calls
                                 .and_then(move |block| {
-                                    eth_adapter.triggers_in_block(
+                                    triggers_in_block(
+                                        eth_adapter,
                                         logger,
                                         ctx.chain_store.clone(),
                                         ctx.metrics.ethrpc_metrics.clone(),

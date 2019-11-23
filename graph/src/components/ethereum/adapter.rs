@@ -707,121 +707,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_hash: H256,
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send>;
 
-    /// Returns blocks with triggers, corresponding to the specified range and filters.
-    /// If a block contains no triggers, there may be no corresponding item in the stream.
-    /// However the `to` block will always be present, even if triggers are empty.
-    ///
-    /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-    /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
-    /// It is recommended that `to` be far behind the block number of latest block the Ethereum
-    /// node is aware of.
-    fn blocks_with_triggers(
-        self: Arc<Self>,
-        logger: Logger,
-        chain_store: Arc<dyn ChainStore>,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockWithTriggers>, Error = Error> + Send> {
-        // Each trigger filter needs to be queried for the same block range
-        // and the blocks yielded need to be deduped. If any error occurs
-        // while searching for a trigger type, the entire operation fails.
-        let eth = self.clone();
-        let mut trigger_futs: futures::stream::FuturesUnordered<
-            Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
-        > = futures::stream::FuturesUnordered::new();
-
-        // Scan the block range from triggers to find relevant blocks
-        if !log_filter.is_empty() {
-            trigger_futs.push(Box::new(
-                eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
-                    .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
-            ))
-        }
-
-        if !call_filter.is_empty() {
-            trigger_futs.push(Box::new(
-                eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
-                    .map(EthereumTrigger::Call)
-                    .collect(),
-            ));
-        }
-
-        if block_filter.trigger_every_block {
-            trigger_futs.push(Box::new(
-                self.block_range_to_ptrs(logger.clone(), from, to)
-                    .map(move |ptrs| {
-                        ptrs.into_iter()
-                            .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
-                            .collect()
-                    }),
-            ))
-        } else if !block_filter.contract_addresses.is_empty() {
-            // To determine which blocks include a call to addresses
-            // in the block filter, transform the `block_filter` into
-            // a `call_filter` and run `blocks_with_calls`
-            let call_filter = EthereumCallFilter::from(block_filter);
-            trigger_futs.push(Box::new(
-                eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
-                    .map(|call| {
-                        EthereumTrigger::Block(
-                            EthereumBlockPointer::from(&call),
-                            EthereumBlockTriggerType::WithCallTo(call.to),
-                        )
-                    })
-                    .collect(),
-            ));
-        }
-
-        let logger1 = logger.clone();
-        Box::new(
-            trigger_futs
-                .concat2()
-                .join(self.clone().block_hash_by_block_number(&logger, to))
-                .map(move |(triggers, to_hash)| {
-                    let mut block_hashes: HashSet<H256> =
-                        triggers.iter().map(EthereumTrigger::block_hash).collect();
-                    let mut triggers_by_block: HashMap<u64, Vec<EthereumTrigger>> =
-                        triggers.into_iter().fold(HashMap::new(), |mut map, t| {
-                            map.entry(t.block_number()).or_default().push(t);
-                            map
-                        });
-
-                    debug!(logger, "Found {} relevant block(s)", block_hashes.len());
-
-                    // Make sure `to` is included, even if empty.
-                    block_hashes.insert(to_hash.unwrap());
-                    triggers_by_block.entry(to).or_insert(Vec::new());
-
-                    (block_hashes, triggers_by_block)
-                })
-                .and_then(move |(block_hashes, mut triggers_by_block)| {
-                    self.load_blocks(logger1, chain_store, block_hashes)
-                        .map(move |block| {
-                            EthereumBlockWithTriggers::new(
-                                // All blocks with triggers are in `triggers_by_block`, and will be
-                                // accessed here exactly once.
-                                triggers_by_block.remove(&block.number()).unwrap(),
-                                BlockFinality::Final(block),
-                            )
-                        })
-                        .collect()
-                        .map(|mut blocks| {
-                            blocks.sort_by_key(|block| block.ethereum_block.number());
-                            blocks
-                        })
-                }),
-        )
-    }
-
     fn logs_in_block_range(
         &self,
         logger: &Logger,
@@ -847,15 +732,221 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         call: EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
+}
 
-    fn triggers_in_block(
-        self: Arc<Self>,
-        logger: Logger,
-        chain_store: Arc<dyn ChainStore>,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
-        ethereum_block: BlockFinality,
-    ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send>;
+fn parse_log_triggers(
+    log_filter: EthereumLogFilter,
+    block: &EthereumBlock,
+) -> Vec<EthereumTrigger> {
+    block
+        .transaction_receipts
+        .iter()
+        .flat_map(move |receipt| {
+            let log_filter = log_filter.clone();
+            receipt
+                .logs
+                .iter()
+                .filter(move |log| log_filter.matches(log))
+                .map(move |log| EthereumTrigger::Log(log.clone()))
+        })
+        .collect()
+}
+
+fn parse_call_triggers(
+    call_filter: EthereumCallFilter,
+    block: &EthereumBlockWithCalls,
+) -> Vec<EthereumTrigger> {
+    block.calls.as_ref().map_or(vec![], |calls| {
+        calls
+            .iter()
+            .filter(move |call| call_filter.matches(call))
+            .map(move |call| EthereumTrigger::Call(call.clone()))
+            .collect()
+    })
+}
+
+fn parse_block_triggers(
+    block_filter: EthereumBlockFilter,
+    block: &EthereumBlockWithCalls,
+) -> Vec<EthereumTrigger> {
+    let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
+    let trigger_every_block = block_filter.trigger_every_block;
+    let call_filter = EthereumCallFilter::from(block_filter);
+    let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
+        calls
+            .iter()
+            .filter(move |call| call_filter.matches(call))
+            .map(move |call| {
+                EthereumTrigger::Block(block_ptr, EthereumBlockTriggerType::WithCallTo(call.to))
+            })
+            .collect::<Vec<EthereumTrigger>>()
+    });
+    if trigger_every_block {
+        triggers.push(EthereumTrigger::Block(
+            block_ptr,
+            EthereumBlockTriggerType::Every,
+        ));
+    }
+    triggers
+}
+
+pub fn triggers_in_block(
+    adapter: Arc<dyn EthereumAdapter>,
+    logger: Logger,
+    chain_store: Arc<dyn ChainStore>,
+    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+    log_filter: EthereumLogFilter,
+    call_filter: EthereumCallFilter,
+    block_filter: EthereumBlockFilter,
+    ethereum_block: BlockFinality,
+) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
+    Box::new(match &ethereum_block {
+        BlockFinality::Final(block) => Box::new(
+            blocks_with_triggers(
+                adapter,
+                logger,
+                chain_store,
+                subgraph_metrics,
+                block.number(),
+                block.number(),
+                log_filter.clone(),
+                call_filter.clone(),
+                block_filter.clone(),
+            )
+            .map(|blocks| {
+                assert!(blocks.len() <= 1);
+                blocks
+                    .into_iter()
+                    .next()
+                    .unwrap_or(EthereumBlockWithTriggers::new(vec![], ethereum_block))
+            }),
+        ) as Box<dyn Future<Item = _, Error = _> + Send>,
+        BlockFinality::NonFinal(full_block) => Box::new(future::ok({
+            let mut triggers = Vec::new();
+            triggers.append(&mut parse_log_triggers(
+                log_filter,
+                &full_block.ethereum_block,
+            ));
+            triggers.append(&mut parse_call_triggers(call_filter, &full_block));
+            triggers.append(&mut parse_block_triggers(block_filter, &full_block));
+            EthereumBlockWithTriggers::new(triggers, ethereum_block)
+        })),
+    })
+}
+
+/// Returns blocks with triggers, corresponding to the specified range and filters.
+/// If a block contains no triggers, there may be no corresponding item in the stream.
+/// However the `to` block will always be present, even if triggers are empty.
+///
+/// Careful: don't use this function without considering race conditions.
+/// Chain reorgs could happen at any time, and could affect the answer received.
+/// Generally, it is only safe to use this function with blocks that have received enough
+/// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+/// those confirmations.
+/// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+/// reorgs.
+/// It is recommended that `to` be far behind the block number of latest block the Ethereum
+/// node is aware of.
+pub fn blocks_with_triggers(
+    adapter: Arc<dyn EthereumAdapter>,
+    logger: Logger,
+    chain_store: Arc<dyn ChainStore>,
+    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+    from: u64,
+    to: u64,
+    log_filter: EthereumLogFilter,
+    call_filter: EthereumCallFilter,
+    block_filter: EthereumBlockFilter,
+) -> Box<dyn Future<Item = Vec<EthereumBlockWithTriggers>, Error = Error> + Send> {
+    // Each trigger filter needs to be queried for the same block range
+    // and the blocks yielded need to be deduped. If any error occurs
+    // while searching for a trigger type, the entire operation fails.
+    let eth = adapter.clone();
+    let mut trigger_futs: futures::stream::FuturesUnordered<
+        Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
+    > = futures::stream::FuturesUnordered::new();
+
+    // Scan the block range from triggers to find relevant blocks
+    if !log_filter.is_empty() {
+        trigger_futs.push(Box::new(
+            eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
+                .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
+        ))
+    }
+
+    if !call_filter.is_empty() {
+        trigger_futs.push(Box::new(
+            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
+                .map(EthereumTrigger::Call)
+                .collect(),
+        ));
+    }
+
+    if block_filter.trigger_every_block {
+        trigger_futs.push(Box::new(
+            adapter
+                .block_range_to_ptrs(logger.clone(), from, to)
+                .map(move |ptrs| {
+                    ptrs.into_iter()
+                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
+                        .collect()
+                }),
+        ))
+    } else if !block_filter.contract_addresses.is_empty() {
+        // To determine which blocks include a call to addresses
+        // in the block filter, transform the `block_filter` into
+        // a `call_filter` and run `blocks_with_calls`
+        let call_filter = EthereumCallFilter::from(block_filter);
+        trigger_futs.push(Box::new(
+            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
+                .map(|call| {
+                    EthereumTrigger::Block(
+                        EthereumBlockPointer::from(&call),
+                        EthereumBlockTriggerType::WithCallTo(call.to),
+                    )
+                })
+                .collect(),
+        ));
+    }
+
+    let logger1 = logger.clone();
+    Box::new(
+        trigger_futs
+            .concat2()
+            .join(adapter.clone().block_hash_by_block_number(&logger, to))
+            .map(move |(triggers, to_hash)| {
+                let mut block_hashes: HashSet<H256> =
+                    triggers.iter().map(EthereumTrigger::block_hash).collect();
+                let mut triggers_by_block: HashMap<u64, Vec<EthereumTrigger>> =
+                    triggers.into_iter().fold(HashMap::new(), |mut map, t| {
+                        map.entry(t.block_number()).or_default().push(t);
+                        map
+                    });
+
+                debug!(logger, "Found {} relevant block(s)", block_hashes.len());
+
+                // Make sure `to` is included, even if empty.
+                block_hashes.insert(to_hash.unwrap());
+                triggers_by_block.entry(to).or_insert(Vec::new());
+
+                (block_hashes, triggers_by_block)
+            })
+            .and_then(move |(block_hashes, mut triggers_by_block)| {
+                adapter
+                    .load_blocks(logger1, chain_store, block_hashes)
+                    .map(move |block| {
+                        EthereumBlockWithTriggers::new(
+                            // All blocks with triggers are in `triggers_by_block`, and will be
+                            // accessed here exactly once.
+                            triggers_by_block.remove(&block.number()).unwrap(),
+                            BlockFinality::Final(block),
+                        )
+                    })
+                    .collect()
+                    .map(|mut blocks| {
+                        blocks.sort_by_key(|block| block.ethereum_block.number());
+                        blocks
+                    })
+            }),
+    )
 }
