@@ -3,7 +3,6 @@ extern crate pretty_assertions;
 
 use diesel::connection::Connection;
 use diesel::pg::PgConnection;
-use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use graph::mock::*;
@@ -24,8 +23,45 @@ fn remove_test_data(store: Arc<DieselStore>) {
         .expect("Failed to remove entity test data");
 }
 
+// Helper type for setting up tests.
+struct TestSetup {
+    pub subgraph_id: SubgraphDeploymentId,
+    pub subgraph_name: SubgraphName,
+    pub logger: Logger,
+    pub adapter: Arc<MockEthereumAdapter>,
+    pub store: Arc<DieselStore>,
+    pub metrics_registry: Arc<dyn MetricsRegistry>,
+}
+
+impl TestSetup {
+    pub fn new(store: Arc<DieselStore>, blocks: Vec<Vec<BlockWithUncles>>) -> Self {
+        // Simulate an Ethereum network using a mock adapter
+        let adapter = create_mock_ethereum_adapter(blocks);
+        Self {
+            subgraph_id: SubgraphDeploymentId::new("ethereum_testnet_v0").unwrap(),
+            subgraph_name: SubgraphName::new("ethereum/testnet").unwrap(),
+            logger: LOGGER.clone(),
+            adapter,
+            store,
+            metrics_registry: Arc::new(MockMetricsRegistry::new()),
+        }
+    }
+
+    pub fn create_subgraph(
+        &self,
+        start_block: Option<EthereumBlockPointer>,
+    ) -> impl Future<Item = (), Error = ()> {
+        // Create the subgraph fresh
+        let logger = self.logger.clone();
+        let subgraph_name = self.subgraph_name.clone();
+        let subgraph_id = self.subgraph_id.clone();
+        let store = self.store.clone();
+
+        ensure_subgraph_exists(subgraph_name, subgraph_id, logger, store, start_block)
+    }
+}
+
 // Helper to run tests against a clean store.
-/// Test harness for running database integration tests.
 fn run_test<R, F>(test: F)
 where
     F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
@@ -53,8 +89,10 @@ where
 }
 
 // Helper to create a sequence of linked blocks.
-fn create_mock_blocks(n: u64) -> Vec<BlockWithUncles> {
-    (0..n).fold(vec![], |mut blocks, number| {
+fn create_blocks(n: u64, parent: Option<&BlockWithUncles>) -> Vec<BlockWithUncles> {
+    let start = parent.map_or(0, |block| block.inner().number.unwrap().as_u64() + 1);
+
+    (start..start + n).fold(vec![], |mut blocks, number| {
         let mut block = BlockWithUncles::default();
 
         // Use the index as the block number
@@ -63,16 +101,17 @@ fn create_mock_blocks(n: u64) -> Vec<BlockWithUncles> {
         // Use a random hash as the block hash (should be unique)
         block.block.block.hash = Some(H256::random());
 
-        // Set the parent hash for all blocks but the genesis block
-        if number > 0 {
-            block.block.block.parent_hash = blocks
-                .last()
-                .unwrap()
-                .block
-                .block
-                .hash
-                .clone()
-                .unwrap_or(H256::zero());
+        if number == start {
+            // Set the parent hash for the first block only if a
+            // parent was passed in; otherwise we're dealing with
+            // the genesis block
+            if let Some(parent_block) = parent {
+                block.block.block.parent_hash = parent_block.inner().hash.unwrap().clone();
+            }
+        } else {
+            // Set the parent hash for all blocks but the genesis block
+            block.block.block.parent_hash =
+                blocks.last().unwrap().block.block.hash.clone().unwrap();
         }
 
         blocks.push(block);
@@ -80,102 +119,106 @@ fn create_mock_blocks(n: u64) -> Vec<BlockWithUncles> {
     })
 }
 
-fn create_mock_ethereum_adapter(
-    blocks: Vec<Vec<BlockWithUncles>>,
-) -> (
-    Arc<MockEthereumAdapter>,
-    Box<dyn Fn(Vec<Vec<BlockWithUncles>>)>,
-) {
-    // Pull remote heads from the block sequences
-    let remote_heads = Arc::new(Mutex::new(
-        blocks
-            .iter()
-            .map(|seq| seq.last().unwrap().clone())
-            .collect::<VecDeque<_>>(),
-    ));
+fn create_fork(original_blocks: Vec<BlockWithUncles>, base: u64, n: u64) -> Vec<BlockWithUncles> {
+    let mut blocks = original_blocks[0..(base as usize)].to_vec();
+    let new_blocks = create_blocks(n, blocks.last());
+    blocks.extend(new_blocks);
+    blocks
+}
 
-    // Flatten the block sequences into one
-    let blocks = Arc::new(Mutex::new(blocks.into_iter().flatten().collect::<Vec<_>>()));
+struct Chains {
+    chain_index: Option<usize>,
+    chains: Vec<Vec<BlockWithUncles>>,
+}
 
-    // Prepare a function that can replace the chain head and all blocks
-    // with a new version of the chain
-    let remote_heads_for_reorg_trigger = remote_heads.clone();
-    let blocks_for_reorg_trigger = blocks.clone();
-    let reorg_trigger = move |new_blocks: Vec<Vec<BlockWithUncles>>| {
-        let remote_heads = remote_heads_for_reorg_trigger.clone();
-        let blocks = blocks_for_reorg_trigger.clone();
+impl Chains {
+    pub fn new(chains: Vec<Vec<BlockWithUncles>>) -> Self {
+        Self {
+            chain_index: None,
+            chains,
+        }
+    }
 
-        let mut remote_heads = remote_heads.lock().unwrap();
-        let mut blocks = blocks.lock().unwrap();
+    pub fn index(&self) -> Option<usize> {
+        self.chain_index.clone()
+    }
 
-        // Add the new remote heads
-        remote_heads.clear();
-        remote_heads.extend(
-            new_blocks
-                .iter()
-                .map(|seq| seq.last().unwrap().clone())
-                .collect::<Vec<_>>(),
-        );
+    pub fn next_chain(&mut self) -> Option<&Vec<BlockWithUncles>> {
+        let next_index = self.chain_index.map_or(0, |index| index + 1);
+        self.chain_index.replace(next_index);
+        self.chains.get(next_index)
+    }
 
-        // Replace the blocks
-        blocks.clear();
-        blocks.extend(new_blocks.into_iter().flatten().collect::<Vec<_>>());
-    };
+    pub fn current_chain(&self) -> Option<&Vec<BlockWithUncles>> {
+        self.chain_index.and_then(|index| self.chains.get(index))
+    }
+}
+
+fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithUncles>>) -> Arc<MockEthereumAdapter> {
+    let chains = Arc::new(Mutex::new(Chains::new(chains)));
 
     // Create the mock Ethereum adapter.
     let mut adapter = MockEthereumAdapter::new();
 
-    // Make it so that each remote head block can only be polled once.
-    // This is to simulate that the network is alive and new blocks are
-    // added.
+    // Make it so that each time we poll a new remote head, we
+    // switch to the next version of the chain
+    let chains_for_latest_block = chains.clone();
     adapter.expect_latest_block().returning(move |_: &Logger| {
+        let mut chains = chains_for_latest_block.lock().unwrap();
         Box::new(future::result(
-            remote_heads
-                .lock()
-                .unwrap()
-                .pop_front()
-                .ok_or_else(|| format_err!("exhausted remote head blocks"))
-                .map_err(|e| e.into())
-                .map(|block| block.block.block),
+            chains
+                .next_chain()
+                .expect("exhausted remote head blocks")
+                .last()
+                .ok_or_else(|| format_err!("empty block chain"))
+                .map_err(Into::into)
+                .map(|block| block.block.block.clone()),
         ))
     });
 
-    let blocks_for_block_by_number = blocks.clone();
+    let chains_for_block_by_number = chains.clone();
     adapter
         .expect_block_by_number()
         .returning(move |_, number: u64| {
-            Box::new(future::ok(Some(
-                blocks_for_block_by_number
-                    .lock()
-                    .unwrap()
-                    .get(number as usize)
-                    .expect(format!("block with number {} not found", number).as_str())
-                    .clone()
-                    .block
-                    .block,
-            )))
+            let chains = chains_for_block_by_number.lock().unwrap();
+            Box::new(future::result(
+                chains
+                    .current_chain()
+                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .map(|chain| {
+                        chain
+                            .iter()
+                            .find(|block| block.inner().number.unwrap().as_u64() == number)
+                            .map(|block| block.clone().block.block)
+                    }),
+            ))
         });
 
-    let blocks_for_load_full_block = blocks.clone();
+    let chains_for_load_full_block = chains.clone();
     adapter
         .expect_load_full_block()
         .returning(move |_, block: LightEthereumBlock| {
-            Box::new(future::ok(
-                blocks_for_load_full_block
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .find(|block_with_uncles| block_with_uncles.block.block.hash == block.hash)
-                    .cloned()
-                    .expect(
-                        format!(
-                            "full block {} [{:x}] not found",
-                            block.number.unwrap(),
-                            block.hash.unwrap()
-                        )
-                        .as_str(),
-                    )
-                    .block,
+            let chains = chains_for_load_full_block.lock().unwrap();
+            Box::new(future::result(
+                chains
+                    .current_chain()
+                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .map_err(Into::into)
+                    .map(|chain| {
+                        chain
+                            .iter()
+                            .find(|b| b.inner().number.unwrap() == block.number.unwrap())
+                            .expect(
+                                format!(
+                                    "full block {} [{:x}] not found",
+                                    block.number.unwrap(),
+                                    block.hash.unwrap()
+                                )
+                                .as_str(),
+                            )
+                            .clone()
+                            .block
+                    }),
             ))
         });
 
@@ -184,7 +227,7 @@ fn create_mock_ethereum_adapter(
         .expect_uncles()
         .returning(move |_, _| Box::new(future::ok(vec![])));
 
-    (Arc::new(adapter), Box::new(reorg_trigger))
+    Arc::new(adapter)
 }
 
 // GIVEN  a fresh subgraph (local head = None)
@@ -192,53 +235,33 @@ fn create_mock_ethereum_adapter(
 // WHEN   running the `NetworkTracer`
 // EXPECT 10 `AddBlock` events are emitted, one for each block
 #[test]
-fn tracer_indexes_from_genesis_to_remote_head() {
+fn tracing_starts_at_genesis() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
-        // Create a subgraph name and ID
-        let subgraph_id = SubgraphDeploymentId::new("ethereum_testnet_v0").unwrap();
-        let subgraph_name = SubgraphName::new("ethereum/testnet").unwrap();
-
-        let logger = &*LOGGER;
-
         // Create blocks for simulating the chain
-        let blocks = create_mock_blocks(10);
+        let blocks = create_blocks(10, None);
 
-        // Simulate an Ethereum network using a mock adapter
-        let (adapter, _) = create_mock_ethereum_adapter(vec![blocks.clone()]);
+        // Set up the test
+        let setup = TestSetup::new(store, vec![blocks.clone()]);
 
-        // Create required components
-        // let mut runtime = tokio::runtime::Runtime::new().unwrap();
-        let metrics_registry = Arc::new(MockMetricsRegistry::new());
-
-        // Create the subgraph fresh
-        let logger_for_subgraph = logger.clone();
-        let subgraph_id_for_subgraph = subgraph_id.clone();
-        let store_for_subgraph = store.clone();
-
-        // Ensure subgraph, the wire up the tracer and indexer
-        ensure_subgraph_exists(
-            subgraph_name,
-            subgraph_id_for_subgraph,
-            logger_for_subgraph,
-            store_for_subgraph,
-            None,
-        )
-        .wait()
-        .expect("failed to create network subgraph");
+        // Create network subgraph
+        setup
+            .create_subgraph(None)
+            .wait()
+            .expect("failed to create network subgraph");
 
         // Create the network tracer
         let mut tracer = NetworkTracer::new(
-            subgraph_id.clone(),
-            &logger,
-            adapter.clone(),
-            store.clone(),
-            metrics_registry.clone(),
+            setup.subgraph_id.clone(),
+            &setup.logger,
+            setup.adapter.clone(),
+            setup.store.clone(),
+            setup.metrics_registry.clone(),
         );
 
-        // Spawn network tracer and forward its events to the channel
+        // Run network tracer and forward its events to the channel
         let events = tracer
             .take_event_stream()
-            .expect("failed to get take stream from tracer")
+            .expect("failed to take stream from tracer")
             .take(10) // there should only be 7 blocks but we'll try to pull more
             .fuse()
             .collect()
@@ -267,54 +290,33 @@ fn tracer_indexes_from_genesis_to_remote_head() {
 // WHEN   running the `NetworkTracer`
 // EXPECT 7 `AddBlock` events are emitted, one for each remaining block
 #[test]
-fn tracer_starts_at_local_head() {
+fn tracing_resumes_from_local_head() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
-        // Create a subgraph name and ID
-        let subgraph_id = SubgraphDeploymentId::new("ethereum_testnet_v0").unwrap();
-        let subgraph_name = SubgraphName::new("ethereum/testnet").unwrap();
-
-        let logger = &*LOGGER;
-
         // Create blocks for simulating the chain
-        let blocks = create_mock_blocks(10);
+        let blocks = create_blocks(10, None);
 
-        // Simulate an Ethereum network using a mock adapter
-        let (adapter, _) = create_mock_ethereum_adapter(vec![blocks.clone()]);
+        // Set up the test
+        let setup = TestSetup::new(store, vec![blocks.clone()]);
 
-        // Create required components
-        // let mut runtime = tokio::runtime::Runtime::new().unwrap();
-        let metrics_registry = Arc::new(MockMetricsRegistry::new());
-
-        // Create the subgraph fresh
-        let logger_for_subgraph = logger.clone();
-        let subgraph_id_for_subgraph = subgraph_id.clone();
-        let store_for_subgraph = store.clone();
-        let blocks_for_subgraph = blocks.clone();
-
-        // Ensure subgraph, the wire up the tracer and indexer
-        ensure_subgraph_exists(
-            subgraph_name,
-            subgraph_id_for_subgraph,
-            logger_for_subgraph,
-            store_for_subgraph,
-            Some(blocks_for_subgraph[2].inner().into()),
-        )
-        .wait()
-        .expect("failed to create network subgraph");
+        // Create network subgraph
+        setup
+            .create_subgraph(Some(blocks[2].inner().into()))
+            .wait()
+            .expect("failed to create network subgraph");
 
         // Create the network tracer
         let mut tracer = NetworkTracer::new(
-            subgraph_id.clone(),
-            &logger,
-            adapter.clone(),
-            store.clone(),
-            metrics_registry.clone(),
+            setup.subgraph_id.clone(),
+            &setup.logger,
+            setup.adapter.clone(),
+            setup.store.clone(),
+            setup.metrics_registry.clone(),
         );
 
-        // Spawn network tracer and forward its events to the channel
+        // Run network tracer and forward its events to the channel
         let events = tracer
             .take_event_stream()
-            .expect("failed to get take stream from tracer")
+            .expect("failed to take stream from tracer")
             .take(10)
             .fuse()
             .collect()
@@ -338,9 +340,203 @@ fn tracer_starts_at_local_head() {
 }
 
 // GIVEN  a fresh subgraph (local head = None)
+// AND    a chain with 10 blocks
+// WHEN   running the `NetworkTracer`
+// EXPECT 10 `AddBlock` events are emitted, one for each block
+#[test]
+fn tracing_picks_up_new_remote_head() {
+    run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
+        // The first time we pull the remote head, there are 10 blocks
+        let chain_10 = create_blocks(10, None);
+
+        // The second time we pull the remote head, there are 20 blocks;
+        // the first 10 blocks are identical to before, so this simulates
+        // 10 new blocks being added to the same chain
+        let chain_20 = create_fork(chain_10.clone(), 10, 10);
+
+        // Set up the test
+        let setup = TestSetup::new(store, vec![chain_10.clone(), chain_20.clone()]);
+
+        // Create network subgraph
+        setup
+            .create_subgraph(None)
+            .wait()
+            .expect("failed to create network subgraph");
+
+        // Create the network tracer
+        let mut tracer = NetworkTracer::new(
+            setup.subgraph_id.clone(),
+            &setup.logger,
+            setup.adapter.clone(),
+            setup.store.clone(),
+            setup.metrics_registry.clone(),
+        );
+
+        // Run network tracer and forward its events to the channel
+        let events = tracer
+            .take_event_stream()
+            .expect("failed to take stream from tracer")
+            .take(20)
+            .fuse()
+            .collect()
+            .wait()
+            .expect("failed to collect events from tracer");
+
+        // Assert that the events emitted by the tracer match the blocks 1:1,
+        // despite them requiring two remote head updates
+        assert_eq!(
+            events,
+            chain_20
+                .into_iter()
+                .map(|block| NetworkTracerEvent::AddBlocks {
+                    blocks: vec![block]
+                })
+                .collect::<Vec<_>>()
+        );
+
+        Ok(())
+    });
+}
+
+// GIVEN  a fresh subgraph (local head = None)
+// AND    a chain with 10 blocks with a gap (#5 missing)
+// WHEN   running the `NetworkTracer`
+// EXPECT 5 `AddBlocks` events are emitted (#0 - #4)
+//        then tracing fails because there is a gap
+#[test]
+fn tracing_fails_if_there_is_a_gap() {
+    run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
+        // Create blocks for simulating the chain
+        let mut blocks = create_blocks(10, None);
+
+        // Remove block #5
+        blocks.remove(5);
+
+        // Set up the test
+        let setup = TestSetup::new(store, vec![blocks.clone()]);
+
+        // Create network subgraph
+        setup
+            .create_subgraph(None)
+            .wait()
+            .expect("failed to create network subgraph");
+
+        // Create the network tracer
+        let mut tracer = NetworkTracer::new(
+            setup.subgraph_id.clone(),
+            &setup.logger,
+            setup.adapter.clone(),
+            setup.store.clone(),
+            setup.metrics_registry.clone(),
+        );
+
+        // Run network tracer and forward its events to the channel
+        let events = tracer
+            .take_event_stream()
+            .expect("failed to take stream from tracer")
+            .take(20)
+            .fuse()
+            .collect()
+            .wait()
+            .expect("failed to collect events from tracer");
+
+        // Assert that only blocks #0 - #4 were retrieved and nothing more
+        assert_eq!(
+            events,
+            blocks[0..5]
+                .to_owned()
+                .into_iter()
+                .map(|block| NetworkTracerEvent::AddBlocks {
+                    blocks: vec![block]
+                })
+                .collect::<Vec<_>>()
+        );
+
+        Ok(())
+    });
+}
+
+// GIVEN  a fresh subgraph (local head = None)
 // AND    10 blocks for one version of the chain
-// AND    11 blocks for a for of the chain that starts after block #3
+// AND    13 blocks for a fork of the chain that starts after block #3
 // WHEN   running the `NetworkTracer`
 // EXPECT 10 `AddBlock` events is emitted for the first branch,
 //        1 `RevertTo` event is emitted to revert to block #3
 //        8 `AddBlock` events are emitted for blocks #4-#11 of the fork
+#[test]
+fn tracing_handles_single_reorg() {
+    run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
+        // Create blocks for the initial chain
+        let initial_chain = create_blocks(10, None);
+
+        // Create blocks for the forked chain after block #3
+        let forked_chain = create_fork(initial_chain.clone(), 2, 10);
+
+        let chains = vec![initial_chain.clone(), forked_chain.clone()];
+
+        println!(
+            "Original chain: {:?}",
+            initial_chain
+                .iter()
+                .map(|block| block.inner().number.unwrap().as_u64())
+                .collect::<Vec<_>>()
+        );
+
+        println!(
+            "Forked chain: {:?}",
+            forked_chain
+                .iter()
+                .map(|block| block.inner().number.unwrap().as_u64())
+                .collect::<Vec<_>>()
+        );
+
+        // Set up the test
+        let setup = TestSetup::new(store, chains);
+
+        // Create network subgraph
+        setup
+            .create_subgraph(None)
+            .wait()
+            .expect("failed to create network subgraph");
+
+        // Create the network tracer
+        let mut tracer = NetworkTracer::new(
+            setup.subgraph_id.clone(),
+            &setup.logger,
+            setup.adapter.clone(),
+            setup.store.clone(),
+            setup.metrics_registry.clone(),
+        );
+
+        // Run network tracer and forward its events to the channel
+        let events = tracer
+            .take_event_stream()
+            .expect("failed to take stream from tracer")
+            .take(50)
+            .fuse()
+            .collect()
+            .wait()
+            .expect("failed to collect events from tracer");
+
+        // TODO: ASSERT
+        assert_eq!(
+            events,
+            initial_chain
+                .into_iter()
+                .map(|block| NetworkTracerEvent::AddBlocks {
+                    blocks: vec![block]
+                })
+                .chain(vec![
+                    NetworkTracerEvent::RevertTo {
+                        block: forked_chain[2].clone()
+                    },
+                    NetworkTracerEvent::AddBlocks {
+                        blocks: forked_chain[3..].to_owned(),
+                    }
+                ])
+                .collect::<Vec<NetworkTracerEvent>>()
+        );
+
+        Ok(())
+    });
+}
