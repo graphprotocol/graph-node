@@ -1,6 +1,8 @@
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::SyncFailure;
 use futures::Future;
+use mockall::predicate::*;
+use mockall::*;
 use petgraph::graphmap::GraphMap;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
@@ -596,6 +598,7 @@ impl BlockStreamMetrics {
 ///
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
+#[automock]
 pub trait EthereumAdapter: Send + Sync + 'static {
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.

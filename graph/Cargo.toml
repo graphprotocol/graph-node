@@ -26,6 +26,7 @@ ipfs-api = { git = "https://github.com/ferristseng/rust-ipfs-api", branch = "mas
 parity-wasm = "0.40"
 failure = "0.1.6"
 lazy_static = "1.2.0"
+mockall = "0.5"
 num-bigint = { version = "^0.2.3", features = ["serde"] }
 num-traits = "0.2"
 rand = "0.6.1"

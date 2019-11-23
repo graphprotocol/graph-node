@@ -1,9 +1,10 @@
+use mockall::predicate::*;
+use mockall::*;
 pub use prometheus::core::Collector;
 pub use prometheus::{
     Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, Histogram, HistogramOpts,
     HistogramVec, Opts, Registry,
 };
-
 use std::collections::HashMap;
 
 /// Metrics for measuring where time is spent during indexing.
@@ -12,6 +13,7 @@ pub mod stopwatch;
 /// Aggregates over individual values.
 pub mod aggregate;
 
+#[automock]
 pub trait MetricsRegistry: Send + Sync + 'static {
     fn new_gauge(
         &self,
