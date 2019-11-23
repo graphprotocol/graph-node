@@ -22,7 +22,7 @@ impl BlockWriterMetrics {
     }
 }
 
-pub(crate) struct BlockWriter<S> {
+pub struct BlockWriter<S> {
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     store: Arc<S>,
