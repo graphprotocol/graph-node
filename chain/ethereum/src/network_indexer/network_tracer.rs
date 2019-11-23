@@ -14,8 +14,8 @@ use super::common::*;
 
 type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
 type RemoteHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
-type BlockFuture = Box<dyn Future<Item = BlockWithUncles, Error = Error> + Send>;
-type BlockStream = Box<dyn Stream<Item = BlockWithUncles, Error = Error> + Send>;
+type BlockFuture = Box<dyn Future<Item = Option<BlockWithUncles>, Error = Error> + Send>;
+type BlockStream = Box<dyn Stream<Item = Option<BlockWithUncles>, Error = Error> + Send>;
 type EmitEventsFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
 
 /**
@@ -41,17 +41,25 @@ fn fetch_block_and_uncles(
         adapter
             .block_by_number(&logger, block_number)
             .from_err()
-            .and_then(move |block| {
-                let block = block.expect("received no block for number");
-
-                adapter_for_full_block
-                    .load_full_block(&logger_for_full_block, block)
-                    .from_err()
+            .and_then(move |block| match block {
+                None => Box::new(future::ok(None))
+                    as Box<dyn Future<Item = Option<EthereumBlock>, Error = _> + Send>,
+                Some(block) => Box::new(
+                    adapter_for_full_block
+                        .load_full_block(&logger_for_full_block, block)
+                        .map(|block| Some(block))
+                        .from_err(),
+                ),
             })
-            .and_then(move |block| {
-                adapter_for_uncles
-                    .uncles(&logger_for_uncles, &block.block)
-                    .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
+            .and_then(move |block| match block {
+                None => Box::new(future::ok(None))
+                    as Box<dyn Future<Item = Option<BlockWithUncles>, Error = _> + Send>,
+                Some(block) => Box::new(
+                    adapter_for_uncles
+                        .uncles(&logger_for_uncles, &block.block)
+                        .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
+                        .map(|block| Some(block)),
+                ),
             }),
     )
 }
@@ -243,7 +251,7 @@ enum StateMachine {
     /// head with different blocks leading up to it.
     #[state_machine_future(transitions(EmitEvents, IdentifyRemoteHead, Failed))]
     FindForkBase {
-        local_block: BlockWithUncles,
+        local_head: Option<EthereumBlockPointer>,
         remote_head: LightEthereumBlock,
         forked_block: BlockWithUncles,
         incoming_blocks: BlockStream,
@@ -392,10 +400,20 @@ impl PollStateMachine for StateMachine {
                     remote_head: fetch_remote_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
+            // The next block could not be fetched, try starting over
+            // from a fresh remote head
+            Some(None) => {
+                let state = state.take();
+
+                transition!(IdentifyRemoteHead {
+                    local_head: state.local_head,
+                    remote_head: fetch_remote_head(context.logger.clone(), context.adapter.clone()),
+                })
+            }
 
             // There is an incoming block ready to be processed;
             // check it before emitting it to the rest of the system
-            Some(block) => {
+            Some(Some(block)) => {
                 let state = state.take();
 
                 transition!(CheckBlock {
