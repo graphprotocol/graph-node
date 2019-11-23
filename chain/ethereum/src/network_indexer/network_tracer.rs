@@ -344,7 +344,7 @@ impl PollStateMachine for StateMachine {
 
         // Calculate the number of blocks remaining before we are in sync with the
         // remote; fetch no more than 1000 blocks at a time
-        let remaining_blocks = remote_head_number - next_block_number + 1;
+        let remaining_blocks = remote_head_number + 1 - next_block_number;
         let block_range_size = remaining_blocks.min(1000);
         let block_numbers = next_block_number..(next_block_number + block_range_size);
 
