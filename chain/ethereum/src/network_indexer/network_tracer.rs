@@ -17,6 +17,7 @@ type RemoteHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error>
 type BlockFuture = Box<dyn Future<Item = Option<BlockWithUncles>, Error = Error> + Send>;
 type BlockStream = Box<dyn Stream<Item = Option<BlockWithUncles>, Error = Error> + Send>;
 type EmitEventsFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
+type ForkPathStream = Box<dyn Stream<Item = LightEthereumBlock>, Error = Error> + Send>;
 
 /**
  * Helpers to create futures and streams.
@@ -255,6 +256,7 @@ enum StateMachine {
         remote_head: LightEthereumBlock,
         forked_block: BlockWithUncles,
         incoming_blocks: BlockStream,
+        fork_path: ForkPathStream,
     },
 
     /// Waits until all events have been emitted/sent, then transition
@@ -474,7 +476,13 @@ impl PollStateMachine for StateMachine {
 
         // Check whether we have a reorg (parent of the block != our local head).
         if block.inner().parent_ptr() != state.local_head {
-            unimplemented!("Reorgs are not implemented yet");
+            transition!(FindForkBase {
+                local_head: state.local_head,
+                remote_head: state.remote_head,
+                incoming_blocks: state.incoming_blocks,
+                forked_block: block,
+                fork_path: trace_fork_path()
+            })
         } else {
             transition!(EmitEvents {
                 // Advance the local head to the new block
