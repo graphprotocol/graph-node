@@ -42,8 +42,8 @@ impl EthereumAdapter for MockEthereumAdapter {
 
     fn block_by_number(
         &self,
-        logger: &Logger,
-        block_number: u64,
+        _logger: &Logger,
+        _block_number: u64,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         unimplemented!();
     }
