@@ -8,17 +8,13 @@ use serde::de;
 use serde::ser;
 use serde_yaml;
 use slog::{info, Logger};
-use std::fmt;
-use std::ops::Deref;
-use std::str::FromStr;
-use std::sync::Arc;
 use tokio::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::StoreError;
 use crate::data::query::QueryExecutionError;
-use crate::data::schema::{Schema, SchemaImportError, SchemaReference};
+use crate::data::schema::{Schema, SchemaImportError, SchemaReference, SchemaValidationError};
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
     EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
@@ -27,6 +23,12 @@ use crate::data::subgraph::schema::{
 };
 use crate::prelude::{format_err, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
+
+use std::collections::HashMap;
+use std::fmt;
+use std::ops::Deref;
+use std::str::FromStr;
+use std::sync::Arc;
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
@@ -333,8 +335,12 @@ pub enum SubgraphManifestValidationError {
     DataSourceBlockHandlerLimitExceeded,
     #[fail(display = "the specified block must exist on the Ethereum network")]
     BlockNotFound(String),
-    #[fail(display = "imported schemas are invalid")]
-    SchemaImportErrors(Vec<SchemaImportError>),
+    // TODO: Figure out how to get these error to properly show up
+    #[fail(display = "imported schema(s) are invalid: {:?}", _0)]
+    SchemaImportError(Vec<SchemaImportError>),
+    // TODO: Figure out how to get these error to properly show up
+    #[fail(display = "schema validation failed: {:?}", _0)]
+    SchemaValidationError(Vec<SchemaValidationError>),
 }
 
 #[derive(Fail, Debug)]
@@ -837,23 +843,75 @@ impl UnvalidatedSubgraphManifest {
         SubgraphManifest::resolve(link, resolver, logger).map(|manifest| Self(manifest))
     }
 
+    pub fn imported_schemas(&self) -> Vec<SchemaReference> {
+        self.0.schema.imported_schemas()
+    }
+
     pub fn validate(
         &self,
         _logger: Logger,
-    ) -> impl Future<Item = (), Error = Vec<SubgraphManifestValidationError>> {
-        // Implement UnvalidatedSubgraphManifest::validate method HashMap<SchemaReference, Option<Schema>> -> Result<(SubgraphManifest, Vec<SubgraphManifestValidationWarnings>), Vec<SubgraphManifestValidationError>>
-        // Should include all logic in core/src/subgraph/validation.rs
-        // Should include all logic in graph/src/data/graphql/validation.rs
-        // Should validate that all types in the Subgraph referenced from other subgraphs exist
-        // If the referenced subgraph is not provided as an argument, do not validate those types
-        // Should validate that import directives are properly formed
-        // Should that import directives only exist on the _SubgraphSchema_ type
-        // _SubgraphSchema_ type should not have fields
-        return future::ok(());
-    }
+        schemas: HashMap<SchemaReference, Arc<Schema>>,
+    ) -> Result<SubgraphManifest, Vec<SubgraphManifestValidationError>> {
+        let manifest = &self.0;
 
-    pub fn imported_schemas(&self) -> Vec<SchemaReference> {
-        self.0.schema.imported_schemas()
+        let mut errors: Vec<SubgraphManifestValidationError> = vec![];
+
+        // Validate that the manifest has at least one data source
+        if manifest.data_sources.is_empty() {
+            errors.push(SubgraphManifestValidationError::NoDataSources);
+        }
+
+        // Validate that the manifest has a `source` address in each data source
+        // which has call or block handlers
+        if manifest.data_sources.iter().any(|data_source| {
+            let no_source_address = data_source.source.address.is_none();
+            let has_call_handlers = !data_source.mapping.call_handlers.is_empty();
+            let has_block_handlers = !data_source.mapping.block_handlers.is_empty();
+
+            no_source_address && (has_call_handlers || has_block_handlers)
+        }) {
+            errors.push(SubgraphManifestValidationError::SourceAddressRequired)
+        };
+
+        // Validate that there are no more than one of each type of
+        // block_handler in each data source.
+        let has_too_many_block_handlers = manifest.data_sources.iter().any(|data_source| {
+            if data_source.mapping.block_handlers.is_empty() {
+                return false;
+            }
+
+            let mut non_filtered_block_handler_count = 0;
+            let mut call_filtered_block_handler_count = 0;
+            data_source
+                .mapping
+                .block_handlers
+                .iter()
+                .for_each(|block_handler| {
+                    if block_handler.filter.is_none() {
+                        non_filtered_block_handler_count += 1
+                    } else {
+                        call_filtered_block_handler_count += 1
+                    }
+                });
+            return non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1;
+        });
+
+        if has_too_many_block_handlers {
+            errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
+        }
+
+        manifest
+            .schema
+            .validate(&schemas)
+            .err()
+            .into_iter()
+            .for_each(|schema_errors| {
+                errors.push(SubgraphManifestValidationError::SchemaValidationError(
+                    schema_errors,
+                ));
+            });
+
+        return Err(errors);
     }
 }
 

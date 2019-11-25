@@ -13,7 +13,6 @@ lazy_static! {
     );
 }
 
-use super::validation;
 use graph::data::schema::{SchemaImportError, SchemaReference};
 use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
@@ -339,7 +338,6 @@ where
                     })
             })
             .and_then(move |(unvalidated, ethereum_adapter, chain_store)| {
-                // Get the correct store from the `chain_stores`
                 future::ok(resolve_schema_references(
                     &unvalidated.0.schema,
                     store.clone(),
@@ -352,26 +350,18 @@ where
                         .map(|err| err.clone())
                         .collect();
                     let schema_import_warnings: Vec<SchemaImportError> = import_errors
-                        .iter()
+                        .into_iter()
                         .filter(|err| !SchemaImportError::is_failure(err))
-                        .map(|err| err.clone())
                         .collect();
 
                     // Validate the unvalidated manifest
-
-                    future::ok((schemas, import_errors))
+                    // unvalidated.validate(schemas)
+                    future::ok((schemas, schema_import_warnings))
                 })
                 .map(move |(schemas, import_errors)| {
                     // Call unvalidate.validate(schemas)
                     (unvalidated.0, ethereum_adapter, chain_store, store)
                 })
-
-                // QUESTION: What should be done with the errors here?
-                //
-
-                // Validate the UnvalidatedSubgraphManifest
-
-                // future::ok((unvalidated.0, ethereum_adapter, chain_store, store))
             })
             .and_then(move |(manifest, ethereum_adapter, chain_store, store)| {
                 let manifest_id = manifest.id.clone();
