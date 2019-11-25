@@ -5,7 +5,6 @@ use state_machine_future::*;
 use std::fmt;
 use std::ops::Range;
 use std::str::FromStr;
-use std::time::Duration;
 
 use graph::prelude::*;
 use web3::types::H256;
@@ -34,13 +33,7 @@ type SendEventFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
 
 fn poll_chain_head(logger: Logger, adapter: Arc<dyn EthereumAdapter>) -> ChainHeadFuture {
     debug!(logger, "Poll chain head");
-    Box::new(
-        adapter
-            .latest_block(&logger)
-            .map_err(|e| format_err!("{}", e))
-            .timeout(Duration::from_secs(5))
-            .map_err(|e| format_err!("{}", e)),
-    )
+    Box::new(adapter.latest_block(&logger).from_err())
 }
 
 fn fetch_block_and_uncles_by_number(
