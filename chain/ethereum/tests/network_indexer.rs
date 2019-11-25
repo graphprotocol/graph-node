@@ -484,7 +484,7 @@ fn tracing_handles_single_reorg() {
         // Verify that the following events are emitted in exactly the same
         // sequence:
         // 10 `AddBlock` events for blocks #0-#9 of the initial chain
-        // 7 `Revert` events from #10 to #9, ..., #4 to #3 (the fork base)
+        // 7 `Revert` events from #9 to #8, ..., #4 to #3 (the fork base)
         // 14 `AddBlock` events for blocks #4-#20 of the fork
         assert_eq!(
             events,
