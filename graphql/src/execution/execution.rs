@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Deref;
 use std::time::Instant;
 
-use graph::data::graphql::validation::get_base_type;
+use graph::data::graphql::traversal;
 use graph::prelude::*;
 
 use crate::introspection::INTROSPECTION_DOCUMENT;
@@ -187,7 +187,7 @@ where
                         .ok_or(Invalid)?;
 
                         let field_complexity = self.query_complexity(
-                            &get_named_type(schema, get_base_type(&s_field.field_type))
+                            &get_named_type(schema, traversal::get_base_type(&s_field.field_type))
                                 .ok_or(Invalid)?,
                             &field.selection_set,
                             max_depth,
@@ -263,7 +263,7 @@ where
 
                         match s_field {
                             Some(s_field) => {
-                                let base_type = get_base_type(&s_field.field_type);
+                                let base_type = traversal::get_base_type(&s_field.field_type);
                                 match get_named_type(schema, base_type) {
                                     Some(ty) => errors.extend(self.validate_fields(
                                         base_type,
