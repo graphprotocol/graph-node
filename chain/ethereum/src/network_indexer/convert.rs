@@ -1,22 +1,21 @@
 use graph::prelude::*;
 use web3::types::{Block, H160, H256};
 
-use super::common::*;
+use super::*;
 
-/**
- * Helper traits to work with network entities.
- */
-
+/// A value that can be converted to an entity ID.
 pub trait ToEntityId {
     fn to_entity_id(&self) -> String;
 }
 
+/// A value that can be converted to an entity key.
 pub trait ToEntityKey {
     fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey;
 }
 
-pub trait ToEntity {
-    fn to_entity(&self) -> Result<Entity, Error>;
+/// A value that can (maybe) be converted to an entity.
+pub trait TryIntoEntity {
+    fn try_into_entity(&self) -> Result<Entity, Error>;
 }
 
 /**
@@ -51,6 +50,16 @@ impl ToEntityKey for Block<H256> {
     }
 }
 
+impl ToEntityKey for EthereumBlockPointer {
+    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
+        EntityKey {
+            subgraph_id,
+            entity_type: "Block".into(),
+            entity_id: format!("{:x}", self.hash),
+        }
+    }
+}
+
 impl ToEntityId for BlockWithUncles {
     fn to_entity_id(&self) -> String {
         (*self).block.block.hash.unwrap().to_entity_id()
@@ -67,8 +76,8 @@ impl ToEntityKey for &BlockWithUncles {
     }
 }
 
-impl ToEntity for Block<H256> {
-    fn to_entity(&self) -> Result<Entity, Error> {
+impl TryIntoEntity for Block<H256> {
+    fn try_into_entity(&self) -> Result<Entity, Error> {
         Ok(Entity::from(vec![
             ("id", format!("{:x}", self.hash.unwrap()).into()),
             ("number", self.number.unwrap().into()),
@@ -106,8 +115,8 @@ impl ToEntity for Block<H256> {
     }
 }
 
-impl ToEntity for &BlockWithUncles {
-    fn to_entity(&self) -> Result<Entity, Error> {
+impl TryIntoEntity for &BlockWithUncles {
+    fn try_into_entity(&self) -> Result<Entity, Error> {
         let inner = self.inner();
 
         Ok(Entity::from(vec![

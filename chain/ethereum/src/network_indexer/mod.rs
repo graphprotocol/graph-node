@@ -1,31 +1,45 @@
-use graph::components::forward;
 use graph::prelude::*;
+use web3::types::{Block, TransactionReceipt, H256};
 
 mod block_writer;
-mod common;
+mod convert;
 mod network_indexer;
-mod network_tracer;
 mod subgraph;
-mod to_entity;
 
 pub use self::block_writer::*;
-pub use self::common::*;
+pub use self::convert::*;
 pub use self::network_indexer::*;
-pub use self::network_tracer::*;
 pub use self::subgraph::*;
-pub use self::to_entity::*;
 
-pub use self::network_tracer::NetworkTracerEvent;
+pub use self::network_indexer::NetworkIndexerEvent;
 
 const NETWORK_INDEXER_VERSION: u32 = 0;
 
+/// Helper type to bundle blocks and their uncles together.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BlockWithUncles {
+    pub block: EthereumBlock,
+    pub uncles: Vec<Option<Block<H256>>>,
+}
+
+impl BlockWithUncles {
+    pub fn inner(&self) -> &LightEthereumBlock {
+        &self.block.block
+    }
+
+    pub fn _transaction_receipts(&self) -> &Vec<TransactionReceipt> {
+        &self.block.transaction_receipts
+    }
+}
+
 pub fn create<S>(
     subgraph_name: String,
-    store: Arc<S>,
-    adapter: Arc<dyn EthereumAdapter>,
     logger: &Logger,
+    adapter: Arc<dyn EthereumAdapter>,
+    store: Arc<S>,
     metrics_registry: Arc<dyn MetricsRegistry>,
-) -> impl Future<Item = (), Error = ()>
+    start_block: Option<EthereumBlockPointer>,
+) -> impl Future<Item = NetworkIndexer, Error = ()>
 where
     S: Store + ChainStore,
 {
@@ -49,33 +63,15 @@ where
         subgraph_id.clone(),
         logger.clone(),
         store.clone(),
-        None,
+        start_block,
     )
     .and_then(move |_| {
-        let stopwatch = StopwatchMetrics::new(
-            logger.clone(),
-            subgraph_id.clone(),
-            metrics_registry.clone(),
-        );
-
-        // Create the network tracer
-        let mut tracer = NetworkTracer::new(
+        future::ok(NetworkIndexer::new(
             subgraph_id.clone(),
             &logger,
             adapter.clone(),
             store.clone(),
             metrics_registry.clone(),
-        );
-
-        // Create the network indexer
-        let indexer = NetworkIndexer::new(
-            subgraph_id.clone(),
-            &logger,
-            store.clone(),
-            stopwatch.clone(),
-            metrics_registry.clone(),
-        );
-
-        forward(&mut tracer, &indexer).unwrap()
+        ))
     })
 }
