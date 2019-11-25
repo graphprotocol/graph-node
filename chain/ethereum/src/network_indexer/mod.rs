@@ -32,6 +32,30 @@ impl BlockWithUncles {
     }
 }
 
+/**
+ * Logging helpers.
+ */
+
+pub(crate) fn format_light_block(block: &LightEthereumBlock) -> String {
+    format!(
+        "{} ({})",
+        block
+            .number
+            .map_or(String::from("none"), |number| format!("#{}", number)),
+        block
+            .hash
+            .map_or(String::from("-"), |hash| format!("{:x}", hash))
+    )
+}
+
+pub(crate) fn format_block(block: &BlockWithUncles) -> String {
+    format_light_block(block.inner())
+}
+
+pub(crate) fn format_block_pointer(ptr: &EthereumBlockPointer) -> String {
+    format!("#{} ({:x})", ptr.number, ptr.hash)
+}
+
 pub fn create<S>(
     subgraph_name: String,
     logger: &Logger,
