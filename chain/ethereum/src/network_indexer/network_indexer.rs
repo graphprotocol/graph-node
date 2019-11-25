@@ -583,13 +583,20 @@ impl PollStateMachine for StateMachine {
         let remote_head_number = remote_head.number.unwrap().as_u64();
         let next_block_number = state.local_head.map_or(0u64, |ptr| ptr.number + 1);
 
+        trace!(
+            context.logger,
+            "Compare next block ({}) and remote head ({})",
+            next_block_number,
+            remote_head_number,
+        );
+
         // Calculate the number of blocks remaining before we are in sync with the
         // network; fetch no more than 1000 blocks at a time.
         let remaining_blocks = remote_head_number + 1 - next_block_number;
         let block_range_size = remaining_blocks.min(1000);
         let block_numbers = next_block_number..(next_block_number + block_range_size);
 
-        debug!(
+        info!(
             context.logger,
             "Fetch {} of {} remaining blocks ({}, {})",
             block_range_size, remaining_blocks, block_numbers.start, block_numbers.end - 1;
@@ -712,7 +719,7 @@ impl PollStateMachine for StateMachine {
         let state = state.take();
         let block = state.block;
 
-        debug!(
+        trace!(
             context.logger,
             "Vet block";
             "block_number" => block.inner().number.map_or(
@@ -746,7 +753,7 @@ impl PollStateMachine for StateMachine {
         let block_number = block.inner().number.unwrap().as_u64();
         let local_head_number = state.local_head.map_or(0u64, |ptr| ptr.number);
         if block_number < local_head_number {
-            debug!(
+            warn!(
                 context.logger,
                 "Received an older block than the local head; \
                  re-evaluate remote head and try again";
@@ -763,7 +770,7 @@ impl PollStateMachine for StateMachine {
 
         // Check whether we have a reorg (parent of the block != our local head).
         if block.inner().parent_ptr() != state.local_head {
-            debug!(
+            info!(
                 context.logger,
                 "Block {} [{:x}] requires a reorg",
                 block.inner().number.unwrap(),
@@ -830,15 +837,6 @@ impl PollStateMachine for StateMachine {
             // Have the forked blocks, now revert to the fork base and
             // then add the forked blocks to move forward again.
             Ok(Async::Ready(mut forked_blocks)) => {
-                for block in forked_blocks.iter() {
-                    debug!(
-                        context.logger,
-                        "Forked block {} [{:x}]",
-                        block.inner().number.unwrap(),
-                        block.inner().hash.unwrap()
-                    )
-                }
-
                 let state = state.take();
 
                 let fork_base = forked_blocks
@@ -892,9 +890,10 @@ impl PollStateMachine for StateMachine {
             // Fetching the forked blocks failed, reset to identifying
             // the remote head again
             Err(e) => {
-                debug!(
+                trace!(
                     context.logger,
-                    "Fetching forked blocks failed, back to identifying the remote head";
+                    "Fetching forked blocks failed; \
+                     re-evaluate remote head and try again";
                     "error" => format!("{}", e)
                 );
 
@@ -963,8 +962,6 @@ impl PollStateMachine for StateMachine {
     ) -> Poll<AfterAddBlock, Error> {
         // Abort if the output stream has been closed.
         try_ready!(context.event_sink.poll_ready());
-
-        debug!(context.logger, "Add block");
 
         match state.new_local_head.poll() {
             // Adding the block is not complete yet, try again later.
