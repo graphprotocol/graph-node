@@ -74,12 +74,8 @@ impl BlockWriter {
 
     /// Writes a block to the store and updates the network subgraph block pointer.
     pub fn write(&self, block: BlockWithUncles) -> impl Future<Item = (), Error = Error> {
-        let hash = block.inner().hash.clone().unwrap();
-        let number = block.inner().number.clone().unwrap();
-
         let logger = self.logger.new(o!(
-            "block_hash" => format!("{:?}", hash),
-            "block_number" => format!("{}", number),
+            "block" => format_block(&block),
         ));
 
         // Write using a write context that we can thread through futures.
