@@ -5,6 +5,7 @@ use state_machine_future::*;
 use std::fmt;
 use std::ops::Range;
 use std::str::FromStr;
+use std::time::Duration;
 
 use graph::prelude::*;
 use web3::types::H256;
@@ -17,7 +18,7 @@ use super::*;
  */
 
 type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
-type RemoteHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
+type ChainHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 type BlockFuture = Box<dyn Future<Item = Option<BlockWithUncles>, Error = Error> + Send>;
 type BlockStream = Box<dyn Stream<Item = Option<BlockWithUncles>, Error = Error> + Send>;
 type ForkedBlocksFuture = Box<dyn Future<Item = Vec<BlockWithUncles>, Error = Error> + Send>;
@@ -31,9 +32,15 @@ type SendEventFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
  * Helpers to create futures and streams.
  */
 
-fn identify_remote_head(logger: Logger, adapter: Arc<dyn EthereumAdapter>) -> RemoteHeadFuture {
-    debug!(logger, "Identify remote head");
-    Box::new(adapter.latest_block(&logger).from_err())
+fn poll_chain_head(logger: Logger, adapter: Arc<dyn EthereumAdapter>) -> ChainHeadFuture {
+    debug!(logger, "Poll chain head");
+    Box::new(
+        adapter
+            .latest_block(&logger)
+            .map_err(|e| format_err!("{}", e))
+            .timeout(Duration::from_secs(5))
+            .map_err(|e| format_err!("{}", e)),
+    )
 }
 
 fn fetch_block_and_uncles_by_number(
@@ -151,7 +158,11 @@ fn fetch_forked_blocks(
             )
         };
 
-        trace!(logger, "Fetch forked block {} [{:x}]", number, hash);
+        trace!(
+            logger,
+            "Fetch block on new chain";
+            "block" => format!("{}/{:x}", number, hash),
+        );
 
         // Look it up from the store
         match store.get(block_entity_key) {
@@ -200,6 +211,12 @@ fn collect_blocks_to_revert(
     head: EthereumBlockPointer,
     fork_base: EthereumBlockPointer,
 ) -> CollectBlocksToRevertFuture {
+    trace!(
+        logger,
+        "Collect local blocks to revert";
+        "fork_base" => format_block_pointer(&fork_base),
+    );
+
     Box::new(loop_fn(vec![head], move |mut blocks| {
         let logger = logger.clone();
         let store = store.clone();
@@ -211,14 +228,15 @@ fn collect_blocks_to_revert(
 
         trace!(
             logger,
-            "Collecting block to revert: {} [{:x}]", block_ptr.number, block_ptr.hash;
-            "fork_base" => format!("{} [{:x}]", fork_base.number, fork_base.hash),
+            "Collect local block to revert";
+            "fork_base" => format_block_pointer(&fork_base),
+            "block" => format_block_pointer(&block_ptr),
         );
 
         // If we've reached the fork base, terminate the loop and return
         // the blocks we have collected up to here
         if block_ptr == fork_base {
-            trace!(logger, "Reached the fork base, all blocks collected");
+            trace!(logger, "Collect blocks complete");
 
             return Box::new(future::ok(Loop::Break(blocks)))
                 as Box<dyn Future<Item = _, Error = _> + Send>;
@@ -232,7 +250,10 @@ fn collect_blocks_to_revert(
                     .map_err(|e| e.into())
                     .and_then(|entity| {
                         entity.ok_or_else(|| {
-                            format_err!("block missing in database: {:?}", block_ptr)
+                            format_err!(
+                                "block missing in database: {}",
+                                format_block_pointer(&block_ptr)
+                            )
                         })
                     }),
             )
@@ -243,9 +264,8 @@ fn collect_blocks_to_revert(
                         .get("parent")
                         .ok_or_else(move || {
                             format_err!(
-                                "block {} [{:x}] is missing a parent_hash",
-                                block_ptr_for_missing_parent.number,
-                                block_ptr_for_missing_parent.hash
+                                "block is missing a parent_hash: {}",
+                                format_block_pointer(&block_ptr_for_missing_parent),
                             )
                         })
                         .and_then(|value| {
@@ -256,9 +276,8 @@ fn collect_blocks_to_revert(
 
                             H256::from_str(s.as_str()).map_err(|e| {
                                 format_err!(
-                                    "block {} [{:x}] has an invalid parent hash `{}`: {}",
-                                    block_ptr_for_invalid_parent.number,
-                                    block_ptr_for_invalid_parent.hash,
+                                    "block {} has an invalid parent hash `{}`: {}",
+                                    format_block_pointer(&block_ptr_for_invalid_parent),
                                     s,
                                     e,
                                 )
@@ -283,11 +302,16 @@ fn collect_blocks_to_revert(
 
 fn revert_blocks(
     subgraph_id: SubgraphDeploymentId,
+    logger: Logger,
     store: Arc<dyn Store>,
     event_sink: Sender<NetworkIndexerEvent>,
     blocks: Vec<EthereumBlockPointer>,
 ) -> RevertBlocksFuture {
     let fork_base = blocks.last().expect("no blocks to revert").clone();
+
+    debug!(logger, "Revert blocks");
+
+    let logger_for_complete = logger.clone();
 
     Box::new(
         stream::iter_ok(
@@ -298,6 +322,14 @@ fn revert_blocks(
         )
         .for_each(move |(from, to)| {
             let event_sink = event_sink.clone();
+            let logger = logger.clone();
+
+            debug!(
+                logger,
+                "Revert block";
+                "from" => format_block_pointer(&from),
+                "to" => format_block_pointer(&to),
+            );
 
             future::result(store.revert_block_operations(
                 subgraph_id.clone(),
@@ -315,7 +347,13 @@ fn revert_blocks(
                 )
             })
         })
-        .and_then(move |_| future::ok(fork_base)),
+        .and_then(move |_| {
+            debug!(
+                logger_for_complete,
+                "Revert blocks complete; move forward to the new chain head"
+            );
+            future::ok(fork_base)
+        }),
     )
 }
 
@@ -360,11 +398,12 @@ impl fmt::Display for NetworkIndexerEvent {
         match self {
             NetworkIndexerEvent::Revert { from, to } => write!(
                 f,
-                "Revert: From {} [{:x}] to {} [{:x}]",
-                from.number, from.hash, to.number, to.hash
+                "Revert: From {} to {}",
+                format_block_pointer(&from),
+                format_block_pointer(&to),
             ),
             NetworkIndexerEvent::AddBlock(block) => {
-                write!(f, "Add block: {} [{:x}]", block.number, block.hash)
+                write!(f, "Add block: {}", format_block_pointer(&block))
             }
         }
     }
@@ -375,19 +414,19 @@ impl fmt::Display for NetworkIndexerEvent {
 #[state_machine_future(context = "Context")]
 enum StateMachine {
     /// We start with an empty state, which immediately moves on
-    /// to identifying the local head block of the network subgraph.
-    #[state_machine_future(start, transitions(IdentifyLocalHead))]
+    /// to loading the local head block of the network subgraph.
+    #[state_machine_future(start, transitions(LoadLocalHead))]
     Start,
 
     /// This state waits until we have the local head block (we get
     /// its pointer from the store), then moves on to identifying
-    /// the remote head block (the latest block on the network).
-    #[state_machine_future(transitions(IdentifyRemoteHead, Failed))]
-    IdentifyLocalHead { local_head: LocalHeadFuture },
+    /// the chain head block (the latest block on the network).
+    #[state_machine_future(transitions(PollChainHead, Failed))]
+    LoadLocalHead { local_head: LocalHeadFuture },
 
-    /// This state waits until the remote head block is available.
-    /// Once we have this (local head, remote head) pair, we can fetch
-    /// the blocks (local head)+1, (local head)+2, ..., (remote head).
+    /// This state waits until the chain head block is available.
+    /// Once we have this (local head, chain head) pair, we can fetch
+    /// the blocks (local head)+1, (local head)+2, ..., (chain head).
     /// We do this in smaller chunks however, for two reasons:
     ///
     /// 1. To limit the amount of blocks we keep in memory.
@@ -397,21 +436,21 @@ enum StateMachine {
     /// and creating a stream to pull these in with some parallelization.
     /// The next state (`ProcessBlocks`) will then read this stream block
     /// by block.
-    #[state_machine_future(transitions(ProcessBlocks, IdentifyRemoteHead, Failed))]
-    IdentifyRemoteHead {
+    #[state_machine_future(transitions(ProcessBlocks, PollChainHead, Failed))]
+    PollChainHead {
         local_head: Option<EthereumBlockPointer>,
-        remote_head: RemoteHeadFuture,
+        chain_head: ChainHeadFuture,
     },
 
     /// This state takes the first block from the stream. If the stream is
-    /// exhausted, it transitions back to re-checking the remote head block
+    /// exhausted, it transitions back to re-checking the chain head block
     /// and deciding on the next chunk of blocks to fetch. If there is still
     /// a block to read from the stream, it's passed on to the `VetBlock`
     /// state for reorg checking.
-    #[state_machine_future(transitions(VetBlock, IdentifyRemoteHead, Failed))]
+    #[state_machine_future(transitions(VetBlock, PollChainHead, Failed))]
     ProcessBlocks {
         local_head: Option<EthereumBlockPointer>,
-        remote_head: LightEthereumBlock,
+        chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
     },
 
@@ -447,10 +486,10 @@ enum StateMachine {
     /// block as a reorg and transitioning to the `FetchForkedBlocks`
     /// state. Once that has completed the above steps, it will
     /// emit events for a) and b).
-    #[state_machine_future(transitions(FetchForkedBlocks, AddBlock, IdentifyRemoteHead, Failed))]
+    #[state_machine_future(transitions(FetchForkedBlocks, AddBlock, PollChainHead, Failed))]
     VetBlock {
         local_head: Option<EthereumBlockPointer>,
-        remote_head: LightEthereumBlock,
+        chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
         block: BlockWithUncles,
     },
@@ -461,7 +500,7 @@ enum StateMachine {
     ///
     /// If successful, it moves on new_local_head to the base (`RevertToForkBase`) and
     /// then to adding the next new block with `AddBlock`. If not successful, resets
-    /// to `IdentifyRemoteHead` and tries again.
+    /// to `PollChainHead` and tries again.
     ///
     /// Note: This state carries over the incoming block stream to not lose its
     /// blocks. This is because even if there was a reorg, the blocks following
@@ -469,30 +508,30 @@ enum StateMachine {
     /// So once the reorg has been handled, we should be able to continue with
     /// the remaining blocks on the stream.
     ///
-    /// Only when we reset back to `IdentifyRemoteHead` do we throw away the
-    /// stream in the hope that we'll get a better remote head with different
+    /// Only when we reset back to `PollChainHead` do we throw away the
+    /// stream in the hope that we'll get a better chain head with different
     /// blocks leading up to it.
-    #[state_machine_future(transitions(RevertToForkBase, IdentifyRemoteHead, Failed))]
+    #[state_machine_future(transitions(RevertToForkBase, PollChainHead, Failed))]
     FetchForkedBlocks {
         local_head: Option<EthereumBlockPointer>,
-        remote_head: LightEthereumBlock,
+        chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
         forked_blocks: ForkedBlocksFuture,
     },
 
-    #[state_machine_future(transitions(ProcessBlocks, IdentifyRemoteHead, Failed))]
+    #[state_machine_future(transitions(ProcessBlocks, PollChainHead, Failed))]
     RevertToForkBase {
         local_head: Option<EthereumBlockPointer>,
-        remote_head: LightEthereumBlock,
+        chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
         new_local_head: RevertBlocksFuture,
     },
 
     /// Waits until all events have been emitted/sent, then transition
     /// back to processing blocks from the open stream of incoming blocks.
-    #[state_machine_future(transitions(ProcessBlocks, IdentifyRemoteHead, Failed))]
+    #[state_machine_future(transitions(ProcessBlocks, PollChainHead, Failed))]
     AddBlock {
-        remote_head: LightEthereumBlock,
+        chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
         old_local_head: Option<EthereumBlockPointer>,
         new_local_head: AddBlockFuture,
@@ -523,105 +562,124 @@ impl PollStateMachine for StateMachine {
 
         // Start by pulling the local head from the store. This is the most
         // recent block we managed to index until now.
-        transition!(IdentifyLocalHead {
+        transition!(LoadLocalHead {
             local_head: Box::new(future::result(
                 context.store.clone().block_ptr(context.subgraph_id.clone())
             ))
         })
     }
 
-    fn poll_identify_local_head<'a, 'c>(
-        state: &'a mut RentToOwn<'a, IdentifyLocalHead>,
+    fn poll_load_local_head<'a, 'c>(
+        state: &'a mut RentToOwn<'a, LoadLocalHead>,
         context: &'c mut RentToOwn<'c, Context>,
-    ) -> Poll<AfterIdentifyLocalHead, Error> {
+    ) -> Poll<AfterLoadLocalHead, Error> {
         // Abort if the output stream has been closed.
         try_ready!(context.event_sink.poll_ready());
 
-        debug!(context.logger, "Identify local head");
+        debug!(context.logger, "Load local head");
 
         // Wait until we have the local head block; fail if we can't get it from
         // the store because that means the subgraph is broken.
         let local_head = try_ready!(state.local_head.poll());
 
         // Move on and identify the latest block on chain.
-        transition!(IdentifyRemoteHead {
+        transition!(PollChainHead {
             local_head,
-            remote_head: identify_remote_head(context.logger.clone(), context.adapter.clone()),
+            chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
         })
     }
 
-    fn poll_identify_remote_head<'a, 'c>(
-        state: &'a mut RentToOwn<'a, IdentifyRemoteHead>,
+    fn poll_poll_chain_head<'a, 'c>(
+        state: &'a mut RentToOwn<'a, PollChainHead>,
         context: &'c mut RentToOwn<'c, Context>,
-    ) -> Poll<AfterIdentifyRemoteHead, Error> {
+    ) -> Poll<AfterPollChainHead, Error> {
         // Abort if the output stream has been closed.
         try_ready!(context.event_sink.poll_ready());
 
-        // Wait until we have the remote head block.
-        let remote_head = try_ready!(state.remote_head.poll());
+        match state.chain_head.poll() {
+            // Wait until we have the chain head block.
+            Ok(Async::NotReady) => Ok(Async::NotReady),
 
-        // Validate the remote head.
-        if remote_head.number.is_none() || remote_head.hash.is_none() {
-            warn!(
-                context.logger,
-                "Remote head block number or hash missing; trying again";
-                "block_number" => format!("{:?}", remote_head.number),
-                "block_hash" => format!("{:?}", remote_head.hash),
-            );
+            // We have a (new?) chain head, decide what to do.
+            Ok(Async::Ready(chain_head)) => {
+                // Validate the chain head.
+                if chain_head.number.is_none() || chain_head.hash.is_none() {
+                    warn!(
+                        context.logger,
+                        "Remote head block number or hash missing; trying again";
+                        "block" => format!("{:?}/{:?}", chain_head.number, chain_head.hash),
+                    );
 
-            transition!(IdentifyRemoteHead {
-                local_head: state.local_head,
-                remote_head: identify_remote_head(context.logger.clone(), context.adapter.clone()),
-            })
+                    transition!(PollChainHead {
+                        local_head: state.local_head,
+                        chain_head: poll_chain_head(
+                            context.logger.clone(),
+                            context.adapter.clone()
+                        ),
+                    })
+                }
+
+                let state = state.take();
+
+                // Pull number out of the local and chain head; we can safely do this here:
+                // the local head is a block pointer (or none), which always have a number,
+                // the chain head has just been validated.
+                let chain_head_number = chain_head.number.unwrap().as_u64();
+
+                trace!(
+                    context.logger,
+                    "Identify next blocks to index";
+                    "chain_head" => format_light_block(&chain_head),
+                    "local_head" => state.local_head.map_or(
+                        String::from("none"), |ptr| format_block_pointer(&ptr)
+                    ),
+                );
+
+                // Calculate the number of blocks remaining before we are in sync with the
+                // network; fetch no more than 1000 blocks at a time.
+                let next_block_number = state.local_head.map_or(0u64, |ptr| ptr.number + 1);
+                let remaining_blocks = chain_head_number + 1 - next_block_number;
+                let block_range_size = remaining_blocks.min(1000);
+                let block_numbers = next_block_number..(next_block_number + block_range_size);
+
+                info!(
+                    context.logger,
+                    "Queue {} of {} remaining blocks",
+                    block_range_size, remaining_blocks;
+                    "chain_head" => format_light_block(&chain_head),
+                    "local_head" => state.local_head.map_or(
+                        String::from("none"), |ptr| format_block_pointer(&ptr)
+                    ),
+                    "range" => format!("#{}..#{}", block_numbers.start, block_numbers.end-1),
+                );
+
+                // Continue processing blocks from this range.
+                transition!(ProcessBlocks {
+                    local_head: state.local_head,
+                    chain_head,
+                    next_blocks: fetch_blocks(
+                        context.logger.clone(),
+                        context.adapter.clone(),
+                        block_numbers
+                    )
+                })
+            }
+
+            Err(e) => {
+                trace!(
+                    context.logger,
+                    "Failed to poll chain head; try again";
+                    "error" => format!("{}", e),
+                );
+
+                let state = state.take();
+
+                transition!(PollChainHead {
+                    local_head: state.local_head,
+                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                })
+            }
         }
-
-        let state = state.take();
-
-        // Pull number out of the local and remote head; we can safely do this here:
-        // the local head is a block pointer (or none), which always have a number,
-        // the remote head has just been validated.
-        let remote_head_number = remote_head.number.unwrap().as_u64();
-        let next_block_number = state.local_head.map_or(0u64, |ptr| ptr.number + 1);
-
-        trace!(
-            context.logger,
-            "Compare next block ({}) and remote head ({})",
-            next_block_number,
-            remote_head_number,
-        );
-
-        // Calculate the number of blocks remaining before we are in sync with the
-        // network; fetch no more than 1000 blocks at a time.
-        let remaining_blocks = remote_head_number + 1 - next_block_number;
-        let block_range_size = remaining_blocks.min(1000);
-        let block_numbers = next_block_number..(next_block_number + block_range_size);
-
-        info!(
-            context.logger,
-            "Fetch {} of {} remaining blocks ({}, {})",
-            block_range_size, remaining_blocks, block_numbers.start, block_numbers.end - 1;
-            "local_head" => format!(
-                "({}, {})",
-                state.local_head.map_or("none".into(), |ptr| format!("{}", ptr.number)),
-                state.local_head.map_or("none".into(), |ptr| format!("{:?}", ptr.hash))
-            ),
-            "remote_head" => format!(
-                "({}, {:?})",
-                remote_head.number.unwrap(),
-                remote_head.hash.unwrap()
-            ),
-        );
-
-        // Continue processing blocks from this range.
-        transition!(ProcessBlocks {
-            local_head: state.local_head,
-            remote_head,
-            next_blocks: fetch_blocks(
-                context.logger.clone(),
-                context.adapter.clone(),
-                block_numbers
-            )
-        })
     }
 
     fn poll_process_blocks<'a, 'c>(
@@ -636,41 +694,32 @@ impl PollStateMachine for StateMachine {
             // No block ready yet, try again later.
             Ok(Async::NotReady) => Ok(Async::NotReady),
 
-            // The stream is exhausted, update the remote head and fetch the
+            // The stream is exhausted, update the chain head and fetch the
             // next range of blocks for processing.
             Ok(Async::Ready(None)) => {
-                trace!(
-                    context.logger,
-                    "Current range of blocks processed; check if there are more"
-                );
+                trace!(context.logger, "Check if there are more blocks");
 
                 let state = state.take();
 
-                transition!(IdentifyRemoteHead {
+                transition!(PollChainHead {
                     local_head: state.local_head,
-                    remote_head: identify_remote_head(
-                        context.logger.clone(),
-                        context.adapter.clone()
-                    ),
+                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
 
             // The block could not be fetched but there was also no clear error;
-            // try starting over with a fresh remote head.
+            // try starting over with a fresh chain head.
             Ok(Async::Ready(Some(None))) => {
                 trace!(
                     context.logger,
-                    "Failed to fetch block, re-evaluate the remote head and try again"
+                    "Failed to fetch block, re-evaluate the chain head and try again"
                 );
 
                 let state = state.take();
 
-                transition!(IdentifyRemoteHead {
+                transition!(PollChainHead {
                     local_head: state.local_head,
-                    remote_head: identify_remote_head(
-                        context.logger.clone(),
-                        context.adapter.clone()
-                    ),
+                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
 
@@ -681,29 +730,26 @@ impl PollStateMachine for StateMachine {
 
                 transition!(VetBlock {
                     local_head: state.local_head,
-                    remote_head: state.remote_head,
+                    chain_head: state.chain_head,
                     next_blocks: state.next_blocks,
                     block,
                 })
             }
 
             // Fetching blocks failed; we have no choice but to start over again
-            // with a fresh remote head.
+            // with a fresh chain head.
             Err(e) => {
                 trace!(
                     context.logger,
-                    "Failed to fetch block; re-evaluate the remote head and try again";
+                    "Failed to fetch block; re-evaluate the chain head and try again";
                     "error" => format!("{}", e),
                 );
 
                 let state = state.take();
 
-                transition!(IdentifyRemoteHead {
+                transition!(PollChainHead {
                     local_head: state.local_head,
-                    remote_head: identify_remote_head(
-                        context.logger.clone(),
-                        context.adapter.clone()
-                    ),
+                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
         }
@@ -719,52 +765,39 @@ impl PollStateMachine for StateMachine {
         let state = state.take();
         let block = state.block;
 
-        trace!(
-            context.logger,
-            "Vet block";
-            "block_number" => block.inner().number.map_or(
-                "none".into(), |number| format!("{}", number)
-            ),
-            "block_hash" => block.inner().hash.map_or(
-                "none".into(), |hash| format!("{:x}", hash)
-            ),
-        );
-
         // Validate the block.
         if block.inner().number.is_none() || block.inner().hash.is_none() {
             warn!(
                 context.logger,
                 "Block number or hash missing; trying again";
-                "block_number" => format!("{:?}", block.inner().number),
-                "block_hash" => format!("{:?}", block.inner().hash),
+                "block" => format_block(&block),
             );
 
             // The block is invalid, throw away the entire stream and
-            // start with re-checking the remote head block again.
-            transition!(IdentifyRemoteHead {
+            // start with re-checking the chain head block again.
+            transition!(PollChainHead {
                 local_head: state.local_head,
-                remote_head: identify_remote_head(context.logger.clone(), context.adapter.clone()),
+                chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
             })
         }
 
         // If we encounter a block that has a smaller number than our
         // local head block, then we throw away the block stream and
-        // try to start over with a fresh remote head block.
+        // try to start over with a fresh chain head block.
         let block_number = block.inner().number.unwrap().as_u64();
         let local_head_number = state.local_head.map_or(0u64, |ptr| ptr.number);
         if block_number < local_head_number {
             warn!(
                 context.logger,
                 "Received an older block than the local head; \
-                 re-evaluate remote head and try again";
+                 re-evaluate chain head and try again";
                 "local_head_number" => format!("{}", local_head_number),
-                "block_number" => format!("{}", block.inner().number.unwrap()),
-                "block_hash" => format!("{:x}", block.inner().hash.unwrap()),
+                "block" => format_block(&block),
             );
 
-            transition!(IdentifyRemoteHead {
+            transition!(PollChainHead {
                 local_head: state.local_head,
-                remote_head: identify_remote_head(context.logger.clone(), context.adapter.clone()),
+                chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
             })
         }
 
@@ -772,9 +805,8 @@ impl PollStateMachine for StateMachine {
         if block.inner().parent_ptr() != state.local_head {
             info!(
                 context.logger,
-                "Block {} [{:x}] requires a reorg",
-                block.inner().number.unwrap(),
-                block.inner().hash.unwrap(),
+                "Block requires a reorg";
+                "block" => format_block(&block),
             );
 
             // We are dealing with a reorg; fetch all blocks from the new
@@ -783,7 +815,7 @@ impl PollStateMachine for StateMachine {
             // the block after which the chain was forked.
             transition!(FetchForkedBlocks {
                 local_head: state.local_head,
-                remote_head: state.remote_head,
+                chain_head: state.chain_head,
                 next_blocks: state.next_blocks,
                 forked_blocks: fetch_forked_blocks(
                     context.logger.clone(),
@@ -802,8 +834,8 @@ impl PollStateMachine for StateMachine {
                 // Remember the old local head in case we need to roll back.
                 old_local_head: state.local_head,
 
-                // Carry over the current remote head and the incoming blocks stream.
-                remote_head: state.remote_head,
+                // Carry over the current chain head and the incoming blocks stream.
+                chain_head: state.chain_head,
                 next_blocks: state.next_blocks,
 
                 // Index the block.
@@ -850,12 +882,13 @@ impl PollStateMachine for StateMachine {
                     .into();
 
                 let subgraph_id_for_revert = context.subgraph_id.clone();
+                let logger_for_revert = context.logger.clone();
                 let store_for_revert = context.store.clone();
                 let event_sink_for_revert = context.event_sink.clone();
 
                 transition!(RevertToForkBase {
                     local_head: state.local_head,
-                    remote_head: state.remote_head,
+                    chain_head: state.chain_head,
 
                     // Make the blocks from the forked branch the next ones to process
                     // before any other incoming blocks
@@ -878,6 +911,7 @@ impl PollStateMachine for StateMachine {
                         .and_then(move |block_ptrs| {
                             revert_blocks(
                                 subgraph_id_for_revert,
+                                logger_for_revert,
                                 store_for_revert,
                                 event_sink_for_revert,
                                 block_ptrs,
@@ -888,23 +922,20 @@ impl PollStateMachine for StateMachine {
             }
 
             // Fetching the forked blocks failed, reset to identifying
-            // the remote head again
+            // the chain head again
             Err(e) => {
                 trace!(
                     context.logger,
                     "Fetching forked blocks failed; \
-                     re-evaluate remote head and try again";
+                     re-evaluate chain head and try again";
                     "error" => format!("{}", e)
                 );
 
                 let state = state.take();
 
-                transition!(IdentifyRemoteHead {
+                transition!(PollChainHead {
                     local_head: state.local_head,
-                    remote_head: identify_remote_head(
-                        context.logger.clone(),
-                        context.adapter.clone()
-                    ),
+                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
         }
@@ -930,27 +961,24 @@ impl PollStateMachine for StateMachine {
                 transition!(ProcessBlocks {
                     // Set the local head to the block we have reverted to
                     local_head: Some(block_ptr),
-                    remote_head: state.remote_head,
+                    chain_head: state.chain_head,
                     next_blocks: state.next_blocks,
                 })
             }
-            // There was an error reverting; re-evaluate the remote head
+            // There was an error reverting; re-evaluate the chain head
             // and try again.
             Err(e) => {
                 warn!(
                     context.logger,
-                    "Failed to handle reorg, re-evaluate the remote head and try again";
+                    "Failed to handle reorg, re-evaluate the chain head and try again";
                     "error" => format!("{}", e),
                 );
 
                 let state = state.take();
 
-                transition!(IdentifyRemoteHead {
+                transition!(PollChainHead {
                     local_head: state.local_head,
-                    remote_head: identify_remote_head(
-                        context.logger.clone(),
-                        context.adapter.clone()
-                    ),
+                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
         }
@@ -973,27 +1001,24 @@ impl PollStateMachine for StateMachine {
 
                 transition!(ProcessBlocks {
                     local_head: Some(block_ptr),
-                    remote_head: state.remote_head,
+                    chain_head: state.chain_head,
                     next_blocks: state.next_blocks,
                 })
             }
 
-            // Something went wrong, back to re-evaluating the remote head it is!
+            // Something went wrong, back to re-evaluating the chain head it is!
             Err(e) => {
                 trace!(
                     context.logger,
-                    "Failed to add block, re-evaluate the remote head and try again";
+                    "Failed to add block, re-evaluate the chain head and try again";
                     "error" => format!("{}", e),
                 );
 
                 let state = state.take();
 
-                transition!(IdentifyRemoteHead {
+                transition!(PollChainHead {
                     local_head: state.old_local_head,
-                    remote_head: identify_remote_head(
-                        context.logger.clone(),
-                        context.adapter.clone()
-                    ),
+                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
                 })
             }
         }
