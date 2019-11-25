@@ -328,10 +328,13 @@ impl EthereumCallFilter {
     pub fn extend(&mut self, other: EthereumCallFilter) {
         // Extend existing address / function signature key pairs
         // Add new address / function signature key pairs from the provided EthereumCallFilter
-        for (key, (proposed_start_block, new_sigs)) in
+        for (address, (proposed_start_block, new_sigs)) in
             other.contract_addresses_function_signatures.into_iter()
         {
-            match self.contract_addresses_function_signatures.get_mut(&key) {
+            match self
+                .contract_addresses_function_signatures
+                .get_mut(&address)
+            {
                 Some((existing_start_block, existing_sigs)) => {
                     *existing_start_block =
                         cmp::min(proposed_start_block, existing_start_block.clone());
@@ -339,7 +342,7 @@ impl EthereumCallFilter {
                 }
                 None => {
                     self.contract_addresses_function_signatures
-                        .insert(key, (proposed_start_block, new_sigs));
+                        .insert(address, (proposed_start_block, new_sigs));
                 }
             }
         }
