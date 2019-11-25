@@ -3,15 +3,19 @@ use std::time::Instant;
 
 use graph::prelude::*;
 
-use super::common::*;
-use super::to_entity::*;
+use super::*;
 
+/// Metrics for analyzing the block writer performance.
 struct BlockWriterMetrics {
+    /// Stopwatch for measuring the overall time spent writing.
     stopwatch: StopwatchMetrics,
+
+    /// Metric for aggregating over all transaction calls.
     transaction: Aggregate,
 }
 
 impl BlockWriterMetrics {
+    /// Creates new block writer metrics for a given subgraph.
     pub fn new(
         subgraph_id: &SubgraphDeploymentId,
         stopwatch: StopwatchMetrics,
@@ -30,21 +34,27 @@ impl BlockWriterMetrics {
     }
 }
 
-pub struct BlockWriter<S> {
+/// Component that writes Ethereum blocks to the network subgraph store.
+pub struct BlockWriter {
+    /// The network subgraph ID (e.g. `ethereum_mainnet_v0`).
     subgraph_id: SubgraphDeploymentId,
+
+    /// Logger.
     logger: Logger,
-    store: Arc<S>,
+
+    /// Store that manages the network subgraph.
+    store: Arc<dyn Store>,
+
+    /// Metrics for analyzing the block writer performance.
     metrics: Arc<Mutex<BlockWriterMetrics>>,
 }
 
-impl<S> BlockWriter<S>
-where
-    S: Store + ChainStore,
-{
+impl BlockWriter {
+    /// Creates a new block writer for the given subgraph ID.
     pub fn new(
         subgraph_id: SubgraphDeploymentId,
         logger: &Logger,
-        store: Arc<S>,
+        store: Arc<dyn Store>,
         stopwatch: StopwatchMetrics,
         metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
@@ -62,6 +72,7 @@ where
         }
     }
 
+    /// Writes a block to the store and updates the network subgraph block pointer.
     pub fn write(&self, block: BlockWithUncles) -> impl Future<Item = (), Error = Error> {
         let hash = block.inner().hash.clone().unwrap();
         let number = block.inner().number.clone().unwrap();
@@ -71,6 +82,7 @@ where
             "block_number" => format!("{}", number),
         ));
 
+        // Write using a write context that we can thread through futures.
         let context = WriteContext {
             logger,
             subgraph_id: self.subgraph_id.clone(),
@@ -82,26 +94,25 @@ where
     }
 }
 
-struct WriteContext<S> {
+/// Internal context for writing a block.
+struct WriteContext {
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
-    store: Arc<S>,
+    store: Arc<dyn Store>,
     cache: EntityCache,
     metrics: Arc<Mutex<BlockWriterMetrics>>,
 }
 
-/// Internal result type used to thread WriteContext through
-/// the chain of futures when writing network data.
-type WriteContextResult<S> = Box<dyn Future<Item = WriteContext<S>, Error = Error> + Send>;
+/// Internal result type used to thread WriteContext through the chain of futures
+/// when writing blocks to the store.
+type WriteContextResult = Box<dyn Future<Item = WriteContext, Error = Error> + Send>;
 
-impl<S> WriteContext<S>
-where
-    S: Store + ChainStore,
-{
-    fn set_entity(mut self, value: impl ToEntity + ToEntityKey) -> WriteContextResult<S> {
+impl WriteContext {
+    /// Updates an entity to a new value (potentially merging it with existing data).
+    fn set_entity(mut self, value: impl TryIntoEntity + ToEntityKey) -> WriteContextResult {
         self.cache.set(
             value.to_entity_key(self.subgraph_id.clone()),
-            match value.to_entity() {
+            match value.try_into_entity() {
                 Ok(entity) => entity,
                 Err(e) => return Box::new(future::err(e.into())),
             },
@@ -109,6 +120,7 @@ where
         Box::new(future::ok(self))
     }
 
+    /// Writes a block to the store.
     fn write(self, block: BlockWithUncles) -> impl Future<Item = (), Error = Error> {
         debug!(self.logger, "Write block");
 
@@ -117,8 +129,9 @@ where
         let block_for_store = block.clone();
 
         Box::new(
-            // Add the block and uncle block entities
+            // Add the block entity
             self.set_entity(block.as_ref())
+                // Add uncle block entities
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(block_for_uncles.uncles.clone())
                         .fold(context, |context, ommer| context.set_entity(ommer.unwrap()))
@@ -132,12 +145,13 @@ where
 
                     let stopwatch = { metrics.lock().unwrap().stopwatch.clone() };
 
-                    // Transact entity operations into the store
+                    // Collect all entity modifications to be made
                     let modifications = match cache.as_modifications(store.as_ref()) {
                         Ok(mods) => mods,
                         Err(e) => return future::err(e.into()),
                     };
 
+                    // Transact entity modifications into the store
                     let started = Instant::now();
                     future::result(
                         store
