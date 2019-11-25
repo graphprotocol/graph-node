@@ -1072,7 +1072,7 @@ impl NetworkIndexer {
 
         // Launch state machine
         tokio::spawn(state_machine.map_err(move |e| {
-            error!(logger_for_err, "Network tracer failed: {}", e);
+            error!(logger_for_err, "Network indexer failed: {}", e);
         }));
 
         Self {
