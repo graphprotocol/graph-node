@@ -8,7 +8,7 @@ pub use self::adapter::{
     EthereumAdapterError, EthereumBlockFilter, EthereumCallFilter, EthereumContractCall,
     EthereumContractCallError, EthereumContractState, EthereumContractStateError,
     EthereumContractStateRequest, EthereumLogFilter, EthereumNetworkIdentifier,
-    ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+    MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::stream::{BlockStream, BlockStreamBuilder};
