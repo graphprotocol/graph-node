@@ -711,7 +711,7 @@ where
         // The early return is necessary for correctness, otherwise we'll
         // request an empty batch which is not valid in JSON-RPC.
         if block.transactions.is_empty() {
-            info!(logger, "Block {} contains no transactions", block_hash);
+            trace!(logger, "Block {} contains no transactions", block_hash);
             return Box::new(future::ok(EthereumBlock {
                 block,
                 transaction_receipts: Vec::new(),
