@@ -735,6 +735,7 @@ where
             return Err(CancelableError::Cancel);
         }
 
+        let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
         let mods = block_state
             .entity_cache
             .as_modifications(ctx.inputs.store.as_ref())
@@ -744,6 +745,8 @@ where
                     e
                 ))
             })?;
+        section.end();
+
         if !mods.is_empty() {
             info!(logger1, "Applying {} entity operation(s)", mods.len());
         }
