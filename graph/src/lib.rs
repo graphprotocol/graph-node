@@ -86,6 +86,7 @@ pub mod prelude {
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
     };
     pub use crate::data::schema::Schema;
+    pub use crate::data::store::ethereum::*;
     pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
