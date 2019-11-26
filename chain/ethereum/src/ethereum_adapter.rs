@@ -871,6 +871,44 @@ where
         )
     }
 
+    fn uncles(
+        &self,
+        logger: &Logger,
+        block: &LightEthereumBlock,
+    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send> {
+        let block_hash = block.hash.unwrap();
+        let n = block.uncles.len();
+
+        Box::new(
+            futures::stream::futures_ordered((0..n).map(move |index| {
+                let web3 = self.web3.clone();
+
+                retry("eth_getUncleByBlockHashAndIndex RPC call", &logger)
+                    .no_limit()
+                    .timeout_secs(60)
+                    .run(move || {
+                        web3.eth()
+                            .uncle(block_hash.clone().into(), index.into())
+                            .map_err(move |e| {
+                                format_err!(
+                                    "could not get uncle {} for block {:?} ({} uncles): {}",
+                                    index,
+                                    block_hash,
+                                    n,
+                                    e
+                                )
+                            })
+                    })
+                    .map_err(move |e| {
+                        e.into_inner().unwrap_or_else(move || {
+                            format_err!("Ethereum node took too long to return uncle")
+                        })
+                    })
+            }))
+            .collect(),
+        )
+    }
+
     fn is_on_main_chain(
         &self,
         logger: &Logger,

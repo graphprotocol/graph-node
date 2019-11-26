@@ -1,7 +1,7 @@
 use graph::components::ethereum::*;
 use graph::prelude::{
     ethabi, future,
-    web3::types::{Log, H256},
+    web3::types::{Block, Log, H256},
     Arc, ChainStore, Error, EthereumCallCache, Future, Logger, Stream,
 };
 use std::collections::HashSet;
@@ -72,6 +72,14 @@ impl EthereumAdapter for MockEthereumAdapter {
         _: &Logger,
         _: u64,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
+        unimplemented!();
+    }
+
+    fn uncles(
+        &self,
+        _: &Logger,
+        _: &LightEthereumBlock,
+    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send> {
         unimplemented!();
     }
 

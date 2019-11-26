@@ -687,6 +687,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_number: u64,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
+    /// Obtain all uncle blocks for a given block hash.
+    fn uncles(
+        &self,
+        logger: &Logger,
+        block: &LightEthereumBlock,
+    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send>;
+
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
     /// node.
     ///
