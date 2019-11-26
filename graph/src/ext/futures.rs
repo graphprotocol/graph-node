@@ -2,7 +2,8 @@ use failure::Error;
 use futures::sync::oneshot;
 use std::fmt;
 use std::sync::{Arc, Mutex, Weak};
-use tokio::prelude::{future::Fuse, Future, Poll, Stream};
+use std::time::{Duration, Instant};
+use tokio::prelude::{future::Fuse, Async, Future, Poll, Stream};
 
 /// A cancelable stream or future.
 ///
@@ -208,6 +209,9 @@ pub trait FutureExtension: Future + Sized {
         guard: &impl Canceler,
         on_cancel: C,
     ) -> Cancelable<Self, C>;
+
+    /// Measures the time it takes for the future to complete.
+    fn measure<C: FnOnce(&Self::Item, Duration)>(self, callback: C) -> Measure<Self, C>;
 }
 
 impl<F: Future> FutureExtension for F {
@@ -223,6 +227,10 @@ impl<F: Future> FutureExtension for F {
             cancel_receiver: cancel_receiver.fuse(),
             on_cancel,
         }
+    }
+
+    fn measure<C: FnOnce(&Self::Item, Duration)>(self, callback: C) -> Measure<Self, C> {
+        Measure::new(self, callback)
     }
 }
 
@@ -247,5 +255,56 @@ where
             CancelableError::Error(e) => e.fmt(f),
             CancelableError::Cancel => write!(f, "operation canceled"),
         }
+    }
+}
+
+/// Wraps a future and measures the time from creation to completion.
+///
+/// Example usage:
+/// ```
+/// extern crate graph;
+/// use graph::prelude::*;
+///
+/// ...
+/// some_future
+///   .measure(|duration| println!("Duration: {:?}", duration))
+/// ```
+#[derive(Debug)]
+#[must_use = "futures do nothing unless polled"]
+pub struct Measure<F, C> {
+    inner: F,
+    callback: Option<C>,
+    start: Instant,
+}
+
+impl<F, C> Measure<F, C> {
+    fn new(inner: F, callback: C) -> Self {
+        Self {
+            inner,
+            callback: Some(callback),
+            start: Instant::now(),
+        }
+    }
+}
+
+impl<F, C> Future for Measure<F, C>
+where
+    F: Future,
+    C: FnOnce(&F::Item, Duration),
+{
+    type Item = F::Item;
+    type Error = F::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        self.inner.poll().map(|v| match v {
+            Async::Ready(v) => {
+                (self.callback.take().expect("cannot poll Measure twice"))(
+                    &v,
+                    self.start.elapsed(),
+                );
+                Async::Ready(v)
+            }
+            Async::NotReady => Async::NotReady,
+        })
     }
 }
