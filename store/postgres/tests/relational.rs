@@ -174,7 +174,7 @@ fn insert_user_entity(
             drinks
                 .into_iter()
                 .map(|drink| drink.into())
-                .collect::<Vec<_>>()
+                .collect::<Vec<Value>>()
                 .into(),
         );
     }
@@ -635,7 +635,7 @@ fn find_list_contains() {
         let drinks: Option<Value> = Some(
             v.into_iter()
                 .map(|drink| drink.into())
-                .collect::<Vec<_>>()
+                .collect::<Vec<Value>>()
                 .into(),
         );
         let filter = Some(EntityFilter::Contains("drinks".into(), drinks.into()));
