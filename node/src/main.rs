@@ -15,7 +15,7 @@ use graph::prelude::{
     EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
 };
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, Transport};
+use graph_chain_ethereum::{network_indexer, BlockIngestor, BlockStreamBuilder, Transport};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -569,6 +569,37 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 generic_store.clone(),
                 node_id.clone(),
             );
+
+            // Spawn Ethereum network indexers for all networks that are to be indexed
+            if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
+                network_subgraphs
+                    .into_iter()
+                    .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
+                    .for_each(|network_subgraph| {
+                        let network_name = network_subgraph.replace("ethereum/", "");
+                        let network_indexer = network_indexer::create(
+                            network_subgraph.into(),
+                            &logger,
+                            eth_adapters
+                                .get(&network_name)
+                                .expect("adapter for network")
+                                .clone(),
+                            stores
+                                .get(&network_name)
+                                .expect("store for network")
+                                .clone(),
+                            metrics_registry.clone(),
+                            None,
+                        );
+                        tokio::spawn(network_indexer.and_then(|mut indexer| {
+                            indexer.take_event_stream().unwrap().for_each(|_| {
+                                // For now we simply ignore these events; we may later use them
+                                // to drive subgraph indexing
+                                Ok(())
+                            })
+                        }));
+                    })
+            };
 
             if !disable_block_ingestor {
                 // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
