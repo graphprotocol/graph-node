@@ -567,9 +567,11 @@ enum StateMachine {
     ///
     ///   E.g.:
     ///
-    ///      a---b---c---x
-    ///          \
-    ///           +--d---e---f
+    ///   ```ignore
+    ///   a---b---c---x
+    ///       \
+    ///        +--d---e---f
+    ///   ```
     ///
     ///   In that case we need to do the following:
     ///
