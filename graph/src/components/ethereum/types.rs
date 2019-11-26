@@ -105,7 +105,7 @@ pub struct EthereumBlockWithCalls {
     pub calls: Option<Vec<EthereumCall>>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct EthereumBlock {
     pub block: LightEthereumBlock,
     pub transaction_receipts: Vec<TransactionReceipt>,
