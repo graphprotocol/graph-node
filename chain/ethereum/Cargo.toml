@@ -11,3 +11,12 @@ graph = { path = "../../graph" }
 mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
 hex-literal = "0.2"
+state_machine_future = "0.2"
+
+[dev-dependencies]
+diesel = { version = "1.4.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+mockall = "0.5.0"
+graph-core = { path = "../../core" }
+graph-store-postgres = { path = "../../store/postgres" }
+pretty_assertions = "0.6.1"
+test-store = { path = "../../store/test-store" }
