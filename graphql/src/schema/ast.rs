@@ -566,7 +566,7 @@ fn entity_validation() {
         thing.set("name", name);
         thing.set("stuff", "less");
         thing.set("favorite_color", "red");
-        thing.set("things", vec![]);
+        thing.set("things", vec![] as Vec<store::Value>);
         thing
     }
 
@@ -621,7 +621,10 @@ fn entity_validation() {
     let mut thing = make_thing("t1");
     thing.set(
         "things",
-        store::Value::from(vec!["thing1".into(), "thing2".into()]),
+        store::Value::from(vec![
+            store::Value::from("thing1"),
+            store::Value::from("thing2"),
+        ]),
     );
     check(thing, "");
 
