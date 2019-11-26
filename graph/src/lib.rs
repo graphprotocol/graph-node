@@ -13,6 +13,11 @@ pub mod ext;
 /// Logging utilities
 pub mod log;
 
+/// Module with mocks for different parts of the system.
+pub mod mock {
+    pub use crate::components::ethereum::MockEthereumAdapter;
+}
+
 /// A prelude that makes all system component traits and data types available.
 ///
 /// Add the following code to import all traits and data types listed below at once.
