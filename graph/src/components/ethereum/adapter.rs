@@ -858,3 +858,58 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         ethereum_block: BlockFinality,
     ) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::EthereumCallFilter;
+
+    use web3::types::Address;
+
+    use std::collections::{HashMap, HashSet};
+    use std::iter::FromIterator;
+
+    #[test]
+    fn extending_ethereum_call_filter() {
+        let mut base = EthereumCallFilter {
+            contract_addresses_function_signatures: HashMap::from_iter(vec![
+                (
+                    Address::from_low_u64_be(0),
+                    (0, HashSet::from_iter(vec![[0u8; 4]])),
+                ),
+                (
+                    Address::from_low_u64_be(1),
+                    (1, HashSet::from_iter(vec![[1u8; 4]])),
+                ),
+            ]),
+        };
+        let extension = EthereumCallFilter {
+            contract_addresses_function_signatures: HashMap::from_iter(vec![
+                (
+                    Address::from_low_u64_be(0),
+                    (2, HashSet::from_iter(vec![[2u8; 4]])),
+                ),
+                (
+                    Address::from_low_u64_be(3),
+                    (3, HashSet::from_iter(vec![[3u8; 4]])),
+                ),
+            ]),
+        };
+        base.extend(extension);
+
+        assert_eq!(
+            base.contract_addresses_function_signatures
+                .get(&Address::from_low_u64_be(0)),
+            Some(&(0, HashSet::from_iter(vec![[0u8; 4], [2u8; 4]])))
+        );
+        assert_eq!(
+            base.contract_addresses_function_signatures
+                .get(&Address::from_low_u64_be(3)),
+            Some(&(3, HashSet::from_iter(vec![[3u8; 4]])))
+        );
+        assert_eq!(
+            base.contract_addresses_function_signatures
+                .get(&Address::from_low_u64_be(1)),
+            Some(&(1, HashSet::from_iter(vec![[1u8; 4]])))
+        );
+    }
+}
