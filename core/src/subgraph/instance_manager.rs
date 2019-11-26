@@ -5,6 +5,7 @@ use std::sync::RwLock;
 use std::time::Instant;
 use uuid::Uuid;
 
+use graph::components::ethereum::triggers_in_block;
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
@@ -666,62 +667,61 @@ where
                 let logger1 = logger.clone();
                 let light_block = light_block.clone();
                 Box::new(
-                    eth_adapter
-                        .clone()
-                        .triggers_in_block(
-                            logger,
-                            ctx.inputs.store.clone(),
-                            ctx.ethrpc_metrics.clone(),
-                            EthereumLogFilter::from_data_sources(data_sources.iter()),
-                            EthereumCallFilter::from_data_sources(data_sources.iter()),
-                            EthereumBlockFilter::from_data_sources(data_sources.iter()),
-                            block.clone(),
-                        )
-                        .and_then(move |block_with_triggers| {
-                            let triggers = block_with_triggers.triggers;
+                    triggers_in_block(
+                        eth_adapter.clone(),
+                        logger,
+                        ctx.inputs.store.clone(),
+                        ctx.ethrpc_metrics.clone(),
+                        EthereumLogFilter::from_data_sources(data_sources.iter()),
+                        EthereumCallFilter::from_data_sources(data_sources.iter()),
+                        EthereumBlockFilter::from_data_sources(data_sources.iter()),
+                        block.clone(),
+                    )
+                    .and_then(move |block_with_triggers| {
+                        let triggers = block_with_triggers.triggers;
 
-                            if triggers.len() == 1 {
-                                info!(
-                                    logger1,
-                                    "1 trigger found in this block for the new data sources"
-                                );
-                            } else if triggers.len() > 1 {
-                                info!(
-                                    logger1,
-                                    "{} triggers found in this block for the new data sources",
-                                    triggers.len()
-                                );
-                            }
-
-                            // Add entity operations for the new data sources to the block state
-                            // and add runtimes for the data sources to the subgraph instance.
-                            persist_dynamic_data_sources(
-                                logger1.clone(),
-                                &mut ctx,
-                                &mut block_state.entity_cache,
-                                data_sources,
-                                block_ptr_for_new_data_sources,
+                        if triggers.len() == 1 {
+                            info!(
+                                logger1,
+                                "1 trigger found in this block for the new data sources"
                             );
+                        } else if triggers.len() > 1 {
+                            info!(
+                                logger1,
+                                "{} triggers found in this block for the new data sources",
+                                triggers.len()
+                            );
+                        }
 
-                            let logger = logger1.clone();
-                            Box::new(
-                                stream::iter_ok(triggers)
-                                    .fold(block_state, move |block_state, trigger| {
-                                        // Process the triggers in each host in the same order the
-                                        // corresponding data sources have been created.
-                                        SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
-                                            &logger,
-                                            runtime_hosts.iter().cloned(),
-                                            light_block.clone(),
-                                            trigger,
-                                            block_state,
-                                        )
-                                    })
-                                    .and_then(|block_state| {
-                                        future::ok(Loop::Continue((ctx, block_state)))
-                                    }),
-                            )
-                        }),
+                        // Add entity operations for the new data sources to the block state
+                        // and add runtimes for the data sources to the subgraph instance.
+                        persist_dynamic_data_sources(
+                            logger1.clone(),
+                            &mut ctx,
+                            &mut block_state.entity_cache,
+                            data_sources,
+                            block_ptr_for_new_data_sources,
+                        );
+
+                        let logger = logger1.clone();
+                        Box::new(
+                            stream::iter_ok(triggers)
+                                .fold(block_state, move |block_state, trigger| {
+                                    // Process the triggers in each host in the same order the
+                                    // corresponding data sources have been created.
+                                    SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
+                                        &logger,
+                                        runtime_hosts.iter().cloned(),
+                                        light_block.clone(),
+                                        trigger,
+                                        block_state,
+                                    )
+                                })
+                                .and_then(|block_state| {
+                                    future::ok(Loop::Continue((ctx, block_state)))
+                                }),
+                        )
+                    }),
                 )
             },
         )
