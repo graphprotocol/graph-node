@@ -31,6 +31,7 @@ pub fn run_network_indexer(
     store: Arc<DieselStore>,
     start_block: Option<EthereumBlockPointer>,
     chains: Vec<Vec<BlockWithUncles>>,
+    timeout: Duration,
 ) -> Vec<NetworkIndexerEvent> {
     // Simulate an Ethereum network using a mock adapter
     let adapter = create_mock_ethereum_adapter(chains);
@@ -59,7 +60,7 @@ pub fn run_network_indexer(
         indexer
             .take_event_stream()
             .expect("failed to take stream from indexer")
-            .timeout(Duration::from_secs(2))
+            .timeout(timeout)
             .map_err(|_| ())
             .forward(event_sink.sink_map_err(|_| ()))
             .map(|_| ()),
@@ -186,7 +187,6 @@ fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithUncles>>) -> Arc<MockEt
         Box::new(future::result(
             chains
                 .next_chain()
-                // .expect("exhausted chain versions used in this test; this is ok")
                 .ok_or_else(|| {
                     format_err!("exhausted chain versions used in this test; this is ok")
                 })
@@ -270,7 +270,7 @@ fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithUncles>>) -> Arc<MockEt
 
 // GIVEN  a fresh subgraph (local head = none)
 // AND    a chain with 10 blocks
-// WHEN   running the `NetworkIndexer`
+// WHEN   indexing the network
 // EXPECT 10 `AddBlock` events are emitted, one for each block
 #[test]
 fn indexing_starts_at_genesis() {
@@ -280,7 +280,7 @@ fn indexing_starts_at_genesis() {
         let chains = vec![blocks.clone()];
 
         // Run network indexer and collect its events
-        let events = run_network_indexer(store, None, chains);
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
 
         // Assert that the events emitted by the indexer match all
         // blocks _after_ block #2 (because the network subgraph already
@@ -299,7 +299,7 @@ fn indexing_starts_at_genesis() {
 
 // GIVEN  an existing subgraph (local head = block #2)
 // AND    a chain with 10 blocks
-// WHEN   running the `NetworkIndexer`
+// WHEN   indexing the network
 // EXPECT 7 `AddBlock` events are emitted, one for each remaining block
 #[test]
 fn indexing_resumes_from_local_head() {
@@ -309,7 +309,12 @@ fn indexing_resumes_from_local_head() {
         let chains = vec![blocks.clone()];
 
         // Run network indexer and collect its events
-        let events = run_network_indexer(store, Some(blocks[2].inner().into()), chains);
+        let events = run_network_indexer(
+            store,
+            Some(blocks[2].inner().into()),
+            chains,
+            Duration::from_secs(2),
+        );
 
         // Assert that the events emitted by the indexer are only
         // for the blocks #3-#9.
@@ -328,7 +333,7 @@ fn indexing_resumes_from_local_head() {
 
 // GIVEN  a fresh subgraph (local head = none)
 // AND    a chain with 10 blocks
-// WHEN   running the `NetworkIndexer`
+// WHEN   indexing the network
 // EXPECT 10 `AddBlock` events are emitted, one for each block
 #[test]
 fn indexing_picks_up_new_remote_head() {
@@ -341,17 +346,21 @@ fn indexing_picks_up_new_remote_head() {
         // 10 new blocks being added to the same chain
         let chain_20 = create_fork(chain_10.clone(), 9, 20);
 
+        // The third time we pull the remote head, there are 1000 blocks;
+        // the first 20 blocks are identical to before
+        let chain_1000 = create_fork(chain_20.clone(), 19, 1000);
+
         // Use the two above chains in the test
-        let chains = vec![chain_10.clone(), chain_20.clone()];
+        let chains = vec![chain_10.clone(), chain_20.clone(), chain_1000.clone()];
 
         // Run network indexer and collect its events
-        let events = run_network_indexer(store, None, chains);
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(20));
 
         // Assert that the events emitted by the indexer match the blocks 1:1,
         // despite them requiring two remote head updates
         assert_eq!(
             events,
-            chain_20
+            chain_1000
                 .into_iter()
                 .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
                 .collect::<Vec<_>>()
@@ -363,7 +372,7 @@ fn indexing_picks_up_new_remote_head() {
 
 // GIVEN  a fresh subgraph (local head = none)
 // AND    a chain with 10 blocks with a gap (#6 missing)
-// WHEN   running the `NetworkIndexer`
+// WHEN   indexing the network
 // EXPECT only `AddBlock` events for blocks #0-#5 are emitted
 #[test]
 fn indexing_does_not_move_past_a_gap() {
@@ -375,7 +384,7 @@ fn indexing_does_not_move_past_a_gap() {
         let chains = vec![blocks.clone()];
 
         // Run network indexer and collect its events
-        let events = run_network_indexer(store, None, chains);
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
 
         // Assert that only blocks #0 - #4 were indexed and nothing more
         assert_eq!(
@@ -393,13 +402,60 @@ fn indexing_does_not_move_past_a_gap() {
 
 // GIVEN  a fresh subgraph (local head = none)
 // AND    10 blocks for one version of the chain
-// AND    20 blocks for a fork of the chain that starts after block #3
-// WHEN   running the `NetworkIndexer`
+// AND    11 blocks for a fork of the chain that starts after block #8
+// WHEN   indexing the network
 // EXPECT 10 `AddBlock` events is emitted for the first branch,
-//        7 `Revert` events are emitted to revert back to block #3
-//        17 `AddBlock` events are emitted for blocks #4-#20 of the fork
+//        1 `Revert` event is emitted to revert back to block #8
+//        2 `AddBlock` events are emitted for blocks #9-#10 of the fork
 #[test]
-fn indexing_handles_single_reorg() {
+fn indexing_handles_single_block_reorg() {
+    run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
+        // Create the initial chain
+        let initial_chain = create_blocks(10, None);
+
+        // Create a forked chain after block #2
+        let forked_chain = create_fork(initial_chain.clone(), 8, 11);
+
+        // Run the network indexer and collect its events
+        let chains = vec![initial_chain.clone(), forked_chain.clone()];
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
+
+        assert_eq!(
+            events,
+            // The 10 `AddBlock` events for the initial version of the chain
+            initial_chain
+                .iter()
+                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                .chain(
+                    // The 1 `Revert` event
+                    vec![NetworkIndexerEvent::Revert {
+                        from: initial_chain[9].inner().into(),
+                        to: initial_chain[8].inner().into(),
+                    },]
+                    .into_iter()
+                )
+                .chain(
+                    // The 2 `AddBlock` events for the new chain
+                    forked_chain[9..]
+                        .iter()
+                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                )
+                .collect::<Vec<_>>()
+        );
+
+        Ok(())
+    });
+}
+
+// GIVEN  a fresh subgraph (local head = none)
+// AND    10 blocks for one version of the chain
+// AND    20 blocks for a fork of the chain that starts after block #2
+// WHEN   indexing the network
+// EXPECT 10 `AddBlock` events is emitted for the first branch,
+//        7 `Revert` events are emitted to revert back to block #2
+//        17 `AddBlock` events are emitted for blocks #3-#20 of the fork
+#[test]
+fn indexing_handles_simple_reorg() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create the initial chain
         let initial_chain = create_blocks(10, None);
@@ -409,7 +465,7 @@ fn indexing_handles_single_reorg() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), forked_chain.clone()];
-        let events = run_network_indexer(store, None, chains);
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
 
         // Verify that the following events are emitted:
         //
@@ -436,6 +492,101 @@ fn indexing_handles_single_reorg() {
                 .chain(
                     // The 17 `AddBlock` events for the new chain
                     forked_chain[3..]
+                        .iter()
+                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                )
+                .collect::<Vec<_>>()
+        );
+
+        Ok(())
+    });
+}
+
+// GIVEN  a fresh subgraph (local head = none)
+// AND    10 blocks for the initial chain
+// AND    20 blocks for a fork of the initial chain that starts after block #2
+// AND    30 blocks for a fork of the initial chain that starts after block #2
+// WHEN   indexing the network
+// EXPECT 10 `AddBlock` events is emitted for the first branch,
+//        7 `Revert` events are emitted to revert back to block #2
+//        17 `AddBlock` events are emitted for blocks #4-#20 of the fork
+//        7 `Revert` events are emitted to revert back to block #2
+//        17 `AddBlock` events are emitted for blocks #4-#20 of the fork
+#[test]
+fn indexing_handles_consecutive_reorgs() {
+    run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
+        // Create the initial chain
+        let initial_chain = create_blocks(10, None);
+
+        // Create a forked chain after block #2
+        let second_chain = create_fork(initial_chain.clone(), 2, 20);
+
+        // Create a forked chain after block #3
+        let third_chain = create_fork(initial_chain.clone(), 2, 30);
+
+        // Run the network indexer and collect its events
+        let chains = vec![
+            initial_chain.clone(),
+            second_chain.clone(),
+            third_chain.clone(),
+        ];
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(3));
+
+        assert_eq!(
+            events,
+            // The 10 `AddBlock` events for the initial version of the chain
+            initial_chain
+                .iter()
+                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                .chain(
+                    // The 7 `Revert` events to go back to #2
+                    vec![(9, 8), (8, 7), (7, 6), (6, 5), (5, 4), (4, 3), (3, 2)]
+                        .into_iter()
+                        .map(|(from, to)| {
+                            NetworkIndexerEvent::Revert {
+                                from: initial_chain[from].inner().into(),
+                                to: initial_chain[to].inner().into(),
+                            }
+                        })
+                )
+                .chain(
+                    // The 17 `AddBlock` events for the new chain
+                    second_chain[3..]
+                        .iter()
+                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                )
+                .chain(
+                    // The 17 `Revert` events to go back to #2
+                    vec![
+                        (19, 18),
+                        (18, 17),
+                        (17, 16),
+                        (16, 15),
+                        (15, 14),
+                        (14, 13),
+                        (13, 12),
+                        (12, 11),
+                        (11, 10),
+                        (10, 9),
+                        (9, 8),
+                        (8, 7),
+                        (7, 6),
+                        (6, 5),
+                        (5, 4),
+                        (4, 3),
+                        (3, 2)
+                    ]
+                    .into_iter()
+                    .map(|(from, to)| {
+                        NetworkIndexerEvent::Revert {
+                            from: second_chain[from].inner().into(),
+                            to: second_chain[to].inner().into(),
+                        }
+                    })
+                )
+                .chain(
+                    // 27 `AddBlock` events for the new chain
+                    third_chain[3..]
                         .iter()
                         .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
                 )
