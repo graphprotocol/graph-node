@@ -1,4 +1,5 @@
 use crate::components::store::{Store, SubgraphDeploymentStore};
+use crate::data::graphql::scalar::BuiltInScalarType;
 use crate::data::graphql::traversal;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::future::{self, *};
@@ -14,6 +15,7 @@ use graphql_parser::{
 use serde::{Deserialize, Serialize};
 
 use std::collections::{BTreeMap, HashMap};
+use std::convert::TryFrom;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
@@ -56,6 +58,11 @@ pub enum SchemaValidationError {
     SubgraphSchemaDirectivesInvalid,
     #[fail(display = "@import defined incorrectly")]
     ImportDirectiveInvalid,
+    #[fail(
+        display = "GraphQL type `{}` has field `{}` with type `{}` which is not defined or imported",
+        _0, _1, _2
+    )]
+    GraphQLTypeFieldInvalid(String, String, String), // (type_name, field_name, field_type)
 }
 
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
@@ -439,8 +446,8 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         // Should validate that all types in the Subgraph referenced from other subgraphs exist
         // If the referenced subgraph is not provided as an argument, do not validate those types
-        self.validate_imported_types(schemas)
-            .unwrap_or_else(|err| errors.push(err));
+        self.validate_fields()
+            .unwrap_or_else(|mut err| errors.append(&mut err));
 
         if errors.is_empty() {
             Ok(())
@@ -491,19 +498,51 @@ impl Schema {
         }
     }
 
-    fn validate_imported_types(
-        &self,
-        schemas: &HashMap<SchemaReference, Arc<Schema>>,
-    ) -> Result<(), SchemaValidationError> {
-        // Look up of all types in schema
+    fn validate_fields(&self) -> Result<(), Vec<SchemaValidationError>> {
+        // Native types
         let root_schema = traversal::get_object_and_interface_type_fields(&self.document);
-
-        // Look up of ImportedType to SchemaReference
+        // Imported types
         let imported_types = self.imported_types();
 
-        // Look up of SchemaReference to Option of all types in schema
+        // For each field in the root_schema, verify that the field
+        // is either a [BuiltInScalar, Native, Imported] type
+        let errors = root_schema
+            .iter()
+            .fold(vec![], |errors, (type_name, fields)| {
+                fields.iter().fold(errors, |mut errors, field| {
+                    let base = traversal::get_base_type(&field.field_type);
+                    BuiltInScalarType::try_from(base)
+                        .map(|_| ())
+                        .or_else(|_| match root_schema.contains_key(base) {
+                            true => Ok(()),
+                            false => Err(()),
+                        })
+                        .or_else(|_| {
+                            // Check imported types and the corresponding schema
+                            imported_types
+                                .iter()
+                                .find(|(imported_type, schema_reference)| match imported_type {
+                                    ImportedType::Name(name) if name == base => true,
+                                    ImportedType::NameAs(_, az) if az == base => true,
+                                    _ => false,
+                                })
+                                .map_or(Err(()), |_| Ok(()))
+                        })
+                        .map_err(|_| {
+                            errors.push(SchemaValidationError::GraphQLTypeFieldInvalid(
+                                type_name.to_string(),
+                                field.name.to_string(),
+                                base.to_string(),
+                            ))
+                        });
+                    errors
+                })
+            });
 
-        Ok(())
+        match errors.is_empty() {
+            false => Err(errors),
+            true => Ok(()),
+        }
     }
 
     fn validate_schema_types(&self) -> Result<(), SchemaValidationError> {
