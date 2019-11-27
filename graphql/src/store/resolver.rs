@@ -157,7 +157,10 @@ where
             .unwrap_or(true)
     }
 
-    fn get_child<'a>(parent: &'a Option<q::Value>, field: &q::Field) -> Option<&'a q::Value> {
+    fn get_prefetched_child<'a>(
+        parent: &'a Option<q::Value>,
+        field: &q::Field,
+    ) -> Option<&'a q::Value> {
         match parent {
             Some(q::Value::Object(map)) => {
                 let key = format!("r:{}", qast::get_response_key(field));
@@ -180,7 +183,7 @@ where
         field: &q::Field,
         object_type: ObjectOrInterface<'_>,
     ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(child) = Self::get_child(parent, field) {
+        if let Some(child) = Self::get_prefetched_child(parent, field) {
             Ok(child.clone())
         } else {
             Err(QueryExecutionError::ResolveEntitiesError(format!(
@@ -200,7 +203,7 @@ where
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
     ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(q::Value::List(children)) = Self::get_child(parent, field) {
+        if let Some(q::Value::List(children)) = Self::get_prefetched_child(parent, field) {
             if children.len() > 1 {
                 let derived_from_field =
                     sast::get_derived_from_field(object_type, field_definition)
