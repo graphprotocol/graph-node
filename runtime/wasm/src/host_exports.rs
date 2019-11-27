@@ -143,14 +143,13 @@ impl HostExports {
             entity_id,
         };
         let entity = Entity::from(data);
-        state.entity_cache.set(key.clone(), entity.clone());
+        let schema = self.store.input_schema(&self.subgraph_id)?;
+        let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
+        state.entity_cache.set(key.clone(), entity);
 
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
-        let schema = self.store.input_schema(&self.subgraph_id)?;
-        if validate_entity(&schema.document, &key, &entity).is_err()
-            && self.store.uses_relational_schema(&self.subgraph_id)?
-        {
+        if !is_valid && self.store.uses_relational_schema(&self.subgraph_id)? {
             let entity = state
                 .entity_cache
                 .get(self.store.as_ref(), &key)
