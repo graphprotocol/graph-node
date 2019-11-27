@@ -43,6 +43,8 @@ pub mod prelude {
     pub use tokio_timer;
     pub use web3;
 
+    pub use crate::components::chains;
+
     pub use crate::components::ethereum::{
         BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamMetrics, ChainHeadUpdate,
         ChainHeadUpdateListener, ChainHeadUpdateStream, EthereumAdapter, EthereumAdapterError,

@@ -488,6 +488,18 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         }
     });
 
+    // Ethereum chain
+    use graph::components::chains;
+    use graph_chain_ethereum::chain as eth;
+    let ethereum = eth::Ethereum::new(chains::BlockchainOptions {
+        networks: HashMap::from_iter(vec![
+            (String::from("mainnet"), vec![chains::NetworkProviderConfig {
+                kind: String::from("rpc"),
+                url: String::from("https://parity-public.bdi.sh:8545?auth=dQhwqDKxF7DeaEFAMqVUsA9KkIXMda52zrF0azgPGVo"),
+            }])
+        ]),
+    });
+
     // Set up Store
     info!(
         logger,
@@ -589,8 +601,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                                 .expect("store for network")
                                 .clone(),
                             metrics_registry.clone(),
-                            None,
+                            // None,
+                            Some(EthereumBlockPointer {
+                                number: 9001115,
+                                hash: web3::types::H256::from_str("f144a24ca5b36174e9eb9e6f62b1c3eea87c4affc6ceabea0ebd3fa5ed099fb0").unwrap(),
+                            }),
                         );
+
                         tokio::spawn(network_indexer.and_then(|mut indexer| {
                             indexer.take_event_stream().unwrap().for_each(|_| {
                                 // For now we simply ignore these events; we may later use them

@@ -13,6 +13,8 @@ mod ethereum_adapter;
 pub mod network_indexer;
 mod transport;
 
+pub mod chain;
+
 pub use self::block_ingestor::BlockIngestor;
 pub use self::block_stream::{BlockStream, BlockStreamBuilder};
 pub use self::ethereum_adapter::EthereumAdapter;
