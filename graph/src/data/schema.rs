@@ -2,7 +2,6 @@ use crate::components::store::{Store, SubgraphDeploymentStore};
 use crate::data::graphql::scalar::BuiltInScalarType;
 use crate::data::graphql::traversal;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
-use crate::prelude::future::{self, *};
 use crate::prelude::Fail;
 
 use failure::Error;
@@ -146,7 +145,7 @@ impl SchemaReference {
         let subgraph_id = match &self {
             SchemaReference::ByName(name) => {
                 let subgraph_name = SubgraphName::new(name.clone())
-                    .map_err(|err| SchemaImportError::ImportedSubgraphNameInvalid(name.clone()))?;
+                    .map_err(|_| SchemaImportError::ImportedSubgraphNameInvalid(name.clone()))?;
                 store
                     .resolve_subgraph_name_to_id(subgraph_name.clone())
                     .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
@@ -156,12 +155,12 @@ impl SchemaReference {
                     })?
             }
             SchemaReference::ById(id) => SubgraphDeploymentId::new(id.clone())
-                .map_err(|err| SchemaImportError::ImportedSubgraphIdInvalid(id.clone()))?,
+                .map_err(|_| SchemaImportError::ImportedSubgraphIdInvalid(id.clone()))?,
         };
 
         store
             .input_schema(&subgraph_id)
-            .map_err(|err| SchemaImportError::ImportedSchemaNotFound(self.clone()))
+            .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
     }
 }
 
@@ -246,8 +245,6 @@ impl Schema {
 
     pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
         let document = graphql_parser::parse_schema(&raw)?;
-        // TODO: Decide if we want to keep this here
-        // validate_schema(&document)?;
 
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
 
@@ -429,7 +426,7 @@ impl Schema {
 
     pub fn validate(
         &self,
-        schemas: &HashMap<SchemaReference, Arc<Schema>>,
+        _schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
         let mut errors = vec![];
         // [X] Should include all logic in graph/src/data/graphql/validation.rs
@@ -488,8 +485,8 @@ impl Schema {
                         .directives
                         .iter()
                         .filter(|directive| directive.name == "imports")
-                        // TODO: Fix
-                        .find(|directive| true)
+                        // TODO: Finish verifying import directive
+                        .find(|_directive| true)
                         .map(|_| SchemaValidationError::ImportDirectiveInvalid)
                 }
             }) {
@@ -498,22 +495,22 @@ impl Schema {
         }
     }
 
+    // fn validate_imported_types(&self)
+
     fn validate_fields(&self) -> Result<(), Vec<SchemaValidationError>> {
-        // Native types
-        let root_schema = traversal::get_object_and_interface_type_fields(&self.document);
-        // Imported types
+        let native_types = traversal::get_object_and_interface_type_fields(&self.document);
         let imported_types = self.imported_types();
 
         // For each field in the root_schema, verify that the field
-        // is either a [BuiltInScalar, Native, Imported] type
-        let errors = root_schema
+        // is either a: [BuiltInScalar, Native, Imported] type
+        let errors = native_types
             .iter()
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
                     let base = traversal::get_base_type(&field.field_type);
-                    BuiltInScalarType::try_from(base)
+                    match BuiltInScalarType::try_from(base)
                         .map(|_| ())
-                        .or_else(|_| match root_schema.contains_key(base) {
+                        .or_else(|_| match native_types.contains_key(base) {
                             true => Ok(()),
                             false => Err(()),
                         })
@@ -521,20 +518,20 @@ impl Schema {
                             // Check imported types and the corresponding schema
                             imported_types
                                 .iter()
-                                .find(|(imported_type, schema_reference)| match imported_type {
+                                .find(|(imported_type, _)| match imported_type {
                                     ImportedType::Name(name) if name == base => true,
                                     ImportedType::NameAs(_, az) if az == base => true,
                                     _ => false,
                                 })
                                 .map_or(Err(()), |_| Ok(()))
-                        })
-                        .map_err(|_| {
-                            errors.push(SchemaValidationError::GraphQLTypeFieldInvalid(
-                                type_name.to_string(),
-                                field.name.to_string(),
-                                base.to_string(),
-                            ))
-                        });
+                        }) {
+                        Err(_) => errors.push(SchemaValidationError::GraphQLTypeFieldInvalid(
+                            type_name.to_string(),
+                            field.name.to_string(),
+                            base.to_string(),
+                        )),
+                        Ok(_) => (),
+                    };
                     errors
                 })
             });
