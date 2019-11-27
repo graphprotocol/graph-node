@@ -356,10 +356,15 @@ where
 
                     // Validate the unvalidated manifest
                     // unvalidated.validate(schemas)
+
+                    // Take the errors from the validation function and combine them
+                    // with the `failable_schema_errors`, to get a single Vector of errors
+                    // If the vector is not emmpty, return an error
+
+                    // Log the import warnings and continue with the validated SubgraphManifest
                     future::ok((schemas, schema_import_warnings))
                 })
                 .map(move |(schemas, import_errors)| {
-                    // Call unvalidate.validate(schemas)
                     (unvalidated.0, ethereum_adapter, chain_store, store)
                 })
             })
