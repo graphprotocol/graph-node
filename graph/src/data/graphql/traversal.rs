@@ -1,9 +1,5 @@
-use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
-use crate::prelude::Fail;
 use graphql_parser::schema::*;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
 
 /// Returns all object type definitions in the schema.
 pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
