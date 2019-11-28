@@ -400,9 +400,9 @@ where
                             // - Scan 10 blocks:
                             //   2 triggers found, 0.2 per block, range_size = 1000 / 0.2 = 5000
                             // - Scan 5000 blocks:
-                            //   500 triggers found, 0.1 per block, range_size = 500 / 0.2 = 2500
-                            // - Scan 2500 blocks:
-                            //   500 triggers found, 0.2 per block, range_size = 500 / 0.2 = 2500
+                            //   10000 triggers found, 2 per block, range_size = 1000 / 2 = 500
+                            // - Scan 500 blocks:
+                            //   1000 triggers found, 2 per block, range_size = 1000 / 2 = 500
                             let max_range_size =
                                 MAX_BLOCK_RANGE_SIZE.min(ctx.previous_block_range_size * 10);
                             let range_size = if ctx.previous_triggers_per_block == 0.0 {
