@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::ops::Range;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use graph::prelude::*;
 use web3::types::H256;
@@ -81,14 +81,10 @@ macro_rules! track_future {
         let metrics_for_err = $metrics.clone();
         $expr
             .measure(move |_, duration| {
-                metrics_for_measure
-                    .lock()
-                    .unwrap()
-                    .$metric
-                    .update_duration(duration);
+                metrics_for_measure.$metric.update_duration(duration);
             })
             .map_err(move |e| {
-                metrics_for_err.lock().unwrap().$metric_problems.inc();
+                metrics_for_err.$metric_problems.inc();
                 e
             })
     }};
@@ -104,12 +100,7 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
 }
 
 fn poll_chain_head(context: &Context) -> ChainHeadFuture {
-    let section = context
-        .metrics
-        .lock()
-        .unwrap()
-        .stopwatch
-        .start_section("chain_head");
+    let section = context.metrics.stopwatch.start_section("chain_head");
 
     Box::new(
         track_future!(
@@ -129,7 +120,7 @@ fn poll_chain_head(context: &Context) -> ChainHeadFuture {
 fn fetch_block_and_uncles_by_number(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
-    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
+    metrics: Arc<NetworkIndexerMetrics>,
     block_number: u64,
 ) -> BlockFuture {
     let logger_for_full_block = logger.clone();
@@ -141,11 +132,7 @@ fn fetch_block_and_uncles_by_number(
     let metrics_for_full_block = metrics.clone();
     let metrics_for_ommers = metrics.clone();
 
-    let section = metrics
-        .lock()
-        .unwrap()
-        .stopwatch
-        .start_section("fetch_blocks");
+    let section = metrics.stopwatch.start_section("fetch_blocks");
 
     Box::new(
         track_future!(
@@ -193,7 +180,7 @@ fn fetch_block_and_uncles_by_number(
 fn fetch_block_and_ommers(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
-    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
+    metrics: Arc<NetworkIndexerMetrics>,
     block_hash: H256,
 ) -> BlockFuture {
     let logger_for_full_block = logger.clone();
@@ -204,11 +191,7 @@ fn fetch_block_and_ommers(
     let adapter_for_ommers = adapter.clone();
     let metrics_for_ommers = metrics.clone();
 
-    let section = metrics
-        .lock()
-        .unwrap()
-        .stopwatch
-        .start_section("fetch_blocks");
+    let section = metrics.stopwatch.start_section("fetch_blocks");
 
     Box::new(
         track_future!(
@@ -466,7 +449,7 @@ fn revert_blocks(
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     store: Arc<dyn Store>,
-    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
+    metrics: Arc<NetworkIndexerMetrics>,
     event_sink: Sender<NetworkIndexerEvent>,
     blocks: Vec<EthereumBlockPointer>,
 ) -> RevertBlocksFuture {
@@ -592,11 +575,12 @@ fn update_chain_and_local_head_metrics(
     chain_head: &LightEthereumBlock,
     local_head: Option<EthereumBlockPointer>,
 ) {
-    let metrics = context.metrics.lock().unwrap();
-    metrics
+    context
+        .metrics
         .chain_head
         .set(chain_head.number.unwrap().as_u64() as f64);
-    metrics
+    context
+        .metrics
         .local_head
         .set(local_head.map_or(0u64, |ptr| ptr.number) as f64);
 }
@@ -613,7 +597,7 @@ pub struct Context {
     store: Arc<dyn Store>,
     event_sink: Sender<NetworkIndexerEvent>,
     block_writer: Arc<BlockWriter>,
-    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
+    metrics: Arc<NetworkIndexerMetrics>,
 }
 
 /// Events emitted by the network tracer.
@@ -884,8 +868,6 @@ impl PollStateMachine for StateMachine {
                 if Some((&chain_head).into()) != state.prev_chain_head {
                     context
                         .metrics
-                        .lock()
-                        .unwrap()
                         .last_new_chain_head_time
                         .set(Utc::now().timestamp() as f64)
                 }
@@ -1145,11 +1127,8 @@ impl PollStateMachine for StateMachine {
             );
 
             // Update reorg stats
-            {
-                let mut metrics = context.metrics.lock().unwrap();
-                metrics.reorg_count.inc();
-                metrics.reorg_depth.update(depth as f64);
-            }
+            context.metrics.reorg_count.inc();
+            context.metrics.reorg_depth.update(depth as f64);
 
             // We are dealing with a reorg; fetch all new blocks from the incoming
             // block back to the common ancestor.
@@ -1163,14 +1142,7 @@ impl PollStateMachine for StateMachine {
             let event_sink = context.event_sink.clone();
             let metrics_for_written_block = context.metrics.clone();
 
-            let section = {
-                context
-                    .metrics
-                    .lock()
-                    .unwrap()
-                    .stopwatch
-                    .start_section("transact_block")
-            };
+            let section = { context.metrics.stopwatch.start_section("transact_block") };
 
             // The block is a regular successor to the local head.
             // Add the block and move on.
@@ -1195,8 +1167,6 @@ impl PollStateMachine for StateMachine {
                         section.end();
 
                         metrics_for_written_block
-                            .lock()
-                            .unwrap()
                             .last_written_block_time
                             .set(Utc::now().timestamp() as f64)
                     })
@@ -1294,9 +1264,7 @@ impl PollStateMachine for StateMachine {
                 let state = state.take();
 
                 // Update reorg stats
-                {
-                    context.metrics.lock().unwrap().reorg_cancel_count.inc();
-                }
+                context.metrics.reorg_cancel_count.inc();
 
                 transition!(PollChainHead {
                     local_head: state.local_head,
@@ -1422,11 +1390,11 @@ impl NetworkIndexer {
             metrics_registry.clone(),
         );
 
-        let metrics = Arc::new(Mutex::new(NetworkIndexerMetrics::new(
+        let metrics = Arc::new(NetworkIndexerMetrics::new(
             subgraph_id.clone(),
             stopwatch.clone(),
             metrics_registry.clone(),
-        )));
+        ));
 
         let block_writer = Arc::new(BlockWriter::new(
             subgraph_id.clone(),

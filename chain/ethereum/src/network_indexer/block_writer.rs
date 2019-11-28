@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 use graph::prelude::*;
@@ -46,7 +46,7 @@ pub struct BlockWriter {
     store: Arc<dyn Store>,
 
     /// Metrics for analyzing the block writer performance.
-    metrics: Arc<Mutex<BlockWriterMetrics>>,
+    metrics: Arc<BlockWriterMetrics>,
 }
 
 impl BlockWriter {
@@ -59,11 +59,11 @@ impl BlockWriter {
         metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "BlockWriter"));
-        let metrics = Arc::new(Mutex::new(BlockWriterMetrics::new(
+        let metrics = Arc::new(BlockWriterMetrics::new(
             &subgraph_id,
             stopwatch,
             metrics_registry,
-        )));
+        ));
         Self {
             store,
             subgraph_id,
@@ -96,7 +96,7 @@ struct WriteContext {
     subgraph_id: SubgraphDeploymentId,
     store: Arc<dyn Store>,
     cache: EntityCache,
-    metrics: Arc<Mutex<BlockWriterMetrics>>,
+    metrics: Arc<BlockWriterMetrics>,
 }
 
 /// Internal result type used to thread WriteContext through the chain of futures
@@ -140,7 +140,7 @@ impl WriteContext {
                     let store = context.store;
                     let subgraph_id = context.subgraph_id;
 
-                    let stopwatch = { metrics.lock().unwrap().stopwatch.clone() };
+                    let stopwatch = metrics.stopwatch.clone();
 
                     // Collect all entity modifications to be made
                     let modifications = match cache.as_modifications(store.as_ref()) {
@@ -160,7 +160,6 @@ impl WriteContext {
                             )
                             .map_err(|e| e.into())
                             .map(move |_| {
-                                let mut metrics = metrics.lock().unwrap();
                                 metrics.transaction.update_duration(started.elapsed());
                             }),
                     )
