@@ -3,6 +3,7 @@ use web3::types::{Block, TransactionReceipt, H256};
 
 mod block_writer;
 mod convert;
+mod metrics;
 mod network_indexer;
 mod subgraph;
 
