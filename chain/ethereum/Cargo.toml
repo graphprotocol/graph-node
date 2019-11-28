@@ -4,6 +4,7 @@ version = "0.17.0"
 edition = "2018"
 
 [dependencies]
+chrono = "0.4"
 failure = "0.1.6"
 futures = "0.1.21"
 jsonrpc-core = "13.2.0"
