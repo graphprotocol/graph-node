@@ -144,13 +144,10 @@ impl TryIntoEntity for &BlockWithUncles {
             ("ommerHash", inner.uncles_hash.into()),
             (
                 "ommers",
-                self.uncles
+                self.inner()
+                    .uncles
                     .iter()
-                    .map(|ommer| {
-                        ommer
-                            .as_ref()
-                            .map_or(Value::Null, |ommer| Value::String(ommer.to_entity_id()))
-                    })
+                    .map(|hash| hash.to_entity_id())
                     .collect::<Vec<_>>()
                     .into(),
             ),
