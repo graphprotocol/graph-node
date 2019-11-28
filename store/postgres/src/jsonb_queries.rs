@@ -150,27 +150,36 @@ impl<'a> FilterQuery<'a> {
                 }
             }
             EntityLink::Parent(parent) => {
-                out.push_sql(" inner join ");
-                self.table.walk_ast(out.reborrow())?;
-                out.push_sql(" p on (p.entity = '");
-                out.push_sql(&parent.parent_type);
-                out.push_sql("' and ");
                 match &parent.child_field {
                     WindowAttribute::Scalar(name) => {
+                        // inner join {table} p
+                        //   on (p.entity = '{object}'
+                        //       and c.id = p.data->{name}->>'data'
+                        out.push_sql(" inner join ");
+                        self.table.walk_ast(out.reborrow())?;
+                        out.push_sql(" p on (p.entity = '");
+                        out.push_sql(&parent.parent_type);
+                        out.push_sql("' and ");
                         out.push_sql("c.id = p.data->");
                         out.push_bind_param::<Text, _>(name)?;
                         out.push_sql("->>'data'");
                     }
                     WindowAttribute::List(name) => {
                         // p.data->name->'data' is an array where each entry
-                        // is a data/type pair. We need to check if there is an
-                        // entry whose 'data' field is 'c.id' and do that with
-                        //   p.data->name->'data' @> [{"data": c.id}]
-                        out.push_sql("p.data->");
+                        // is a data/type pair. We dissolve that into a table
+                        // with only the 'data' values from each array entry
+                        //
+                        // inner join ({table} p
+                        //             join lateral jsonb_array_elements(p.data->{name}->'data') ary(elt) on true) p
+                        //   on (p.entity = '{object}'
+                        //       and c.id = p.elt->>'data'
+                        out.push_sql(" inner join (");
+                        self.table.walk_ast(out.reborrow())?;
+                        out.push_sql(" p join lateral jsonb_array_elements(p.data->");
                         out.push_bind_param::<Text, _>(name)?;
-                        out.push_sql(
-                            "->'data' @> jsonb_build_array(jsonb_build_object('data', c.id))",
-                        );
+                        out.push_sql("->'data') ary(elt) on true) p on (p.entity = '");
+                        out.push_sql(&parent.parent_type);
+                        out.push_sql("' and c.id = p.elt->>'data'");
                     }
                 }
                 out.push_sql(" and p.id = any(");
