@@ -4,6 +4,7 @@ extern crate graph;
 extern crate jsonrpc_core;
 #[macro_use]
 extern crate lazy_static;
+extern crate chrono;
 extern crate state_machine_future;
 
 mod block_ingestor;
