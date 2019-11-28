@@ -1,3 +1,4 @@
+use chrono::Utc;
 use futures::future::{loop_fn, Loop};
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::try_ready;
@@ -6,11 +7,13 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
 use graph::prelude::*;
 use web3::types::H256;
 
 use super::block_writer::BlockWriter;
+use super::metrics::NetworkIndexerMetrics;
 use super::*;
 
 /// Terminology used in this component:
@@ -72,17 +75,61 @@ type SendEventFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
  * Helpers to create futures and streams.
  */
 
-fn load_local_head(subgraph_id: SubgraphDeploymentId, store: Arc<dyn Store>) -> LocalHeadFuture {
-    Box::new(future::result(store.clone().block_ptr(subgraph_id.clone())))
+macro_rules! track_future {
+    ($metrics: expr, $metric: ident, $metric_problems: ident, $expr: expr) => {{
+        let metrics_for_measure = $metrics.clone();
+        let metrics_for_err = $metrics.clone();
+        $expr
+            .measure(move |_, duration| {
+                metrics_for_measure
+                    .lock()
+                    .unwrap()
+                    .$metric
+                    .update_duration(duration);
+            })
+            .map_err(move |e| {
+                metrics_for_err.lock().unwrap().$metric_problems.inc();
+                e
+            })
+    }};
 }
 
-fn poll_chain_head(logger: Logger, adapter: Arc<dyn EthereumAdapter>) -> ChainHeadFuture {
-    Box::new(adapter.latest_block(&logger).from_err())
+fn load_local_head(context: &Context) -> LocalHeadFuture {
+    Box::new(track_future!(
+        context.metrics,
+        load_local_head,
+        load_local_head_problems,
+        future::result(context.store.clone().block_ptr(context.subgraph_id.clone()))
+    ))
+}
+
+fn poll_chain_head(context: &Context) -> ChainHeadFuture {
+    let section = context
+        .metrics
+        .lock()
+        .unwrap()
+        .stopwatch
+        .start_section("chain_head");
+
+    Box::new(
+        track_future!(
+            context.metrics,
+            poll_chain_head,
+            poll_chain_head_problems,
+            context
+                .adapter
+                .clone()
+                .latest_block(&context.logger)
+                .from_err()
+        )
+        .inspect(move |_| section.end()),
+    )
 }
 
 fn fetch_block_and_uncles_by_number(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
+    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
     block_number: u64,
 ) -> BlockFuture {
     let logger_for_full_block = logger.clone();
@@ -91,97 +138,156 @@ fn fetch_block_and_uncles_by_number(
     let logger_for_uncles = logger.clone();
     let adapter_for_uncles = adapter.clone();
 
+    let metrics_for_full_block = metrics.clone();
+    let metrics_for_ommers = metrics.clone();
+
+    let section = metrics
+        .lock()
+        .unwrap()
+        .stopwatch
+        .start_section("fetch_blocks");
+
     Box::new(
-        adapter
-            .block_by_number(&logger, block_number)
-            .from_err()
-            .and_then(move |block| match block {
-                None => Box::new(future::ok(None))
-                    as Box<dyn Future<Item = Option<EthereumBlock>, Error = _> + Send>,
-                Some(block) => Box::new(
-                    adapter_for_full_block
-                        .load_full_block(&logger_for_full_block, block)
-                        .map(|block| Some(block))
-                        .from_err(),
-                ),
-            })
-            .and_then(move |block| match block {
-                None => Box::new(future::ok(None))
-                    as Box<dyn Future<Item = Option<BlockWithUncles>, Error = _> + Send>,
-                Some(block) => Box::new(
-                    adapter_for_uncles
-                        .uncles(&logger_for_uncles, &block.block)
-                        .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
-                        .map(|block| Some(block)),
-                ),
-            }),
+        track_future!(
+            metrics,
+            fetch_block_by_number,
+            fetch_block_by_number_problems,
+            adapter
+                .clone()
+                .block_by_number(&logger, block_number)
+                .from_err()
+        )
+        .and_then(move |block| match block {
+            None => Box::new(future::ok(None))
+                as Box<dyn Future<Item = Option<EthereumBlock>, Error = _> + Send>,
+            Some(block) => Box::new(track_future!(
+                metrics_for_full_block,
+                fetch_full_block,
+                fetch_full_block_problems,
+                adapter_for_full_block
+                    .load_full_block(&logger_for_full_block, block)
+                    .map(|block| Some(block))
+                    .from_err()
+            )),
+        })
+        .and_then(move |block| match block {
+            None => Box::new(future::ok(None))
+                as Box<dyn Future<Item = Option<BlockWithUncles>, Error = _> + Send>,
+            Some(block) => Box::new(track_future!(
+                metrics_for_ommers,
+                fetch_ommers,
+                fetch_ommers_problems,
+                adapter_for_uncles
+                    .uncles(&logger_for_uncles, &block.block)
+                    .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
+                    .map(|block| Some(block))
+            )),
+        })
+        .then(move |result| {
+            section.end();
+            result
+        }),
     )
 }
 
-fn fetch_block_and_uncles(
+fn fetch_block_and_ommers(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
+    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
     block_hash: H256,
 ) -> BlockFuture {
     let logger_for_full_block = logger.clone();
     let adapter_for_full_block = adapter.clone();
+    let metrics_for_full_block = metrics.clone();
 
-    let logger_for_uncles = logger.clone();
-    let adapter_for_uncles = adapter.clone();
+    let logger_for_ommers = logger.clone();
+    let adapter_for_ommers = adapter.clone();
+    let metrics_for_ommers = metrics.clone();
+
+    let section = metrics
+        .lock()
+        .unwrap()
+        .stopwatch
+        .start_section("fetch_blocks");
 
     Box::new(
-        adapter
-            .block_by_hash(&logger, block_hash)
-            .from_err()
-            .and_then(move |block| match block {
-                None => Box::new(future::ok(None))
-                    as Box<dyn Future<Item = Option<EthereumBlock>, Error = _> + Send>,
-                Some(block) => Box::new(
-                    adapter_for_full_block
-                        .load_full_block(&logger_for_full_block, block)
-                        .map(|block| Some(block))
-                        .from_err(),
-                ),
-            })
-            .and_then(move |block| match block {
-                None => Box::new(future::ok(None))
-                    as Box<dyn Future<Item = Option<BlockWithUncles>, Error = _> + Send>,
-                Some(block) => Box::new(
-                    adapter_for_uncles
-                        .uncles(&logger_for_uncles, &block.block)
-                        .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
-                        .map(|block| Some(block)),
-                ),
-            }),
+        track_future!(
+            metrics,
+            fetch_block_by_hash,
+            fetch_block_by_hash_problems,
+            adapter
+                .clone()
+                .block_by_hash(&logger, block_hash)
+                .from_err()
+        )
+        .and_then(move |block| match block {
+            None => Box::new(future::ok(None))
+                as Box<dyn Future<Item = Option<EthereumBlock>, Error = _> + Send>,
+            Some(block) => Box::new(track_future!(
+                metrics_for_full_block,
+                fetch_full_block,
+                fetch_full_block_problems,
+                adapter_for_full_block
+                    .load_full_block(&logger_for_full_block, block)
+                    .map(|block| Some(block))
+                    .from_err()
+            )),
+        })
+        .and_then(move |block| match block {
+            None => Box::new(future::ok(None))
+                as Box<dyn Future<Item = Option<BlockWithUncles>, Error = _> + Send>,
+            Some(block) => Box::new(track_future!(
+                metrics_for_ommers,
+                fetch_ommers,
+                fetch_ommers_problems,
+                adapter_for_ommers
+                    .uncles(&logger_for_ommers, &block.block)
+                    .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
+                    .map(|block| Some(block))
+            )),
+        })
+        .then(move |result| {
+            section.end();
+            result
+        }),
     )
 }
 
-fn fetch_blocks(
-    logger: Logger,
-    adapter: Arc<dyn EthereumAdapter>,
-    block_numbers: Range<u64>,
-) -> BlockStream {
+fn fetch_blocks(context: &Context, block_numbers: Range<u64>) -> BlockStream {
+    let logger = context.logger.clone();
+    let adapter = context.adapter.clone();
+    let metrics = context.metrics.clone();
+
     Box::new(
         futures::stream::iter_ok::<_, Error>(block_numbers)
             .map(move |block_number| {
-                fetch_block_and_uncles_by_number(logger.clone(), adapter.clone(), block_number)
+                fetch_block_and_uncles_by_number(
+                    logger.clone(),
+                    adapter.clone(),
+                    metrics.clone(),
+                    block_number,
+                )
             })
             .buffered(100),
     )
 }
 
-fn fetch_new_blocks(
-    logger: Logger,
-    subgraph_id: SubgraphDeploymentId,
-    adapter: Arc<dyn EthereumAdapter>,
-    store: Arc<dyn Store>,
-    head: BlockWithUncles,
-) -> NewBlocksFuture {
+fn fetch_new_blocks(context: &Context, head: BlockWithUncles) -> NewBlocksFuture {
+    let logger = context.logger.clone();
+    let subgraph_id = context.subgraph_id.clone();
+    let adapter = context.adapter.clone();
+    let store = context.store.clone();
+    let metrics = context.metrics.clone();
+    let metrics_for_loop = metrics.clone();
+
     // Start at `head` and go back block by block until we find a block that we
     // already have in the store. That block is the common ancestor. Collect all
     // blocks as we go. Then, return all blocks including the common ancestor and
     // head.
-    Box::new(
+    Box::new(track_future!(
+        metrics,
+        fetch_new_blocks,
+        fetch_new_blocks_problems,
         loop_fn(vec![head], move |mut blocks| {
             let store = store.clone();
 
@@ -207,9 +313,10 @@ fn fetch_new_blocks(
                 Ok(None) => {
                     // We don't have the block yet, continue with its parent
                     Box::new(
-                        fetch_block_and_uncles(
+                        fetch_block_and_ommers(
                             logger.clone(),
                             adapter.clone(),
+                            metrics_for_loop.clone(),
                             parent_hash.clone(),
                         )
                         .and_then(move |parent| match parent {
@@ -249,8 +356,8 @@ fn fetch_new_blocks(
         .map(|mut blocks: Vec<BlockWithUncles>| {
             blocks.reverse();
             VecDeque::from(blocks)
-        }),
-    )
+        })
+    ))
 }
 
 fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithUncles) -> AddBlockFuture {
@@ -259,99 +366,107 @@ fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithUncles) -> AddBlo
 }
 
 fn collect_blocks_to_revert(
-    logger: Logger,
-    subgraph_id: SubgraphDeploymentId,
-    store: Arc<dyn Store>,
+    context: &Context,
     head: EthereumBlockPointer,
     common_ancestor: EthereumBlockPointer,
 ) -> CollectBlocksToRevertFuture {
-    Box::new(loop_fn(vec![head], move |mut blocks| {
-        let logger = logger.clone();
-        let store = store.clone();
+    let subgraph_id = context.subgraph_id.clone();
+    let logger = context.logger.clone();
+    let store = context.store.clone();
 
-        // Get the last block from the list
-        let block_ptr = blocks.last().unwrap().clone();
-        let block_ptr_for_missing_parent = block_ptr.clone();
-        let block_ptr_for_invalid_parent = block_ptr.clone();
+    Box::new(track_future!(
+        context.metrics,
+        collect_old_blocks,
+        collect_old_blocks_problems,
+        loop_fn(vec![head], move |mut blocks| {
+            let logger = logger.clone();
+            let store = store.clone();
 
-        trace!(
-            logger,
-            "Collect old block";
-            "common_ancestor" => format_block_pointer(&common_ancestor),
-            "block" => format_block_pointer(&block_ptr),
-        );
+            // Get the last block from the list
+            let block_ptr = blocks.last().unwrap().clone();
+            let block_ptr_for_missing_parent = block_ptr.clone();
+            let block_ptr_for_invalid_parent = block_ptr.clone();
 
-        // If we've reached the common ancestor, terminate the loop and return
-        // the blocks we have collected up to here
-        if block_ptr == common_ancestor {
-            trace!(logger, "Reached common ancestor");
+            trace!(
+                logger,
+                "Collect old block";
+                "common_ancestor" => format_block_pointer(&common_ancestor),
+                "block" => format_block_pointer(&block_ptr),
+            );
 
-            return Box::new(future::ok(Loop::Break(blocks)))
-                as Box<dyn Future<Item = _, Error = _> + Send>;
-        }
+            // If we've reached the common ancestor, terminate the loop and return
+            // the blocks we have collected up to here
+            if block_ptr == common_ancestor {
+                trace!(logger, "Reached common ancestor");
 
-        // Look this block up from the store
-        Box::new(
-            future::result(
-                store
-                    .get(block_ptr.to_entity_key(subgraph_id.clone()))
-                    .map_err(|e| e.into())
-                    .and_then(|entity| {
-                        entity.ok_or_else(|| {
-                            format_err!(
-                                "block {} is missing in store",
-                                format_block_pointer(&block_ptr)
-                            )
-                        })
-                    }),
-            )
-            // Get the parent hash from the block
-            .and_then(move |block| {
+                return Box::new(future::ok(Loop::Break(blocks)))
+                    as Box<dyn Future<Item = _, Error = _> + Send>;
+            }
+
+            // Look this block up from the store
+            Box::new(
                 future::result(
-                    block
-                        .get("parent")
-                        .ok_or_else(move || {
-                            format_err!(
-                                "block {} has no parent",
-                                format_block_pointer(&block_ptr_for_missing_parent),
-                            )
-                        })
-                        .and_then(|value| {
-                            let s = value
-                                .clone()
-                                .as_string()
-                                .expect("the `parent` field of `Block` is a reference/string");
-
-                            H256::from_str(s.as_str()).map_err(|e| {
+                    store
+                        .get(block_ptr.to_entity_key(subgraph_id.clone()))
+                        .map_err(|e| e.into())
+                        .and_then(|entity| {
+                            entity.ok_or_else(|| {
                                 format_err!(
-                                    "block {} has an invalid parent `{}`: {}",
-                                    format_block_pointer(&block_ptr_for_invalid_parent),
-                                    s,
-                                    e,
+                                    "block {} is missing in store",
+                                    format_block_pointer(&block_ptr)
                                 )
                             })
                         }),
                 )
-            })
-            .and_then(move |parent_hash: H256| {
-                // Create a block pointer for the parent
-                let parent_ptr = EthereumBlockPointer {
-                    number: block_ptr.number - 1,
-                    hash: parent_hash,
-                };
+                // Get the parent hash from the block
+                .and_then(move |block| {
+                    future::result(
+                        block
+                            .get("parent")
+                            .ok_or_else(move || {
+                                format_err!(
+                                    "block {} has no parent",
+                                    format_block_pointer(&block_ptr_for_missing_parent),
+                                )
+                            })
+                            .and_then(|value| {
+                                let s = value
+                                    .clone()
+                                    .as_string()
+                                    .expect("the `parent` field of `Block` is a reference/string");
 
-                // Add the parent block pointer for the next iteration
-                blocks.push(parent_ptr);
-                future::ok(Loop::Continue(blocks))
-            }),
-        )
-    }))
+                                H256::from_str(s.as_str()).map_err(|e| {
+                                    format_err!(
+                                        "block {} has an invalid parent `{}`: {}",
+                                        format_block_pointer(&block_ptr_for_invalid_parent),
+                                        s,
+                                        e,
+                                    )
+                                })
+                            }),
+                    )
+                })
+                .and_then(move |parent_hash: H256| {
+                    // Create a block pointer for the parent
+                    let parent_ptr = EthereumBlockPointer {
+                        number: block_ptr.number - 1,
+                        hash: parent_hash,
+                    };
+
+                    // Add the parent block pointer for the next iteration
+                    blocks.push(parent_ptr);
+                    future::ok(Loop::Continue(blocks))
+                }),
+            )
+        })
+    ))
 }
 
 fn revert_blocks(
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     store: Arc<dyn Store>,
+    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
     event_sink: Sender<NetworkIndexerEvent>,
     blocks: Vec<EthereumBlockPointer>,
 ) -> RevertBlocksFuture {
@@ -365,7 +480,10 @@ fn revert_blocks(
 
     let logger_for_complete = logger.clone();
 
-    Box::new(
+    Box::new(track_future!(
+        metrics,
+        revert_blocks,
+        revert_blocks_problems,
         // Iterate over pairs of blocks in the order they need to be reverted:
         // (local_head, local_head-1), ..., (local_head-n, common_ancestor).
         stream::iter_ok(
@@ -450,8 +568,8 @@ fn revert_blocks(
                 );
                 future::ok(block)
             }
-        }),
-    )
+        })
+    ))
 }
 
 fn send_event(
@@ -467,6 +585,23 @@ fn send_event(
 }
 
 /**
+ * Helpers for metrics
+ */
+fn update_chain_and_local_head_metrics(
+    context: &Context,
+    chain_head: &LightEthereumBlock,
+    local_head: Option<EthereumBlockPointer>,
+) {
+    let metrics = context.metrics.lock().unwrap();
+    metrics
+        .chain_head
+        .set(chain_head.number.unwrap().as_u64() as f64);
+    metrics
+        .local_head
+        .set(local_head.map_or(0u64, |ptr| ptr.number) as f64);
+}
+
+/**
  * Network tracer implementation.
  */
 
@@ -478,6 +613,7 @@ pub struct Context {
     store: Arc<dyn Store>,
     event_sink: Sender<NetworkIndexerEvent>,
     block_writer: Arc<BlockWriter>,
+    metrics: Arc<Mutex<NetworkIndexerMetrics>>,
 }
 
 /// Events emitted by the network tracer.
@@ -534,6 +670,7 @@ enum StateMachine {
     #[state_machine_future(transitions(ProcessBlocks, PollChainHead, Failed))]
     PollChainHead {
         local_head: Option<EthereumBlockPointer>,
+        prev_chain_head: Option<EthereumBlockPointer>,
         chain_head: ChainHeadFuture,
     },
 
@@ -687,7 +824,7 @@ impl PollStateMachine for StateMachine {
         // Start by loading the local head from the store. This is the most
         // recent block we managed to index until now.
         transition!(LoadLocalHead {
-            local_head: load_local_head(context.subgraph_id.clone(), context.store.clone())
+            local_head: load_local_head(context)
         })
     }
 
@@ -707,7 +844,8 @@ impl PollStateMachine for StateMachine {
         // Move on to poll the chain head.
         transition!(PollChainHead {
             local_head,
-            chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+            prev_chain_head: None,
+            chain_head: poll_chain_head(context),
         })
     }
 
@@ -736,14 +874,23 @@ impl PollStateMachine for StateMachine {
                     // Chain head was invalid, try getting a better one.
                     transition!(PollChainHead {
                         local_head: state.local_head,
-                        chain_head: poll_chain_head(
-                            context.logger.clone(),
-                            context.adapter.clone()
-                        ),
+                        prev_chain_head: state.prev_chain_head,
+                        chain_head: poll_chain_head(context,),
                     })
                 }
 
                 let state = state.take();
+
+                if Some((&chain_head).into()) != state.prev_chain_head {
+                    context
+                        .metrics
+                        .lock()
+                        .unwrap()
+                        .last_new_chain_head_time
+                        .set(Utc::now().timestamp() as f64)
+                }
+
+                update_chain_and_local_head_metrics(context, &chain_head, state.local_head);
 
                 debug!(
                     context.logger,
@@ -765,13 +912,32 @@ impl PollStateMachine for StateMachine {
                         ),
                     );
 
-                    // Chain head was invalid, try getting a better one.
+                    // Chain head wasn't new, try getting a new one.
                     transition!(PollChainHead {
                         local_head: state.local_head,
-                        chain_head: poll_chain_head(
-                            context.logger.clone(),
-                            context.adapter.clone()
+                        prev_chain_head: Some(chain_head.into()),
+                        chain_head: poll_chain_head(context),
+                    });
+                }
+
+                // Ignore the chain head if its number is below the current local head;
+                // it would mean we're switching to a shorter chain, which makes no sense
+                if chain_head.number.unwrap().as_u64()
+                    < state.local_head.map_or(0u64, |ptr| ptr.number)
+                {
+                    debug!(
+                        context.logger,
+                        "Chain head is for a shorter chain; poll chain head again";
+                        "local_head" => state.local_head.map_or(
+                            String::from("none"), |ptr| format_block_pointer(&ptr)
                         ),
+                        "chain_head" => format_light_block(&chain_head),
+                    );
+
+                    transition!(PollChainHead {
+                        local_head: state.local_head,
+                        prev_chain_head: state.prev_chain_head,
+                        chain_head: poll_chain_head(context),
                     });
                 }
 
@@ -807,11 +973,7 @@ impl PollStateMachine for StateMachine {
                 transition!(ProcessBlocks {
                     local_head: state.local_head,
                     chain_head,
-                    next_blocks: fetch_blocks(
-                        context.logger.clone(),
-                        context.adapter.clone(),
-                        block_numbers
-                    )
+                    next_blocks: fetch_blocks(context, block_numbers)
                 })
             }
 
@@ -826,7 +988,8 @@ impl PollStateMachine for StateMachine {
 
                 transition!(PollChainHead {
                     local_head: state.local_head,
-                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                    prev_chain_head: state.prev_chain_head,
+                    chain_head: poll_chain_head(context),
                 })
             }
         }
@@ -853,7 +1016,8 @@ impl PollStateMachine for StateMachine {
 
                 transition!(PollChainHead {
                     local_head: state.local_head,
-                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                    prev_chain_head: Some(state.chain_head.into()),
+                    chain_head: poll_chain_head(context),
                 })
             }
 
@@ -869,7 +1033,8 @@ impl PollStateMachine for StateMachine {
 
                 transition!(PollChainHead {
                     local_head: state.local_head,
-                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                    prev_chain_head: Some(state.chain_head.into()),
+                    chain_head: poll_chain_head(context),
                 })
             }
 
@@ -899,7 +1064,8 @@ impl PollStateMachine for StateMachine {
 
                 transition!(PollChainHead {
                     local_head: state.local_head,
-                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                    prev_chain_head: Some(state.chain_head.into()),
+                    chain_head: poll_chain_head(context),
                 })
             }
         }
@@ -928,7 +1094,8 @@ impl PollStateMachine for StateMachine {
             // start with re-checking the chain head block again.
             transition!(PollChainHead {
                 local_head: state.local_head,
-                chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                prev_chain_head: Some(state.chain_head.into()),
+                chain_head: poll_chain_head(context),
             })
         }
 
@@ -954,12 +1121,16 @@ impl PollStateMachine for StateMachine {
 
             transition!(PollChainHead {
                 local_head: state.local_head,
-                chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                prev_chain_head: Some(state.chain_head.into()),
+                chain_head: poll_chain_head(context),
             })
         }
 
         // Check whether we have a reorg (parent of the new block != our local head).
         if block.inner().parent_ptr() != state.local_head {
+            let depth = block.inner().number.unwrap().as_u64()
+                - state.local_head.map_or(0u64, |ptr| ptr.number);
+
             info!(
                 context.logger,
                 "Block requires a reorg";
@@ -970,7 +1141,15 @@ impl PollStateMachine for StateMachine {
                     String::from("none"), |ptr| format_block_pointer(&ptr)
                 ),
                 "block" => format_block(&block),
+                "depth" => depth,
             );
+
+            // Update reorg stats
+            {
+                let mut metrics = context.metrics.lock().unwrap();
+                metrics.reorg_count.inc();
+                metrics.reorg_depth.update(depth as f64);
+            }
 
             // We are dealing with a reorg; fetch all new blocks from the incoming
             // block back to the common ancestor.
@@ -978,16 +1157,20 @@ impl PollStateMachine for StateMachine {
                 local_head: state.local_head,
                 chain_head: state.chain_head,
                 next_blocks: state.next_blocks,
-                new_blocks: fetch_new_blocks(
-                    context.logger.clone(),
-                    context.subgraph_id.clone(),
-                    context.adapter.clone(),
-                    context.store.clone(),
-                    block
-                ),
+                new_blocks: fetch_new_blocks(context, block),
             })
         } else {
             let event_sink = context.event_sink.clone();
+            let metrics_for_written_block = context.metrics.clone();
+
+            let section = {
+                context
+                    .metrics
+                    .lock()
+                    .unwrap()
+                    .stopwatch
+                    .start_section("transact_block")
+            };
 
             // The block is a regular successor to the local head.
             // Add the block and move on.
@@ -1002,15 +1185,29 @@ impl PollStateMachine for StateMachine {
                 // Index the block.
                 new_local_head: Box::new(
                     // Write block to the store.
-                    write_block(context.block_writer.clone(), block)
-                        // Send an `AddBlock` event for it.
-                        .and_then(move |block_ptr| {
-                            send_event(event_sink, NetworkIndexerEvent::AddBlock(block_ptr.clone()))
-                                .and_then(move |_| {
-                                    // Return the new block so we can update the local head.
-                                    future::ok(block_ptr)
-                                })
-                        })
+                    track_future!(
+                        context.metrics,
+                        write_block,
+                        write_block_problems,
+                        write_block(context.block_writer.clone(), block)
+                    )
+                    .inspect(move |_| {
+                        section.end();
+
+                        metrics_for_written_block
+                            .lock()
+                            .unwrap()
+                            .last_written_block_time
+                            .set(Utc::now().timestamp() as f64)
+                    })
+                    // Send an `AddBlock` event for it.
+                    .and_then(move |block_ptr| {
+                        send_event(event_sink, NetworkIndexerEvent::AddBlock(block_ptr.clone()))
+                            .and_then(move |_| {
+                                // Return the new block so we can update the local head.
+                                future::ok(block_ptr)
+                            })
+                    })
                 )
             })
         }
@@ -1040,7 +1237,7 @@ impl PollStateMachine for StateMachine {
                 let state = state.take();
 
                 let common_ancestor_ptr = common_ancestor.inner().into();
-                let local_head_ptr = state
+                let local_head_ptr: EthereumBlockPointer = state
                     .local_head
                     .expect("cannot have a reorg if there is no local head block yet")
                     .into();
@@ -1048,6 +1245,7 @@ impl PollStateMachine for StateMachine {
                 let subgraph_id_for_revert = context.subgraph_id.clone();
                 let logger_for_revert = context.logger.clone();
                 let store_for_revert = context.store.clone();
+                let metrics_for_revert = context.metrics.clone();
                 let event_sink_for_revert = context.event_sink.clone();
 
                 transition!(RevertToCommonAncestor {
@@ -1069,22 +1267,17 @@ impl PollStateMachine for StateMachine {
                     // If reverting fails, we update the local head to the most
                     // recent block that we managed to revert to.
                     new_local_head: Box::new(
-                        collect_blocks_to_revert(
-                            context.logger.clone(),
-                            context.subgraph_id.clone(),
-                            context.store.clone(),
-                            local_head_ptr,
-                            common_ancestor_ptr,
-                        )
-                        .and_then(move |block_ptrs| {
-                            revert_blocks(
-                                subgraph_id_for_revert,
-                                logger_for_revert,
-                                store_for_revert,
-                                event_sink_for_revert,
-                                block_ptrs,
-                            )
-                        })
+                        collect_blocks_to_revert(context, local_head_ptr, common_ancestor_ptr,)
+                            .and_then(move |block_ptrs| {
+                                revert_blocks(
+                                    subgraph_id_for_revert,
+                                    logger_for_revert,
+                                    store_for_revert,
+                                    metrics_for_revert,
+                                    event_sink_for_revert,
+                                    block_ptrs,
+                                )
+                            })
                     )
                 })
             }
@@ -1100,9 +1293,15 @@ impl PollStateMachine for StateMachine {
 
                 let state = state.take();
 
+                // Update reorg stats
+                {
+                    context.metrics.lock().unwrap().reorg_cancel_count.inc();
+                }
+
                 transition!(PollChainHead {
                     local_head: state.local_head,
-                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                    prev_chain_head: Some(state.chain_head.into()),
+                    chain_head: poll_chain_head(context)
                 })
             }
         }
@@ -1125,6 +1324,8 @@ impl PollStateMachine for StateMachine {
             Ok(Async::Ready(block_ptr)) => {
                 let state = state.take();
 
+                update_chain_and_local_head_metrics(context, &state.chain_head, Some(block_ptr));
+
                 transition!(ProcessBlocks {
                     // Set the local head to the block we have reverted to
                     local_head: Some(block_ptr),
@@ -1146,7 +1347,8 @@ impl PollStateMachine for StateMachine {
 
                 transition!(PollChainHead {
                     local_head: state.local_head,
-                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                    prev_chain_head: Some(state.chain_head.into()),
+                    chain_head: poll_chain_head(context)
                 })
             }
         }
@@ -1167,6 +1369,8 @@ impl PollStateMachine for StateMachine {
             Ok(Async::Ready(block_ptr)) => {
                 let state = state.take();
 
+                update_chain_and_local_head_metrics(context, &state.chain_head, Some(block_ptr));
+
                 transition!(ProcessBlocks {
                     local_head: Some(block_ptr),
                     chain_head: state.chain_head,
@@ -1186,7 +1390,8 @@ impl PollStateMachine for StateMachine {
 
                 transition!(PollChainHead {
                     local_head: state.old_local_head,
-                    chain_head: poll_chain_head(context.logger.clone(), context.adapter.clone()),
+                    prev_chain_head: Some(state.chain_head.into()),
+                    chain_head: poll_chain_head(context),
                 })
             }
         }
@@ -1217,6 +1422,12 @@ impl NetworkIndexer {
             metrics_registry.clone(),
         );
 
+        let metrics = Arc::new(Mutex::new(NetworkIndexerMetrics::new(
+            subgraph_id.clone(),
+            stopwatch.clone(),
+            metrics_registry.clone(),
+        )));
+
         let block_writer = Arc::new(BlockWriter::new(
             subgraph_id.clone(),
             &logger,
@@ -1236,6 +1447,7 @@ impl NetworkIndexer {
             store,
             event_sink,
             block_writer,
+            metrics,
         });
 
         // Launch state machine
