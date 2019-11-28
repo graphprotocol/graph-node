@@ -130,6 +130,7 @@ impl WriteContext {
                 // Add uncle block entities
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(block_for_uncles.uncles.clone())
+                        .filter(|ommer| ommer.is_some())
                         .fold(context, |context, ommer| context.set_entity(ommer.unwrap()))
                 })
                 // Transact everything into the store
