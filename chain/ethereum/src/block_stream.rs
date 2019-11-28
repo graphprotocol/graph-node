@@ -392,6 +392,17 @@ where
                             // Calculate the range size according to the target number of triggers,
                             // respecting the global maximum and also not increasing too
                             // drastically from the previous block range size.
+                            //
+                            // An example of the block range dynamics:
+                            // - Start with a block range of 1, target of 1000.
+                            // - Scan 1 block:
+                            //   0 triggers found, max_range_size = 10, range_size = 10
+                            // - Scan 10 blocks:
+                            //   2 triggers found, 0.2 per block, range_size = 1000 / 0.2 = 5000
+                            // - Scan 5000 blocks:
+                            //   500 triggers found, 0.1 per block, range_size = 500 / 0.2 = 2500
+                            // - Scan 2500 blocks:
+                            //   500 triggers found, 0.2 per block, range_size = 500 / 0.2 = 2500
                             let max_range_size =
                                 MAX_BLOCK_RANGE_SIZE.min(ctx.previous_block_range_size * 10);
                             let range_size = if ctx.previous_triggers_per_block == 0.0 {
