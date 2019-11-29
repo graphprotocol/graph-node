@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate diesel;
+
 use crate::tokio::runtime::Runtime;
 use graph::log;
 use graph::prelude::{Store as _, *};
@@ -71,6 +74,29 @@ lazy_static! {
     ).into();
 }
 
+pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
+    let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
+    let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
+
+    let manifest = SubgraphManifest {
+        id: subgraph_id.clone(),
+        location: String::new(),
+        spec_version: "1".to_owned(),
+        description: None,
+        repository: None,
+        schema: schema.clone(),
+        data_sources: vec![],
+        templates: vec![],
+    };
+
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, None)
+        .create_operations_replace(&subgraph_id)
+        .into_iter()
+        .map(|op| op.into())
+        .collect();
+    STORE.create_subgraph_deployment(&schema, ops).unwrap();
+}
+
 /// Convenience to transact EntityOperation instead of EntityModification
 pub fn transact_entity_operations(
     store: &Arc<Store>,
@@ -90,4 +116,47 @@ pub fn transact_entity_operations(
         metrics_registry.clone(),
     );
     store.transact_block_operations(subgraph_id, block_ptr_to, mods, stopwatch_metrics)
+}
+
+pub fn insert_ens_name(hash: &str, name: &str) {
+    use diesel::insert_into;
+    use diesel::prelude::*;
+    let conn = PgConnection::establish(&postgres_test_url()).unwrap();
+
+    table! {
+        ens_names(hash) {
+            hash -> Varchar,
+            name -> Varchar,
+        }
+    }
+
+    insert_into(ens_names::table)
+        .values((ens_names::hash.eq(hash), ens_names::name.eq(name)))
+        .on_conflict_do_nothing()
+        .execute(&conn)
+        .unwrap();
+}
+
+pub fn insert_entities(
+    subgraph_id: SubgraphDeploymentId,
+    entities: Vec<(&str, Entity)>,
+) -> Result<(), StoreError> {
+    let insert_ops = entities
+        .into_iter()
+        .map(|(entity_type, data)| EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: subgraph_id.clone(),
+                entity_type: entity_type.to_owned(),
+                entity_id: data["id"].clone().as_string().unwrap(),
+            },
+            data,
+        });
+
+    transact_entity_operations(
+        &STORE,
+        subgraph_id.clone(),
+        GENESIS_PTR.clone(),
+        insert_ops.collect::<Vec<_>>(),
+    )
+    .map(|_| ())
 }

@@ -33,7 +33,7 @@ use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use inflector::cases::snakecase::to_snake_case;
 use lazy_static::lazy_static;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
@@ -414,6 +414,34 @@ impl Connection {
         match &*self.storage {
             Storage::Json(json) => json.find(&self.conn, entity, id),
             Storage::Relational(layout) => layout.find(&self.conn, entity, id, block),
+        }
+    }
+
+    /// Returns a sequence of `(type, entity)`.
+    /// If the entity isn't present that means it wasn't found.
+    pub(crate) fn find_many(
+        &self,
+        ids_for_type: BTreeMap<&str, Vec<&str>>,
+        block: BlockNumber,
+    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        match &*self.storage {
+            Storage::Json(json) => {
+                // Reuse `find` since we don't care about the performance of this on json.
+                let mut entities: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
+                for (entity_type, ids) in ids_for_type {
+                    for id in ids {
+                        if let Some(entity) = json.find(&self.conn, entity_type, id)? {
+                            entities
+                                .entry(entity_type.to_owned())
+                                .or_default()
+                                .push(entity)
+                        }
+                    }
+                }
+                Ok(entities)
+            }
+
+            Storage::Relational(layout) => layout.find_many(&self.conn, ids_for_type, block),
         }
     }
 
@@ -859,7 +887,7 @@ impl JsonStorage {
         &self,
         conn: &PgConnection,
         entity: &str,
-        id: &String,
+        id: &str,
     ) -> Result<Option<Entity>, StoreError> {
         let entities = self.clone();
         entities

@@ -1,6 +1,3 @@
-extern crate graph_mock;
-extern crate ipfs_api;
-
 use ethabi::Token;
 use futures::sync::mpsc::channel;
 use hex;
@@ -16,15 +13,17 @@ use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::prelude::Error;
 use graph_core;
+use test_store::STORE;
 use web3::types::{Address, H160};
 
 use super::*;
 
-use self::graph_mock::{MockEthereumAdapter, MockMetricsRegistry, MockStore};
+use graph_mock::{MockEthereumAdapter, MockMetricsRegistry};
 
 mod abi;
 
 fn test_valid_module_and_store(
+    subgraph_id: &str,
     data_source: DataSource,
 ) -> (
     WasmiModule<
@@ -34,11 +33,24 @@ fn test_valid_module_and_store(
             + Sync
             + 'static,
     >,
-    Arc<MockStore>,
+    Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) {
-    let store = Arc::new(MockStore::user_store());
+    let store = STORE.clone();
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
-    let deployment_id = MockStore::user_subgraph_id();
+    test_store::create_test_subgraph(
+        subgraph_id,
+        "type User @entity {
+            id: ID!,
+            name: String,
+        }
+        
+        type Thing @entity {
+            id: ID!,
+            value: String,
+            extra: String
+        }",
+    );
+    let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment_id.clone(),
@@ -56,7 +68,7 @@ fn test_valid_module_and_store(
     ::std::mem::forget(runtime);
     let module = WasmiModule::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref().clone()).unwrap()),
-        mock_context(data_source, store.clone()),
+        mock_context(deployment_id, data_source, store.clone()),
         task_sender,
         host_metrics,
     )
@@ -66,6 +78,7 @@ fn test_valid_module_and_store(
 }
 
 fn test_module(
+    subgraph_id: &str,
     data_source: DataSource,
 ) -> WasmiModule<
     impl Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send + 'static>>
@@ -74,7 +87,7 @@ fn test_module(
         + Sync
         + 'static,
 > {
-    test_valid_module_and_store(data_source).0
+    test_valid_module_and_store(subgraph_id, data_source).0
 }
 
 fn mock_data_source(path: &str) -> DataSource {
@@ -128,10 +141,14 @@ fn mock_data_source(path: &str) -> DataSource {
     }
 }
 
-fn mock_host_exports(data_source: DataSource, store: Arc<MockStore>) -> HostExports {
+fn mock_host_exports(
+    subgraph_id: SubgraphDeploymentId,
+    data_source: DataSource,
+    store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
+) -> HostExports {
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     HostExports::new(
-        MockStore::user_subgraph_id(),
+        subgraph_id,
         Version::parse(&data_source.mapping.api_version).unwrap(),
         data_source.name,
         data_source.source.address,
@@ -151,11 +168,15 @@ fn mock_host_exports(data_source: DataSource, store: Arc<MockStore>) -> HostExpo
     )
 }
 
-fn mock_context(data_source: DataSource, store: Arc<MockStore>) -> MappingContext {
+fn mock_context(
+    subgraph_id: SubgraphDeploymentId,
+    data_source: DataSource,
+    store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
+) -> MappingContext {
     MappingContext {
         logger: Logger::root(slog::Discard, o!()),
         block: Default::default(),
-        host_exports: Arc::new(mock_host_exports(data_source, store)),
+        host_exports: Arc::new(mock_host_exports(subgraph_id, data_source, store)),
         state: BlockState::default(),
     }
 }
@@ -210,7 +231,10 @@ where
 
 #[test]
 fn json_conversions() {
-    let mut module = test_module(mock_data_source("wasm_test/string_to_number.wasm"));
+    let mut module = test_module(
+        "jsonConversions",
+        mock_data_source("wasm_test/string_to_number.wasm"),
+    );
 
     // test u64 conversion
     let number = 9223372036850770800;
@@ -275,7 +299,7 @@ fn json_conversions() {
 
 #[test]
 fn ipfs_cat() {
-    let mut module = test_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
 
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
@@ -299,14 +323,13 @@ fn ipfs_cat() {
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 
-fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
+fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModification) {
     let mut data = Entity::new();
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let subgraph_id = MockStore::user_subgraph_id();
     let key = EntityKey {
-        subgraph_id,
+        subgraph_id: SubgraphDeploymentId::new(subgraph_id).unwrap(),
         entity_type: "Thing".to_string(),
         entity_id: id.to_string(),
     };
@@ -322,10 +345,11 @@ fn ipfs_map() {
 
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    let subgraph_id = "ipfsMap";
 
     let mut run_ipfs_map = move |json_string| -> Result<Vec<EntityModification>, Error> {
         let (mut module, store) =
-            test_valid_module_and_store(mock_data_source("wasm_test/ipfs_map.wasm"));
+            test_valid_module_and_store(subgraph_id, mock_data_source("wasm_test/ipfs_map.wasm"));
         let hash = if json_string == BAD_IPFS_HASH {
             "Qm".to_string()
         } else {
@@ -357,8 +381,8 @@ fn ipfs_map() {
     };
 
     // Try it with two valid objects
-    let (str1, thing1) = make_thing("one", "eins");
-    let (str2, thing2) = make_thing("two", "zwei");
+    let (str1, thing1) = make_thing(subgraph_id, "one", "eins");
+    let (str2, thing2) = make_thing(subgraph_id, "two", "zwei");
     let ops = run_ipfs_map(format!("{}\n{}", str1, str2)).expect("call failed");
     let expected = vec![thing1, thing2];
     assert_eq!(expected, ops);
@@ -395,7 +419,7 @@ fn ipfs_map() {
 
 #[test]
 fn ipfs_fail() {
-    let mut module = test_module(mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
     let hash = module.asc_new("invalid hash");
     assert!(module
@@ -405,7 +429,7 @@ fn ipfs_fail() {
 
 #[test]
 fn crypto_keccak256() {
-    let mut module = test_module(mock_data_source("wasm_test/crypto.wasm"));
+    let mut module = test_module("cryptoKeccak256", mock_data_source("wasm_test/crypto.wasm"));
     let input: &[u8] = "eth".as_ref();
     let input: AscPtr<Uint8Array> = module.asc_new(input);
 
@@ -426,7 +450,10 @@ fn crypto_keccak256() {
 
 #[test]
 fn token_numeric_conversion() {
-    let mut module = test_module(mock_data_source("wasm_test/token_to_numeric.wasm"));
+    let mut module = test_module(
+        "TestNumericConversion",
+        mock_data_source("wasm_test/token_to_numeric.wasm"),
+    );
 
     // Convert numeric to token and back.
     let num = i32::min_value();
@@ -449,7 +476,10 @@ fn token_numeric_conversion() {
 
 #[test]
 fn big_int_to_from_i32() {
-    let mut module = test_module(mock_data_source("wasm_test/big_int_to_from_i32.wasm"));
+    let mut module = test_module(
+        "BigIntToFromI32",
+        mock_data_source("wasm_test/big_int_to_from_i32.wasm"),
+    );
 
     // Convert i32 to BigInt
     let input: i32 = -157;
@@ -484,7 +514,10 @@ fn big_int_to_from_i32() {
 
 #[test]
 fn big_int_to_hex() {
-    let mut module = test_module(mock_data_source("wasm_test/big_int_to_hex.wasm"));
+    let mut module = test_module(
+        "BigIntToHex",
+        mock_data_source("wasm_test/big_int_to_hex.wasm"),
+    );
 
     // Convert zero to hex
     let zero = BigInt::from_unsigned_u256(&U256::zero());
@@ -538,7 +571,10 @@ fn big_int_to_hex() {
 
 #[test]
 fn big_int_arithmetic() {
-    let mut module = test_module(mock_data_source("wasm_test/big_int_arithmetic.wasm"));
+    let mut module = test_module(
+        "BigIntArithmetic",
+        mock_data_source("wasm_test/big_int_arithmetic.wasm"),
+    );
 
     // 0 + 1 = 1
     let zero = BigInt::from(0);
@@ -663,7 +699,7 @@ fn big_int_arithmetic() {
 
 #[test]
 fn abort() {
-    let mut module = test_module(mock_data_source("wasm_test/abort.wasm"));
+    let mut module = test_module("abort", mock_data_source("wasm_test/abort.wasm"));
     let err = module
         .module
         .clone()
@@ -674,7 +710,10 @@ fn abort() {
 
 #[test]
 fn bytes_to_base58() {
-    let mut module = test_module(mock_data_source("wasm_test/bytes_to_base58.wasm"));
+    let mut module = test_module(
+        "bytesToBase58",
+        mock_data_source("wasm_test/bytes_to_base58.wasm"),
+    );
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
     let bytes_ptr = module.asc_new(bytes.as_slice());
@@ -688,7 +727,10 @@ fn data_source_create() {
     let run_data_source_create = move |name: String,
                                        params: Vec<String>|
           -> Result<Vec<DataSourceTemplateInfo>, Error> {
-        let mut module = test_module(mock_data_source("wasm_test/data_source_create.wasm"));
+        let mut module = test_module(
+            "DataSourceCreate",
+            mock_data_source("wasm_test/data_source_create.wasm"),
+        );
 
         let name = RuntimeValue::from(module.asc_new(&name));
         let params = RuntimeValue::from(module.asc_new(&*params));
@@ -727,9 +769,14 @@ fn data_source_create() {
 
 #[test]
 fn ens_name_by_hash() {
-    let mut module = test_module(mock_data_source("wasm_test/ens_name_by_hash.wasm"));
+    let mut module = test_module(
+        "EnsNameByHash",
+        mock_data_source("wasm_test/ens_name_by_hash.wasm"),
+    );
 
     let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
+    let name = "dealdrafts";
+    test_store::insert_ens_name(hash, name);
     let converted: AscPtr<AscString> = module
         .module
         .clone()
@@ -743,7 +790,7 @@ fn ens_name_by_hash() {
         .try_into()
         .expect("call did not return pointer");
     let data: String = module.asc_get(converted);
-    assert_eq!(data, "dealdrafts");
+    assert_eq!(data, name);
 
     let hash = module.asc_new("impossible keccak hash");
     assert!(module
@@ -753,16 +800,23 @@ fn ens_name_by_hash() {
 
 #[test]
 fn entity_store() {
-    fn get_user(id: &str) -> Option<Entity> {
-        let mut module = test_module(mock_data_source("wasm_test/store.wasm"));
+    let (mut module, store) =
+        test_valid_module_and_store("entityStore", mock_data_source("wasm_test/store.wasm"));
+
+    let mut alex = Entity::new();
+    alex.set("id", "alex");
+    alex.set("name", "Alex");
+    let mut steve = Entity::new();
+    steve.set("id", "steve");
+    steve.set("name", "Steve");
+    let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
+    test_store::insert_entities(subgraph_id, vec![("User", alex), ("User", steve)]).unwrap();
+
+    let get_user = move |module: &mut WasmiModule<_>, id: &str| -> Option<Entity> {
         let entity_ptr: AscPtr<AscEntity> = module
             .module
             .clone()
-            .invoke_export(
-                "getUser",
-                &[RuntimeValue::from(module.asc_new(id))],
-                &mut module,
-            )
+            .invoke_export("getUser", &[RuntimeValue::from(module.asc_new(id))], module)
             .expect("call failed")
             .expect("call returned nothing")
             .try_into()
@@ -774,11 +828,9 @@ fn entity_store() {
                 module.asc_get::<HashMap<String, Value>, _>(entity_ptr),
             ))
         }
-    }
+    };
 
-    fn load_and_set_user_name(id: &str, name: &str) -> (Arc<MockStore>, EntityCache) {
-        let (mut module, store) =
-            test_valid_module_and_store(mock_data_source("wasm_test/store.wasm"));
+    let load_and_set_user_name = |module: &mut WasmiModule<_>, id: &str, name: &str| {
         module
             .module
             .clone()
@@ -788,21 +840,25 @@ fn entity_store() {
                     RuntimeValue::from(module.asc_new(id)),
                     RuntimeValue::from(module.asc_new(name)),
                 ],
-                &mut module,
+                module,
             )
             .expect("call failed");
-        (store, module.ctx.state.entity_cache)
-    }
+    };
 
     // store.get of a nonexistent user
-    assert_eq!(None, get_user("herobrine"));
+    assert_eq!(None, get_user(&mut module, "herobrine"));
     // store.get of an existing user
-    let steve = get_user("steve").unwrap();
+    let steve = get_user(&mut module, "steve").unwrap();
     assert_eq!(Some(&Value::from("Steve")), steve.get("name"));
 
     // Load, set, save cycle for an existing entity
-    let (store, entity_cache) = load_and_set_user_name("steve", "Steve-O");
-    let mut mods = entity_cache.as_modifications(store.as_ref()).unwrap();
+    load_and_set_user_name(&mut module, "steve", "Steve-O");
+    let mut mods = module
+        .ctx
+        .state
+        .entity_cache
+        .as_modifications(store.as_ref())
+        .unwrap();
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Overwrite { data, .. } => {
@@ -813,8 +869,14 @@ fn entity_store() {
     }
 
     // Load, set, save cycle for a new entity
-    let (store, entity_cache) = load_and_set_user_name("herobrine", "Brine-O");
-    let mut mods = entity_cache.as_modifications(store.as_ref()).unwrap();
+    module.ctx.state.entity_cache = EntityCache::new();
+    load_and_set_user_name(&mut module, "herobrine", "Brine-O");
+    let mut mods = module
+        .ctx
+        .state
+        .entity_cache
+        .as_modifications(store.as_ref())
+        .unwrap();
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Insert { data, .. } => {

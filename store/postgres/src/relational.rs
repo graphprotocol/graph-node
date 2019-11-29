@@ -17,8 +17,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::relational_queries::{
-    ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindQuery, InsertQuery,
-    QueryFilter, RevertClampQuery, RevertRemoveQuery,
+    ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindManyQuery, FindQuery,
+    InsertQuery, QueryFilter, RevertClampQuery, RevertRemoveQuery,
 };
 use graph::prelude::{
     format_err, Entity, EntityChange, EntityChangeOperation, EntityFilter, EntityKey,
@@ -331,6 +331,32 @@ impl Layout {
             .optional()?
             .map(|entity_data| entity_data.to_entity(self))
             .transpose()
+    }
+
+    pub fn find_many(
+        &self,
+        conn: &PgConnection,
+        ids_for_type: BTreeMap<&str, Vec<&str>>,
+        block: BlockNumber,
+    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        let mut tables = Vec::new();
+        for entity_type in ids_for_type.keys() {
+            tables.push(self.table_for_entity(entity_type)?.as_ref());
+        }
+        let query = FindManyQuery {
+            schema: &self.schema,
+            ids_for_type,
+            tables,
+            block,
+        };
+        let mut entities_for_type: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
+        for data in query.load::<EntityData>(conn)? {
+            entities_for_type
+                .entry(data.entity_type())
+                .or_default()
+                .push(data.to_entity(self)?);
+        }
+        Ok(entities_for_type)
     }
 
     pub fn insert(

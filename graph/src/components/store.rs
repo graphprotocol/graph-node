@@ -3,7 +3,7 @@ use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::fmt;
 use std::str::FromStr;
@@ -603,6 +603,13 @@ pub trait Store: Send + Sync + 'static {
     /// Looks up an entity using the given store key.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
+    /// Look up multiple entities. Returns a map of entities by type.
+    fn get_many(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        ids_for_type: BTreeMap<&str, Vec<&str>>,
+    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError>;
+
     /// Queries the store for entities that match the store query.
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;
 
@@ -1201,25 +1208,44 @@ impl EntityCache {
         mut self,
         store: &(impl Store + ?Sized),
     ) -> Result<Vec<EntityModification>, QueryExecutionError> {
+        // The first step is to make sure all entities being set are in `self.current`.
+        // For each subgraph, we need a map of entity type to missing entity ids.
         let missing = self
             .updates
             .keys()
-            .map(|key| key.to_owned())
-            .filter(|key| !self.current.contains_key(&key))
-            .collect::<Vec<_>>();
+            .filter(|key| !self.current.contains_key(key));
+
+        let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&str, Vec<&str>>> = BTreeMap::new();
         for key in missing {
-            self.get(store, &key)?;
+            missing_by_subgraph
+                .entry(&key.subgraph_id)
+                .or_default()
+                .entry(&key.entity_type)
+                .or_default()
+                .push(&key.entity_id);
         }
+
+        for (subgraph_id, keys) in missing_by_subgraph {
+            for (entity_type, entities) in store.get_many(subgraph_id, keys)? {
+                for entity in entities {
+                    let key = EntityKey {
+                        subgraph_id: subgraph_id.clone(),
+                        entity_type: entity_type.clone(),
+                        entity_id: entity.id().unwrap(),
+                    };
+                    self.current.insert(key, Some(entity));
+                }
+            }
+        }
+
         let mut mods = Vec::new();
         for (key, update) in self.updates {
             use EntityModification::*;
-            let current = self
-                .current
-                .remove(&key)
-                .expect("we should have already loaded all needed entities");
+            let current = self.current.remove(&key).and_then(|entity| entity);
             let modification = match (current, update) {
                 // Entity was created
                 (None, Some(updates)) => {
+                    // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
                     data.merge(updates);
                     Some(Insert { key, data })

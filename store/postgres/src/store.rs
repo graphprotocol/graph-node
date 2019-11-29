@@ -5,7 +5,7 @@ use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -799,6 +799,20 @@ impl StoreTrait for Store {
             .get_entity_conn(&key.subgraph_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+    }
+
+    fn get_many(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        ids_for_type: BTreeMap<&str, Vec<&str>>,
+    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        if ids_for_type.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let conn = self
+            .get_entity_conn(subgraph_id)
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        conn.find_many(ids_for_type, BLOCK_NUMBER_MAX)
     }
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {

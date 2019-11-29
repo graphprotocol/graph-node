@@ -11,28 +11,8 @@ fn insert_and_query(
     entities: Vec<(Entity, &str)>,
     query: &str,
 ) -> Result<QueryResult, StoreError> {
+    create_test_subgraph(subgraph_id, schema);
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
-    let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
-
-    let manifest = SubgraphManifest {
-        id: subgraph_id.clone(),
-        location: String::new(),
-        spec_version: "1".to_owned(),
-        description: None,
-        repository: None,
-        schema: schema.clone(),
-        data_sources: vec![],
-        templates: vec![],
-    };
-
-    let logger = Logger::root(slog::Discard, o!());
-
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, None)
-        .create_operations_replace(&subgraph_id)
-        .into_iter()
-        .map(|op| op.into())
-        .collect();
-    STORE.create_subgraph_deployment(&schema, ops).unwrap();
 
     let insert_ops = entities
         .into_iter()
@@ -52,6 +32,7 @@ fn insert_and_query(
         insert_ops.collect::<Vec<_>>(),
     )?;
 
+    let logger = Logger::root(slog::Discard, o!());
     let resolver = StoreResolver::new(&logger, STORE.clone());
 
     let options = QueryExecutionOptions {

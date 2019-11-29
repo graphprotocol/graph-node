@@ -22,6 +22,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 graphql-parser = "0.2.3"
 graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
+test-store = { path = "../../store/test-store" }
 # We're using the latest ipfs-api for the HTTPS support that was merged in
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
 # but has not been released yet.
