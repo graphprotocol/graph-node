@@ -413,7 +413,7 @@ fn indexing_handles_single_block_reorg() {
         // Create the initial chain
         let initial_chain = create_blocks(10, None);
 
-        // Create a forked chain after block #2
+        // Create a forked chain after block #8
         let forked_chain = create_fork(initial_chain.clone(), 8, 11);
 
         // Run the network indexer and collect its events
@@ -587,6 +587,77 @@ fn indexing_handles_consecutive_reorgs() {
                 .chain(
                     // 27 `AddBlock` events for the new chain
                     third_chain[3..]
+                        .iter()
+                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                )
+                .collect::<Vec<_>>()
+        );
+
+        Ok(())
+    });
+}
+
+// GIVEN  a fresh subgraph (local head = none)
+// AND    5 blocks for one version of the chain (#0 - #4)
+// AND    a fork with blocks #0 - #3, #4', #5'
+// AND    a fork with blocks #0 - #3, #4, #5'', #6''
+// WHEN   indexing the network
+// EXPECT 5 `AddBlock` events is emitted for the first chain version,
+//        1 `Revert` event is emitted from block #4 to #3
+//        2 `AddBlock` events are emitted for blocks #4', #5'
+//        2 `Revert` events are emitted from block #5' to #4' and #4' to #3
+//        3 `AddBlock` events are emitted for blocks #4, #5'', #6''
+#[test]
+fn indexing_handles_reorg_back_and_forth() {
+    run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
+        // Create the initial chain (blocks #0 - #4)
+        let initial_chain = create_blocks(5, None);
+
+        // Create fork 1 (blocks #0 - #3, #4', #5')
+        let fork1 = create_fork(initial_chain.clone(), 3, 6);
+
+        // Create fork 2 (blocks #0 - #4, #5'', #6'');
+        // this fork includes the original #4 again, which at this point should
+        // no longer be in the store and therefor not be considered as the
+        // common ancestor of the fork (that should be #3).
+        let fork2 = create_fork(initial_chain.clone(), 4, 7);
+
+        // Run the network indexer and collect its events
+        let chains = vec![initial_chain.clone(), fork1.clone(), fork2.clone()];
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
+
+        assert_eq!(
+            events,
+            initial_chain
+                .iter()
+                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                .chain(
+                    vec![NetworkIndexerEvent::Revert {
+                        from: initial_chain[4].inner().into(),
+                        to: initial_chain[3].inner().into(),
+                    },]
+                    .into_iter()
+                )
+                .chain(
+                    fork1[4..]
+                        .iter()
+                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                )
+                .chain(
+                    vec![
+                        NetworkIndexerEvent::Revert {
+                            from: fork1[5].inner().into(),
+                            to: fork1[4].inner().into(),
+                        },
+                        NetworkIndexerEvent::Revert {
+                            from: fork1[4].inner().into(),
+                            to: initial_chain[3].inner().into(),
+                        },
+                    ]
+                    .into_iter()
+                )
+                .chain(
+                    fork2[4..]
                         .iter()
                         .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
                 )
