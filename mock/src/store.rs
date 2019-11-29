@@ -1,8 +1,8 @@
 use futures::sync::mpsc;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
-use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use graph::components::store::*;
@@ -163,6 +163,14 @@ impl Store for MockStore {
             .map(|entity| entity.to_owned()))
     }
 
+    fn get_many(
+        &self,
+        _subgraph_id: &SubgraphDeploymentId,
+        _ids_for_type: BTreeMap<&str, Vec<&str>>,
+    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        unimplemented!("get_many unimplemented")
+    }
+
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         self.execute_query(&self.entities.lock().unwrap(), query)
     }
@@ -171,12 +179,8 @@ impl Store for MockStore {
         Ok(self.find(query)?.pop())
     }
 
-    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        let s1 = "dealdrafts".to_string();
-        match hash {
-            "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3" => Ok(Some(s1)),
-            _ => Ok(None),
-        }
+    fn find_ens_name(&self, _: &str) -> Result<Option<String>, QueryExecutionError> {
+        unimplemented!("find_ens_name unimplemented")
     }
 
     fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
@@ -463,6 +467,14 @@ impl Store for FakeStore {
         Ok(None)
     }
 
+    fn get_many(
+        &self,
+        _: &SubgraphDeploymentId,
+        _: BTreeMap<&str, Vec<&str>>,
+    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        unimplemented!()
+    }
+
     fn find(&self, _: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         unimplemented!();
     }
@@ -471,12 +483,8 @@ impl Store for FakeStore {
         unimplemented!();
     }
 
-    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        let s1 = "dealdrafts".to_string();
-        match hash {
-            "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3" => Ok(Some(s1)),
-            _ => Ok(None),
-        }
+    fn find_ens_name(&self, _: &str) -> Result<Option<String>, QueryExecutionError> {
+        unimplemented!("find_ens_name unimplemented")
     }
 
     fn block_ptr(&self, _: SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {

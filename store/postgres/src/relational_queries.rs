@@ -11,6 +11,7 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::QueryResult;
 use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Numeric, Range, Text};
 use diesel::Connection;
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
@@ -116,6 +117,10 @@ impl EntityData {
                 unimplemented!("objects as entity attributes are not needed/supported")
             }
         }
+    }
+
+    pub fn entity_type(&self) -> String {
+        self.entity.clone()
     }
 
     /// Map the `EntityData` to an entity using the schema information
@@ -784,6 +789,64 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct FindManyQuery<'a> {
+    pub(crate) schema: &'a str,
+    pub(crate) tables: Vec<&'a Table>,
+
+    // Maps object name to ids.
+    pub(crate) ids_for_type: BTreeMap<&'a str, Vec<&'a str>>,
+    pub(crate) block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Generate
+        //    select $object0 as entity, to_jsonb(e.*) as data
+        //      from schema.<table0> e where id = any($ids0)
+        //    union all
+        //    select $object1 as entity, to_jsonb(e.*) as data
+        //      from schema.<table1> e where id = any($ids1)
+        //    union all
+        //    ...
+        for (i, table) in self.tables.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object)?;
+            out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+            out.push_sql("  from ");
+            out.push_identifier(self.schema)?;
+            out.push_sql(".");
+            out.push_identifier(table.name.as_str())?;
+            out.push_sql(" e\n where ");
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            out.push_sql(" = any(");
+            out.push_bind_param::<Array<Text>, _>(&self.ids_for_type[table.object.as_str()])?;
+            out.push_sql(") and ");
+            BlockRangeContainsClause::new(self.block).walk_ast(out.reborrow())?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FindManyQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FindManyQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct InsertQuery<'a> {
