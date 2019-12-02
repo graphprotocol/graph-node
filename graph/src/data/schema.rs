@@ -190,6 +190,33 @@ impl Schema {
         }
     }
 
+    pub fn resolve_schema_references<S: Store + SubgraphDeploymentStore>(
+        &self,
+        store: Arc<S>,
+    ) -> (
+        HashMap<SchemaReference, Arc<Schema>>,
+        Vec<SchemaImportError>,
+    ) {
+        // TODO: Handle circular dependencies with a memo
+        self.imported_schemas().into_iter().fold(
+            (HashMap::new(), vec![]),
+            |(mut schemas, mut errors), schema_ref| {
+                match schema_ref.clone().resolve(store.clone()) {
+                    Ok(schema) => {
+                        let (s, e) = schema.resolve_schema_references(store.clone());
+                        schemas.insert(schema_ref, schema);
+                        schemas.extend(s);
+                        errors.extend(e);
+                    }
+                    Err(err) => {
+                        errors.push(err);
+                    }
+                }
+                (schemas, errors)
+            },
+        )
+    }
+
     pub fn collect_interfaces(
         document: &schema::Document,
     ) -> Result<
