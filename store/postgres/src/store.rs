@@ -7,14 +7,26 @@ use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
-use std::sync::{Mutex, RwLock};
+use std::iter::FromIterator;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
-use graph::data::subgraph::schema::*;
-use graph::prelude::serde_json;
-use graph::prelude::{ChainHeadUpdateListener as _, *};
+use graph::data::subgraph::schema::{
+    SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
+};
+use graph::prelude::{
+    bail, debug, ethabi, format_err, info, o, serde_json, stream, tiny_keccak, tokio, trace, warn,
+    web3, AttributeIndexDefinition, BigInt, ChainHeadUpdateListener as _, ChainHeadUpdateStream,
+    ChainStore, Entity, EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange,
+    Error, EthereumBlock, EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier,
+    EventProducer as _, Future, LightEthereumBlock, Logger, MetadataOperation, MetricsRegistry,
+    QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
+    StoreEventStream, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError,
+    Value,
+};
 use graph_graphql::prelude::api_schema;
 use tokio::timer::Interval;
 use web3::types::H256;
