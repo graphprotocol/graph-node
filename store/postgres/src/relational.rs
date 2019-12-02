@@ -136,10 +136,6 @@ pub struct Layout {
     pub subgraph: SubgraphDeploymentId,
     /// The database schema for this subgraph
     pub schema: String,
-    /// Map the entity names of interfaces to the list of
-    /// database tables that contain entities implementing
-    /// that interface
-    pub interfaces: HashMap<String, Vec<Arc<Table>>>,
     /// Enums defined in the schema and their possible values. The names
     /// are the original GraphQL names
     pub enums: EnumMap,
@@ -169,7 +165,6 @@ impl Layout {
         SqlName::check_valid_identifier(&schema, "database schema")?;
 
         // Extract interfaces and tables
-        let mut interfaces: HashMap<String, Vec<SqlName>> = HashMap::new();
         let mut tables = Vec::new();
         let mut enums = EnumMap::new();
 
@@ -178,20 +173,11 @@ impl Layout {
                 // Do not create a table for the _Schema_ type
                 TypeDefinition(Object(obj_type)) if obj_type.name.eq(SCHEMA_TYPE_NAME) => {}
                 TypeDefinition(Object(obj_type)) => {
-                    let table = Table::new(
-                        obj_type,
-                        &schema,
-                        &mut interfaces,
-                        &enums,
-                        id_type,
-                        tables.len() as u32,
-                    )?;
+                    let table =
+                        Table::new(obj_type, &schema, &enums, id_type, tables.len() as u32)?;
                     tables.push(table);
                 }
-                TypeDefinition(Interface(interface_type)) => {
-                    SqlName::check_valid_identifier(&interface_type.name, "interface")?;
-                    interfaces.insert(interface_type.name.clone(), vec![]);
-                }
+                TypeDefinition(Interface(_)) => { /* we do not care about interfaces */ }
                 TypeDefinition(Enum(enum_type)) => {
                     SqlName::check_valid_identifier(&enum_type.name, "enum")?;
                     let values: Vec<_> = enum_type
@@ -211,24 +197,6 @@ impl Layout {
         }
 
         let tables: Vec<_> = tables.into_iter().map(|table| Arc::new(table)).collect();
-        let interfaces = interfaces
-            .into_iter()
-            .map(|(k, v)| {
-                // The unwrap here is ok because tables only contains entries
-                // for which we know that a table exists
-                let v: Vec<_> = v
-                    .iter()
-                    .map(|name| {
-                        tables
-                            .iter()
-                            .find(|table| &table.name == name)
-                            .unwrap()
-                            .clone()
-                    })
-                    .collect();
-                (k, v)
-            })
-            .collect::<HashMap<_, _>>();
 
         let count_query = tables
             .iter()
@@ -254,7 +222,6 @@ impl Layout {
             subgraph,
             schema,
             tables,
-            interfaces,
             enums,
             count_query,
         })
@@ -769,7 +736,6 @@ impl Table {
     fn new(
         defn: &s::ObjectType,
         schema: &str,
-        interfaces: &mut HashMap<String, Vec<SqlName>>,
         enums: &EnumMap,
         id_type: IdType,
         position: u32,
@@ -790,19 +756,9 @@ impl Table {
             columns,
             position,
         };
-        for interface_name in &defn.implements_interfaces {
-            match interfaces.get_mut(interface_name) {
-                Some(tables) => tables.push(table.name.clone()),
-                None => {
-                    return Err(StoreError::Unknown(format_err!(
-                        "unknown interface {}",
-                        interface_name
-                    )))
-                }
-            }
-        }
         Ok(table)
     }
+
     /// Find the column `name` in this table. The name must be in snake case,
     /// i.e., use SQL conventions
     pub fn column(&self, name: &SqlName) -> Result<&Column, StoreError> {
