@@ -3,13 +3,16 @@ use futures::future;
 use futures::prelude::*;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
+use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Instant;
 
 use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
-use graph::prelude::*;
-use web3;
+use graph::prelude::{
+    debug, err_msg, error, ethabi, format_err, hex, info, retry, stream, tiny_keccak, tokio_timer,
+    trace, warn, web3, ChainStore, Error, EthereumCallCache, Logger,
+};
 use web3::api::Web3;
 use web3::transports::batch::Batch;
 use web3::types::{Filter, *};
