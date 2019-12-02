@@ -25,13 +25,12 @@ use graph::prelude::{
     QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
     StoreEventStream, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
     SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError,
-    Value,
+    Value, BLOCK_NUMBER_MAX,
 };
 use graph_graphql::prelude::api_schema;
 use tokio::timer::Interval;
 use web3::types::H256;
 
-use crate::block_range::BLOCK_NUMBER_MAX;
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};

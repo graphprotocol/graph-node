@@ -21,12 +21,12 @@ use crate::relational_queries::{
     InsertQuery, RevertClampQuery, RevertRemoveQuery,
 };
 use graph::prelude::{
-    format_err, Entity, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
-    EntityKey, EntityOrder, EntityRange, QueryExecutionError, StoreError, StoreEvent,
+    format_err, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
+    EntityFilter, EntityKey, EntityOrder, EntityRange, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId, ValueType,
 };
 
-use crate::block_range::{BlockNumber, BLOCK_RANGE_COLUMN};
+use crate::block_range::BLOCK_RANGE_COLUMN;
 use crate::entities::STRING_PREFIX_SIZE;
 
 /// A string we use as a SQL name for a table or column. The important thing

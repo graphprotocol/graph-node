@@ -12,8 +12,9 @@ use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
     bigdecimal::One, web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey,
     EntityOrder, EntityQuery, EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
+    BLOCK_NUMBER_MAX,
 };
-use graph_store_postgres::layout_for_tests::{Layout, BLOCK_NUMBER_MAX, STRING_PREFIX_SIZE};
+use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
 
 use test_store::*;
 

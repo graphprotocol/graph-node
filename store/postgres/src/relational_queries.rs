@@ -17,13 +17,13 @@ use std::str::FromStr;
 
 use graph::data::store::scalar;
 use graph::prelude::{
-    format_err, serde_json, Attribute, Entity, EntityCollection, EntityFilter, EntityKey,
-    EntityLink, EntityOrder, EntityRange, EntityWindow, QueryExecutionError, StoreError, Value,
-    ValueType,
+    format_err, serde_json, Attribute, BlockNumber, Entity, EntityCollection, EntityFilter,
+    EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, QueryExecutionError, StoreError,
+    Value, ValueType,
 };
 
 use crate::block_range::{
-    BlockNumber, BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
+    BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
 };
 use crate::entities::STRING_PREFIX_SIZE;
 use crate::filter::UnsupportedFilter;
