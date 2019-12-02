@@ -12,7 +12,7 @@ use tokio::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
-use crate::components::store::StoreError;
+use crate::components::store::{Store, StoreError, SubgraphDeploymentStore};
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaReference, SchemaValidationError};
 use crate::data::subgraph::schema::{
@@ -319,6 +319,12 @@ pub enum SubgraphAssignmentProviderEvent {
     SubgraphStart(SubgraphManifest),
     /// The subgraph with the given ID should stop processing.
     SubgraphStop(SubgraphDeploymentId),
+}
+
+#[derive(Fail, Debug)]
+pub enum SubgraphManifestValidationWarning {
+    #[fail(display = "schema validation produced warnings: {:?}", _0)]
+    SchemaValidationWarning(Vec<SchemaValidationError>),
 }
 
 #[derive(Fail, Debug)]
@@ -847,23 +853,25 @@ impl UnvalidatedSubgraphManifest {
         self.0.schema.imported_schemas()
     }
 
-    pub fn validate(
-        &self,
-        _logger: Logger,
-        schemas: HashMap<SchemaReference, Arc<Schema>>,
-    ) -> Result<SubgraphManifest, Vec<SubgraphManifestValidationError>> {
-        let manifest = &self.0;
+    pub fn validate<S: Store + SubgraphDeploymentStore>(
+        self,
+        store: Arc<S>,
+    ) -> Result<
+        (SubgraphManifest, Vec<SubgraphManifestValidationWarning>),
+        Vec<SubgraphManifestValidationError>,
+    > {
+        let (schemas, import_errors) = self.0.schema.resolve_schema_references(store);
 
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
 
         // Validate that the manifest has at least one data source
-        if manifest.data_sources.is_empty() {
+        if self.0.data_sources.is_empty() {
             errors.push(SubgraphManifestValidationError::NoDataSources);
         }
 
         // Validate that the manifest has a `source` address in each data source
         // which has call or block handlers
-        if manifest.data_sources.iter().any(|data_source| {
+        if self.0.data_sources.iter().any(|data_source| {
             let no_source_address = data_source.source.address.is_none();
             let has_call_handlers = !data_source.mapping.call_handlers.is_empty();
             let has_block_handlers = !data_source.mapping.block_handlers.is_empty();
@@ -875,7 +883,7 @@ impl UnvalidatedSubgraphManifest {
 
         // Validate that there are no more than one of each type of
         // block_handler in each data source.
-        let has_too_many_block_handlers = manifest.data_sources.iter().any(|data_source| {
+        let has_too_many_block_handlers = self.0.data_sources.iter().any(|data_source| {
             if data_source.mapping.block_handlers.is_empty() {
                 return false;
             }
@@ -900,7 +908,7 @@ impl UnvalidatedSubgraphManifest {
             errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
         }
 
-        manifest
+        self.0
             .schema
             .validate(&schemas)
             .err()
@@ -911,7 +919,10 @@ impl UnvalidatedSubgraphManifest {
                 ));
             });
 
-        return Err(errors);
+        match errors.is_empty() {
+            true => Ok((self.0, vec![])),
+            false => Err(errors),
+        }
     }
 }
 

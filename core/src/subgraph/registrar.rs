@@ -13,7 +13,6 @@ lazy_static! {
     );
 }
 
-use graph::data::schema::{SchemaImportError, SchemaReference};
 use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
     SubgraphEntity, SubgraphVersionEntity, TypedEntity,
@@ -338,50 +337,36 @@ where
                     })
             })
             .and_then(move |(unvalidated, ethereum_adapter, chain_store)| {
-                future::ok(resolve_schema_references(
-                    &unvalidated.0.schema,
-                    store.clone(),
-                ))
-                .and_then(|(schemas, import_errors)| {
-                    // Separate errors and warning from SchemaImportError(s)
-                    let failable_schema_errors: Vec<SchemaImportError> = import_errors
-                        .iter()
-                        .filter(|err| SchemaImportError::is_failure(err))
-                        .map(|err| err.clone())
-                        .collect();
-                    let schema_import_warnings: Vec<SchemaImportError> = import_errors
-                        .into_iter()
-                        .filter(|err| !SchemaImportError::is_failure(err))
-                        .collect();
-
-                    // Validate the unvalidated manifest
-                    // unvalidated.validate(schemas)
-
-                    // Take the errors from the validation function and combine them
-                    // with the `failable_schema_errors`, to get a single Vector of errors
-                    // If the vector is not emmpty, return an error
-
-                    // Log the import warnings and continue with the validated SubgraphManifest
-                    future::ok((schemas, schema_import_warnings))
-                })
-                .map(move |(schemas, import_errors)| {
-                    (unvalidated.0, ethereum_adapter, chain_store, store)
-                })
+                future::result(unvalidated.validate(store.clone()))
+                    .map_err(|validation_errors| {
+                        SubgraphRegistrarError::ManifestValidationError(validation_errors)
+                    })
+                    .map(move |(manifest, validation_warnings)| {
+                        (
+                            manifest,
+                            ethereum_adapter,
+                            chain_store,
+                            store,
+                            validation_warnings,
+                        )
+                    })
             })
-            .and_then(move |(manifest, ethereum_adapter, chain_store, store)| {
-                let manifest_id = manifest.id.clone();
-                create_subgraph_version(
-                    &logger2,
-                    store,
-                    chain_store.clone(),
-                    ethereum_adapter.clone(),
-                    name,
-                    manifest,
-                    node_id,
-                    version_switching_mode,
-                )
-                .map(|_| manifest_id)
-            })
+            .and_then(
+                move |(manifest, ethereum_adapter, chain_store, store, _validation_warnings)| {
+                    let manifest_id = manifest.id.clone();
+                    create_subgraph_version(
+                        &logger2,
+                        store,
+                        chain_store.clone(),
+                        ethereum_adapter.clone(),
+                        name,
+                        manifest,
+                        node_id,
+                        version_switching_mode,
+                    )
+                    .map(|_| manifest_id)
+                },
+            )
             .and_then(move |manifest_id| {
                 debug!(
                     logger3,
@@ -416,32 +401,6 @@ where
             node_id,
         )))
     }
-}
-
-fn resolve_schema_references<S: Store + SubgraphDeploymentStore>(
-    schema: &Schema,
-    store: Arc<S>,
-) -> (
-    HashMap<SchemaReference, Arc<Schema>>,
-    Vec<SchemaImportError>,
-) {
-    schema.imported_schemas().into_iter().fold(
-        (HashMap::new(), vec![]),
-        |(mut schemas, mut errors), schema_ref| {
-            match schema_ref.clone().resolve(store.clone()) {
-                Ok(schema) => {
-                    let (s, e) = resolve_schema_references(&schema, store.clone());
-                    schemas.insert(schema_ref, schema);
-                    schemas.extend(s);
-                    errors.extend(e);
-                }
-                Err(err) => {
-                    errors.push(err);
-                }
-            }
-            (schemas, errors)
-        },
-    )
 }
 
 fn handle_assignment_event<P>(
