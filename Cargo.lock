@@ -884,7 +884,7 @@ dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)",
+ "ipfs-api 0.5.2 (git+https://github.com/ferristseng/rust-ipfs-api)",
  "isatty 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-bigint 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -937,7 +937,7 @@ dependencies = [
  "graph-mock 0.16.1",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)",
+ "ipfs-api 0.5.2 (git+https://github.com/ferristseng/rust-ipfs-api)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lru_time_cache 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "semver 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -998,7 +998,7 @@ dependencies = [
  "graph-store-postgres 0.16.1",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)",
+ "ipfs-api 0.5.2 (git+https://github.com/ferristseng/rust-ipfs-api)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometheus 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1026,7 +1026,7 @@ dependencies = [
  "graph-runtime-derive 0.16.1",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)",
+ "ipfs-api 0.5.2 (git+https://github.com/ferristseng/rust-ipfs-api)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-wasm 0.40.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "pwasm-utils 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1377,8 +1377,8 @@ dependencies = [
 
 [[package]]
 name = "ipfs-api"
-version = "0.5.1"
-source = "git+https://github.com/ferristseng/rust-ipfs-api#55902e98d868dcce047863859caf596a629d10ec"
+version = "0.5.2"
+source = "git+https://github.com/ferristseng/rust-ipfs-api#094b7796ea77dd4dcaa8fe181b25e08a0d3a9cd9"
 dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "dirs 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1390,7 +1390,6 @@ dependencies = [
  "hyper-tls 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiaddr 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_derive 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.42 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_urlencoded 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.1.22 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3616,7 +3615,7 @@ dependencies = [
 "checksum input_buffer 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8e1b822cc844905551931d6f81608ed5f50a79c1078a4e2b4d42dbc7c1eedfbf"
 "checksum integer-encoding 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "26746cbc2e680af687e88d717f20ff90079bd10fc984ad57d277cd0e37309fa5"
 "checksum iovec 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "dbe6e417e7d0975db6512b90796e8ce223145ac4e33c377e4a42882a0e88bb08"
-"checksum ipfs-api 0.5.1 (git+https://github.com/ferristseng/rust-ipfs-api)" = "<none>"
+"checksum ipfs-api 0.5.2 (git+https://github.com/ferristseng/rust-ipfs-api)" = "<none>"
 "checksum isatty 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "e31a8281fc93ec9693494da65fbf28c0c2aa60a2eaec25dc58e2f31952e95edc"
 "checksum itoa 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "501266b7edd0174f8530248f87f99c88fbe60ca4ef3dd486835b8d8d53136f7f"
 "checksum jsonrpc-core 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "91d767c183a7e58618a609499d359ce3820700b3ebb4823a18c343b4a2a41a0d"
