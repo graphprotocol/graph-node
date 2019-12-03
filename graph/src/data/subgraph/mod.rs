@@ -24,7 +24,6 @@ use crate::data::subgraph::schema::{
 use crate::prelude::{format_err, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
 
-use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
