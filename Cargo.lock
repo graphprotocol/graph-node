@@ -981,7 +981,7 @@ name = "graph-chain-ethereum"
 version = "0.16.1"
 dependencies = [
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "diesel 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "diesel 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.16.1",
@@ -3706,8 +3706,8 @@ dependencies = [
 "checksum darling_core 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "d2a368589465391e127e10c9e3a08efc8df66fd49b87dc8524c764bbe7f2ef82"
 "checksum darling_macro 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "244e8987bd4e174385240cde20a3657f607fb0797563c28255c353b5819a07b1"
 "checksum derive_more 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7a141330240c921ec6d074a3e188a7c7ef95668bb95e7d44fa0e5778ec2a7afe"
-"checksum diesel 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "9d7cc03b910de9935007861dce440881f69102aaaedfd4bc5a6f40340ca5840c"
 "checksum derive_state_machine_future 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1220ad071cb8996454c20adf547a34ba3ac793759dab793d9dc04996a373ac83"
+"checksum diesel 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "9d7cc03b910de9935007861dce440881f69102aaaedfd4bc5a6f40340ca5840c"
 "checksum diesel-derive-enum 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "adbaf5e1344edeedc4d1cead2dc3ce6fc4115bb26b3704c533b92717940f2fb5"
 "checksum diesel-dynamic-schema 1.0.0 (git+https://github.com/diesel-rs/diesel-dynamic-schema?rev=a8ec4fb1)" = "<none>"
 "checksum diesel_derives 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "62a27666098617d52c487a41f70de23d44a1dc1f3aa5877ceba2790fb1f1cab4"
