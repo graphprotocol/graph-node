@@ -334,11 +334,7 @@ impl Schema {
             .arguments
             .iter()
             .find(|(name, _)| name == "types")
-            .filter(|(_, value)| match value {
-                Value::List(_) => true,
-                _ => false,
-            })
-            .map(|(_, value)| match value {
+            .map_or(vec![], |(_, value)| match value {
                 Value::List(types) => types
                     .iter()
                     .filter_map(|import_type| match import_type {
@@ -363,9 +359,8 @@ impl Schema {
                         _ => None,
                     })
                     .collect(),
-                _ => unreachable!(),
+                _ => vec![],
             })
-            .unwrap_or(vec![])
     }
 
     fn schema_reference_from_directive_argument(
