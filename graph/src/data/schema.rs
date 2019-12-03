@@ -451,16 +451,14 @@ impl Schema {
         _schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
         let mut errors = vec![];
-        // [X] Should include all logic in graph/src/data/graphql/validation.rs
         self.validate_schema_types()
             .unwrap_or_else(|err| errors.push(err));
         self.validate_derived_from()
             .unwrap_or_else(|err| errors.push(err));
-        // _SubgraphSchema_ type should not have fields
         self.validate_subgraph_schema_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
         // Should validate that import directives are properly formed
-        // Should that import directives only exist on the _SubgraphSchema_ type
+        // Should verify that import directives only exist on the _Schema_ type
         self.validate_import_directives()
             .unwrap_or_else(|err| errors.push(err));
         // Should validate that all types in the Subgraph referenced from other subgraphs exist
@@ -508,7 +506,9 @@ impl Schema {
                         .iter()
                         .filter(|directive| directive.name == "imports")
                         // TODO: Finish verifying import directive
-                        .find(|_directive| true)
+                        // Each import directive must have a valid `from` argument
+                        // Each import directive must have a valid 'types` argument
+                        .find(|_directive| false)
                         .map(|_| SchemaValidationError::ImportDirectiveInvalid)
                 }
             }) {
