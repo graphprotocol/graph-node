@@ -517,7 +517,12 @@ impl Schema {
         }
     }
 
-    // fn validate_imported_types(&self)
+    fn validate_imported_types(
+        &self,
+        schemas: &HashMap<SchemaReference, Arc<Schema>>,
+    ) -> Result<(), Vec<SchemaValidationError>> {
+        Ok(())
+    }
 
     fn validate_fields(&self) -> Result<(), Vec<SchemaValidationError>> {
         let native_types = traversal::get_object_and_interface_type_fields(&self.document);

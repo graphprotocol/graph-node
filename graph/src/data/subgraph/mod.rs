@@ -340,10 +340,8 @@ pub enum SubgraphManifestValidationError {
     DataSourceBlockHandlerLimitExceeded,
     #[fail(display = "the specified block must exist on the Ethereum network")]
     BlockNotFound(String),
-    // TODO: Figure out how to get these error to properly show up
     #[fail(display = "imported schema(s) are invalid: {:?}", _0)]
     SchemaImportError(Vec<SchemaImportError>),
-    // TODO: Figure out how to get these error to properly show up
     #[fail(display = "schema validation failed: {:?}", _0)]
     SchemaValidationError(Vec<SchemaValidationError>),
 }
