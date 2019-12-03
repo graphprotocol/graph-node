@@ -295,7 +295,8 @@ where
         hash: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        let store = self.store.clone();
+        let store_1 = self.store.clone();
+        let store_2 = self.store.clone();
         let chain_stores = self.chain_stores.clone();
         let ethereum_adapters = self.ethereum_adapters.clone();
         let version_switching_mode = self.version_switching_mode;
@@ -313,8 +314,12 @@ where
             )
             .map_err(SubgraphRegistrarError::ResolveError)
             .and_then(move |unvalidated| {
-                unvalidated
-                    .0
+                future::result(unvalidated.validate(store_1)).map_err(|validation_errors| {
+                    SubgraphRegistrarError::ManifestValidationError(validation_errors)
+                })
+            })
+            .and_then(move |(manifest, validation_warnings)| {
+                manifest
                     .network_name()
                     .map_err(|e| SubgraphRegistrarError::ManifestValidationError(vec![e]))
                     .and_then(move |network_name| {
@@ -331,32 +336,22 @@ where
                                         network_name.clone(),
                                     ))
                                     .map(move |ethereum_adapter| {
-                                        (unvalidated, ethereum_adapter.clone(), chain_store.clone())
+                                        (
+                                            manifest,
+                                            ethereum_adapter.clone(),
+                                            chain_store.clone(),
+                                            validation_warnings,
+                                        )
                                     })
                             })
                     })
             })
-            .and_then(move |(unvalidated, ethereum_adapter, chain_store)| {
-                future::result(unvalidated.validate(store.clone()))
-                    .map_err(|validation_errors| {
-                        SubgraphRegistrarError::ManifestValidationError(validation_errors)
-                    })
-                    .map(move |(manifest, validation_warnings)| {
-                        (
-                            manifest,
-                            ethereum_adapter,
-                            chain_store,
-                            store,
-                            validation_warnings,
-                        )
-                    })
-            })
             .and_then(
-                move |(manifest, ethereum_adapter, chain_store, store, _validation_warnings)| {
+                move |(manifest, ethereum_adapter, chain_store, _validation_warnings)| {
                     let manifest_id = manifest.id.clone();
                     create_subgraph_version(
                         &logger2,
-                        store,
+                        store_2,
                         chain_store.clone(),
                         ethereum_adapter.clone(),
                         name,
