@@ -233,6 +233,13 @@ pub struct EntityQuery {
     /// ID of the subgraph.
     pub subgraph_id: SubgraphDeploymentId,
 
+    /// The block height at which to execute the query. Set this to
+    /// `BLOCK_NUMBER_MAX` to run the query at the latest available block.
+    /// If the subgraph uses JSONB storage, anything but `BLOCK_NUMBER_MAX`
+    /// will cause an error as JSONB storage does not support querying anything
+    /// but the latest block
+    pub block: BlockNumber,
+
     /// The names of the entity types being queried. The result is the union
     /// (with repetition) of the query for each entity.
     pub collection: EntityCollection,
@@ -256,6 +263,7 @@ impl EntityQuery {
     pub fn new(subgraph_id: SubgraphDeploymentId, collection: EntityCollection) -> Self {
         EntityQuery {
             subgraph_id,
+            block: BLOCK_NUMBER_MAX,
             collection,
             filter: None,
             order_by: None,
@@ -771,10 +779,11 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error>;
 
-    /// Looks up an entity using the given store key.
+    /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
-    /// Look up multiple entities. Returns a map of entities by type.
+    /// Look up multiple entities as of the latest block. Returns a map of
+    /// entities by type.
     fn get_many(
         &self,
         subgraph_id: &SubgraphDeploymentId,

@@ -374,7 +374,7 @@ impl Store {
             query.filter,
             order,
             query.range,
-            BLOCK_NUMBER_MAX,
+            query.block,
         )
     }
 
