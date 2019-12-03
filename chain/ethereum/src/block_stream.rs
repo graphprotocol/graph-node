@@ -2,7 +2,7 @@ use std::cmp;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use graph::components::ethereum::{blocks_with_triggers, triggers_in_block};
 use graph::data::subgraph::schema::{
@@ -11,7 +11,6 @@ use graph::data::subgraph::schema::{
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
-use tokio::timer::Delay;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
@@ -881,11 +880,10 @@ where
 
                             // Pause before trying again
                             let secs = (5 * self.consecutive_err_count).max(120) as u64;
-                            let instant = Instant::now() + Duration::from_secs(secs);
                             state = BlockStreamState::RetryAfterDelay(Box::new(
-                                Delay::new(instant).map_err(|err| {
-                                    format_err!("RetryAfterDelay future failed = {}", err)
-                                }),
+                                tokio::time::delay_for(Duration::from_secs(secs))
+                                    .map(Ok)
+                                    .compat(),
                             ));
                             break Err(e);
                         }

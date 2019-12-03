@@ -63,17 +63,20 @@ where
         Some(max_bytes) => Box::new(
             client
                 .object_stat(&path)
+                .map_err(|e| failure::err_msg(e.to_string()))
                 .timeout(timeout)
                 .map_err(|e| failure::err_msg(e.to_string()))
+                .and_then(|res| futures03::future::ready(res))
                 .and_then(move |stat| match stat.cumulative_size > max_bytes {
-                    false => Ok(()),
-                    true => Err(format_err!(
+                    false => futures03::future::ok(()),
+                    true => futures03::future::err(format_err!(
                         "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
                         path,
                         max_bytes,
                         stat.cumulative_size
                     )),
                 })
+                .compat()
                 .and_then(|()| fut),
         ),
         None => fut,

@@ -6,8 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::prelude::{SecondsFormat, Utc};
-use futures::future;
-use futures::{Future, Stream};
+use futures::Future;
 use reqwest;
 use reqwest::r#async::Client;
 use serde::ser::Serializer as SerdeSerializer;
@@ -15,7 +14,6 @@ use serde::Serialize;
 use serde_json::json;
 use slog::*;
 use slog_async;
-use tokio::timer::Interval;
 
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
@@ -184,20 +182,19 @@ impl ElasticDrain {
     }
 
     fn periodically_flush_logs(&self) {
+        use futures03::compat::Future01CompatExt;
+        use futures03::stream::StreamExt;
+
         let flush_logger = self.error_logger.clone();
-        let interval_error_logger = self.error_logger.clone();
         let logs = self.logs.clone();
         let config = self.config.clone();
 
-        tokio::spawn(
-            Interval::new_interval(self.config.flush_interval)
-                .map_err(move |e| {
-                    error!(
-                        interval_error_logger,
-                        "Error in Elasticsearch logger flush interval: {}", e
-                    );
-                })
-                .for_each(move |_| {
+        crate::task_spawn::spawn(tokio::time::interval(self.config.flush_interval).for_each(
+            move |_| {
+                let logs = logs.clone();
+                let config = config.clone();
+                let flush_logger = flush_logger.clone();
+                async move {
                     let logs_to_send = {
                         let mut logs = logs.lock().unwrap();
                         let logs_to_send = (*logs).clone();
@@ -208,8 +205,7 @@ impl ElasticDrain {
 
                     // Do nothing if there are no logs to flush
                     if logs_to_send.is_empty() {
-                        return Box::new(future::ok(()))
-                            as Box<dyn Future<Item = _, Error = _> + Send>;
+                        return;
                     }
 
                     trace!(
@@ -266,28 +262,29 @@ impl ElasticDrain {
                     // Send batch of logs to Elasticsearch
                     let client = Client::new();
                     let logger_for_err = flush_logger.clone();
-                    Box::new(
-                        client
-                            .post(batch_url)
-                            .header("Content-Type", "application/json")
-                            .basic_auth(
-                                config.general.username.clone().unwrap_or("".into()),
-                                config.general.password.clone(),
-                            )
-                            .body(batch_body)
-                            .send()
-                            .and_then(|response| response.error_for_status())
-                            .map(|_| ())
-                            .map_err(move |e| {
-                                // Log if there was a problem sending the logs
-                                error!(
-                                    logger_for_err,
-                                    "Failed to send logs to Elasticsearch: {}", e
-                                );
-                            }),
-                    )
-                }),
-        );
+
+                    let _ = client
+                        .post(batch_url)
+                        .header("Content-Type", "application/json")
+                        .basic_auth(
+                            config.general.username.clone().unwrap_or("".into()),
+                            config.general.password.clone(),
+                        )
+                        .body(batch_body)
+                        .send()
+                        .and_then(|response| response.error_for_status())
+                        .map_err(move |e| {
+                            // Log if there was a problem sending the logs
+                            error!(
+                                logger_for_err,
+                                "Failed to send logs to Elasticsearch: {}", e
+                            );
+                        })
+                        .compat()
+                        .await;
+                }
+            },
+        ));
     }
 }
 

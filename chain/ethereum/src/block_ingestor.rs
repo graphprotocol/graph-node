@@ -1,7 +1,6 @@
 use lazy_static;
 use std::collections::HashMap;
 use std::time::Duration;
-use std::time::Instant;
 
 use graph::prelude::*;
 use web3::types::*;
@@ -88,10 +87,9 @@ where
         let static_self: &'static _ = Box::leak(Box::new(self));
 
         // Create stream that emits at polling interval
-        tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
-            .map_err(move |e| {
-                error!(static_self.logger, "timer::Interval failed: {:?}", e);
-            })
+        tokio::time::interval(static_self.polling_interval)
+            .map(Ok)
+            .compat()
             .for_each(move |_| {
                 // Attempt to poll
                 static_self

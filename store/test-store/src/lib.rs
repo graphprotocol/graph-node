@@ -58,7 +58,7 @@ lazy_static! {
                 postgres_conn_pool,
                 Arc::new(MockMetricsRegistry::new()),
             )))
-        })).expect("could not create Diesel Store instance for test suite")
+        }).compat()).expect("could not create Diesel Store instance for test suite")
     };
 
     pub static ref GENESIS_PTR: EthereumBlockPointer = (

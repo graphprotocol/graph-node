@@ -50,16 +50,17 @@ impl ChainHeadUpdateListener {
         metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
         network_name: String,
-        mut update_sender: watch::Sender<()>,
+        update_sender: watch::Sender<()>,
     ) {
         let logger = logger.clone();
 
         // Process chain head updates in a dedicated task
-        tokio::spawn(
+        graph::spawn(
             listener
                 .take_event_stream()
                 .unwrap()
-                .filter_map(move |notification| {
+                .compat()
+                .try_filter_map(move |notification| {
                     // Create ChainHeadUpdate from JSON
                     let update: ChainHeadUpdate =
                         serde_json::from_value(notification.payload.clone()).unwrap_or_else(|_| {
@@ -77,13 +78,13 @@ impl ChainHeadUpdateListener {
                     );
 
                     // Only include update if it is for the network we're interested in
-                    if update.network_name == network_name {
+                    futures03::future::ok(if update.network_name == network_name {
                         Some(update)
                     } else {
                         None
-                    }
+                    })
                 })
-                .for_each(move |update| {
+                .try_for_each(move |update| {
                     debug!(
                         logger.clone(),
                         "Received chain head update";
@@ -92,7 +93,11 @@ impl ChainHeadUpdateListener {
                         "head_block_number" => &update.head_block_number,
                     );
 
-                    update_sender.broadcast(()).map_err(|_| ())
+                    futures03::future::ready(
+                        update_sender
+                            .broadcast(())
+                            .map_err(|_| panic!("no listeners for chain head updates")),
+                    )
                 }),
         );
 
@@ -103,6 +108,6 @@ impl ChainHeadUpdateListener {
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
     fn subscribe(&self) -> ChainHeadUpdateStream {
-        Box::new(self.update_receiver.clone().map_err(|_| ()))
+        Box::new(self.update_receiver.clone().map(Ok).compat())
     }
 }

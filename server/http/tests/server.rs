@@ -18,7 +18,7 @@ use graph::prelude::*;
 use graph_server_http::test_utils;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
-use crate::tokio::timer::Delay;
+use crate::tokio::time::Delay;
 
 /// A simple stupid query runner for testing.
 pub struct TestGraphQlRunner;

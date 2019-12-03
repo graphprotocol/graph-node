@@ -29,7 +29,6 @@ use graph::prelude::{
 };
 use graph_chain_ethereum::BlockIngestorMetrics;
 use graph_graphql::prelude::api_schema;
-use tokio::timer::Interval;
 use web3::types::H256;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
@@ -278,60 +277,64 @@ impl Store {
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
-        tokio::spawn(store_events.for_each(move |event| {
-            let senders = subscriptions.read().unwrap().clone();
-            let logger = logger.clone();
-            let subscriptions = subscriptions.clone();
+        graph::spawn(
+            store_events
+                .for_each(move |event| {
+                    let senders = subscriptions.read().unwrap().clone();
+                    let logger = logger.clone();
+                    let subscriptions = subscriptions.clone();
 
-            // Write change to all matching subscription streams; remove subscriptions
-            // whose receiving end has been dropped
-            stream::iter_ok::<_, ()>(senders).for_each(move |(id, sender)| {
-                let logger = logger.clone();
-                let subscriptions = subscriptions.clone();
+                    // Write change to all matching subscription streams; remove subscriptions
+                    // whose receiving end has been dropped
+                    stream::iter_ok::<_, ()>(senders).for_each(move |(id, sender)| {
+                        let logger = logger.clone();
+                        let subscriptions = subscriptions.clone();
 
-                sender.send(event.clone()).then(move |result| {
-                    match result {
-                        Err(_send_error) => {
-                            // Receiver was dropped
-                            debug!(logger, "Unsubscribe"; "id" => &id);
-                            subscriptions.write().unwrap().remove(&id);
-                            Ok(())
-                        }
-                        Ok(_sender) => Ok(()),
-                    }
+                        sender.send(event.clone()).then(move |result| {
+                            match result {
+                                Err(_send_error) => {
+                                    // Receiver was dropped
+                                    debug!(logger, "Unsubscribe"; "id" => &id);
+                                    subscriptions.write().unwrap().remove(&id);
+                                    Ok(())
+                                }
+                                Ok(_sender) => Ok(()),
+                            }
+                        })
+                    })
                 })
-            })
-        }));
+                .compat(),
+        );
     }
 
     fn periodically_clean_up_stale_subscriptions(&self) {
+        use futures03::stream::StreamExt;
+
         let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
         // Clean up stale subscriptions every 5s
-        tokio::spawn(
-            Interval::new(Instant::now(), Duration::from_secs(5))
-                .for_each(move |_| {
-                    let mut subscriptions = subscriptions.write().unwrap();
+        graph::spawn(
+            tokio::time::interval(Duration::from_secs(5)).for_each(move |_| {
+                let mut subscriptions = subscriptions.write().unwrap();
 
-                    // Obtain IDs of subscriptions whose receiving end has gone
-                    let stale_ids = subscriptions
-                        .iter_mut()
-                        .filter_map(|(id, sender)| match sender.poll_ready() {
-                            Err(_) => Some(id.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>();
+                // Obtain IDs of subscriptions whose receiving end has gone
+                let stale_ids = subscriptions
+                    .iter_mut()
+                    .filter_map(|(id, sender)| match sender.poll_ready() {
+                        Err(_) => Some(id.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
 
-                    // Remove all stale subscriptions
-                    for id in stale_ids {
-                        debug!(logger, "Unsubscribe"; "id" => &id);
-                        subscriptions.remove(&id);
-                    }
+                // Remove all stale subscriptions
+                for id in stale_ids {
+                    debug!(logger, "Unsubscribe"; "id" => &id);
+                    subscriptions.remove(&id);
+                }
 
-                    Ok(())
-                })
-                .map_err(|_| unreachable!()),
+                futures03::future::ready(())
+            }),
         );
     }
 

@@ -25,8 +25,12 @@ pub fn spawn_module(
     //
     // This thread can spawn tasks on the runtime by sending them to
     // `task_receiver`.
-    let (task_sender, task_receiver) = mpsc::channel(100);
-    tokio::spawn(task_receiver.for_each(tokio::spawn));
+    let (task_sender, task_receiver) =
+        mpsc::channel::<Box<dyn Future<Item = (), Error = ()> + Send>>(100);
+    graph::spawn(task_receiver.compat().try_for_each(|f| {
+        graph::spawn(f.compat());
+        futures03::future::ok(())
+    }));
 
     // Spawn a dedicated thread for the runtime.
     //

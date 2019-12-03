@@ -175,7 +175,7 @@ where
         to: u64,
         filter: EthGetLogsFilter,
         too_many_logs_fingerprints: &'static [&'static str],
-    ) -> impl Future<Item = Vec<Log>, Error = tokio_timer::timeout::Error<web3::error::Error>> {
+    ) -> impl Future<Item = Vec<Log>, Error = TimeoutError<web3::error::Error>> {
         let eth_adapter = self.clone();
 
         retry("eth_getLogs RPC call", &logger)

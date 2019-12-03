@@ -14,3 +14,7 @@ serde = "1.0"
 serde_derive = "1.0"
 tokio-tungstenite = "0.6"
 uuid = { version = "0.7.2", features = ["v4"] }
+
+# Needed for compatibility with tokio-tungstenite
+tokio01 = { version = "0.1.7", package = "tokio" }
+tokio-io = "0.1.7"
