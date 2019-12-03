@@ -846,10 +846,6 @@ impl UnvalidatedSubgraphManifest {
         SubgraphManifest::resolve(link, resolver, logger).map(|manifest| Self(manifest))
     }
 
-    pub fn imported_schemas(&self) -> Vec<SchemaReference> {
-        self.0.schema.imported_schemas()
-    }
-
     pub fn validate<S: Store + SubgraphDeploymentStore>(
         self,
         store: Arc<S>,
