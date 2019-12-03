@@ -73,7 +73,10 @@ impl BlockWriter {
     }
 
     /// Writes a block to the store and updates the network subgraph block pointer.
-    pub fn write(&self, block: BlockWithUncles) -> impl Future<Item = (), Error = Error> {
+    pub fn write(
+        &self,
+        block: BlockWithUncles,
+    ) -> impl Future<Item = EthereumBlockPointer, Error = Error> {
         let logger = self.logger.new(o!(
             "block" => format_block(&block),
         ));
@@ -117,7 +120,10 @@ impl WriteContext {
     }
 
     /// Writes a block to the store.
-    fn write(self, block: BlockWithUncles) -> impl Future<Item = (), Error = Error> {
+    fn write(
+        self,
+        block: BlockWithUncles,
+    ) -> impl Future<Item = EthereumBlockPointer, Error = Error> {
         debug!(self.logger, "Write block");
 
         let block = Arc::new(block);
@@ -130,8 +136,8 @@ impl WriteContext {
                 // Add uncle block entities
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(block_for_uncles.uncles.clone())
-                        .filter(|ommer| ommer.is_some())
-                        .fold(context, |context, ommer| context.set_entity(ommer.unwrap()))
+                        .filter_map(|ommer| ommer)
+                        .fold(context, move |context, ommer| context.set_entity(ommer))
                 })
                 // Transact everything into the store
                 .and_then(move |context| {
@@ -148,19 +154,22 @@ impl WriteContext {
                         Err(e) => return future::err(e.into()),
                     };
 
+                    let block_ptr = EthereumBlockPointer::from(&block_for_store.block);
+
                     // Transact entity modifications into the store
                     let started = Instant::now();
                     future::result(
                         store
                             .transact_block_operations(
                                 subgraph_id.clone(),
-                                EthereumBlockPointer::from(&block_for_store.block),
+                                block_ptr.clone(),
                                 modifications,
                                 stopwatch,
                             )
                             .map_err(|e| e.into())
                             .map(move |_| {
                                 metrics.transaction.update_duration(started.elapsed());
+                                block_ptr
                             }),
                     )
                 }),
