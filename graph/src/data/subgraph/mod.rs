@@ -14,7 +14,7 @@ use web3::types::{Address, H256};
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::{Store, StoreError, SubgraphDeploymentStore};
 use crate::data::query::QueryExecutionError;
-use crate::data::schema::{Schema, SchemaImportError, SchemaReference, SchemaValidationError};
+use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
     EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
@@ -853,7 +853,7 @@ impl UnvalidatedSubgraphManifest {
         (SubgraphManifest, Vec<SubgraphManifestValidationWarning>),
         Vec<SubgraphManifestValidationError>,
     > {
-        let (schemas, import_errors) = self.0.schema.resolve_schema_references(store);
+        let (schemas, _import_errors) = self.0.schema.resolve_schema_references(store);
 
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
 
