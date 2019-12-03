@@ -261,7 +261,7 @@ where
 /// Wraps a future and measures the time from creation to completion.
 ///
 /// Example usage:
-/// ```
+/// ```ignore
 /// extern crate graph;
 /// use graph::prelude::*;
 ///
