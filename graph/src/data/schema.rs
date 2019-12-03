@@ -20,7 +20,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::sync::Arc;
 
-pub const SUBGRAPH_SCHEMA_TYPE_NAME: &str = "_SubgraphSchema_";
+pub const SCHEMA_TYPE_NAME: &str = "_schema_";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Strings(Vec<String>);
@@ -756,7 +756,7 @@ impl Schema {
     fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
         traversal::get_object_type_definitions(&self.document)
             .into_iter()
-            .find(|object_type| object_type.name == SUBGRAPH_SCHEMA_TYPE_NAME)
+            .find(|object_type| object_type.name == SCHEMA_TYPE_NAME)
     }
 }
 
