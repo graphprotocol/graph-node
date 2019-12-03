@@ -168,7 +168,7 @@ pub struct GraphQlConnection<Q, S> {
 impl<Q, S> GraphQlConnection<Q, S>
 where
     Q: GraphQlRunner,
-    S: AsyncRead + AsyncWrite + Send + 'static,
+    S: tokio_io::AsyncRead + tokio_io::AsyncWrite + Send + 'static,
 {
     /// Creates a new GraphQL subscription service.
     pub(crate) fn new(
@@ -350,7 +350,7 @@ where
                     });
                     operations.insert(id, guard);
 
-                    tokio::spawn(run_subscription);
+                    graph::spawn(run_subscription.compat());
                     Ok(())
                 }
             }
@@ -361,7 +361,7 @@ where
 impl<Q, S> IntoFuture for GraphQlConnection<Q, S>
 where
     Q: GraphQlRunner,
-    S: AsyncRead + AsyncWrite + Send + 'static,
+    S: tokio_io::AsyncRead + tokio_io::AsyncWrite + Send + 'static,
 {
     type Future = Box<dyn Future<Item = Self::Item, Error = Self::Error> + Send>;
     type Item = ();

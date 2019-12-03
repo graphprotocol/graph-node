@@ -1,6 +1,7 @@
 use ethabi::Contract;
 use failure;
 use failure::{Error, SyncFailure};
+use futures::prelude::*;
 use futures::stream;
 use parity_wasm;
 use parity_wasm::elements::Module;
@@ -12,7 +13,6 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
@@ -917,7 +917,7 @@ impl UnresolvedSubgraphManifest {
             // and skip to 0.0.4 to avoid ambiguity.
             Ok(ref ver) if *ver <= semver::Version::new(0, 0, 3) => {}
             _ => {
-                return Box::new(future::err(format_err!(
+                return Box::new(futures::future::err(format_err!(
                     "This Graph Node only supports manifest spec versions <= 0.0.2,
                     but subgraph `{}` uses `{}`",
                     id,

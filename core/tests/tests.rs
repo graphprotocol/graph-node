@@ -22,7 +22,7 @@ use graph_mock::MockStore;
 
 use test_store::LOGGER;
 
-use crate::tokio::timer::Delay;
+use crate::tokio::time::Delay;
 
 /// Adds subgraph located in `test/subgraphs/`, replacing "link to" placeholders
 /// in the subgraph manifest with links to files just added into a local IPFS

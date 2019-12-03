@@ -236,7 +236,7 @@ impl SubgraphInstanceManager {
         // Subgraph instance shutdown senders
         let instances: SharedInstanceKeepAliveMap = Default::default();
 
-        tokio::spawn(receiver.for_each(move |event| {
+        graph::spawn_blocking(receiver.compat().try_for_each(move |event| {
             use self::SubgraphAssignmentProviderEvent::*;
 
             match event {
@@ -303,7 +303,7 @@ impl SubgraphInstanceManager {
                 }
             };
 
-            Ok(())
+            futures03::future::ok(())
         }));
     }
 
@@ -418,14 +418,11 @@ impl SubgraphInstanceManager {
         // forward; this is easier than updating the existing block stream.
         //
         // This task has many calls to the store, so mark it as `blocking`.
-        let subgraph_runner =
-            graph::util::futures::blocking(loop_fn(ctx, move |ctx| run_subgraph(ctx))).then(
-                move |res| {
-                    subgraph_metrics_unregister.unregister(registry);
-                    future::result(res)
-                },
-            );
-        tokio::spawn(subgraph_runner);
+        let subgraph_runner = loop_fn(ctx, move |ctx| run_subgraph(ctx)).then(move |res| {
+            subgraph_metrics_unregister.unregister(registry);
+            future::result(res)
+        });
+        graph::spawn_blocking(subgraph_runner.compat());
 
         Ok(())
     }

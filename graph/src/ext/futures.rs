@@ -1,8 +1,11 @@
 use failure::Error;
+use futures::future::Fuse;
+use futures::prelude::{Future, Poll, Stream};
 use futures::sync::oneshot;
+use futures03::compat::{Compat01As03, Future01CompatExt};
 use std::fmt;
 use std::sync::{Arc, Mutex, Weak};
-use tokio::prelude::{future::Fuse, Future, Poll, Stream};
+use std::time::Duration;
 
 /// A cancelable stream or future.
 ///
@@ -208,6 +211,8 @@ pub trait FutureExtension: Future + Sized {
         guard: &impl Canceler,
         on_cancel: C,
     ) -> Cancelable<Self, C>;
+
+    fn timeout(self, dur: Duration) -> tokio::time::Timeout<Compat01As03<Self>>;
 }
 
 impl<F: Future> FutureExtension for F {
@@ -223,6 +228,10 @@ impl<F: Future> FutureExtension for F {
             cancel_receiver: cancel_receiver.fuse(),
             on_cancel,
         }
+    }
+
+    fn timeout(self, dur: Duration) -> tokio::time::Timeout<Compat01As03<Self>> {
+        tokio::time::timeout(dur, self.compat())
     }
 }
 

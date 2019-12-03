@@ -3,7 +3,7 @@ use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use hyper::Uri;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
-use tokio::net::TcpListener;
+use tokio01::net::TcpListener;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
 
@@ -190,7 +190,7 @@ where
                                 ws_stream,
                                 graphql_runner.clone(),
                             );
-                            tokio::spawn(service.into_future());
+                            graph::spawn_blocking_ignore_panic(service.into_future().compat());
                         }
                         Err(e) => {
                             // We gracefully skip over failed connection attempts rather

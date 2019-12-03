@@ -6,11 +6,11 @@ edition = "2018"
 [dependencies]
 clap = "2.33.0"
 env_logger = "0.7.1"
-futures = "0.1.21"
 git-testament = "0.1"
 graphql-parser = "0.2.3"
 http = "0.1"
 prometheus = "0.7"
+futures = { version = "0.3.1", features = ["compat"] }
 
 # We're using the latest ipfs-api for the HTTPS support that was merged in
 # https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec

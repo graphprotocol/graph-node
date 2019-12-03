@@ -41,14 +41,12 @@ slog-envlogger = "2.1.0"
 slog-term = "2.4.2"
 petgraph = "0.4.13"
 tiny-keccak = "1.5.0"
-tokio = "0.1.22"
-tokio-executor = "0.1.5"
+tokio = { version = "0.2.2", features = ["stream", "rt-threaded", "rt-util", "blocking", "time", "sync", "macros", "test-util"] }
 tokio-retry = "0.2"
-tokio-timer = "0.2.11"
-tokio-threadpool = "0.1.14"
 url = "1.7.2"
 prometheus = "0.7.0"
 priority-queue = "0.6.0"
+futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 
 # Our fork contains a small but hacky patch.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }

@@ -1,8 +1,8 @@
 use failure;
+use futures::prelude::*;
 use serde_json::Value;
 use slog::Logger;
 use std::time::Duration;
-use tokio::prelude::*;
 
 use crate::data::subgraph::Link;
 

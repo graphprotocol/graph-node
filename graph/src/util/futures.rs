@@ -1,10 +1,11 @@
+use crate::ext::futures::FutureExtension;
+use failure::Fail;
+use futures::prelude::*;
 use slog::{debug, trace, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::prelude::*;
-use tokio::timer::timeout;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Error as RetryError;
 use tokio_retry::Retry;
@@ -27,7 +28,7 @@ use tokio_retry::Retry;
 /// ```
 /// # extern crate graph;
 /// # use graph::prelude::*;
-/// # use tokio::timer::timeout;
+/// # use tokio::time::timeout;
 /// #
 /// # type Memes = (); // the memes are a lie :(
 /// #
@@ -70,7 +71,7 @@ pub struct RetryConfig<I, E> {
 impl<I, E> RetryConfig<I, E>
 where
     I: Send,
-    E: Send,
+    E: Debug + Send + Send + Sync + 'static,
 {
     /// Sets a function used to determine if a retry is needed.
     /// Note: timeouts always trigger a retry.
@@ -143,14 +144,17 @@ pub struct RetryConfigWithTimeout<I, E> {
 impl<I, E> RetryConfigWithTimeout<I, E>
 where
     I: Debug + Send,
-    E: Debug + Send,
+    E: Debug + Send + Send + Sync + 'static,
 {
     /// Rerun the provided function as many times as needed.
-    pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = timeout::Error<E>>
+    pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = TimeoutError<E>>
     where
         F: Fn() -> R + Send,
         R: Future<Item = I, Error = E> + Send,
     {
+        use futures03::compat::Compat;
+        use futures03::future::TryFutureExt;
+
         let operation_name = self.inner.operation_name;
         let logger = self.inner.logger.clone();
         let condition = self.inner.condition;
@@ -166,7 +170,14 @@ where
             condition,
             log_after,
             limit_opt,
-            move || try_it().timeout(timeout),
+            move || {
+                Compat::new(
+                    try_it()
+                        .timeout(timeout)
+                        .map_err(|_| TimeoutError::Elapsed)
+                        .and_then(|res| futures03::future::ready(res.map_err(TimeoutError::Inner))),
+                )
+            },
         )
     }
 }
@@ -180,7 +191,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
     pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = E>
     where
         I: Debug + Send,
-        E: Debug + Send,
+        E: Debug + Send + Sync + 'static,
         F: Fn() -> R + Send,
         R: Future<Item = I, Error = E> + Send,
     {
@@ -198,17 +209,37 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
             condition,
             log_after,
             limit_opt,
-            move || {
-                try_it().map_err(|e| {
-                    // No timeout, so all errors are inner errors
-                    timeout::Error::inner(e)
-                })
-            },
+            // No timeout, so all errors are inner errors
+            move || try_it().map_err(TimeoutError::Inner),
         )
         .map_err(|e| {
             // No timeout, so all errors are inner errors
             e.into_inner().unwrap()
         })
+    }
+}
+
+#[derive(Fail, Debug)]
+pub enum TimeoutError<T: Debug + Send + Sync + 'static> {
+    #[fail(display = "{:?}", _0)]
+    Inner(T),
+    #[fail(display = "Timeout elapsed")]
+    Elapsed,
+}
+
+impl<T: Debug + Send + Sync + 'static> TimeoutError<T> {
+    pub fn is_elapsed(&self) -> bool {
+        match self {
+            TimeoutError::Inner(_) => false,
+            TimeoutError::Elapsed => true,
+        }
+    }
+
+    pub fn into_inner(self) -> Option<T> {
+        match self {
+            TimeoutError::Inner(x) => Some(x),
+            TimeoutError::Elapsed => None,
+        }
     }
 }
 
@@ -219,12 +250,12 @@ fn run_retry<I, E, F, R>(
     log_after: u64,
     limit_opt: Option<usize>,
     try_it_with_timeout: F,
-) -> impl Future<Item = I, Error = timeout::Error<E>> + Send
+) -> impl Future<Item = I, Error = TimeoutError<E>> + Send
 where
     I: Debug + Send,
-    E: Debug + Send,
+    E: Debug + Send + Sync + 'static,
     F: Fn() -> R + Send,
-    R: Future<Item = I, Error = timeout::Error<E>> + Send,
+    R: Future<Item = I, Error = TimeoutError<E>> + Send,
 {
     let condition = Arc::new(condition);
 
@@ -242,11 +273,6 @@ where
                 .err()
                 .map(|e| e.is_elapsed())
                 .unwrap_or(false);
-            let is_timer_err = result_with_timeout
-                .as_ref()
-                .err()
-                .map(|e| e.is_timer())
-                .unwrap_or(false);
 
             if is_elapsed {
                 if attempt_count >= log_after {
@@ -260,10 +286,6 @@ where
 
                 // Wrap in Err to force retry
                 Err(result_with_timeout)
-            } else if is_timer_err {
-                // Should never happen
-                let timer_error = result_with_timeout.unwrap_err().into_timer().unwrap();
-                panic!("tokio timer error: {}", timer_error)
             } else {
                 // Any error must now be an inner error.
                 // Unwrap the inner error so that the predicate doesn't need to think
@@ -283,10 +305,10 @@ where
                     }
 
                     // Wrap in Err to force retry
-                    Err(result.map_err(timeout::Error::inner))
+                    Err(result.map_err(TimeoutError::Inner))
                 } else {
                     // Wrap in Ok to prevent retry
-                    Ok(result.map_err(timeout::Error::inner))
+                    Ok(result.map_err(TimeoutError::Inner))
                 }
             }
         })
@@ -485,16 +507,4 @@ mod tests {
         }));
         assert_eq!(result, Ok(10));
     }
-}
-
-/// Convenient way to annotate a future with `tokio_threadpool::blocking`.
-///
-/// Panics if called from outside a tokio runtime.
-pub fn blocking<T, E>(mut f: impl Future<Item = T, Error = E>) -> impl Future<Item = T, Error = E> {
-    future::poll_fn(move || match tokio_threadpool::blocking(|| f.poll()) {
-        Ok(Async::NotReady) | Ok(Async::Ready(Ok(Async::NotReady))) => Ok(Async::NotReady),
-        Ok(Async::Ready(Ok(Async::Ready(t)))) => Ok(Async::Ready(t)),
-        Ok(Async::Ready(Err(e))) => Err(e),
-        Err(_) => panic!("not inside a tokio thread pool"),
-    })
 }
