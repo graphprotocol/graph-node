@@ -56,7 +56,7 @@ where
 {
     fn run_query(&self, query: Query) -> QueryResultFuture {
         let result = execute_query(
-            &query,
+            query,
             QueryExecutionOptions {
                 logger: self.logger.clone(),
                 resolver: StoreResolver::new(&self.logger, self.store.clone()),
@@ -77,7 +77,7 @@ where
         max_first: Option<u32>,
     ) -> QueryResultFuture {
         let result = execute_query(
-            &query,
+            query,
             QueryExecutionOptions {
                 logger: self.logger.clone(),
                 resolver: StoreResolver::new(&self.logger, self.store.clone()),

@@ -38,7 +38,7 @@ where
 }
 
 /// Executes a query and returns a result.
-pub fn execute_query<R>(query: &Query, options: QueryExecutionOptions<R>) -> QueryResult
+pub fn execute_query<R>(query: Query, options: QueryExecutionOptions<R>) -> QueryResult
 where
     R: Resolver,
 {

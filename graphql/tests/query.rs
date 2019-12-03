@@ -221,7 +221,7 @@ fn execute_query_document_with_variables(
         max_first: std::u32::MAX,
     };
 
-    execute_query(&query, options)
+    execute_query(query, options)
 }
 
 #[test]
@@ -716,7 +716,7 @@ fn query_complexity() {
     };
 
     // This query is exactly at the maximum complexity.
-    let result = execute_query(&query, options);
+    let result = execute_query(query, options);
     assert!(result.errors.is_none());
 
     let query = Query {
@@ -753,7 +753,7 @@ fn query_complexity() {
     };
 
     // The extra introspection causes the complexity to go over.
-    let result = execute_query(&query, options);
+    let result = execute_query(query, options);
     match result.errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
         _ => panic!("did not catch complexity"),
@@ -859,7 +859,7 @@ fn instant_timeout() {
         max_first: std::u32::MAX,
     };
 
-    match execute_query(&query, options).errors.unwrap()[0] {
+    match execute_query(query, options).errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
         _ => panic!("did not time out"),
     };

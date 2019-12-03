@@ -49,7 +49,7 @@ fn insert_and_query(
         document,
         variables: None,
     };
-    Ok(execute_query(&query, options))
+    Ok(execute_query(query, options))
 }
 
 #[test]

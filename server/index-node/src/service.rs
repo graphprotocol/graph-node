@@ -109,7 +109,7 @@ where
 
                     // Run the query using the index node resolver
                     Box::new(future::ok(execute_query(
-                        &query,
+                        query,
                         QueryExecutionOptions {
                             logger: logger.clone(),
                             resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
