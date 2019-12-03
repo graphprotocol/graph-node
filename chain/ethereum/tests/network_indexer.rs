@@ -14,9 +14,24 @@ use graph_chain_ethereum::network_indexer::{
 };
 use graph_core::MetricsRegistry;
 use graph_store_postgres::Store as DieselStore;
-use web3::types::{H256, H64};
+use web3::types::{Block, H256, H64};
 
 use test_store::*;
+
+// Helper macros to define indexer events.
+macro_rules! add_block {
+    ($chain:expr, $n:expr) => {{
+        NetworkIndexerEvent::AddBlock($chain[$n].inner().into())
+    }};
+}
+macro_rules! revert {
+    ($from_chain:expr, $from_n:expr => $to_chain:expr, $to_n:expr) => {{
+        NetworkIndexerEvent::Revert {
+            from: $from_chain[$from_n].inner().into(),
+            to: $to_chain[$to_n].inner().into(),
+        }
+    }};
+}
 
 // Helper to wipe the store clean.
 fn remove_test_data(store: Arc<DieselStore>) {
@@ -100,7 +115,7 @@ where
 }
 
 // Helper to create a sequence of linked blocks.
-fn create_blocks(n: u64, parent: Option<&BlockWithUncles>) -> Vec<BlockWithUncles> {
+fn create_chain(n: u64, parent: Option<&BlockWithUncles>) -> Vec<BlockWithUncles> {
     let start = parent.map_or(0, |block| block.inner().number.unwrap().as_u64() + 1);
 
     (start..start + n).fold(vec![], |mut blocks, number| {
@@ -140,7 +155,7 @@ fn create_fork(
     total: u64,
 ) -> Vec<BlockWithUncles> {
     let mut blocks = original_blocks[0..(base as usize) + 1].to_vec();
-    let new_blocks = create_blocks((total - base - 1).try_into().unwrap(), blocks.last());
+    let new_blocks = create_chain((total - base - 1).try_into().unwrap(), blocks.last());
     blocks.extend(new_blocks);
     blocks
 }
@@ -261,9 +276,33 @@ fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithUncles>>) -> Arc<MockEt
         });
 
     // For now return no uncles
+    let chains_for_uncles = chains.clone();
     adapter
         .expect_uncles()
-        .returning(move |_, _| Box::new(future::ok(vec![])));
+        .returning(move |_, block: &LightEthereumBlock| {
+            let chains = chains_for_uncles.lock().unwrap();
+            Box::new(future::result(
+                chains
+                    .current_chain()
+                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .map_err(Into::into)
+                    .map(|chain| {
+                        chain
+                            .iter()
+                            .find(|b| b.inner().hash.unwrap() == block.hash.unwrap())
+                            .expect(
+                                format!(
+                                    "block {} ({:x}) not found",
+                                    block.number.unwrap(),
+                                    block.hash.unwrap()
+                                )
+                                .as_str(),
+                            )
+                            .clone()
+                            .uncles
+                    }),
+            ))
+        });
 
     Arc::new(adapter)
 }
@@ -276,8 +315,8 @@ fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithUncles>>) -> Arc<MockEt
 fn indexing_starts_at_genesis() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create test chain
-        let blocks = create_blocks(10, None);
-        let chains = vec![blocks.clone()];
+        let chain = create_chain(10, None);
+        let chains = vec![chain.clone()];
 
         // Run network indexer and collect its events
         let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
@@ -287,10 +326,7 @@ fn indexing_starts_at_genesis() {
         // had that one)
         assert_eq!(
             events,
-            blocks
-                .into_iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                .collect::<Vec<_>>()
+            (0..10).map(|n| add_block!(chain, n)).collect::<Vec<_>>()
         );
 
         Ok(())
@@ -305,13 +341,13 @@ fn indexing_starts_at_genesis() {
 fn indexing_resumes_from_local_head() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create test chain
-        let blocks = create_blocks(10, None);
-        let chains = vec![blocks.clone()];
+        let chain = create_chain(10, None);
+        let chains = vec![chain.clone()];
 
         // Run network indexer and collect its events
         let events = run_network_indexer(
             store,
-            Some(blocks[2].inner().into()),
+            Some(chain[2].inner().into()),
             chains,
             Duration::from_secs(2),
         );
@@ -320,11 +356,7 @@ fn indexing_resumes_from_local_head() {
         // for the blocks #3-#9.
         assert_eq!(
             events,
-            blocks[3..]
-                .to_owned()
-                .into_iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                .collect::<Vec<_>>()
+            (3..10).map(|n| add_block!(chain, n)).collect::<Vec<_>>()
         );
 
         Ok(())
@@ -339,7 +371,7 @@ fn indexing_resumes_from_local_head() {
 fn indexing_picks_up_new_remote_head() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // The first time we pull the remote head, there are 10 blocks
-        let chain_10 = create_blocks(10, None);
+        let chain_10 = create_chain(10, None);
 
         // The second time we pull the remote head, there are 20 blocks;
         // the first 10 blocks are identical to before, so this simulates
@@ -360,10 +392,9 @@ fn indexing_picks_up_new_remote_head() {
         // despite them requiring two remote head updates
         assert_eq!(
             events,
-            chain_1000
-                .into_iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                .collect::<Vec<_>>()
+            (0..1000)
+                .map(|n| add_block!(chain_1000, n))
+                .collect::<Vec<_>>(),
         );
 
         Ok(())
@@ -378,7 +409,7 @@ fn indexing_picks_up_new_remote_head() {
 fn indexing_does_not_move_past_a_gap() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create test chain
-        let mut blocks = create_blocks(10, None);
+        let mut blocks = create_chain(10, None);
         // Remove block #6
         blocks.remove(5);
         let chains = vec![blocks.clone()];
@@ -389,11 +420,7 @@ fn indexing_does_not_move_past_a_gap() {
         // Assert that only blocks #0 - #4 were indexed and nothing more
         assert_eq!(
             events,
-            blocks[0..5]
-                .to_owned()
-                .into_iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                .collect::<Vec<_>>()
+            (0..5).map(|n| add_block!(blocks, n)).collect::<Vec<_>>()
         );
 
         Ok(())
@@ -404,14 +431,14 @@ fn indexing_does_not_move_past_a_gap() {
 // AND    10 blocks for one version of the chain
 // AND    11 blocks for a fork of the chain that starts after block #8
 // WHEN   indexing the network
-// EXPECT 10 `AddBlock` events is emitted for the first branch,
+// EXPECT 10 `AddBlock` events are emitted for the first branch,
 //        1 `Revert` event is emitted to revert back to block #8
 //        2 `AddBlock` events are emitted for blocks #9-#10 of the fork
 #[test]
 fn indexing_handles_single_block_reorg() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create the initial chain
-        let initial_chain = create_blocks(10, None);
+        let initial_chain = create_chain(10, None);
 
         // Create a forked chain after block #8
         let forked_chain = create_fork(initial_chain.clone(), 8, 11);
@@ -423,23 +450,12 @@ fn indexing_handles_single_block_reorg() {
         assert_eq!(
             events,
             // The 10 `AddBlock` events for the initial version of the chain
-            initial_chain
-                .iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                .chain(
-                    // The 1 `Revert` event
-                    vec![NetworkIndexerEvent::Revert {
-                        from: initial_chain[9].inner().into(),
-                        to: initial_chain[8].inner().into(),
-                    },]
-                    .into_iter()
-                )
-                .chain(
-                    // The 2 `AddBlock` events for the new chain
-                    forked_chain[9..]
-                        .iter()
-                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                )
+            (0..10)
+                .map(|n| add_block!(initial_chain, n))
+                // The 1 `Revert` event to go back to #8
+                .chain(vec![revert!(initial_chain, 9 => initial_chain, 8)])
+                // The 2 `AddBlock` events for the new chain
+                .chain((9..11).map(|n| add_block!(forked_chain, n)))
                 .collect::<Vec<_>>()
         );
 
@@ -451,50 +467,35 @@ fn indexing_handles_single_block_reorg() {
 // AND    10 blocks for one version of the chain
 // AND    20 blocks for a fork of the chain that starts after block #2
 // WHEN   indexing the network
-// EXPECT 10 `AddBlock` events is emitted for the first branch,
+// EXPECT 10 `AddBlock` events are emitted for the first branch,
 //        7 `Revert` events are emitted to revert back to block #2
 //        17 `AddBlock` events are emitted for blocks #3-#20 of the fork
 #[test]
 fn indexing_handles_simple_reorg() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create the initial chain
-        let initial_chain = create_blocks(10, None);
+        let initial_chain = create_chain(10, None);
 
         // Create a forked chain after block #2
         let forked_chain = create_fork(initial_chain.clone(), 2, 20);
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), forked_chain.clone()];
-        let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(1));
 
-        // Verify that the following events are emitted:
-        //
-        // - 10 `AddBlock` events for blocks #0 to #9 of the initial chain
-        // - 7 `Revert` events from #9 to #8, ..., #3 to #2 (the fork base)
-        // - 17 `AddBlock` events for blocks #3 to #20 of the fork
         assert_eq!(
             events,
-            // The 10 `AddBlock` events for the initial version of the chain
-            initial_chain
-                .iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+            // - 10 `AddBlock` events for blocks #0 to #9 of the initial chain
+            (0..10)
+                .map(|n| add_block!(initial_chain, n))
+                // - 7 `Revert` events from #9 to #8, ..., #3 to #2 (the fork base)
                 .chain(
-                    // The 7 `Revert` events
-                    vec![(9, 8), (8, 7), (7, 6), (6, 5), (5, 4), (4, 3), (3, 2)]
+                    vec![9, 8, 7, 6, 5, 4, 3]
                         .into_iter()
-                        .map(|(from, to)| {
-                            NetworkIndexerEvent::Revert {
-                                from: initial_chain[from].inner().into(),
-                                to: initial_chain[to].inner().into(),
-                            }
-                        })
+                        .map(|n| revert!(initial_chain, n => initial_chain, n-1))
                 )
-                .chain(
-                    // The 17 `AddBlock` events for the new chain
-                    forked_chain[3..]
-                        .iter()
-                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                )
+                // 17 `AddBlock` events for the new chain
+                .chain((3..20).map(|n| add_block!(forked_chain, n)))
                 .collect::<Vec<_>>()
         );
 
@@ -507,7 +508,7 @@ fn indexing_handles_simple_reorg() {
 // AND    20 blocks for a fork of the initial chain that starts after block #2
 // AND    30 blocks for a fork of the initial chain that starts after block #2
 // WHEN   indexing the network
-// EXPECT 10 `AddBlock` events is emitted for the first branch,
+// EXPECT 10 `AddBlock` events are emitted for the first branch,
 //        7 `Revert` events are emitted to revert back to block #2
 //        17 `AddBlock` events are emitted for blocks #4-#20 of the fork
 //        7 `Revert` events are emitted to revert back to block #2
@@ -516,7 +517,7 @@ fn indexing_handles_simple_reorg() {
 fn indexing_handles_consecutive_reorgs() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create the initial chain
-        let initial_chain = create_blocks(10, None);
+        let initial_chain = create_chain(10, None);
 
         // Create a forked chain after block #2
         let second_chain = create_fork(initial_chain.clone(), 2, 20);
@@ -534,62 +535,25 @@ fn indexing_handles_consecutive_reorgs() {
 
         assert_eq!(
             events,
-            // The 10 `AddBlock` events for the initial version of the chain
-            initial_chain
-                .iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+            // The 10 add block events for the initial version of the chain
+            (0..10)
+                .map(|n| add_block!(initial_chain, n))
+                // The 7 revert events to go back to #2
                 .chain(
-                    // The 7 `Revert` events to go back to #2
-                    vec![(9, 8), (8, 7), (7, 6), (6, 5), (5, 4), (4, 3), (3, 2)]
+                    vec![9, 8, 7, 6, 5, 4, 3]
                         .into_iter()
-                        .map(|(from, to)| {
-                            NetworkIndexerEvent::Revert {
-                                from: initial_chain[from].inner().into(),
-                                to: initial_chain[to].inner().into(),
-                            }
-                        })
+                        .map(|n| revert!(initial_chain, n => initial_chain, n-1))
                 )
+                // The 17 add block events for the new chain
+                .chain((3..20).map(|n| add_block!(second_chain, n)))
+                // The 17 revert events to go back to #2
                 .chain(
-                    // The 17 `AddBlock` events for the new chain
-                    second_chain[3..]
-                        .iter()
-                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
+                    vec![19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3]
+                        .into_iter()
+                        .map(|n| revert!(second_chain, n => second_chain, n-1))
                 )
-                .chain(
-                    // The 17 `Revert` events to go back to #2
-                    vec![
-                        (19, 18),
-                        (18, 17),
-                        (17, 16),
-                        (16, 15),
-                        (15, 14),
-                        (14, 13),
-                        (13, 12),
-                        (12, 11),
-                        (11, 10),
-                        (10, 9),
-                        (9, 8),
-                        (8, 7),
-                        (7, 6),
-                        (6, 5),
-                        (5, 4),
-                        (4, 3),
-                        (3, 2)
-                    ]
-                    .into_iter()
-                    .map(|(from, to)| {
-                        NetworkIndexerEvent::Revert {
-                            from: second_chain[from].inner().into(),
-                            to: second_chain[to].inner().into(),
-                        }
-                    })
-                )
-                .chain(
-                    // 27 `AddBlock` events for the new chain
-                    third_chain[3..]
-                        .iter()
-                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                )
+                // The 27 add block events for the third chain
+                .chain((3..30).map(|n| add_block!(third_chain, n)))
                 .collect::<Vec<_>>()
         );
 
@@ -602,7 +566,7 @@ fn indexing_handles_consecutive_reorgs() {
 // AND    a fork with blocks #0 - #3, #4', #5'
 // AND    a fork with blocks #0 - #3, #4, #5'', #6''
 // WHEN   indexing the network
-// EXPECT 5 `AddBlock` events is emitted for the first chain version,
+// EXPECT 5 `AddBlock` events are emitted for the first chain version,
 //        1 `Revert` event is emitted from block #4 to #3
 //        2 `AddBlock` events are emitted for blocks #4', #5'
 //        2 `Revert` events are emitted from block #5' to #4' and #4' to #3
@@ -611,7 +575,7 @@ fn indexing_handles_consecutive_reorgs() {
 fn indexing_handles_reorg_back_and_forth() {
     run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
         // Create the initial chain (blocks #0 - #4)
-        let initial_chain = create_blocks(5, None);
+        let initial_chain = create_chain(5, None);
 
         // Create fork 1 (blocks #0 - #3, #4', #5')
         let fork1 = create_fork(initial_chain.clone(), 3, 6);
@@ -628,40 +592,120 @@ fn indexing_handles_reorg_back_and_forth() {
 
         assert_eq!(
             events,
-            initial_chain
-                .iter()
-                .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                .chain(
-                    vec![NetworkIndexerEvent::Revert {
-                        from: initial_chain[4].inner().into(),
-                        to: initial_chain[3].inner().into(),
-                    },]
-                    .into_iter()
-                )
-                .chain(
-                    fork1[4..]
-                        .iter()
-                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                )
-                .chain(
-                    vec![
-                        NetworkIndexerEvent::Revert {
-                            from: fork1[5].inner().into(),
-                            to: fork1[4].inner().into(),
-                        },
-                        NetworkIndexerEvent::Revert {
-                            from: fork1[4].inner().into(),
-                            to: initial_chain[3].inner().into(),
-                        },
-                    ]
-                    .into_iter()
-                )
-                .chain(
-                    fork2[4..]
-                        .iter()
-                        .map(|block| NetworkIndexerEvent::AddBlock(block.inner().into()))
-                )
-                .collect::<Vec<_>>()
+            vec![
+                add_block!(initial_chain, 0),
+                add_block!(initial_chain, 1),
+                add_block!(initial_chain, 2),
+                add_block!(initial_chain, 3),
+                add_block!(initial_chain, 4),
+                revert!(initial_chain, 4 => initial_chain, 3),
+                add_block!(fork1, 4),
+                add_block!(fork1, 5),
+                revert!(fork1, 5 => fork1, 4),
+                revert!(fork1, 4 => initial_chain, 3),
+                add_block!(fork2, 4),
+                add_block!(fork2, 5),
+                add_block!(fork2, 6)
+            ]
+        );
+
+        Ok(())
+    });
+}
+
+struct Ommer(LightEthereumBlock);
+
+impl Into<Block<H256>> for Ommer {
+    fn into(self) -> Block<H256> {
+        Block {
+            hash: self.0.hash,
+            parent_hash: self.0.parent_hash,
+            uncles_hash: self.0.uncles_hash,
+            author: self.0.author,
+            state_root: self.0.state_root,
+            transactions_root: self.0.transactions_root,
+            receipts_root: self.0.receipts_root,
+            number: self.0.number,
+            gas_used: self.0.gas_used,
+            gas_limit: self.0.gas_limit,
+            extra_data: self.0.extra_data,
+            logs_bloom: self.0.logs_bloom,
+            timestamp: self.0.timestamp,
+            difficulty: self.0.difficulty,
+            total_difficulty: self.0.total_difficulty,
+            seal_fields: self.0.seal_fields,
+            uncles: self.0.uncles,
+            transactions: self.0.transactions.into_iter().map(|tx| tx.hash).collect(),
+            size: self.0.size,
+            mix_hash: self.0.mix_hash,
+            nonce: self.0.nonce,
+        }
+    }
+}
+
+// Test that ommer blocks are not confused with reguar blocks when finding
+// common ancestors for reorgs. There was a bug initially where that would
+// happen, because any block that was in the store was considered to be on the
+// local version of the chain. This assumption is false because ommers are
+// stored as `Block` entities as well. To correctly identify the common
+// ancestor in a reorg, traversing the old and new chains block by block
+// through parent hashes is necessary.
+//
+// GIVEN  a fresh subgraph (local head = none)
+// AND    5 blocks for one version of the chain (#0 - #4)
+// AND    a fork with blocks #0 - #3, #4', #5'
+//          where block #5' has #4 as an ommer
+// AND    a fork with blocks #0 - #3, #4, #5'', #6''
+//          where the original #4 is included again
+// WHEN   indexing the network
+// EXPECT 5 `AddBlock` events are emitted for the first chain version,
+//        1 `Revert` event is emitted from block #4 to #3
+//        2 `AddBlock` events are emitted for blocks #4', #5'
+//        2 `Revert` events are emitted from block #5' to #4' and #4' to #3
+//        3 `AddBlock` events are emitted for blocks #4, #5'', #6''
+//        block #3 is identified as the common ancestor in both reorgs
+#[test]
+fn indexing_identifies_common_ancestor_correctly_despite_ommers() {
+    run_test(|store: Arc<DieselStore>| -> Result<(), ()> {
+        // Create the initial chain (#0 - #4)
+        let initial_chain = create_chain(5, None);
+
+        // Create fork 1 (blocks #0 - #3, #4', #5')
+        let mut fork1 = create_fork(initial_chain.clone(), 3, 6);
+
+        // Make it so that #5' has #4 as an uncle
+        fork1[5].block.block.uncles = vec![initial_chain[4].inner().hash.clone().unwrap()];
+        fork1[5].uncles = vec![Some(Ommer(initial_chain[4].block.block.clone()).into())];
+
+        // Create fork 2 (blocks #0 - #4, #5'', #6''); this fork includes the
+        // original #4 again, which at this point should no longer be part of
+        // the indexed chain in the store and therefor not be considered as the
+        // common ancestor of the fork (that should be #3). It is still in the
+        // store as an uncle (of #5', from fork1) but that uncle should not be
+        // picked as the common ancestor either.
+        let fork2 = create_fork(initial_chain.clone(), 4, 7);
+
+        // Run the network indexer and collect its events
+        let chains = vec![initial_chain.clone(), fork1.clone(), fork2.clone()];
+        let events = run_network_indexer(store, None, chains, Duration::from_secs(2));
+
+        assert_eq!(
+            events,
+            vec![
+                add_block!(initial_chain, 0),
+                add_block!(initial_chain, 1),
+                add_block!(initial_chain, 2),
+                add_block!(initial_chain, 3),
+                add_block!(initial_chain, 4),
+                revert!(initial_chain, 4 => initial_chain, 3),
+                add_block!(fork1, 4),
+                add_block!(fork1, 5),
+                revert!(fork1, 5 => fork1, 4),
+                revert!(fork1, 4 => initial_chain, 3),
+                add_block!(fork2, 4),
+                add_block!(fork2, 5),
+                add_block!(fork2, 6)
+            ]
         );
 
         Ok(())
