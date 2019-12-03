@@ -141,7 +141,7 @@ impl SchemaReference {
     pub fn resolve<S: Store + SubgraphDeploymentStore>(
         self,
         store: Arc<S>,
-    ) -> Result<Arc<Schema>, SchemaImportError> {
+    ) -> Result<(Arc<Schema>, SubgraphDeploymentId), SchemaImportError> {
         let subgraph_id = match &self {
             SchemaReference::ByName(name) => {
                 let subgraph_name = SubgraphName::new(name.clone())
@@ -161,6 +161,7 @@ impl SchemaReference {
         store
             .input_schema(&subgraph_id)
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
+            .map(|schema| (schema, subgraph_id))
     }
 }
 
@@ -197,24 +198,41 @@ impl Schema {
         HashMap<SchemaReference, Arc<Schema>>,
         Vec<SchemaImportError>,
     ) {
-        // TODO: Handle circular dependencies with a memo
-        self.imported_schemas().into_iter().fold(
-            (HashMap::new(), vec![]),
-            |(mut schemas, mut errors), schema_ref| {
+        let mut schemas = HashMap::new();
+        let mut visit_log = HashMap::new();
+        let import_errors = self.resolve_import_graph(store, &mut schemas, &mut visit_log);
+        (schemas, import_errors)
+    }
+
+    fn resolve_import_graph<S: Store + SubgraphDeploymentStore>(
+        &self,
+        store: Arc<S>,
+        schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
+        visit_log: &mut HashMap<SubgraphDeploymentId, Arc<Schema>>,
+    ) -> Vec<SchemaImportError> {
+        // Use the visit log to detect cycles in the import graph
+        self.imported_schemas()
+            .into_iter()
+            .fold(vec![], |mut errors, schema_ref| {
                 match schema_ref.clone().resolve(store.clone()) {
-                    Ok(schema) => {
-                        let (s, e) = schema.resolve_schema_references(store.clone());
-                        schemas.insert(schema_ref, schema);
-                        schemas.extend(s);
-                        errors.extend(e);
+                    Ok((schema, subgraph_id)) => {
+                        schemas.insert(schema_ref, schema.clone());
+                        // If this node in the graph has already been visited stop traversing
+                        if !visit_log.contains_key(&subgraph_id) {
+                            visit_log.insert(subgraph_id, schema.clone());
+                            errors.extend(schema.resolve_import_graph(
+                                store.clone(),
+                                schemas,
+                                visit_log,
+                            ));
+                        }
                     }
                     Err(err) => {
                         errors.push(err);
                     }
                 }
-                (schemas, errors)
-            },
-        )
+                errors
+            })
     }
 
     pub fn collect_interfaces(
@@ -519,7 +537,7 @@ impl Schema {
 
     fn validate_imported_types(
         &self,
-        schemas: &HashMap<SchemaReference, Arc<Schema>>,
+        _schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
         Ok(())
     }
