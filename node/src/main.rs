@@ -488,18 +488,6 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
         }
     });
 
-    // Ethereum chain
-    use graph::components::chains;
-    use graph_chain_ethereum::chain as eth;
-    let ethereum = eth::Ethereum::new(chains::BlockchainOptions {
-        networks: HashMap::from_iter(vec![
-            (String::from("mainnet"), vec![chains::NetworkProviderConfig {
-                kind: String::from("rpc"),
-                url: String::from("https://parity-public.bdi.sh:8545?auth=dQhwqDKxF7DeaEFAMqVUsA9KkIXMda52zrF0azgPGVo"),
-            }])
-        ]),
-    });
-
     // Set up Store
     info!(
         logger,
@@ -582,41 +570,80 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                 node_id.clone(),
             );
 
-            // Spawn Ethereum network indexers for all networks that are to be indexed
-            if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
-                network_subgraphs
-                    .into_iter()
-                    .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
-                    .for_each(|network_subgraph| {
-                        let network_name = network_subgraph.replace("ethereum/", "");
-                        let network_indexer = network_indexer::create(
-                            network_subgraph.into(),
-                            &logger,
-                            eth_adapters
-                                .get(&network_name)
-                                .expect("adapter for network")
-                                .clone(),
-                            stores
-                                .get(&network_name)
-                                .expect("store for network")
-                                .clone(),
-                            metrics_registry.clone(),
-                            // None,
-                            Some(EthereumBlockPointer {
-                                number: 9001115,
-                                hash: web3::types::H256::from_str("f144a24ca5b36174e9eb9e6f62b1c3eea87c4affc6ceabea0ebd3fa5ed099fb0").unwrap(),
-                            }),
-                        );
-
-                        tokio::spawn(network_indexer.and_then(|mut indexer| {
-                            indexer.take_event_stream().unwrap().for_each(|_| {
-                                // For now we simply ignore these events; we may later use them
-                                // to drive subgraph indexing
+            // Ethereum chain
+            use graph::components::blockchain::*;
+            use graph_chain_ethereum::blockchain as eth;
+            let ethereum = eth::Ethereum::new(BlockchainOptions {
+                metrics_registry: metrics_registry.clone(),
+                networks: HashMap::from_iter(vec![(
+                    String::from("mainnet"),
+                    NetworkConfig {
+                        providers: vec![NetworkProviderConfig {
+                            kind: String::from("rpc"),
+                            url: String::from(
+                                "https://eth-mainnet.alchemyapi.io/jsonrpc/iemhQFg2k89zAO1-gSngWqkLHTZ-Byc_",
+                            ),
+                        }],
+                    },
+                )]),
+            });
+            let ethereum_mainnet = ethereum
+                .network(String::from("mainnet"))
+                .expect("failed to establish Ethereum mainnet connection");
+            tokio::spawn(
+                ethereum_mainnet
+                    .indexer(NetworkIndexerOptions {
+                        store: generic_store.clone(),
+                    })
+                    .map_err(|e| {
+                        println!("Error: {}", e);
+                    })
+                    .and_then(|mut indexer| {
+                        indexer
+                            .take_event_stream()
+                            .expect("failed to take event stream from Ethereum mainnet indexer")
+                            .for_each(|event| {
+                                println!("{:?}", event);
                                 Ok(())
                             })
-                        }));
-                    })
-            };
+                    }),
+            );
+
+            // // Spawn Ethereum network indexers for all networks that are to be indexed
+            // if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
+            //     network_subgraphs
+            //         .into_iter()
+            //         .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
+            //         .for_each(|network_subgraph| {
+            //             let network_name = network_subgraph.replace("ethereum/", "");
+            //             let network_indexer = network_indexer::create(
+            //                 network_subgraph.into(),
+            //                 &logger,
+            //                 eth_adapters
+            //                     .get(&network_name)
+            //                     .expect("adapter for network")
+            //                     .clone(),
+            //                 stores
+            //                     .get(&network_name)
+            //                     .expect("store for network")
+            //                     .clone(),
+            //                 metrics_registry.clone(),
+            //                 // None,
+            //                 Some(EthereumBlockPointer {
+            //                     number: 9001115,
+            //                     hash: web3::types::H256::from_str("f144a24ca5b36174e9eb9e6f62b1c3eea87c4affc6ceabea0ebd3fa5ed099fb0").unwrap(),
+            //                 }),
+            //             );
+
+            //             tokio::spawn(network_indexer.and_then(|mut indexer| {
+            //                 indexer.take_event_stream().unwrap().for_each(|_| {
+            //                     // For now we simply ignore these events; we may later use them
+            //                     // to drive subgraph indexing
+            //                     Ok(())
+            //                 })
+            //             }));
+            //         })
+            // };
 
             if !disable_block_ingestor {
                 // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,

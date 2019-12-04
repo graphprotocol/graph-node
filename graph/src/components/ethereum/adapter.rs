@@ -490,7 +490,7 @@ pub struct ProviderEthRpcMetrics {
 }
 
 impl ProviderEthRpcMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
         let request_duration = registry
             .new_histogram_vec(
                 String::from("eth_rpc_request_duration"),

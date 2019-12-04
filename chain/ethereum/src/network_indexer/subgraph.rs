@@ -2,6 +2,7 @@ use futures::future::FutureResult;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use graph::data::subgraph::schema::*;
+use graph::prelude::blockchain::*;
 use graph::prelude::*;
 
 fn check_subgraph_exists<S>(
@@ -23,7 +24,7 @@ fn create_subgraph<S>(
     store: Arc<S>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
-    start_block: Option<EthereumBlockPointer>,
+    start_block: Option<BlockPointer>,
 ) -> FutureResult<(), Error>
 where
     S: Store + ChainStore,
@@ -130,7 +131,7 @@ pub fn ensure_subgraph_exists<S>(
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     store: Arc<S>,
-    start_block: Option<EthereumBlockPointer>,
+    start_block: Option<BlockPointer>,
 ) -> impl Future<Item = (), Error = ()>
 where
     S: Store + ChainStore,

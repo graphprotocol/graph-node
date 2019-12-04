@@ -2,9 +2,10 @@ use std::str::FromStr;
 use web3::types::H256;
 
 use graph::data::store::scalar::*;
-use graph::prelude::chains::*;
+use graph::prelude::blockchain::*;
 use graph::prelude::*;
 
+#[derive(Debug)]
 pub struct EthereumBlock {
     block: LightEthereumBlock,
     ommers: Vec<EthereumBlock>,
@@ -34,11 +35,16 @@ impl Block for EthereumBlock {
         }
     }
 
-    fn parent_hash(&self) -> Option<Bytes> {
-        if self.block.number.unwrap() == 0.into() {
+    fn parent_pointer(&self) -> Option<BlockPointer> {
+        let number = self.block.number.unwrap();
+
+        if number == 0.into() {
             None
         } else {
-            Some(BlockHash(&self.block.parent_hash).into())
+            Some(BlockPointer {
+                number: BigInt::from(number - 1),
+                hash: BlockHash(&self.block.parent_hash).into(),
+            })
         }
     }
 }

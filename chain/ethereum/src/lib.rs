@@ -1,6 +1,7 @@
 extern crate failure;
 extern crate futures;
 extern crate graph;
+extern crate graph_core;
 extern crate jsonrpc_core;
 #[macro_use]
 extern crate lazy_static;
@@ -13,7 +14,7 @@ mod ethereum_adapter;
 pub mod network_indexer;
 mod transport;
 
-pub mod chain;
+pub mod blockchain;
 
 pub use self::block_ingestor::BlockIngestor;
 pub use self::block_stream::{BlockStream, BlockStreamBuilder};
