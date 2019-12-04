@@ -12,6 +12,8 @@ pub enum APISchemaError {
     TypeNotFound(String),
 }
 
+const BLOCK_HEIGHT: &str = "Block_height";
+
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
 /// The input schema should only have type/enum/interface/union definitions
@@ -28,6 +30,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_directives(&mut schema);
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
+    add_block_height_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema, &input_schema)?;
@@ -127,6 +130,37 @@ fn add_order_direction_enum(schema: &mut Document) {
                 directives: vec![],
             })
             .collect(),
+    });
+    let def = Definition::TypeDefinition(typedef);
+    schema.definitions.push(def);
+}
+
+/// Adds a global `Block_height` type to the schema. The `block` argument
+/// accepts values of this type
+fn add_block_height_type(schema: &mut Document) {
+    let typedef = TypeDefinition::InputObject(InputObjectType {
+        position: Pos::default(),
+        description: None,
+        name: BLOCK_HEIGHT.to_string(),
+        directives: vec![],
+        fields: vec![
+            InputValue {
+                position: Pos::default(),
+                description: None,
+                name: "hash".to_owned(),
+                value_type: Type::NamedType("Bytes".to_owned()),
+                default_value: None,
+                directives: vec![],
+            },
+            InputValue {
+                position: Pos::default(),
+                description: None,
+                name: "number".to_owned(),
+                value_type: Type::NamedType("Int".to_owned()),
+                default_value: None,
+                directives: vec![],
+            },
+        ],
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
@@ -463,22 +497,45 @@ fn add_subscription_type(
     Ok(())
 }
 
+fn block_argument() -> InputValue {
+    InputValue {
+        position: Pos::default(),
+        description: None, /*Some(
+                               "The block at which the query should be executed. \
+                                Can either be an `Int` containing the block number or a `Bytes` \
+                                value containing a block hash. Defaults to the latest block when \
+                                omitted."
+                                   .to_owned(),
+                           ), */
+        name: "block".to_string(),
+        value_type: Type::NamedType(BLOCK_HEIGHT.to_owned()),
+        default_value: None,
+        directives: vec![],
+    }
+}
+
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
 fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
     let input_objects = ast::get_input_object_definitions(schema);
+    let mut collection_arguments = collection_arguments_for_named_type(&input_objects, type_name);
+    collection_arguments.push(block_argument());
+
     vec![
         Field {
             position: Pos::default(),
             description: None,
             name: type_name.as_str().to_camel_case(),
-            arguments: vec![InputValue {
-                position: Pos::default(),
-                description: None,
-                name: "id".to_string(),
-                value_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
-                default_value: None,
-                directives: vec![],
-            }],
+            arguments: vec![
+                InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: "id".to_string(),
+                    value_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
+                    default_value: None,
+                    directives: vec![],
+                },
+                block_argument(),
+            ],
             field_type: Type::NamedType(type_name.to_owned()),
             directives: vec![],
         },
@@ -486,7 +543,7 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
             position: Pos::default(),
             description: None,
             name: type_name.to_plural().to_camel_case(),
-            arguments: collection_arguments_for_named_type(&input_objects, type_name),
+            arguments: collection_arguments,
             field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
                 Box::new(Type::NamedType(type_name.to_owned())),
             ))))),
@@ -806,7 +863,7 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            vec!["id".to_string()],
+            vec!["id".to_string(), "block".to_string()],
         );
 
         let user_plural_field = match query_type {
@@ -828,10 +885,17 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            ["skip", "first", "orderBy", "orderDirection", "where",]
-                .into_iter()
-                .map(|name| name.to_string())
-                .collect::<Vec<String>>()
+            [
+                "skip",
+                "first",
+                "orderBy",
+                "orderDirection",
+                "where",
+                "block"
+            ]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>()
         );
 
         let user_profile_singular_field = match query_type {
@@ -890,7 +954,7 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            vec!["id".to_string()],
+            vec!["id".to_string(), "block".to_string()],
         );
 
         let plural_field = match query_type {
@@ -912,10 +976,17 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            ["skip", "first", "orderBy", "orderDirection", "where",]
-                .into_iter()
-                .map(|name| name.to_string())
-                .collect::<Vec<String>>()
+            [
+                "skip",
+                "first",
+                "orderBy",
+                "orderDirection",
+                "where",
+                "block"
+            ]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<String>>()
         );
     }
 }
