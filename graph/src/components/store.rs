@@ -1159,6 +1159,14 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
         block_ptr: &EthereumBlockPointer,
     );
+
+    /// Return the number of the block with the given hash for the given
+    /// subgraph
+    fn block_number(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        block_hash: H256,
+    ) -> Result<BlockNumber, StoreError>;
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {

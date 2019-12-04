@@ -247,8 +247,14 @@ where
         super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))
     }
 
-    fn locate_block(&self, _: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
-        Ok(BLOCK_NUMBER_MAX)
+    fn locate_block(&self, bc: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
+        match bc.block {
+            BlockLocator::Number(number) => Ok(number),
+            BlockLocator::Hash(hash) => self
+                .store
+                .block_number(&bc.subgraph, hash)
+                .map_err(|e| e.into()),
+        }
     }
 
     fn resolve_objects(
