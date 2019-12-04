@@ -65,6 +65,11 @@ pub enum SchemaValidationError {
         _0, _1, _2
     )]
     GraphQLTypeFieldInvalid(String, String, String), // (type_name, field_name, field_type)
+    #[fail(
+        display = "Imported type `{}` does not exist in the `{}` schema",
+        _0, _1
+    )]
+    ImportedTypeDNE(String, String),
 }
 
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
@@ -469,13 +474,16 @@ impl Schema {
 
     pub fn validate(
         &self,
-        _schemas: &HashMap<SchemaReference, Arc<Schema>>,
+        schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
         let mut errors = vec![];
         self.validate_schema_types()
             .unwrap_or_else(|err| errors.push(err));
         self.validate_derived_from()
             .unwrap_or_else(|err| errors.push(err));
+        self.validate_fields()
+            .unwrap_or_else(|mut err| errors.append(&mut err));
+
         self.validate_subgraph_schema_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
         // Should verify that only import directives exist on the _schema_ type
@@ -486,8 +494,8 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         // Should validate that all types in the Subgraph referenced from other subgraphs exist
         // If the referenced subgraph is not provided as an argument, do not validate those types
-        self.validate_fields()
-            .unwrap_or_else(|mut err| errors.append(&mut err));
+        self.validate_imported_types(schemas)
+            .unwrap_or_else(|errs| errors.extend(errs));
 
         if errors.is_empty() {
             Ok(())
@@ -624,9 +632,59 @@ impl Schema {
 
     fn validate_imported_types(
         &self,
-        _schemas: &HashMap<SchemaReference, Arc<Schema>>,
+        schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
-        Ok(())
+        let errors =
+            self.imported_types()
+                .iter()
+                .fold(vec![], |mut errors, (imported_type, schema_ref)| {
+                    // See if `schemas` has the schema associated with `schema_ref`
+                    schemas
+                        .get(schema_ref)
+                        .and_then(|schema| {
+                            // Get the defined types in the schema and the imported types
+                            let native_types =
+                                traversal::get_object_type_definitions(&schema.document);
+                            let imported_types = schema.imported_types();
+
+                            // Ensure that the imported type is in one of those two sets
+                            let schema_handle = match schema_ref {
+                                SchemaReference::ById(id) => id,
+                                SchemaReference::ByName(name) => name,
+                            };
+                            let name = match imported_type {
+                                ImportedType::Name(name) => name,
+                                ImportedType::NameAs(name, _) => name,
+                            };
+                            let is_native = native_types
+                                .iter()
+                                .find(|object| object.name.eq(name))
+                                .map_or(false, |_| true);
+                            let is_imported = imported_types
+                                .iter()
+                                .find(|(import, _)| match import {
+                                    ImportedType::Name(n) => name.eq(n),
+                                    ImportedType::NameAs(_, az) => name.eq(az),
+                                })
+                                .map_or(false, |_| true);
+                            if !is_native || !is_imported {
+                                Some(SchemaValidationError::ImportedTypeDNE(
+                                    name.to_string(),
+                                    schema_handle.to_string(),
+                                ))
+                            } else {
+                                None
+                            }
+                        })
+                        .into_iter()
+                        .for_each(|err| errors.push(err));
+                    errors
+                });
+
+        match errors.is_empty() {
+            true => Ok(()),
+            false => Err(errors),
+        }
     }
 
     fn validate_fields(&self) -> Result<(), Vec<SchemaValidationError>> {
