@@ -574,6 +574,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 fn user_query() -> EntityQuery {
     EntityQuery::new(
         TEST_SUBGRAPH_ID.clone(),
+        BLOCK_NUMBER_MAX,
         EntityCollection::All(vec![USER.to_owned()]),
     )
 }

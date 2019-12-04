@@ -24,7 +24,7 @@ pub fn build_query<'a>(
             .map(|o| o.name.clone())
             .collect(),
     });
-    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, entity_types)
+    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, BLOCK_NUMBER_MAX, entity_types)
         .range(build_range(arguments, max_first)?);
     if let Some(filter) = build_filter(entity, arguments)? {
         query = query.filter(filter);

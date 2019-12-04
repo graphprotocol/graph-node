@@ -329,6 +329,7 @@ where
                     let range = EntityRange::first(1);
                     let mut query = EntityQuery::new(
                         subgraph_id_for_resolve_object,
+                        BLOCK_NUMBER_MAX,
                         EntityCollection::All(entity_types),
                     )
                     .range(range);

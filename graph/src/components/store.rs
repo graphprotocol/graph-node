@@ -260,10 +260,14 @@ pub struct EntityQuery {
 }
 
 impl EntityQuery {
-    pub fn new(subgraph_id: SubgraphDeploymentId, collection: EntityCollection) -> Self {
+    pub fn new(
+        subgraph_id: SubgraphDeploymentId,
+        block: BlockNumber,
+        collection: EntityCollection,
+    ) -> Self {
         EntityQuery {
             subgraph_id,
-            block: BLOCK_NUMBER_MAX,
+            block,
             collection,
             filter: None,
             order_by: None,

@@ -540,6 +540,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 fn query(entity_types: Vec<&str>) -> EntityQuery {
     EntityQuery::new(
         THINGS_SUBGRAPH_ID.clone(),
+        BLOCK_NUMBER_MAX,
         EntityCollection::All(entity_types.into_iter().map(|s| s.to_owned()).collect()),
     )
 }

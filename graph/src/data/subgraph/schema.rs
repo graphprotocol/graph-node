@@ -50,6 +50,7 @@ pub trait TypedEntity {
         };
         EntityQuery::new(
             SUBGRAPHS_ID.clone(),
+            BLOCK_NUMBER_MAX,
             EntityCollection::All(vec![Self::TYPENAME.to_owned()]),
         )
         .range(range)
