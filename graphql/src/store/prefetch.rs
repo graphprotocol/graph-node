@@ -575,47 +575,56 @@ where
                 .expect("collect_fields does not create type conditions for nonexistent types");
 
             if let Some(ref field) = concrete_type.field(&fields[0].name) {
-                let ctx = ctx.for_field(&fields[0]);
-                let child_type =
-                    object_or_interface_from_type(&ctx.schema.document, &field.field_type)
-                        .expect("we only collect fields that are objects or interfaces");
-
-                let join = Join::new(
-                    ctx.schema.as_ref(),
-                    &concrete_type,
-                    &child_type,
-                    &field.name,
-                );
-
-                match execute_field(
-                    &ctx,
-                    store,
-                    &concrete_type,
-                    &parents,
-                    &join,
-                    &fields[0],
-                    field,
-                ) {
-                    Ok(children) => {
-                        let child_selection_set = crate::execution::merge_selection_sets(fields);
-                        let child_object_type =
+                match ctx.for_field(&fields[0], concrete_type.clone()) {
+                    Ok(ctx) => {
+                        let child_type =
                             object_or_interface_from_type(&ctx.schema.document, &field.field_type)
-                                .expect("type of child field is object or interface");
-                        match execute_selection_set(
+                                .expect("we only collect fields that are objects or interfaces");
+
+                        let join = Join::new(
+                            ctx.schema.as_ref(),
+                            &concrete_type,
+                            &child_type,
+                            &field.name,
+                        );
+
+                        match execute_field(
                             &ctx,
                             store,
-                            children,
-                            &child_selection_set,
-                            &child_object_type,
+                            &concrete_type,
+                            &parents,
+                            &join,
+                            &fields[0],
+                            field,
                         ) {
-                            Ok(children) => join.perform(&mut parents, children, response_key),
-                            Err(mut e) => errors.append(&mut e),
-                        }
+                            Ok(children) => {
+                                let child_selection_set =
+                                    crate::execution::merge_selection_sets(fields);
+                                let child_object_type = object_or_interface_from_type(
+                                    &ctx.schema.document,
+                                    &field.field_type,
+                                )
+                                .expect("type of child field is object or interface");
+                                match execute_selection_set(
+                                    &ctx,
+                                    store,
+                                    children,
+                                    &child_selection_set,
+                                    &child_object_type,
+                                ) {
+                                    Ok(children) => {
+                                        join.perform(&mut parents, children, response_key)
+                                    }
+                                    Err(mut e) => errors.append(&mut e),
+                                }
+                            }
+                            Err(mut e) => {
+                                errors.append(&mut e);
+                            }
+                        };
                     }
-                    Err(mut e) => {
-                        errors.append(&mut e);
-                    }
-                };
+                    Err(e) => errors.push(e),
+                }
             } else {
                 errors.push(QueryExecutionError::UnknownField(
                     fields[0].position,

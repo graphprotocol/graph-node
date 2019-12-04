@@ -89,10 +89,14 @@ where
     R: Resolver,
 {
     /// Creates a derived context for a new field (added to the top of the field stack).
-    pub fn for_field(&self, field: &'a q::Field) -> Self {
+    pub fn for_field(
+        &self,
+        field: &'a q::Field,
+        _object_type: impl Into<ObjectOrInterface<'a>>,
+    ) -> Result<Self, QueryExecutionError> {
         let mut ctx = self.clone();
         ctx.fields.push(field);
-        ctx
+        Ok(ctx)
     }
 
     pub fn as_introspection_context(&self) -> ExecutionContext<IntrospectionResolver> {
@@ -437,16 +441,20 @@ where
         // If the field exists on the object, execute it and add its result to the result map
         if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
             // Push the new field onto the context's field stack
-            let ctx = ctx.for_field(&fields[0]);
-
-            match execute_field(&ctx, object_type, object_value, &fields[0], field, fields) {
-                Ok(v) => {
-                    result_map.insert(response_key.to_owned(), v);
+            match ctx.for_field(&fields[0], object_type) {
+                Ok(ctx) => {
+                    match execute_field(&ctx, object_type, object_value, &fields[0], field, fields)
+                    {
+                        Ok(v) => {
+                            result_map.insert(response_key.to_owned(), v);
+                        }
+                        Err(mut e) => {
+                            errors.append(&mut e);
+                        }
+                    };
                 }
-                Err(mut e) => {
-                    errors.append(&mut e);
-                }
-            };
+                Err(e) => errors.push(e),
+            }
         } else {
             errors.push(QueryExecutionError::UnknownField(
                 fields[0].position,
