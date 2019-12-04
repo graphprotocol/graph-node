@@ -25,6 +25,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
+    add_directives(&mut schema);
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
@@ -63,6 +64,51 @@ fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError>
         }
     }
     Ok(())
+}
+
+/// Add directive definitions for our custom directives
+fn add_directives(schema: &mut Document) {
+    let entity = Definition::DirectiveDefinition(DirectiveDefinition {
+        position: Pos::default(),
+        description: None,
+        name: "entity".to_owned(),
+        arguments: vec![],
+        locations: vec![DirectiveLocation::Object],
+    });
+
+    let derived_from = Definition::DirectiveDefinition(DirectiveDefinition {
+        position: Pos::default(),
+        description: None,
+        name: "derivedFrom".to_owned(),
+        arguments: vec![InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "field".to_owned(),
+            value_type: Type::NamedType("String".to_owned()),
+            default_value: None,
+            directives: vec![],
+        }],
+        locations: vec![DirectiveLocation::FieldDefinition],
+    });
+
+    let subgraph_id = Definition::DirectiveDefinition(DirectiveDefinition {
+        position: Pos::default(),
+        description: None,
+        name: "subgraphId".to_owned(),
+        arguments: vec![InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "id".to_owned(),
+            value_type: Type::NamedType("String".to_owned()),
+            default_value: None,
+            directives: vec![],
+        }],
+        locations: vec![DirectiveLocation::Object],
+    });
+
+    schema.definitions.push(entity);
+    schema.definitions.push(derived_from);
+    schema.definitions.push(subgraph_id);
 }
 
 /// Adds a global `OrderDirection` type to the schema.
