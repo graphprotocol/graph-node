@@ -315,28 +315,23 @@ where
         let subgraph_id_for_resolve_object = subgraph_id.clone();
 
         let resolve_object_with_id = |id: &String| -> Result<Option<Entity>, QueryExecutionError> {
-            match object_type {
-                ObjectOrInterface::Object(_) => self.store.get(EntityKey {
-                    subgraph_id: subgraph_id_for_resolve_object,
-                    entity_type: object_type.name().to_owned(),
-                    entity_id: id.to_owned(),
-                }),
+            let collection = match object_type {
+                ObjectOrInterface::Object(_) => {
+                    EntityCollection::All(vec![object_type.name().to_owned()])
+                }
                 ObjectOrInterface::Interface(interface) => {
                     let entity_types = types_for_interface[&interface.name]
                         .iter()
                         .map(|o| o.name.clone())
                         .collect();
-                    let range = EntityRange::first(1);
-                    let mut query = EntityQuery::new(
-                        subgraph_id_for_resolve_object,
-                        BLOCK_NUMBER_MAX,
-                        EntityCollection::All(entity_types),
-                    )
-                    .range(range);
-                    query.filter = Some(EntityFilter::Equal(String::from("id"), Value::from(id)));
-                    Ok(self.store.find(query)?.into_iter().next())
+                    EntityCollection::All(entity_types)
                 }
-            }
+            };
+            let query =
+                EntityQuery::new(subgraph_id_for_resolve_object, BLOCK_NUMBER_MAX, collection)
+                    .filter(EntityFilter::Equal(String::from("id"), Value::from(id)))
+                    .first(1);
+            Ok(self.store.find(query)?.into_iter().next())
         };
 
         let entity = if let Some(id) = id {
