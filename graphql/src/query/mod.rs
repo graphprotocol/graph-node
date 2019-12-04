@@ -81,6 +81,7 @@ where
         variable_values: Arc::new(coerced_variable_values),
         deadline: options.deadline,
         max_first: options.max_first,
+        block: BLOCK_NUMBER_MAX,
         mode,
     };
 

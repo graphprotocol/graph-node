@@ -63,6 +63,7 @@ where
         variable_values: Arc::new(coerced_variable_values),
         deadline: None,
         max_first: options.max_first,
+        block: BLOCK_NUMBER_MAX,
         mode: ExecutionMode::Prefetch,
     };
 
@@ -222,6 +223,7 @@ where
         variable_values,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
+        block: BLOCK_NUMBER_MAX,
         mode: ExecutionMode::Prefetch,
     };
 
