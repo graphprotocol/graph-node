@@ -604,7 +604,7 @@ fn revert_blocks(
                 .map_err(move |e| {
                     debug!(
                         logger_for_send_err,
-                        "Sending revert event failed";
+                        "Failed to send revert event";
                         "error" => format!("{}", e),
                         "to" => format_block_pointer(&to_for_send_err),
                         "from" => format_block_pointer(&from_for_send_err),
@@ -627,7 +627,7 @@ fn revert_blocks(
             Err(block) => {
                 debug!(
                     logger_for_complete,
-                    "Revert old blocks failed; \
+                    "Failed to revert old blocks; \
                      setting local head to the last block we managed to revert to"
                 );
                 future::ok(block)
@@ -1356,7 +1356,7 @@ impl PollStateMachine for StateMachine {
             Err(e) => {
                 trace!(
                     context.logger,
-                    "Fetching new blocks failed; \
+                    "Failed to fetch new blocks; \
                      re-evaluate chain head and try again";
                     "error" => format!("{}", e)
                 );
