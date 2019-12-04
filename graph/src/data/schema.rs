@@ -51,11 +51,14 @@ pub enum SchemaValidationError {
         _1, _0, _2
     )]
     DerivedFromInvalid(String, String, String), // (type, field, reason)
-    #[fail(display = "_SubgraphSchema_ type is solely for imports and should have no fields")]
+    #[fail(display = "_schema_ type is solely for imports and should have no fields")]
     SubgraphSchemaTypeFieldsInvalid,
-    #[fail(display = "_SubgraphSchema_ type only allows @import directives")]
+    #[fail(display = "_schema_ type only allows @import directives")]
     SubgraphSchemaDirectivesInvalid,
-    #[fail(display = "@import defined incorrectly")]
+    #[fail(display = r#"
+@imports directives must be defined in one of the following forms: \
+@imports(types: ["A", {{ name: "B", as: "C"}}], from: {{ name: "org/subgraph"}}) \
+@imports(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})")]"#)]
     ImportDirectiveInvalid,
     #[fail(
         display = "GraphQL type `{}` has field `{}` with type `{}` which is not defined or imported",
@@ -475,8 +478,10 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         self.validate_subgraph_schema_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
-        // Should validate that import directives are properly formed
-        // Should verify that import directives only exist on the _Schema_ type
+        // Should verify that only import directives exist on the _schema_ type
+        self.validate_only_import_directives_on_reserved_type()
+            .unwrap_or_else(|err| errors.push(err));
+        // Should validate that import directives on the _schema_ type are properly formed
         self.validate_import_directives()
             .unwrap_or_else(|err| errors.push(err));
         // Should validate that all types in the Subgraph referenced from other subgraphs exist
@@ -506,29 +511,111 @@ impl Schema {
         }
     }
 
-    fn validate_import_directives(&self) -> Result<(), SchemaValidationError> {
+    fn validate_only_import_directives_on_reserved_type(
+        &self,
+    ) -> Result<(), SchemaValidationError> {
         match self
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
                 if !subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| directive.name != "imports")
+                    .filter(|directive| !directive.name.eq("imports"))
                     .collect::<Vec<&Directive>>()
                     .is_empty()
                 {
                     Some(SchemaValidationError::SubgraphSchemaDirectivesInvalid)
                 } else {
-                    subgraph_schema_type
-                        .directives
-                        .iter()
-                        .filter(|directive| directive.name == "imports")
-                        // TODO: Finish verifying import directive
-                        // Each import directive must have a valid `from` argument
-                        // Each import directive must have a valid 'types` argument
-                        .find(|_directive| false)
-                        .map(|_| SchemaValidationError::ImportDirectiveInvalid)
+                    None
                 }
+            }) {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
+
+    fn import_directive_has_valid_types(directive: &Directive) -> bool {
+        directive
+            .arguments
+            .iter()
+            .find(|(name, value)| {
+                if !name.eq("types") {
+                    return false;
+                }
+                match value {
+                    Value::List(values) => {
+                        // Each value must be a String or an Object with String:String key value
+                        // pairs for `name` and `as`
+                        // Search for an invalid type in the list of imported types
+                        values
+                            .iter()
+                            .find(|value| match value {
+                                Value::String(_) => false,
+                                Value::Object(obj) => {
+                                    let has_invalid_name =
+                                        obj.get("name").map_or(true, |value| match value {
+                                            Value::String(_) => false,
+                                            _ => true,
+                                        });
+                                    let has_invalid_as =
+                                        obj.get("as").map_or(true, |value| match value {
+                                            Value::String(_) => false,
+                                            _ => true,
+                                        });
+                                    has_invalid_name || has_invalid_as
+                                }
+                                _ => true,
+                            })
+                            .map_or(true, |_| false)
+                    }
+                    _ => return false,
+                }
+            })
+            .map_or(false, |_| true)
+    }
+
+    fn import_directive_has_valid_from(directive: &Directive) -> bool {
+        directive
+            .arguments
+            .iter()
+            // Look for a valid `from` argument
+            .find(|(name, value)| {
+                if !name.eq("from") {
+                    return false;
+                }
+                match value {
+                    Value::Object(obj) => {
+                        let has_id = obj.get("id").map_or(false, |value| match value {
+                            Value::String(_) => true,
+                            _ => false,
+                        });
+                        let has_name = obj.get("name").map_or(false, |value| match value {
+                            Value::String(_) => true,
+                            _ => false,
+                        });
+                        has_id ^ has_name
+                    }
+                    _ => return false,
+                }
+            })
+            .map_or(false, |_| true)
+    }
+
+    fn validate_import_directives(&self) -> Result<(), SchemaValidationError> {
+        match self
+            .subgraph_schema_object_type()
+            .and_then(|subgraph_schema_type| {
+                subgraph_schema_type
+                    .directives
+                    .iter()
+                    .filter(|directive| directive.name == "imports")
+                    // Look for an invalid directive
+                    .find(|directive| {
+                        let has_valid_types = Self::import_directive_has_valid_types(directive);
+                        let has_valid_from = Self::import_directive_has_valid_from(directive);
+                        !has_valid_types || !has_valid_from
+                    })
+                    .map(|_| SchemaValidationError::ImportDirectiveInvalid)
             }) {
             Some(err) => Err(err),
             None => Ok(()),
