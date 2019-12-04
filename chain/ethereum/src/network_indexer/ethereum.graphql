@@ -56,6 +56,9 @@ type Block @entity {
   """The sum of all difficulty values up to and including this block."""
   totalDifficulty: BigInt!
 
+  """Whether the block is an ommer."""
+  isOmmer: Boolean!
+
   """The number of ommers (AKA uncles) associated with this block."""
   ommerCount: Int!
 

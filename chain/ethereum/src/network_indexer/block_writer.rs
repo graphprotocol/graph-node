@@ -108,11 +108,21 @@ type WriteContextResult = Box<dyn Future<Item = WriteContext, Error = Error> + S
 
 impl WriteContext {
     /// Updates an entity to a new value (potentially merging it with existing data).
-    fn set_entity(mut self, value: impl TryIntoEntity + ToEntityKey) -> WriteContextResult {
+    fn set_entity(
+        mut self,
+        value: impl TryIntoEntity + ToEntityKey,
+        extra_fields: Option<Vec<(&str, Value)>>,
+    ) -> WriteContextResult {
         self.cache.set(
             value.to_entity_key(self.subgraph_id.clone()),
             match value.try_into_entity() {
-                Ok(entity) => entity,
+                Ok(mut entity) => match extra_fields {
+                    Some(fields) => {
+                        entity.merge(Entity::from(fields));
+                        entity
+                    }
+                    None => entity,
+                },
                 Err(e) => return Box::new(future::err(e.into())),
             },
         );
@@ -132,12 +142,14 @@ impl WriteContext {
 
         Box::new(
             // Add the block entity
-            self.set_entity(block.as_ref())
+            self.set_entity(block.as_ref(), Some(vec![("isOmmer", false.into())]))
                 // Add uncle block entities
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(block_for_uncles.uncles.clone())
                         .filter_map(|ommer| ommer)
-                        .fold(context, move |context, ommer| context.set_entity(ommer))
+                        .fold(context, move |context, ommer| {
+                            context.set_entity(ommer, Some(vec![("isOmmer", true.into())]))
+                        })
                 })
                 // Transact everything into the store
                 .and_then(move |context| {
