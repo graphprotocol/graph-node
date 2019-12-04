@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use graph::prelude::*;
 
 use crate::prelude::*;
+use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
 
 type TypeObjectsMap = BTreeMap<String, q::Value>;
@@ -461,6 +462,10 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         Ok(None)
+    }
+
+    fn locate_block(&self, _: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
+        Ok(BLOCK_NUMBER_MAX)
     }
 
     fn resolve_objects(

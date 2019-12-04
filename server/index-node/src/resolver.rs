@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, HashMap};
 use graph::data::graphql::{TryFromValue, ValueList, ValueMap};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::*;
-use graph_graphql::prelude::{object_value, ExecutionContext, ObjectOrInterface, Resolver};
+use graph_graphql::prelude::{
+    object_value, BlockConstraint, ExecutionContext, ObjectOrInterface, Resolver,
+};
 use web3::types::H256;
 
 /// Resolver for the index node GraphQL API.
@@ -506,6 +508,10 @@ where
         _: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         Ok(None)
+    }
+
+    fn locate_block(&self, _: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
+        Ok(BLOCK_NUMBER_MAX)
     }
 
     fn resolve_objects(

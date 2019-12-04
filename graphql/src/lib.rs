@@ -27,7 +27,9 @@ mod store;
 pub mod prelude {
     pub use super::execution::{ExecutionContext, ObjectOrInterface, Resolver};
     pub use super::introspection::{introspection_schema, IntrospectionResolver};
-    pub use super::query::{execute_query, QueryExecutionOptions};
+    pub use super::query::{
+        execute_query, ext::BlockConstraint, ext::BlockLocator, QueryExecutionOptions,
+    };
     pub use super::schema::{api_schema, ast::validate_entity, APISchemaError};
     pub use super::store::{build_query, StoreResolver};
     pub use super::subscription::{execute_subscription, SubscriptionExecutionOptions};

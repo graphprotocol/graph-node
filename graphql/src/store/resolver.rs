@@ -8,6 +8,7 @@ use graph::prelude::*;
 
 use crate::prelude::*;
 use crate::query::ast as qast;
+use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
 
 use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
@@ -244,6 +245,10 @@ where
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))
+    }
+
+    fn locate_block(&self, _: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
+        Ok(BLOCK_NUMBER_MAX)
     }
 
     fn resolve_objects(

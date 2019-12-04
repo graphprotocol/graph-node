@@ -20,6 +20,10 @@ impl Resolver for MockResolver {
         Ok(None)
     }
 
+    fn locate_block(&self, _: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
+        Ok(BLOCK_NUMBER_MAX)
+    }
+
     fn resolve_objects<'a>(
         &self,
         _parent: &Option<q::Value>,

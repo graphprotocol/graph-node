@@ -2,6 +2,7 @@ use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeMap, HashMap};
 
 use crate::prelude::*;
+use crate::query::ext::BlockConstraint;
 use crate::schema::ast::get_named_type;
 use graph::prelude::{BlockNumber, QueryExecutionError, Schema, StoreEventStreamBox};
 
@@ -68,6 +69,14 @@ pub trait Resolver: Clone + Send + Sync {
         ctx: &ExecutionContext<'a, Self>,
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>>;
+
+    /// Locate the block for the given constraint and return its block number.
+    /// That number will later be passed into `resolve_object` and
+    /// `resolve_objects`
+    fn locate_block(
+        &self,
+        block_constraint: &BlockConstraint,
+    ) -> Result<BlockNumber, QueryExecutionError>;
 
     /// Resolves entities referenced by a parent object.
     fn resolve_objects(

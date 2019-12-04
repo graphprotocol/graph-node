@@ -13,6 +13,7 @@ use graph::prelude::*;
 use crate::introspection::INTROSPECTION_DOCUMENT;
 use crate::prelude::*;
 use crate::query::ast as qast;
+use crate::query::ext::FieldExt as _;
 use crate::schema::ast as sast;
 use crate::values::coercion;
 
@@ -96,10 +97,13 @@ where
     pub fn for_field(
         &self,
         field: &'a q::Field,
-        _object_type: impl Into<ObjectOrInterface<'a>>,
+        object_type: impl Into<ObjectOrInterface<'a>>,
     ) -> Result<Self, QueryExecutionError> {
         let mut ctx = self.clone();
         ctx.fields.push(field);
+        if let Some(bc) = field.block_constraint(object_type)? {
+            ctx.block = self.resolver.locate_block(&bc)?;
+        }
         Ok(ctx)
     }
 
