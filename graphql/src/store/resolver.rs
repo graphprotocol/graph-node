@@ -254,6 +254,7 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        block: BlockNumber,
         max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         if Self::was_prefetched(parent) {
@@ -261,7 +262,13 @@ where
         }
 
         let object_type = object_type.into();
-        let mut query = build_query(object_type, arguments, types_for_interface, max_first)?;
+        let mut query = build_query(
+            object_type,
+            block,
+            arguments,
+            types_for_interface,
+            max_first,
+        )?;
 
         // Add matching filter for derived fields
         let derived_from_field = sast::get_derived_from_field(object_type, field_definition);
@@ -300,6 +307,7 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         if Self::was_prefetched(parent) {
             return self.resolve_object_prefetch(parent, field, field_definition, object_type);
@@ -327,10 +335,9 @@ where
                     EntityCollection::All(entity_types)
                 }
             };
-            let query =
-                EntityQuery::new(subgraph_id_for_resolve_object, BLOCK_NUMBER_MAX, collection)
-                    .filter(EntityFilter::Equal(String::from("id"), Value::from(id)))
-                    .first(1);
+            let query = EntityQuery::new(subgraph_id_for_resolve_object, block, collection)
+                .filter(EntityFilter::Equal(String::from("id"), Value::from(id)))
+                .first(1);
             Ok(self.store.find(query)?.into_iter().next())
         };
 
@@ -352,7 +359,8 @@ where
 
                 let skip_arg_name = q::Name::from("skip");
                 arguments.insert(&skip_arg_name, q::Value::Int(q::Number::from(0)));
-                let mut query = build_query(object_type, &arguments, types_for_interface, 2)?;
+                let mut query =
+                    build_query(object_type, block, &arguments, types_for_interface, 2)?;
                 Self::add_filter_for_derived_field(&mut query, parent, derived_from_field);
 
                 // Find the entity or entities that reference the parent entity

@@ -12,6 +12,7 @@ use crate::schema::ast as sast;
 /// Panics if `entity` is not present in `schema`.
 pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
+    block: BlockNumber,
     arguments: &HashMap<&q::Name, q::Value>,
     types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     max_first: u32,
@@ -24,7 +25,7 @@ pub fn build_query<'a>(
             .map(|o| o.name.clone())
             .collect(),
     });
-    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, BLOCK_NUMBER_MAX, entity_types)
+    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
         .range(build_range(arguments, max_first)?);
     if let Some(filter) = build_filter(entity, arguments)? {
         query = query.filter(filter);
@@ -370,6 +371,7 @@ mod tests {
         assert_eq!(
             build_query(
                 &object("Entity1"),
+                BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX
@@ -381,6 +383,7 @@ mod tests {
         assert_eq!(
             build_query(
                 &object("Entity2"),
+                BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX
@@ -396,6 +399,7 @@ mod tests {
         assert_eq!(
             build_query(
                 &default_object(),
+                BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX
@@ -407,6 +411,7 @@ mod tests {
         assert_eq!(
             build_query(
                 &default_object(),
+                BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX
@@ -423,18 +428,30 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::Enum("name".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_by,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_by,
             Some(("name".to_string(), ValueType::String))
         );
 
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::Enum("email".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_by,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_by,
             Some(("email".to_string(), ValueType::String))
         );
     }
@@ -445,18 +462,30 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::String("name".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_by,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_by,
             None,
         );
 
         let mut args = default_arguments();
         args.insert(&order_by, q::Value::String("email".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_by,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_by,
             None,
         );
     }
@@ -467,27 +496,45 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::Enum("asc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_direction,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_direction,
             Some(EntityOrder::Ascending)
         );
 
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::Enum("desc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_direction,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_direction,
             Some(EntityOrder::Descending)
         );
 
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::Enum("ascending...".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_direction,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_direction,
             None,
         );
     }
@@ -498,18 +545,30 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::String("asc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_direction,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_direction,
             None,
         );
 
         let mut args = default_arguments();
         args.insert(&order_direction, q::Value::String("desc".to_string()));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .order_direction,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order_direction,
             None,
         );
     }
@@ -519,6 +578,7 @@ mod tests {
         assert_eq!(
             build_query(
                 &default_object(),
+                BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX
@@ -535,9 +595,15 @@ mod tests {
         let mut args = default_arguments();
         args.insert(&skip, q::Value::Int(q::Number::from(50)));
         assert_eq!(
-            build_query(&default_object(), &args, &BTreeMap::new(), std::u32::MAX)
-                .unwrap()
-                .range,
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .range,
             EntityRange {
                 first: Some(100),
                 skip: 50,
@@ -562,6 +628,7 @@ mod tests {
                     fields: vec![field("name", Type::NamedType("string".to_owned()))],
                     ..default_object()
                 },
+                BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,

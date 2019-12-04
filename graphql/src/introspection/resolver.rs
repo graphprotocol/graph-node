@@ -471,6 +471,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _block: BlockNumber,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.name.as_str() {
@@ -510,6 +511,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _: &BTreeMap<Name, Vec<ObjectType>>,
+        _: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),

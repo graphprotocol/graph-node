@@ -28,6 +28,7 @@ impl Resolver for MockResolver {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _block: BlockNumber,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
@@ -41,6 +42,7 @@ impl Resolver for MockResolver {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

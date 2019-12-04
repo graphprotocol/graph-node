@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use graph::prelude::{
-    Entity, EntityCollection, EntityFilter, EntityLink, EntityWindow, ParentLink,
+    BlockNumber, Entity, EntityCollection, EntityFilter, EntityLink, EntityWindow, ParentLink,
     QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
 };
 
@@ -839,6 +839,7 @@ where
         &join,
         &argument_values,
         ctx.schema.types_for_interface(),
+        ctx.block,
         ctx.max_first,
     )
     .map_err(|e| vec![e])
@@ -852,9 +853,16 @@ fn fetch<S: Store>(
     join: &Join<'_>,
     arguments: &HashMap<&q::Name, q::Value>,
     types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
+    block: BlockNumber,
     max_first: u32,
 ) -> Result<Vec<Node>, QueryExecutionError> {
-    let mut query = build_query(join.child_type, arguments, types_for_interface, max_first)?;
+    let mut query = build_query(
+        join.child_type,
+        block,
+        arguments,
+        types_for_interface,
+        max_first,
+    )?;
 
     if let Some(q::Value::String(id)) = arguments.get(&*ARG_ID) {
         query.filter = Some(

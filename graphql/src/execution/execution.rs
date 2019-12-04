@@ -717,6 +717,7 @@ where
             t.into(),
             argument_values,
             ctx.schema.types_for_interface(),
+            ctx.block,
         ),
 
         // Let the resolver decide how values in the resolved object value
@@ -746,6 +747,7 @@ where
             i.into(),
             argument_values,
             ctx.schema.types_for_interface(),
+            ctx.block,
         ),
 
         s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),
@@ -795,6 +797,7 @@ where
                         t.into(),
                         argument_values,
                         ctx.schema.types_for_interface(),
+                        ctx.block,
                         ctx.max_first,
                     )
                     .map_err(|e| vec![e]),
@@ -828,6 +831,7 @@ where
                         t.into(),
                         argument_values,
                         ctx.schema.types_for_interface(),
+                        ctx.block,
                         ctx.max_first,
                     )
                     .map_err(|e| vec![e]),

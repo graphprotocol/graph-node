@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::prelude::*;
 use crate::schema::ast::get_named_type;
-use graph::prelude::{QueryExecutionError, Schema, StoreEventStreamBox};
+use graph::prelude::{BlockNumber, QueryExecutionError, Schema, StoreEventStreamBox};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -78,6 +78,7 @@ pub trait Resolver: Clone + Send + Sync {
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        block: BlockNumber,
         max_first: u32,
     ) -> Result<q::Value, QueryExecutionError>;
 
@@ -90,6 +91,7 @@ pub trait Resolver: Clone + Send + Sync {
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.

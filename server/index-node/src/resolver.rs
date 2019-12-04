@@ -516,6 +516,7 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _block: BlockNumber,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         match (parent, object_type.name(), field.name.as_str()) {
@@ -562,6 +563,7 @@ where
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         match (parent, object_type.name(), field.name.as_str()) {
             (Some(status), "EthereumBlock", "chainHeadBlock") => Ok(status
