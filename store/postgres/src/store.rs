@@ -6,7 +6,7 @@ use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -1063,8 +1063,33 @@ impl StoreTrait for Store {
         }
     }
 
-    fn block_number(&self, _: &SubgraphDeploymentId, _: H256) -> Result<BlockNumber, StoreError> {
-        Ok(BLOCK_NUMBER_MAX)
+    fn block_number(
+        &self,
+        _: &SubgraphDeploymentId,
+        hash: H256,
+    ) -> Result<Option<BlockNumber>, StoreError> {
+        use crate::db_schema::ethereum_blocks::dsl;
+
+        let hash = format!("{:x}", hash);
+
+        // We should also really check that the block with the given hash is
+        // on the chain starting at the subgraph's current head. That check is
+        // very expensive though with the data structures we have currently
+        // available. Ideally, we'd have the last REORG_THRESHOLD blocks in
+        // memory so that we can check against them, and then mark in the
+        // database the blocks on the main chain that we consider final
+        let number: Option<i64> = dsl::ethereum_blocks
+            .select(dsl::number)
+            .filter(dsl::hash.eq(hash))
+            .filter(dsl::network_name.eq(&self.network_name))
+            .first(&*self.get_conn()?)
+            .optional()?;
+        number
+            .map(|number| {
+                BlockNumber::try_from(number)
+                    .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
+            })
+            .transpose()
     }
 }
 

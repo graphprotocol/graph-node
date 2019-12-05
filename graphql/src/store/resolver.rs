@@ -253,7 +253,15 @@ where
             BlockLocator::Hash(hash) => self
                 .store
                 .block_number(&bc.subgraph, hash)
-                .map_err(|e| e.into()),
+                .map_err(|e| e.into())
+                .and_then(|number| {
+                    number.ok_or_else(|| {
+                        QueryExecutionError::ValueParseError(
+                            "block.hash".to_owned(),
+                            "no block with that hash found".to_owned(),
+                        )
+                    })
+                }),
         }
     }
 

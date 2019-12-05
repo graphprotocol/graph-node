@@ -374,8 +374,12 @@ impl Store for MockStore {
         self.apply_metadata_operations(ops)
     }
 
-    fn block_number(&self, _: &SubgraphDeploymentId, _: H256) -> Result<BlockNumber, StoreError> {
-        Ok(BLOCK_NUMBER_MAX)
+    fn block_number(
+        &self,
+        _: &SubgraphDeploymentId,
+        _: H256,
+    ) -> Result<Option<BlockNumber>, StoreError> {
+        Ok(Some(BLOCK_NUMBER_MAX))
     }
 
     fn migrate_subgraph_deployment(
@@ -565,8 +569,12 @@ impl Store for FakeStore {
         unimplemented!()
     }
 
-    fn block_number(&self, _: &SubgraphDeploymentId, _: H256) -> Result<BlockNumber, StoreError> {
-        Ok(BLOCK_NUMBER_MAX)
+    fn block_number(
+        &self,
+        _: &SubgraphDeploymentId,
+        _: H256,
+    ) -> Result<Option<BlockNumber>, StoreError> {
+        Ok(Some(BLOCK_NUMBER_MAX))
     }
 }
 

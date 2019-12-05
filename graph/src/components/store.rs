@@ -1166,7 +1166,7 @@ pub trait Store: Send + Sync + 'static {
         &self,
         subgraph_id: &SubgraphDeploymentId,
         block_hash: H256,
-    ) -> Result<BlockNumber, StoreError>;
+    ) -> Result<Option<BlockNumber>, StoreError>;
 }
 
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
