@@ -53,6 +53,15 @@ lazy_static! {
             .unwrap_or("120".into())
             .parse::<u64>()
             .expect("invalid GRAPH_ETHEREUM_JSON_RPC_TIMEOUT env var");
+
+
+    /// This is used for requests that will not fail the subgraph if the limit is reached, but will
+    /// simply restart the syncing step, so it can be low. This limit guards against scenarios such
+    /// as requesting a block hash that has been reorged.
+    static ref JSON_RPC_RETRY_LIMIT: usize = std::env::var("GRAPH_ETHEREUM_JSON_RPC_RETRY_LIMIT")
+            .unwrap_or("10".into())
+            .parse::<usize>()
+            .expect("invalid GRAPH_ETHEREUM_JSON_RPC_RETRY_LIMIT env var");
 }
 
 impl<T> EthereumAdapter<T>
@@ -80,7 +89,7 @@ where
         let logger = logger.to_owned();
 
         retry("trace_filter RPC call", &logger)
-            .no_limit()
+            .limit(*JSON_RPC_RETRY_LIMIT)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
                 let trace_filter: TraceFilter = match addresses.len() {
@@ -173,7 +182,7 @@ where
                     .iter()
                     .any(|f| e.to_string().contains(f)),
             })
-            .no_limit()
+            .limit(*JSON_RPC_RETRY_LIMIT)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
                 let start = Instant::now();
@@ -494,7 +503,7 @@ where
         stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
             let web3 = web3.clone();
             retry(format!("load block {}", hash), &logger)
-                .no_limit()
+                .limit(*JSON_RPC_RETRY_LIMIT)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -657,7 +666,7 @@ where
 
         Box::new(
             retry("eth_getBlockByHash RPC call", &logger)
-                .no_limit()
+                .limit(*JSON_RPC_RETRY_LIMIT)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
