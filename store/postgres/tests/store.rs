@@ -2174,3 +2174,29 @@ fn window() {
         Ok(())
     });
 }
+
+#[test]
+fn find_at_block() {
+    fn shaqueeena_at_block(block: BlockNumber, email: &'static str) {
+        run_test(move |store| -> Result<(), ()> {
+            let mut query = user_query()
+                .filter(EntityFilter::Equal("name".to_owned(), "Shaqueeena".into()))
+                .order_by("name", ValueType::String, EntityOrder::Descending);
+            query.block = block;
+
+            let entities = store
+                .find(query)
+                .expect("store.find failed to execute query");
+
+            assert_eq!(1, entities.len());
+            let entity = entities.first().unwrap();
+            assert_eq!(Some(&Value::from(email)), entity.get("email"));
+
+            Ok(())
+        })
+    }
+
+    shaqueeena_at_block(1, "queensha@email.com");
+    shaqueeena_at_block(2, "teeko@email.com");
+    shaqueeena_at_block(7000, "teeko@email.com");
+}

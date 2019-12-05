@@ -6,10 +6,11 @@ use diesel::RunQueryDsl;
 use futures::future::{self, IntoFuture};
 use lazy_static::lazy_static;
 use std::fmt::Debug;
+use std::str::FromStr;
 use std::sync::Arc;
 
-use graph::components::store::ChainStore;
-use graph::prelude::serde_json;
+use graph::components::store::{ChainStore, Store as _};
+use graph::prelude::{serde_json, web3::types::H256, SubgraphDeploymentId};
 use graph_store_postgres::db_schema_for_tests as db_schema;
 use graph_store_postgres::Store as DieselStore;
 
@@ -65,6 +66,10 @@ impl FakeBlock {
             ))
             .execute(conn)
             .expect(&errmsg);
+    }
+
+    fn block_hash(&self) -> H256 {
+        H256::from_str(self.hash.as_str()).expect("invalid block hash")
     }
 }
 
@@ -262,4 +267,28 @@ fn long_chain_with_uncles() {
         &*BLOCK_FOUR,
     ];
     check_chain_head_update(chain, Some(&*BLOCK_FOUR), None);
+}
+
+#[test]
+fn block_number() {
+    let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+    let subgraph = SubgraphDeploymentId::new("nonExistentSubgraph").unwrap();
+    run_test(chain, move |store| -> Result<(), ()> {
+        let block = store
+            .block_number(&subgraph, GENESIS_BLOCK.block_hash())
+            .expect("Found genesis block");
+        assert_eq!(Some(0), block);
+
+        let block = store
+            .block_number(&subgraph, BLOCK_ONE.block_hash())
+            .expect("Found block 1");
+        assert_eq!(Some(1), block);
+
+        let block = store
+            .block_number(&subgraph, BLOCK_THREE.block_hash())
+            .expect("Looked for block 3");
+        assert!(block.is_none());
+
+        Ok(())
+    })
 }
