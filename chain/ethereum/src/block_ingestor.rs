@@ -1,8 +1,34 @@
+use std::collections::HashMap;
 use std::time::Duration;
 use std::time::Instant;
 
 use graph::prelude::*;
 use web3::types::*;
+
+pub struct BlockIngestorMetrics {
+    pub block_number: Box<GaugeVec>,
+}
+
+impl BlockIngestorMetrics {
+    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+        Self {
+            block_number: registry
+                .new_gauge_vec(
+                    String::from("ethereum_block_number"),
+                    String::from("Records the number of the most recent block synced on the Ethereum network"),
+                    HashMap::new(),
+                    vec![String::from("network")],
+                )
+                .unwrap(),
+        }
+    }
+
+    pub fn observe_blocks_synced(&self, network_name: &str, latest_block_number: i64) {
+        self.block_number
+            .with_label_values(vec![network_name].as_slice())
+            .set(latest_block_number as f64);
+    }
+}
 
 pub struct BlockIngestor<S>
 where
@@ -13,6 +39,7 @@ where
     ancestor_count: u64,
     network_name: String,
     logger: Logger,
+    ingestor_metrics: Arc<BlockIngestorMetrics>,
     polling_interval: Duration,
 }
 
@@ -20,14 +47,18 @@ impl<S> BlockIngestor<S>
 where
     S: ChainStore,
 {
-    pub fn new(
+    pub fn new<M>(
         chain_store: Arc<S>,
         eth_adapter: Arc<dyn EthereumAdapter>,
         ancestor_count: u64,
         network_name: String,
         logger_factory: &LoggerFactory,
         polling_interval: Duration,
-    ) -> Result<BlockIngestor<S>, Error> {
+        registry: Arc<M>,
+    ) -> Result<BlockIngestor<S>, Error>
+    where
+        M: MetricsRegistry,
+    {
         let logger = logger_factory.component_logger(
             "BlockIngestor",
             Some(ComponentLoggerConfig {
@@ -36,6 +67,7 @@ where
                 }),
             }),
         );
+        let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         Ok(BlockIngestor {
             chain_store,
@@ -43,6 +75,7 @@ where
             ancestor_count,
             network_name,
             logger,
+            ingestor_metrics,
             polling_interval,
         })
     }
@@ -87,7 +120,6 @@ where
     fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = EthereumAdapterError> + 'a {
         trace!(self.logger, "BlockIngestor::do_poll");
         let network_name = self.network_name.clone();
-
         // Get chain head ptr from store
         future::result(self.chain_store.chain_head_ptr())
             .from_err()
@@ -115,6 +147,10 @@ where
                                     LogCode::BlockIngestionStatus
                                 };
                                 if distance > 0 {
+                                    self.ingestor_metrics.observe_blocks_synced(
+                                        &network_name,
+                                        latest_number,
+                                    );
                                     info!(
                                         self.logger,
                                         "Syncing {} blocks from Ethereum.",
