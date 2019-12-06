@@ -576,6 +576,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                         network_name.to_string(),
                         &logger_factory,
                         block_polling_interval,
+                        metrics_registry.clone(),
                     )
                     .expect("failed to create Ethereum block ingestor");
 
