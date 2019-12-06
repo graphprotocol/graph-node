@@ -1008,25 +1008,17 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
 
         let document = graphql_parser::parse_schema(&raw).expect("Failed to parse raw schema");
         let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
-        match schema.validate(&HashMap::new()) {
-            Err(ref errors) => {
-                errors
-                    .iter()
-                    .find(|e| match e {
-                        SchemaValidationError::DerivedFromInvalid(_, _, msg) => {
-                            assert_eq!(errmsg, msg);
-                            true
-                        }
-                        _ => false,
-                    })
-                    .expect("expected variant SchemaValidationError::DerivedFromInvalid");
-            }
+        match schema.validate_derived_from() {
+            Err(ref e) => match e {
+                SchemaValidationError::DerivedFromInvalid(_, _, msg) => assert_eq!(errmsg, msg),
+                _ => panic!("expected variant SchemaValidationError::DerivedFromInvalid"),
+            },
             Ok(_) => {
-                if !errmsg.eq("ok") {
-                    panic!("expected validation for `{}` to fail", field);
+                if errmsg != "ok" {
+                    panic!("expected validation for `{}` to fail", field)
                 }
             }
-        };
+        }
     }
 
     validate(
