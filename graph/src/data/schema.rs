@@ -254,7 +254,7 @@ impl Schema {
                     .iter()
                     .find_map(|def| match def {
                         schema::Definition::TypeDefinition(TypeDefinition::Interface(i))
-                            if i.name == implemented_interface =>
+                            if i.name.eq(&implemented_interface) =>
                         {
                             Some(i.clone())
                         }
@@ -302,12 +302,12 @@ impl Schema {
                 object
                     .directives
                     .iter()
-                    .filter(|directive| directive.name == "imports")
+                    .filter(|directive| directive.name.eq("imports"))
                     .map(|imports| {
                         imports
                             .arguments
                             .iter()
-                            .find(|(name, _)| name == "from")
+                            .find(|(name, _)| name.eq("from"))
                             .map_or(vec![], |from| {
                                 self.schema_reference_from_directive_argument(from).map_or(
                                     vec![],
@@ -332,8 +332,10 @@ impl Schema {
             object
                 .directives
                 .iter()
-                .filter(|directive| directive.name == "imports")
-                .filter_map(|directive| directive.arguments.iter().find(|(name, _)| name == "from"))
+                .filter(|directive| directive.name.eq("imports"))
+                .filter_map(|directive| {
+                    directive.arguments.iter().find(|(name, _)| name.eq("from"))
+                })
                 .filter_map(|from| self.schema_reference_from_directive_argument(from))
                 .collect()
         })
@@ -343,7 +345,7 @@ impl Schema {
         imports
             .arguments
             .iter()
-            .find(|(name, _)| name == "types")
+            .find(|(name, _)| name.eq("types"))
             .map_or(vec![], |(_, value)| match value {
                 Value::List(types) => types
                     .iter()
@@ -449,7 +451,7 @@ impl Schema {
 
                 if directives
                     .iter()
-                    .find(|directive| directive.name == "subgraphId")
+                    .find(|directive| directive.name.eq("subgraphId"))
                     .is_none()
                 {
                     directives.push(subgraph_id_directive);
@@ -477,7 +479,7 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         // Should validate that import directives on the _schema_ type are properly formed
         self.validate_import_directives()
-            .unwrap_or_else(|err| errors.push(err));
+            .unwrap_or_else(|mut err| errors.append(&mut err));
         // Should validate that all types in the Subgraph referenced from other subgraphs exist
         // If the referenced subgraph is not provided as an argument, do not validate those types
         self.validate_imported_types(schemas)
@@ -595,24 +597,63 @@ impl Schema {
             .map_or(false, |_| true)
     }
 
-    fn validate_import_directives(&self) -> Result<(), SchemaValidationError> {
-        match self
+    fn validate_import_directives(&self) -> Result<(), Vec<SchemaValidationError>> {
+        let errors = self
             .subgraph_schema_object_type()
-            .and_then(|subgraph_schema_type| {
+            .map_or(vec![], |subgraph_schema_type| {
                 subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| directive.name == "imports")
-                    // Look for an invalid directive
-                    .find(|directive| {
-                        let has_valid_types = Self::import_directive_has_valid_types(directive);
-                        let has_valid_from = Self::import_directive_has_valid_from(directive);
-                        !has_valid_types || !has_valid_from
+                    .filter(|directive| directive.name.eq("imports"))
+                    .fold(vec![], |mut errors, imports| {
+                        // Check for badly formed import directives
+                        let has_valid_types = Self::import_directive_has_valid_types(imports);
+                        let has_valid_from = Self::import_directive_has_valid_from(imports);
+                        if !has_valid_types || !has_valid_from {
+                            errors.push(SchemaValidationError::ImportDirectiveInvalid)
+                        }
+
+                        // Check for a badly formed subgraph id or name
+                        imports
+                            .arguments
+                            .iter()
+                            .find(|(name, _)| name.eq("from"))
+                            .iter()
+                            .for_each(|(_, from)| match from {
+                                Value::Object(obj) => {
+                                    obj.get("id").iter().for_each(|id| match id {
+                                        Value::String(i) => match SubgraphDeploymentId::new(i) {
+                                            Err(_) => errors.push(
+                                                SchemaValidationError::ImportedSubgraphIdInvalid(
+                                                    i.clone(),
+                                                ),
+                                            ),
+                                            _ => (),
+                                        },
+                                        _ => (),
+                                    });
+                                    obj.get("name").iter().for_each(|name| match name {
+                                        Value::String(n) => match SubgraphName::new(n) {
+                                            Err(_) => errors.push(
+                                                SchemaValidationError::ImportedSubgraphNameInvalid(
+                                                    n.clone(),
+                                                ),
+                                            ),
+                                            _ => (),
+                                        },
+                                        _ => (),
+                                    });
+                                }
+                                _ => (),
+                            });
+
+                        errors
                     })
-                    .map(|_| SchemaValidationError::ImportDirectiveInvalid)
-            }) {
-            Some(err) => Err(err),
-            None => Ok(()),
+            });
+
+        match errors.is_empty() {
+            true => Ok(()),
+            false => Err(errors),
         }
     }
 
@@ -695,8 +736,8 @@ impl Schema {
                             imported_types
                                 .iter()
                                 .find(|(imported_type, _)| match imported_type {
-                                    ImportedType::Name(name) if name == base => true,
-                                    ImportedType::NameAs(_, az) if az == base => true,
+                                    ImportedType::Name(name) if name.eq(base) => true,
+                                    ImportedType::NameAs(_, az) if az.eq(base) => true,
                                     _ => false,
                                 })
                                 .map_or(Err(()), |_| Ok(()))
@@ -775,7 +816,10 @@ impl Schema {
                                 // as the type of the field
                                 traversal::find_interface(&self.document, iface)
                                     .map(|iface| {
-                                        iface.fields.iter().any(|ifield| ifield.name == field.name)
+                                        iface
+                                            .fields
+                                            .iter()
+                                            .any(|ifield| ifield.name.eq(&field.name))
                                     })
                                     .unwrap_or(false)
                             })
@@ -784,7 +828,7 @@ impl Schema {
                         directive
                             .arguments
                             .iter()
-                            .find(|(name, _)| name == "field")
+                            .find(|(name, _)| name.eq("field"))
                             .map(|(_, value)| value),
                     )
                 })
@@ -825,7 +869,7 @@ impl Schema {
             // right name and type
             let target_field = target_fields
                 .iter()
-                .find(|field| &field.name == target_field)
+                .find(|field| field.name.eq(target_field))
                 .ok_or_else(|| {
                     let msg = format!(
                         "field `{}` does not exist on type `{}`",
@@ -843,7 +887,7 @@ impl Schema {
                 && target_field_type != "ID"
                 && !interface_types
                     .iter()
-                    .any(|iface| &target_field_type == iface)
+                    .any(|iface| target_field_type.eq(iface.clone()))
             {
                 fn type_signatures(name: &String) -> Vec<String> {
                     vec![
@@ -885,7 +929,7 @@ impl Schema {
             if object
                 .fields
                 .iter()
-                .find(|o| o.name == i.name && o.field_type == i.field_type)
+                .find(|o| o.name.eq(&i.name) && o.field_type.eq(&i.field_type))
                 .is_none()
             {
                 missing_fields.push(i.to_string().trim().to_owned());
@@ -905,7 +949,7 @@ impl Schema {
     fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
         traversal::get_object_type_definitions(&self.document)
             .into_iter()
-            .find(|object_type| object_type.name == SCHEMA_TYPE_NAME)
+            .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
     }
 }
 
