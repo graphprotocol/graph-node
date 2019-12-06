@@ -907,7 +907,7 @@ impl Schema {
                 let valid_types = valid_types.join(", ");
 
                 let msg = format!(
-                    "field `{tf}` on type `{tt}` must have one of the following type: {valid_types}",
+                    "field `{tf}` on type `{tt}` must have one of the following types: {valid_types}",
                     tf = target_field.name,
                     tt = target_type_name,
                     valid_types = valid_types,
@@ -985,4 +985,78 @@ fn invalid_interface_implementation() {
         "Entity type `Bar` cannot implement `Foo` because it is missing the \
          required fields: x: Int, y: Int"
     );
+}
+
+#[test]
+fn test_derived_from_validation() {
+    const OTHER_TYPES: &str = "
+type B @entity { id: ID! }
+type C @entity { id: ID! }
+type D @entity { id: ID! }
+type E @entity { id: ID! }
+type F @entity { id: ID! }
+type G @entity { id: ID! a: BigInt }
+type H @entity { id: ID! a: A! }
+# This sets up a situation where we need to allow `Transaction.from` to
+# point to an interface because of `Account.txn`
+type Transaction @entity { from: Address! }
+interface Address { txn: Transaction! @derivedFrom(field: \"from\") }
+type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFrom(field: \"from\") }";
+
+    fn validate(field: &str, errmsg: &str) {
+        let raw = format!("type A @entity {{ id: ID!\n {} }}\n{}", field, OTHER_TYPES);
+
+        let document = graphql_parser::parse_schema(&raw).expect("Failed to parse raw schema");
+        let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+        match schema.validate(&HashMap::new()) {
+            Err(ref errors) => {
+                errors
+                    .iter()
+                    .find(|e| match e {
+                        SchemaValidationError::DerivedFromInvalid(_, _, msg) => {
+                            assert_eq!(errmsg, msg);
+                            true
+                        }
+                        _ => false,
+                    })
+                    .expect("expected variant SchemaValidationError::DerivedFromInvalid");
+            }
+            Ok(_) => {
+                if !errmsg.eq("ok") {
+                    panic!("expected validation for `{}` to fail", field);
+                }
+            }
+        };
+    }
+
+    validate(
+        "b: B @derivedFrom(field: \"a\")",
+        "field `a` does not exist on type `B`",
+    );
+    validate(
+        "c: [C!]! @derivedFrom(field: \"a\")",
+        "field `a` does not exist on type `C`",
+    );
+    validate(
+        "d: D @derivedFrom",
+        "the @derivedFrom directive must have a `field` argument",
+    );
+    validate(
+        "e: E @derivedFrom(attr: \"a\")",
+        "the @derivedFrom directive must have a `field` argument",
+    );
+    validate(
+        "f: F @derivedFrom(field: 123)",
+        "the value of the @derivedFrom `field` argument must be a string",
+    );
+    validate(
+        "g: G @derivedFrom(field: \"a\")",
+        "field `a` on type `G` must have one of the following types: A, A!, [A!], [A!]!",
+    );
+    validate("h: H @derivedFrom(field: \"a\")", "ok");
+    validate(
+        "i: NotAType @derivedFrom(field: \"a\")",
+        "the type of the field must be an existing entity or interface type",
+    );
+    validate("j: B @derivedFrom(field: \"id\")", "ok");
 }
