@@ -8,13 +8,20 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 use graph_graphql::prelude::*;
-use test_store::{transact_entity_operations, GENESIS_PTR, STORE};
+use test_store::{transact_entity_operations, BLOCK_ONE, GENESIS_PTR, STORE};
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
         // Also populate the store when the ID is first accessed.
         let id = SubgraphDeploymentId::new("graphqlTestsQuery").unwrap();
-        insert_test_entities(&**STORE, id.clone());
+        if ! STORE.is_deployed(&id).unwrap() {
+            use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
+
+            let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+            block_store::remove();
+            block_store::insert(chain, "fake_network");
+            insert_test_entities(&**STORE, id.clone());
+        }
         id
     };
 }
@@ -84,7 +91,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         .collect();
     store.create_subgraph_deployment(&schema, ops).unwrap();
 
-    let entities = vec![
+    let entities0 = vec![
         Entity::from(vec![
             ("__typename", Value::from("Musician")),
             ("id", Value::from("m1")),
@@ -101,23 +108,6 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
             ("name", Value::from("Lisa")),
             ("mainBand", Value::from("b1")),
             ("bands", Value::List(vec![Value::from("b1")])),
-        ]),
-        Entity::from(vec![
-            ("__typename", Value::from("Musician")),
-            ("id", Value::from("m3")),
-            ("name", Value::from("Tom")),
-            ("mainBand", Value::from("b2")),
-            (
-                "bands",
-                Value::List(vec![Value::from("b1"), Value::from("b2")]),
-            ),
-        ]),
-        Entity::from(vec![
-            ("__typename", Value::from("Musician")),
-            ("id", Value::from("m4")),
-            ("name", Value::from("Valerie")),
-            ("bands", Value::List(vec![])),
-            ("writtenSongs", Value::List(vec![Value::from("s2")])),
         ]),
         Entity::from(vec![
             ("__typename", Value::from("Band")),
@@ -177,22 +167,47 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         ]),
     ];
 
-    let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
-        key: EntityKey {
-            subgraph_id: id.clone(),
-            entity_type: data["__typename"].clone().as_string().unwrap(),
-            entity_id: data["id"].clone().as_string().unwrap(),
-        },
-        data,
-    });
+    let entities1 = vec![
+        Entity::from(vec![
+            ("__typename", Value::from("Musician")),
+            ("id", Value::from("m3")),
+            ("name", Value::from("Tom")),
+            ("mainBand", Value::from("b2")),
+            (
+                "bands",
+                Value::List(vec![Value::from("b1"), Value::from("b2")]),
+            ),
+        ]),
+        Entity::from(vec![
+            ("__typename", Value::from("Musician")),
+            ("id", Value::from("m4")),
+            ("name", Value::from("Valerie")),
+            ("bands", Value::List(vec![])),
+            ("writtenSongs", Value::List(vec![Value::from("s2")])),
+        ]),
+    ];
 
-    transact_entity_operations(
-        &STORE,
-        id.clone(),
-        GENESIS_PTR.clone(),
-        insert_ops.collect::<Vec<_>>(),
-    )
-    .unwrap();
+    fn insert_at(entities: Vec<Entity>, id: SubgraphDeploymentId, block_ptr: EthereumBlockPointer) {
+        let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: id.clone(),
+                entity_type: data["__typename"].clone().as_string().unwrap(),
+                entity_id: data["id"].clone().as_string().unwrap(),
+            },
+            data,
+        });
+
+        transact_entity_operations(
+            &STORE,
+            id.clone(),
+            block_ptr,
+            insert_ops.collect::<Vec<_>>(),
+        )
+        .unwrap();
+    }
+
+    insert_at(entities0, id.clone(), GENESIS_PTR.clone());
+    insert_at(entities1, id.clone(), BLOCK_ONE.clone());
 }
 
 fn execute_query_document(query: q::Document) -> QueryResult {
@@ -1239,4 +1254,45 @@ fn can_use_nested_filter() {
             ])
         )])
     )
+}
+
+#[test]
+fn query_at_block() {
+    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
+
+    fn musicians_at(block: &str, ids: Vec<&str>, qid: &str) {
+        let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
+        let query = graphql_parser::parse_query(&query).expect("invalid test query");
+
+        let ids: Vec<_> = ids
+            .into_iter()
+            .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
+            .collect();
+        let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
+
+        let result = dbg!(execute_query_document(query));
+
+        if STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap() {
+            assert!(result.errors.is_none(), "unexpected error: {}", qid);
+            assert_eq!(result.data, expected, "failed query: {}", qid);
+        } else {
+            assert!(
+                result.errors.is_some(),
+                "JSONB does not support time travel: {}",
+                qid
+            );
+        }
+    }
+
+    fn hash(block: &FakeBlock) -> String {
+        format!("hash : \"0x{}\"", block.hash)
+    }
+
+    musicians_at("number: 7000", vec!["m1", "m2", "m3", "m4"], "n7000");
+    musicians_at("number: 0", vec!["m1", "m2"], "n0");
+    musicians_at("number: 1", vec!["m1", "m2", "m3", "m4"], "n1");
+
+    musicians_at(&hash(&*GENESIS_BLOCK), vec!["m1", "m2"], "h0");
+    musicians_at(&hash(&*BLOCK_ONE), vec!["m1", "m2", "m3", "m4"], "h1");
+    musicians_at(&hash(&*BLOCK_TWO), vec!["m1", "m2", "m3", "m4"], "h2");
 }
