@@ -46,7 +46,7 @@ use graph::prelude::{
     EntityChange, EntityChangeOperation, EntityCollection, EntityFilter, EntityKey,
     EntityModification, EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger,
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, SubgraphDeploymentStore,
-    ValueType,
+    ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::block_number;
@@ -455,7 +455,19 @@ impl Connection {
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         match &*self.storage {
-            Storage::Json(json) => json.query(&self.conn, collection, filter, order, range),
+            Storage::Json(json) => {
+                // JSON storage can only query at the latest block
+                if block != BLOCK_NUMBER_MAX {
+                    return Err(StoreError::QueryExecutionError(
+                        "This subgraph uses JSONB storage, which does not \
+                         support querying at a specific block height. Redeploy \
+                         the subgraph to remove this error message."
+                            .to_owned(),
+                    )
+                    .into());
+                }
+                json.query(&self.conn, collection, filter, order, range)
+            }
             Storage::Relational(layout) => {
                 layout.query(&self.conn, collection, filter, order, range, block)
             }
