@@ -53,6 +53,10 @@ pub enum SchemaValidationError {
     DerivedFromInvalid(String, String, String), // (type, field, reason)
     #[fail(display = "_schema_ type is solely for imports and should have no fields")]
     SubgraphSchemaTypeFieldsInvalid,
+    #[fail(display = "Name for imported subgraph `{}` is invalid", _0)]
+    ImportedSubgraphNameInvalid(String),
+    #[fail(display = "Id for imported subgraph `{}` is invalid", _0)]
+    ImportedSubgraphIdInvalid(String),
     #[fail(display = "_schema_ type only allows @import directives")]
     SubgraphSchemaDirectivesInvalid,
     #[fail(display = r#"
@@ -78,20 +82,6 @@ pub enum SchemaImportError {
     ImportedSchemaNotFound(SchemaReference),
     #[fail(display = "Subgraph for imported schema `{}` is not deployed", _0)]
     ImportedSubgraphNotFound(SchemaReference),
-    #[fail(display = "Name for imported subgraph `{}` is invalid", _0)]
-    ImportedSubgraphNameInvalid(String),
-    #[fail(display = "Id for imported subgraph `{}` is invalid", _0)]
-    ImportedSubgraphIdInvalid(String),
-}
-
-impl SchemaImportError {
-    pub fn is_failure(error: &Self) -> bool {
-        match error {
-            SchemaImportError::ImportedSubgraphNameInvalid(_)
-            | SchemaImportError::ImportedSubgraphIdInvalid(_) => true,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -123,8 +113,8 @@ impl fmt::Display for ImportedType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SchemaReference {
-    ByName(String),
-    ById(String),
+    ByName(SubgraphName),
+    ById(SubgraphDeploymentId),
 }
 
 impl Hash for SchemaReference {
@@ -147,23 +137,17 @@ impl fmt::Display for SchemaReference {
 
 impl SchemaReference {
     pub fn resolve<S: Store + SubgraphDeploymentStore>(
-        self,
+        &self,
         store: Arc<S>,
     ) -> Result<(Arc<Schema>, SubgraphDeploymentId), SchemaImportError> {
-        let subgraph_id = match &self {
-            SchemaReference::ByName(name) => {
-                let subgraph_name = SubgraphName::new(name.clone())
-                    .map_err(|_| SchemaImportError::ImportedSubgraphNameInvalid(name.clone()))?;
-                store
-                    .resolve_subgraph_name_to_id(subgraph_name.clone())
-                    .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-                    .and_then(|subgraph_id_opt| {
-                        subgraph_id_opt
-                            .ok_or(SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-                    })?
-            }
-            SchemaReference::ById(id) => SubgraphDeploymentId::new(id.clone())
-                .map_err(|_| SchemaImportError::ImportedSubgraphIdInvalid(id.clone()))?,
+        let subgraph_id = match self {
+            SchemaReference::ByName(name) => store
+                .resolve_subgraph_name_to_id(name.clone())
+                .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
+                .and_then(|subgraph_id_opt| {
+                    subgraph_id_opt.ok_or(SchemaImportError::ImportedSubgraphNotFound(self.clone()))
+                })?,
+            SchemaReference::ById(id) => id.clone(),
         };
 
         store
@@ -401,24 +385,26 @@ impl Schema {
             Value::Object(map) => {
                 let id = map
                     .get("id")
-                    .filter(|id| match id {
-                        Value::String(_) => true,
-                        _ => false,
+                    .into_iter()
+                    .filter_map(|id| match id {
+                        Value::String(i) => match SubgraphDeploymentId::new(i) {
+                            Ok(sid) => Some(SchemaReference::ById(sid)),
+                            _ => None,
+                        },
+                        _ => None,
                     })
-                    .map(|id| match id {
-                        Value::String(i) => SchemaReference::ById(i.to_string()),
-                        _ => unreachable!(),
-                    });
+                    .next();
                 let name = map
                     .get("name")
-                    .filter(|name| match name {
-                        Value::String(_) => true,
-                        _ => false,
+                    .into_iter()
+                    .filter_map(|name| match name {
+                        Value::String(n) => match SubgraphName::new(n) {
+                            Ok(sn) => Some(SchemaReference::ByName(sn)),
+                            _ => None,
+                        },
+                        _ => None,
                     })
-                    .map(|name| match name {
-                        Value::String(n) => SchemaReference::ByName(n.to_string()),
-                        _ => unreachable!(),
-                    });
+                    .next();
                 id.or(name)
             }
             _ => None,
@@ -649,8 +635,8 @@ impl Schema {
 
                             // Ensure that the imported type is in one of those two sets
                             let schema_handle = match schema_ref {
-                                SchemaReference::ById(id) => id,
-                                SchemaReference::ByName(name) => name,
+                                SchemaReference::ById(id) => id.to_string(),
+                                SchemaReference::ByName(name) => name.to_string(),
                             };
                             let name = match imported_type {
                                 ImportedType::Name(name) => name,
