@@ -658,16 +658,17 @@ impl Schema {
             self.imported_types()
                 .iter()
                 .fold(vec![], |mut errors, (imported_type, schema_ref)| {
-                    // See if `schemas` has the schema associated with `schema_ref`
                     schemas
                         .get(schema_ref)
                         .and_then(|schema| {
-                            // Get the defined types in the schema and the imported types
                             let native_types =
                                 traversal::get_object_type_definitions(&schema.document);
                             let imported_types = schema.imported_types();
 
-                            // Ensure that the imported type is in one of those two sets
+                            // Ensure that the imported type is either native to
+                            // the respective schema or is itself imported
+                            // If the imported type is itself imported, do not
+                            // recursively check the schema
                             let schema_handle = match schema_ref {
                                 SchemaReference::ById(id) => id.to_string(),
                                 SchemaReference::ByName(name) => name.to_string(),
