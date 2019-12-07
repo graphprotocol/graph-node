@@ -470,20 +470,14 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         self.validate_fields()
             .unwrap_or_else(|mut err| errors.append(&mut err));
-
         self.validate_subgraph_schema_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
-        // Should verify that only import directives exist on the _schema_ type
         self.validate_only_import_directives_on_reserved_type()
             .unwrap_or_else(|err| errors.push(err));
-        // Should validate that import directives on the _schema_ type are properly formed
         self.validate_import_directives()
             .unwrap_or_else(|mut err| errors.append(&mut err));
-        // Should validate that all types in the Subgraph referenced from other subgraphs exist
-        // If the referenced subgraph is not provided as an argument, do not validate those types
         self.validate_imported_types(schemas)
             .unwrap_or_else(|errs| errors.extend(errs));
-
         if errors.is_empty() {
             Ok(())
         } else {
