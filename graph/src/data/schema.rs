@@ -677,6 +677,7 @@ impl Schema {
                                 ImportedType::Name(name) => name,
                                 ImportedType::NameAs(name, _) => name,
                             };
+
                             let is_native = native_types
                                 .iter()
                                 .find(|object| object.name.eq(name))
@@ -1133,7 +1134,7 @@ type T @entity { id: ID! }
     );
 
     match root_schema.validate_imported_types(&schemas) {
-        Err(errors) => panic!(
+        Err(_) => panic!(
             "Expected imported types validation for `{}` to suceed",
             ROOT_SCHEMA,
         ),
@@ -1141,11 +1142,12 @@ type T @entity { id: ID! }
     }
 }
 
+#[test]
 fn test_recursively_imported_type_which_dne_fails_validation() {
     const ROOT_SCHEMA: &str = r#"
-type _schema_ @imports(types: ["T"], from: { name: "child1/subgraph" })"#;
+type _schema_ @imports(types: ["T"], from: { name: "childone/subgraph" })"#;
     const CHILD_1_SCHEMA: &str = r#"
-type _schema_ @imports(types: [{name: "T", as: "A"}], from: { name: "child2/subgraph" })"#;
+type _schema_ @imports(types: [{name: "T", as: "A"}], from: { name: "childtwo/subgraph" })"#;
     const CHILD_2_SCHEMA: &str = r#"
 type T @entity { id: ID! }
 "#;
@@ -1177,14 +1179,12 @@ type T @entity { id: ID! }
             _ => false,
         }) {
             None => panic!(
-            "Expected imported types validation for `{}` to fail because an imported type was missing in the target schema",
-            ROOT_SCHEMA,
+            "Expected imported types validation to fail because an imported type was missing in the target schema",
             ),
             _ => (),
         },
         Ok(_) =>  panic!(
-            "Expected imported types validation for `{}` to fail because an imported type was missing in the target schema",
-            ROOT_SCHEMA,
+            "Expected imported types validation to fail because an imported type was missing in the target schema",
         ),
     }
 }
