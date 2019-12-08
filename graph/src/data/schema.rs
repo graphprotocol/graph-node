@@ -52,13 +52,13 @@ pub enum SchemaValidationError {
     )]
     DerivedFromInvalid(String, String, String), // (type, field, reason)
     #[fail(display = "_schema_ type is solely for imports and should have no fields")]
-    SubgraphSchemaTypeFieldsInvalid,
+    ReservedTypeFieldsInvalid,
     #[fail(display = "Name for imported subgraph `{}` is invalid", _0)]
     ImportedSubgraphNameInvalid(String),
     #[fail(display = "Id for imported subgraph `{}` is invalid", _0)]
     ImportedSubgraphIdInvalid(String),
     #[fail(display = "_schema_ type only allows @import directives")]
-    SubgraphSchemaDirectivesInvalid,
+    ReservedTypeDirectivesInvalid,
     #[fail(
         display = "@imports directives must be defined in one of the following forms: @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ name: 'org/subgraph'}}) @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})"
     )]
@@ -72,7 +72,7 @@ pub enum SchemaValidationError {
         display = "Imported type `{}` does not exist in the `{}` schema",
         _0, _1
     )]
-    ImportedTypeDNE(String, String),
+    ImportedTypeDNE(String, String), // (type_name, schema)
 }
 
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
@@ -470,7 +470,7 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         self.validate_fields()
             .unwrap_or_else(|mut err| errors.append(&mut err));
-        self.validate_subgraph_schema_has_no_fields()
+        self.validate_reserved_type_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
         self.validate_only_import_directives_on_reserved_type()
             .unwrap_or_else(|err| errors.push(err));
@@ -485,12 +485,12 @@ impl Schema {
         }
     }
 
-    fn validate_subgraph_schema_has_no_fields(&self) -> Result<(), SchemaValidationError> {
+    fn validate_reserved_type_has_no_fields(&self) -> Result<(), SchemaValidationError> {
         match self
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
                 if !subgraph_schema_type.fields.is_empty() {
-                    Some(SchemaValidationError::SubgraphSchemaTypeFieldsInvalid)
+                    Some(SchemaValidationError::ReservedTypeFieldsInvalid)
                 } else {
                     None
                 }
@@ -513,7 +513,7 @@ impl Schema {
                     .collect::<Vec<&Directive>>()
                     .is_empty()
                 {
-                    Some(SchemaValidationError::SubgraphSchemaDirectivesInvalid)
+                    Some(SchemaValidationError::ReservedTypeDirectivesInvalid)
                 } else {
                     None
                 }
@@ -1045,4 +1045,146 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
         "the type of the field must be an existing entity or interface type",
     );
     validate("j: B @derivedFrom(field: \"id\")", "ok");
+}
+
+#[test]
+fn test_reserved_type_with_fields() {
+    const ROOT_SCHEMA: &str = "
+type _schema_ { id: ID! }";
+
+    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    match schema.validate_reserved_type_has_no_fields() {
+        Err(e) => assert_eq!(e, SchemaValidationError::ReservedTypeFieldsInvalid),
+        Ok(_) => panic!(
+            "Expected validation for `{}` to fail due to fields defined on the reserved type",
+            ROOT_SCHEMA,
+        ),
+    }
+}
+
+#[test]
+fn test_reserved_type_directives() {
+    const ROOT_SCHEMA: &str = "
+type _schema_ @illegal";
+
+    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    match schema.validate_only_import_directives_on_reserved_type() {
+        Err(e) => assert_eq!(e, SchemaValidationError::ReservedTypeDirectivesInvalid),
+        Ok(_) => panic!(
+            "Expected validation for `{}` to fail due to extra imports defined on the reserved type",
+            ROOT_SCHEMA,
+        ),
+    }
+}
+
+#[test]
+fn test_imports_directive_from_argument() {
+    const ROOT_SCHEMA: &str = r#"
+type _schema_ @imports(types: ["T", "A", "C"])"#;
+
+    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    match schema.validate_import_directives() {
+        Err(errors) => match errors.into_iter().find(|err| *err == SchemaValidationError::ImportDirectiveInvalid) {
+            None => panic!(
+                "Expected validation for `{}` to fail due to an @imports directive without a `from` argument",
+                ROOT_SCHEMA,
+            ),
+            _ => (),
+        },
+        Ok(_) => panic!(
+            "Expected validation for `{}` to fail due to an @imports directive without a `from` argument",
+            ROOT_SCHEMA,
+        ),
+    }
+}
+
+#[test]
+fn test_recursively_imported_type_validates() {
+    const ROOT_SCHEMA: &str = r#"
+type _schema_ @imports(types: ["T"], from: { name: "child1/subgraph" })"#;
+    const CHILD_1_SCHEMA: &str = r#"
+type _schema_ @imports(types: ["T"], from: { name: "child2/subgraph" })"#;
+    const CHILD_2_SCHEMA: &str = r#"
+type T @entity { id: ID! }
+"#;
+
+    let root_document =
+        graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let child_1_document =
+        graphql_parser::parse_schema(CHILD_1_SCHEMA).expect("Failed to parse child 1 schema");
+    let child_2_document =
+        graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
+
+    let root_schema = Schema::new(SubgraphDeploymentId::new("rid").unwrap(), root_document);
+    let child_1_schema = Schema::new(SubgraphDeploymentId::new("c1id").unwrap(), child_1_document);
+    let child_2_schema = Schema::new(SubgraphDeploymentId::new("c2id").unwrap(), child_2_document);
+
+    let mut schemas = HashMap::new();
+    schemas.insert(
+        SchemaReference::ByName(SubgraphName::new("childone/subgraph").unwrap()),
+        Arc::new(child_1_schema),
+    );
+    schemas.insert(
+        SchemaReference::ByName(SubgraphName::new("childtwo/subgraph").unwrap()),
+        Arc::new(child_2_schema),
+    );
+
+    match root_schema.validate_imported_types(&schemas) {
+        Err(errors) => panic!(
+            "Expected imported types validation for `{}` to suceed",
+            ROOT_SCHEMA,
+        ),
+        Ok(_) => (),
+    }
+}
+
+fn test_recursively_imported_type_which_dne_fails_validation() {
+    const ROOT_SCHEMA: &str = r#"
+type _schema_ @imports(types: ["T"], from: { name: "child1/subgraph" })"#;
+    const CHILD_1_SCHEMA: &str = r#"
+type _schema_ @imports(types: [{name: "T", as: "A"}], from: { name: "child2/subgraph" })"#;
+    const CHILD_2_SCHEMA: &str = r#"
+type T @entity { id: ID! }
+"#;
+
+    let root_document =
+        graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let child_1_document =
+        graphql_parser::parse_schema(CHILD_1_SCHEMA).expect("Failed to parse child 1 schema");
+    let child_2_document =
+        graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
+
+    let root_schema = Schema::new(SubgraphDeploymentId::new("rid").unwrap(), root_document);
+    let child_1_schema = Schema::new(SubgraphDeploymentId::new("c1id").unwrap(), child_1_document);
+    let child_2_schema = Schema::new(SubgraphDeploymentId::new("c2id").unwrap(), child_2_document);
+
+    let mut schemas = HashMap::new();
+    schemas.insert(
+        SchemaReference::ByName(SubgraphName::new("childone/subgraph").unwrap()),
+        Arc::new(child_1_schema),
+    );
+    schemas.insert(
+        SchemaReference::ByName(SubgraphName::new("childtwo/subgraph").unwrap()),
+        Arc::new(child_2_schema),
+    );
+
+    match root_schema.validate_imported_types(&schemas) {
+        Err(errors) => match errors.into_iter().find(|err| match err {
+            SchemaValidationError::ImportedTypeDNE(_, _) => true,
+            _ => false,
+        }) {
+            None => panic!(
+            "Expected imported types validation for `{}` to fail because an imported type was missing in the target schema",
+            ROOT_SCHEMA,
+            ),
+            _ => (),
+        },
+        Ok(_) =>  panic!(
+            "Expected imported types validation for `{}` to fail because an imported type was missing in the target schema",
+            ROOT_SCHEMA,
+        ),
+    }
 }
