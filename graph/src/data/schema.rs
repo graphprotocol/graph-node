@@ -311,7 +311,7 @@ impl Schema {
                                 self.schema_reference_from_directive_argument(from).map_or(
                                     vec![],
                                     |schema_ref| {
-                                        self.imported_types_from_import_directive(imports)
+                                        self.imported_types_from_imports_directive(imports)
                                             .iter()
                                             .map(|imported_type| {
                                                 (imported_type.clone(), schema_ref.clone())
@@ -340,7 +340,7 @@ impl Schema {
         })
     }
 
-    fn imported_types_from_import_directive(&self, imports: &Directive) -> Vec<ImportedType> {
+    fn imported_types_from_imports_directive(&self, imports: &Directive) -> Vec<ImportedType> {
         imports
             .arguments
             .iter()
