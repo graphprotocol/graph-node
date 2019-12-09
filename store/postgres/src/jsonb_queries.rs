@@ -260,9 +260,9 @@ impl<'a> FilterQuery<'a> {
     ///
     ///   select id, data, entity
     ///     from (select id, data, entity,
-    ///                  rank() over (partition by g$parent_id order by {order}) as pos
+    ///                  rank() over (partition by g$parent_id order by {order}) as g$pos
     ///              from {inner_query}) a
-    ///    where a.pos > {range.skip} and a.pos <= {range.skip} + {range.first}
+    ///    where a.g$pos > {range.skip} and a.g$pos <= {range.skip} + {range.first}
     ///    order by {order}
     ///
     /// And `inner_query` is
@@ -287,7 +287,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("select id, data, entity, g$parent_id");
         out.push_sql(", rank() over (partition by g$parent_id");
         self.order_by(&mut out)?;
-        out.push_sql(") as pos");
+        out.push_sql(") as g$pos");
         out.push_sql("\n  from (");
         // inner_query starts here
         for (index, window) in windows.iter().enumerate() {
@@ -311,7 +311,7 @@ impl<'a> FilterQuery<'a> {
         // back to the outer query
         out.push_sql(") a) a\n where ");
         if self.range.skip > 0 {
-            out.push_sql("a.pos > ");
+            out.push_sql("a.g$pos > ");
             out.push_sql(&self.range.skip.to_string());
             if self.range.first.is_some() {
                 out.push_sql(" and ");
@@ -319,10 +319,10 @@ impl<'a> FilterQuery<'a> {
         }
         if let Some(first) = self.range.first {
             let pos = self.range.skip + first;
-            out.push_sql("a.pos <= ");
+            out.push_sql("a.g$pos <= ");
             out.push_sql(&pos.to_string());
         }
-        out.push_sql("\n order by a.g$parent_id, a.pos");
+        out.push_sql("\n order by a.g$parent_id, a.g$pos");
         Ok(())
     }
 }

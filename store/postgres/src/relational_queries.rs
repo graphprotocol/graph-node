@@ -1351,7 +1351,7 @@ impl<'a> FilterQuery<'a> {
     }
 
     // Generate (taking optionality of either clause into account)
-    //    where c.pos > {order.skip} and c.pos <= {order.first + order.skip}
+    //    where c.g$pos > {order.skip} and c.g$pos <= {order.first + order.skip}
     fn limit_per_window(&self, out: &mut AstPass<Pg>) {
         let have_first = self.range.first.is_some();
         let have_skip = self.range.skip > 0;
@@ -1359,14 +1359,14 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("\n where ");
         }
         if have_skip {
-            out.push_sql("c.pos > ");
+            out.push_sql("c.g$pos > ");
             out.push_sql(&self.range.skip.to_string());
             if self.range.first.is_some() {
                 out.push_sql(" and ");
             }
         }
         if let Some(first) = self.range.first {
-            out.push_sql("c.pos <= ");
+            out.push_sql("c.g$pos <= ");
             out.push_sql(&(first + self.range.skip).to_string());
         }
     }
@@ -1429,10 +1429,10 @@ impl<'a> FilterQuery<'a> {
     ///   select '..' as entity, to_jsonb(e.*) as data
     ///     from (
     ///       select c.*,
-    ///              rank() over (partition by c.g$parent_id order by ..) as pos
+    ///              rank() over (partition by c.g$parent_id order by ..) as g$pos
     ///         from ({window.children_detailed(block)}) c) c
-    ///     where c.pos > skip and c.pos <= first + skip
-    ///     order by c.g$parent_id, c.pos
+    ///     where c.g$pos > skip and c.g$pos <= first + skip
+    ///     order by c.g$parent_id, c.g$pos
     fn query_window_one_entity(
         &self,
         window: &FilterWindow,
@@ -1442,11 +1442,11 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(" from (\n");
         out.push_sql("select c.*, rank() over (partition by c.g$parent_id ");
         self.sort_key.order_by(&mut out)?;
-        out.push_sql(") as pos\n  from (");
+        out.push_sql(") as g$pos\n  from (");
         window.children_detailed(self.block, &mut out)?;
         out.push_sql(") c) c");
         self.limit_per_window(&mut out);
-        out.push_sql("\n order by c.g$parent_id, c.pos");
+        out.push_sql("\n order by c.g$parent_id, c.g$pos");
         Ok(())
     }
 
@@ -1538,17 +1538,17 @@ impl<'a> FilterQuery<'a> {
         //     from (
         //       -- Rank matching children for each parent
         //       select c.*,
-        //              rank() over (partition by c.g$parent_id order by ..) as pos
+        //              rank() over (partition by c.g$parent_id order by ..) as g$pos
         //         from ({window.children_uniform(sort_key, block)}) c
         //               union all
         //                 ...) c) c
-        //    where c.pos > {skip} and c.pos <= {first + skip})
-        // select m.entity, to_jsonb(e.*) as data, m.g$parent_id, m.pos
+        //    where c.g$pos > {skip} and c.g$pos <= {first + skip})
+        // select m.entity, to_jsonb(e.*) as data, m.g$parent_id, m.g$pos
         //   from {window.child_table} c, matches m
         //  where c.vid = m.vid and m.entity = '{window.child_type}'
         //  union all
         //  ...
-        //  order by g$parent_id, pos
+        //  order by g$parent_id, g$pos
 
         // Step 1: build matches CTE
         out.push_sql("with matches as (");
@@ -1556,7 +1556,7 @@ impl<'a> FilterQuery<'a> {
 
         out.push_sql("select c.*, rank() over (partition by c.g$parent_id ");
         self.sort_key.order_by(&mut out)?;
-        out.push_sql(") as pos");
+        out.push_sql(") as g$pos");
 
         out.push_sql("\n from (");
 
@@ -1590,7 +1590,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql(
                 "select m.entity, \
                  to_jsonb(c.*) || jsonb_build_object('g$parent_id', m.g$parent_id) as data, \
-                 m.g$parent_id, m.pos",
+                 m.g$parent_id, m.g$pos",
             );
             out.push_sql("\n  from ");
             out.push_sql(table_name.as_str());
@@ -1598,7 +1598,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql(object);
             out.push_sql("'");
         }
-        out.push_sql("\n order by g$parent_id, pos");
+        out.push_sql("\n order by g$parent_id, g$pos");
         Ok(())
     }
 }
