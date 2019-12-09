@@ -196,12 +196,12 @@ impl<'a> FilterQuery<'a> {
                 WindowAttribute::Scalar(name) => {
                     out.push_sql("c.data->");
                     out.push_bind_param::<Text, _>(&name)?;
-                    out.push_sql("->>'data' as parent_id");
+                    out.push_sql("->>'data' as g$parent_id");
                 }
-                WindowAttribute::List(_) => out.push_sql("parent->>'data' as parent_id"),
+                WindowAttribute::List(_) => out.push_sql("parent->>'data' as g$parent_id"),
             },
             EntityLink::Parent(_) => {
-                out.push_sql("p.id as parent_id");
+                out.push_sql("p.id as g$parent_id");
             }
         }
         Ok(())
@@ -260,15 +260,15 @@ impl<'a> FilterQuery<'a> {
     ///
     ///   select id, data, entity
     ///     from (select id, data, entity,
-    ///                  rank() over (partition by parent_id order by {order}) as pos
+    ///                  rank() over (partition by g$parent_id order by {order}) as pos
     ///              from {inner_query}) a
     ///    where a.pos > {range.skip} and a.pos <= {range.skip} + {range.first}
     ///    order by {order}
     ///
     /// And `inner_query` is
-    ///   select id, data, entity, {parent_id} as parent_id
+    ///   select id, data, entity, {parent_id} as g$parent_id
     ///     from {table}
-    ///          [join lateral jsonb_array_elements({window.attribute}) parent_id on parent_id = any({window.ids})]
+    ///          [join lateral jsonb_array_elements({window.attribute}) g$parent_id on g$parent_id = any({window.ids})]
     ///    where entity = {entity_type}
     ///      and [{window.attribute} = any({window.ids})]
     ///      and {filter}
@@ -281,11 +281,11 @@ impl<'a> FilterQuery<'a> {
     fn query_window(&self, windows: &Vec<EntityWindow>, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         out.push_sql(
-            "select id, data || jsonb_build_object('parent_id', jsonb_build_object('data', parent_id, 'type', 'String')), entity\n  from (",
+            "select id, data || jsonb_build_object('g$parent_id', jsonb_build_object('data', g$parent_id, 'type', 'String')), entity\n  from (",
         );
 
-        out.push_sql("select id, data, entity, parent_id");
-        out.push_sql(", rank() over (partition by parent_id");
+        out.push_sql("select id, data, entity, g$parent_id");
+        out.push_sql(", rank() over (partition by g$parent_id");
         self.order_by(&mut out)?;
         out.push_sql(") as pos");
         out.push_sql("\n  from (");
@@ -322,7 +322,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("a.pos <= ");
             out.push_sql(&pos.to_string());
         }
-        out.push_sql("\n order by a.parent_id, a.pos");
+        out.push_sql("\n order by a.g$parent_id, a.pos");
         Ok(())
     }
 }

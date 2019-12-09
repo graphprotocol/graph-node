@@ -340,8 +340,8 @@ impl<'a> Join<'a> {
                 child.typename()
             )) {
                 match child
-                    .get("parent_id")
-                    .expect("the query that produces 'child' ensures there is always a parent_id")
+                    .get("g$parent_id")
+                    .expect("the query that produces 'child' ensures there is always a g$parent_id")
                 {
                     StoreValue::String(key) => grouped
                         .entry((cond.parent_type, key))

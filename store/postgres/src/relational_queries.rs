@@ -142,9 +142,9 @@ impl EntityData {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that
                     // is used internally for versioning
-                    if key == "parent_id" {
+                    if key == "g$parent_id" {
                         let value = Self::value_from_json(&ColumnType::String, json)?;
-                        entity.insert("parent_id".to_owned(), value);
+                        entity.insert("g$parent_id".to_owned(), value);
                     } else if let Some(column) = table.column(&SqlName::from_snake_case(key)).ok() {
                         let value = Self::value_from_json(&column.column_type, json)?;
                         if value != Value::Null {
@@ -1077,7 +1077,7 @@ impl<'a> FilterWindow<'a> {
                 if column.is_list() {
                     out.push_sql(" join lateral unnest(c.");
                     out.push_identifier(column.name.as_str())?;
-                    out.push_sql(") as parent_id on true");
+                    out.push_sql(") as g$parent_id on true");
                 }
             }
             TableLink::Parent(parent) => {
@@ -1102,7 +1102,7 @@ impl<'a> FilterWindow<'a> {
         match &self.link {
             TableLink::Direct(column) => {
                 if column.is_list() {
-                    out.push_sql("parent_id");
+                    out.push_sql("g$parent_id");
                 } else {
                     out.push_sql("c.");
                     out.push_identifier(column.name.as_str())?;
@@ -1128,22 +1128,22 @@ impl<'a> FilterWindow<'a> {
         match self.link {
             TableLink::Direct(column) => {
                 if column.is_list() {
-                    out.push_sql("parent_id");
+                    out.push_sql("g$parent_id");
                 } else {
                     out.push_sql("c.");
                     out.push_identifier(column.name.as_str())?;
-                    out.push_sql(" as parent_id");
+                    out.push_sql(" as g$parent_id");
                 }
             }
             TableLink::Parent(_) => {
-                out.push_sql("p.id as parent_id");
+                out.push_sql("p.id as g$parent_id");
             }
         }
         Ok(())
     }
 
     /// Select all children matching this window. The query returns all
-    /// the columns of `self.table` and a `parent_id` column
+    /// the columns of `self.table` and a `g$parent_id` column
     fn children_detailed(&self, block: BlockNumber, out: &mut AstPass<Pg>) -> QueryResult<()> {
         out.push_sql("select c.*, ");
         self.parent_id(out)?;
@@ -1429,10 +1429,10 @@ impl<'a> FilterQuery<'a> {
     ///   select '..' as entity, to_jsonb(e.*) as data
     ///     from (
     ///       select c.*,
-    ///              rank() over (partition by c.parent_id order by ..) as pos
+    ///              rank() over (partition by c.g$parent_id order by ..) as pos
     ///         from ({window.children_detailed(block)}) c) c
     ///     where c.pos > skip and c.pos <= first + skip
-    ///     order by c.parent_id, c.pos
+    ///     order by c.g$parent_id, c.pos
     fn query_window_one_entity(
         &self,
         window: &FilterWindow,
@@ -1440,13 +1440,13 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         Self::select_entity_and_data(&window.table, &mut out);
         out.push_sql(" from (\n");
-        out.push_sql("select c.*, rank() over (partition by c.parent_id ");
+        out.push_sql("select c.*, rank() over (partition by c.g$parent_id ");
         self.sort_key.order_by(&mut out)?;
         out.push_sql(") as pos\n  from (");
         window.children_detailed(self.block, &mut out)?;
         out.push_sql(") c) c");
         self.limit_per_window(&mut out);
-        out.push_sql("\n order by c.parent_id, c.pos");
+        out.push_sql("\n order by c.g$parent_id, c.pos");
         Ok(())
     }
 
@@ -1538,23 +1538,23 @@ impl<'a> FilterQuery<'a> {
         //     from (
         //       -- Rank matching children for each parent
         //       select c.*,
-        //              rank() over (partition by c.parent_id order by ..) as pos
+        //              rank() over (partition by c.g$parent_id order by ..) as pos
         //         from ({window.children_uniform(sort_key, block)}) c
         //               union all
         //                 ...) c) c
         //    where c.pos > {skip} and c.pos <= {first + skip})
-        // select m.entity, to_jsonb(e.*) as data, m.parent_id, m.pos
+        // select m.entity, to_jsonb(e.*) as data, m.g$parent_id, m.pos
         //   from {window.child_table} c, matches m
         //  where c.vid = m.vid and m.entity = '{window.child_type}'
         //  union all
         //  ...
-        //  order by parent_id, pos
+        //  order by g$parent_id, pos
 
         // Step 1: build matches CTE
         out.push_sql("with matches as (");
         out.push_sql("select c.* from (");
 
-        out.push_sql("select c.*, rank() over (partition by c.parent_id ");
+        out.push_sql("select c.*, rank() over (partition by c.g$parent_id ");
         self.sort_key.order_by(&mut out)?;
         out.push_sql(") as pos");
 
@@ -1589,8 +1589,8 @@ impl<'a> FilterQuery<'a> {
             }
             out.push_sql(
                 "select m.entity, \
-                 to_jsonb(c.*) || jsonb_build_object('parent_id', m.parent_id) as data, \
-                 m.parent_id, m.pos",
+                 to_jsonb(c.*) || jsonb_build_object('g$parent_id', m.g$parent_id) as data, \
+                 m.g$parent_id, m.pos",
             );
             out.push_sql("\n  from ");
             out.push_sql(table_name.as_str());
@@ -1598,7 +1598,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql(object);
             out.push_sql("'");
         }
-        out.push_sql("\n order by parent_id, pos");
+        out.push_sql("\n order by g$parent_id, pos");
         Ok(())
     }
 }
