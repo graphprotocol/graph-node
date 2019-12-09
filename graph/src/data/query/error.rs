@@ -55,11 +55,8 @@ pub enum QueryExecutionError {
     TooComplex(u64, u64), // (complexity, max_complexity)
     TooDeep(u8),          // max_depth
     UndefinedFragment(String),
-    // Using single query and prefetch resolution yield different results
-    IncorrectPrefetchResult {
-        single: q::Value,
-        prefetch: q::Value,
-    },
+    // Using slow and prefetch query resolution yield different results
+    IncorrectPrefetchResult { slow: q::Value, prefetch: q::Value },
 }
 
 impl Error for QueryExecutionError {
@@ -201,7 +198,7 @@ impl fmt::Display for QueryExecutionError {
             TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth),
             UndefinedFragment(frag_name) => write!(f, "fragment `{}` is not defined", frag_name),
             IncorrectPrefetchResult{ .. } => write!(f, "Running query with prefetch \
-                           and single query resolution yielded different results. \
+                           and slow query resolution yielded different results. \
                            This is a bug. Please open an issue at \
                            https://github.com/graphprotocol/graph-node")
         }
@@ -360,9 +357,9 @@ impl Serialize for QueryError {
                 map.serialize_entry("locations", &vec![location])?;
                 format!("{}", self)
             }
-            QueryError::ExecutionError(IncorrectPrefetchResult { single, prefetch }) => {
+            QueryError::ExecutionError(IncorrectPrefetchResult { slow, prefetch }) => {
                 map.serialize_entry("incorrectPrefetch", &true)?;
-                map.serialize_entry("single", &SerializableValue(&single))?;
+                map.serialize_entry("single", &SerializableValue(&slow))?;
                 map.serialize_entry("prefetch", &SerializableValue(&prefetch))?;
                 format!("{}", self)
             }

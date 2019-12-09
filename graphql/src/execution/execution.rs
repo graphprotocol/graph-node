@@ -369,7 +369,7 @@ where
             let single_values = execute_selection_set_to_map(&ctx, &data_set, query_type, &None)?;
             if values != single_values {
                 return Err(vec![QueryExecutionError::IncorrectPrefetchResult {
-                    single: q::Value::Object(single_values),
+                    slow: q::Value::Object(single_values),
                     prefetch: q::Value::Object(values),
                 }]);
             }
