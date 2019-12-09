@@ -1246,7 +1246,7 @@ impl<'a> FilterCollection<'a> {
     }
 }
 
-/// Convebience to pass the name of the column to order by around. If `name`
+/// Convenience to pass the name of the column to order by around. If `name`
 /// is `None`, the sort key should be ignored
 #[derive(Debug, Clone)]
 pub struct SortKey {
