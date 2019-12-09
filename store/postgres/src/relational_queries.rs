@@ -1351,27 +1351,22 @@ impl<'a> FilterQuery<'a> {
     }
 
     // Generate (taking optionality of either clause into account)
-    //    where {pos} > {order.skip} and {pos} <= {order.first + order.skip}
-    // `pos` must be the name of the column we order by and 'conj' must be
-    // either 'and ' or 'where ' depending on where we add this clause
-    fn limit_per_window(&self, pos: &str, conj: &str, out: &mut AstPass<Pg>) {
+    //    where c.pos > {order.skip} and c.pos <= {order.first + order.skip}
+    fn limit_per_window(&self, out: &mut AstPass<Pg>) {
         let have_first = self.range.first.is_some();
         let have_skip = self.range.skip > 0;
         if have_first || have_skip {
-            out.push_sql("\n ");
-            out.push_sql(conj);
+            out.push_sql("\n where ");
         }
         if have_skip {
-            out.push_sql(pos);
-            out.push_sql(" > ");
+            out.push_sql("c.pos > ");
             out.push_sql(&self.range.skip.to_string());
             if self.range.first.is_some() {
                 out.push_sql(" and ");
             }
         }
         if let Some(first) = self.range.first {
-            out.push_sql(pos);
-            out.push_sql(" <= ");
+            out.push_sql("c.pos <= ");
             out.push_sql(&(first + self.range.skip).to_string());
         }
     }
@@ -1450,7 +1445,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(") as pos\n  from (");
         window.children_detailed(self.block, &mut out)?;
         out.push_sql(") c) c");
-        self.limit_per_window("c.pos", "where ", &mut out);
+        self.limit_per_window(&mut out);
         out.push_sql("\n order by c.parent_id, c.pos");
         Ok(())
     }
@@ -1574,7 +1569,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("\n ");
 
         out.push_sql(") c) c\n");
-        self.limit_per_window("c.pos", " where ", &mut out);
+        self.limit_per_window(&mut out);
         out.push_sql(")\n");
         // Step 2: convert to JSONB
         // If the parent is an interface, each implementation might store its
