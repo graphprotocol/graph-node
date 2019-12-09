@@ -155,7 +155,7 @@ impl From<Node> for q::Value {
         let mut map: BTreeMap<_, _> = node.entity.into();
         map.insert(PREFETCH_KEY.to_owned(), q::Value::Boolean(true));
         for (key, nodes) in node.children.into_iter() {
-            map.insert(format!("r:{}", key), node_list_as_value(nodes));
+            map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
         }
         q::Value::Object(map)
     }
@@ -465,7 +465,7 @@ where
         q::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
             // For root nodes, we only care about the children
             for (key, nodes) in node.children.into_iter() {
-                map.insert(format!("r:{}", key), node_list_as_value(nodes));
+                map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
             }
             map
         }))

@@ -163,7 +163,7 @@ where
     ) -> Option<&'a q::Value> {
         match parent {
             Some(q::Value::Object(map)) => {
-                let key = format!("r:{}", qast::get_response_key(field));
+                let key = format!("prefetch:{}", qast::get_response_key(field));
                 map.get(&key)
             }
             _ => None,
