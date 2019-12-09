@@ -612,32 +612,31 @@ impl Schema {
                             .iter()
                             .find(|(name, _)| name.eq("from"))
                             .iter()
-                            .for_each(|(_, from)| match from {
-                                Value::Object(obj) => {
-                                    obj.get("id").iter().for_each(|id| match id {
-                                        Value::String(i) => match SubgraphDeploymentId::new(i) {
-                                            Err(_) => errors.push(
-                                                SchemaValidationError::ImportedSubgraphIdInvalid(
-                                                    i.clone(),
-                                                ),
-                                            ),
-                                            _ => (),
-                                        },
-                                        _ => (),
+                            .for_each(|(_, from)| {
+                                if let Value::Object(obj) = from {
+                                    obj.get("id").iter().for_each(|id| {
+                                        if let Value::String(i) = id {
+                                            if let Err(_) = SubgraphDeploymentId::new(i) {
+                                                errors.push(
+                                                    SchemaValidationError::ImportedSubgraphIdInvalid(
+                                                        i.clone(),
+                                                    ),
+                                                )                                                
+                                            }
+                                        }
                                     });
-                                    obj.get("name").iter().for_each(|name| match name {
-                                        Value::String(n) => match SubgraphName::new(n) {
-                                            Err(_) => errors.push(
-                                                SchemaValidationError::ImportedSubgraphNameInvalid(
-                                                    n.clone(),
-                                                ),
-                                            ),
-                                            _ => (),
-                                        },
-                                        _ => (),
-                                    });
+                                    obj.get("name").iter().for_each(|name| {
+                                        if let Value::String(n) = name {
+                                            if let Err(_) = SubgraphName::new(n) {
+                                                errors.push(
+                                                    SchemaValidationError::ImportedSubgraphNameInvalid(
+                                                        n.clone(),
+                                                    ),
+                                                );                                                
+                                            }
+                                        }
+                                    })
                                 }
-                                _ => (),
                             });
 
                         errors
