@@ -58,10 +58,10 @@ lazy_static! {
     /// This is used for requests that will not fail the subgraph if the limit is reached, but will
     /// simply restart the syncing step, so it can be low. This limit guards against scenarios such
     /// as requesting a block hash that has been reorged.
-    static ref JSON_RPC_RETRY_LIMIT: usize = std::env::var("GRAPH_ETHEREUM_JSON_RPC_RETRY_LIMIT")
+    static ref REQUEST_RETRIES: usize = std::env::var("GRAPH_ETHEREUM_REQUEST_RETRIES")
             .unwrap_or("10".into())
             .parse::<usize>()
-            .expect("invalid GRAPH_ETHEREUM_JSON_RPC_RETRY_LIMIT env var");
+            .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
 }
 
 impl<T> EthereumAdapter<T>
@@ -89,7 +89,7 @@ where
         let logger = logger.to_owned();
 
         retry("trace_filter RPC call", &logger)
-            .limit(*JSON_RPC_RETRY_LIMIT)
+            .limit(*REQUEST_RETRIES)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
                 let trace_filter: TraceFilter = match addresses.len() {
@@ -182,7 +182,7 @@ where
                     .iter()
                     .any(|f| e.to_string().contains(f)),
             })
-            .limit(*JSON_RPC_RETRY_LIMIT)
+            .limit(*REQUEST_RETRIES)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
                 let start = Instant::now();
@@ -503,7 +503,7 @@ where
         stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
             let web3 = web3.clone();
             retry(format!("load block {}", hash), &logger)
-                .limit(*JSON_RPC_RETRY_LIMIT)
+                .limit(*REQUEST_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -666,7 +666,7 @@ where
 
         Box::new(
             retry("eth_getBlockByHash RPC call", &logger)
-                .limit(*JSON_RPC_RETRY_LIMIT)
+                .limit(*REQUEST_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()

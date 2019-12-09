@@ -33,6 +33,11 @@ triggers in each request (defaults to 100000).
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
   requests that dont filter on contract address, only event signature.
 - `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`: Timeout for Ethereum JSON-RPC requests.
+- `GRAPH_ETHEREUM_REQUEST_RETRIES`: Number of times to retry JSON-RPC requests
+  made against Ethereum. This is used for requests that will not fail the
+  subgraph if the limit is reached, but will simply restart the syncing step,
+  so it can be low. This limit guards against scenarios such as requesting a
+  block hash that has been reorged. Defaults to 10.
 
 ## Running mapping handlers
 
