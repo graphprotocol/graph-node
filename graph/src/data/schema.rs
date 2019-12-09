@@ -605,7 +605,6 @@ impl Schema {
                         if !has_valid_types || !has_valid_from {
                             errors.push(SchemaValidationError::ImportDirectiveInvalid)
                         }
-
                         // Check for a badly formed subgraph id or name
                         imports
                             .arguments
@@ -621,7 +620,7 @@ impl Schema {
                                                     SchemaValidationError::ImportedSubgraphIdInvalid(
                                                         i.clone(),
                                                     ),
-                                                )                                                
+                                                );
                                             }
                                         }
                                     });
@@ -632,7 +631,7 @@ impl Schema {
                                                     SchemaValidationError::ImportedSubgraphNameInvalid(
                                                         n.clone(),
                                                     ),
-                                                );                                                
+                                                );
                                             }
                                         }
                                     })
