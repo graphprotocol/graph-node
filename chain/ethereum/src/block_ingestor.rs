@@ -1,21 +1,39 @@
 use std::collections::HashMap;
 use std::time::Duration;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use graph::prelude::*;
 use web3::types::*;
 
 pub struct BlockIngestorMetrics {
-    pub blocks_synced: Box<GaugeVec>,
+    pub blocks_synced: Box<CounterVec>,
+    pub last_block_time: Box<GaugeVec>,
+    pub last_block_number: Box<GaugeVec>,
 }
 
 impl BlockIngestorMetrics {
     pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
         Self {
             blocks_synced: registry
-                .new_gauge_vec(
+                .new_counter_vec(
                     String::from("ethereum_blocks_synced"),
                     String::from("Counts the number of blocks synced by the Ethereum network"),
+                    HashMap::new(),
+                    vec![String::from("network")],
+                )
+                .unwrap(),
+            last_block_time: registry
+                .new_gauge_vec(
+                    String::from("ethereum_last_block_time"),
+                    String::from("Records the time at which the most recent block was synced on the Ethereum network"),
+                    HashMap::new(),
+                    vec![String::from("network")],
+                )
+                .unwrap(),
+            last_block_number: registry
+                .new_gauge_vec(
+                    String::from("ethereum_last_block_number"),
+                    String::from("Records the number of the most recent block synced on the Ethereum network"),
                     HashMap::new(),
                     vec![String::from("network")],
                 )
@@ -23,10 +41,22 @@ impl BlockIngestorMetrics {
         }
     }
 
-    pub fn blocks_synced(&self, blocks_synced: i64, network_name: &str) {
+    pub fn observe_blocks_synced(
+        &self,
+        blocks_synced: i64,
+        network_name: &str,
+        block_time: f64,
+        block_number: i64,
+    ) {
         self.blocks_synced
             .with_label_values(vec![network_name].as_slice())
-            .set(blocks_synced as f64)
+            .inc_by(blocks_synced as f64);
+        self.last_block_time
+            .with_label_values(vec![network_name].as_slice())
+            .set(block_time);
+        self.last_block_number
+            .with_label_values(vec![network_name].as_slice())
+            .set(block_number as f64);
     }
 }
 
@@ -120,7 +150,6 @@ where
     fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = EthereumAdapterError> + 'a {
         trace!(self.logger, "BlockIngestor::do_poll");
         let network_name = self.network_name.clone();
-
         // Get chain head ptr from store
         future::result(self.chain_store.chain_head_ptr())
             .from_err()
@@ -138,6 +167,7 @@ where
                                 );
                             }
                             Some(head_block_ptr) => {
+                                let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).expect("SystemTime is after UNIX EPOCH").as_secs_f64();
                                 let latest_number = latest_block.number.unwrap().as_u64() as i64;
                                 let head_number = head_block_ptr.number as i64;
                                 let distance = latest_number - head_number;
@@ -148,7 +178,12 @@ where
                                     LogCode::BlockIngestionStatus
                                 };
                                 if distance > 0 {
-                                    self.ingestor_metrics.blocks_synced(blocks_needed, &network_name);
+                                    self.ingestor_metrics.observe_blocks_synced(
+                                        blocks_needed,
+                                        &network_name,
+                                        current_time,
+                                        latest_number,
+                                    );
                                     info!(
                                         self.logger,
                                         "Syncing {} blocks from Ethereum.",
