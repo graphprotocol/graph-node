@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::fmt;
 use std::ops::Deref;
 use std::time::Instant;
 
@@ -11,6 +13,40 @@ use hyper::{Body, Method, Request, Response, StatusCode};
 use crate::request::GraphQLRequest;
 use crate::response::GraphQLResponse;
 
+pub struct GraphQLServiceMetrics {
+    query_execution_time: Box<HistogramVec>,
+}
+
+impl fmt::Debug for GraphQLServiceMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "GraphQLServiceMetrics {{ }}")
+    }
+}
+
+impl GraphQLServiceMetrics {
+    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+        let query_execution_time = registry
+            .new_histogram_vec(
+                format!("subgraph_query_execution_time"),
+                String::from("Measures the execution time for GraphQL queries"),
+                HashMap::new(),
+                vec![String::from("subgraph_deployment")],
+                vec![0.1, 0.5, 1.0, 10.0, 100.0],
+            )
+            .expect("failed to create `subgraph_query_execution_time` histogram");
+
+        Self {
+            query_execution_time,
+        }
+    }
+
+    pub fn observe_query_execution_time(&self, duration: f64, deployment_id: String) {
+        self.query_execution_time
+            .with_label_values(vec![deployment_id.as_ref()].as_slice())
+            .observe(duration.clone());
+    }
+}
+
 /// An asynchronous response to a GraphQL request.
 pub type GraphQLServiceResponse =
     Box<dyn Future<Item = Response<Body>, Error = GraphQLServerError> + Send>;
@@ -19,6 +55,7 @@ pub type GraphQLServiceResponse =
 #[derive(Debug)]
 pub struct GraphQLService<Q, S> {
     logger: Logger,
+    metrics: Arc<GraphQLServiceMetrics>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     ws_port: u16,
@@ -29,6 +66,7 @@ impl<Q, S> Clone for GraphQLService<Q, S> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
+            metrics: self.metrics.clone(),
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
             ws_port: self.ws_port,
@@ -45,6 +83,7 @@ where
     /// Creates a new GraphQL service.
     pub fn new(
         logger: Logger,
+        metrics: Arc<GraphQLServiceMetrics>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
         ws_port: u16,
@@ -52,6 +91,7 @@ where
     ) -> Self {
         GraphQLService {
             logger,
+            metrics,
             graphql_runner,
             store,
             ws_port,
@@ -163,7 +203,7 @@ where
                     ))
                 })
                 .and_then(move |subgraph_id| {
-                    service.handle_graphql_query(&subgraph_id, request.into_body())
+                    service.handle_graphql_query(subgraph_id, request.into_body())
                 }),
         )
     }
@@ -175,20 +215,21 @@ where
     ) -> GraphQLServiceResponse {
         match SubgraphDeploymentId::new(id) {
             Err(()) => self.handle_not_found(),
-            Ok(id) => self.handle_graphql_query(&id, request.into_body()),
+            Ok(id) => self.handle_graphql_query(id, request.into_body()),
         }
     }
 
     fn handle_graphql_query(
         &self,
-        id: &SubgraphDeploymentId,
+        id: SubgraphDeploymentId,
         request_body: Body,
     ) -> GraphQLServiceResponse {
         let service = self.clone();
         let logger = self.logger.clone();
+        let service_metrics = self.metrics.clone();
         let sd_id = id.clone();
 
-        match self.store.is_deployed(id) {
+        match self.store.is_deployed(&id) {
             Err(e) => {
                 return Box::new(future::err(GraphQLServerError::InternalError(
                     e.to_string(),
@@ -203,7 +244,7 @@ where
             Ok(true) => (),
         }
 
-        let schema = match self.store.api_schema(id) {
+        let schema = match self.store.api_schema(&id) {
             Ok(schema) => schema,
             Err(e) => {
                 return Box::new(future::err(GraphQLServerError::InternalError(
@@ -225,27 +266,35 @@ where
                         .run_query(query)
                         .map_err(|e| GraphQLServerError::from(e))
                 })
-                .then(move |result| {
-                    let elapsed = start.elapsed().as_millis();
-                    match result {
-                        Ok(_) => info!(
-                            logger,
-                            "GraphQL query served";
-                            "subgraph_deployment" => sd_id.deref(),
-                            "query_time_ms" => elapsed,
-                            "code" => LogCode::GraphQlQuerySuccess,
-                        ),
-                        Err(ref e) => error!(
-                            logger,
-                            "GraphQL query failed";
-                            "subgraph_deployment" => sd_id.deref(),
-                            "error" => e.to_string(),
-                            "query_time_ms" => elapsed,
-                            "code" => LogCode::GraphQlQueryFailure,
-                        ),
-                    }
-                    GraphQLResponse::new(result)
-                }),
+                .then(
+                    move |result: Result<QueryResult, GraphQLServerError>| -> GraphQLResponse {
+                        let elapsed = start.elapsed();
+                        match result {
+                            Ok(_) => {
+                                service_metrics.observe_query_execution_time(
+                                    elapsed.as_secs_f64(),
+                                    sd_id.deref().to_string(),
+                                );
+                                info!(
+                                    logger,
+                                    "GraphQL query served";
+                                    "subgraph_deployment" => sd_id.deref(),
+                                    "query_time_ms" => elapsed.as_millis(),
+                                    "code" => LogCode::GraphQlQuerySuccess,
+                                )
+                            }
+                            Err(ref e) => error!(
+                                logger,
+                                "GraphQL query failed";
+                                "subgraph_deployment" => sd_id.deref(),
+                                "error" => e.to_string(),
+                                "query_time_ms" => elapsed.as_millis(),
+                                "code" => LogCode::GraphQlQueryFailure,
+                            ),
+                        }
+                        GraphQLResponse::new(result)
+                    },
+                ),
         )
     }
 
@@ -406,7 +455,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use graph_mock::MockStore;
+    use graph_mock::{MockMetricsRegistry, MockStore};
     use graphql_parser::query as q;
     use http::status::StatusCode;
     use hyper::service::Service;
@@ -418,6 +467,7 @@ mod tests {
     use graph::prelude::*;
 
     use super::GraphQLService;
+    use super::GraphQLServiceMetrics;
     use crate::test_utils;
 
     /// A simple stupid query runner for testing.
@@ -454,6 +504,8 @@ mod tests {
     #[test]
     fn posting_invalid_query_yields_error_response() {
         let logger = Logger::root(slog::Discard, o!());
+        let metrics_registry = Arc::new(MockMetricsRegistry::new());
+        let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
         let store = Arc::new(MockStore::user_store());
         let id = MockStore::user_subgraph_id();
         let schema = store
@@ -490,7 +542,8 @@ mod tests {
             .unwrap();
 
         let node_id = NodeId::new("test").unwrap();
-        let mut service = GraphQLService::new(logger, graphql_runner, store, 8001, node_id);
+        let mut service =
+            GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -521,6 +574,8 @@ mod tests {
     #[test]
     fn posting_valid_queries_yields_result_response() {
         let logger = Logger::root(slog::Discard, o!());
+        let metrics_registry = Arc::new(MockMetricsRegistry::new());
+        let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
         let store = Arc::new(MockStore::user_store());
         let id = MockStore::user_subgraph_id();
         let schema = store
@@ -562,7 +617,7 @@ mod tests {
 
                     let node_id = NodeId::new("test").unwrap();
                     let mut service =
-                        GraphQLService::new(logger, graphql_runner, store, 8001, node_id);
+                        GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
 
                     let request = Request::builder()
                         .method(Method::POST)

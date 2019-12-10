@@ -5,7 +5,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use hyper;
 use hyper::Server;
 
-use crate::service::GraphQLService;
+use crate::service::{GraphQLService, GraphQLServiceMetrics};
 use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 
 /// Errors that may occur when starting the server.
@@ -39,17 +39,19 @@ impl From<hyper::Error> for GraphQLServeError {
 }
 
 /// A GraphQL server based on Hyper.
-pub struct GraphQLServer<Q, S> {
+pub struct GraphQLServer<M, Q, S> {
     logger: Logger,
+    metrics_registry: Arc<M>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     node_id: NodeId,
 }
 
-impl<Q, S> GraphQLServer<Q, S> {
+impl<M, Q, S> GraphQLServer<M, Q, S> {
     /// Creates a new GraphQL server.
     pub fn new(
         logger_factory: &LoggerFactory,
+        metrics_registry: Arc<M>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
         node_id: NodeId,
@@ -65,6 +67,7 @@ impl<Q, S> GraphQLServer<Q, S> {
 
         GraphQLServer {
             logger,
+            metrics_registry,
             graphql_runner,
             store,
             node_id,
@@ -72,8 +75,9 @@ impl<Q, S> GraphQLServer<Q, S> {
     }
 }
 
-impl<Q, S> GraphQLServerTrait for GraphQLServer<Q, S>
+impl<M, Q, S> GraphQLServerTrait for GraphQLServer<M, Q, S>
 where
+    M: MetricsRegistry,
     Q: GraphQlRunner,
     S: SubgraphDeploymentStore + Store,
 {
@@ -97,11 +101,13 @@ where
         // incoming queries to the query sink.
         let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
+        let metrics = Arc::new(GraphQLServiceMetrics::new(self.metrics_registry.clone()));
         let store = self.store.clone();
         let node_id = self.node_id.clone();
         let new_service = move || {
             let service = GraphQLService::new(
                 logger_for_service.clone(),
+                metrics.clone(),
                 graphql_runner.clone(),
                 store.clone(),
                 ws_port,
