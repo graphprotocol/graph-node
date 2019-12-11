@@ -91,7 +91,7 @@ pub mod prelude {
     pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
-        Value, ValueType,
+        ToEntityId, ToEntityKey, TryIntoEntity, Value, ValueType,
     };
     pub use crate::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
     pub use crate::data::subgraph::{
