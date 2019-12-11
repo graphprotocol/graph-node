@@ -461,7 +461,7 @@ impl Connection {
                     return Err(StoreError::QueryExecutionError(
                         "This subgraph uses JSONB storage, which does not \
                          support querying at a specific block height. Redeploy \
-                         the subgraph to remove this error message."
+                         a new version of this subgraph to enable this feature."
                             .to_owned(),
                     )
                     .into());
