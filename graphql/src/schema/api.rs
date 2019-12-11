@@ -500,13 +500,13 @@ fn add_subscription_type(
 fn block_argument() -> InputValue {
     InputValue {
         position: Pos::default(),
-        description: None, /*Some(
-                               "The block at which the query should be executed. \
-                                Can either be an `Int` containing the block number or a `Bytes` \
-                                value containing a block hash. Defaults to the latest block when \
-                                omitted."
-                                   .to_owned(),
-                           ), */
+        description: Some(
+            "The block at which the query should be executed. \
+             Can either be an `{ number: Int }` containing the block number \
+             or a `{ hash: Bytes }` value containing a block hash. Defaults \
+             to the latest block when omitted."
+                .to_owned(),
+        ),
         name: "block".to_string(),
         value_type: Type::NamedType(BLOCK_HEIGHT.to_owned()),
         default_value: None,
