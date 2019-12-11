@@ -31,10 +31,6 @@ impl BlockWithOmmers {
     pub fn inner(&self) -> &LightEthereumBlock {
         &self.block.block
     }
-
-    pub fn _transaction_receipts(&self) -> &Vec<TransactionReceipt> {
-        &self.block.transaction_receipts
-    }
 }
 
 /**
