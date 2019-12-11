@@ -11,7 +11,7 @@ use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
 use crate::data::subgraph::SubgraphDeploymentId;
-use crate::prelude::{format_err, QueryExecutionError};
+use crate::prelude::{format_err, EntityKey, QueryExecutionError};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -493,6 +493,21 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
             entries.into_iter().map(|(k, v)| (String::from(k), v)),
         ))
     }
+}
+
+/// A value that can (maybe) be converted to an `Entity`.
+pub trait TryIntoEntity {
+    fn try_into_entity(self) -> Result<Entity, Error>;
+}
+
+/// A value that can be converted to an `Entity` ID.
+pub trait ToEntityId {
+    fn to_entity_id(&self) -> String;
+}
+
+/// A value that can be converted to an `Entity` key.
+pub trait ToEntityKey {
+    fn to_entity_key(&self, subgraph: SubgraphDeploymentId) -> EntityKey;
 }
 
 #[test]

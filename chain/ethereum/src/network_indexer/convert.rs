@@ -1,38 +1,6 @@
 use graph::prelude::*;
-use web3::types::{H160, H256};
 
 use super::*;
-
-/// A value that can be converted to an entity ID.
-pub trait ToEntityId {
-    fn to_entity_id(&self) -> String;
-}
-
-/// A value that can be converted to an entity key.
-pub trait ToEntityKey {
-    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey;
-}
-
-/// A value that can (maybe) be converted to an entity.
-pub trait TryIntoEntity {
-    fn try_into_entity(&self) -> Result<Entity, Error>;
-}
-
-/**
- * Implementations of these traits for various Ethereum types.
- */
-
-impl ToEntityId for H160 {
-    fn to_entity_id(&self) -> String {
-        format!("{:x}", self)
-    }
-}
-
-impl ToEntityId for H256 {
-    fn to_entity_id(&self) -> String {
-        format!("{:x}", self)
-    }
-}
 
 impl ToEntityId for Ommer {
     fn to_entity_id(&self) -> String {
@@ -46,16 +14,6 @@ impl ToEntityKey for Ommer {
             subgraph_id,
             entity_type: "Block".into(),
             entity_id: format!("{:x}", self.0.hash.unwrap()),
-        }
-    }
-}
-
-impl ToEntityKey for EthereumBlockPointer {
-    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
-            subgraph_id,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", self.hash),
         }
     }
 }
@@ -77,7 +35,7 @@ impl ToEntityKey for &BlockWithOmmers {
 }
 
 impl TryIntoEntity for Ommer {
-    fn try_into_entity(&self) -> Result<Entity, Error> {
+    fn try_into_entity(self) -> Result<Entity, Error> {
         let inner = &self.0;
 
         Ok(Entity::from(vec![
@@ -120,7 +78,7 @@ impl TryIntoEntity for Ommer {
 }
 
 impl TryIntoEntity for &BlockWithOmmers {
-    fn try_into_entity(&self) -> Result<Entity, Error> {
+    fn try_into_entity(self) -> Result<Entity, Error> {
         let inner = self.inner();
 
         Ok(Entity::from(vec![

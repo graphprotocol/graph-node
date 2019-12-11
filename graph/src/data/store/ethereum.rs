@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use super::scalar;
 use crate::prelude::*;
-use web3::types::{Address, Bytes, H2048, H256, H64, U128, U256};
+use web3::types::{Address, Bytes, H160, H2048, H256, H64, U128, U256};
 
 impl From<U128> for Value {
     fn from(n: U128) -> Value {
@@ -60,5 +60,17 @@ impl TryFrom<Value> for Option<H256> {
 impl From<U256> for Value {
     fn from(n: U256) -> Value {
         Value::BigInt(BigInt::from_unsigned_u256(&n))
+    }
+}
+
+impl ToEntityId for H160 {
+    fn to_entity_id(&self) -> String {
+        format!("{:x}", self)
+    }
+}
+
+impl ToEntityId for H256 {
+    fn to_entity_id(&self) -> String {
+        format!("{:x}", self)
     }
 }
