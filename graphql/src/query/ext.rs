@@ -77,21 +77,22 @@ impl FieldExt for q::Field {
             );
         if let Some(value) = value {
             if let q::Value::Object(map) = value {
-                if map.len() != 1 || !(map.contains_key("hash") || map.contains_key("number")) {
+                let hash = map.get("hash");
+                let number = map.get("number");
+                if map.len() != 1 || (hash.is_none() && number.is_none()) {
                     return Err(invalid_argument("block", self, value));
                 }
                 let subgraph = parse_subgraph_id(object_type)?;
-                if let Some(hash) = map.get("hash") {
-                    TryFromValue::try_from_value(hash)
+                match (hash, number) {
+                    (Some(hash), _) => TryFromValue::try_from_value(hash)
                         .map_err(|_| invalid_argument("block.hash", self, value))
                         .map(|hash| {
                             Some(BlockConstraint {
                                 subgraph,
                                 block: BlockLocator::Hash(hash),
                             })
-                        })
-                } else if let Some(number_value) = map.get("number") {
-                    TryFromValue::try_from_value(number_value)
+                        }),
+                    (_, Some(number_value)) => TryFromValue::try_from_value(number_value)
                         .map_err(|_| invalid_argument("block.number", self, number_value))
                         .and_then(|number: u64| {
                             TryFrom::try_from(number)
@@ -102,9 +103,8 @@ impl FieldExt for q::Field {
                                 subgraph,
                                 block: BlockLocator::Number(number),
                             })
-                        })
-                } else {
-                    unreachable!("We already checked that there is a hash or number entry")
+                        }),
+                    _ => unreachable!("We already checked that there is a hash or number entry"),
                 }
             } else {
                 Err(invalid_argument("block", self, value))
