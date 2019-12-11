@@ -126,12 +126,7 @@ fn load_parent_block_from_store(
                 .get(block_ptr.to_entity_key(subgraph_id.clone()))
                 .map_err(|e| e.into())
                 .and_then(|entity| {
-                    entity.ok_or_else(|| {
-                        format_err!(
-                            "block {} is missing in store",
-                            format_block_pointer(&block_ptr)
-                        )
-                    })
+                    entity.ok_or_else(|| format_err!("block {} is missing in store", block_ptr,))
                 }),
         )
         // Get the parent hash from the block
@@ -140,10 +135,7 @@ fn load_parent_block_from_store(
                 block
                     .get("parent")
                     .ok_or_else(move || {
-                        format_err!(
-                            "block {} has no parent",
-                            format_block_pointer(&block_ptr_for_missing_parent),
-                        )
+                        format_err!("block {} has no parent", block_ptr_for_missing_parent,)
                     })
                     .and_then(|value| {
                         let s = value
@@ -153,7 +145,7 @@ fn load_parent_block_from_store(
                         H256::from_str(s.as_str()).map_err(|e| {
                             format_err!(
                                 "block {} has an invalid parent `{}`: {}",
-                                format_block_pointer(&block_ptr_for_invalid_parent),
+                                block_ptr_for_invalid_parent,
                                 s,
                                 e,
                             )
@@ -171,7 +163,7 @@ fn load_parent_block_from_store(
             debug!(
                 logger,
                 "Collect old block";
-                "block" => format_block_pointer(&ptr),
+                "block" => format!("{}", ptr),
             );
 
             ptr
@@ -227,7 +219,7 @@ fn fetch_ommers(
                     // Fail if we couldn't fetch all ommers
                     future::err(format_err!(
                         "Ommers of block {} missing: {}",
-                        format_block_pointer(&block_ptr),
+                        block_ptr,
                         missing_hashes.join(", ")
                     ))
                 } else {
@@ -392,7 +384,7 @@ fn fetch_new_blocks_back_to_local_head_number(
     debug!(
         logger,
         "Fetch new blocks back to the local head number";
-        "from" => format_block(&new_head),
+        "from" => format!("{}", new_head),
         "local_head_number" => local_head_number,
     );
 
@@ -420,7 +412,7 @@ fn fetch_new_blocks_back_to_local_head_number(
                     debug!(
                         logger,
                         "Fetch new block";
-                        "block" => format_block_pointer(&parent_pointer),
+                        "block" => format!("{}", &parent_pointer),
                     );
 
                     Box::new(
@@ -437,7 +429,7 @@ fn fetch_new_blocks_back_to_local_head_number(
                             }
                             None => future::err(format_err!(
                                 "block {} not found on chain",
-                                format_block_pointer(&parent_pointer)
+                                parent_pointer
                             )),
                         }),
                     )
@@ -507,7 +499,7 @@ fn collect_reorg_data(
                             debug!(
                                 logger,
                                 "Common ancestor found";
-                                "block" => format_block_pointer(&old_block),
+                                "block" => format!("{}", old_block),
                             );
 
                             return Box::new(future::ok(Loop::Break(ReorgData {
@@ -525,7 +517,7 @@ fn collect_reorg_data(
                                 debug!(
                                     logger,
                                     "Fetch new block";
-                                    "block" => format_block_pointer(&new_block_parent_ptr),
+                                    "block" => format!("{}", new_block_parent_ptr),
                                 );
 
                                 Box::new(
@@ -552,7 +544,7 @@ fn collect_reorg_data(
                                                 }
                                                 None => future::err(format_err!(
                                                     "block {} not found on chain",
-                                                    format_block_pointer(&new_block_parent_ptr),
+                                                    new_block_parent_ptr,
                                                 )),
                                             }
                                         },
@@ -617,8 +609,8 @@ fn revert_blocks(
             debug!(
                 logger,
                 "Revert old block";
-                "to" => format_block_pointer(&to),
-                "from" => format_block_pointer(&from),
+                "to" => format!("{}", to),
+                "from" => format!("{}", from),
             );
 
             future::result(store.revert_block_operations(
@@ -631,8 +623,8 @@ fn revert_blocks(
                     logger_for_revert_err,
                     "Failed to revert block";
                     "error" => format!("{}", e),
-                    "to" => format_block_pointer(&to_for_revert_err),
-                    "from" => format_block_pointer(&from_for_revert_err),
+                    "to" => format!("{}", to_for_revert_err),
+                    "from" => format!("{}", from_for_revert_err),
                 );
 
                 // Instead of an error we return the last block that we managed
@@ -652,8 +644,8 @@ fn revert_blocks(
                         logger_for_send_err,
                         "Failed to send revert event";
                         "error" => format!("{}", e),
-                        "to" => format_block_pointer(&to_for_send_err),
-                        "from" => format_block_pointer(&from_for_send_err),
+                        "to" => format!("{}", to_for_send_err),
+                        "from" => format!("{}", from_for_send_err),
                     );
 
                     // Instead of an error we return the last block that we managed
@@ -740,15 +732,10 @@ pub enum NetworkIndexerEvent {
 impl fmt::Display for NetworkIndexerEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NetworkIndexerEvent::Revert { from, to } => write!(
-                f,
-                "Revert from {} to {}",
-                format_block_pointer(&from),
-                format_block_pointer(&to),
-            ),
-            NetworkIndexerEvent::AddBlock(block) => {
-                write!(f, "Add block {}", format_block_pointer(&block))
+            NetworkIndexerEvent::Revert { from, to } => {
+                write!(f, "Revert from {} to {}", &from, &to,)
             }
+            NetworkIndexerEvent::AddBlock(block) => write!(f, "Add block {}", block),
         }
     }
 }
@@ -983,7 +970,7 @@ impl PollStateMachine for StateMachine {
                     warn!(
                         context.logger,
                         "Chain head block number or hash missing; try again";
-                        "block" => format_light_block(&chain_head),
+                        "block" => chain_head.format(),
                     );
 
                     // Chain head was invalid, try getting a better one.
@@ -1008,9 +995,9 @@ impl PollStateMachine for StateMachine {
                 debug!(
                     context.logger,
                     "Identify next blocks to index";
-                    "chain_head" => format_light_block(&chain_head),
+                    "chain_head" => chain_head.format(),
                     "local_head" => state.local_head.map_or(
-                        String::from("none"), |ptr| format_block_pointer(&ptr)
+                        String::from("none"), |ptr| format!("{}", ptr)
                     ),
                 );
 
@@ -1019,9 +1006,9 @@ impl PollStateMachine for StateMachine {
                     debug!(
                         context.logger,
                         "Already at chain head; poll chain head again";
-                        "chain_head" => format_light_block(&chain_head),
+                        "chain_head" => chain_head.format(),
                         "local_head" => state.local_head.map_or(
-                            String::from("none"), |ptr| format_block_pointer(&ptr)
+                            String::from("none"), |ptr| format!("{}", ptr)
                         ),
                     );
 
@@ -1042,9 +1029,9 @@ impl PollStateMachine for StateMachine {
                         context.logger,
                         "Chain head is for a shorter chain; poll chain head again";
                         "local_head" => state.local_head.map_or(
-                            String::from("none"), |ptr| format_block_pointer(&ptr)
+                            String::from("none"), |ptr| format!("{}", ptr)
                         ),
-                        "chain_head" => format_light_block(&chain_head),
+                        "chain_head" => chain_head.format(),
                     );
 
                     transition!(PollChainHead {
@@ -1075,9 +1062,9 @@ impl PollStateMachine for StateMachine {
                     context.logger,
                     "Process {} of {} remaining blocks",
                     block_range_size, remaining_blocks;
-                    "chain_head" => format_light_block(&chain_head),
+                    "chain_head" => format!("{}", chain_head.format()),
                     "local_head" => state.local_head.map_or(
-                        String::from("none"), |ptr| format_block_pointer(&ptr)
+                        String::from("none"), |ptr| format!("{}", ptr)
                     ),
                     "range" => format!("#{}..#{}", block_numbers.start, block_numbers.end-1),
                 );
@@ -1200,7 +1187,7 @@ impl PollStateMachine for StateMachine {
             warn!(
                 context.logger,
                 "Block number or hash missing; trying again";
-                "block" => format_block(&block),
+                "block" => format!("{}", block),
             );
 
             // The block is invalid, throw away the entire stream and
@@ -1227,9 +1214,9 @@ impl PollStateMachine for StateMachine {
                 "Received older block than the local head; \
                  re-evaluate chain head and try again";
                 "local_head" => state.local_head.map_or(
-                    String::from("none"), |ptr| format_block_pointer(&ptr)
+                    String::from("none"), |ptr| format!("{}", &ptr)
                 ),
-                "block" => format_block(&block),
+                "block" => format!("{}", block),
             );
 
             transition!(PollChainHead {
@@ -1248,12 +1235,12 @@ impl PollStateMachine for StateMachine {
                 context.logger,
                 "Block requires a reorg";
                 "local_head" => state.local_head.map_or(
-                    String::from("none"), |ptr| format_block_pointer(&ptr)
+                    String::from("none"), |ptr| format!("{}", ptr)
                 ),
                 "parent" => block.inner().parent_ptr().map_or(
-                    String::from("none"), |ptr| format_block_pointer(&ptr)
+                    String::from("none"), |ptr| format!("{}", ptr)
                 ),
-                "block" => format_block(&block),
+                "block" => format!("{}", block),
                 "depth" => depth,
             );
 
@@ -1345,8 +1332,8 @@ impl PollStateMachine for StateMachine {
                 debug!(
                     context.logger,
                     "Revert old blocks";
-                    "to" => format_block_pointer(reorg_data.old_blocks.last().unwrap()),
-                    "from" => format_block_pointer(reorg_data.old_blocks.first().unwrap()),
+                    "to" => format!("{}", reorg_data.old_blocks.last().unwrap()),
+                    "from" => format!("{}", reorg_data.old_blocks.first().unwrap()),
                 );
 
                 // Assert that the common ancestor matches the last block we are
