@@ -1,6 +1,7 @@
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::fmt;
 use web3::types::*;
 
 pub type LightEthereumBlock = Block<Transaction>;
@@ -10,6 +11,7 @@ pub trait LightEthereumBlockExt {
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
+    fn format(&self) -> String;
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
@@ -37,6 +39,16 @@ impl LightEthereumBlockExt for LightEthereumBlock {
                 number: n - 1,
             }),
         }
+    }
+
+    fn format(&self) -> String {
+        format!(
+            "{} ({})",
+            self.number
+                .map_or(String::from("none"), |number| format!("#{}", number)),
+            self.hash
+                .map_or(String::from("-"), |hash| format!("{:x}", hash))
+        )
     }
 }
 
@@ -403,6 +415,12 @@ impl EthereumBlockPointer {
     /// implements `H256::to_string`.
     pub fn hash_hex(&self) -> String {
         format!("{:x}", self.hash)
+    }
+}
+
+impl fmt::Display for EthereumBlockPointer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "#{} ({:x})", self.number, self.hash)
     }
 }
 

@@ -77,7 +77,7 @@ impl BlockWriter {
         block: BlockWithOmmers,
     ) -> impl Future<Item = EthereumBlockPointer, Error = Error> {
         let logger = self.logger.new(o!(
-            "block" => format_block(&block),
+            "block" => format!("{}", block),
         ));
 
         // Write using a write context that we can thread through futures.

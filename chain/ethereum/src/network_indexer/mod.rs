@@ -1,5 +1,6 @@
 use graph::prelude::*;
-use web3::types::{Block, TransactionReceipt, H256};
+use std::fmt;
+use web3::types::{Block, H256};
 
 mod block_writer;
 mod convert;
@@ -33,28 +34,10 @@ impl BlockWithOmmers {
     }
 }
 
-/**
- * Logging helpers.
- */
-
-pub(crate) fn format_light_block(block: &LightEthereumBlock) -> String {
-    format!(
-        "{} ({})",
-        block
-            .number
-            .map_or(String::from("none"), |number| format!("#{}", number)),
-        block
-            .hash
-            .map_or(String::from("-"), |hash| format!("{:x}", hash))
-    )
-}
-
-pub(crate) fn format_block(block: &BlockWithOmmers) -> String {
-    format_light_block(block.inner())
-}
-
-pub(crate) fn format_block_pointer(ptr: &EthereumBlockPointer) -> String {
-    format!("#{} ({:x})", ptr.number, ptr.hash)
+impl fmt::Display for BlockWithOmmers {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.inner().format())
+    }
 }
 
 pub fn create<S>(
