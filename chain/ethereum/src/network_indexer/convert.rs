@@ -1,5 +1,5 @@
 use graph::prelude::*;
-use web3::types::{Block, H160, H256};
+use web3::types::{H160, H256};
 
 use super::*;
 
@@ -34,18 +34,18 @@ impl ToEntityId for H256 {
     }
 }
 
-impl ToEntityId for Block<H256> {
+impl ToEntityId for Ommer {
     fn to_entity_id(&self) -> String {
-        format!("{:x}", self.hash.unwrap())
+        format!("{:x}", self.0.hash.unwrap())
     }
 }
 
-impl ToEntityKey for Block<H256> {
+impl ToEntityKey for Ommer {
     fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
         EntityKey {
             subgraph_id,
             entity_type: "Block".into(),
-            entity_id: format!("{:x}", self.hash.unwrap()),
+            entity_id: format!("{:x}", self.0.hash.unwrap()),
         }
     }
 }
@@ -60,13 +60,13 @@ impl ToEntityKey for EthereumBlockPointer {
     }
 }
 
-impl ToEntityId for BlockWithUncles {
+impl ToEntityId for BlockWithOmmers {
     fn to_entity_id(&self) -> String {
         (*self).block.block.hash.unwrap().to_entity_id()
     }
 }
 
-impl ToEntityKey for &BlockWithUncles {
+impl ToEntityKey for &BlockWithOmmers {
     fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
         EntityKey {
             subgraph_id,
@@ -76,46 +76,50 @@ impl ToEntityKey for &BlockWithUncles {
     }
 }
 
-impl TryIntoEntity for Block<H256> {
+impl TryIntoEntity for Ommer {
     fn try_into_entity(&self) -> Result<Entity, Error> {
+        let inner = &self.0;
+
         Ok(Entity::from(vec![
-            ("id", format!("{:x}", self.hash.unwrap()).into()),
-            ("number", self.number.unwrap().into()),
-            ("hash", self.hash.unwrap().into()),
-            ("parent", self.parent_hash.to_entity_id().into()),
+            ("id", format!("{:x}", inner.hash.unwrap()).into()),
+            ("number", inner.number.unwrap().into()),
+            ("hash", inner.hash.unwrap().into()),
+            ("parent", inner.parent_hash.to_entity_id().into()),
             (
                 "nonce",
-                self.nonce.map_or(Value::Null, |nonce| nonce.into()),
+                inner.nonce.map_or(Value::Null, |nonce| nonce.into()),
             ),
-            ("transactionsRoot", self.transactions_root.into()),
-            ("transactionCount", (self.transactions.len() as i32).into()),
-            ("stateRoot", self.state_root.into()),
-            ("receiptsRoot", self.receipts_root.into()),
-            ("extraData", self.extra_data.clone().into()),
-            ("gasLimit", self.gas_limit.into()),
-            ("gasUsed", self.gas_used.into()),
-            ("timestamp", self.timestamp.into()),
-            ("logsBloom", self.logs_bloom.into()),
-            ("mixHash", self.mix_hash.into()),
-            ("difficulty", self.difficulty.into()),
-            ("totalDifficulty", self.total_difficulty.into()),
-            ("ommerCount", (self.uncles.len() as i32).into()),
-            ("ommerHash", self.uncles_hash.into()),
+            ("transactionsRoot", inner.transactions_root.into()),
+            ("transactionCount", (inner.transactions.len() as i32).into()),
+            ("stateRoot", inner.state_root.into()),
+            ("receiptsRoot", inner.receipts_root.into()),
+            ("extraData", inner.extra_data.clone().into()),
+            ("gasLimit", inner.gas_limit.into()),
+            ("gasUsed", inner.gas_used.into()),
+            ("timestamp", inner.timestamp.into()),
+            ("logsBloom", inner.logs_bloom.into()),
+            ("mixHash", inner.mix_hash.into()),
+            ("difficulty", inner.difficulty.into()),
+            ("totalDifficulty", inner.total_difficulty.into()),
+            ("ommerCount", (inner.uncles.len() as i32).into()),
+            ("ommerHash", inner.uncles_hash.into()),
             (
                 "ommers",
-                self.uncles
+                inner
+                    .uncles
                     .iter()
                     .map(|hash| hash.to_entity_id())
                     .collect::<Vec<_>>()
                     .into(),
             ),
-            ("size", self.size.into()),
-            ("sealFields", self.seal_fields.clone().into()),
+            ("size", inner.size.into()),
+            ("sealFields", inner.seal_fields.clone().into()),
+            ("isOmmer", true.into()),
         ] as Vec<(_, Value)>))
     }
 }
 
-impl TryIntoEntity for &BlockWithUncles {
+impl TryIntoEntity for &BlockWithOmmers {
     fn try_into_entity(&self) -> Result<Entity, Error> {
         let inner = self.inner();
 
@@ -140,7 +144,7 @@ impl TryIntoEntity for &BlockWithUncles {
             ("mixHash", inner.mix_hash.into()),
             ("difficulty", inner.difficulty.into()),
             ("totalDifficulty", inner.total_difficulty.into()),
-            ("ommerCount", (self.uncles.len() as i32).into()),
+            ("ommerCount", (self.ommers.len() as i32).into()),
             ("ommerHash", inner.uncles_hash.into()),
             (
                 "ommers",
@@ -153,6 +157,7 @@ impl TryIntoEntity for &BlockWithUncles {
             ),
             ("size", inner.size.into()),
             ("sealFields", inner.seal_fields.clone().into()),
+            ("isOmmer", false.into()),
         ] as Vec<(_, Value)>))
     }
 }

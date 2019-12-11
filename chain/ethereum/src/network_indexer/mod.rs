@@ -16,14 +16,18 @@ pub use self::network_indexer::NetworkIndexerEvent;
 
 const NETWORK_INDEXER_VERSION: u32 = 0;
 
-/// Helper type to bundle blocks and their uncles together.
+/// Helper type to represent ommer blocks.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct BlockWithUncles {
+pub struct Ommer(Block<H256>);
+
+/// Helper type to bundle blocks and their ommers together.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BlockWithOmmers {
     pub block: EthereumBlock,
-    pub uncles: Vec<Option<Block<H256>>>,
+    pub ommers: Vec<Option<Ommer>>,
 }
 
-impl BlockWithUncles {
+impl BlockWithOmmers {
     pub fn inner(&self) -> &LightEthereumBlock {
         &self.block.block
     }
@@ -49,7 +53,7 @@ pub(crate) fn format_light_block(block: &LightEthereumBlock) -> String {
     )
 }
 
-pub(crate) fn format_block(block: &BlockWithUncles) -> String {
+pub(crate) fn format_block(block: &BlockWithOmmers) -> String {
     format_light_block(block.inner())
 }
 

@@ -74,7 +74,7 @@ impl BlockWriter {
     /// Writes a block to the store and updates the network subgraph block pointer.
     pub fn write(
         &self,
-        block: BlockWithUncles,
+        block: BlockWithOmmers,
     ) -> impl Future<Item = EthereumBlockPointer, Error = Error> {
         let logger = self.logger.new(o!(
             "block" => format_block(&block),
@@ -110,18 +110,11 @@ impl WriteContext {
     fn set_entity(
         mut self,
         value: impl TryIntoEntity + ToEntityKey,
-        extra_fields: Option<Vec<(&str, Value)>>,
     ) -> WriteContextResult {
         self.cache.set(
             value.to_entity_key(self.subgraph_id.clone()),
             match value.try_into_entity() {
-                Ok(mut entity) => match extra_fields {
-                    Some(fields) => {
-                        entity.merge(Entity::from(fields));
-                        entity
-                    }
-                    None => entity,
-                },
+                Ok(entity) => entity,
                 Err(e) => return Box::new(future::err(e.into())),
             },
         );
@@ -131,23 +124,23 @@ impl WriteContext {
     /// Writes a block to the store.
     fn write(
         self,
-        block: BlockWithUncles,
+        block: BlockWithOmmers,
     ) -> impl Future<Item = EthereumBlockPointer, Error = Error> {
         debug!(self.logger, "Write block");
 
         let block = Arc::new(block);
-        let block_for_uncles = block.clone();
+        let block_for_ommers = block.clone();
         let block_for_store = block.clone();
 
         Box::new(
             // Add the block entity
-            self.set_entity(block.as_ref(), Some(vec![("isOmmer", false.into())]))
+            self.set_entity(block.as_ref())
                 // Add uncle block entities
                 .and_then(move |context| {
-                    futures::stream::iter_ok::<_, Error>(block_for_uncles.uncles.clone())
+                    futures::stream::iter_ok::<_, Error>(block_for_ommers.ommers.clone())
                         .filter_map(|ommer| ommer)
                         .fold(context, move |context, ommer| {
-                            context.set_entity(ommer, Some(vec![("isOmmer", true.into())]))
+                            context.set_entity(ommer)
                         })
                 })
                 // Transact everything into the store
