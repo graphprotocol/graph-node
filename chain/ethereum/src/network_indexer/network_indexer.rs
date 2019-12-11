@@ -69,6 +69,7 @@ struct ReorgData {
 type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
 type ChainHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 type BlockPointerFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
+type OmmersFuture = Box<dyn Future<Item = Vec<Ommer>, Error = Error> + Send>;
 type BlockFuture = Box<dyn Future<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
 type BlockStream = Box<dyn Stream<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
 type BlocksFuture = Box<dyn Future<Item = Vec<BlockWithOmmers>, Error = Error> + Send>;
@@ -196,6 +197,51 @@ fn poll_chain_head(context: &Context) -> ChainHeadFuture {
     )
 }
 
+fn fetch_ommers(
+    logger: Logger,
+    adapter: Arc<dyn EthereumAdapter>,
+    metrics: Arc<NetworkIndexerMetrics>,
+    block: &EthereumBlock,
+) -> OmmersFuture {
+    let block_ptr: EthereumBlockPointer = block.into();
+    let ommer_hashes = block.block.uncles.clone();
+
+    Box::new(track_future!(
+        metrics,
+        fetch_ommers,
+        fetch_ommers_problems,
+        adapter
+            .uncles(&logger, &block.block)
+            .and_then(move |ommers| {
+                let (found, missing): (Vec<(usize, Option<_>)>, Vec<(usize, Option<_>)>) = ommers
+                    .into_iter()
+                    .enumerate()
+                    .partition(|(_, ommer)| ommer.is_some());
+                if missing.len() > 0 {
+                    let missing_hashes = missing
+                        .into_iter()
+                        .map(|(index, _)| ommer_hashes.get(index).unwrap())
+                        .map(|hash| format!("{:x}", hash))
+                        .collect::<Vec<_>>();
+
+                    // Fail if we couldn't fetch all ommers
+                    future::err(format_err!(
+                        "Ommers of block {} missing: {}",
+                        format_block_pointer(&block_ptr),
+                        missing_hashes.join(", ")
+                    ))
+                } else {
+                    future::ok(
+                        found
+                            .into_iter()
+                            .map(|(_, ommer)| Ommer(ommer.unwrap()))
+                            .collect(),
+                    )
+                }
+            })
+    ))
+}
+
 fn fetch_block_and_ommers_by_number(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
@@ -239,19 +285,15 @@ fn fetch_block_and_ommers_by_number(
         .and_then(move |block| match block {
             None => Box::new(future::ok(None))
                 as Box<dyn Future<Item = Option<BlockWithOmmers>, Error = _> + Send>,
-            Some(block) => Box::new(track_future!(
-                metrics_for_ommers,
-                fetch_ommers,
-                fetch_ommers_problems,
-                adapter_for_ommers
-                    .uncles(&logger_for_ommers, &block.block)
-                    .map(|ommers| ommers
-                        .into_iter()
-                        .map(|ommer| ommer.map(|block| Ommer(block)))
-                        .collect::<Vec<_>>())
-                    .and_then(move |ommers| future::ok(BlockWithOmmers { block, ommers }))
-                    .map(|block| Some(block))
-            )),
+            Some(block) => Box::new(
+                fetch_ommers(
+                    logger_for_ommers,
+                    adapter_for_ommers,
+                    metrics_for_ommers,
+                    &block,
+                )
+                .map(move |ommers| Some(BlockWithOmmers { block, ommers })),
+            ),
         })
         .then(move |result| {
             section.end();
@@ -302,19 +344,15 @@ fn fetch_block_and_ommers(
         .and_then(move |block| match block {
             None => Box::new(future::ok(None))
                 as Box<dyn Future<Item = Option<BlockWithOmmers>, Error = _> + Send>,
-            Some(block) => Box::new(track_future!(
-                metrics_for_ommers,
-                fetch_ommers,
-                fetch_ommers_problems,
-                adapter_for_ommers
-                    .uncles(&logger_for_ommers, &block.block)
-                    .map(|ommers| ommers
-                        .into_iter()
-                        .map(|ommer| ommer.map(|block| Ommer(block)))
-                        .collect::<Vec<_>>())
-                    .and_then(move |ommers| future::ok(BlockWithOmmers { block, ommers }))
-                    .map(|block| Some(block))
-            )),
+            Some(block) => Box::new(
+                fetch_ommers(
+                    logger_for_ommers,
+                    adapter_for_ommers,
+                    metrics_for_ommers,
+                    &block,
+                )
+                .map(move |ommers| Some(BlockWithOmmers { block, ommers })),
+            ),
         })
         .then(move |result| {
             section.end();
