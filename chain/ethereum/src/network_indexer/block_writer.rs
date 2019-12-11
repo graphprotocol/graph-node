@@ -138,7 +138,6 @@ impl WriteContext {
                 // Add uncle block entities
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(block_for_ommers.ommers.clone())
-                        .filter_map(|ommer| ommer)
                         .fold(context, move |context, ommer| {
                             context.set_entity(ommer)
                         })

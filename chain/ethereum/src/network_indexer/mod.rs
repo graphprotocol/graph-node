@@ -24,7 +24,7 @@ pub struct Ommer(Block<H256>);
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BlockWithOmmers {
     pub block: EthereumBlock,
-    pub ommers: Vec<Option<Ommer>>,
+    pub ommers: Vec<Ommer>,
 }
 
 impl BlockWithOmmers {
