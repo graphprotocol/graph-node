@@ -97,23 +97,22 @@ where
 
             let complexity = ctx.root_query_complexity(root_type, selection_set, options.max_depth);
 
+            let start = Instant::now();
+            let result =
+                match (complexity, options.max_complexity) {
+                    (Err(e), _) => Err(vec![e]),
+                    (Ok(complexity), Some(max_complexity)) if complexity > max_complexity => Err(
+                        vec![QueryExecutionError::TooComplex(complexity, max_complexity)],
+                    ),
+                    (Ok(_), _) => execute_root_selection_set(&ctx, selection_set),
+                };
             info!(
                 query_logger,
                 "Execute query";
                 "query" => query.document.format(&Style::default().indent(0)).replace('\n', " "),
-                "complexity" => format!("{:?}", complexity),
+                "query_time_ms" => start.elapsed().as_millis(),
             );
-
-            match (complexity, options.max_complexity) {
-                (Err(e), _) => Err(vec![e]),
-                (Ok(complexity), Some(max_complexity)) if complexity > max_complexity => {
-                    Err(vec![QueryExecutionError::TooComplex(
-                        complexity,
-                        max_complexity,
-                    )])
-                }
-                (Ok(_), _) => execute_root_selection_set(&ctx, selection_set),
-            }
+            result
         }
         // Everything else (e.g. mutations) is unsupported
         _ => Err(vec![QueryExecutionError::NotSupported(
