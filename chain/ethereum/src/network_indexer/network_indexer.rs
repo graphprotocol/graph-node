@@ -62,16 +62,16 @@ use super::*;
 
 struct ReorgData {
     old_blocks: Vec<EthereumBlockPointer>,
-    new_blocks: VecDeque<BlockWithUncles>,
+    new_blocks: VecDeque<BlockWithOmmers>,
     common_ancestor: EthereumBlockPointer,
 }
 
 type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
 type ChainHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 type BlockPointerFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
-type BlockFuture = Box<dyn Future<Item = Option<BlockWithUncles>, Error = Error> + Send>;
-type BlockStream = Box<dyn Stream<Item = Option<BlockWithUncles>, Error = Error> + Send>;
-type BlocksFuture = Box<dyn Future<Item = Vec<BlockWithUncles>, Error = Error> + Send>;
+type BlockFuture = Box<dyn Future<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
+type BlockStream = Box<dyn Stream<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
+type BlocksFuture = Box<dyn Future<Item = Vec<BlockWithOmmers>, Error = Error> + Send>;
 type ReorgDataFuture = Box<dyn Future<Item = ReorgData, Error = Error> + Send>;
 type RevertBlocksFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
 type AddBlockFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
@@ -196,7 +196,7 @@ fn poll_chain_head(context: &Context) -> ChainHeadFuture {
     )
 }
 
-fn fetch_block_and_uncles_by_number(
+fn fetch_block_and_ommers_by_number(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
     metrics: Arc<NetworkIndexerMetrics>,
@@ -205,8 +205,8 @@ fn fetch_block_and_uncles_by_number(
     let logger_for_full_block = logger.clone();
     let adapter_for_full_block = adapter.clone();
 
-    let logger_for_uncles = logger.clone();
-    let adapter_for_uncles = adapter.clone();
+    let logger_for_ommers = logger.clone();
+    let adapter_for_ommers = adapter.clone();
 
     let metrics_for_full_block = metrics.clone();
     let metrics_for_ommers = metrics.clone();
@@ -238,14 +238,18 @@ fn fetch_block_and_uncles_by_number(
         })
         .and_then(move |block| match block {
             None => Box::new(future::ok(None))
-                as Box<dyn Future<Item = Option<BlockWithUncles>, Error = _> + Send>,
+                as Box<dyn Future<Item = Option<BlockWithOmmers>, Error = _> + Send>,
             Some(block) => Box::new(track_future!(
                 metrics_for_ommers,
                 fetch_ommers,
                 fetch_ommers_problems,
-                adapter_for_uncles
-                    .uncles(&logger_for_uncles, &block.block)
-                    .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
+                adapter_for_ommers
+                    .uncles(&logger_for_ommers, &block.block)
+                    .map(|ommers| ommers
+                        .into_iter()
+                        .map(|ommer| ommer.map(|block| Ommer(block)))
+                        .collect::<Vec<_>>())
+                    .and_then(move |ommers| future::ok(BlockWithOmmers { block, ommers }))
                     .map(|block| Some(block))
             )),
         })
@@ -297,14 +301,18 @@ fn fetch_block_and_ommers(
         })
         .and_then(move |block| match block {
             None => Box::new(future::ok(None))
-                as Box<dyn Future<Item = Option<BlockWithUncles>, Error = _> + Send>,
+                as Box<dyn Future<Item = Option<BlockWithOmmers>, Error = _> + Send>,
             Some(block) => Box::new(track_future!(
                 metrics_for_ommers,
                 fetch_ommers,
                 fetch_ommers_problems,
                 adapter_for_ommers
                     .uncles(&logger_for_ommers, &block.block)
-                    .and_then(move |uncles| future::ok(BlockWithUncles { block, uncles }))
+                    .map(|ommers| ommers
+                        .into_iter()
+                        .map(|ommer| ommer.map(|block| Ommer(block)))
+                        .collect::<Vec<_>>())
+                    .and_then(move |ommers| future::ok(BlockWithOmmers { block, ommers }))
                     .map(|block| Some(block))
             )),
         })
@@ -323,7 +331,7 @@ fn fetch_blocks(context: &Context, block_numbers: Range<u64>) -> BlockStream {
     Box::new(
         futures::stream::iter_ok::<_, Error>(block_numbers)
             .map(move |block_number| {
-                fetch_block_and_uncles_by_number(
+                fetch_block_and_ommers_by_number(
                     logger.clone(),
                     adapter.clone(),
                     metrics.clone(),
@@ -336,7 +344,7 @@ fn fetch_blocks(context: &Context, block_numbers: Range<u64>) -> BlockStream {
 
 fn fetch_new_blocks_back_to_local_head_number(
     context: &Context,
-    new_head: BlockWithUncles,
+    new_head: BlockWithOmmers,
     local_head_number: u64,
 ) -> BlocksFuture {
     let logger = context.logger.clone();
@@ -406,7 +414,7 @@ fn fetch_new_blocks_back_to_local_head_number(
 fn collect_reorg_data(
     context: &Context,
     local_head: EthereumBlockPointer,
-    new_head: BlockWithUncles,
+    new_head: BlockWithOmmers,
 ) -> ReorgDataFuture {
     // Algorithm:
     //
@@ -422,7 +430,7 @@ fn collect_reorg_data(
 
     struct State {
         pub old_blocks: Vec<EthereumBlockPointer>,
-        pub new_blocks: Vec<BlockWithUncles>,
+        pub new_blocks: Vec<BlockWithOmmers>,
     }
 
     let subgraph_id = context.subgraph_id.clone();
@@ -522,7 +530,7 @@ fn collect_reorg_data(
     ))
 }
 
-fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithUncles) -> AddBlockFuture {
+fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithOmmers) -> AddBlockFuture {
     Box::new(block_writer.write(block))
 }
 
@@ -793,7 +801,7 @@ enum StateMachine {
         local_head: Option<EthereumBlockPointer>,
         chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
-        block: BlockWithUncles,
+        block: BlockWithOmmers,
     },
 
     /// This state waits until all data needed to handle a reorg is available.
