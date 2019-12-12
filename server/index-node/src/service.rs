@@ -1,6 +1,9 @@
 use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 use std::time::Instant;
 
 use graph::components::server::query::GraphQLServerError;
@@ -14,7 +17,7 @@ use crate::schema::SCHEMA;
 
 /// An asynchronous response to a GraphQL request.
 pub type IndexNodeServiceResponse =
-    Box<dyn Future<Item = Response<Body>, Error = GraphQLServerError> + Send>;
+    Pin<Box<dyn std::future::Future<Output = Result<Response<Body>, GraphQLServerError>> + Send>>;
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
@@ -57,31 +60,33 @@ where
 
     /// Serves a static file.
     fn serve_file(&self, contents: &'static str) -> IndexNodeServiceResponse {
-        Box::new(future::ok(
-            Response::builder()
+        async move {
+            Ok(Response::builder()
                 .status(200)
                 .body(Body::from(contents))
-                .unwrap(),
-        ))
+                .unwrap())
+        }
+            .boxed()
     }
 
     /// Serves a dynamically created file.
     fn serve_dynamic_file(&self, contents: String) -> IndexNodeServiceResponse {
-        Box::new(future::ok(
-            Response::builder()
+        async {
+            Ok(Response::builder()
                 .status(200)
                 .body(Body::from(contents))
-                .unwrap(),
-        ))
+                .unwrap())
+        }
+            .boxed()
     }
 
     fn index(&self) -> IndexNodeServiceResponse {
-        Box::new(future::ok(
-            Response::builder()
+        Box::pin(async {
+            Ok(Response::builder()
                 .status(200)
                 .body(Body::from("OK"))
-                .unwrap(),
-        ))
+                .unwrap())
+        })
     }
 
     fn handle_graphiql(&self) -> IndexNodeServiceResponse {
@@ -98,66 +103,65 @@ where
         let schema = SCHEMA.clone();
 
         let start = Instant::now();
-        Box::new(
-            request_body
-                .concat2()
-                .map_err(|_| GraphQLServerError::from("Failed to read request body"))
-                .and_then(move |body| IndexNodeRequest::new(body, schema))
-                .and_then(move |query| {
-                    let logger = logger.clone();
-                    let graphql_runner = graphql_runner.clone();
 
-                    // Run the query using the index node resolver
-                    Box::new(future::ok(execute_query(
-                        query,
-                        QueryExecutionOptions {
-                            logger: logger.clone(),
-                            resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
-                            deadline: None,
-                            max_complexity: None,
-                            max_depth: 100,
-                            max_first: std::u32::MAX,
-                        },
-                    )))
-                })
-                .then(move |result| {
-                    let elapsed = start.elapsed().as_millis();
-                    match result {
-                        Ok(_) => info!(
-                            result_logger,
-                            "GraphQL query served";
-                            "query_time_ms" => elapsed,
-                            "code" => LogCode::GraphQlQuerySuccess,
-                        ),
-                        Err(ref e) => error!(
-                            result_logger,
-                            "GraphQL query failed";
-                            "error" => e.to_string(),
-                            "query_time_ms" => elapsed,
-                            "code" => LogCode::GraphQlQueryFailure,
-                        ),
-                    }
-                    IndexNodeResponse::new(result)
-                }),
-        )
+        hyper::body::to_bytes(request_body)
+            .map_err(|_| GraphQLServerError::from("Failed to read request body"))
+            .and_then(move |body| IndexNodeRequest::new(body, schema).compat())
+            .and_then(move |query| {
+                let logger = logger.clone();
+                let graphql_runner = graphql_runner.clone();
+
+                // Run the query using the index node resolver
+                futures03::future::ok(execute_query(
+                    query,
+                    QueryExecutionOptions {
+                        logger: logger.clone(),
+                        resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
+                        deadline: None,
+                        max_complexity: None,
+                        max_depth: 100,
+                        max_first: std::u32::MAX,
+                    },
+                ))
+            })
+            .then(move |result| {
+                let elapsed = start.elapsed().as_millis();
+                match result {
+                    Ok(_) => info!(
+                        result_logger,
+                        "GraphQL query served";
+                        "query_time_ms" => elapsed,
+                        "code" => LogCode::GraphQlQuerySuccess,
+                    ),
+                    Err(ref e) => error!(
+                        result_logger,
+                        "GraphQL query failed";
+                        "error" => e.to_string(),
+                        "query_time_ms" => elapsed,
+                        "code" => LogCode::GraphQlQueryFailure,
+                    ),
+                }
+                IndexNodeResponse::new(result).compat()
+            })
+            .boxed()
     }
 
     // Handles OPTIONS requests
     fn handle_graphql_options(&self, _request: Request<Body>) -> IndexNodeServiceResponse {
-        Box::new(future::ok(
-            Response::builder()
+        Box::pin(async {
+            Ok(Response::builder()
                 .status(200)
                 .header("Access-Control-Allow-Origin", "*")
                 .header("Access-Control-Allow-Headers", "Content-Type")
                 .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
                 .body(Body::from(""))
-                .unwrap(),
-        ))
+                .unwrap())
+        })
     }
 
     /// Handles 302 redirects
     fn handle_temp_redirect(&self, destination: &str) -> IndexNodeServiceResponse {
-        Box::new(future::result(
+        Box::pin(futures03::future::ready(
             header::HeaderValue::from_str(destination)
                 .map_err(|_| GraphQLServerError::from("invalid characters in redirect URL"))
                 .map(|loc_header_val| {
@@ -172,7 +176,7 @@ where
 
     /// Handles 404s.
     fn handle_not_found(&self) -> IndexNodeServiceResponse {
-        Box::new(future::ok(
+        Box::pin(futures03::future::ok(
             Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("Not found"))
@@ -216,22 +220,25 @@ where
     }
 }
 
-impl<Q, S> Service for IndexNodeService<Q, S>
+impl<Q, S> Service<Request<Body>> for IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
     S: SubgraphDeploymentStore + Store,
 {
-    type ReqBody = Body;
-    type ResBody = Body;
+    type Response = Response<Body>;
     type Error = GraphQLServerError;
     type Future = IndexNodeServiceResponse;
 
-    fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
         let logger = self.logger.clone();
 
         // Returning Err here will prevent the client from receiving any response.
         // Instead, we generate a Response with an error code and return Ok
-        Box::new(self.handle_call(req).then(move |result| match result {
+        Box::pin(self.handle_call(req).map(move |result| match result {
             Ok(response) => Ok(response),
             Err(err @ GraphQLServerError::Canceled(_)) => {
                 error!(logger, "IndexNodeService call failed: {}", err);

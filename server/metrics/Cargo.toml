@@ -4,10 +4,11 @@ version = "0.17.1"
 edition = "2018"
 
 [dependencies]
+failure = "0.1.6"
 futures = "0.1.21"
 graph = { path = "../../graph" }
-http = "0.1.5"
-hyper = "0.12.35"
+http = "0.2"
+hyper = "0.13"
 lazy_static = "1.2.0"
 serde = "1.0"
 prometheus = "0.7"
