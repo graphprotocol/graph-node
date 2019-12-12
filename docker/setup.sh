@@ -17,6 +17,9 @@ if ! which jq 2>&1 > /dev/null; then
     exit 1
 fi
 
+# Create the graph-node container
+docker-compose up --no-start graph-node
+
 # Start graph-node so we can inspect it
 docker-compose start graph-node
 
