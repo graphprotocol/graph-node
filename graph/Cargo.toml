@@ -19,10 +19,7 @@ ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master
 hex = "0.4.0"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
-# We're using the latest ipfs-api for the HTTPS support that was merged in
-# https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
-# but has not been released yet.
-ipfs-api = { git = "https://github.com/ferristseng/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
+ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
 parity-wasm = "0.40"
 failure = "0.1.6"
 lazy_static = "1.2.0"

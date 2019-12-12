@@ -1,7 +1,6 @@
 use hyper;
+use hyper::service::make_service_fn;
 use hyper::Server;
-use std::error::Error;
-use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use graph::prelude::{IndexNodeServer as IndexNodeServerTrait, *};
@@ -9,29 +8,10 @@ use graph::prelude::{IndexNodeServer as IndexNodeServerTrait, *};
 use crate::service::IndexNodeService;
 
 /// Errors that may occur when starting the server.
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum IndexNodeServeError {
+    #[fail(display = "Bind error: {}", _0)]
     BindError(hyper::Error),
-}
-
-impl Error for IndexNodeServeError {
-    fn description(&self) -> &str {
-        "Failed to start the server"
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
-
-impl fmt::Display for IndexNodeServeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            IndexNodeServeError::BindError(e) => {
-                write!(f, "Failed to bind index node server: {}", e)
-            }
-        }
-    }
 }
 
 impl From<hyper::Error> for IndexNodeServeError {
@@ -100,21 +80,26 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let store = self.store.clone();
         let node_id = self.node_id.clone();
-        let new_service = move || {
-            let service = IndexNodeService::new(
-                logger_for_service.clone(),
-                graphql_runner.clone(),
-                store.clone(),
-                node_id.clone(),
-            );
-            future::ok::<IndexNodeService<Q, S>, hyper::Error>(service)
-        };
+        let new_service = make_service_fn(move |_| {
+            let logger_for_service = logger_for_service.clone();
+            let graphql_runner = graphql_runner.clone();
+            let store = store.clone();
+            let node_id = node_id.clone();
+            async move {
+                Result::<_, Error>::Ok(IndexNodeService::new(
+                    logger_for_service.clone(),
+                    graphql_runner.clone(),
+                    store.clone(),
+                    node_id.clone(),
+                ))
+            }
+        });
 
         // Create a task to run the server and handle HTTP requests
         let task = Server::try_bind(&addr.into())?
             .serve(new_service)
             .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
 
-        Ok(Box::new(task))
+        Ok(Box::new(task.compat()))
     }
 }

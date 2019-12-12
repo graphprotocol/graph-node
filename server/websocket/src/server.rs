@@ -1,6 +1,6 @@
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
-use hyper::Uri;
+use http::Uri;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
 use tokio01::net::TcpListener;

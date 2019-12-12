@@ -1,39 +1,18 @@
-use std::error::Error;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use hyper;
-use hyper::service::service_fn_ok;
+use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
 use prometheus::{Encoder, Registry, TextEncoder};
 
 use graph::prelude::{MetricsServer as MetricsServerTrait, *};
 
 /// Errors that may occur when starting the server.
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum PrometheusMetricsServeError {
+    #[fail(display = "Bind error: {}", _0)]
     BindError(hyper::Error),
-}
-
-impl Error for PrometheusMetricsServeError {
-    fn description(&self) -> &str {
-        "Failed to start the server"
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
-
-impl Display for PrometheusMetricsServeError {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            PrometheusMetricsServeError::BindError(e) => {
-                write!(f, "Failed to bind index node server: {}", e)
-            }
-        }
-    }
 }
 
 impl From<hyper::Error> for PrometheusMetricsServeError {
@@ -82,25 +61,32 @@ impl MetricsServerTrait for PrometheusMetricsServer {
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
         let server = self.clone();
-        let new_service = move || {
-            let registry = server.registry.clone();
-            service_fn_ok(move |_req| {
-                let metric_families = registry.gather();
-                let mut buffer = vec![];
-                let encoder = TextEncoder::new();
-                encoder.encode(&metric_families, &mut buffer).unwrap();
-                Response::builder()
-                    .status(200)
-                    .header(hyper::header::CONTENT_TYPE, encoder.format_type())
-                    .body(Body::from(buffer))
-                    .unwrap()
-            })
-        };
+        let new_service = make_service_fn(move |_req| {
+            let server = server.clone();
+            async move {
+                Ok::<_, Error>(service_fn(move |_| {
+                    let registry = server.registry.clone();
+                    async move {
+                        let metric_families = registry.gather();
+                        let mut buffer = vec![];
+                        let encoder = TextEncoder::new();
+                        encoder.encode(&metric_families, &mut buffer).unwrap();
+                        Ok::<_, Error>(
+                            Response::builder()
+                                .status(200)
+                                .header(hyper::header::CONTENT_TYPE, encoder.format_type())
+                                .body(Body::from(buffer))
+                                .unwrap(),
+                        )
+                    }
+                }))
+            }
+        });
 
         let task = Server::try_bind(&addr.into())?
             .serve(new_service)
             .map_err(move |e| error!(logger, "Metrics server error"; "error" => format!("{}", e)));
 
-        Ok(Box::new(task))
+        Ok(Box::new(task.compat()))
     }
 }

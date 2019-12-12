@@ -1,20 +1,20 @@
 use graphql_parser;
-use hyper::Chunk;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
 
+use hyper::body::Bytes;
 use serde_json;
 
 /// Future for a query parsed from an HTTP request.
 pub struct IndexNodeRequest {
-    body: Chunk,
+    body: Bytes,
     schema: Arc<Schema>,
 }
 
 impl IndexNodeRequest {
     /// Creates a new IndexNodeRequest future based on an HTTP request and a result sender.
-    pub fn new(body: Chunk, schema: Arc<Schema>) -> Self {
+    pub fn new(body: Bytes, schema: Arc<Schema>) -> Self {
         IndexNodeRequest { body, schema }
     }
 }
@@ -90,7 +90,7 @@ mod tests {
     fn rejects_invalid_json() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = IndexNodeRequest::new(hyper::Chunk::from("!@#)%"), Arc::new(schema));
+        let request = IndexNodeRequest::new(hyper::body::Bytes::from("!@#)%"), Arc::new(schema));
         request.wait().expect_err("Should reject invalid JSON");
     }
 
@@ -98,7 +98,7 @@ mod tests {
     fn rejects_json_without_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = IndexNodeRequest::new(hyper::Chunk::from("{}"), Arc::new(schema));
+        let request = IndexNodeRequest::new(hyper::body::Bytes::from("{}"), Arc::new(schema));
         request
             .wait()
             .expect_err("Should reject JSON without query field");
@@ -108,7 +108,7 @@ mod tests {
     fn rejects_json_with_non_string_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = IndexNodeRequest::new(hyper::Chunk::from("{\"query\": 5}"), Arc::new(schema));
+        let request = IndexNodeRequest::new(hyper::body::Bytes::from("{\"query\": 5}"), Arc::new(schema));
         request
             .wait()
             .expect_err("Should reject JSON with a non-string query field");
@@ -119,7 +119,7 @@ mod tests {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request =
-            IndexNodeRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), Arc::new(schema));
+            IndexNodeRequest::new(hyper::body::Bytes::from("{\"query\": \"foo\"}"), Arc::new(schema));
         request.wait().expect_err("Should reject broken queries");
     }
 
@@ -128,7 +128,7 @@ mod tests {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = IndexNodeRequest::new(
-            hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
+            hyper::body::Bytes::from("{\"query\": \"{ user { name } }\"}"),
             Arc::new(schema),
         );
         let query = request.wait().expect("Should accept valid queries");
@@ -143,7 +143,7 @@ mod tests {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = IndexNodeRequest::new(
-            hyper::Chunk::from(
+            hyper::body::Bytes::from(
                 "\
                  {\
                  \"query\": \"{ user { name } }\", \
@@ -164,7 +164,7 @@ mod tests {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = IndexNodeRequest::new(
-            hyper::Chunk::from(
+            hyper::body::Bytes::from(
                 "\
                  {\
                  \"query\": \"{ user { name } }\", \
@@ -181,7 +181,7 @@ mod tests {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = IndexNodeRequest::new(
-            hyper::Chunk::from(
+            hyper::body::Bytes::from(
                 "\
                  {\
                  \"query\": \"{ user { name } }\", \

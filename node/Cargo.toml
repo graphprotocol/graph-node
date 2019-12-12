@@ -8,14 +8,10 @@ clap = "2.33.0"
 env_logger = "0.7.1"
 git-testament = "0.1"
 graphql-parser = "0.2.3"
-http = "0.1"
 prometheus = "0.7"
 futures = { version = "0.3.1", features = ["compat"] }
 
-# We're using the latest ipfs-api for the HTTPS support that was merged in
-# https://github.com/ferristseng/rust-ipfs-api/commit/55902e98d868dcce047863859caf596a629d10ec
-# but has not been released yet.
-ipfs-api = { git = "https://github.com/ferristseng/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
+ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 url = "1.7.1"
 crossbeam-channel = "0.3.9"
