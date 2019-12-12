@@ -40,46 +40,6 @@ impl fmt::Display for BlockWithOmmers {
     }
 }
 
-pub fn create<S>(
-    subgraph_name: String,
-    logger: &Logger,
-    adapter: Arc<dyn EthereumAdapter>,
-    store: Arc<S>,
-    metrics_registry: Arc<dyn MetricsRegistry>,
-    start_block: Option<EthereumBlockPointer>,
-) -> impl Future<Item = NetworkIndexer, Error = ()>
-where
-    S: Store + ChainStore,
-{
-    // Create a subgraph name and ID
-    let id_str = format!(
-        "{}_v{}",
-        subgraph_name.replace("/", "_"),
-        NETWORK_INDEXER_VERSION
-    );
-    let subgraph_id = SubgraphDeploymentId::new(id_str).expect("valid network subgraph ID");
-    let subgraph_name = SubgraphName::new(subgraph_name).expect("valid network subgraph name");
+pub trait NetworkStore: Store + ChainStore {}
 
-    let logger = logger.new(o!(
-      "subgraph_name" => subgraph_name.to_string(),
-      "subgraph_id" => subgraph_id.to_string(),
-    ));
-
-    // Ensure subgraph, the wire up the tracer and indexer
-    subgraph::ensure_subgraph_exists(
-        subgraph_name,
-        subgraph_id.clone(),
-        logger.clone(),
-        store.clone(),
-        start_block,
-    )
-    .and_then(move |_| {
-        future::ok(NetworkIndexer::new(
-            subgraph_id.clone(),
-            &logger,
-            adapter.clone(),
-            store.clone(),
-            metrics_registry.clone(),
-        ))
-    })
-}
+impl<S: Store + ChainStore> NetworkStore for S {}

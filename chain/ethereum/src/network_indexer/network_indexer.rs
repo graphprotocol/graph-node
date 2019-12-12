@@ -14,6 +14,7 @@ use web3::types::H256;
 
 use super::block_writer::BlockWriter;
 use super::metrics::NetworkIndexerMetrics;
+use super::subgraph;
 use super::*;
 
 /// Terminology used in this component:
@@ -66,6 +67,7 @@ struct ReorgData {
     common_ancestor: EthereumBlockPointer,
 }
 
+type EnsureSubgraphFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
 type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
 type ChainHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 type BlockPointerFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
@@ -97,6 +99,22 @@ macro_rules! track_future {
     }};
 }
 
+fn ensure_subgraph(
+    logger: Logger,
+    store: Arc<dyn NetworkStore>,
+    subgraph_name: SubgraphName,
+    subgraph_id: SubgraphDeploymentId,
+    start_block: Option<EthereumBlockPointer>,
+) -> EnsureSubgraphFuture {
+    Box::new(subgraph::ensure_subgraph_exists(
+        subgraph_name,
+        subgraph_id,
+        logger,
+        store,
+        start_block,
+    ))
+}
+
 fn load_local_head(context: &Context) -> LocalHeadFuture {
     Box::new(track_future!(
         context.metrics,
@@ -109,7 +127,7 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
 fn load_parent_block_from_store(
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
-    store: Arc<dyn Store>,
+    store: Arc<dyn NetworkStore>,
     metrics: Arc<NetworkIndexerMetrics>,
     block_ptr: EthereumBlockPointer,
 ) -> BlockPointerFuture {
@@ -567,7 +585,7 @@ fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithOmmers) -> AddBlo
 fn revert_blocks(
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
-    store: Arc<dyn Store>,
+    store: Arc<dyn NetworkStore>,
     metrics: Arc<NetworkIndexerMetrics>,
     event_sink: Sender<NetworkIndexerEvent>,
     blocks: Vec<EthereumBlockPointer>,
@@ -710,13 +728,15 @@ fn update_chain_and_local_head_metrics(
 
 /// Context for the network tracer.
 pub struct Context {
-    subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
-    store: Arc<dyn Store>,
-    event_sink: Sender<NetworkIndexerEvent>,
-    block_writer: Arc<BlockWriter>,
+    store: Arc<dyn NetworkStore>,
     metrics: Arc<NetworkIndexerMetrics>,
+    block_writer: Arc<BlockWriter>,
+    event_sink: Sender<NetworkIndexerEvent>,
+    subgraph_name: SubgraphName,
+    subgraph_id: SubgraphDeploymentId,
+    start_block: Option<EthereumBlockPointer>,
 }
 
 /// Events emitted by the network tracer.
@@ -744,10 +764,17 @@ impl fmt::Display for NetworkIndexerEvent {
 #[derive(StateMachineFuture)]
 #[state_machine_future(context = "Context")]
 enum StateMachine {
-    /// The indexer start in an empty state and immediately moves on
-    /// to loading the local head block from the store.
-    #[state_machine_future(start, transitions(LoadLocalHead))]
+    /// The indexer start in an empty state and immediately moves on to
+    /// ensuring that the network subgraph exists.
+    #[state_machine_future(start, transitions(EnsureSubgraph))]
     Start,
+
+    /// This state ensures that the network subgraph that stores the
+    /// indexed data exists, and creates it if necessary.
+    #[state_machine_future(transitions(LoadLocalHead))]
+    EnsureSubgraph {
+        ensure_subgraph: EnsureSubgraphFuture,
+    },
 
     /// This state waits until the local head block has been loaded from the
     /// store. It then moves on to polling the chain head block.
@@ -920,6 +947,31 @@ impl PollStateMachine for StateMachine {
         // network indexer is wired up, this could mean that the system shutting
         // down.
         try_ready!(context.event_sink.poll_ready());
+
+        info!(context.logger, "Ensure that the network subgraph exists");
+
+        transition!(EnsureSubgraph {
+            ensure_subgraph: ensure_subgraph(
+                context.logger.clone(),
+                context.store.clone(),
+                context.subgraph_name.clone(),
+                context.subgraph_id.clone(),
+                context.start_block.clone(),
+            )
+        })
+    }
+
+    fn poll_ensure_subgraph<'a, 'c>(
+        state: &'a mut RentToOwn<'a, EnsureSubgraph>,
+        context: &'c mut RentToOwn<'c, Context>,
+    ) -> Poll<AfterEnsureSubgraph, Error> {
+        // Abort if the output stream has been closed. Depending on how the
+        // network indexer is wired up, this could mean that the system shutting
+        // down.
+        try_ready!(context.event_sink.poll_ready());
+
+        // Ensure the subgraph exists; if creating it fails, fail the indexer
+        try_ready!(state.ensure_subgraph.poll());
 
         info!(context.logger, "Start indexing network data");
 
@@ -1505,16 +1557,31 @@ pub struct NetworkIndexer {
 
 impl NetworkIndexer {
     pub fn new<S>(
-        subgraph_id: SubgraphDeploymentId,
         logger: &Logger,
         adapter: Arc<dyn EthereumAdapter>,
         store: Arc<S>,
         metrics_registry: Arc<dyn MetricsRegistry>,
+        subgraph_name: String,
+        start_block: Option<EthereumBlockPointer>,
     ) -> Self
     where
         S: Store + ChainStore,
     {
-        let logger = logger.new(o!("component" => "NetworkIndexer"));
+        // Create a subgraph name and ID
+        let id_str = format!(
+            "{}_v{}",
+            subgraph_name.replace("/", "_"),
+            NETWORK_INDEXER_VERSION
+        );
+        let subgraph_id = SubgraphDeploymentId::new(id_str).expect("valid network subgraph ID");
+        let subgraph_name = SubgraphName::new(subgraph_name).expect("valid network subgraph name");
+
+        let logger = logger.new(o!(
+            "component" => "NetworkIndexer",
+            "subgraph_name" => subgraph_name.to_string(),
+            "subgraph_id" => subgraph_id.to_string(),
+        ));
+
         let logger_for_err = logger.clone();
 
         let stopwatch = StopwatchMetrics::new(
@@ -1542,13 +1609,15 @@ impl NetworkIndexer {
 
         // Create state machine that emits block and revert events for the network
         let state_machine = StateMachine::start(Context {
-            subgraph_id,
             logger,
             adapter,
             store,
-            event_sink,
-            block_writer,
             metrics,
+            block_writer,
+            event_sink,
+            subgraph_name,
+            subgraph_id,
+            start_block,
         });
 
         // Launch state machine
