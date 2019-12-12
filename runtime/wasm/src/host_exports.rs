@@ -59,6 +59,9 @@ impl std::fmt::Debug for HostExports {
     }
 }
 
+use graph::components::store::BLOOM_FILTER;
+use pdatastructs::filters::Filter;
+
 impl HostExports {
     pub(crate) fn new(
         subgraph_id: SubgraphDeploymentId,
@@ -146,6 +149,7 @@ impl HostExports {
         let schema = self.store.input_schema(&self.subgraph_id)?;
         let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
         state.entity_cache.set(key.clone(), entity);
+        BLOOM_FILTER.lock().unwrap().insert(&key).unwrap();
 
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
@@ -181,12 +185,25 @@ impl HostExports {
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
+        static mut BLOOM_MISS: u32 = 0;
+        static mut BLOOM_COUNT: u32 = 0;
+
+        unsafe { BLOOM_COUNT += 1 };
+
         let start_time = Instant::now();
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: entity_type.clone(),
             entity_id: entity_id.clone(),
         };
+
+        if !BLOOM_FILTER.lock().unwrap().query(&store_key) {
+            println!("bloom miss");
+            unsafe { BLOOM_MISS += 1 };
+            unsafe { println!("miss rate {}", BLOOM_MISS as f64 / BLOOM_COUNT as f64) };
+            return Ok(None);
+        }
+        println!("bloom hit");
 
         let result = state
             .entity_cache

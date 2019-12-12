@@ -1105,6 +1105,15 @@ impl EntityModification {
     }
 }
 
+use pdatastructs::filters::bloomfilter::BloomFilter;
+use pdatastructs::filters::Filter;
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    /// Maximum number of blocks to request in each chunk.
+    pub static ref BLOOM_FILTER: Mutex<BloomFilter<EntityKey>> = Mutex::new(BloomFilter::with_properties(1000000, 0.01));
+}
+
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
 /// how entities are modified, and caches all entities looked up from the
@@ -1116,7 +1125,7 @@ impl EntityModification {
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
-    current: HashMap<EntityKey, Option<Entity>>,
+    pub current: HashMap<EntityKey, Option<Entity>>,
     /// The accumulated changes to an entity. An entry of `None`
     /// means that the entity should be deleted
     updates: HashMap<EntityKey, Option<Entity>>,
@@ -1210,10 +1219,9 @@ impl EntityCache {
     ) -> Result<Vec<EntityModification>, QueryExecutionError> {
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
-        let missing = self
-            .updates
-            .keys()
-            .filter(|key| !self.current.contains_key(key));
+        let missing = self.updates.keys().filter(|key| {
+            !self.current.contains_key(key) && BLOOM_FILTER.lock().unwrap().query(key)
+        });
 
         let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&str, Vec<&str>>> = BTreeMap::new();
         for key in missing {

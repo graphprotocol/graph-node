@@ -17,6 +17,7 @@ semver = "0.9.0"
 parity-wasm = "0.40"
 lazy_static = "1.4"
 uuid = { version = "0.8.1", features = ["v4"] }
+pdatastructs = "0.6"
 
 [dev-dependencies]
 graphql-parser = "0.2.3"
