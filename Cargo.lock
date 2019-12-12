@@ -1127,6 +1127,7 @@ dependencies = [
  "fallible-iterator 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.16.1",
+ "graph-chain-ethereum 0.16.1",
  "graph-graphql 0.16.1",
  "graph-mock 0.16.1",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",

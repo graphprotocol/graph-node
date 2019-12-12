@@ -39,7 +39,6 @@ where
     ancestor_count: u64,
     network_name: String,
     logger: Logger,
-    ingestor_metrics: Arc<BlockIngestorMetrics>,
     polling_interval: Duration,
 }
 
@@ -54,7 +53,6 @@ where
         network_name: String,
         logger_factory: &LoggerFactory,
         polling_interval: Duration,
-        registry: Arc<impl MetricsRegistry>,
     ) -> Result<BlockIngestor<S>, Error> {
         let logger = logger_factory.component_logger(
             "BlockIngestor",
@@ -64,7 +62,6 @@ where
                 }),
             }),
         );
-        let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         Ok(BlockIngestor {
             chain_store,
@@ -72,7 +69,6 @@ where
             ancestor_count,
             network_name,
             logger,
-            ingestor_metrics,
             polling_interval,
         })
     }
@@ -144,10 +140,6 @@ where
                                     LogCode::BlockIngestionStatus
                                 };
                                 if distance > 0 {
-                                    self.ingestor_metrics.observe_blocks_synced(
-                                        &network_name,
-                                        latest_number,
-                                    );
                                     info!(
                                         self.logger,
                                         "Syncing {} blocks from Ethereum.",
