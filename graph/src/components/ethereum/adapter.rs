@@ -488,7 +488,7 @@ pub struct ProviderEthRpcMetrics {
 }
 
 impl ProviderEthRpcMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
         let request_duration = registry
             .new_histogram_vec(
                 String::from("eth_rpc_request_duration"),
@@ -530,7 +530,7 @@ pub struct SubgraphEthRpcMetrics {
 }
 
 impl SubgraphEthRpcMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>, subgraph_hash: String) -> Self {
+    pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
         let request_duration = registry
             .new_gauge_vec(
                 format!("subgraph_eth_rpc_request_duration_{}", subgraph_hash),
@@ -573,8 +573,8 @@ pub struct BlockStreamMetrics {
 }
 
 impl BlockStreamMetrics {
-    pub fn new<M: MetricsRegistry>(
-        registry: Arc<M>,
+    pub fn new(
+        registry: Arc<impl MetricsRegistry>,
         ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
         deployment_id: SubgraphDeploymentId,
         stopwatch: StopwatchMetrics,

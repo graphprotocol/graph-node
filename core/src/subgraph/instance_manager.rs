@@ -64,7 +64,7 @@ struct SubgraphInstanceManagerMetrics {
 }
 
 impl SubgraphInstanceManagerMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
         let subgraph_count = registry
             .new_gauge(
                 String::from("subgraph_count"),
@@ -103,7 +103,7 @@ struct SubgraphInstanceMetrics {
 }
 
 impl SubgraphInstanceMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>, subgraph_hash: String) -> Self {
+    pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
         let block_trigger_count = registry
             .new_histogram(
                 format!("subgraph_block_trigger_count_{}", subgraph_hash),
@@ -154,7 +154,7 @@ impl SubgraphInstanceMetrics {
             .observe(duration);
     }
 
-    pub fn unregister<M: MetricsRegistry>(&self, registry: Arc<M>) {
+    pub fn unregister(&self, registry: Arc<impl MetricsRegistry>) {
         registry.unregister(self.block_processing_duration.clone());
         registry.unregister(self.block_trigger_count.clone());
         registry.unregister(self.trigger_processing_duration.clone());
@@ -164,18 +164,17 @@ impl SubgraphInstanceMetrics {
 
 impl SubgraphInstanceManager {
     /// Creates a new runtime manager.
-    pub fn new<B, S, M>(
+    pub fn new<B, S>(
         logger_factory: &LoggerFactory,
         stores: HashMap<String, Arc<S>>,
         eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
-        metrics_registry: Arc<M>,
+        metrics_registry: Arc<impl MetricsRegistry>,
     ) -> Self
     where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         B: BlockStreamBuilder,
-        M: MetricsRegistry,
     {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -201,18 +200,17 @@ impl SubgraphInstanceManager {
     }
 
     /// Handle incoming events from subgraph providers.
-    fn handle_subgraph_events<B, S, M>(
+    fn handle_subgraph_events<B, S>(
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         stores: HashMap<String, Arc<S>>,
         eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
-        metrics_registry: Arc<M>,
+        metrics_registry: Arc<impl MetricsRegistry>,
     ) where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         B: BlockStreamBuilder,
-        M: MetricsRegistry,
     {
         let metrics_registry_for_manager = metrics_registry.clone();
         let metrics_registry_for_subgraph = metrics_registry.clone();
@@ -292,7 +290,7 @@ impl SubgraphInstanceManager {
         }));
     }
 
-    fn start_subgraph<B, S, M>(
+    fn start_subgraph<B, S>(
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
@@ -300,12 +298,11 @@ impl SubgraphInstanceManager {
         store: Arc<S>,
         eth_adapter: Arc<dyn EthereumAdapter>,
         manifest: SubgraphManifest,
-        registry: Arc<M>,
+        registry: Arc<impl MetricsRegistry>,
     ) -> Result<(), Error>
     where
         B: BlockStreamBuilder,
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
-        M: MetricsRegistry,
     {
         // Clear the 'failed' state of the subgraph. We were told explicitly
         // to start, which implies we assume the subgraph has not failed (yet)
