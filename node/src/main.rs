@@ -579,8 +579,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
                     .for_each(|network_subgraph| {
                         let network_name = network_subgraph.replace("ethereum/", "");
-                        let network_indexer = network_indexer::create(
-                            network_subgraph.into(),
+                        let mut indexer = network_indexer::NetworkIndexer::new(
                             &logger,
                             eth_adapters
                                 .get(&network_name)
@@ -591,14 +590,13 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                                 .expect("store for network")
                                 .clone(),
                             metrics_registry.clone(),
+                            network_subgraph.into(),
                             None,
                         );
-                        tokio::spawn(network_indexer.and_then(|mut indexer| {
-                            indexer.take_event_stream().unwrap().for_each(|_| {
-                                // For now we simply ignore these events; we may later use them
-                                // to drive subgraph indexing
-                                Ok(())
-                            })
+                        tokio::spawn(indexer.take_event_stream().unwrap().for_each(|_| {
+                            // For now we simply ignore these events; we may later use them
+                            // to drive subgraph indexing
+                            Ok(())
                         }));
                     })
             };
