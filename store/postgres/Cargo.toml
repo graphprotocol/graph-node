@@ -15,6 +15,7 @@ failure = "0.1.6"
 fallible-iterator = "0.1.4"
 futures = "0.1.21"
 graph = { path = "../../graph" }
+graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-graphql = { path = "../../graphql" }
 graphql-parser = "0.2.3"
 Inflector = "0.11.3"

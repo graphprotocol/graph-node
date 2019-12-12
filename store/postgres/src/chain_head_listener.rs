@@ -1,9 +1,9 @@
 use tokio::sync::watch;
 
+use crate::notification_listener::{NotificationListener, SafeChannelName};
 use graph::prelude::serde_json;
 use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
-
-use crate::notification_listener::{NotificationListener, SafeChannelName};
+use graph_chain_ethereum::BlockIngestorMetrics;
 
 pub struct ChainHeadUpdateListener {
     update_receiver: watch::Receiver<()>,
@@ -11,7 +11,12 @@ pub struct ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateListener {
-    pub fn new(logger: &Logger, postgres_url: String, network_name: String) -> Self {
+    pub fn new(
+        logger: &Logger,
+        ingestor_metrics: Arc<BlockIngestorMetrics>,
+        postgres_url: String,
+        network_name: String,
+    ) -> Self {
         let logger = logger.new(o!("component" => "ChainHeadUpdateListener"));
 
         // Create a Postgres notification listener for chain head updates
@@ -22,7 +27,13 @@ impl ChainHeadUpdateListener {
         );
 
         let (update_sender, update_receiver) = watch::channel(());
-        Self::listen(logger, &mut listener, network_name, update_sender);
+        Self::listen(
+            logger,
+            ingestor_metrics,
+            &mut listener,
+            network_name,
+            update_sender,
+        );
 
         ChainHeadUpdateListener {
             update_receiver,
@@ -36,6 +47,7 @@ impl ChainHeadUpdateListener {
 
     fn listen(
         logger: Logger,
+        metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
         network_name: String,
         mut update_sender: watch::Sender<()>,
@@ -56,6 +68,10 @@ impl ChainHeadUpdateListener {
                                 notification.payload
                             )
                         });
+                    metrics.set_chain_head_number(
+                        &update.network_name,
+                        *&update.head_block_number as i64,
+                    );
 
                     // Only include update if it is for the network we're interested in
                     if update.network_name == network_name {

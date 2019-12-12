@@ -27,6 +27,7 @@ use graph::prelude::{
     SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
     SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
+use graph_chain_ethereum::BlockIngestorMetrics;
 use graph_graphql::prelude::api_schema;
 use tokio::timer::Interval;
 use web3::types::H256;
@@ -163,6 +164,7 @@ impl Store {
         let store_events = listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
+        let block_ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         // Create the store
         let mut store = Store {
@@ -171,6 +173,7 @@ impl Store {
             listener,
             chain_head_update_listener: ChainHeadUpdateListener::new(
                 &logger,
+                block_ingestor_metrics,
                 config.postgres_url,
                 config.network_name.clone(),
             ),
