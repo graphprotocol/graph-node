@@ -4,10 +4,11 @@ version = "0.17.1"
 edition = "2018"
 
 [dependencies]
+failure = "0.1.6"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
-http = "0.1.18"
-hyper = "0.12.35"
+http = "0.2"
+hyper = "0.13"
 serde = "1.0"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }

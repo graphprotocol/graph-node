@@ -1,35 +1,17 @@
-use std::error::Error;
-use std::fmt;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use hyper;
+use hyper::service::make_service_fn;
 use hyper::Server;
 
 use crate::service::{GraphQLService, GraphQLServiceMetrics};
 use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 
 /// Errors that may occur when starting the server.
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum GraphQLServeError {
+    #[fail(display = "Bind error: {}", _0)]
     BindError(hyper::Error),
-}
-
-impl Error for GraphQLServeError {
-    fn description(&self) -> &str {
-        "Failed to start the server"
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        None
-    }
-}
-
-impl fmt::Display for GraphQLServeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            GraphQLServeError::BindError(e) => write!(f, "Failed to bind GraphQL server: {}", e),
-        }
-    }
 }
 
 impl From<hyper::Error> for GraphQLServeError {
@@ -103,23 +85,29 @@ where
         let metrics = self.metrics.clone();
         let store = self.store.clone();
         let node_id = self.node_id.clone();
-        let new_service = move || {
-            let service = GraphQLService::new(
-                logger_for_service.clone(),
-                metrics.clone(),
-                graphql_runner.clone(),
-                store.clone(),
-                ws_port,
-                node_id.clone(),
-            );
-            future::ok::<GraphQLService<Q, S>, hyper::Error>(service)
-        };
+        let new_service = make_service_fn(move |_| {
+            let logger_for_service = logger_for_service.clone();
+            let metrics = metrics.clone();
+            let graphql_runner = graphql_runner.clone();
+            let store = store.clone();
+            let node_id = node_id.clone();
+            async move {
+                Result::<_, Error>::Ok(GraphQLService::new(
+                    logger_for_service.clone(),
+                    metrics.clone(),
+                    graphql_runner.clone(),
+                    store.clone(),
+                    ws_port,
+                    node_id.clone(),
+                ))
+            }
+        });
 
         // Create a task to run the server and handle HTTP requests
         let task = Server::try_bind(&addr.into())?
             .serve(new_service)
             .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
 
-        Ok(Box::new(task))
+        Ok(Box::new(task.compat()))
     }
 }
