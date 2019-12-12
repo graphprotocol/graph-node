@@ -15,6 +15,7 @@ use crate::response::GraphQLResponse;
 
 pub struct GraphQLServiceMetrics {
     query_execution_time: Box<HistogramVec>,
+    failed_query_execution_time: Box<HistogramVec>,
 }
 
 impl fmt::Debug for GraphQLServiceMetrics {
@@ -28,7 +29,17 @@ impl GraphQLServiceMetrics {
         let query_execution_time = registry
             .new_histogram_vec(
                 format!("subgraph_query_execution_time"),
-                String::from("Measures the execution time for GraphQL queries"),
+                String::from("Execution time for GraphQL queries"),
+                HashMap::new(),
+                vec![String::from("subgraph_deployment")],
+                vec![0.1, 0.5, 1.0, 10.0, 100.0],
+            )
+            .expect("failed to create `subgraph_query_execution_time` histogram");
+
+        let failed_query_execution_time = registry
+            .new_histogram_vec(
+                format!("subgraph_failed_query_execution_time"),
+                String::from("Execution time for failed GraphQL queries"),
                 HashMap::new(),
                 vec![String::from("subgraph_deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
@@ -37,11 +48,18 @@ impl GraphQLServiceMetrics {
 
         Self {
             query_execution_time,
+            failed_query_execution_time,
         }
     }
 
     pub fn observe_query_execution_time(&self, duration: f64, deployment_id: String) {
         self.query_execution_time
+            .with_label_values(vec![deployment_id.as_ref()].as_slice())
+            .observe(duration.clone());
+    }
+
+    pub fn observe_failed_query_execution_time(&self, duration: f64, deployment_id: String) {
+        self.failed_query_execution_time
             .with_label_values(vec![deployment_id.as_ref()].as_slice())
             .observe(duration.clone());
     }
@@ -283,14 +301,20 @@ where
                                     "code" => LogCode::GraphQlQuerySuccess,
                                 )
                             }
-                            Err(ref e) => error!(
-                                logger,
-                                "GraphQL query failed";
-                                "subgraph_deployment" => sd_id.deref(),
-                                "error" => e.to_string(),
-                                "query_time_ms" => elapsed.as_millis(),
-                                "code" => LogCode::GraphQlQueryFailure,
-                            ),
+                            Err(ref e) => {
+                                service_metrics.observe_query_execution_time(
+                                    elapsed.as_secs_f64(),
+                                    sd_id.deref().to_string(),
+                                );
+                                error!(
+                                    logger,
+                                    "GraphQL query failed";
+                                    "subgraph_deployment" => sd_id.deref(),
+                                    "error" => e.to_string(),
+                                    "query_time_ms" => elapsed.as_millis(),
+                                    "code" => LogCode::GraphQlQueryFailure,
+                                )
+                            }
                         }
                         GraphQLResponse::new(result)
                     },
