@@ -47,18 +47,15 @@ impl<S> BlockIngestor<S>
 where
     S: ChainStore,
 {
-    pub fn new<M>(
+    pub fn new(
         chain_store: Arc<S>,
         eth_adapter: Arc<dyn EthereumAdapter>,
         ancestor_count: u64,
         network_name: String,
         logger_factory: &LoggerFactory,
         polling_interval: Duration,
-        registry: Arc<M>,
-    ) -> Result<BlockIngestor<S>, Error>
-    where
-        M: MetricsRegistry,
-    {
+        registry: Arc<impl MetricsRegistry>,
+    ) -> Result<BlockIngestor<S>, Error> {
         let logger = logger_factory.component_logger(
             "BlockIngestor",
             Some(ComponentLoggerConfig {

@@ -64,7 +64,7 @@ struct SubgraphInstanceManagerMetrics {
 }
 
 impl SubgraphInstanceManagerMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
         let subgraph_count = registry
             .new_gauge(
                 String::from("subgraph_count"),
@@ -103,7 +103,7 @@ struct SubgraphInstanceMetrics {
 }
 
 impl SubgraphInstanceMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>, subgraph_hash: String) -> Self {
+    pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
         let block_trigger_count = registry
             .new_histogram(
                 format!("subgraph_block_trigger_count_{}", subgraph_hash),
