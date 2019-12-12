@@ -64,8 +64,8 @@ impl fmt::Debug for HostMetrics {
 }
 
 impl HostMetrics {
-    pub fn new<M: MetricsRegistry>(
-        registry: Arc<M>,
+    pub fn new(
+        registry: Arc<impl MetricsRegistry>,
         subgraph_hash: String,
         stopwatch: StopwatchMetrics,
     ) -> Self {

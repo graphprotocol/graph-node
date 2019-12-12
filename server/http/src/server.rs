@@ -39,19 +39,19 @@ impl From<hyper::Error> for GraphQLServeError {
 }
 
 /// A GraphQL server based on Hyper.
-pub struct GraphQLServer<M, Q, S> {
+pub struct GraphQLServer<Q, S> {
     logger: Logger,
-    metrics_registry: Arc<M>,
+    metrics: Arc<GraphQLServiceMetrics>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     node_id: NodeId,
 }
 
-impl<M, Q, S> GraphQLServer<M, Q, S> {
+impl<Q, S> GraphQLServer<Q, S> {
     /// Creates a new GraphQL server.
     pub fn new(
         logger_factory: &LoggerFactory,
-        metrics_registry: Arc<M>,
+        metrics_registry: Arc<impl MetricsRegistry>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
         node_id: NodeId,
@@ -64,10 +64,10 @@ impl<M, Q, S> GraphQLServer<M, Q, S> {
                 }),
             }),
         );
-
+        let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry.clone()));
         GraphQLServer {
             logger,
-            metrics_registry,
+            metrics,
             graphql_runner,
             store,
             node_id,
@@ -75,9 +75,8 @@ impl<M, Q, S> GraphQLServer<M, Q, S> {
     }
 }
 
-impl<M, Q, S> GraphQLServerTrait for GraphQLServer<M, Q, S>
+impl<Q, S> GraphQLServerTrait for GraphQLServer<Q, S>
 where
-    M: MetricsRegistry,
     Q: GraphQlRunner,
     S: SubgraphDeploymentStore + Store,
 {
@@ -101,7 +100,7 @@ where
         // incoming queries to the query sink.
         let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
-        let metrics = Arc::new(GraphQLServiceMetrics::new(self.metrics_registry.clone()));
+        let metrics = self.metrics.clone();
         let store = self.store.clone();
         let node_id = self.node_id.clone();
         let new_service = move || {
