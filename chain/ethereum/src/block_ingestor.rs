@@ -6,16 +6,16 @@ use graph::prelude::*;
 use web3::types::*;
 
 pub struct BlockIngestorMetrics {
-    pub block_number: Box<GaugeVec>,
+    chain_head_number: Box<GaugeVec>,
 }
 
 impl BlockIngestorMetrics {
-    pub fn new<M: MetricsRegistry>(registry: Arc<M>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
         Self {
-            block_number: registry
+            chain_head_number: registry
                 .new_gauge_vec(
-                    String::from("ethereum_block_number"),
-                    String::from("Records the number of the most recent block synced on the Ethereum network"),
+                    String::from("ethereum_chain_head_number"),
+                    String::from("Block number of the most recent block synced from Ethereum"),
                     HashMap::new(),
                     vec![String::from("network")],
                 )
@@ -23,10 +23,10 @@ impl BlockIngestorMetrics {
         }
     }
 
-    pub fn observe_blocks_synced(&self, network_name: &str, latest_block_number: i64) {
-        self.block_number
+    pub fn set_chain_head_number(&self, network_name: &str, chain_head_number: i64) {
+        self.chain_head_number
             .with_label_values(vec![network_name].as_slice())
-            .set(latest_block_number as f64);
+            .set(chain_head_number as f64);
     }
 }
 
