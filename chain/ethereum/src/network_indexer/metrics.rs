@@ -25,11 +25,7 @@ pub struct NetworkIndexerMetrics {
     pub fetch_full_block: Aggregate,
     pub fetch_ommers: Aggregate,
     pub load_local_head: Aggregate,
-    pub collect_reorg_data: Aggregate,
-    pub fetch_new_blocks: Aggregate,
-    pub load_parent_block: Aggregate,
-    pub find_common_ancestor: Aggregate,
-    pub revert_blocks: Aggregate,
+    pub revert_local_head: Aggregate,
     pub write_block: Aggregate,
 
     // Problems
@@ -39,11 +35,7 @@ pub struct NetworkIndexerMetrics {
     pub fetch_full_block_problems: Box<Gauge>,
     pub fetch_ommers_problems: Box<Gauge>,
     pub load_local_head_problems: Box<Gauge>,
-    pub collect_reorg_data_problems: Box<Gauge>,
-    pub fetch_new_blocks_problems: Box<Gauge>,
-    pub load_parent_block_problems: Box<Gauge>,
-    pub find_common_ancestor_problems: Box<Gauge>,
-    pub revert_blocks_problems: Box<Gauge>,
+    pub revert_local_head_problems: Box<Gauge>,
     pub write_block_problems: Box<Gauge>,
 
     // Timestamp for the last received chain update, i.e.
@@ -146,33 +138,9 @@ impl NetworkIndexerMetrics {
                 registry.clone(),
             ),
 
-            collect_reorg_data: Aggregate::new(
-                format!("{}_collect_reorg_data", subgraph_id),
-                "Collect data to handle a reorg",
-                registry.clone(),
-            ),
-
-            fetch_new_blocks: Aggregate::new(
-                format!("{}_fetch_new_blocks", subgraph_id),
-                "Fetch new blocks for a reorg",
-                registry.clone(),
-            ),
-
-            load_parent_block: Aggregate::new(
-                format!("{}_load_parent_block", subgraph_id),
-                "Load the parent of a block from the store",
-                registry.clone(),
-            ),
-
-            find_common_ancestor: Aggregate::new(
-                format!("{}_find_common_ancestor", subgraph_id),
-                "Identify the common ancestor for a reorg",
-                registry.clone(),
-            ),
-
-            revert_blocks: Aggregate::new(
-                format!("{}_revert_blocks", subgraph_id),
-                "Revert blocks in the store",
+            revert_local_head: Aggregate::new(
+                format!("{}_revert_local_head", subgraph_id),
+                "Revert the local head block in the store",
                 registry.clone(),
             ),
 
@@ -266,71 +234,15 @@ impl NetworkIndexerMetrics {
                     .as_str(),
                 ),
 
-            collect_reorg_data_problems: registry
+            revert_local_head_problems: registry
                 .new_gauge(
-                    format!("{}_collect_reorg_data_problems", subgraph_id),
-                    "Problems collecting data for handling a reorg".into(),
+                    format!("{}_revert_local_head_problems", subgraph_id),
+                    "Problems reverting the local head block during a reorg".into(),
                     HashMap::new(),
                 )
                 .expect(
                     format!(
-                        "failed to create metric `{}_collect_reorg_data_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
-
-            fetch_new_blocks_problems: registry
-                .new_gauge(
-                    format!("{}_fetch_new_blocks_problems", subgraph_id),
-                    "Problems fetching new blocks for a reorg".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_fetch_new_blocks_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
-
-            load_parent_block_problems: registry
-                .new_gauge(
-                    format!("{}_load_parent_block_problems", subgraph_id),
-                    "Problems loading a parent block from the store".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_load_parent_block_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
-
-            find_common_ancestor_problems: registry
-                .new_gauge(
-                    format!("{}_find_common_ancestor_problems", subgraph_id),
-                    "Problems identifying the common ancestor for a reorg".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_find_common_ancestor_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
-
-            revert_blocks_problems: registry
-                .new_gauge(
-                    format!("{}_revert_blocks_problems", subgraph_id),
-                    "Problems reverting old blocks during a reorg".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_revert_blocks_problems",
+                        "failed to create metric `{}_revert_local_head_problems",
                         subgraph_id
                     )
                     .as_str(),
