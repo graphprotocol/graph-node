@@ -154,6 +154,7 @@ impl LinkResolverTrait for LinkResolver {
 
                     let cat = client_for_cat
                         .cat(&path)
+                        .map(|b| BytesMut::from_iter(b.into_iter()))
                         .concat2()
                         .map(|x| x.to_vec())
                         .map_err(|e| failure::err_msg(e.to_string()));

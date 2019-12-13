@@ -23,4 +23,7 @@ graphql-parser = "0.2.3"
 graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
 test-store = { path = "../../store/test-store" }
-ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
+
+# If upstream upgrades to hyper 0.13, we can go back to it.
+# See https://github.com/ferristseng/rust-ipfs-api/pull/40.
+ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "update-to-hyper-013", features = ["hyper-tls"] }

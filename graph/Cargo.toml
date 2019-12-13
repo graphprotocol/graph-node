@@ -19,7 +19,10 @@ ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master
 hex = "0.4.0"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
-ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
+
+# If upstream upgrades to hyper 0.13, we can go back to it.
+# See https://github.com/ferristseng/rust-ipfs-api/pull/40.
+ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "update-to-hyper-013", features = ["hyper-tls"] }
 parity-wasm = "0.40"
 failure = "0.1.6"
 lazy_static = "1.2.0"
@@ -38,7 +41,7 @@ slog-envlogger = "2.1.0"
 slog-term = "2.4.2"
 petgraph = "0.4.13"
 tiny-keccak = "1.5.0"
-tokio = { version = "0.2.2", features = ["stream", "rt-threaded", "rt-util", "blocking", "time", "sync", "macros", "test-util"] }
+tokio = { version = "0.2.4", features = ["stream", "rt-threaded", "rt-util", "blocking", "time", "sync", "macros", "test-util"] }
 tokio-retry = "0.2"
 url = "1.7.2"
 prometheus = "0.7.0"
