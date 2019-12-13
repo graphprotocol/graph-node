@@ -44,7 +44,7 @@ impl GraphQLServiceMetrics {
                 vec![String::from("subgraph_deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
-            .expect("failed to create `subgraph_query_execution_time` histogram");
+            .expect("failed to create `subgraph_failed_query_execution_time` histogram");
 
         Self {
             query_execution_time,
