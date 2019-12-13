@@ -376,6 +376,7 @@ impl Store {
 
         // Process results; deserialize JSON data
         conn.query(
+            &self.logger,
             query.collection,
             query.filter,
             order,

@@ -420,6 +420,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
     let collection = EntityCollection::All(vec!["Scalar".to_owned()]);
     layout
         .query(
+            &*LOGGER,
             &conn,
             collection,
             Some(filter),
@@ -513,6 +514,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 
         let entities = layout
             .query(
+                &*LOGGER,
                 conn,
                 query.collection,
                 query.filter,
@@ -1223,6 +1225,7 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
 
         let entities = layout
             .query(
+                &*LOGGER,
                 conn,
                 query.collection,
                 query.filter,

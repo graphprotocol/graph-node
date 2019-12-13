@@ -448,6 +448,7 @@ impl Connection {
 
     pub(crate) fn query(
         &self,
+        logger: &Logger,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
@@ -469,7 +470,7 @@ impl Connection {
                 json.query(&self.conn, collection, filter, order, range)
             }
             Storage::Relational(layout) => {
-                layout.query(&self.conn, collection, filter, order, range, block)
+                layout.query(logger, &self.conn, collection, filter, order, range, block)
             }
         }
     }

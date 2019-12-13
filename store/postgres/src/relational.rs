@@ -15,13 +15,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindManyQuery, FindQuery,
     InsertQuery, RevertClampQuery, RevertRemoveQuery,
 };
 use graph::prelude::{
-    format_err, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
+    format_err, trace, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId, ValueType,
 };
@@ -392,6 +393,7 @@ impl Layout {
     /// order is a tuple (attribute, value_type, direction)
     pub fn query(
         &self,
+        logger: &graph::prelude::Logger,
         conn: &PgConnection,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
@@ -402,6 +404,7 @@ impl Layout {
         let query = FilterQuery::new(&self, collection, filter.as_ref(), order, range, block)?;
         let query_debug_info = query.clone();
 
+        let start = Instant::now();
         let values = query.load::<EntityData>(conn).map_err(|e| {
             QueryExecutionError::ResolveEntitiesError(format!(
                 "{}, query = {:?}",
@@ -410,6 +413,12 @@ impl Layout {
             ))
         })?;
 
+        trace!(
+            logger,
+            "Executed SQL query";
+            "query" => debug_query(&query_debug_info).to_string().replace("\n", " "),
+            "time_ms" => start.elapsed().as_millis()
+        );
         values
             .into_iter()
             .map(|entity_data| entity_data.to_entity(self).map_err(|e| e.into()))
