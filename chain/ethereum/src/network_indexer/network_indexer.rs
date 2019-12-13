@@ -1214,32 +1214,16 @@ impl PollStateMachine for StateMachine {
             })
         }
 
-        // If we encounter a block that has a smaller number than our
-        // local head block, then we throw away the block stream and
-        // try to start over with a fresh chain head block.
-        //
-        // The assumption here is that maybe the network provider being
-        // used is temporarily serving from an outdated node.
+        // The `PollChainHead` state already guards against indexing shorter
+        // chains; this check here is just to catch bugs in the subsequent
+        // block fetching.
         let block_number = block.inner().number.unwrap().as_u64();
         let local_head_number = state.local_head.map_or(0u64, |ptr| ptr.number);
-        if block_number < local_head_number {
-            // This is pretty irregular, so make log a warning.
-            warn!(
-                context.logger,
-                "Received older block than the local head; \
-                 re-evaluate chain head and try again";
-                "local_head" => state.local_head.map_or(
-                    String::from("none"), |ptr| format!("{}", &ptr)
-                ),
-                "block" => format!("{}", block),
-            );
-
-            transition!(PollChainHead {
-                local_head: state.local_head,
-                prev_chain_head: Some(state.chain_head.into()),
-                chain_head: poll_chain_head(context),
-            })
-        }
+        assert!(
+            block_number > local_head_number,
+            "block with a smaller number than the local head block; \
+             this is a bug in the indexer"
+        );
 
         // Check whether we have a reorg (parent of the new block != our local head).
         if block.inner().parent_ptr() != state.local_head {
