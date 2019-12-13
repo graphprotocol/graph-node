@@ -72,8 +72,8 @@ type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error
 type ChainHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 type BlockPointerFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
 type OmmersFuture = Box<dyn Future<Item = Vec<Ommer>, Error = Error> + Send>;
-type BlockFuture = Box<dyn Future<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
-type BlockStream = Box<dyn Stream<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
+type BlockFuture = Box<dyn Future<Item = BlockWithOmmers, Error = Error> + Send>;
+type BlockStream = Box<dyn Stream<Item = BlockWithOmmers, Error = Error> + Send>;
 type BlocksFuture = Box<dyn Future<Item = Vec<BlockWithOmmers>, Error = Error> + Send>;
 type ReorgDataFuture = Box<dyn Future<Item = ReorgData, Error = Error> + Send>;
 type RevertBlocksFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
@@ -280,30 +280,27 @@ fn fetch_block_and_ommers_by_number(
                 .from_err()
         )
         .and_then(move |block| match block {
-            None => Box::new(future::ok(None))
-                as Box<dyn Future<Item = Option<EthereumBlock>, Error = _> + Send>,
+            None => Box::new(future::err(format_err!(
+                "block with {} not found on chain",
+                block_number
+            ))) as Box<dyn Future<Item = _, Error = _> + Send>,
             Some(block) => Box::new(track_future!(
                 metrics_for_full_block,
                 fetch_full_block,
                 fetch_full_block_problems,
                 adapter_for_full_block
                     .load_full_block(&logger_for_full_block, block)
-                    .map(|block| Some(block))
                     .from_err()
             )),
         })
-        .and_then(move |block| match block {
-            None => Box::new(future::ok(None))
-                as Box<dyn Future<Item = Option<BlockWithOmmers>, Error = _> + Send>,
-            Some(block) => Box::new(
-                fetch_ommers(
-                    logger_for_ommers,
-                    adapter_for_ommers,
-                    metrics_for_ommers,
-                    &block,
-                )
-                .map(move |ommers| Some(BlockWithOmmers { block, ommers })),
-            ),
+        .and_then(move |block| {
+            fetch_ommers(
+                logger_for_ommers,
+                adapter_for_ommers,
+                metrics_for_ommers,
+                &block,
+            )
+            .map(move |ommers| BlockWithOmmers { block, ommers })
         })
         .then(move |result| {
             section.end();
@@ -339,30 +336,27 @@ fn fetch_block_and_ommers(
                 .from_err()
         )
         .and_then(move |block| match block {
-            None => Box::new(future::ok(None))
-                as Box<dyn Future<Item = Option<EthereumBlock>, Error = _> + Send>,
+            None => Box::new(future::err(format_err!(
+                "block with hash `{}` not found on chain",
+                block_hash
+            ))) as Box<dyn Future<Item = _, Error = _> + Send>,
             Some(block) => Box::new(track_future!(
                 metrics_for_full_block,
                 fetch_full_block,
                 fetch_full_block_problems,
                 adapter_for_full_block
                     .load_full_block(&logger_for_full_block, block)
-                    .map(|block| Some(block))
                     .from_err()
             )),
         })
-        .and_then(move |block| match block {
-            None => Box::new(future::ok(None))
-                as Box<dyn Future<Item = Option<BlockWithOmmers>, Error = _> + Send>,
-            Some(block) => Box::new(
-                fetch_ommers(
-                    logger_for_ommers,
-                    adapter_for_ommers,
-                    metrics_for_ommers,
-                    &block,
-                )
-                .map(move |ommers| Some(BlockWithOmmers { block, ommers })),
-            ),
+        .and_then(move |block| {
+            fetch_ommers(
+                logger_for_ommers,
+                adapter_for_ommers,
+                metrics_for_ommers,
+                &block,
+            )
+            .map(move |ommers| BlockWithOmmers { block, ommers })
         })
         .then(move |result| {
             section.end();
@@ -440,15 +434,9 @@ fn fetch_new_blocks_back_to_local_head_number(
                             metrics.clone(),
                             prev_block.inner().parent_hash,
                         )
-                        .and_then(move |block| match block {
-                            Some(block) => {
-                                blocks.push(block);
-                                future::ok(Loop::Continue(blocks))
-                            }
-                            None => future::err(format_err!(
-                                "block {} not found on chain",
-                                parent_pointer
-                            )),
+                        .and_then(move |block| {
+                            blocks.push(block);
+                            future::ok(Loop::Continue(blocks))
                         }),
                     )
                 }
@@ -554,17 +542,9 @@ fn collect_reorg_data(
                                     ))
                                     .and_then(
                                         move |(old_block_parent, new_block_parent)| {
-                                            match new_block_parent {
-                                                Some(new_block_parent) => {
-                                                    state.old_blocks.push(old_block_parent);
-                                                    state.new_blocks.push(new_block_parent);
-                                                    future::ok(Loop::Continue(state))
-                                                }
-                                                None => future::err(format_err!(
-                                                    "block {} not found on chain",
-                                                    new_block_parent_ptr,
-                                                )),
-                                            }
+                                            state.old_blocks.push(old_block_parent);
+                                            state.new_blocks.push(new_block_parent);
+                                            future::ok(Loop::Continue(state))
                                         },
                                     ),
                                 )
@@ -1173,26 +1153,9 @@ impl PollStateMachine for StateMachine {
                 })
             }
 
-            // The block could not be fetched but there was no clear error either;
-            // try starting over with a fresh chain head.
-            Ok(Async::Ready(Some(None))) => {
-                trace!(
-                    context.logger,
-                    "Failed to fetch block; re-evaluate chain head and try again"
-                );
-
-                let state = state.take();
-
-                transition!(PollChainHead {
-                    local_head: state.local_head,
-                    prev_chain_head: Some(state.chain_head.into()),
-                    chain_head: poll_chain_head(context),
-                })
-            }
-
             // There is a block ready to be processed; check whether it is valid
             // and whether it requires a reorg before adding it.
-            Ok(Async::Ready(Some(Some(block)))) => {
+            Ok(Async::Ready(Some(block))) => {
                 let state = state.take();
 
                 transition!(VetBlock {
@@ -1410,14 +1373,8 @@ impl PollStateMachine for StateMachine {
                     // common ancestor (which we collected but must not process
                     // again).
                     next_blocks: Box::new(
-                        stream::iter_ok(
-                            reorg_data
-                                .new_blocks
-                                .into_iter()
-                                .skip(1)
-                                .map(|block| Some(block))
-                        )
-                        .chain(state.next_blocks)
+                        stream::iter_ok(reorg_data.new_blocks.into_iter().skip(1))
+                            .chain(state.next_blocks)
                     ),
 
                     // Revert old blocks, going back from the local head to the
