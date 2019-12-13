@@ -5,6 +5,7 @@ use diesel::connection::Connection;
 use diesel::pg::PgConnection;
 use std::convert::TryInto;
 use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 
 use graph::mock::*;
@@ -42,14 +43,20 @@ fn remove_test_data(store: Arc<DieselStore>) {
 }
 
 // Helper to run network indexer against test chains.
-pub fn run_network_indexer(
+fn run_network_indexer(
     store: Arc<DieselStore>,
     start_block: Option<EthereumBlockPointer>,
     chains: Vec<Vec<BlockWithOmmers>>,
     timeout: Duration,
-) -> impl Future<Item = Vec<NetworkIndexerEvent>, Error = ()> {
+) -> impl Future<
+    Item = (
+        Arc<Mutex<Chains>>,
+        impl Future<Item = Vec<NetworkIndexerEvent>, Error = ()>,
+    ),
+    Error = (),
+> {
     // Simulate an Ethereum network using a mock adapter
-    let adapter = create_mock_ethereum_adapter(chains);
+    let (adapter, chains) = create_mock_ethereum_adapter(chains);
 
     let subgraph_name = SubgraphName::new("ethereum/testnet").unwrap();
     let logger = LOGGER.clone();
@@ -79,7 +86,7 @@ pub fn run_network_indexer(
             .map(|_| ()),
     );
 
-    event_stream.collect()
+    future::ok((chains, event_stream.collect()))
 }
 
 // Helper to run tests against a clean store.
@@ -156,34 +163,34 @@ fn create_fork(
 }
 
 struct Chains {
-    chain_index: Option<usize>,
+    current_chain_index: usize,
     chains: Vec<Vec<BlockWithOmmers>>,
 }
 
 impl Chains {
     pub fn new(chains: Vec<Vec<BlockWithOmmers>>) -> Self {
         Self {
-            chain_index: None,
+            current_chain_index: 0,
             chains,
         }
     }
 
-    pub fn index(&self) -> Option<usize> {
-        self.chain_index.clone()
-    }
-
-    pub fn next_chain(&mut self) -> Option<&Vec<BlockWithOmmers>> {
-        let next_index = self.chain_index.map_or(0, |index| index + 1);
-        self.chain_index.replace(next_index);
-        self.chains.get(next_index)
+    pub fn index(&self) -> usize {
+        self.current_chain_index
     }
 
     pub fn current_chain(&self) -> Option<&Vec<BlockWithOmmers>> {
-        self.chain_index.and_then(|index| self.chains.get(index))
+        self.chains.get(self.current_chain_index)
+    }
+
+    pub fn advance_to_next_chain(&mut self) {
+        self.current_chain_index += 1;
     }
 }
 
-fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithOmmers>>) -> Arc<MockEthereumAdapter> {
+fn create_mock_ethereum_adapter(
+    chains: Vec<Vec<BlockWithOmmers>>,
+) -> (Arc<MockEthereumAdapter>, Arc<Mutex<Chains>>) {
     let chains = Arc::new(Mutex::new(Chains::new(chains)));
 
     // Create the mock Ethereum adapter.
@@ -193,10 +200,10 @@ fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithOmmers>>) -> Arc<MockEt
     // switch to the next version of the chain
     let chains_for_latest_block = chains.clone();
     adapter.expect_latest_block().returning(move |_: &Logger| {
-        let mut chains = chains_for_latest_block.lock().unwrap();
+        let chains = chains_for_latest_block.lock().unwrap();
         Box::new(future::result(
             chains
-                .next_chain()
+                .current_chain()
                 .ok_or_else(|| {
                     format_err!("exhausted chain versions used in this test; this is ok")
                 })
@@ -302,7 +309,7 @@ fn create_mock_ethereum_adapter(chains: Vec<Vec<BlockWithOmmers>>) -> Arc<MockEt
             ))
         });
 
-    Arc::new(adapter)
+    (Arc::new(adapter), chains)
 }
 
 // GIVEN  a fresh subgraph (local head = none)
@@ -317,16 +324,20 @@ fn indexing_starts_at_genesis() {
         let chains = vec![chain.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(move |events| {
-            // Assert that the events emitted by the indexer match all
-            // blocks _after_ block #2 (because the network subgraph already
-            // had that one)
-            assert_eq!(
-                events,
-                (0..10).map(|n| add_block!(chain, n)).collect::<Vec<_>>()
-            );
-            Ok(())
-        })
+        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
+            move |(_, events)| {
+                events.and_then(move |events| {
+                    // Assert that the events emitted by the indexer match all
+                    // blocks _after_ block #2 (because the network subgraph already
+                    // had that one)
+                    assert_eq!(
+                        events,
+                        (0..10).map(|n| add_block!(chain, n)).collect::<Vec<_>>()
+                    );
+                    Ok(())
+                })
+            },
+        )
     });
 }
 
@@ -348,15 +359,17 @@ fn indexing_resumes_from_local_head() {
             chains,
             Duration::from_secs(2),
         )
-        .and_then(move |events| {
-            // Assert that the events emitted by the indexer are only
-            // for the blocks #3-#9.
-            assert_eq!(
-                events,
-                (3..10).map(|n| add_block!(chain, n)).collect::<Vec<_>>()
-            );
+        .and_then(move |(_, events)| {
+            events.and_then(move |events| {
+                // Assert that the events emitted by the indexer are only
+                // for the blocks #3-#9.
+                assert_eq!(
+                    events,
+                    (3..10).map(|n| add_block!(chain, n)).collect::<Vec<_>>()
+                );
 
-            Ok(())
+                Ok(())
+            })
         })
     });
 }
@@ -384,18 +397,35 @@ fn indexing_picks_up_new_remote_head() {
         let chains = vec![chain_10.clone(), chain_20.clone(), chain_1000.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(20)).and_then(move |events| {
-            // Assert that the events emitted by the indexer match the blocks 1:1,
-            // despite them requiring two remote head updates
-            assert_eq!(
-                events,
-                (0..1000)
-                    .map(|n| add_block!(chain_1000, n))
-                    .collect::<Vec<_>>(),
-            );
+        run_network_indexer(store, None, chains, Duration::from_secs(20)).and_then(
+            move |(chains, events)| {
+                thread::spawn(move || {
+                    // Create the first chain update after 1s
+                    {
+                        thread::sleep(Duration::from_secs(1));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                    // Create the second chain update after 3s
+                    {
+                        thread::sleep(Duration::from_secs(2));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                });
 
-            Ok(())
-        })
+                events.and_then(move |events| {
+                    // Assert that the events emitted by the indexer match the blocks 1:1,
+                    // despite them requiring two remote head updates
+                    assert_eq!(
+                        events,
+                        (0..1000)
+                            .map(|n| add_block!(chain_1000, n))
+                            .collect::<Vec<_>>(),
+                    );
+
+                    Ok(())
+                })
+            },
+        )
     });
 }
 
@@ -413,15 +443,19 @@ fn indexing_does_not_move_past_a_gap() {
         let chains = vec![blocks.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(move |events| {
-            // Assert that only blocks #0 - #4 were indexed and nothing more
-            assert_eq!(
-                events,
-                (0..5).map(|n| add_block!(blocks, n)).collect::<Vec<_>>()
-            );
+        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
+            move |(_, events)| {
+                events.and_then(move |events| {
+                    // Assert that only blocks #0 - #4 were indexed and nothing more
+                    assert_eq!(
+                        events,
+                        (0..5).map(|n| add_block!(blocks, n)).collect::<Vec<_>>()
+                    );
 
-            Ok(())
-        })
+                    Ok(())
+                })
+            },
+        )
     });
 }
 
@@ -443,21 +477,31 @@ fn indexing_handles_single_block_reorg() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), forked_chain.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(move |events| {
-            assert_eq!(
-                events,
-                // The 10 `AddBlock` events for the initial version of the chain
-                (0..10)
-                    .map(|n| add_block!(initial_chain, n))
-                    // The 1 `Revert` event to go back to #8
-                    .chain(vec![revert!(initial_chain, 9 => initial_chain, 8)])
-                    // The 2 `AddBlock` events for the new chain
-                    .chain((9..11).map(|n| add_block!(forked_chain, n)))
-                    .collect::<Vec<_>>()
-            );
+        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
+            move |(chains, events)| {
+                // Trigger the reorg after 1s
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_secs(1));
+                    chains.lock().unwrap().advance_to_next_chain();
+                });
 
-            Ok(())
-        })
+                events.and_then(move |events| {
+                    assert_eq!(
+                        events,
+                        // The 10 `AddBlock` events for the initial version of the chain
+                        (0..10)
+                            .map(|n| add_block!(initial_chain, n))
+                            // The 1 `Revert` event to go back to #8
+                            .chain(vec![revert!(initial_chain, 9 => initial_chain, 8)])
+                            // The 2 `AddBlock` events for the new chain
+                            .chain((9..11).map(|n| add_block!(forked_chain, n)))
+                            .collect::<Vec<_>>()
+                    );
+
+                    Ok(())
+                })
+            },
+        )
     });
 }
 
@@ -479,25 +523,35 @@ fn indexing_handles_simple_reorg() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), forked_chain.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(1)).and_then(move |events| {
-            assert_eq!(
-                events,
-                // - 10 `AddBlock` events for blocks #0 to #9 of the initial chain
-                (0..10)
-                    .map(|n| add_block!(initial_chain, n))
-                    // - 7 `Revert` events from #9 to #8, ..., #3 to #2 (the fork base)
-                    .chain(
-                        vec![9, 8, 7, 6, 5, 4, 3]
-                            .into_iter()
-                            .map(|n| revert!(initial_chain, n => initial_chain, n-1))
-                    )
-                    // 17 `AddBlock` events for the new chain
-                    .chain((3..20).map(|n| add_block!(forked_chain, n)))
-                    .collect::<Vec<_>>()
-            );
+        run_network_indexer(store, None, chains, Duration::from_secs(5)).and_then(
+            move |(chains, events)| {
+                // Trigger a reorg after 1s
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_secs(1));
+                    chains.lock().unwrap().advance_to_next_chain();
+                });
 
-            Ok(())
-        })
+                events.and_then(move |events| {
+                    assert_eq!(
+                        events,
+                        // - 10 `AddBlock` events for blocks #0 to #9 of the initial chain
+                        (0..10)
+                            .map(|n| add_block!(initial_chain, n))
+                            // - 7 `Revert` events from #9 to #8, ..., #3 to #2 (the fork base)
+                            .chain(
+                                vec![9, 8, 7, 6, 5, 4, 3]
+                                    .into_iter()
+                                    .map(|n| revert!(initial_chain, n => initial_chain, n-1))
+                            )
+                            // 17 `AddBlock` events for the new chain
+                            .chain((3..20).map(|n| add_block!(forked_chain, n)))
+                            .collect::<Vec<_>>()
+                    );
+
+                    Ok(())
+                })
+            },
+        )
     });
 }
 
@@ -523,39 +577,56 @@ fn indexing_handles_consecutive_reorgs() {
         // Create a forked chain after block #3
         let third_chain = create_fork(initial_chain.clone(), 2, 30);
 
-        // Run the network indexer and collect its events
+        // Run the network indexer for 3s and collect its events
         let chains = vec![
             initial_chain.clone(),
             second_chain.clone(),
             third_chain.clone(),
         ];
-        run_network_indexer(store, None, chains, Duration::from_secs(3)).and_then(move |events| {
-            assert_eq!(
-                events,
-                // The 10 add block events for the initial version of the chain
-                (0..10)
-                    .map(|n| add_block!(initial_chain, n))
-                    // The 7 revert events to go back to #2
-                    .chain(
-                        vec![9, 8, 7, 6, 5, 4, 3]
-                            .into_iter()
-                            .map(|n| revert!(initial_chain, n => initial_chain, n-1))
-                    )
-                    // The 17 add block events for the new chain
-                    .chain((3..20).map(|n| add_block!(second_chain, n)))
-                    // The 17 revert events to go back to #2
-                    .chain(
-                        vec![19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3]
-                            .into_iter()
-                            .map(|n| revert!(second_chain, n => second_chain, n-1))
-                    )
-                    // The 27 add block events for the third chain
-                    .chain((3..30).map(|n| add_block!(third_chain, n)))
-                    .collect::<Vec<_>>()
-            );
+        run_network_indexer(store, None, chains, Duration::from_secs(3)).and_then(
+            move |(chains, events)| {
+                thread::spawn(move || {
+                    // Trigger the first reorg after 1s
+                    {
+                        thread::sleep(Duration::from_secs(1));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                    // Trigger the second reorg after 2s
+                    {
+                        thread::sleep(Duration::from_secs(1));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                });
 
-            Ok(())
-        })
+                events.and_then(move |events| {
+                    assert_eq!(
+                        events,
+                        // The 10 add block events for the initial version of the chain
+                        (0..10)
+                            .map(|n| add_block!(initial_chain, n))
+                            // The 7 revert events to go back to #2
+                            .chain(
+                                vec![9, 8, 7, 6, 5, 4, 3]
+                                    .into_iter()
+                                    .map(|n| revert!(initial_chain, n => initial_chain, n-1))
+                            )
+                            // The 17 add block events for the new chain
+                            .chain((3..20).map(|n| add_block!(second_chain, n)))
+                            // The 17 revert events to go back to #2
+                            .chain(
+                                vec![19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3]
+                                    .into_iter()
+                                    .map(|n| revert!(second_chain, n => second_chain, n-1))
+                            )
+                            // The 27 add block events for the third chain
+                            .chain((3..30).map(|n| add_block!(third_chain, n)))
+                            .collect::<Vec<_>>()
+                    );
+
+                    Ok(())
+                })
+            },
+        )
     });
 }
 
@@ -586,28 +657,45 @@ fn indexing_handles_reorg_back_and_forth() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), fork1.clone(), fork2.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(move |events| {
-            assert_eq!(
-                events,
-                vec![
-                    add_block!(initial_chain, 0),
-                    add_block!(initial_chain, 1),
-                    add_block!(initial_chain, 2),
-                    add_block!(initial_chain, 3),
-                    add_block!(initial_chain, 4),
-                    revert!(initial_chain, 4 => initial_chain, 3),
-                    add_block!(fork1, 4),
-                    add_block!(fork1, 5),
-                    revert!(fork1, 5 => fork1, 4),
-                    revert!(fork1, 4 => initial_chain, 3),
-                    add_block!(fork2, 4),
-                    add_block!(fork2, 5),
-                    add_block!(fork2, 6)
-                ]
-            );
+        run_network_indexer(store, None, chains, Duration::from_secs(3)).and_then(
+            move |(chains, events)| {
+                thread::spawn(move || {
+                    // Trigger the first reorg after 1s
+                    {
+                        thread::sleep(Duration::from_secs(1));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                    // Trigger the second reorg after 2s
+                    {
+                        thread::sleep(Duration::from_secs(1));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                });
 
-            Ok(())
-        })
+                events.and_then(move |events| {
+                    assert_eq!(
+                        events,
+                        vec![
+                            add_block!(initial_chain, 0),
+                            add_block!(initial_chain, 1),
+                            add_block!(initial_chain, 2),
+                            add_block!(initial_chain, 3),
+                            add_block!(initial_chain, 4),
+                            revert!(initial_chain, 4 => initial_chain, 3),
+                            add_block!(fork1, 4),
+                            add_block!(fork1, 5),
+                            revert!(fork1, 5 => fork1, 4),
+                            revert!(fork1, 4 => initial_chain, 3),
+                            add_block!(fork2, 4),
+                            add_block!(fork2, 5),
+                            add_block!(fork2, 6)
+                        ]
+                    );
+
+                    Ok(())
+                })
+            },
+        )
     });
 }
 
@@ -655,27 +743,44 @@ fn indexing_identifies_common_ancestor_correctly_despite_ommers() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), fork1.clone(), fork2.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(move |events| {
-            assert_eq!(
-                events,
-                vec![
-                    add_block!(initial_chain, 0),
-                    add_block!(initial_chain, 1),
-                    add_block!(initial_chain, 2),
-                    add_block!(initial_chain, 3),
-                    add_block!(initial_chain, 4),
-                    revert!(initial_chain, 4 => initial_chain, 3),
-                    add_block!(fork1, 4),
-                    add_block!(fork1, 5),
-                    revert!(fork1, 5 => fork1, 4),
-                    revert!(fork1, 4 => initial_chain, 3),
-                    add_block!(fork2, 4),
-                    add_block!(fork2, 5),
-                    add_block!(fork2, 6)
-                ]
-            );
+        run_network_indexer(store, None, chains, Duration::from_secs(3)).and_then(
+            move |(chains, events)| {
+                thread::spawn(move || {
+                    // Trigger the first reorg after 1s
+                    {
+                        thread::sleep(Duration::from_secs(1));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                    // Trigger the second reorg after 2s
+                    {
+                        thread::sleep(Duration::from_secs(1));
+                        chains.lock().unwrap().advance_to_next_chain();
+                    }
+                });
 
-            Ok(())
-        })
+                events.and_then(move |events| {
+                    assert_eq!(
+                        events,
+                        vec![
+                            add_block!(initial_chain, 0),
+                            add_block!(initial_chain, 1),
+                            add_block!(initial_chain, 2),
+                            add_block!(initial_chain, 3),
+                            add_block!(initial_chain, 4),
+                            revert!(initial_chain, 4 => initial_chain, 3),
+                            add_block!(fork1, 4),
+                            add_block!(fork1, 5),
+                            revert!(fork1, 5 => fork1, 4),
+                            revert!(fork1, 4 => initial_chain, 3),
+                            add_block!(fork2, 4),
+                            add_block!(fork2, 5),
+                            add_block!(fork2, 6)
+                        ]
+                    );
+
+                    Ok(())
+                })
+            },
+        )
     });
 }
