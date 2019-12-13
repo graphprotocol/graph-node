@@ -899,11 +899,10 @@ enum StateMachine {
     /// next block. If anything goes wrong at this point, it's back to
     /// re-evaluating the chain head and fetching (potentially) different
     /// blocks for indexing.
-    #[state_machine_future(transitions(ProcessBlocks, PollChainHead, Failed))]
+    #[state_machine_future(transitions(ProcessBlocks, LoadLocalHead, Failed))]
     AddBlock {
         chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
-        old_local_head: Option<EthereumBlockPointer>,
         new_local_head: AddBlockFuture,
     },
 
@@ -1264,9 +1263,6 @@ impl PollStateMachine for StateMachine {
             // The block is a regular successor to the local head.
             // Add the block and move on.
             transition!(AddBlock {
-                // Remember the old local head in case we need to roll back.
-                old_local_head: state.local_head,
-
                 // Carry over the current chain head and the incoming blocks stream.
                 chain_head: state.chain_head,
                 next_blocks: state.next_blocks,
@@ -1478,12 +1474,8 @@ impl PollStateMachine for StateMachine {
                     "error" => format!("{}", e),
                 );
 
-                let state = state.take();
-
-                transition!(PollChainHead {
-                    local_head: state.old_local_head,
-                    prev_chain_head: Some(state.chain_head.into()),
-                    chain_head: poll_chain_head(context),
+                transition!(LoadLocalHead {
+                    local_head: load_local_head(context)
                 })
             }
         }
