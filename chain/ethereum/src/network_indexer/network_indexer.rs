@@ -1227,9 +1227,6 @@ impl PollStateMachine for StateMachine {
 
         // Check whether we have a reorg (parent of the new block != our local head).
         if block.inner().parent_ptr() != state.local_head {
-            let depth = block.inner().number.unwrap().as_u64()
-                - state.local_head.map_or(0u64, |ptr| ptr.number);
-
             info!(
                 context.logger,
                 "Block requires a reorg";
@@ -1240,7 +1237,6 @@ impl PollStateMachine for StateMachine {
                     String::from("none"), |ptr| format!("{}", ptr)
                 ),
                 "block" => format!("{}", block),
-                "depth" => depth,
             );
 
             let local_head = state
@@ -1249,7 +1245,6 @@ impl PollStateMachine for StateMachine {
 
             // Update reorg stats
             context.metrics.reorg_count.inc();
-            context.metrics.reorg_depth.update(depth as f64);
 
             // We are dealing with a reorg; identify the common ancestor of the
             // two reorg branches, collect old blocks to reverted and new blocks
@@ -1320,13 +1315,16 @@ impl PollStateMachine for StateMachine {
             // prepend the new blocks to the incoming blocks stream and move
             // towards the block that triggered the reorg.
             Ok(Async::Ready(reorg_data)) => {
-                // // The first block is the common ancestor.
-                // let common_ancestor = new_blocks.pop_front().expect(
-                //     "reorgs without a common ancestor are invalid \
-                //      as they are entirely different chains",
-                // );
-
                 let state = state.take();
+
+                let depth = state.local_head.map_or(0u64, |ptr| ptr.number)
+                    - reorg_data.common_ancestor.number;
+                context.metrics.reorg_depth.update(depth as f64);
+                debug!(
+                    context.logger,
+                    "Apply reorg";
+                    "depth" => depth,
+                );
 
                 debug!(
                     context.logger,
