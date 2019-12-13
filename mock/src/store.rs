@@ -455,6 +455,10 @@ impl ChainStore for MockStore {
     ) -> Result<Option<EthereumBlock>, Error> {
         unimplemented!();
     }
+
+    fn cleanup_cached_blocks(&self) -> Result<(BlockNumber, usize), Error> {
+        unimplemented!();
+    }
 }
 
 impl EthereumCallCache for MockStore {
@@ -616,6 +620,10 @@ impl ChainStore for FakeStore {
         _: EthereumBlockPointer,
         _: u64,
     ) -> Result<Option<EthereumBlock>, Error> {
+        unimplemented!();
+    }
+
+    fn cleanup_cached_blocks(&self) -> Result<(BlockNumber, usize), Error> {
         unimplemented!();
     }
 }

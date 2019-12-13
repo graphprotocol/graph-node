@@ -51,6 +51,13 @@ lazy_static! {
         .map(|s| usize::from_str(&s)
              .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_TOKIO_THREAD_COUNT")))
         .unwrap_or(100);
+
+    static ref BLOCK_CACHE_CLEANUP_FREQ: Duration = env::var("GRAPH_BLOCK_CACHE_CLEANUP_FREQ")
+        .ok()
+        .map(|s| u64::from_str(&s)
+             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_BLOCK_CACHE_CLEANUP_FREQ")))
+        .map(|secs| Duration::from_secs(secs))
+        .unwrap_or(Duration::from_secs(0));
 }
 
 git_testament!(TESTAMENT);
@@ -582,7 +589,9 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     .expect("failed to create Ethereum block ingestor");
 
                     // Run the Ethereum block ingestor in the background
-                    tokio::spawn(block_ingestor.into_polling_stream());
+                    tokio::spawn(
+                        block_ingestor.into_polling_stream(BLOCK_CACHE_CLEANUP_FREQ.clone()),
+                    );
                 });
             }
 

@@ -73,9 +73,11 @@ where
         })
     }
 
-    pub fn into_polling_stream(self) -> impl Future<Item = (), Error = ()> {
+    pub fn into_polling_stream(self, cleanup_freq: Duration) -> impl Future<Item = (), Error = ()> {
         // Currently, there is no way to stop block ingestion, so just leak self
         let static_self: &'static _ = Box::leak(Box::new(self));
+
+        let mut last_cleanup = Instant::now();
 
         // Create stream that emits at polling interval
         tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
@@ -84,29 +86,56 @@ where
             })
             .for_each(move |_| {
                 // Attempt to poll
-                static_self.do_poll().then(move |result| {
-                    if let Err(err) = result {
-                        // Some polls will fail due to transient issues
-                        match err {
-                            EthereumAdapterError::BlockUnavailable(_) => {
-                                trace!(
-                                    static_self.logger,
-                                    "Trying again after block polling failed: {}",
-                                    err
-                                );
-                            }
-                            EthereumAdapterError::Unknown(inner_err) => {
-                                warn!(
-                                    static_self.logger,
-                                    "Trying again after block polling failed: {}", inner_err
-                                );
+                static_self
+                    .do_poll()
+                    .then(move |result| {
+                        if let Err(err) = result {
+                            // Some polls will fail due to transient issues
+                            match err {
+                                EthereumAdapterError::BlockUnavailable(_) => {
+                                    trace!(
+                                        static_self.logger,
+                                        "Trying again after block polling failed: {}",
+                                        err
+                                    );
+                                }
+                                EthereumAdapterError::Unknown(inner_err) => {
+                                    warn!(
+                                        static_self.logger,
+                                        "Trying again after block polling failed: {}", inner_err
+                                    );
+                                }
                             }
                         }
-                    }
 
-                    // Continue polling even if polling failed
-                    future::ok(())
-                })
+                        // Continue polling even if polling failed
+                        future::ok(())
+                    })
+                    .then(move |result| {
+                        if cleanup_freq.as_secs() > 0 && last_cleanup.elapsed() > cleanup_freq {
+                            match static_self.chain_store.cleanup_cached_blocks() {
+                                Ok((min_block, count)) => {
+                                    if count > 0 {
+                                        info!(
+                                            static_self.logger,
+                                            "Cleaned {} blocks from the block cache. \
+                                             Only blocks with number greater than {} remain",
+                                            count,
+                                            min_block;
+                                            "network_name" => &static_self.network_name,
+                                        );
+                                    }
+                                }
+                                Err(e) => warn!(
+                                    static_self.logger,
+                                    "Failed to clean blocks from block cache: {}", e;
+                                    "network_name" => &static_self.network_name,
+                                ),
+                            }
+                            last_cleanup = Instant::now();
+                        }
+                        result
+                    })
             })
     }
 
