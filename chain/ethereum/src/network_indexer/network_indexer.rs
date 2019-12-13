@@ -1,9 +1,7 @@
 use chrono::Utc;
-use futures::future::{loop_fn, Loop};
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::try_ready;
 use state_machine_future::*;
-use std::collections::VecDeque;
 use std::fmt;
 use std::ops::Range;
 use std::str::FromStr;
@@ -11,7 +9,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use graph::prelude::*;
-use web3::types::H256;
 
 use super::block_writer::BlockWriter;
 use super::metrics::NetworkIndexerMetrics;
@@ -44,40 +41,19 @@ use super::*;
 ///
 ///   The common ancestor is identified by traversing new blocks from a reorg
 ///   back to the most recent block that we already have indexed locally.
-///
-/// Old blocks (during a reorg):
-///   Blocks after the common ancestor that are indexed locally but are
-///   being removed as part of a reorg. We collect these from the store by
-///   traversing from the current local head back to the common ancestor.
-///
-/// New blocks (during a reorg):
-///   Blocks between the common ancestor and the block that triggered the
-///   reorg. After reverting the old blocks, these are the blocks that need
-///   to be fetched from the network and added after the common ancestor.
-///
-///   We collect these from the network by traversing from the block that
-///   triggered the reorg back to the common ancestor.
 
 /**
  * Helper types.
  */
 
-struct ReorgData {
-    old_blocks: Vec<EthereumBlockPointer>,
-    new_blocks: VecDeque<BlockWithOmmers>,
-    common_ancestor: EthereumBlockPointer,
-}
-
 type EnsureSubgraphFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
 type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
 type ChainHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
-type BlockPointerFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
 type OmmersFuture = Box<dyn Future<Item = Vec<Ommer>, Error = Error> + Send>;
-type BlockFuture = Box<dyn Future<Item = BlockWithOmmers, Error = Error> + Send>;
+type BlockPointerFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
+type BlockFuture = Box<dyn Future<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
 type BlockStream = Box<dyn Stream<Item = BlockWithOmmers, Error = Error> + Send>;
-type BlocksFuture = Box<dyn Future<Item = Vec<BlockWithOmmers>, Error = Error> + Send>;
-type ReorgDataFuture = Box<dyn Future<Item = ReorgData, Error = Error> + Send>;
-type RevertBlocksFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
+type RevertLocalHeadFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
 type AddBlockFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
 type SendEventFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
 
@@ -124,71 +100,6 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
         load_local_head,
         load_local_head_problems,
         future::result(context.store.clone().block_ptr(context.subgraph_id.clone()))
-    ))
-}
-
-fn load_parent_block_from_store(
-    subgraph_id: SubgraphDeploymentId,
-    logger: Logger,
-    store: Arc<dyn NetworkStore>,
-    metrics: Arc<NetworkIndexerMetrics>,
-    block_ptr: EthereumBlockPointer,
-) -> BlockPointerFuture {
-    let block_ptr_for_missing_parent = block_ptr.clone();
-    let block_ptr_for_invalid_parent = block_ptr.clone();
-
-    Box::new(track_future!(
-        metrics,
-        load_parent_block,
-        load_parent_block_problems,
-        // Load the block itself from the store
-        future::result(
-            store
-                .get(block_ptr.to_entity_key(subgraph_id.clone()))
-                .map_err(|e| e.into())
-                .and_then(|entity| {
-                    entity.ok_or_else(|| format_err!("block {} is missing in store", block_ptr,))
-                }),
-        )
-        // Get the parent hash from the block
-        .and_then(move |block| {
-            future::result(
-                block
-                    .get("parent")
-                    .ok_or_else(move || {
-                        format_err!("block {} has no parent", block_ptr_for_missing_parent,)
-                    })
-                    .and_then(|value| {
-                        let s = value
-                            .clone()
-                            .as_string()
-                            .expect("the `parent` field of `Block` is a reference/string");
-                        H256::from_str(s.as_str()).map_err(|e| {
-                            format_err!(
-                                "block {} has an invalid parent `{}`: {}",
-                                block_ptr_for_invalid_parent,
-                                s,
-                                e,
-                            )
-                        })
-                    }),
-            )
-        })
-        .map(move |parent_hash: H256| {
-            // Create a block pointer for the parent
-            let ptr = EthereumBlockPointer {
-                number: block_ptr.number - 1,
-                hash: parent_hash,
-            };
-
-            debug!(
-                logger,
-                "Collect old block";
-                "block" => format!("{}", ptr),
-            );
-
-            ptr
-        })
     ))
 }
 
@@ -261,6 +172,8 @@ fn fetch_block_and_ommers_by_number(
     metrics: Arc<NetworkIndexerMetrics>,
     block_number: u64,
 ) -> BlockFuture {
+    let logger_for_err = logger.clone();
+
     let logger_for_full_block = logger.clone();
     let adapter_for_full_block = adapter.clone();
 
@@ -283,83 +196,49 @@ fn fetch_block_and_ommers_by_number(
                 .from_err()
         )
         .and_then(move |block| match block {
-            None => Box::new(future::err(format_err!(
-                "block with {} not found on chain",
-                block_number
-            ))) as Box<dyn Future<Item = _, Error = _> + Send>,
-            Some(block) => Box::new(track_future!(
-                metrics_for_full_block,
-                fetch_full_block,
-                fetch_full_block_problems,
-                adapter_for_full_block
-                    .load_full_block(&logger_for_full_block, block)
-                    .from_err()
-            )),
-        })
-        .and_then(move |block| {
-            fetch_ommers(
-                logger_for_ommers,
-                adapter_for_ommers,
-                metrics_for_ommers,
-                &block,
-            )
-            .map(move |ommers| BlockWithOmmers { block, ommers })
-        })
-        .then(move |result| {
-            section.end();
-            result
-        }),
-    )
-}
+            None => {
+                debug!(
+                    logger_for_err,
+                    "Block not found on chain";
+                    "block" => format!("#{}", block_number),
+                );
 
-fn fetch_block_and_ommers(
-    logger: Logger,
-    adapter: Arc<dyn EthereumAdapter>,
-    metrics: Arc<NetworkIndexerMetrics>,
-    block_hash: H256,
-) -> BlockFuture {
-    let logger_for_full_block = logger.clone();
-    let adapter_for_full_block = adapter.clone();
-    let metrics_for_full_block = metrics.clone();
+                Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>
+            }
 
-    let logger_for_ommers = logger.clone();
-    let adapter_for_ommers = adapter.clone();
-    let metrics_for_ommers = metrics.clone();
+            Some(block) => Box::new(
+                track_future!(
+                    metrics_for_full_block,
+                    fetch_full_block,
+                    fetch_full_block_problems,
+                    adapter_for_full_block
+                        .load_full_block(&logger_for_full_block, block)
+                        .from_err()
+                )
+                .and_then(move |block| {
+                    fetch_ommers(
+                        logger_for_ommers.clone(),
+                        adapter_for_ommers,
+                        metrics_for_ommers,
+                        &block,
+                    )
+                    .then(move |result| {
+                        future::ok(match result {
+                            Ok(ommers) => Some(BlockWithOmmers { block, ommers }),
+                            Err(e) => {
+                                debug!(
+                                    logger_for_ommers,
+                                    "Failed to fetch ommers for block";
+                                    "error" => format!("{}", e),
+                                    "block" => format!("{}", EthereumBlockPointer::from(block)),
+                                );
 
-    let section = metrics.stopwatch.start_section("fetch_blocks");
-
-    Box::new(
-        track_future!(
-            metrics,
-            fetch_block_by_hash,
-            fetch_block_by_hash_problems,
-            adapter
-                .clone()
-                .block_by_hash(&logger, block_hash)
-                .from_err()
-        )
-        .and_then(move |block| match block {
-            None => Box::new(future::err(format_err!(
-                "block with hash `{}` not found on chain",
-                block_hash
-            ))) as Box<dyn Future<Item = _, Error = _> + Send>,
-            Some(block) => Box::new(track_future!(
-                metrics_for_full_block,
-                fetch_full_block,
-                fetch_full_block_problems,
-                adapter_for_full_block
-                    .load_full_block(&logger_for_full_block, block)
-                    .from_err()
-            )),
-        })
-        .and_then(move |block| {
-            fetch_ommers(
-                logger_for_ommers,
-                adapter_for_ommers,
-                metrics_for_ommers,
-                &block,
-            )
-            .map(move |ommers| BlockWithOmmers { block, ommers })
+                                None
+                            }
+                        })
+                    })
+                }),
+            ),
         })
         .then(move |result| {
             section.end();
@@ -383,295 +262,151 @@ fn fetch_blocks(context: &Context, block_numbers: Range<u64>) -> BlockStream {
                     block_number,
                 )
             })
-            .buffered(100),
+            .buffered(100)
+            // Terminate the stream at the first block that couldn't be found on chain.
+            .take_while(|block| future::ok(block.is_some()))
+            // Pull blocks out of the options now that we know they are `Some`.
+            .map(|block| block.unwrap()),
     )
-}
-
-fn fetch_new_blocks_back_to_local_head_number(
-    context: &Context,
-    new_head: BlockWithOmmers,
-    local_head_number: u64,
-) -> BlocksFuture {
-    let logger = context.logger.clone();
-    let adapter = context.adapter.clone();
-    let metrics = context.metrics.clone();
-
-    debug!(
-        logger,
-        "Fetch new blocks back to the local head number";
-        "from" => format!("{}", new_head),
-        "local_head_number" => local_head_number,
-    );
-
-    Box::new(track_future!(
-        metrics,
-        fetch_new_blocks,
-        fetch_new_blocks_problems,
-        loop_fn(vec![new_head], move |mut blocks| {
-            let prev_block = blocks.last().unwrap();
-
-            // Terminate when a block with the same number as the local head was found
-            if prev_block
-                .inner()
-                .number
-                .expect("only pending blocks have no number")
-                .as_u64()
-                == local_head_number
-            {
-                return Box::new(future::ok(Loop::Break(blocks)))
-                    as Box<dyn Future<Item = _, Error = _> + Send>;
-            }
-
-            match prev_block.inner().parent_ptr() {
-                Some(parent_pointer) => {
-                    debug!(
-                        logger,
-                        "Fetch new block";
-                        "block" => format!("{}", &parent_pointer),
-                    );
-
-                    Box::new(
-                        fetch_block_and_ommers(
-                            logger.clone(),
-                            adapter.clone(),
-                            metrics.clone(),
-                            prev_block.inner().parent_hash,
-                        )
-                        .and_then(move |block| {
-                            blocks.push(block);
-                            future::ok(Loop::Continue(blocks))
-                        }),
-                    )
-                }
-                None => Box::new(future::err(format_err!("reached the genesis block")))
-                    as Box<dyn Future<Item = _, Error = _> + Send>,
-            }
-        })
-    ))
-}
-
-fn collect_reorg_data(
-    context: &Context,
-    local_head: EthereumBlockPointer,
-    new_head: BlockWithOmmers,
-) -> ReorgDataFuture {
-    // Algorithm:
-    //
-    // 1. Fetch new blocks until we get back to the same block number as the
-    //    local head.
-    //
-    // 2. Go back one block number at a time:
-    //    a. Collect the old block with the current block number.
-    //    b. Fetch the new block with the current block number.
-    //    c. Check if they are identical:
-    //       If they are => we've found the common ancestor.
-    //       If they are not, reduce the block number by one and continue with 2.
-
-    struct State {
-        pub old_blocks: Vec<EthereumBlockPointer>,
-        pub new_blocks: Vec<BlockWithOmmers>,
-    }
-
-    let subgraph_id = context.subgraph_id.clone();
-    let logger = context.logger.clone();
-    let adapter = context.adapter.clone();
-    let store = context.store.clone();
-    let metrics = context.metrics.clone();
-
-    Box::new(track_future!(
-        metrics,
-        collect_reorg_data,
-        collect_reorg_data_problems,
-        fetch_new_blocks_back_to_local_head_number(context, new_head, local_head.number).and_then(
-            move |new_blocks| {
-                debug!(
-                    logger,
-                    "Tracing back old and new blocks to the common ancestor"
-                );
-
-                let initial_state = State {
-                    old_blocks: vec![local_head],
-                    new_blocks: new_blocks,
-                };
-
-                track_future!(
-                    metrics,
-                    find_common_ancestor,
-                    find_common_ancestor_problems,
-                    loop_fn(initial_state, move |mut state| {
-                        // Get references for the current old and new blocks
-                        let old_block = state.old_blocks.last().unwrap();
-                        let new_block = state.new_blocks.last().unwrap();
-
-                        // Terminate if we have found the common ancestor
-                        if old_block == &new_block.inner().into() {
-                            debug!(
-                                logger,
-                                "Common ancestor found";
-                                "block" => format!("{}", old_block),
-                            );
-
-                            return Box::new(future::ok(Loop::Break(ReorgData {
-                                common_ancestor: old_block.clone(),
-                                old_blocks: state.old_blocks,
-                                new_blocks: state.new_blocks.into_iter().rev().collect(),
-                            })))
-                                as Box<dyn Future<Item = _, Error = _> + Send>;
-                        }
-
-                        let new_block_parent_ptr = new_block.inner().parent_ptr();
-
-                        match new_block_parent_ptr {
-                            Some(new_block_parent_ptr) => {
-                                debug!(
-                                    logger,
-                                    "Fetch new block";
-                                    "block" => format!("{}", new_block_parent_ptr),
-                                );
-
-                                Box::new(
-                                    load_parent_block_from_store(
-                                        subgraph_id.clone(),
-                                        logger.clone(),
-                                        store.clone(),
-                                        metrics.clone(),
-                                        old_block.clone(),
-                                    )
-                                    .join(fetch_block_and_ommers(
-                                        logger.clone(),
-                                        adapter.clone(),
-                                        metrics.clone(),
-                                        new_block_parent_ptr.hash.clone(),
-                                    ))
-                                    .and_then(
-                                        move |(old_block_parent, new_block_parent)| {
-                                            state.old_blocks.push(old_block_parent);
-                                            state.new_blocks.push(new_block_parent);
-                                            future::ok(Loop::Continue(state))
-                                        },
-                                    ),
-                                )
-                            }
-                            None => Box::new(future::err(format_err!("reached the genesis block"))),
-                        }
-                    })
-                )
-            },
-        )
-    ))
 }
 
 fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithOmmers) -> AddBlockFuture {
     Box::new(block_writer.write(block))
 }
 
-fn revert_blocks(
-    subgraph_id: SubgraphDeploymentId,
-    logger: Logger,
-    store: Arc<dyn NetworkStore>,
-    metrics: Arc<NetworkIndexerMetrics>,
-    event_sink: Sender<NetworkIndexerEvent>,
-    blocks: Vec<EthereumBlockPointer>,
-) -> RevertBlocksFuture {
-    // The common ancestor is the last block (we're looking at the blocks
-    // starting with the most recent old block, because we're reverting in
-    // reverse order).
-    let common_ancestor = blocks
-        .last()
-        .expect("no blocks to revert, what kind of 'reorg' is this?")
-        .clone();
+fn load_parent_block_from_store(
+    context: &Context,
+    block_ptr: EthereumBlockPointer,
+) -> BlockPointerFuture {
+    let block_ptr_for_missing_parent = block_ptr.clone();
+    let block_ptr_for_invalid_parent = block_ptr.clone();
 
-    let logger_for_complete = logger.clone();
+    Box::new(
+        // Load the block itself from the store
+        future::result(
+            context
+                .store
+                .clone()
+                .get(block_ptr.to_entity_key(context.subgraph_id.clone()))
+                .map_err(|e| e.into())
+                .and_then(|entity| {
+                    entity.ok_or_else(|| format_err!("block {} is missing in store", block_ptr))
+                }),
+        )
+        // Get the parent hash from the block
+        .and_then(move |block| {
+            future::result(
+                block
+                    .get("parent")
+                    .ok_or_else(move || {
+                        format_err!("block {} has no parent", block_ptr_for_missing_parent,)
+                    })
+                    .and_then(|value| {
+                        let s = value
+                            .clone()
+                            .as_string()
+                            .expect("the `parent` field of `Block` is a reference/string");
+                        H256::from_str(s.as_str()).map_err(|e| {
+                            format_err!(
+                                "block {} has an invalid parent `{}`: {}",
+                                block_ptr_for_invalid_parent,
+                                s,
+                                e,
+                            )
+                        })
+                    }),
+            )
+        })
+        .map(move |parent_hash: H256| {
+            // Create a block pointer for the parent
+            EthereumBlockPointer {
+                number: block_ptr.number - 1,
+                hash: parent_hash,
+            }
+        }),
+    )
+}
+
+fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> RevertLocalHeadFuture {
+    debug!(
+        context.logger,
+        "Revert local head block";
+        "block" => format!("{}", local_head),
+    );
+
+    let store = context.store.clone();
+    let event_sink = context.event_sink.clone();
+    let subgraph_id = context.subgraph_id.clone();
+
+    let logger_for_complete = context.logger.clone();
+
+    let logger_for_revert_err = context.logger.clone();
+    let local_head_for_revert_err = local_head.clone();
+
+    let logger_for_send_err = context.logger.clone();
 
     Box::new(track_future!(
-        metrics,
-        revert_blocks,
-        revert_blocks_problems,
-        // Iterate over pairs of blocks in the order they need to be reverted:
-        // (local_head, local_head-1), ..., (local_head-n, common_ancestor).
-        stream::iter_ok(
-            blocks[0..]
-                .to_owned()
-                .into_iter()
-                .zip(blocks[1..].to_owned().into_iter()),
-        )
-        .for_each(move |(from, to)| {
-            let event_sink = event_sink.clone();
-            let logger = logger.clone();
-
-            let logger_for_revert_err = logger.clone();
-            let from_for_revert_err = from.clone();
-            let to_for_revert_err = to.clone();
-
-            let logger_for_send_err = logger.clone();
-            let from_for_send_err = from.clone();
-            let to_for_send_err = to.clone();
-
-            debug!(
-                logger,
-                "Revert old block";
-                "to" => format!("{}", to),
-                "from" => format!("{}", from),
-            );
-
-            future::result(store.revert_block_operations(
-                subgraph_id.clone(),
-                from.clone(),
-                to.clone(),
-            ))
+        context.metrics,
+        revert_local_head,
+        revert_local_head_problems,
+        load_parent_block_from_store(context, local_head.clone())
+            .and_then(move |parent_block| {
+                future::result(
+                    store
+                        .clone()
+                        .revert_block_operations(
+                            subgraph_id.clone(),
+                            local_head.clone(),
+                            parent_block.clone(),
+                        )
+                        .map_err(|e| e.into())
+                        .map(|_| (local_head, parent_block)),
+                )
+            })
             .map_err(move |e| {
                 debug!(
                     logger_for_revert_err,
-                    "Failed to revert block";
+                    "Failed to revert local head block";
                     "error" => format!("{}", e),
-                    "to" => format!("{}", to_for_revert_err),
-                    "from" => format!("{}", from_for_revert_err),
+                    "block" => format!("{}", local_head_for_revert_err),
                 );
 
-                // Instead of an error we return the last block that we managed
-                // to revert to; this will become the new local head
-                from_for_revert_err
+                // Instead of an error we return the old local head to stay on that.
+                local_head_for_revert_err
             })
-            .and_then(move |_| {
+            .and_then(move |(from, to)| {
+                let to_for_send_err = to.clone();
                 send_event(
-                    event_sink.clone(),
+                    event_sink,
                     NetworkIndexerEvent::Revert {
                         from: from.clone(),
                         to: to.clone(),
                     },
                 )
+                .map(move |_| to)
                 .map_err(move |e| {
                     debug!(
                         logger_for_send_err,
                         "Failed to send revert event";
                         "error" => format!("{}", e),
                         "to" => format!("{}", to_for_send_err),
-                        "from" => format!("{}", from_for_send_err),
+                        "from" => format!("{}", from),
                     );
 
-                    // Instead of an error we return the last block that we managed
-                    // to revert to; this will become the new local head
-                    from_for_send_err
+                    // Instead of an error we return the new local head; we've
+                    // already reverted it in the store, so we _have_ to switch.
+                    to_for_send_err
                 })
             })
-        })
-        .then(move |result| match result {
-            Ok(_) => {
-                debug!(
-                    logger_for_complete,
-                    "Revert old blocks complete; process next blocks"
-                );
-                future::ok(common_ancestor)
-            }
-            Err(block) => {
-                debug!(
-                    logger_for_complete,
-                    "Failed to revert old blocks; \
-                     setting local head to the last block we managed to revert to"
-                );
-                future::ok(block)
-            }
-        })
+            .inspect(move |_| {
+                debug!(logger_for_complete, "Reverted local head block");
+            })
+            .then(|result| {
+                match result {
+                    Ok(block) => future::ok(block),
+                    Err(block) => future::ok(block),
+                }
+            })
     ))
 }
 
@@ -831,7 +566,16 @@ enum StateMachine {
     ///      that are to be inserted instead of the old blocks in order to
     ///      make the incoming block (`f`) the local head (in the above
     ///      example: `d`, `e`, `f`).
-    #[state_machine_future(transitions(CollectReorgData, AddBlock, PollChainHead, Failed))]
+    ///
+    ///   We don't actually do all of the above explicitly. What we do instead
+    ///   is that when we encounter a block that requires a reorg, we revert the
+    ///   local head, moving back by one block in the indexed data. We then poll
+    ///   the chain head again, fetch up to 100 blocks, vet the next block
+    ///   again, and see if we have reverted back to the common ancestor yet. If
+    ///   we have, we process the next block. If we haven't, we repeat reverting
+    ///   the local head. Ultimately, this will take us back to the common
+    ///   ancestor, and at that point we can move forward again.
+    #[state_machine_future(transitions(RevertLocalHead, AddBlock, PollChainHead, Failed))]
     VetBlock {
         local_head: Option<EthereumBlockPointer>,
         chain_head: LightEthereumBlock,
@@ -839,62 +583,27 @@ enum StateMachine {
         block: BlockWithOmmers,
     },
 
-    /// This state waits until all data needed to handle a reorg is available.
-    /// This includes:
+    /// This state reverts the local head, moving the local indexed data
+    /// back by one block.
     ///
-    /// - the common ancestor of the old and new chains,
-    /// - new blocks from the incoming block back to the common ancestor,
-    /// - old blocks from the current local head back to the common ancestor.
+    /// After reverting, the local head is updated to the previous local
+    /// head.
     ///
-    /// If successful, the indexer moves on to reverting the old blocks in the
-    /// store so the indexed data is back at the common ancestor.
-    /// If collecting the new or old blocks or finding the common ancestor fails,
-    /// any of the collected information is discarded and indexing goes back to
-    /// re-evaluating the chain head.
+    /// If reverting fails, the local head remains unchanged. If reverting
+    /// succeeds but sending out the revert event for the block fails, the
+    /// local head is still moved back to its parent. At this point the
+    /// block has been reverted in the store, so it's too late.
+    /// Note: This means that if an event does not arrive at one of the
+    /// consumers of the indexer events, these consumers will have to
+    /// reconcile what they know with what is in the store as they go.
     ///
-    /// The new blocks that were fetched are prepending to the incoming blocks
-    /// stream, so that after reverting blocks the indexer can proceed with these
-    /// as if no reorg happened. It'll still want to vet these blocks so it wouldn't
-    /// be wise to just index the blocks without further checks.
-    ///
-    /// Note: This state also carries over the incoming block stream to not lose
-    /// its blocks. This is because even if there was a reorg, the blocks following
-    /// the current block that made us detect it will likely be valid successors.
-    /// So once the reorg has been handled, the indexer should be able to
-    /// continue with the remaining blocks on the stream.
-    ///
-    /// Only when going back to re-evaluating the chain head, the incoming
-    /// blocks stream is thrown away in the hope that of receiving a better
-    /// chain head with different blocks leading up to it.
-    #[state_machine_future(transitions(RevertToCommonAncestor, PollChainHead, Failed))]
-    CollectReorgData {
-        local_head: Option<EthereumBlockPointer>,
+    /// After reverting (or failing to revert), the indexer polls the chain head
+    /// again to decide what blocks to fetch and process next.
+    #[state_machine_future(transitions(PollChainHead, Failed))]
+    RevertLocalHead {
         chain_head: LightEthereumBlock,
-        next_blocks: BlockStream,
-        reorg_data: ReorgDataFuture,
-    },
-
-    /// This state collects and reverts old blocks in the store. If successful,
-    /// the indexer moves on to processing the blocks regularly (at this point,
-    /// the incoming blocks stream includes new blocks for the reorg, the
-    /// block that triggered the reorg and any blocks that were already in the
-    /// stream following the block that triggered the reorg).
-    ///
-    /// After reverting, the local head is updated to the common ancestor.
-    ///
-    /// If reverting fails at any block, the local head is updated to the
-    /// last block that we managed to revert to. Following that, the indexer
-    /// re-evaluates the chain head and starts over.
-    ///
-    /// Note: failing to revert an old block locally may be something that
-    /// the indexer cannot recover from, so it may run into a loop at this
-    /// point.
-    #[state_machine_future(transitions(ProcessBlocks, PollChainHead, Failed))]
-    RevertToCommonAncestor {
         local_head: Option<EthereumBlockPointer>,
-        chain_head: LightEthereumBlock,
-        next_blocks: BlockStream,
-        new_local_head: RevertBlocksFuture,
+        new_local_head: RevertLocalHeadFuture,
     },
 
     /// This state waits until a block has been written and an event for it
@@ -1173,7 +882,7 @@ impl PollStateMachine for StateMachine {
             Err(e) => {
                 trace!(
                     context.logger,
-                    "Failed to fetch block; re-evaluate chain head and try again";
+                    "Failed to fetch blocks; re-evaluate chain head and try again";
                     "error" => format!("{}", e),
                 );
 
@@ -1220,12 +929,21 @@ impl PollStateMachine for StateMachine {
         // chains; this check here is just to catch bugs in the subsequent
         // block fetching.
         let block_number = block.inner().number.unwrap().as_u64();
-        let local_head_number = state.local_head.map_or(0u64, |ptr| ptr.number);
-        assert!(
-            block_number > local_head_number,
-            "block with a smaller number than the local head block; \
-             this is a bug in the indexer"
-        );
+        match state.local_head {
+            None => {
+                assert!(
+                    block_number == context.start_block.map_or(0u64, |ptr| ptr.number),
+                    "first block must match the start block of the network indexer",
+                );
+            }
+            Some(local_head_ptr) => {
+                assert!(
+                    block_number > local_head_ptr.number,
+                    "block with a smaller number than the local head block; \
+                     this is a bug in the indexer"
+                );
+            }
+        }
 
         // Check whether we have a reorg (parent of the new block != our local head).
         if block.inner().parent_ptr() != state.local_head {
@@ -1248,14 +966,15 @@ impl PollStateMachine for StateMachine {
             // Update reorg stats
             context.metrics.reorg_count.inc();
 
-            // We are dealing with a reorg; identify the common ancestor of the
-            // two reorg branches, collect old blocks to reverted and new blocks
-            // to be processed after reverting.
-            transition!(CollectReorgData {
+            // We are dealing with a reorg; revert the current local head; if this
+            // is a reorg of depth 1, this will take the local head back to the common
+            // ancestor and we can move forward on the new version of the chain again;
+            // if it is a deeper reorg, then we'll be going to revert the local head
+            // repeatedly until we're back at the common ancestor.
+            transition!(RevertLocalHead {
                 local_head: state.local_head,
                 chain_head: state.chain_head,
-                next_blocks: state.next_blocks,
-                reorg_data: collect_reorg_data(context, local_head, block),
+                new_local_head: revert_local_head(context, local_head),
             })
         } else {
             let event_sink = context.event_sink.clone();
@@ -1299,109 +1018,10 @@ impl PollStateMachine for StateMachine {
         }
     }
 
-    fn poll_collect_reorg_data<'a, 'c>(
-        state: &'a mut RentToOwn<'a, CollectReorgData>,
+    fn poll_revert_local_head<'a, 'c>(
+        state: &'a mut RentToOwn<'a, RevertLocalHead>,
         context: &'c mut RentToOwn<'c, Context>,
-    ) -> Poll<AfterCollectReorgData, Error> {
-        // Abort if the output stream has been closed.
-        try_ready!(context.event_sink.poll_ready());
-
-        match state.reorg_data.poll() {
-            // Don't have the reorg data yet, try again later.
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-
-            // Have the new reorg data, now revert to the common ancestor,
-            // prepend the new blocks to the incoming blocks stream and move
-            // towards the block that triggered the reorg.
-            Ok(Async::Ready(reorg_data)) => {
-                let state = state.take();
-
-                let depth = state.local_head.map_or(0u64, |ptr| ptr.number)
-                    - reorg_data.common_ancestor.number;
-                context.metrics.reorg_depth.update(depth as f64);
-                debug!(
-                    context.logger,
-                    "Apply reorg";
-                    "depth" => depth,
-                );
-
-                debug!(
-                    context.logger,
-                    "Revert old blocks";
-                    "to" => format!("{}", reorg_data.old_blocks.last().unwrap()),
-                    "from" => format!("{}", reorg_data.old_blocks.first().unwrap()),
-                );
-
-                // Assert that the common ancestor matches the last block we are
-                // going to revert to.
-                assert_eq!(
-                    &reorg_data.common_ancestor,
-                    reorg_data.old_blocks.last().unwrap(),
-                );
-
-                let subgraph_id_for_revert = context.subgraph_id.clone();
-                let logger_for_revert = context.logger.clone();
-                let store_for_revert = context.store.clone();
-                let metrics_for_revert = context.metrics.clone();
-                let event_sink_for_revert = context.event_sink.clone();
-
-                transition!(RevertToCommonAncestor {
-                    local_head: state.local_head,
-                    chain_head: state.chain_head,
-
-                    // Make the blocks from the new chain version the next ones
-                    // to process before any other incoming blocks; skip the
-                    // common ancestor (which we collected but must not process
-                    // again).
-                    next_blocks: Box::new(
-                        stream::iter_ok(reorg_data.new_blocks.into_iter().skip(1))
-                            .chain(state.next_blocks)
-                    ),
-
-                    // Revert old blocks, going back from the local head to the
-                    // common ancestor, by reverting them in the store and
-                    // emitting revert events.
-                    //
-                    // If reverting fails, we update the local head to the most
-                    // recent block that we managed to revert to.
-                    new_local_head: Box::new(revert_blocks(
-                        subgraph_id_for_revert,
-                        logger_for_revert,
-                        store_for_revert,
-                        metrics_for_revert,
-                        event_sink_for_revert,
-                        reorg_data.old_blocks,
-                    ))
-                })
-            }
-
-            // Fetching the new blocks failed.
-            Err(e) => {
-                trace!(
-                    context.logger,
-                    "Failed to fetch new blocks; \
-                     re-evaluate chain head and try again";
-                    "error" => format!("{}", e)
-                );
-
-                let state = state.take();
-
-                // Update reorg stats
-                context.metrics.reorg_cancel_count.inc();
-
-                transition!(PollChainHead {
-                    local_head: state.local_head,
-                    prev_chain_head: Some(state.chain_head.into()),
-                    chain_head: poll_chain_head(context)
-                })
-            }
-        }
-    }
-
-    fn poll_revert_to_common_ancestor<'a, 'c>(
-        state: &'a mut RentToOwn<'a, RevertToCommonAncestor>,
-        context: &'c mut RentToOwn<'c, Context>,
-    ) -> Poll<AfterRevertToCommonAncestor, Error> {
+    ) -> Poll<AfterRevertLocalHead, Error> {
         // Abort if the output stream has been closed.
         try_ready!(context.event_sink.poll_ready());
 
@@ -1409,19 +1029,19 @@ impl PollStateMachine for StateMachine {
             // Reverting has not finished yet, try again later.
             Ok(Async::NotReady) => Ok(Async::NotReady),
 
-            // The revert finished and the common ancestor should become our new
-            // local head. Continue processing the blocks that we pulled in for
-            // the reorg.
+            // The revert finished and the block before the one that got reverted
+            // should be become the local head. Poll the chain head again after this
+            // to see if there are more blocks to revert or whether we can move forward
+            // again.
             Ok(Async::Ready(block_ptr)) => {
                 let state = state.take();
 
                 update_chain_and_local_head_metrics(context, &state.chain_head, Some(block_ptr));
 
-                transition!(ProcessBlocks {
-                    // Set the local head to the block we have reverted to
+                transition!(PollChainHead {
                     local_head: Some(block_ptr),
-                    chain_head: state.chain_head,
-                    next_blocks: state.next_blocks,
+                    prev_chain_head: Some(state.chain_head.into()),
+                    chain_head: poll_chain_head(context),
                 })
             }
 
