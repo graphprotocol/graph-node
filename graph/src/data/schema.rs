@@ -20,7 +20,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::sync::Arc;
 
-pub const SCHEMA_TYPE_NAME: &str = "_schema_";
+pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Strings(Vec<String>);
@@ -51,13 +51,13 @@ pub enum SchemaValidationError {
         _1, _0, _2
     )]
     DerivedFromInvalid(String, String, String), // (type, field, reason)
-    #[fail(display = "_schema_ type is solely for imports and should have no fields")]
+    #[fail(display = "_Schema_ type is solely for imports and should have no fields")]
     ReservedTypeFieldsInvalid,
     #[fail(display = "Name for imported subgraph `{}` is invalid", _0)]
     ImportedSubgraphNameInvalid(String),
     #[fail(display = "Id for imported subgraph `{}` is invalid", _0)]
     ImportedSubgraphIdInvalid(String),
-    #[fail(display = "_schema_ type only allows @import directives")]
+    #[fail(display = "_Schema_ type only allows @import directives")]
     ReservedTypeDirectivesInvalid,
     #[fail(
         display = "@imports directives must be defined in one of the following forms: @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ name: 'org/subgraph'}}) @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})"
@@ -1049,7 +1049,7 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
 #[test]
 fn test_reserved_type_with_fields() {
     const ROOT_SCHEMA: &str = "
-type _schema_ { id: ID! }";
+type _Schema_ { id: ID! }";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
@@ -1065,7 +1065,7 @@ type _schema_ { id: ID! }";
 #[test]
 fn test_reserved_type_directives() {
     const ROOT_SCHEMA: &str = "
-type _schema_ @illegal";
+type _Schema_ @illegal";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
@@ -1081,7 +1081,7 @@ type _schema_ @illegal";
 #[test]
 fn test_imports_directive_from_argument() {
     const ROOT_SCHEMA: &str = r#"
-type _schema_ @imports(types: ["T", "A", "C"])"#;
+type _Schema_ @imports(types: ["T", "A", "C"])"#;
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
@@ -1103,9 +1103,9 @@ type _schema_ @imports(types: ["T", "A", "C"])"#;
 #[test]
 fn test_recursively_imported_type_validates() {
     const ROOT_SCHEMA: &str = r#"
-type _schema_ @imports(types: ["T"], from: { name: "child1/subgraph" })"#;
+type _Schema_ @imports(types: ["T"], from: { name: "child1/subgraph" })"#;
     const CHILD_1_SCHEMA: &str = r#"
-type _schema_ @imports(types: ["T"], from: { name: "child2/subgraph" })"#;
+type _Schema_ @imports(types: ["T"], from: { name: "child2/subgraph" })"#;
     const CHILD_2_SCHEMA: &str = r#"
 type T @entity { id: ID! }
 "#;
@@ -1143,9 +1143,9 @@ type T @entity { id: ID! }
 #[test]
 fn test_recursively_imported_type_which_dne_fails_validation() {
     const ROOT_SCHEMA: &str = r#"
-type _schema_ @imports(types: ["T"], from: { name: "childone/subgraph" })"#;
+type _Schema_ @imports(types: ["T"], from: { name: "childone/subgraph" })"#;
     const CHILD_1_SCHEMA: &str = r#"
-type _schema_ @imports(types: [{name: "T", as: "A"}], from: { name: "childtwo/subgraph" })"#;
+type _Schema_ @imports(types: [{name: "T", as: "A"}], from: { name: "childtwo/subgraph" })"#;
     const CHILD_2_SCHEMA: &str = r#"
 type T @entity { id: ID! }
 "#;
