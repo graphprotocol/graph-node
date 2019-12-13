@@ -68,6 +68,9 @@ impl ChainHeadUpdateListener {
                                 notification.payload
                             )
                         });
+
+                    // Observe the latest chain_head_number for each network in order to monitor
+                    // block ingestion
                     metrics.set_chain_head_number(
                         &update.network_name,
                         *&update.head_block_number as i64,
