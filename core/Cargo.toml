@@ -4,12 +4,14 @@ version = "0.17.1"
 edition = "2018"
 
 [dependencies]
-bytes = "0.4.12"
+bytes = "0.5"
 futures = "0.1.21"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
 
-ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "master", features = ["hyper-tls"] }
+# If upstream upgrades to hyper 0.13, we can go back to it.
+# See https://github.com/ferristseng/rust-ipfs-api/pull/40.
+ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "update-to-hyper-013", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 lru_time_cache = "0.9"
 semver = "0.9.0"

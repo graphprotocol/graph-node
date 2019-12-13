@@ -108,7 +108,8 @@ mod tests {
     fn rejects_json_with_non_string_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = IndexNodeRequest::new(hyper::body::Bytes::from("{\"query\": 5}"), Arc::new(schema));
+        let request =
+            IndexNodeRequest::new(hyper::body::Bytes::from("{\"query\": 5}"), Arc::new(schema));
         request
             .wait()
             .expect_err("Should reject JSON with a non-string query field");
@@ -118,8 +119,10 @@ mod tests {
     fn rejects_broken_queries() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request =
-            IndexNodeRequest::new(hyper::body::Bytes::from("{\"query\": \"foo\"}"), Arc::new(schema));
+        let request = IndexNodeRequest::new(
+            hyper::body::Bytes::from("{\"query\": \"foo\"}"),
+            Arc::new(schema),
+        );
         request.wait().expect_err("Should reject broken queries");
     }
 
