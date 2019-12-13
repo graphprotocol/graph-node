@@ -8,6 +8,7 @@ use std::fmt;
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use graph::prelude::*;
 use web3::types::H256;
@@ -88,8 +89,10 @@ macro_rules! track_future {
     ($metrics: expr, $metric: ident, $metric_problems: ident, $expr: expr) => {{
         let metrics_for_measure = $metrics.clone();
         let metrics_for_err = $metrics.clone();
+        let start_time = Instant::now();
         $expr
-            .measure(move |_, duration| {
+            .inspect(move |_| {
+                let duration = start_time.elapsed();
                 metrics_for_measure.$metric.update_duration(duration);
             })
             .map_err(move |e| {
