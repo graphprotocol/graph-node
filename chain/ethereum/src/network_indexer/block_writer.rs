@@ -107,10 +107,7 @@ type WriteContextResult = Box<dyn Future<Item = WriteContext, Error = Error> + S
 
 impl WriteContext {
     /// Updates an entity to a new value (potentially merging it with existing data).
-    fn set_entity(
-        mut self,
-        value: impl TryIntoEntity + ToEntityKey,
-    ) -> WriteContextResult {
+    fn set_entity(mut self, value: impl TryIntoEntity + ToEntityKey) -> WriteContextResult {
         self.cache.set(
             value.to_entity_key(self.subgraph_id.clone()),
             match value.try_into_entity() {
@@ -138,9 +135,7 @@ impl WriteContext {
                 // Add uncle block entities
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(block_for_ommers.ommers.clone())
-                        .fold(context, move |context, ommer| {
-                            context.set_entity(ommer)
-                        })
+                        .fold(context, move |context, ommer| context.set_entity(ommer))
                 })
                 // Transact everything into the store
                 .and_then(move |context| {
