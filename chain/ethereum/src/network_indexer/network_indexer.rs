@@ -809,7 +809,7 @@ impl PollStateMachine for StateMachine {
                     "local_head" => state.local_head.map_or(
                         String::from("none"), |ptr| format!("{}", ptr)
                     ),
-                    "range" => format!("#{}..#{}", block_numbers.start, block_numbers.end-1),
+                    "range" => format!("[#{}..#{}]", block_numbers.start, block_numbers.end-1),
                 );
 
                 // Processing the blocks in this range.
