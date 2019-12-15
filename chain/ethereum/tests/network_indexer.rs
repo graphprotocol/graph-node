@@ -577,23 +577,23 @@ fn indexing_handles_consecutive_reorgs() {
         // Create a forked chain after block #3
         let third_chain = create_fork(initial_chain.clone(), 2, 30);
 
-        // Run the network indexer for 3s and collect its events
+        // Run the network indexer for 10s and collect its events
         let chains = vec![
             initial_chain.clone(),
             second_chain.clone(),
             third_chain.clone(),
         ];
-        run_network_indexer(store, None, chains, Duration::from_secs(3)).and_then(
+        run_network_indexer(store, None, chains, Duration::from_secs(10)).and_then(
             move |(chains, events)| {
                 thread::spawn(move || {
-                    // Trigger the first reorg after 1s
+                    // Trigger the first reorg after 2s
                     {
-                        thread::sleep(Duration::from_secs(1));
+                        thread::sleep(Duration::from_secs(2));
                         chains.lock().unwrap().advance_to_next_chain();
                     }
-                    // Trigger the second reorg after 2s
+                    // Trigger the second reorg after 4s
                     {
-                        thread::sleep(Duration::from_secs(1));
+                        thread::sleep(Duration::from_secs(2));
                         chains.lock().unwrap().advance_to_next_chain();
                     }
                 });
