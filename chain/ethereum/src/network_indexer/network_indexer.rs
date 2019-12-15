@@ -980,7 +980,7 @@ impl PollStateMachine for StateMachine {
             let event_sink = context.event_sink.clone();
             let metrics_for_written_block = context.metrics.clone();
 
-            let section = { context.metrics.stopwatch.start_section("transact_block") };
+            let section = context.metrics.stopwatch.start_section("transact_block");
 
             // The block is a regular successor to the local head.
             // Add the block and move on.
