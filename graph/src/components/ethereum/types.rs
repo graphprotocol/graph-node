@@ -77,20 +77,7 @@ pub struct EthereumBlockWithTriggers {
 impl EthereumBlockWithTriggers {
     pub fn new(mut triggers: Vec<EthereumTrigger>, ethereum_block: BlockFinality) -> Self {
         // Sort the triggers
-        triggers.sort_by(|a, b| {
-            let a_tx_index = a.transaction_index();
-            let b_tx_index = b.transaction_index();
-            if a_tx_index.is_none() && b_tx_index.is_none() {
-                return Ordering::Equal;
-            }
-            if a_tx_index.is_none() {
-                return Ordering::Greater;
-            }
-            if b_tx_index.is_none() {
-                return Ordering::Less;
-            }
-            a_tx_index.unwrap().cmp(&b_tx_index.unwrap())
-        });
+        triggers.sort();
 
         EthereumBlockWithTriggers {
             ethereum_block,
@@ -111,7 +98,7 @@ pub struct EthereumBlock {
     pub transaction_receipts: Vec<TransactionReceipt>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct EthereumCall {
     pub from: Address,
     pub to: Address,
@@ -170,22 +157,33 @@ pub enum EthereumTrigger {
     Log(Log),
 }
 
-#[derive(Clone, Debug)]
+impl PartialEq for EthereumTrigger {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Block(a_ptr, a_kind), Self::Block(b_ptr, b_kind)) => {
+                a_ptr == b_ptr && a_kind == b_kind
+            }
+
+            (Self::Call(a), Self::Call(b)) => a == b,
+
+            (Self::Log(a), Self::Log(b)) => {
+                a.transaction_hash == b.transaction_hash && a.log_index == b.log_index
+            }
+
+            _ => false,
+        }
+    }
+}
+
+impl Eq for EthereumTrigger {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EthereumBlockTriggerType {
     Every,
     WithCallTo(Address),
 }
 
 impl EthereumTrigger {
-    fn transaction_index(&self) -> Option<u64> {
-        match self {
-            // We only handle logs that are in a block and therefore have a `transaction_index`.
-            EthereumTrigger::Log(log) => Some(log.transaction_index.unwrap().as_u64()),
-            EthereumTrigger::Call(call) => Some(call.transaction_index),
-            EthereumTrigger::Block(_, _) => None,
-        }
-    }
-
     pub fn block_number(&self) -> u64 {
         match self {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.number,
@@ -200,6 +198,52 @@ impl EthereumTrigger {
             EthereumTrigger::Call(call) => call.block_hash,
             EthereumTrigger::Log(log) => log.block_hash.unwrap(),
         }
+    }
+}
+
+impl Ord for EthereumTrigger {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            // Keep the order when comparing two block triggers
+            (Self::Block(..), Self::Block(..)) => Ordering::Equal,
+
+            // Block triggers always come last
+            (Self::Block(..), _) => Ordering::Greater,
+            (_, Self::Block(..)) => Ordering::Less,
+
+            // Calls are ordered by their tx indexes
+            (Self::Call(a), Self::Call(b)) => a.transaction_index.cmp(&b.transaction_index),
+
+            // Events are ordered by their log index
+            (Self::Log(a), Self::Log(b)) => a.log_index.cmp(&b.log_index),
+
+            // Calls vs. events are logged by their tx index;
+            // if they are from the same transaction, events come first
+            (Self::Call(a), Self::Log(b))
+                if a.transaction_index == b.transaction_index.unwrap().as_u64() =>
+            {
+                Ordering::Greater
+            }
+            (Self::Log(a), Self::Call(b))
+                if a.transaction_index.unwrap().as_u64() == b.transaction_index =>
+            {
+                Ordering::Less
+            }
+            (Self::Call(a), Self::Log(b)) => a
+                .transaction_index
+                .cmp(&b.transaction_index.unwrap().as_u64()),
+            (Self::Log(a), Self::Call(b)) => a
+                .transaction_index
+                .unwrap()
+                .as_u64()
+                .cmp(&b.transaction_index),
+        }
+    }
+}
+
+impl PartialOrd for EthereumTrigger {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -448,5 +492,97 @@ impl From<EthereumBlockPointer> for H256 {
 impl From<EthereumBlockPointer> for u64 {
     fn from(ptr: EthereumBlockPointer) -> Self {
         ptr.number
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{EthereumBlockPointer, EthereumBlockTriggerType, EthereumCall, EthereumTrigger};
+    use web3::types::*;
+
+    #[test]
+    fn test_trigger_ordering() {
+        let block1 = EthereumTrigger::Block(
+            EthereumBlockPointer {
+                number: 1,
+                hash: H256::random(),
+            },
+            EthereumBlockTriggerType::Every,
+        );
+
+        let block2 = EthereumTrigger::Block(
+            EthereumBlockPointer {
+                number: 0,
+                hash: H256::random(),
+            },
+            EthereumBlockTriggerType::WithCallTo(Address::random()),
+        );
+
+        let mut call1 = EthereumCall::default();
+        call1.transaction_index = 1;
+        let call1 = EthereumTrigger::Call(call1);
+
+        let mut call2 = EthereumCall::default();
+        call2.transaction_index = 2;
+        let call2 = EthereumTrigger::Call(call2);
+
+        let mut call3 = EthereumCall::default();
+        call3.transaction_index = 3;
+        let call3 = EthereumTrigger::Call(call3);
+
+        // Call with the same tx index as call2
+        let mut call4 = EthereumCall::default();
+        call4.transaction_index = 2;
+        let call4 = EthereumTrigger::Call(call4);
+
+        fn create_log(tx_index: u64, log_index: u64) -> Log {
+            Log {
+                address: H160::default(),
+                topics: vec![],
+                data: Bytes::default(),
+                block_hash: Some(H256::zero()),
+                block_number: Some(U256::zero()),
+                transaction_hash: Some(H256::zero()),
+                transaction_index: Some(tx_index.into()),
+                log_index: Some(log_index.into()),
+                transaction_log_index: Some(log_index.into()),
+                log_type: Some("".into()),
+                removed: Some(false),
+            }
+        }
+
+        // Event with transaction_index 1 and log_index 0;
+        // should be the first element after sorting
+        let log1 = EthereumTrigger::Log(create_log(1, 0));
+
+        // Event with transaction_index 1 and log_index 1;
+        // should be the second element after sorting
+        let log2 = EthereumTrigger::Log(create_log(1, 1));
+
+        // Event with transaction_index 2 and log_index 5;
+        // should come after call1 and before call2 after sorting
+        let log3 = EthereumTrigger::Log(create_log(2, 5));
+
+        let mut triggers = vec![
+            // Call triggers; these should be in the order 1, 2, 4, 3 after sorting
+            call3.clone(),
+            call1.clone(),
+            call2.clone(),
+            call4.clone(),
+            // Block triggers; these should appear at the end after sorting
+            // but with their order unchanged
+            block2.clone(),
+            block1.clone(),
+            // Event triggers
+            log3.clone(),
+            log2.clone(),
+            log1.clone(),
+        ];
+        triggers.sort();
+
+        assert_eq!(
+            triggers,
+            vec![log1, log2, call1, log3, call2, call4, call3, block2, block1]
+        );
     }
 }
