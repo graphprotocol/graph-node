@@ -66,7 +66,7 @@ where
                 .body(Body::from(contents))
                 .unwrap())
         }
-            .boxed()
+        .boxed()
     }
 
     /// Serves a dynamically created file.
@@ -77,7 +77,7 @@ where
                 .body(Body::from(contents))
                 .unwrap())
         }
-            .boxed()
+        .boxed()
     }
 
     fn index(&self) -> IndexNodeServiceResponse {
