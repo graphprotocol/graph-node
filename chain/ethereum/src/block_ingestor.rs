@@ -111,7 +111,7 @@ where
                         // Continue polling even if polling failed
                         future::ok(())
                     })
-                    .then(move |result| {
+                    .inspect(move |_| {
                         if cleanup_freq.as_secs() > 0 && last_cleanup.elapsed() > cleanup_freq {
                             match static_self.chain_store.cleanup_cached_blocks() {
                                 Ok((min_block, count)) => {
@@ -134,7 +134,6 @@ where
                             }
                             last_cleanup = Instant::now();
                         }
-                        result
                     })
             })
     }
