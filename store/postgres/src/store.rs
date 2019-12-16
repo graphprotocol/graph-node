@@ -1269,7 +1269,7 @@ impl ChainStore for Store {
             .map_err(Error::from)
     }
 
-    fn cleanup_cached_blocks(&self) -> Result<(BlockNumber, usize), Error> {
+    fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
         use crate::db_schema::ethereum_blocks::dsl;
         use diesel::sql_types::{Integer, Text};
 
@@ -1283,31 +1283,42 @@ impl ChainStore for Store {
         // subgraph's head block, but retain the genesis block. We stay
         // behind the slowest subgraph so that we do not interfere with its
         // syncing activity.
+        // We also stay `ancestor_count` many blocks behind the head of the
+        // chain since the block ingestor consults these blocks frequently
+        //
         // Only consider active subgraphs that have not failed
         let conn = self.get_conn()?;
-        let query = "select min((d.data->'latestEthereumBlockNumber'->>'data')::int) as block
-                       from subgraphs.entities d,
-                            subgraphs.entities a,
-                            subgraphs.entities ds
-                      where d.entity='SubgraphDeployment'
-                        and a.entity='SubgraphDeploymentAssignment'
-                        and ds.entity = 'EthereumContractDataSource'
-                        and left(ds.id, 46) = d.id
-                        and a.id = d.id
-                        and not (d.data->'failed'->>'data')::bool
-                        and ds.data->'network'->>'data' = $1";
+        let query = "
+            select least(a.block,
+                        (select head_block_number::int - $1
+                           from ethereum_networks
+                          where name = $2)) as block
+              from (
+                select min((d.data->'latestEthereumBlockNumber'->>'data')::int) as block
+                  from subgraphs.entities d,
+                       subgraphs.entities a,
+                       subgraphs.entities ds
+                 where d.entity = 'SubgraphDeployment'
+                   and a.entity = 'SubgraphDeploymentAssignment'
+                   and ds.entity = 'EthereumContractDataSource'
+                   and left(ds.id, 46) = d.id
+                   and a.id = d.id
+                   and not (d.data->'failed'->>'data')::bool
+                   and ds.data->'network'->>'data' = $2) a;";
+        let ancestor_count = i32::try_from(ancestor_count)
+            .expect("ancestor_count fits into a signed 32 bit integer");
         diesel::sql_query(query)
+            .bind::<Integer, _>(ancestor_count)
             .bind::<Text, _>(&self.network_name)
             .load::<MinBlock>(&conn)?
             .first()
             .map(|MinBlock { block }| {
-                let rows = diesel::delete(dsl::ethereum_blocks)
+                diesel::delete(dsl::ethereum_blocks)
                     .filter(dsl::network_name.eq(&self.network_name))
                     .filter(dsl::number.lt(*block as i64))
                     .filter(dsl::number.gt(0))
                     .execute(&conn)
-                    .map(|rows| (*block, rows));
-                rows
+                    .map(|rows| (*block, rows))
             })
             .unwrap_or(Ok((0, 0)))
             .map_err(|e| e.into())

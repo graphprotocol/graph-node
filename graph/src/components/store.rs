@@ -1245,8 +1245,10 @@ pub trait ChainStore: Send + Sync + 'static {
 
     /// Remove old blocks from the cache we maintain in the database and
     /// return a pair containing the number of the oldest block retained
-    /// and the number of blocks deleted
-    fn cleanup_cached_blocks(&self) -> Result<(BlockNumber, usize), Error>;
+    /// and the number of blocks deleted.
+    /// We will never remove blocks that are within `ancestor_count` of
+    /// the chain head.
+    fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {

@@ -456,7 +456,7 @@ impl ChainStore for MockStore {
         unimplemented!();
     }
 
-    fn cleanup_cached_blocks(&self) -> Result<(BlockNumber, usize), Error> {
+    fn cleanup_cached_blocks(&self, _: u64) -> Result<(BlockNumber, usize), Error> {
         unimplemented!();
     }
 }
@@ -623,7 +623,7 @@ impl ChainStore for FakeStore {
         unimplemented!();
     }
 
-    fn cleanup_cached_blocks(&self) -> Result<(BlockNumber, usize), Error> {
+    fn cleanup_cached_blocks(&self, _: u64) -> Result<(BlockNumber, usize), Error> {
         unimplemented!();
     }
 }

@@ -113,7 +113,10 @@ where
                     })
                     .inspect(move |_| {
                         if cleanup_freq.as_secs() > 0 && last_cleanup.elapsed() > cleanup_freq {
-                            match static_self.chain_store.cleanup_cached_blocks() {
+                            match static_self
+                                .chain_store
+                                .cleanup_cached_blocks(static_self.ancestor_count)
+                            {
                                 Ok((min_block, count)) => {
                                     if count > 0 {
                                         info!(
