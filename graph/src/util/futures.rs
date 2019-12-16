@@ -7,7 +7,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Error as RetryError;
 use tokio_retry::Retry;
 
 /// Generic helper function for retrying async operations with built-in logging.
@@ -36,7 +35,7 @@ use tokio_retry::Retry;
 /// #     future::ok(())
 /// # }
 ///
-/// fn async_function(logger: Logger) -> impl Future<Item=Memes, Error=timeout::Error<()>> {
+/// fn async_function(logger: Logger) -> impl Future<Item=Memes, Error=TimeoutError<()>> {
 ///     // Retry on error
 ///     retry("download memes", &logger)
 ///         .no_limit() // Retry forever
@@ -318,8 +317,7 @@ where
         // The outer Ok/Err is only used for retry control flow.
         match retry_result {
             Ok(r) => r,
-            Err(RetryError::OperationError(r)) => r,
-            Err(RetryError::TimerError(e)) => panic!("tokio timer error: {}", e),
+            Err(e) => e,
         }
     })
 }
@@ -404,107 +402,118 @@ where
 mod tests {
     use super::*;
 
+    use futures::future;
+    use futures03::compat::Future01CompatExt;
     use slog::o;
     use std::sync::Mutex;
 
     #[test]
     fn test() {
         let logger = Logger::root(::slog::Discard, o!());
-        let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
+        let mut runtime = tokio::runtime::Builder::new().enable_all().build().unwrap();
 
-        let result = runtime.block_on(future::lazy(move || {
-            let c = Mutex::new(0);
-            retry("test", &logger)
-                .no_logging()
-                .no_limit()
-                .no_timeout()
-                .run(move || {
-                    let mut c_guard = c.lock().unwrap();
-                    *c_guard += 1;
+        let result = runtime.block_on(
+            future::lazy(move || {
+                let c = Mutex::new(0);
+                retry("test", &logger)
+                    .no_logging()
+                    .no_limit()
+                    .no_timeout()
+                    .run(move || {
+                        let mut c_guard = c.lock().unwrap();
+                        *c_guard += 1;
 
-                    if *c_guard >= 10 {
-                        future::ok(*c_guard)
-                    } else {
-                        future::err(())
-                    }
-                })
-        }));
+                        if *c_guard >= 10 {
+                            future::ok(*c_guard)
+                        } else {
+                            future::err(())
+                        }
+                    })
+            })
+            .compat(),
+        );
         assert_eq!(result, Ok(10));
     }
 
     #[test]
     fn limit_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
+        let mut runtime = tokio::runtime::Builder::new().enable_all().build().unwrap();
 
-        let result = runtime.block_on(future::lazy(move || {
-            let c = Mutex::new(0);
-            retry("test", &logger)
-                .no_logging()
-                .limit(5)
-                .no_timeout()
-                .run(move || {
-                    let mut c_guard = c.lock().unwrap();
-                    *c_guard += 1;
+        let result = runtime.block_on(
+            future::lazy(move || {
+                let c = Mutex::new(0);
+                retry("test", &logger)
+                    .no_logging()
+                    .limit(5)
+                    .no_timeout()
+                    .run(move || {
+                        let mut c_guard = c.lock().unwrap();
+                        *c_guard += 1;
 
-                    if *c_guard >= 10 {
-                        future::ok(*c_guard)
-                    } else {
-                        future::err(*c_guard)
-                    }
-                })
-        }));
+                        if *c_guard >= 10 {
+                            future::ok(*c_guard)
+                        } else {
+                            future::err(*c_guard)
+                        }
+                    })
+            })
+            .compat(),
+        );
         assert_eq!(result, Err(5));
     }
 
     #[test]
     fn limit_not_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
+        let mut runtime = tokio::runtime::Builder::new().enable_all().build().unwrap();
 
-        let result = runtime.block_on(future::lazy(move || {
-            let c = Mutex::new(0);
-            retry("test", &logger)
-                .no_logging()
-                .limit(20)
-                .no_timeout()
-                .run(move || {
-                    let mut c_guard = c.lock().unwrap();
-                    *c_guard += 1;
+        let result = runtime.block_on(
+            future::lazy(move || {
+                let c = Mutex::new(0);
+                retry("test", &logger)
+                    .no_logging()
+                    .limit(20)
+                    .no_timeout()
+                    .run(move || {
+                        let mut c_guard = c.lock().unwrap();
+                        *c_guard += 1;
 
-                    if *c_guard >= 10 {
-                        future::ok(*c_guard)
-                    } else {
-                        future::err(*c_guard)
-                    }
-                })
-        }));
+                        if *c_guard >= 10 {
+                            future::ok(*c_guard)
+                        } else {
+                            future::err(*c_guard)
+                        }
+                    })
+            })
+            .compat(),
+        );
         assert_eq!(result, Ok(10));
     }
 
-    #[test]
-    fn custom_when() {
+    #[tokio::test]
+    async fn custom_when() {
         let logger = Logger::root(::slog::Discard, o!());
-        let mut runtime = ::tokio::runtime::Runtime::new().unwrap();
+        let c = Mutex::new(0);
 
-        let result = runtime.block_on(future::lazy(move || {
-            let c = Mutex::new(0);
+        let result = retry("test", &logger)
+            .when(|result| result.unwrap() < 10)
+            .no_logging()
+            .limit(20)
+            .no_timeout()
+            .run(move || {
+                let mut c_guard = c.lock().unwrap();
+                *c_guard += 1;
+                if *c_guard > 30 {
+                    future::err(())
+                } else {
+                    future::ok(*c_guard)
+                }
+            })
+            .compat()
+            .await
+            .unwrap();
 
-            retry("test", &logger)
-                .when(|result| result.unwrap() < 10)
-                .no_logging()
-                .limit(20)
-                .no_timeout()
-                .run(move || {
-                    let mut c_guard = c.lock().unwrap();
-                    *c_guard += 1;
-                    if *c_guard > 30 {
-                        future::err(())
-                    } else {
-                        future::ok(*c_guard)
-                    }
-                })
-        }));
-        assert_eq!(result, Ok(10));
+        assert_eq!(result, 10);
     }
 }

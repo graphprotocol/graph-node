@@ -42,7 +42,7 @@ slog-term = "2.4.2"
 petgraph = "0.4.13"
 tiny-keccak = "1.5.0"
 tokio = { version = "0.2.4", features = ["stream", "rt-threaded", "rt-util", "blocking", "time", "sync", "macros", "test-util"] }
-tokio-retry = "0.2"
+tokio-retry = { git = "https://github.com/graphprotocol/rust-tokio-retry", branch = "update-to-tokio-02" }
 url = "1.7.2"
 prometheus = "0.7.0"
 priority-queue = "0.6.0"
