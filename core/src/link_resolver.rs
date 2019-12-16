@@ -290,55 +290,47 @@ mod tests {
         );
     }
 
-    fn json_round_trip(text: &'static str) -> Result<Vec<Value>, failure::Error> {
+    async fn json_round_trip(text: &'static str) -> Result<Vec<Value>, failure::Error> {
         let client = ipfs_api::IpfsClient::default();
         let resolver = super::LinkResolver::from(client.clone());
 
-        let mut runtime = tokio::runtime::Builder::new()
-            .threaded_scheduler()
-            .enable_all()
-            .build()
-            .unwrap();
-        let link = runtime
-            .block_on(client.add(text.as_bytes()).compat())
-            .unwrap()
-            .hash;
-        runtime.block_on(
-            LinkResolver::json_stream(&resolver, &Link { link: link.clone() })
-                .and_then(|stream| stream.map(|sv| sv.value).collect())
-                .compat(),
-        )
+        let link = client.add(text.as_bytes()).compat().await.unwrap().hash;
+
+        LinkResolver::json_stream(&resolver, &Link { link: link.clone() })
+            .and_then(|stream| stream.map(|sv| sv.value).collect())
+            .compat()
+            .await
     }
 
-    #[test]
-    fn read_json_stream() {
-        let values = json_round_trip("\"with newline\"\n");
+    #[tokio::test]
+    async fn read_json_stream() {
+        let values = json_round_trip("\"with newline\"\n").await;
         assert_eq!(vec![json!("with newline")], values.unwrap());
 
-        let values = json_round_trip("\"without newline\"");
+        let values = json_round_trip("\"without newline\"").await;
         assert_eq!(vec![json!("without newline")], values.unwrap());
 
-        let values = json_round_trip("\"two\" \n \"things\"");
+        let values = json_round_trip("\"two\" \n \"things\"").await;
         assert_eq!(vec![json!("two"), json!("things")], values.unwrap());
 
-        let values = json_round_trip("\"one\"\n  \"two\" \n [\"bad\" \n \"split\"]");
+        let values = json_round_trip("\"one\"\n  \"two\" \n [\"bad\" \n \"split\"]").await;
         assert_eq!(
             "EOF while parsing a list at line 4 column 0: ' [\"bad\" \n'",
             values.unwrap_err().to_string()
         );
     }
 
-    #[test]
-    fn ipfs_map_file_size() {
+    #[tokio::test]
+    async fn ipfs_map_file_size() {
         let file = "\"small test string that trips the size restriction\"";
         env::set_var(MAX_IPFS_MAP_FILE_SIZE_VAR, (file.len() - 1).to_string());
 
-        let err = json_round_trip(file).unwrap_err();
+        let err = json_round_trip(file).await.unwrap_err();
         env::remove_var(MAX_IPFS_MAP_FILE_SIZE_VAR);
 
         assert!(err.to_string().contains(" is too large"));
 
-        let values = json_round_trip(file);
+        let values = json_round_trip(file).await;
         assert_eq!(
             vec!["small test string that trips the size restriction"],
             values.unwrap()
