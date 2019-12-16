@@ -64,8 +64,19 @@ fn test_valid_module_and_store(
     ));
 
     let (task_sender, task_receiver) = channel(100);
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime.spawn(task_receiver.for_each(tokio::spawn));
+    let runtime = tokio::runtime::Builder::new()
+        .basic_scheduler()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.spawn(
+        task_receiver
+            .for_each(|t: Box<dyn Future<Item = (), Error = ()> + Send>| {
+                tokio::spawn(t.compat());
+                future::ok(())
+            })
+            .compat(),
+    );
     ::std::mem::forget(runtime);
     let module = WasmiModule::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref().clone()).unwrap()),
@@ -298,13 +309,12 @@ fn json_conversions() {
     );
 }
 
-#[test]
-fn ipfs_cat() {
+#[tokio::test]
+async fn ipfs_cat() {
     let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
 
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    let hash = runtime.block_on(ipfs.add(Cursor::new("42"))).unwrap().hash;
+    let hash = ipfs.add(Cursor::new("42")).compat().await.unwrap().hash;
     let converted: AscPtr<AscString> = module
         .module
         .clone()
@@ -340,81 +350,91 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
     )
 }
 
-#[test]
-fn ipfs_map() {
+#[tokio::test]
+async fn ipfs_map() {
     const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
 
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
     let subgraph_id = "ipfsMap";
 
-    let mut run_ipfs_map = move |json_string| -> Result<Vec<EntityModification>, Error> {
-        let (mut module, store) =
-            test_valid_module_and_store(subgraph_id, mock_data_source("wasm_test/ipfs_map.wasm"));
-        let hash = if json_string == BAD_IPFS_HASH {
-            "Qm".to_string()
-        } else {
-            runtime
-                .block_on(ipfs.add(Cursor::new(json_string)))
-                .unwrap()
-                .hash
-        };
-        let user_data = RuntimeValue::from(module.asc_new(USER_DATA));
-        let converted = module.module.clone().invoke_export(
-            "ipfsMap",
-            &[RuntimeValue::from(module.asc_new(&hash)), user_data],
-            &mut module,
-        )?;
-        assert_eq!(None, converted);
-        let mut mods = module
-            .ctx
-            .state
-            .entity_cache
-            .as_modifications(store.as_ref())?
-            .modifications;
+    let run_ipfs_map = move |json_string| {
+        let ipfs = ipfs.clone();
+        async move {
+            let (mut module, store) = test_valid_module_and_store(
+                subgraph_id,
+                mock_data_source("wasm_test/ipfs_map.wasm"),
+            );
+            let hash = if json_string == BAD_IPFS_HASH {
+                "Qm".to_string()
+            } else {
+                ipfs.add(Cursor::new(json_string))
+                    .compat()
+                    .await
+                    .unwrap()
+                    .hash
+            };
+            let user_data = RuntimeValue::from(module.asc_new(USER_DATA));
+            let converted = module.module.clone().invoke_export(
+                "ipfsMap",
+                &[RuntimeValue::from(module.asc_new(&hash)), user_data],
+                &mut module,
+            )?;
+            assert_eq!(None, converted);
+            let mut mods = module
+                .ctx
+                .state
+                .entity_cache
+                .as_modifications(store.as_ref())?
+                .modifications;
 
-        // Bring the modifications into a predictable order (by entity_id)
-        mods.sort_by(|a, b| {
-            a.entity_key()
-                .entity_id
-                .partial_cmp(&b.entity_key().entity_id)
-                .unwrap()
-        });
-        Ok(mods)
+            // Bring the modifications into a predictable order (by entity_id)
+            mods.sort_by(|a, b| {
+                a.entity_key()
+                    .entity_id
+                    .partial_cmp(&b.entity_key().entity_id)
+                    .unwrap()
+            });
+            Ok(mods)
+        }
     };
 
     // Try it with two valid objects
     let (str1, thing1) = make_thing(subgraph_id, "one", "eins");
     let (str2, thing2) = make_thing(subgraph_id, "two", "zwei");
-    let ops = run_ipfs_map(format!("{}\n{}", str1, str2)).expect("call failed");
+    let ops = run_ipfs_map(format!("{}\n{}", str1, str2))
+        .await
+        .expect("call failed");
     let expected = vec![thing1, thing2];
     assert_eq!(expected, ops);
 
     // Valid JSON, but not what the callback expected; it will
     // fail on an assertion
-    let errmsg = run_ipfs_map(format!("{}\n[1,2]", str1))
-        .unwrap_err()
-        .to_string();
-    assert!(errmsg.contains("JSON value is not an object."));
+    let err: Error = run_ipfs_map(format!("{}\n[1,2]", str1)).await.unwrap_err();
+    assert!(err.to_string().contains("JSON value is not an object."));
 
     // Malformed JSON
     let errmsg = run_ipfs_map(format!("{}\n[", str1))
+        .await
         .unwrap_err()
         .to_string();
     assert!(errmsg.contains("EOF while parsing a list"));
 
     // Empty input
-    let ops = run_ipfs_map("".to_string()).expect("call failed for emoty string");
+    let ops = run_ipfs_map("".to_string())
+        .await
+        .expect("call failed for emoty string");
     assert_eq!(0, ops.len());
 
     // Missing entry in the JSON object
     let errmsg = run_ipfs_map("{\"value\": \"drei\"}".to_string())
+        .await
         .unwrap_err()
         .to_string();
     assert!(errmsg.contains("JSON value is not a string."));
 
     // Bad IPFS hash.
     let errmsg = run_ipfs_map(BAD_IPFS_HASH.to_string())
+        .await
         .unwrap_err()
         .to_string();
     assert!(errmsg.contains("api returned error"))

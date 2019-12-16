@@ -1152,8 +1152,8 @@ fn cannot_filter_by_derved_relationship_fields() {
     };
 }
 
-#[test]
-fn subscription_gets_result_even_without_events() {
+#[tokio::test]
+async fn subscription_gets_result_even_without_events() {
     let logger = Logger::root(slog::Discard, o!());
     let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
@@ -1182,9 +1182,12 @@ fn subscription_gets_result_even_without_events() {
     // Execute the subscription and expect at least one result to be
     // available in the result stream
     let stream = execute_subscription(&Subscription { query }, options).unwrap();
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    let results = runtime
-        .block_on(stream.take(1).collect().timeout(Duration::from_secs(3)))
+    let results = stream
+        .take(1)
+        .collect()
+        .timeout(Duration::from_secs(3))
+        .await
+        .unwrap()
         .unwrap();
 
     assert_eq!(results.len(), 1);

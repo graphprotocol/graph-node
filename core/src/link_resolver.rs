@@ -266,8 +266,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[test]
-    fn max_file_size() {
+    #[tokio::test]
+    async fn max_file_size() {
         env::set_var(MAX_IPFS_FILE_SIZE_VAR, "200");
         let file: &[u8] = &[0u8; 201];
         let client = ipfs_api::IpfsClient::default();
@@ -275,14 +275,10 @@ mod tests {
 
         let logger = Logger::root(slog::Discard, o!());
 
-        let mut runtime = tokio::runtime::Runtime::new().unwrap();
-        let link = runtime.block_on(client.add(file)).unwrap().hash;
-        let err = runtime
-            .block_on(LinkResolver::cat(
-                &resolver,
-                &logger,
-                &Link { link: link.clone() },
-            ))
+        let link = client.add(file).compat().await.unwrap().hash;
+        let err = LinkResolver::cat(&resolver, &logger, &Link { link: link.clone() })
+            .compat()
+            .await
             .unwrap_err();
         env::remove_var(MAX_IPFS_FILE_SIZE_VAR);
         assert_eq!(
@@ -298,11 +294,19 @@ mod tests {
         let client = ipfs_api::IpfsClient::default();
         let resolver = super::LinkResolver::from(client.clone());
 
-        let mut runtime = tokio::runtime::Runtime::new().unwrap();
-        let link = runtime.block_on(client.add(text.as_bytes())).unwrap().hash;
+        let mut runtime = tokio::runtime::Builder::new()
+            .threaded_scheduler()
+            .enable_all()
+            .build()
+            .unwrap();
+        let link = runtime
+            .block_on(client.add(text.as_bytes()).compat())
+            .unwrap()
+            .hash;
         runtime.block_on(
             LinkResolver::json_stream(&resolver, &Link { link: link.clone() })
-                .and_then(|stream| stream.map(|sv| sv.value).collect()),
+                .and_then(|stream| stream.map(|sv| sv.value).collect())
+                .compat(),
         )
     }
 
