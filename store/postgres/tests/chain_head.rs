@@ -1,12 +1,16 @@
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
+use diesel::prelude::*;
+use diesel::RunQueryDsl;
 use futures::future::{self, IntoFuture};
+use lazy_static::lazy_static;
 use std::fmt::Debug;
 use std::sync::Arc;
 
 use graph::components::store::{ChainStore, Store as _};
-use graph::prelude::SubgraphDeploymentId;
+use graph::prelude::{serde_json, Future01CompatExt, SubgraphDeploymentId, TryFutureExt};
+use graph_store_postgres::db_schema_for_tests as db_schema;
 use graph_store_postgres::Store as DieselStore;
 
 use test_store::block_store::{
@@ -35,8 +39,8 @@ where
         Err(err) => err.into_inner(),
     };
 
-    runtime
-        .block_on(future::lazy(move || {
+    let _ = runtime
+        .block_on(async {
             // Reset state before starting
             block_store::remove();
 
@@ -44,9 +48,9 @@ where
             block_store::insert(chain, NETWORK_NAME);
 
             // Run test
-            test(store)
-        }))
-        .expect("Failed to run ChainHead test");
+            test(store).into_future().compat()
+        })
+        .unwrap_or_else(|e| panic!("Failed to run ChainHead test: {:?}", e));
 }
 
 /// Check that `attempt_chain_head_update` works as expected on the given

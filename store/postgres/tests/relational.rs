@@ -2,7 +2,7 @@
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use futures::future::{self, IntoFuture};
+use futures::future::IntoFuture;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::fmt::Debug;
@@ -11,8 +11,8 @@ use std::str::FromStr;
 use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
     bigdecimal::One, web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityQuery, EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    EntityOrder, EntityQuery, EntityRange, Future01CompatExt, Schema, SubgraphDeploymentId,
+    TryFutureExt, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
 
@@ -304,8 +304,8 @@ where
         Err(err) => err.into_inner(),
     };
 
-    runtime
-        .block_on(future::lazy(move || {
+    let _ = runtime
+        .block_on(async {
             // Reset state before starting
             remove_test_data(&conn);
 
@@ -313,9 +313,9 @@ where
             let layout = insert_test_data(&conn);
 
             // Run test
-            test(&conn, &layout)
-        }))
-        .expect("Failed to run ChainHead test");
+            test(&conn, &layout).into_future().compat()
+        })
+        .unwrap_or_else(|e| panic!("Failed to run ChainHead test: {:?}", e));
 }
 
 #[test]

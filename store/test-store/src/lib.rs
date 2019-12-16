@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate diesel;
 
-use crate::tokio::runtime::Runtime;
+use crate::tokio::runtime::{Builder, Runtime};
 use graph::log;
 use graph::prelude::{Store as _, *};
 use graph_mock::MockMetricsRegistry;
@@ -30,7 +30,7 @@ lazy_static! {
     };
 
     // Use this for tests that need subscriptions from `STORE`.
-    pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(Runtime::new().unwrap());
+    pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(Builder::new().basic_scheduler().enable_all().build().unwrap());
 
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<Store> = {

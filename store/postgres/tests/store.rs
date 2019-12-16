@@ -132,8 +132,8 @@ where
         Err(err) => err.into_inner(),
     };
 
-    runtime
-        .block_on(future::lazy(move || {
+    let _ = runtime
+        .block_on(async {
             // Reset state before starting
             remove_test_data(store.clone());
 
@@ -141,9 +141,9 @@ where
             insert_test_data(store.clone());
 
             // Run test
-            test(store)
-        }))
-        .expect("Failed to run Store test");
+            test(store).into_future().compat()
+        })
+        .unwrap_or_else(|e| panic!("Failed to run Store test: {:?}", e));
 }
 
 /// Inserts test data into the store.
@@ -1122,17 +1122,17 @@ fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityC
 fn check_events(
     stream: StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send>,
     expected: Vec<StoreEvent>,
-) -> impl Future<Item = (), Error = tokio_timer::timeout::Error<()>> {
+) -> impl Future<Item = (), Error = tokio::time::Elapsed> {
     stream
         .take(expected.len() as u64)
         .collect()
         .timeout(Duration::from_secs(3))
-        .and_then(move |events| {
+        .map_ok(move |events| {
+            let events = events.unwrap();
             assert_eq!(events.len(), expected.len());
             assert_eq!(events, expected);
-            Ok(())
         })
-        .and_then(|_| Ok(()))
+        .compat()
 }
 
 // Subscribe to store events from the store. This implementation works
@@ -1205,7 +1205,7 @@ fn check_basic_revert(
     expected: StoreEvent,
     subgraph_id: &SubgraphDeploymentId,
     entity_type: &str,
-) -> impl Future<Item = (), Error = tokio_timer::timeout::Error<()>> {
+) -> impl Future<Item = (), Error = tokio::time::Elapsed> {
     let this_query = user_query()
         .filter(EntityFilter::Equal(
             "name".to_owned(),
@@ -1804,7 +1804,7 @@ fn throttle_subscription_delivers() {
 #[test]
 fn throttle_subscription_throttles() {
     run_test(
-        |store| -> Box<dyn Future<Item = (), Error = tokio_timer::timeout::Error<()>> + Send> {
+        |store| -> Box<dyn Future<Item = (), Error = TimeoutError<()>> + Send> {
             // Throttle for a very long time (30s)
             let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER)
                 .throttle_while_syncing(
@@ -1839,10 +1839,9 @@ fn throttle_subscription_throttles() {
                     .take(1)
                     .collect()
                     .timeout(Duration::from_millis(500))
+                    .compat()
                     .then(|res| {
                         assert!(res.is_err());
-                        let err = res.err().unwrap();
-                        assert!(err.is_elapsed());
                         future::ok(())
                     }),
             )
