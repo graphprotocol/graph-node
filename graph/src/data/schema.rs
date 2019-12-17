@@ -718,7 +718,7 @@ impl Schema {
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
                     let base = traversal::get_base_type(&field.field_type);
-                    match BuiltInScalarType::try_from(base)
+                    match BuiltInScalarType::try_from(base.as_ref())
                         .map(|_| ())
                         .or_else(|_| match native_types.contains_key(base) {
                             true => Ok(()),
