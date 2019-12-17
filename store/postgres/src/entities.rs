@@ -848,6 +848,7 @@ impl Connection {
             v::Relational => Layout::create_relational_schema(
                 &self.conn,
                 &schema_name,
+                IdType::String,
                 schema.id.clone(),
                 &schema.document,
             )

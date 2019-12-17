@@ -2,8 +2,9 @@ use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::{Binary, Bool, Integer, Numeric, Text};
 use std::io::Write;
+use std::str::FromStr;
 
-use graph::data::store::Value;
+use graph::data::store::{scalar, Value};
 
 #[derive(Clone, Debug, PartialEq, AsExpression)]
 pub struct SqlValue(Value);
@@ -58,6 +59,9 @@ impl ToSql<Binary, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
         match self.0 {
             Value::Bytes(ref h) => <_ as ToSql<Binary, Pg>>::to_sql(&h.as_slice(), out),
+            Value::String(ref s) => {
+                <_ as ToSql<Binary, Pg>>::to_sql(scalar::Bytes::from_str(s)?.as_slice(), out)
+            }
             _ => panic!("Failed to convert attribute value to Bytes in SQL"),
         }
     }

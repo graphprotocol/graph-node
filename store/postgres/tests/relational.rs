@@ -14,7 +14,7 @@ use graph::prelude::{
     EntityOrder, EntityQuery, EntityRange, Schema, SubgraphDeploymentId, Value, ValueType,
     BLOCK_NUMBER_MAX,
 };
-use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
+use graph_store_postgres::layout_for_tests::{IdType, Layout, STRING_PREFIX_SIZE};
 
 use test_store::*;
 
@@ -239,6 +239,7 @@ fn insert_test_data(conn: &PgConnection) -> Layout {
     let layout = Layout::create_relational_schema(
         &conn,
         SCHEMA_NAME,
+        IdType::String,
         THINGS_SUBGRAPH_ID.clone(),
         &schema.document,
     )
