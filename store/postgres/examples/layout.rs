@@ -200,7 +200,7 @@ fn print_diesel_tables(layout: &Layout) {
         let mut dsl_type = match column.column_type {
             ColumnType::Boolean => "Bool",
             ColumnType::BigDecimal | ColumnType::BigInt => "Numeric",
-            ColumnType::Bytes => "Binary",
+            ColumnType::Bytes | ColumnType::BytesId => "Binary",
             ColumnType::Int => "Integer",
             ColumnType::String | ColumnType::Enum(_) | ColumnType::TSVector(_) => "Text",
         }
@@ -219,7 +219,7 @@ fn print_diesel_tables(layout: &Layout) {
         let mut dsl_type = match column.column_type {
             ColumnType::Boolean => "bool",
             ColumnType::BigDecimal | ColumnType::BigInt => "BigDecimal",
-            ColumnType::Bytes => "Vec<u8>",
+            ColumnType::Bytes | ColumnType::BytesId => "Vec<u8>",
             ColumnType::Int => "i32",
             ColumnType::String | ColumnType::Enum(_) | ColumnType::TSVector(_) => "String",
         }

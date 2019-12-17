@@ -779,12 +779,15 @@ pub enum ColumnType {
     String,
     TSVector(FulltextConfig),
     Enum(EnumType),
+    /// A `bytea` in SQL, represented as a ValueType::String; this is
+    /// used for `id` columns of type `Bytes`
+    BytesId,
 }
 
 impl From<IdType> for ColumnType {
     fn from(id_type: IdType) -> Self {
         match id_type {
-            IdType::Bytes => ColumnType::Bytes,
+            IdType::Bytes => ColumnType::BytesId,
             IdType::String => ColumnType::String,
         }
     }
@@ -836,6 +839,17 @@ impl ColumnType {
             ColumnType::String => "text",
             ColumnType::TSVector(_) => "tsvector",
             ColumnType::Enum(enum_type) => enum_type.name.as_str(),
+            ColumnType::BytesId => "bytea",
+        }
+    }
+
+    /// Return the `IdType` corresponding to this column type. This can only
+    /// be called on a column that stores an `ID` and will panic otherwise
+    pub(crate) fn id_type(&self) -> IdType {
+        match self {
+            ColumnType::String => IdType::String,
+            ColumnType::BytesId => IdType::Bytes,
+            _ => unreachable!("only String and Bytes are allowed as primary keys"),
         }
     }
 }
@@ -1076,6 +1090,13 @@ impl Table {
                 }
             })
             .collect()
+    }
+
+    pub fn primary_key(&self) -> &Column {
+        self.columns
+            .iter()
+            .find(|column| column.is_primary_key())
+            .expect("every table has a primary key")
     }
 
     /// Generate the DDL for one table, i.e. one `create table` statement
