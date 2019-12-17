@@ -345,7 +345,7 @@ where
                     })
             })
             .and_then(
-                move |(manifest, ethereum_adapter, chain_store, _validation_warnings)| {
+                move |(manifest, ethereum_adapter, chain_store, validation_warnings)| {
                     let manifest_id = manifest.id.clone();
                     create_subgraph_version(
                         &logger_for_subgraph_version,
@@ -357,15 +357,16 @@ where
                         node_id,
                         version_switching_mode,
                     )
-                    .map(|_| manifest_id)
+                    .map(|_| (manifest_id, validation_warnings))
                 },
             )
-            .and_then(move |manifest_id| {
+            .and_then(move |(manifest_id, validation_warnings)| {
                 debug!(
                     logger_for_debug,
                     "Wrote new subgraph version to store";
                     "subgraph_name" => name_inner.to_string(),
                     "subgraph_hash" => manifest_id.to_string(),
+                    "validation_warnings" => format!("{:?}", validation_warnings),
                 );
                 Ok(())
             }),
