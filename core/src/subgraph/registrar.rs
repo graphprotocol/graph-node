@@ -295,28 +295,30 @@ where
         hash: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        let store_1 = self.store.clone();
-        let store_2 = self.store.clone();
+        let store_for_validation = self.store.clone();
+        let store_for_subgraph_version = self.store.clone();
         let chain_stores = self.chain_stores.clone();
         let ethereum_adapters = self.ethereum_adapters.clone();
         let version_switching_mode = self.version_switching_mode;
 
         let logger = self.logger_factory.subgraph_logger(&hash);
-        let logger2 = logger.clone();
-        let logger3 = logger.clone();
+        let logger_for_subgraph_version = logger.clone();
+        let logger_for_debug = logger.clone();
         let name_inner = name.clone();
 
         Box::new(
             UnvalidatedSubgraphManifest::resolve(
                 hash.to_ipfs_link(),
                 self.resolver.clone(),
-                logger.clone(),
+                logger,
             )
             .map_err(SubgraphRegistrarError::ResolveError)
             .and_then(move |unvalidated| {
-                future::result(unvalidated.validate(store_1)).map_err(|validation_errors| {
-                    SubgraphRegistrarError::ManifestValidationError(validation_errors)
-                })
+                future::result(unvalidated.validate(store_for_validation)).map_err(
+                    |validation_errors| {
+                        SubgraphRegistrarError::ManifestValidationError(validation_errors)
+                    },
+                )
             })
             .and_then(move |(manifest, validation_warnings)| {
                 manifest
@@ -350,8 +352,8 @@ where
                 move |(manifest, ethereum_adapter, chain_store, _validation_warnings)| {
                     let manifest_id = manifest.id.clone();
                     create_subgraph_version(
-                        &logger2,
-                        store_2,
+                        &logger_for_subgraph_version,
+                        store_for_subgraph_version,
                         chain_store.clone(),
                         ethereum_adapter.clone(),
                         name,
@@ -364,7 +366,7 @@ where
             )
             .and_then(move |manifest_id| {
                 debug!(
-                    logger3,
+                    logger_for_debug,
                     "Wrote new subgraph version to store";
                     "subgraph_name" => name_inner.to_string(),
                     "subgraph_hash" => manifest_id.to_string(),
