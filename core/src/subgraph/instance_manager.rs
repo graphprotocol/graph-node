@@ -248,52 +248,42 @@ impl SubgraphInstanceManager {
                         "Start subgraph";
                         "data_sources" => manifest.data_sources.len()
                     );
-
-                    match manifest.network_name() {
-                        Ok(n) => {
-                            Self::start_subgraph(
-                                logger.clone(),
-                                instances.clone(),
-                                host_builder.clone(),
-                                block_stream_builder.clone(),
-                                stores
-                                    .get(&n)
-                                    .expect(&format!(
-                                        "expected store that matches subgraph network: {}",
-                                        &n
-                                    ))
-                                    .clone(),
-                                eth_adapters
-                                    .get(&n)
-                                    .expect(&format!(
-                                        "expected eth adapter that matches subgraph network: {}",
-                                        &n
-                                    ))
-                                    .clone(),
-                                manifest,
-                                metrics_registry_for_subgraph.clone(),
-                            )
-                            .map_err(|err| {
-                                error!(
-                                    logger,
-                                    "Failed to start subgraph";
-                                    "error" => format!("{}", err),
-                                    "code" => LogCode::SubgraphStartFailure
-                                )
-                            })
-                            .and_then(|_| {
-                                manager_metrics.subgraph_count.inc();
-                                Ok(())
-                            })
-                            .ok();
-                        }
-                        Err(err) => error!(
+                    let network = manifest.network_name();
+                    Self::start_subgraph(
+                        logger.clone(),
+                        instances.clone(),
+                        host_builder.clone(),
+                        block_stream_builder.clone(),
+                        stores
+                            .get(&network)
+                            .expect(&format!(
+                                "expected store that matches subgraph network: {}",
+                                &network
+                            ))
+                            .clone(),
+                        eth_adapters
+                            .get(&network)
+                            .expect(&format!(
+                                "expected eth adapter that matches subgraph network: {}",
+                                &network
+                            ))
+                            .clone(),
+                        manifest,
+                        metrics_registry_for_subgraph.clone(),
+                    )
+                    .map_err(|err| {
+                        error!(
                             logger,
                             "Failed to start subgraph";
-                             "error" => format!("{}", err),
+                            "error" => format!("{}", err),
                             "code" => LogCode::SubgraphStartFailure
-                        ),
-                    };
+                        )
+                    })
+                    .and_then(|_| {
+                        manager_metrics.subgraph_count.inc();
+                        Ok(())
+                    })
+                    .ok();
                 }
                 SubgraphStop(id) => {
                     let logger = logger_factory.subgraph_logger(&id);
@@ -339,7 +329,7 @@ impl SubgraphInstanceManager {
 
         // Clone the deployment ID for later
         let deployment_id = manifest.id.clone();
-        let network_name = manifest.network_name()?;
+        let network_name = manifest.network_name();
 
         // Obtain filters from the manifest
         let log_filter = EthereumLogFilter::from_data_sources(&manifest.data_sources);
