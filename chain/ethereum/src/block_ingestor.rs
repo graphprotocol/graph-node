@@ -1,9 +1,17 @@
+use lazy_static;
 use std::collections::HashMap;
 use std::time::Duration;
 use std::time::Instant;
 
 use graph::prelude::*;
 use web3::types::*;
+
+lazy_static! {
+    static ref CLEANUP_BLOCKS: bool = std::env::var("GRAPH_ETHEREUM_CLEANUP_BLOCKS")
+        .ok()
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+}
 
 pub struct BlockIngestorMetrics {
     chain_head_number: Box<GaugeVec>,
@@ -73,11 +81,9 @@ where
         })
     }
 
-    pub fn into_polling_stream(self, cleanup_freq: Duration) -> impl Future<Item = (), Error = ()> {
+    pub fn into_polling_stream(self) -> impl Future<Item = (), Error = ()> {
         // Currently, there is no way to stop block ingestion, so just leak self
         let static_self: &'static _ = Box::leak(Box::new(self));
-
-        let mut last_cleanup = Instant::now();
 
         // Create stream that emits at polling interval
         tokio::timer::Interval::new(Instant::now(), static_self.polling_interval)
@@ -112,7 +118,7 @@ where
                         future::ok(())
                     })
                     .inspect(move |_| {
-                        if cleanup_freq.as_secs() > 0 && last_cleanup.elapsed() > cleanup_freq {
+                        if *CLEANUP_BLOCKS {
                             match static_self
                                 .chain_store
                                 .cleanup_cached_blocks(static_self.ancestor_count)
@@ -135,7 +141,6 @@ where
                                     "network_name" => &static_self.network_name,
                                 ),
                             }
-                            last_cleanup = Instant::now();
                         }
                     })
             })

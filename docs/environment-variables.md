@@ -38,13 +38,12 @@ triggers in each request (defaults to 100000).
   subgraph if the limit is reached, but will simply restart the syncing step,
   so it can be low. This limit guards against scenarios such as requesting a
   block hash that has been reorged. Defaults to 10.
-- `GRAPH_BLOCK_CACHE_CLEANUP_FREQ`: Number of seconds between attempts to
-  remove unneeded blocks from the block cache in the database. When this is
-  0 (the default), blocks will never be removed from the block cache. This
-  setting is most useful during development to reduce the size of the
-  database. In production environments, it will most likely lead to
-  downloading the same blocks multiple times and therefore slow the system
-  down.
+- `GRAPH_ETHEREUM_CLEANUP_BLOCKS` : Set to `true` to clean up unneeded
+  blocks from the cache in the database. When this is `false` or unset (the
+  default), blocks will never be removed from the block cache. This setting
+  should only be used during development to reduce the size of the
+  database. In production environments, it will cause multiple downloads of
+  the same blocks and therefore slow the system down.
 ## Running mapping handlers
 
 - `GRAPH_MAPPING_HANDLER_TIMEOUT`: amount of time a mapping handler is allowed to
