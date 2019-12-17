@@ -10,10 +10,10 @@ pub enum BuiltInScalarType {
     ID,
 }
 
-impl TryFrom<&String> for BuiltInScalarType {
+impl TryFrom<&str> for BuiltInScalarType {
     type Error = ();
 
-    fn try_from(value: &String) -> Result<Self, Self::Error> {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value.as_ref() {
             "Boolean" => Ok(BuiltInScalarType::Boolean),
             "Int" => Ok(BuiltInScalarType::Int),
