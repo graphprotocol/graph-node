@@ -900,9 +900,24 @@ impl UnvalidatedSubgraphManifest {
                 });
             return non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1;
         });
-
         if has_too_many_block_handlers {
             errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
+        }
+
+        let mut networks = self
+            .0
+            .data_sources
+            .iter()
+            .cloned()
+            .filter(|d| d.kind.eq("ethereum/contract"))
+            .filter_map(|d| d.network)
+            .collect::<Vec<String>>();
+        networks.sort();
+        networks.dedup();
+        match networks.len() {
+            0 => errors.push(SubgraphManifestValidationError::EthereumNetworkRequired),
+            1 => (),
+            _ => errors.push(SubgraphManifestValidationError::MultipleEthereumNetworks),
         }
 
         self.0
@@ -971,24 +986,15 @@ impl SubgraphManifest {
             })
     }
 
-    pub fn network_name(&self) -> Result<String, SubgraphManifestValidationError> {
-        let mut ethereum_networks: Vec<Option<String>> = self
-            .data_sources
+    pub fn network_name(&self) -> String {
+        // Assume the manifest has been validated, ensuring network names are homogenous
+        self.data_sources
             .iter()
             .cloned()
             .filter(|d| d.kind == "ethereum/contract".to_string())
-            .map(|d| d.network)
-            .collect();
-        ethereum_networks.sort();
-        ethereum_networks.dedup();
-        match ethereum_networks.len() {
-            0 => Err(SubgraphManifestValidationError::EthereumNetworkRequired),
-            1 => match ethereum_networks.first().and_then(|n| n.clone()) {
-                Some(n) => Ok(n),
-                None => Err(SubgraphManifestValidationError::EthereumNetworkRequired),
-            },
-            _ => Err(SubgraphManifestValidationError::MultipleEthereumNetworks),
-        }
+            .filter_map(|d| d.network)
+            .next()
+            .expect("Validated manifest does not have a network defined on any datasource")
     }
 
     pub fn start_blocks(&self) -> Vec<u64> {

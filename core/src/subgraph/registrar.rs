@@ -321,30 +321,26 @@ where
                 )
             })
             .and_then(move |(manifest, validation_warnings)| {
-                manifest
-                    .network_name()
-                    .map_err(|e| SubgraphRegistrarError::ManifestValidationError(vec![e]))
-                    .and_then(move |network_name| {
-                        chain_stores
-                            .clone()
+                let network_name = manifest.network_name();
+                chain_stores
+                    .clone()
+                    .get(&network_name)
+                    .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                        network_name.clone(),
+                    ))
+                    .and_then(move |chain_store| {
+                        ethereum_adapters
                             .get(&network_name)
                             .ok_or(SubgraphRegistrarError::NetworkNotSupported(
                                 network_name.clone(),
                             ))
-                            .and_then(move |chain_store| {
-                                ethereum_adapters
-                                    .get(&network_name)
-                                    .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                                        network_name.clone(),
-                                    ))
-                                    .map(move |ethereum_adapter| {
-                                        (
-                                            manifest,
-                                            ethereum_adapter.clone(),
-                                            chain_store.clone(),
-                                            validation_warnings,
-                                        )
-                                    })
+                            .map(move |ethereum_adapter| {
+                                (
+                                    manifest,
+                                    ethereum_adapter.clone(),
+                                    chain_store.clone(),
+                                    validation_warnings,
+                                )
                             })
                     })
             })

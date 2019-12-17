@@ -41,7 +41,7 @@ where
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
-        let network = manifest.network_name()?;
+        let network = manifest.network_name();
         let templates = manifest.templates;
 
         let mut this = SubgraphInstance {
