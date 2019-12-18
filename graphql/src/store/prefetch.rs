@@ -10,6 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
+use graph::data::graphql::ext::ObjectTypeExt;
 use graph::prelude::{
     BlockNumber, Entity, EntityCollection, EntityFilter, EntityLink, EntityWindow, ParentLink,
     QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
@@ -18,7 +19,6 @@ use graph::prelude::{
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
-use crate::schema::ext::ObjectTypeExt;
 use crate::store::build_query;
 
 lazy_static! {
