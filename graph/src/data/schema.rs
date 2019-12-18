@@ -72,7 +72,7 @@ pub enum SchemaValidationError {
         display = "Imported type `{}` does not exist in the `{}` schema",
         _0, _1
     )]
-    ImportedTypeDNE(String, String), // (type_name, schema)
+    ImportedTypeUndefined(String, String), // (type_name, schema)
 }
 
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
@@ -331,7 +331,7 @@ impl Schema {
             object
                 .directives
                 .iter()
-                .filter(|directive| directive.name.eq("imports"))
+                .filter(|directive| directive.name.eq("import"))
                 .filter_map(|directive| {
                     directive.arguments.iter().find(|(name, _)| name.eq("from"))
                 })
@@ -348,7 +348,7 @@ impl Schema {
             .map_or(vec![], |(_, value)| match value {
                 Value::List(types) => types
                     .iter()
-                    .filter_map(|import_type| match import_type {
+                    .filter_map(|type_import| match type_import {
                         Value::String(type_name) => Some(ImportedType::Name(type_name.to_string())),
                         Value::Object(type_name_as) => {
                             let name =
@@ -509,7 +509,7 @@ impl Schema {
                 if !subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| !directive.name.eq("imports"))
+                    .filter(|directive| !directive.name.eq("import"))
                     .collect::<Vec<&Directive>>()
                     .is_empty()
                 {
@@ -597,7 +597,7 @@ impl Schema {
                 subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| directive.name.eq("imports"))
+                    .filter(|directive| directive.name.eq("import"))
                     .fold(vec![], |mut errors, imports| {
                         // Check for badly formed import directives
                         let has_valid_types = Self::import_directive_has_valid_types(imports);
@@ -687,7 +687,7 @@ impl Schema {
                                 })
                                 .map_or(false, |_| true);
                             if !is_native || !is_imported {
-                                Some(SchemaValidationError::ImportedTypeDNE(
+                                Some(SchemaValidationError::ImportedTypeUndefined(
                                     name.to_string(),
                                     schema_handle.to_string(),
                                 ))
@@ -857,7 +857,7 @@ impl Schema {
                     invalid(
                         object_type,
                         &field.name,
-                        "the type of the field must be an existing entity or interface type",
+                        "type must be an existing entity or interface",
                     )
                 })?;
 
