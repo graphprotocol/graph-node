@@ -35,30 +35,30 @@ impl fmt::Display for Strings {
 #[derive(Debug, Fail, PartialEq, Eq)]
 pub enum SchemaValidationError {
     #[fail(display = "Interface `{}` not defined", _0)]
-    UndefinedInterface(String),
+    InterfaceUndefined(String),
 
-    #[fail(display = "@entity directive missing on the following type: `{}`", _0)]
+    #[fail(display = "@entity directive missing on the following types: `{}`", _0)]
     EntityDirectivesMissing(Strings),
 
     #[fail(
-        display = "Entity type `{}` cannot implement `{}` because it is missing \
-                   the required fields: {}",
+        display = "Entity type `{}` does not satisfy interface `{}` because it is missing \
+                   the following fields: {}",
         _0, _1, _2
     )]
-    CannotImplement(String, String, Strings), // (type, interface, missing_fields)
+    InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
     #[fail(
         display = "Field `{}` in type `{}` has invalid @derivedFrom: {}",
         _1, _0, _2
     )]
-    DerivedFromInvalid(String, String, String), // (type, field, reason)
-    #[fail(display = "_Schema_ type is solely for imports and should have no fields")]
-    ReservedTypeFieldsInvalid,
-    #[fail(display = "Name for imported subgraph `{}` is invalid", _0)]
+    InvalidDerivedFrom(String, String, String), // (type, field, reason)
+    #[fail(display = "_Schema_ type is only for @imports and must not have any fields")]
+    SchemaTypeWithFields,
+    #[fail(display = "Imported subgraph name `{}` is invalid", _0)]
     ImportedSubgraphNameInvalid(String),
-    #[fail(display = "Id for imported subgraph `{}` is invalid", _0)]
+    #[fail(display = "Imported subgraph id `{}` is invalid", _0)]
     ImportedSubgraphIdInvalid(String),
-    #[fail(display = "_Schema_ type only allows @import directives")]
-    ReservedTypeDirectivesInvalid,
+    #[fail(display = "The _Schema_ type only allows @import directives")]
+    InvalidSchemaTypeDirectives,
     #[fail(
         display = "@imports directives must be defined in one of the following forms: @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ name: 'org/subgraph'}}) @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})"
     )]
@@ -260,7 +260,7 @@ impl Schema {
                         _ => None,
                     })
                     .ok_or_else(|| {
-                        SchemaValidationError::UndefinedInterface(implemented_interface.clone())
+                        SchemaValidationError::InterfaceUndefined(implemented_interface.clone())
                     })?;
 
                 Self::validate_interface_implementation(object_type, &interface_type)?;
@@ -490,7 +490,7 @@ impl Schema {
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
                 if !subgraph_schema_type.fields.is_empty() {
-                    Some(SchemaValidationError::ReservedTypeFieldsInvalid)
+                    Some(SchemaValidationError::SchemaTypeWithFields)
                 } else {
                     None
                 }
@@ -513,7 +513,7 @@ impl Schema {
                     .collect::<Vec<&Directive>>()
                     .is_empty()
                 {
-                    Some(SchemaValidationError::ReservedTypeDirectivesInvalid)
+                    Some(SchemaValidationError::InvalidSchemaTypeDirectives)
                 } else {
                     None
                 }
@@ -775,7 +775,7 @@ impl Schema {
             field_name: &str,
             reason: &str,
         ) -> SchemaValidationError {
-            SchemaValidationError::DerivedFromInvalid(
+            SchemaValidationError::InvalidDerivedFrom(
                 object_type.name.to_owned(),
                 field_name.to_owned(),
                 reason.to_owned(),
@@ -932,7 +932,7 @@ impl Schema {
             }
         }
         if !missing_fields.is_empty() {
-            Err(SchemaValidationError::CannotImplement(
+            Err(SchemaValidationError::InterfaceFieldsMissing(
                 object.name.clone(),
                 interface.name.clone(),
                 Strings(missing_fields),
@@ -960,7 +960,7 @@ fn non_existing_interface() {
         .unwrap();
     assert_eq!(
         error,
-        SchemaValidationError::UndefinedInterface("Bar".to_owned())
+        SchemaValidationError::InterfaceUndefined("Bar".to_owned())
     );
 }
 
@@ -1007,7 +1007,7 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
         let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
         match schema.validate_derived_from() {
             Err(ref e) => match e {
-                SchemaValidationError::DerivedFromInvalid(_, _, msg) => assert_eq!(errmsg, msg),
+                SchemaValidationError::InvalidDerivedFrom(_, _, msg) => assert_eq!(errmsg, msg),
                 _ => panic!("expected variant SchemaValidationError::DerivedFromInvalid"),
             },
             Ok(_) => {
@@ -1058,7 +1058,7 @@ type _Schema_ { id: ID! }";
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
     match schema.validate_reserved_type_has_no_fields() {
-        Err(e) => assert_eq!(e, SchemaValidationError::ReservedTypeFieldsInvalid),
+        Err(e) => assert_eq!(e, SchemaValidationError::SchemaTypeWithFields),
         Ok(_) => panic!(
             "Expected validation for `{}` to fail due to fields defined on the reserved type",
             ROOT_SCHEMA,
@@ -1074,7 +1074,7 @@ type _Schema_ @illegal";
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
     match schema.validate_only_import_directives_on_reserved_type() {
-        Err(e) => assert_eq!(e, SchemaValidationError::ReservedTypeDirectivesInvalid),
+        Err(e) => assert_eq!(e, SchemaValidationError::InvalidSchemaTypeDirectives),
         Ok(_) => panic!(
             "Expected validation for `{}` to fail due to extra imports defined on the reserved type",
             ROOT_SCHEMA,
