@@ -13,7 +13,7 @@ use graphql_parser::{
 };
 use serde::{Deserialize, Serialize};
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -60,14 +60,14 @@ pub enum SchemaValidationError {
     #[fail(display = "The _Schema_ type only allows @import directives")]
     InvalidSchemaTypeDirectives,
     #[fail(
-        display = "@imports directives must be defined in one of the following forms: @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ name: 'org/subgraph'}}) @imports(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})"
+        display = "@import directives must have the form @import(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ name: 'org/subgraph'}}) or @import(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})"
     )]
     ImportDirectiveInvalid,
     #[fail(
-        display = "GraphQL type `{}` has field `{}` with type `{}` which is not defined or imported",
+        display = "Type `{}`, field `{}`, type `{}` is neither defined or imported",
         _0, _1, _2
     )]
-    GraphQLTypeFieldInvalid(String, String, String), // (type_name, field_name, field_type)
+    FieldTypeUnknown(String, String, String), // (type_name, field_name, field_type)
     #[fail(
         display = "Imported type `{}` does not exist in the `{}` schema",
         _0, _1
@@ -95,6 +95,7 @@ impl Hash for ImportedType {
             Self::Name(name) => name.hash(state),
             Self::NameAs(name, az) => {
                 name.hash(state);
+                String::from(" as ").hash(state);
                 az.hash(state);
             }
         };
@@ -190,7 +191,7 @@ impl Schema {
         Vec<SchemaImportError>,
     ) {
         let mut schemas = HashMap::new();
-        let mut visit_log = HashMap::new();
+        let mut visit_log = HashSet::new();
         let import_errors = self.resolve_import_graph(store, &mut schemas, &mut visit_log);
         (schemas, import_errors)
     }
@@ -199,7 +200,7 @@ impl Schema {
         &self,
         store: Arc<S>,
         schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
-        visit_log: &mut HashMap<SubgraphDeploymentId, Arc<Schema>>,
+        visit_log: &mut HashSet<SubgraphDeploymentId>,
     ) -> Vec<SchemaImportError> {
         // Use the visit log to detect cycles in the import graph
         self.imported_schemas()
@@ -209,8 +210,8 @@ impl Schema {
                     Ok((schema, subgraph_id)) => {
                         schemas.insert(schema_ref, schema.clone());
                         // If this node in the graph has already been visited stop traversing
-                        if !visit_log.contains_key(&subgraph_id) {
-                            visit_log.insert(subgraph_id, schema.clone());
+                        if !visit_log.contains(&subgraph_id) {
+                            visit_log.insert(subgraph_id);
                             errors.extend(schema.resolve_import_graph(
                                 store.clone(),
                                 schemas,
@@ -734,7 +735,7 @@ impl Schema {
                                 })
                                 .map_or(Err(()), |_| Ok(()))
                         }) {
-                        Err(_) => errors.push(SchemaValidationError::GraphQLTypeFieldInvalid(
+                        Err(_) => errors.push(SchemaValidationError::FieldTypeUnknown(
                             type_name.to_string(),
                             field.name.to_string(),
                             base.to_string(),
