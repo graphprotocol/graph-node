@@ -1,5 +1,5 @@
 use crate::components::store::{Store, SubgraphDeploymentStore};
-use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt, TypeExt};
+use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, TypeExt};
 use crate::data::graphql::scalar::BuiltInScalarType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
