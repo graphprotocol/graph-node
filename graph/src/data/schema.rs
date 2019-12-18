@@ -34,10 +34,10 @@ impl fmt::Display for Strings {
 
 #[derive(Debug, Fail, PartialEq, Eq)]
 pub enum SchemaValidationError {
-    #[fail(display = "Interface {} not defined", _0)]
+    #[fail(display = "Interface `{}` not defined", _0)]
     UndefinedInterface(String),
 
-    #[fail(display = "@entity directive missing on the following type: {}", _0)]
+    #[fail(display = "@entity directive missing on the following type: `{}`", _0)]
     EntityDirectivesMissing(Strings),
 
     #[fail(
