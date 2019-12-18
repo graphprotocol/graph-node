@@ -470,15 +470,15 @@ impl Schema {
         self.validate_derived_from()
             .unwrap_or_else(|err| errors.push(err));
         self.validate_fields()
-            .unwrap_or_else(|mut err| errors.append(&mut err));
-        self.validate_reserved_type_has_no_fields()
+            .unwrap_or_else(|mut errs| errors.append(&mut errs));
+        self.validate_schema_type_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
-        self.validate_only_import_directives_on_reserved_type()
+        self.validate_only_import_directives_on_schema_type()
             .unwrap_or_else(|err| errors.push(err));
         self.validate_import_directives()
-            .unwrap_or_else(|mut err| errors.append(&mut err));
+            .unwrap_or_else(|mut errs| errors.append(&mut errs));
         self.validate_imported_types(schemas)
-            .unwrap_or_else(|errs| errors.extend(errs));
+            .unwrap_or_else(|mut errs| errors.append(&mut errs));
         if errors.is_empty() {
             Ok(())
         } else {
@@ -486,7 +486,7 @@ impl Schema {
         }
     }
 
-    fn validate_reserved_type_has_no_fields(&self) -> Result<(), SchemaValidationError> {
+    fn validate_schema_type_has_no_fields(&self) -> Result<(), SchemaValidationError> {
         match self
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
@@ -501,9 +501,7 @@ impl Schema {
         }
     }
 
-    fn validate_only_import_directives_on_reserved_type(
-        &self,
-    ) -> Result<(), SchemaValidationError> {
+    fn validate_only_import_directives_on_schema_type(&self) -> Result<(), SchemaValidationError> {
         match self
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
@@ -845,7 +843,7 @@ impl Schema {
                     return Err(invalid(
                         object_type,
                         &field.name,
-                        "the value of the @derivedFrom `field` argument must be a string",
+                        "the @derivedFrom `field` argument must be a string",
                     ))
                 }
             };
