@@ -1,10 +1,10 @@
 mod serialization;
 
-/// Utilities for validating GraphQL schemas.
-pub mod traversal;
-
 /// Types to represent built in scalar values in GraphQL documents
 pub mod scalar;
+
+/// Traits to navigate the GraphQL AST
+pub mod ext;
 
 /// Utilities for working with GraphQL values.
 mod values;

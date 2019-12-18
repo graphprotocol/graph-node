@@ -1,6 +1,6 @@
 use crate::components::store::{Store, SubgraphDeploymentStore};
+use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt, TypeExt};
 use crate::data::graphql::scalar::BuiltInScalarType;
-use crate::data::graphql::traversal;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
 
@@ -246,7 +246,7 @@ impl Schema {
             }));
         let mut interfaces_for_type = BTreeMap::<_, Vec<_>>::new();
 
-        for object_type in traversal::get_object_type_definitions(&document) {
+        for object_type in document.get_object_type_definitions() {
             for implemented_interface in object_type.implements_interfaces.clone() {
                 let interface_type = document
                     .definitions
@@ -659,8 +659,7 @@ impl Schema {
                     schemas
                         .get(schema_ref)
                         .and_then(|schema| {
-                            let native_types =
-                                traversal::get_object_type_definitions(&schema.document);
+                            let native_types = schema.document.get_object_type_definitions();
                             let imported_types = schema.imported_types();
 
                             // Ensure that the imported type is either native to
@@ -708,7 +707,7 @@ impl Schema {
     }
 
     fn validate_fields(&self) -> Result<(), Vec<SchemaValidationError>> {
-        let native_types = traversal::get_object_and_interface_type_fields(&self.document);
+        let native_types = self.document.get_object_and_interface_type_fields();
         let imported_types = self.imported_types();
 
         // For each field in the root_schema, verify that the field
@@ -717,7 +716,7 @@ impl Schema {
             .iter()
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
-                    let base = traversal::get_base_type(&field.field_type);
+                    let base = field.field_type.get_base_type();
                     match BuiltInScalarType::try_from(base.as_ref())
                         .map(|_| ())
                         .or_else(|_| match native_types.contains_key(base) {
@@ -753,9 +752,11 @@ impl Schema {
     }
 
     fn validate_schema_types(&self) -> Result<(), SchemaValidationError> {
-        let types_without_entity_directive = traversal::get_object_type_definitions(&self.document)
+        let types_without_entity_directive = self
+            .document
+            .get_object_type_definitions()
             .iter()
-            .filter(|t| traversal::get_object_type_directive(t, String::from("entity")).is_none())
+            .filter(|t| t.find_directive(String::from("entity")).is_none())
             .map(|t| t.name.to_owned())
             .collect::<Vec<_>>();
         if types_without_entity_directive.is_empty() {
@@ -781,9 +782,8 @@ impl Schema {
             )
         }
 
-        let type_definitions = traversal::get_object_type_definitions(&self.document);
-        let object_and_interface_type_fields =
-            traversal::get_object_and_interface_type_fields(&self.document);
+        let type_definitions = self.document.get_object_type_definitions();
+        let object_and_interface_type_fields = self.document.get_object_and_interface_type_fields();
 
         // Iterate over all derived fields in all entity types; include the
         // interface types that the entity with the `@derivedFrom` implements
@@ -798,33 +798,36 @@ impl Schema {
                     .map(move |field| (object_type, field))
             })
             .filter_map(|(object_type, field)| {
-                traversal::find_derived_from(field).map(|directive| {
-                    (
-                        object_type,
-                        object_type
-                            .implements_interfaces
-                            .iter()
-                            .filter(|iface| {
-                                // Any interface that has `field` can be used
-                                // as the type of the field
-                                traversal::find_interface(&self.document, iface)
-                                    .map(|iface| {
-                                        iface
-                                            .fields
-                                            .iter()
-                                            .any(|ifield| ifield.name.eq(&field.name))
-                                    })
-                                    .unwrap_or(false)
-                            })
-                            .collect::<Vec<_>>(),
-                        field,
-                        directive
-                            .arguments
-                            .iter()
-                            .find(|(name, _)| name.eq("field"))
-                            .map(|(_, value)| value),
-                    )
-                })
+                field
+                    .find_directive(String::from("derivedFrom"))
+                    .map(|directive| {
+                        (
+                            object_type,
+                            object_type
+                                .implements_interfaces
+                                .iter()
+                                .filter(|iface| {
+                                    // Any interface that has `field` can be used
+                                    // as the type of the field
+                                    self.document
+                                        .find_interface(iface)
+                                        .map(|iface| {
+                                            iface
+                                                .fields
+                                                .iter()
+                                                .any(|ifield| ifield.name.eq(&field.name))
+                                        })
+                                        .unwrap_or(false)
+                                })
+                                .collect::<Vec<_>>(),
+                            field,
+                            directive
+                                .arguments
+                                .iter()
+                                .find(|(name, _)| name.eq("field"))
+                                .map(|(_, value)| value),
+                        )
+                    })
             })
         {
             // Turn `target_field` into the string name of the field
@@ -847,7 +850,7 @@ impl Schema {
             };
 
             // Check that the type we are deriving from exists
-            let target_type_name = traversal::get_base_type(&field.field_type);
+            let target_type_name = field.field_type.get_base_type();
             let target_fields = object_and_interface_type_fields
                 .get(target_type_name)
                 .ok_or_else(|| {
@@ -875,7 +878,7 @@ impl Schema {
             // exception, we allow deriving from the `id` of another type.
             // For that, we will wind up comparing the `id`s of the two types
             // when we query, and just assume that that's ok.
-            let target_field_type = traversal::get_base_type(&target_field.field_type);
+            let target_field_type = target_field.field_type.get_base_type();
             if target_field_type != &object_type.name
                 && target_field_type != "ID"
                 && !interface_types
@@ -940,7 +943,8 @@ impl Schema {
     }
 
     fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
-        traversal::get_object_type_definitions(&self.document)
+        self.document
+            .get_object_type_definitions()
             .into_iter()
             .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
     }
