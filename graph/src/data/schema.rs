@@ -352,19 +352,10 @@ impl Schema {
                     .filter_map(|type_import| match type_import {
                         Value::String(type_name) => Some(ImportedType::Name(type_name.to_string())),
                         Value::Object(type_name_as) => {
-                            let name =
-                                type_name_as
-                                    .get("name")
-                                    .and_then(|name_value| match name_value {
-                                        Value::String(name) => Some(name.to_string()),
-                                        _ => None,
-                                    });
-                            let az = type_name_as.get("as").and_then(|as_value| match as_value {
-                                Value::String(az) => Some(az.to_string()),
-                                _ => None,
-                            });
-                            match (name, az) {
-                                (Some(name), Some(az)) => Some(ImportedType::NameAs(name, az)),
+                            match (type_name_as.get("name"), type_name_as.get("as")) {
+                                (Some(name), Some(az)) => {
+                                    Some(ImportedType::NameAs(name.to_string(), az.to_string()))
+                                }
                                 _ => None,
                             }
                         }
