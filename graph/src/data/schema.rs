@@ -376,28 +376,20 @@ impl Schema {
         }
         match value {
             Value::Object(map) => {
-                let id = map
+                let id = match map
                     .get("id")
-                    .into_iter()
-                    .filter_map(|id| match id {
-                        Value::String(id) => match SubgraphDeploymentId::new(id) {
-                            Ok(id) => Some(SchemaReference::ById(id)),
-                            _ => None,
-                        },
-                        _ => None,
-                    })
-                    .next();
-                let name = map
+                    .map(|id| SubgraphDeploymentId::new(id.to_string()))
+                {
+                    Some(Ok(id)) => Some(SchemaReference::ById(id)),
+                    _ => None,
+                };
+                let name = match map
                     .get("name")
-                    .into_iter()
-                    .filter_map(|name| match name {
-                        Value::String(name) => match SubgraphName::new(name) {
-                            Ok(name) => Some(SchemaReference::ByName(name)),
-                            _ => None,
-                        },
-                        _ => None,
-                    })
-                    .next();
+                    .map(|name| SubgraphName::new(name.to_string()))
+                {
+                    Some(Ok(name)) => Some(SchemaReference::ByName(name)),
+                    _ => None,
+                };
                 id.or(name)
             }
             _ => None,
