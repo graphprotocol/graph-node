@@ -475,8 +475,7 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         self.validate_only_import_directives_on_schema_type()
             .unwrap_or_else(|err| errors.push(err));
-        self.validate_import_directives()
-            .unwrap_or_else(|mut errs| errors.append(&mut errs));
+        errors.append(&mut self.validate_import_directives());
         self.validate_imported_types(schemas)
             .unwrap_or_else(|mut errs| errors.append(&mut errs));
         if errors.is_empty() {
@@ -522,127 +521,118 @@ impl Schema {
         }
     }
 
-    fn import_directive_has_valid_types(directive: &Directive) -> bool {
+    fn validate_import_type(typ: &Value) -> Result<(), ()> {
+        match typ {
+            Value::String(_) => Ok(()),
+            Value::Object(typ) => match (typ.get("name"), typ.get("as")) {
+                (Some(Value::String(_)), Some(Value::String(_))) => Ok(()),
+                _ => Err(()),
+            },
+            _ => Err(()),
+        }
+    }
+
+    fn is_import_directive_argument_types_valid(types: &Value) -> bool {
+        // All of the elements in the `types` field are valid: either a string or an object with keys `name` and `as` which are strings'
+        if let Value::List(types) = types {
+            types
+                .iter()
+                .try_for_each(Self::validate_import_type)
+                .err()
+                .is_none()
+        } else {
+            false
+        }
+    }
+
+    fn is_import_directive_argument_from_valid(from: &Value) -> bool {
+        if let Value::Object(from) = from {
+            let has_id = match from.get("id") {
+                Some(Value::String(_)) => true,
+                _ => false,
+            };
+            let has_name = match from.get("name") {
+                Some(Value::String(_)) => true,
+                _ => false,
+            };
+            has_id ^ has_name
+        } else {
+            false
+        }
+    }
+
+    fn validate_import_directive_arguments(directive: &Directive) -> Option<SchemaValidationError> {
+        let from_is_valid = directive
+            .arguments
+            .iter()
+            .find(|(name, _)| name.eq("from"))
+            .map_or(false, |(_, from)| {
+                Self::is_import_directive_argument_from_valid(from)
+            });
+        let types_are_valid = directive
+            .arguments
+            .iter()
+            .find(|(name, _)| name.eq("types"))
+            .map_or(false, |(_, types)| {
+                Self::is_import_directive_argument_types_valid(types)
+            });
+        if from_is_valid && types_are_valid {
+            None
+        } else {
+            Some(SchemaValidationError::ImportDirectiveInvalid)
+        }
+    }
+
+    fn validate_import_directive_schema_reference_parses(
+        directive: &Directive,
+    ) -> Option<SchemaValidationError> {
         directive
             .arguments
             .iter()
-            .filter(|(name, _)| name.eq("types"))
-            .find(|(_, value)| {
-                match value {
-                    Value::List(values) => {
-                        // Each value must be a String or an Object with String:String key value
-                        // pairs for `name` and `as`
-                        // Search for an invalid type in the list of imported types
-                        values
-                            .iter()
-                            .find(|value| match value {
-                                Value::String(_) => false,
-                                Value::Object(obj) => {
-                                    let has_invalid_name =
-                                        obj.get("name").map_or(true, |value| match value {
-                                            Value::String(_) => false,
-                                            _ => true,
-                                        });
-                                    let has_invalid_as =
-                                        obj.get("as").map_or(true, |value| match value {
-                                            Value::String(_) => false,
-                                            _ => true,
-                                        });
-                                    has_invalid_name || has_invalid_as
-                                }
-                                _ => true,
-                            })
-                            .map_or(true, |_| false)
-                    }
-                    _ => return false,
+            .find(|(name, _)| name.eq("from"))
+            .and_then(|(_, from)| match from {
+                Value::Object(from) => {
+                    let id_parse_error = match from.get("id") {
+                        Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
+                            Err(_) => {
+                                Some(SchemaValidationError::ImportedSubgraphIdInvalid(id.clone()))
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let name_parse_error = match from.get("name") {
+                        Some(Value::String(name)) => match SubgraphName::new(name) {
+                            Err(_) => Some(SchemaValidationError::ImportedSubgraphNameInvalid(
+                                name.clone(),
+                            )),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    id_parse_error.or(name_parse_error)
                 }
+                _ => None,
             })
-            .map_or(false, |_| true)
     }
 
-    fn import_directive_has_valid_from(directive: &Directive) -> bool {
-        directive
-            .arguments
-            .iter()
-            // Look for a valid `from` argument
-            .find(|(name, value)| {
-                if !name.eq("from") {
-                    return false;
-                }
-                match value {
-                    Value::Object(obj) => {
-                        let has_id = obj.get("id").map_or(false, |value| match value {
-                            Value::String(_) => true,
-                            _ => false,
-                        });
-                        let has_name = obj.get("name").map_or(false, |value| match value {
-                            Value::String(_) => true,
-                            _ => false,
-                        });
-                        has_id ^ has_name
-                    }
-                    _ => return false,
-                }
-            })
-            .map_or(false, |_| true)
-    }
-
-    fn validate_import_directives(&self) -> Result<(), Vec<SchemaValidationError>> {
-        let errors = self
-            .subgraph_schema_object_type()
+    fn validate_import_directives(&self) -> Vec<SchemaValidationError> {
+        self.subgraph_schema_object_type()
             .map_or(vec![], |subgraph_schema_type| {
                 subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| directive.name.eq("import"))
-                    .fold(vec![], |mut errors, imports| {
-                        // Check for badly formed import directives
-                        let has_valid_types = Self::import_directive_has_valid_types(imports);
-                        let has_valid_from = Self::import_directive_has_valid_from(imports);
-                        if !has_valid_types || !has_valid_from {
-                            errors.push(SchemaValidationError::ImportDirectiveInvalid)
-                        }
-                        // Check for a badly formed subgraph id or name
-                        imports
-                            .arguments
-                            .iter()
-                            .find(|(name, _)| name.eq("from"))
-                            .iter()
-                            .for_each(|(_, from)| {
-                                if let Value::Object(obj) = from {
-                                    obj.get("id").iter().for_each(|id| {
-                                        if let Value::String(i) = id {
-                                            if let Err(_) = SubgraphDeploymentId::new(i) {
-                                                errors.push(
-                                                    SchemaValidationError::ImportedSubgraphIdInvalid(
-                                                        i.clone(),
-                                                    ),
-                                                );
-                                            }
-                                        }
-                                    });
-                                    obj.get("name").iter().for_each(|name| {
-                                        if let Value::String(n) = name {
-                                            if let Err(_) = SubgraphName::new(n) {
-                                                errors.push(
-                                                    SchemaValidationError::ImportedSubgraphNameInvalid(
-                                                        n.clone(),
-                                                    ),
-                                                );
-                                            }
-                                        }
-                                    })
-                                }
-                            });
-
+                    .filter(|directives| directives.name.eq("import"))
+                    .fold(vec![], |mut errors, import| {
+                        Self::validate_import_directive_arguments(import)
+                            .into_iter()
+                            .for_each(|err| errors.push(err));
+                        Self::validate_import_directive_schema_reference_parses(import)
+                            .into_iter()
+                            .for_each(|err| errors.push(err));
                         errors
                     })
-            });
-
-        match errors.is_empty() {
-            true => Ok(()),
-            false => Err(errors),
-        }
+            })
     }
 
     fn validate_imported_types(
