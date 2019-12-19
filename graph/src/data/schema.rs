@@ -452,15 +452,13 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         self.validate_derived_from()
             .unwrap_or_else(|err| errors.push(err));
-        self.validate_fields()
-            .unwrap_or_else(|mut errs| errors.append(&mut errs));
         self.validate_schema_type_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
         self.validate_only_import_directives_on_schema_type()
             .unwrap_or_else(|err| errors.push(err));
+        errors.append(&mut self.validate_fields());
         errors.append(&mut self.validate_import_directives());
-        self.validate_imported_types(schemas)
-            .unwrap_or_else(|mut errs| errors.append(&mut errs));
+        errors.append(&mut self.validate_imported_types(schemas));
         if errors.is_empty() {
             Ok(())
         } else {
@@ -621,60 +619,53 @@ impl Schema {
     fn validate_imported_types(
         &self,
         schemas: &HashMap<SchemaReference, Arc<Schema>>,
-    ) -> Result<(), Vec<SchemaValidationError>> {
-        let errors =
-            self.imported_types()
-                .iter()
-                .fold(vec![], |mut errors, (imported_type, schema_ref)| {
-                    schemas
-                        .get(schema_ref)
-                        .and_then(|schema| {
-                            let native_types = schema.document.get_object_type_definitions();
-                            let imported_types = schema.imported_types();
+    ) -> Vec<SchemaValidationError> {
+        self.imported_types()
+            .iter()
+            .fold(vec![], |mut errors, (imported_type, schema_ref)| {
+                schemas
+                    .get(schema_ref)
+                    .and_then(|schema| {
+                        let native_types = schema.document.get_object_type_definitions();
+                        let imported_types = schema.imported_types();
 
-                            // Ensure that the imported type is either native to
-                            // the respective schema or is itself imported
-                            // If the imported type is itself imported, do not
-                            // recursively check the schema
-                            let schema_handle = match schema_ref {
-                                SchemaReference::ById(id) => id.to_string(),
-                                SchemaReference::ByName(name) => name.to_string(),
-                            };
-                            let name = match imported_type {
-                                ImportedType::Name(name) => name,
-                                ImportedType::NameAs(name, _) => name,
-                            };
+                        // Ensure that the imported type is either native to
+                        // the respective schema or is itself imported
+                        // If the imported type is itself imported, do not
+                        // recursively check the schema
+                        let schema_handle = match schema_ref {
+                            SchemaReference::ById(id) => id.to_string(),
+                            SchemaReference::ByName(name) => name.to_string(),
+                        };
+                        let name = match imported_type {
+                            ImportedType::Name(name) => name,
+                            ImportedType::NameAs(name, _) => name,
+                        };
 
-                            let is_native = native_types.iter().any(|object| object.name.eq(name));
-                            let is_imported =
-                                imported_types.iter().any(|(import, _)| match import {
-                                    ImportedType::Name(n) => name.eq(n),
-                                    ImportedType::NameAs(_, az) => name.eq(az),
-                                });
-                            if !is_native || !is_imported {
-                                Some(SchemaValidationError::ImportedTypeUndefined(
-                                    name.to_string(),
-                                    schema_handle.to_string(),
-                                ))
-                            } else {
-                                None
-                            }
-                        })
-                        .into_iter()
-                        .for_each(|err| errors.push(err));
-                    errors
-                });
-
-        match errors.is_empty() {
-            true => Ok(()),
-            false => Err(errors),
-        }
+                        let is_native = native_types.iter().any(|object| object.name.eq(name));
+                        let is_imported = imported_types.iter().any(|(import, _)| match import {
+                            ImportedType::Name(n) => name.eq(n),
+                            ImportedType::NameAs(_, az) => name.eq(az),
+                        });
+                        if !is_native || !is_imported {
+                            Some(SchemaValidationError::ImportedTypeUndefined(
+                                name.to_string(),
+                                schema_handle.to_string(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .into_iter()
+                    .for_each(|err| errors.push(err));
+                errors
+            })
     }
 
-    fn validate_fields(&self) -> Result<(), Vec<SchemaValidationError>> {
+    fn validate_fields(&self) -> Vec<SchemaValidationError> {
         let native_types = self.document.get_object_and_interface_type_fields();
         let imported_types = self.imported_types();
-        let errors = native_types
+        native_types
             .iter()
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
@@ -702,11 +693,7 @@ impl Schema {
                     ));
                     errors
                 })
-            });
-        match errors.is_empty() {
-            false => Err(errors),
-            true => Ok(()),
-        }
+            })
     }
 
     fn validate_schema_types(&self) -> Result<(), SchemaValidationError> {
