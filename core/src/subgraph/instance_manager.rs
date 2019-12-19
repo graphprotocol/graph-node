@@ -1,5 +1,6 @@
 use futures::future::{loop_fn, Loop};
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::Instant;
@@ -10,8 +11,17 @@ use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
+use graph::util::frecency_cache::FrecencyCache;
 
 use super::SubgraphInstance;
+
+lazy_static! {
+    pub static ref ENTITY_CACHE_MAX_SIZE: u64 = 1000
+        * std::env::var("GRAPH_ENTITY_CACHE_MAX_SIZE")
+            .unwrap_or("10000".into())
+            .parse::<u64>()
+            .expect("invalid GRAPH_ENTITY_CACHE_MAX_SIZE");
+}
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
 
@@ -34,6 +44,7 @@ struct IndexingState<T: RuntimeHostBuilder> {
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
     restarts: u64,
+    entity_frecency_cache: FrecencyCache<EntityKey, Option<Entity>>,
 }
 
 struct IndexingContext<B, T: RuntimeHostBuilder, S> {
@@ -389,6 +400,7 @@ impl SubgraphInstanceManager {
                 call_filter,
                 block_filter,
                 restarts: 0,
+                entity_frecency_cache: FrecencyCache::new(),
             },
             subgraph_metrics,
             host_metrics,
@@ -586,7 +598,7 @@ where
 fn process_block<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
     eth_adapter: Arc<dyn EthereumAdapter>,
-    ctx: IndexingContext<B, T, S>,
+    mut ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
 ) -> impl Future<Item = (IndexingContext<B, T, S>, bool), Error = CancelableError<Error>>
@@ -625,8 +637,8 @@ where
     // collected previously to every new event being processed
     process_triggers(
         logger.clone(),
+        BlockState::with_cache(std::mem::take(&mut ctx.state.entity_frecency_cache)),
         ctx,
-        BlockState::default(),
         light_block.clone(),
         triggers,
     )
@@ -729,14 +741,14 @@ where
         .from_err()
     })
     // Apply entity operations and advance the stream
-    .and_then(move |(ctx, block_state, needs_restart)| {
+    .and_then(move |(mut ctx, block_state, needs_restart)| {
         // Avoid writing to store if block stream has been canceled
         if block_stream_cancel_handle.is_canceled() {
             return Err(CancelableError::Cancel);
         }
 
         let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
-        let mods = block_state
+        let (mods, mut cache) = block_state
             .entity_cache
             .as_modifications(ctx.inputs.store.as_ref())
             .map_err(|e| {
@@ -745,6 +757,9 @@ where
                     e
                 ))
             })?;
+        cache.evict(*ENTITY_CACHE_MAX_SIZE);
+        assert!(ctx.state.entity_frecency_cache.is_empty());
+        ctx.state.entity_frecency_cache = cache;
         section.end();
 
         if !mods.is_empty() {
@@ -780,8 +795,8 @@ where
 
 fn process_triggers<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
-    ctx: IndexingContext<B, T, S>,
     block_state: BlockState,
+    ctx: IndexingContext<B, T, S>,
     block: Arc<LightEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
 ) -> impl Future<Item = (IndexingContext<B, T, S>, BlockState), Error = CancelableError<Error>>

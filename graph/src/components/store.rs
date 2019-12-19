@@ -17,6 +17,7 @@ use web3::types::H256;
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
+use crate::util::frecency_cache::FrecencyCache;
 
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
@@ -1323,16 +1324,20 @@ impl EntityModification {
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
-    current: HashMap<EntityKey, Option<Entity>>,
+    current: FrecencyCache<EntityKey, Option<Entity>>,
     /// The accumulated changes to an entity. An entry of `None`
     /// means that the entity should be deleted
     updates: HashMap<EntityKey, Option<Entity>>,
 }
 
 impl EntityCache {
-    pub fn new() -> EntityCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_current(current: FrecencyCache<EntityKey, Option<Entity>>) -> EntityCache {
         EntityCache {
-            current: HashMap::new(),
+            current,
             updates: HashMap::new(),
         }
     }
@@ -1410,11 +1415,19 @@ impl EntityCache {
 
     /// Return the changes that have been made via `set` and `remove` as
     /// `EntityModification`, making sure to only produce one when a change
-    /// to the current state is actually needed
+    /// to the current state is actually needed.
+    ///
+    /// Also returns the updated `FrecencyCache`.
     pub fn as_modifications(
         mut self,
         store: &(impl Store + ?Sized),
-    ) -> Result<Vec<EntityModification>, QueryExecutionError> {
+    ) -> Result<
+        (
+            Vec<EntityModification>,
+            FrecencyCache<EntityKey, Option<Entity>>,
+        ),
+        QueryExecutionError,
+    > {
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
         let missing = self
@@ -1455,12 +1468,14 @@ impl EntityCache {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
                     data.merge_remove_null_fields(updates);
+                    self.current.insert(key.clone(), Some(data.clone()));
                     Some(Insert { key, data })
                 }
                 // Entity may have been changed
                 (Some(current), Some(updates)) => {
                     let mut data = current.clone();
                     data.merge_remove_null_fields(updates);
+                    self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
                         Some(Overwrite { key, data })
                     } else {
@@ -1468,7 +1483,10 @@ impl EntityCache {
                     }
                 }
                 // Existing entity was deleted
-                (Some(_), None) => Some(Remove { key }),
+                (Some(_), None) => {
+                    self.current.insert(key.clone(), None);
+                    Some(Remove { key })
+                }
                 // Entity was deleted, but it doesn't exist in the store
                 (None, None) => None,
             };
@@ -1476,6 +1494,6 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        Ok(mods)
+        Ok((mods, self.current))
     }
 }

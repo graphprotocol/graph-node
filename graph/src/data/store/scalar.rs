@@ -116,6 +116,10 @@ impl BigInt {
 
         BigInt(self.0.pow(&exponent))
     }
+
+    pub fn bits(&self) -> u64 {
+        self.0.bits() as u64
+    }
 }
 
 impl Display for BigInt {

@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use crate::util::frecency_cache::FrecencyCache;
 use web3::types::Log;
 
 #[derive(Clone, Debug)]
@@ -12,6 +13,15 @@ pub struct DataSourceTemplateInfo {
 pub struct BlockState {
     pub entity_cache: EntityCache,
     pub created_data_sources: Vec<DataSourceTemplateInfo>,
+}
+
+impl BlockState {
+    pub fn with_cache(frecency_cache: FrecencyCache<EntityKey, Option<Entity>>) -> Self {
+        BlockState {
+            entity_cache: EntityCache::with_current(frecency_cache),
+            created_data_sources: Vec::new(),
+        }
+    }
 }
 
 /// Represents a loaded instance of a subgraph.
