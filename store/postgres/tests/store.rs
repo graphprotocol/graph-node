@@ -1143,7 +1143,7 @@ fn subscribe_and_consume(
     subgraph: &SubgraphDeploymentId,
     entity_type: &str,
 ) -> StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send> {
-    const MARKER: &str = "Marker";
+    const MARKER: &str = "Subgraph";
     const MARKER_ID: &str = "fake marker";
 
     let subscription = store.subscribe(vec![

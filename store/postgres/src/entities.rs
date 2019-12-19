@@ -521,7 +521,9 @@ impl Connection {
                 Some(history_event) => {
                     layout.update(&self.conn, key, entity, block_number(&history_event))
                 }
-                None => layout.update_unversioned(&self.conn, key, &entity),
+                None => layout
+                    .update_unversioned(&self.conn, key, &entity)
+                    .map(|_| ()),
             },
         }
     }
@@ -535,7 +537,7 @@ impl Connection {
     ) -> Result<usize, StoreError> {
         match &*self.metadata {
             Storage::Json(json) => json.update_metadata(&self.conn, key, entity),
-            Storage::Relational(_) => unreachable!("relational storeage is not used for metadata"),
+            Storage::Relational(layout) => layout.update_unversioned(&self.conn, key, entity),
         }
     }
 
@@ -544,14 +546,10 @@ impl Connection {
         entity: &String,
         id: &String,
     ) -> Result<Option<Entity>, StoreError> {
-        use self::subgraphs::entities;
-        entities::dsl::entities
-            .filter(entities::entity.eq(entity).and(entities::id.eq(id)))
-            .select(entities::data)
-            .first::<serde_json::Value>(&self.conn)
-            .optional()?
-            .map(|json| entity_from_json(json, entity))
-            .transpose()
+        match &*self.metadata {
+            Storage::Json(json) => json.find(&self.conn, entity, id),
+            Storage::Relational(layout) => layout.find(&self.conn, entity, id, BLOCK_NUMBER_MAX),
+        }
     }
 
     pub(crate) fn delete(
@@ -598,16 +596,19 @@ impl Connection {
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        match &*self.metadata {
+        let (meta_event, _) = match &*self.metadata {
             Storage::Json(json) => {
-                let (meta_event, _) =
-                    json.revert_block_meta(&self.conn, subgraph, block_ptr.hash_hex())?;
-                Ok((event.extend(meta_event), count))
+                json.revert_block_meta(&self.conn, subgraph, block_ptr.hash_hex())
             }
-            Storage::Relational(_) => unreachable!(
-                "Storing the subgraph of subgraphs in a relational schema is not supported"
+            Storage::Relational(relational) => relational.revert_block(
+                &self.conn,
+                block_ptr
+                    .number
+                    .try_into()
+                    .expect("block numbers fit into an i32"),
             ),
-        }
+        }?;
+        Ok((event.extend(meta_event), count))
     }
 
     pub(crate) fn update_entity_count(&self, count: i32) -> Result<(), StoreError> {
@@ -1433,31 +1434,26 @@ impl Storage {
         };
         // The big complication in this query is how to determine what the
         // new entityCount should be. We want to make sure that if the entityCount
-        // is NULL or the special value `00`, it gets recomputed. Using `00` here
+        // is NULL or the special value `-1`, it gets recomputed. Using `-1` here
         // makes it possible to manually set the `entityCount` to that value
         // to force a recount; setting it to `NULL` is not desirable since
         // `entityCount` on the GraphQL level is not nullable, and so setting
         // `entityCount` to `NULL` could cause errors at that layer; temporarily
-        // returning `0` is more palatable. To be exact, recounts have to be
+        // returning `-1` is more palatable. To be exact, recounts have to be
         // done here, from the subgraph writer.
         //
         // The first argument of `coalesce` will be `NULL` if the entity count
-        // is `NULL` or `00`, forcing `coalesce` to evaluate its second
+        // is `NULL` or `-1`, forcing `coalesce` to evaluate its second
         // argument, the query to count entities. In all other cases,
         // `coalesce` does not evaluate its second argument
-        let current_count = "(nullif(data->'entityCount'->>'data', '00'))::numeric";
         let query = format!(
             "
-            update subgraphs.entities
-            set data = data || (format('{{\"entityCount\":
-                                  {{ \"data\": \"%s\",
-                                    \"type\": \"BigInt\"}}}}',
-                                  coalesce({current_count} + $1,
-                                           ({count_query}))))::jsonb
-            where entity='SubgraphDeployment'
-              and id = $2
+            update subgraphs.subgraph_deployment
+               set entity_count =
+                     coalesce((nullif(entity_count, -1)) + $1,
+                              ({count_query}))
+             where id = $2
             ",
-            current_count = current_count,
             count_query = count_query
         );
         Ok(diesel::sql_query(query)

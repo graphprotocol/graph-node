@@ -477,11 +477,10 @@ impl Layout {
         conn: &PgConnection,
         key: &EntityKey,
         entity: &Entity,
-    ) -> Result<(), StoreError> {
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
         let query = UpdateQuery::new(table, key, entity)?;
-        query.execute(conn)?;
-        Ok(())
+        Ok(query.execute(conn)?)
     }
 
     pub fn delete(
