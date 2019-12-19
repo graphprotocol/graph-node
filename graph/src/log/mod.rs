@@ -169,7 +169,7 @@ impl HeaderSerializer {
         }
     }
 
-    pub fn finish(mut self) -> ((Option<String>, Vec<String>, Vec<(String, String)>)) {
+    pub fn finish(mut self) -> (Option<String>, Vec<String>, Vec<(String, String)>) {
         // Reverse components so the parent components come first
         self.components.reverse();
 
