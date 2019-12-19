@@ -662,17 +662,12 @@ impl Schema {
                                 ImportedType::NameAs(name, _) => name,
                             };
 
-                            let is_native = native_types
-                                .iter()
-                                .find(|object| object.name.eq(name))
-                                .map_or(false, |_| true);
-                            let is_imported = imported_types
-                                .iter()
-                                .find(|(import, _)| match import {
+                            let is_native = native_types.iter().any(|object| object.name.eq(name));
+                            let is_imported =
+                                imported_types.iter().any(|(import, _)| match import {
                                     ImportedType::Name(n) => name.eq(n),
                                     ImportedType::NameAs(_, az) => name.eq(az),
-                                })
-                                .map_or(false, |_| true);
+                                });
                             if !is_native || !is_imported {
                                 Some(SchemaValidationError::ImportedTypeUndefined(
                                     name.to_string(),
@@ -696,42 +691,35 @@ impl Schema {
     fn validate_fields(&self) -> Result<(), Vec<SchemaValidationError>> {
         let native_types = self.document.get_object_and_interface_type_fields();
         let imported_types = self.imported_types();
-
-        // For each field in the root_schema, verify that the field
-        // is either a: [BuiltInScalar, Native, Imported] type
         let errors = native_types
             .iter()
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
                     let base = field.field_type.get_base_type();
-                    match BuiltInScalarType::try_from(base.as_ref())
-                        .map(|_| ())
-                        .or_else(|_| match native_types.contains_key(base) {
-                            true => Ok(()),
-                            false => Err(()),
+                    if let Ok(_) = BuiltInScalarType::try_from(base.as_ref()) {
+                        return errors;
+                    }
+                    if native_types.contains_key(base) {
+                        return errors;
+                    }
+                    if imported_types
+                        .iter()
+                        .any(|(imported_type, _)| match imported_type {
+                            ImportedType::Name(name) if name.eq(base) => true,
+                            ImportedType::NameAs(_, az) if az.eq(base) => true,
+                            _ => false,
                         })
-                        .or_else(|_| {
-                            // Check imported types and the corresponding schema
-                            imported_types
-                                .iter()
-                                .find(|(imported_type, _)| match imported_type {
-                                    ImportedType::Name(name) if name.eq(base) => true,
-                                    ImportedType::NameAs(_, az) if az.eq(base) => true,
-                                    _ => false,
-                                })
-                                .map_or(Err(()), |_| Ok(()))
-                        }) {
-                        Err(_) => errors.push(SchemaValidationError::FieldTypeUnknown(
-                            type_name.to_string(),
-                            field.name.to_string(),
-                            base.to_string(),
-                        )),
-                        Ok(_) => (),
-                    };
+                    {
+                        return errors;
+                    }
+                    errors.push(SchemaValidationError::FieldTypeUnknown(
+                        type_name.to_string(),
+                        field.name.to_string(),
+                        base.to_string(),
+                    ));
                     errors
                 })
             });
-
         match errors.is_empty() {
             false => Err(errors),
             true => Ok(()),
