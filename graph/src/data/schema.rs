@@ -312,7 +312,7 @@ impl Schema {
                                 self.schema_reference_from_directive_argument(from).map_or(
                                     vec![],
                                     |schema_ref| {
-                                        self.imported_types_from_imports_directive(imports)
+                                        self.imported_types_from_import_directive(imports)
                                             .iter()
                                             .map(|imported_type| {
                                                 (imported_type.clone(), schema_ref.clone())
@@ -341,7 +341,7 @@ impl Schema {
         })
     }
 
-    fn imported_types_from_imports_directive(&self, imports: &Directive) -> Vec<ImportedType> {
+    fn imported_types_from_import_directive(&self, imports: &Directive) -> Vec<ImportedType> {
         imports
             .arguments
             .iter()
@@ -389,8 +389,8 @@ impl Schema {
                     .get("id")
                     .into_iter()
                     .filter_map(|id| match id {
-                        Value::String(i) => match SubgraphDeploymentId::new(i) {
-                            Ok(sid) => Some(SchemaReference::ById(sid)),
+                        Value::String(id) => match SubgraphDeploymentId::new(id) {
+                            Ok(id) => Some(SchemaReference::ById(id)),
                             _ => None,
                         },
                         _ => None,
@@ -400,8 +400,8 @@ impl Schema {
                     .get("name")
                     .into_iter()
                     .filter_map(|name| match name {
-                        Value::String(n) => match SubgraphName::new(n) {
-                            Ok(sn) => Some(SchemaReference::ByName(sn)),
+                        Value::String(name) => match SubgraphName::new(name) {
+                            Ok(name) => Some(SchemaReference::ByName(name)),
                             _ => None,
                         },
                         _ => None,
@@ -526,10 +526,8 @@ impl Schema {
         directive
             .arguments
             .iter()
-            .find(|(name, value)| {
-                if !name.eq("types") {
-                    return false;
-                }
+            .filter(|(name, _)| name.eq("types"))
+            .find(|(_, value)| {
                 match value {
                     Value::List(values) => {
                         // Each value must be a String or an Object with String:String key value
