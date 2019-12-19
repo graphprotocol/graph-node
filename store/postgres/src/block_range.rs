@@ -21,6 +21,16 @@ pub(crate) const BLOCK_RANGE_COLUMN: &str = "block_range";
 /// in the range
 pub(crate) const BLOCK_RANGE_CURRENT: &str = "block_range @> 2147483647";
 
+/// Most subgraph metadata entities are not versioned. For such entities, we
+/// want two things:
+///   - any CRUD operation modifies such an entity in place
+///   - queries by a block number consider such an entity as present for
+///     any block number
+/// We therefore mark such entities with a block range `[-1,\infinity)`; we
+/// use `-1` as the lower bound to make it easier to identify such entities
+/// for troubleshooting/debugging
+pub(crate) const BLOCK_UNVERSIONED: i32 = -1;
+
 /// The range of blocks for which an entity is valid. We need this struct
 /// to bind ranges into Diesel queries.
 #[derive(Clone, Debug)]
@@ -40,20 +50,16 @@ fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
 /// `None` panic because that indicates that we want to perform an
 /// operation that does not record history, which should not happen
 /// with how we currently use relational schemas
-pub(crate) fn block_number(history_event: &Option<&HistoryEvent>) -> BlockNumber {
-    match history_event {
-        None => panic!("operation that requires a history event did not receive one"),
-        Some(HistoryEvent { block_ptr, .. }) => {
-            if block_ptr.number < std::i32::MAX as u64 {
-                block_ptr.number as i32
-            } else {
-                panic!(
-                    "Block numbers bigger than {} are not supported, but received block number {}",
-                    std::i32::MAX,
-                    block_ptr.number
-                )
-            }
-        }
+pub(crate) fn block_number(history_event: &HistoryEvent) -> BlockNumber {
+    let block_ptr = history_event.block_ptr;
+    if block_ptr.number < std::i32::MAX as u64 {
+        block_ptr.number as i32
+    } else {
+        panic!(
+            "Block numbers bigger than {} are not supported, but received block number {}",
+            std::i32::MAX,
+            block_ptr.number
+        )
     }
 }
 
