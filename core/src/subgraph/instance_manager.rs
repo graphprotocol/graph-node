@@ -16,11 +16,11 @@ use graph::util::frecency_cache::FrecencyCache;
 use super::SubgraphInstance;
 
 lazy_static! {
-    pub static ref ENTITY_CACHE_MAX_SIZE: u64 = 1000
-        * std::env::var("GRAPH_ENTITY_CACHE_MAX_SIZE")
+    pub static ref ENTITY_CACHE_SIZE: u64 = 1000
+        * std::env::var("GRAPH_ENTITY_CACHE_SIZE")
             .unwrap_or("10000".into())
             .parse::<u64>()
-            .expect("invalid GRAPH_ENTITY_CACHE_MAX_SIZE");
+            .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
 }
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
@@ -757,7 +757,7 @@ where
                     e
                 ))
             })?;
-        cache.evict(*ENTITY_CACHE_MAX_SIZE);
+        cache.evict(*ENTITY_CACHE_SIZE);
         assert!(ctx.state.entity_frecency_cache.is_empty());
         ctx.state.entity_frecency_cache = cache;
         section.end();
