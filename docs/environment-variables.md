@@ -44,6 +44,7 @@ triggers in each request (defaults to 100000).
   should only be used during development to reduce the size of the
   database. In production environments, it will cause multiple downloads of
   the same blocks and therefore slow the system down.
+
 ## Running mapping handlers
 
 - `GRAPH_MAPPING_HANDLER_TIMEOUT`: amount of time a mapping handler is allowed to
@@ -63,6 +64,7 @@ triggers in each request (defaults to 100000).
   `ipfs.cat` cache (defaults to 50).
 - `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of files that are cached in the
   `ipfs.cat` cache (defaults to 1MiB)
+- `GRAPH_ENTITY_CACHE_SIZE`: Size of the entity cache, in kilobytes. Defaults to 10000 which is 10MB.
 
 ## GraphQL
 
