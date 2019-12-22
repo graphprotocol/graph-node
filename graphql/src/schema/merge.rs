@@ -47,13 +47,15 @@ pub fn merged_schema(
         .collect();
 
     while let Some((import, schema_reference)) = imports.pop() {
+        let (original_name, new_name) = match import {
+            ImportedType::Name(name) => (name.clone(), name),
+            ImportedType::NameAs(name, az) => (name, az),
+        };
+
         match schemas.get(&schema_reference) {
             Some(schema) => {
                 let subgraph_id = schema.id.clone();
-                let (original_name, new_name) = match import {
-                    ImportedType::Name(name) => (name.clone(), name),
-                    ImportedType::NameAs(name, az) => (name, az),
-                };
+
                 // Find the type
                 let local_type = schema
                     .document
@@ -120,20 +122,27 @@ pub fn merged_schema(
                         };
                         imports.push((import, schema_reference.clone()));
                         continue;
+                    } else {
+                        // If it is not imported, then add a placeholder type
+                        merged.document.definitions.push(placeholder_type(
+                            new_name.clone(),
+                            match new_name.eq(&original_name) {
+                                true => None,
+                                false => Some(original_name),
+                            },
+                        ));
                     }
-
-                    // If it is not imported, then add a placeholder type
-                    merged.document.definitions.push(placeholder_type(
-                        new_name.clone(),
-                        match new_name.eq(&original_name) {
-                            true => None,
-                            false => Some(original_name),
-                        },
-                    ));
                 }
             }
             None => {
                 // Add a placeholder type to the root schema
+                merged.document.definitions.push(placeholder_type(
+                    new_name.clone(),
+                    match new_name.eq(&original_name) {
+                        true => None,
+                        false => Some(original_name),
+                    },
+                ));
             }
         }
     }
