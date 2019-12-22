@@ -1,3 +1,6 @@
+/// Generate a merged schema from a schema and a set of imported schemas
+pub mod merge;
+
 /// Generate full-fledged API schemas from existing GraphQL schemas.
 pub mod api;
 
