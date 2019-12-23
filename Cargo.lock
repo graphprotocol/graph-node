@@ -922,7 +922,7 @@ dependencies = [
  "petgraph 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometheus 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "reqwest 0.9.22 (registry+https://github.com/rust-lang/crates.io-index)",
+ "reqwest 0.9.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "semver 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.9.22"
+version = "0.9.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3769,7 +3769,7 @@ dependencies = [
 "checksum regex-syntax 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)" = "f9ec002c35e86791825ed294b50008eea9ddfc8def4420124fbc6b08db834957"
 "checksum regex-syntax 0.6.8 (registry+https://github.com/rust-lang/crates.io-index)" = "9b01330cce219c1c6b2e209e5ed64ccd587ae5c67bed91c0b49eecf02ae40e21"
 "checksum remove_dir_all 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3488ba1b9a2084d38645c4c08276a1752dcbf2c7130d74f1569681ad5d2799c5"
-"checksum reqwest 0.9.22 (registry+https://github.com/rust-lang/crates.io-index)" = "2c2064233e442ce85c77231ebd67d9eca395207dec2127fe0bbedde4bd29a650"
+"checksum reqwest 0.9.24 (registry+https://github.com/rust-lang/crates.io-index)" = "f88643aea3c1343c804950d7bf983bd2067f5ab59db6d613a08e05572f2714ab"
 "checksum rlp 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "fa2f7f9c612d133da9101ef7bcd3e603ca7098901eca852e71f87a83dd3e6b59"
 "checksum rustc-demangle 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)" = "adacaae16d02b6ec37fdc7acfcddf365978de76d1983d3ee22afc260e1ca9619"
 "checksum rustc-hex 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "403bb3a286107a04825a5f82e1270acc1e14028d3d554d7a1e08914549575ab8"
