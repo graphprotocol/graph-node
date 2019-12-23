@@ -5,11 +5,13 @@ use graphql_parser::{
 
 use crate::schema::ast;
 
-use graph::data::graphql::ext;
+use graph::data::graphql::ext::*;
+use graph::data::graphql::scalar::BuiltInScalarType;
 use graph::data::schema::{ImportedType, SchemaReference};
 use graph::prelude::*;
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 /// Optimistically merges a subgraph schema with all of its imports.
 pub fn merged_schema(
@@ -74,10 +76,10 @@ pub fn merged_schema(
                         _ => unreachable!(),
                     });
                 if let Some(obj) = local_type {
-                    // 1. Clone the type
+                    // Clone the type
                     let mut new_obj = obj.clone();
 
-                    // 2. Add a subgraph id directive
+                    // Add a subgraph id directive
                     new_obj.directives.push(Directive {
                         position: Pos::default(),
                         name: String::from("subgraphId"),
@@ -87,17 +89,34 @@ pub fn merged_schema(
                         )],
                     });
 
-                    // 3. If the type is imported with { name : "...", as: "..." }, change the name and
+                    // If the type is imported with { name : "...", as: "..." }, change the name and
                     //    add an @originalName(name: "...") directive
                     if !original_name.eq(&new_name) {
                         new_obj.name = new_name.clone();
                     }
 
-                    // 4. Push it onto the schema.document.definitions
+                    // Push it onto the schema.document.definitions
                     merged
                         .document
                         .definitions
                         .push(Definition::TypeDefinition(TypeDefinition::Object(new_obj)));
+
+                    // Import each none scalar field
+                    obj.fields
+                        .iter()
+                        .filter_map(|field| {
+                            let base_type = field.field_type.get_base_type();
+                            match BuiltInScalarType::try_from(base_type.as_ref()) {
+                                Ok(_) => None,
+                                Err(_) => Some(base_type),
+                            }
+                        })
+                        .for_each(|base_type| {
+                            imports.push((
+                                ImportedType::Name(base_type.to_string()),
+                                schema_reference.clone(),
+                            ));
+                        });
                 } else {
                     // Determine if the type is imported
                     // If it is imported, push a tuple onto the `imports` vector
@@ -178,3 +197,21 @@ fn placeholder_type(name: String, original_name: Option<String>) -> Definition {
     }
     Definition::TypeDefinition(TypeDefinition::Object(obj))
 }
+
+#[test]
+fn test_recursive_import() {}
+
+#[test]
+fn test_placeholder_for_missing_schema() {}
+
+#[test]
+fn test_placeholder_for_missing_type() {}
+
+#[test]
+fn test_original_name_directive() {}
+
+#[test]
+fn test_subgraph_id_directive_added_correctly() {}
+
+#[test]
+fn test_import_of_non_scalar_fields_for_imported_type() {}
