@@ -3,8 +3,6 @@ use graphql_parser::{
     Pos,
 };
 
-use crate::schema::ast;
-
 use graph::data::graphql::ext::*;
 use graph::data::graphql::scalar::BuiltInScalarType;
 use graph::data::schema::{ImportedType, SchemaReference};
@@ -199,7 +197,12 @@ fn placeholder_type(name: String, original_name: Option<String>) -> Definition {
 }
 
 #[test]
-fn test_recursive_import() {}
+fn test_recursive_import() {
+    // Generate a root schema
+    // Generate the schema lookup for the import graph
+    // Call merged_schema
+    // Verify the output schema is correct
+}
 
 #[test]
 fn test_placeholder_for_missing_schema() {}
