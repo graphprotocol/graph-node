@@ -474,6 +474,80 @@ fn interface_inline_fragment() {
 }
 
 #[test]
+fn interface_inline_fragment_with_subquery() {
+    let subgraph_id = "InterfaceInlineFragmentWithSubquery";
+    let schema = "
+        interface Legged { legs: Int }
+        type Parent @entity {
+          id: ID!
+        }
+        type Animal implements Legged @entity {
+          id: ID!
+          name: String
+          legs: Int
+          parent: Parent
+        }
+        type Bird implements Legged @entity {
+          id: ID!
+          airspeed: Int
+          legs: Int
+          parent: Parent
+        }
+    ";
+
+    let mama_cow = (
+        Entity::from(vec![("id", Value::from("mama_cow"))]),
+        "Parent",
+    );
+    let cow = (
+        Entity::from(vec![
+            ("id", Value::from("1")),
+            ("name", Value::from("cow")),
+            ("legs", Value::from(4)),
+            ("parent", Value::from("mama_cow")),
+        ]),
+        "Animal",
+    );
+
+    let mama_bird = (
+        Entity::from(vec![("id", Value::from("mama_bird"))]),
+        "Parent",
+    );
+    let bird = (
+        Entity::from(vec![
+            ("id", Value::from("2")),
+            ("airspeed", Value::from(5)),
+            ("legs", Value::from(2)),
+            ("parent", Value::from("mama_bird")),
+        ]),
+        "Bird",
+    );
+
+    let query = "query { leggeds(orderBy: legs) { legs ... on Bird { airspeed parent { id } } } }";
+    let res = insert_and_query(
+        subgraph_id,
+        schema,
+        vec![cow, mama_cow, bird, mama_bird],
+        query,
+    )
+    .unwrap();
+
+    assert_eq!(
+        format!("{:?}", res.data.unwrap()),
+        "Object({\
+         \"leggeds\": List([\
+         Object({\
+         \"airspeed\": Int(Number(5)), \
+         \"legs\": Int(Number(2)), \
+         \"parent\": Object({\"id\": String(\"mama_bird\")})\
+         }), \
+         Object({\"legs\": Int(Number(4))})\
+         ])\
+         })"
+    );
+}
+
+#[test]
 fn invalid_fragment() {
     let subgraph_id = "InvalidFragment";
     let schema = "interface Legged { legs: Int! }
