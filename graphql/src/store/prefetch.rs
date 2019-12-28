@@ -372,10 +372,16 @@ impl<'a> Join<'a> {
 
         // Add appropriate children using grouped map
         for parent in parents.iter_mut() {
-            for cond in conds_by_parent.get(parent.typename()).expect(&format!(
-                "query results only contain known types: parent {}",
-                parent.typename()
-            )) {
+            // It is possible that we do not have a join condition for some
+            // parent types. That can happen, for example, if the parents
+            // were the result of querying for an interface type, and we
+            // have to get children for some of the parents, but not others.
+            // If a parent type is not mentioned in any join conditions,
+            // we skip it by looping over an empty vector.
+            //
+            // See the test interface_inline_fragment_with_subquery in
+            // core/tests/interfaces.rs for an example.
+            for cond in conds_by_parent.get(parent.typename()).unwrap_or(&vec![]) {
                 // Set the `response_key` field in `parent`. Make sure that even
                 // if `parent` has no matching `children`, the field gets set (to
                 // an empty `Vec`)
