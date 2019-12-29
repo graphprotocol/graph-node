@@ -56,6 +56,14 @@ where
                     Ok(subgraph_name) => store.resolve_subgraph_name_to_id(subgraph_name),
                 }
             }
+            &["subgraphs", "network", _, _] => {
+                let subgraph_name = path_segments[1..].join("/");
+
+                match SubgraphName::new(subgraph_name) {
+                    Err(()) => Ok(None),
+                    Ok(subgraph_name) => store.resolve_subgraph_name_to_id(subgraph_name),
+                }
+            }
             _ => Ok(None),
         }
     }
