@@ -590,7 +590,7 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                                 .expect("store for network")
                                 .clone(),
                             metrics_registry.clone(),
-                            network_subgraph.into(),
+                            format!("network/{}", network_subgraph).into(),
                             None,
                         );
                         tokio::spawn(indexer.take_event_stream().unwrap().for_each(|_| {
