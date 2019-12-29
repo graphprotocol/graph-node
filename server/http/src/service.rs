@@ -385,11 +385,13 @@ where
             (Method::GET, &["subgraphs", "id", _, "graphql"])
             | (Method::GET, &["subgraphs", "name", _, "graphql"])
             | (Method::GET, &["subgraphs", "name", _, _, "graphql"])
+            | (Method::GET, &["subgraphs", "network", _, _, "graphql"])
             | (Method::GET, &["subgraphs", "graphql"]) => self.handle_graphiql(),
 
             (Method::GET, path @ ["subgraphs", "id", _])
             | (Method::GET, path @ ["subgraphs", "name", _])
             | (Method::GET, path @ ["subgraphs", "name", _, _])
+            | (Method::GET, path @ ["subgraphs", "network", _, _])
             | (Method::GET, path @ ["subgraphs"]) => {
                 let dest = format!("/{}/graphql", path.join("/"));
                 self.handle_temp_redirect(&dest)
@@ -406,8 +408,15 @@ where
                 let subgraph_name = format!("{}/{}", subgraph_name_part1, subgraph_name_part2);
                 self.handle_graphql_query_by_name(subgraph_name, req)
             }
+            (Method::POST, ["subgraphs", "network", subgraph_name_part1, subgraph_name_part2]) => {
+                let subgraph_name =
+                    format!("network/{}/{}", subgraph_name_part1, subgraph_name_part2);
+                self.handle_graphql_query_by_name(subgraph_name, req)
+            }
+
             (Method::OPTIONS, ["subgraphs", "name", _])
-            | (Method::OPTIONS, ["subgraphs", "name", _, _]) => self.handle_graphql_options(req),
+            | (Method::OPTIONS, ["subgraphs", "name", _, _])
+            | (Method::OPTIONS, ["subgraphs", "network", _, _]) => self.handle_graphql_options(req),
 
             // `/subgraphs` acts as an alias to `/subgraphs/id/SUBGRAPHS_ID`
             (Method::POST, &["subgraphs"]) => {
