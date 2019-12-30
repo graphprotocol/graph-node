@@ -87,6 +87,22 @@ impl DerefMut for QueryVariables {
     }
 }
 
+impl serde::ser::Serialize for QueryVariables {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        use crate::data::graphql::SerializableValue;
+        use serde::ser::SerializeMap;
+
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (k, v) in &self.0 {
+            map.serialize_entry(k, &SerializableValue(v))?;
+        }
+        map.end()
+    }
+}
+
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
 #[derive(Clone, Debug)]
 pub struct Query {

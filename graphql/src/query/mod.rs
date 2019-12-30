@@ -111,6 +111,7 @@ where
                 query_logger,
                 "Execute query";
                 "query" => query.document.format(&Style::default().indent(0)).replace('\n', " "),
+                "variables" => serde_json::to_string(&query.variables).unwrap_or_default(),
                 "query_time_ms" => start.elapsed().as_millis(),
             );
             result
