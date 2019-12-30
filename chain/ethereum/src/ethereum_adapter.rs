@@ -3,6 +3,7 @@ use futures::future;
 use futures::prelude::*;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
+use std::fmt;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Instant;
@@ -21,6 +22,12 @@ use web3::types::{Filter, *};
 pub struct EthereumAdapter<T: web3::Transport> {
     web3: Arc<Web3<T>>,
     metrics: Arc<ProviderEthRpcMetrics>,
+}
+
+impl<T: web3::Transport> fmt::Debug for EthereumAdapter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "EthereumAdapter: {{ web3: {:?} }}", self.web3)
+    }
 }
 
 lazy_static! {

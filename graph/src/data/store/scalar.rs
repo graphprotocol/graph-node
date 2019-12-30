@@ -236,6 +236,10 @@ impl Bytes {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
+
+    pub fn to_hex(&self) -> String {
+        format!("{}", hex::encode(&self.0))
+    }
 }
 
 impl Display for Bytes {
@@ -261,6 +265,12 @@ impl<'a> From<&'a [u8]> for Bytes {
 impl From<Address> for Bytes {
     fn from(address: Address) -> Bytes {
         Bytes::from(address.as_ref())
+    }
+}
+
+impl From<H256> for Bytes {
+    fn from(hash: H256) -> Bytes {
+        Bytes::from(hash.as_ref())
     }
 }
 

@@ -6,7 +6,7 @@ use graph::prelude::{
 };
 use std::collections::HashSet;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct MockEthereumAdapter {}
 
 impl EthereumAdapter for MockEthereumAdapter {

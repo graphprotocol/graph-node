@@ -608,7 +608,7 @@ impl BlockStreamMetrics {
 ///
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
-pub trait EthereumAdapter: Send + Sync + 'static {
+pub trait EthereumAdapter: Debug + Send + Sync + 'static {
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
     fn net_identifiers(

@@ -12,10 +12,11 @@ use std::time::Duration;
 use graph::components::forward;
 use graph::log::logger;
 use graph::prelude::{
-    EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
+    chain::Chain, EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _,
+    JsonRpcServer as _, *,
 };
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, Transport};
+use graph_chain_ethereum::{chain as ethereum, BlockIngestor, BlockStreamBuilder, Transport};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -450,6 +451,20 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut metrics_server =
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
+    // Create chains
+    let chains = initialize_supported_chains(
+        logger.clone(),
+        metrics_registry.clone(),
+        vec![
+            (ConnectionType::RPC, ethereum_rpc.clone()),
+            (ConnectionType::IPC, ethereum_ipc.clone()),
+            (ConnectionType::WS, ethereum_ws.clone()),
+        ],
+    )
+    .expect("failed to initialize supported chains");
+
+    dbg!(chains);
+
     // Ethereum clients
     let eth_adapters = [
         (ConnectionType::RPC, ethereum_rpc),
@@ -746,6 +761,38 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     });
 
     future::empty()
+}
+
+fn initialize_supported_chains(
+    logger: Logger,
+    metrics_registry: Arc<MetricsRegistry>,
+    ethereum_networks: Vec<(ConnectionType, Option<clap::Values>)>,
+) -> Result<HashMap<String, Arc<impl Chain>>, Error> {
+    let mut chains = HashMap::new();
+
+    // Parse Ethereum chains
+    let logger_for_networks = logger.clone();
+    let metrics_registry_for_networks = metrics_registry.clone();
+    let ethereum_adapters = ethereum_networks
+        .into_iter()
+        .filter_map(|(connection_type, values)| values.map(|values| (connection_type, values)))
+        .map(|(connection_type, values)| {
+            parse_ethereum_networks_and_nodes(
+                logger_for_networks.clone(),
+                values,
+                connection_type,
+                metrics_registry_for_networks.clone(),
+            )
+        })
+        .fold(HashMap::new(), |acc, parse_result| match parse_result {
+            Ok(adapters) => acc.into_iter().chain(adapters).collect(),
+            Err(e) => panic!("failed to initialize Ethereum networks: {}", e),
+        });
+
+    let chain = Arc::new(ethereum::Ethereum::new(ethereum_adapters));
+    chains.insert("ethereum".into(), chain);
+
+    Ok(chains)
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
