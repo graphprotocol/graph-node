@@ -353,7 +353,7 @@ impl Schema {
                         Value::String(type_name) => Some(ImportedType::Name(type_name.to_string())),
                         Value::Object(type_name_as) => {
                             match (type_name_as.get("name"), type_name_as.get("as")) {
-                                (Some(name), Some(az)) => {
+                                (Some(Value::String(name)), Some(Value::String(az))) => {
                                     Some(ImportedType::NameAs(name.to_string(), az.to_string()))
                                 }
                                 _ => None,
@@ -999,7 +999,7 @@ fn test_reserved_type_with_fields() {
     const ROOT_SCHEMA: &str = "
 type _Schema_ { id: ID! }";
 
-    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let document = graphql_parser::parse_schema(ROOT_SCHEMA).unwrap();
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
     match schema.validate_schema_type_has_no_fields() {
         Err(e) => assert_eq!(e, SchemaValidationError::SchemaTypeWithFields),
@@ -1015,7 +1015,7 @@ fn test_reserved_type_directives() {
     const ROOT_SCHEMA: &str = "
 type _Schema_ @illegal";
 
-    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let document = graphql_parser::parse_schema(ROOT_SCHEMA).unwrap();
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
     match schema.validate_only_import_directives_on_schema_type() {
         Err(e) => assert_eq!(e, SchemaValidationError::InvalidSchemaTypeDirectives),
@@ -1028,10 +1028,9 @@ type _Schema_ @illegal";
 
 #[test]
 fn test_imports_directive_from_argument() {
-    const ROOT_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T", "A", "C"])"#;
+    const ROOT_SCHEMA: &str = "type _Schema_ @import(types: [\"T\", \"A\", \"C\"])";
 
-    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let document = graphql_parser::parse_schema(ROOT_SCHEMA).unwrap();
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
     match schema
         .validate_import_directives()
@@ -1088,18 +1087,15 @@ type T @entity { id: ID! }
 #[test]
 fn test_recursively_imported_type_which_dne_fails_validation() {
     const ROOT_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T"], from: { name:"childone/subgraph"})"#;
+type _Schema_ @import(types: ["T"], from: { name: "childone/subgraph" })"#;
     const CHILD_1_SCHEMA: &str = r#"
-type _Schema_ @import(types: [{name: "T", as: "A"}], from: { name:"childtwo/subgraph"})"#;
+type _Schema_ @import(types: [{name: "T", as: "A"}], from: { name: "childtwo/subgraph" })"#;
     const CHILD_2_SCHEMA: &str = r#"
-type T @entity { id: ID! }
-"#;
-    let root_document =
-        graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let child_1_document =
-        graphql_parser::parse_schema(CHILD_1_SCHEMA).expect("Failed to parse child 1 schema");
-    let child_2_document =
-        graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
+type T @entity { id: ID! }"#;
+
+    let root_document = graphql_parser::parse_schema(ROOT_SCHEMA).unwrap();
+    let child_1_document = graphql_parser::parse_schema(CHILD_1_SCHEMA).unwrap();
+    let child_2_document = graphql_parser::parse_schema(CHILD_2_SCHEMA).unwrap();
 
     let root_schema = Schema::new(SubgraphDeploymentId::new("rid").unwrap(), root_document);
     let child_1_schema = Schema::new(SubgraphDeploymentId::new("c1id").unwrap(), child_1_document);

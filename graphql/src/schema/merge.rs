@@ -5,7 +5,7 @@ use graphql_parser::{
 
 use graph::data::graphql::ext::*;
 use graph::data::graphql::scalar::BuiltInScalarType;
-use graph::data::schema::{ImportedType, SchemaReference};
+use graph::data::schema::{ImportedType, SchemaReference, SCHEMA_TYPE_NAME};
 use graph::prelude::*;
 
 use std::collections::HashMap;
@@ -57,7 +57,7 @@ pub fn merged_schema(
                 let subgraph_id = schema.id.clone();
 
                 // Find the type
-                let local_type = schema
+                if let Some(obj) = schema
                     .document
                     .definitions
                     .iter()
@@ -72,8 +72,8 @@ pub fn merged_schema(
                     .map(|definition| match definition {
                         Definition::TypeDefinition(TypeDefinition::Object(obj)) => obj,
                         _ => unreachable!(),
-                    });
-                if let Some(obj) = local_type {
+                    })
+                {
                     // Clone the type
                     let mut new_obj = obj.clone();
 
@@ -88,9 +88,17 @@ pub fn merged_schema(
                     });
 
                     // If the type is imported with { name : "...", as: "..." }, change the name and
-                    //    add an @originalName(name: "...") directive
+                    // add an @originalName(name: "...") directive
                     if !original_name.eq(&new_name) {
                         new_obj.name = new_name.clone();
+                        new_obj.directives.push(Directive {
+                            position: Pos::default(),
+                            name: String::from("originalName"),
+                            arguments: vec![(
+                                String::from("name"),
+                                Value::String(original_name.to_string()),
+                            )],
+                        });
                     }
 
                     // Push it onto the schema.document.definitions
@@ -123,9 +131,8 @@ pub fn merged_schema(
                             .imported_types()
                             .iter()
                             .find(|(import, schema_reference)| match import {
-                                ImportedType::Name(name) if name.eq(&original_name) => true,
-                                ImportedType::NameAs(_, az) if az.eq(&original_name) => true,
-                                _ => false,
+                                ImportedType::Name(name) => name.eq(&original_name),
+                                ImportedType::NameAs(_, az) => az.eq(&original_name),
                             })
                     {
                         let import = match import {
@@ -164,6 +171,23 @@ pub fn merged_schema(
         }
     }
 
+    // Remove the _Schema_ type
+    if let Some((idx, _)) =
+        merged
+            .document
+            .definitions
+            .iter()
+            .enumerate()
+            .find(|(_, definition)| match definition {
+                Definition::TypeDefinition(TypeDefinition::Object(obj)) => {
+                    obj.name.eq(SCHEMA_TYPE_NAME)
+                }
+                _ => false,
+            })
+    {
+        merged.document.definitions.remove(idx);
+    };
+
     merged
 }
 
@@ -186,6 +210,11 @@ fn placeholder_type(name: String, original_name: Option<String>) -> Definition {
         name: String::from("entity"),
         arguments: vec![],
     });
+    obj.directives.push(Directive {
+        position: Pos::default(),
+        name: String::from("placeholder"),
+        arguments: vec![],
+    });
     if let Some(original_name) = original_name {
         obj.directives.push(Directive {
             position: Pos::default(),
@@ -196,25 +225,448 @@ fn placeholder_type(name: String, original_name: Option<String>) -> Definition {
     Definition::TypeDefinition(TypeDefinition::Object(obj))
 }
 
-#[test]
-fn test_recursive_import() {
-    // Generate a root schema
-    // Generate the schema lookup for the import graph
-    // Call merged_schema
-    // Verify the output schema is correct
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::merged_schema;
+
+    use graph::data::graphql::ext::*;
+    use graph::data::schema::{ImportedType, SchemaReference, SCHEMA_TYPE_NAME};
+    use graph::prelude::*;
+
+    use graphql_parser::schema::Value;
+
+    fn schema_with_import(
+        subgraph_id: SubgraphDeploymentId,
+        type_name: String,
+        subgraph_name: String,
+    ) -> Schema {
+        let schema = format!(
+            r#"type _Schema_ @import(types: ["{}"], from: {{ name: "{}" }})"#,
+            type_name, subgraph_name,
+        );
+        let document = graphql_parser::parse_schema(&schema).unwrap();
+        Schema::new(subgraph_id, document)
+    }
+
+    fn schema_with_name_as_import(
+        subgraph_id: SubgraphDeploymentId,
+        type_name: String,
+        type_as: String,
+        subgraph_name: String,
+    ) -> Schema {
+        let schema = format!(
+            r#"type _Schema_ @import(types: [{{ name: "{}", as: "{}" }}] from: {{ name: "{}" }})"#,
+            type_name, type_as, subgraph_name,
+        );
+        let document = graphql_parser::parse_schema(&schema).unwrap();
+        Schema::new(subgraph_id, document)
+    }
+
+    fn schema_with_type(subgraph_id: SubgraphDeploymentId, type_name: String) -> Schema {
+        let schema = format!(
+            r#"
+type {} @entity {{
+  id: ID!
+  foo: String
+}}
+"#,
+            type_name,
+        );
+        let document = graphql_parser::parse_schema(&schema).unwrap();
+        Schema::new(subgraph_id, document)
+    }
+
+    fn schema_with_type_with_nonscalar_field(
+        subgraph_id: SubgraphDeploymentId,
+        type_name: String,
+        field_type_name: String,
+    ) -> Schema {
+        let schema = format!(
+            r#"
+type {} @entity {{
+  id: ID!
+  foo: {}
+}}
+
+type {} @entity {{
+  id: ID!
+  bar: String
+}}
+"#,
+            type_name, field_type_name, field_type_name,
+        );
+        let document = graphql_parser::parse_schema(&schema).unwrap();
+        Schema::new(subgraph_id, document)
+    }
+
+    #[test]
+    fn test_recursive_import() {
+        let root_schema = schema_with_import(
+            SubgraphDeploymentId::new("root").unwrap(),
+            String::from("A"),
+            String::from("c1/subgraph"),
+        );
+        let child_1_schema = schema_with_name_as_import(
+            SubgraphDeploymentId::new("childone").unwrap(),
+            String::from("T"),
+            String::from("A"),
+            String::from("c2/subgraph"),
+        );
+        let child_2_schema = schema_with_type(
+            SubgraphDeploymentId::new("childtwo").unwrap(),
+            String::from("T"),
+        );
+
+        let mut schemas = HashMap::new();
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c1/subgraph").unwrap()),
+            Arc::new(child_1_schema),
+        );
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c2/subgraph").unwrap()),
+            Arc::new(child_2_schema),
+        );
+
+        // Call merged_schema
+        let merged = merged_schema(&root_schema, schemas);
+
+        // Verify the output schema is correctl
+        match merged
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq("A"))
+        {
+            None => panic!("Failed to import type `A`"),
+            Some(type_a) => {
+                // Type A is imported with all the correct fields
+                let id_field = type_a.fields.iter().find(|field| field.name.eq("id"));
+                let foo_field = type_a.fields.iter().find(|field| field.name.eq("foo"));
+
+                match (id_field, foo_field) {
+                    (Some(_), Some(_)) => (),
+                    _ => panic!("Imported type `A` does not have the correct fields"),
+                };
+
+                // Type A has a @subgraphId directive with the correct id
+                match type_a
+                    .directives
+                    .iter()
+                    .find(|directive| directive.name.eq("subgraphId"))
+                {
+                    Some(directive) => {
+                        // Ensure the id argument on the directive is correct
+                        match directive.arguments.iter().find(|(name, _)| name.eq("id")) {
+                            Some((_, Value::String(id))) if id.eq("childtwo") => (),
+                            _ => {
+                                panic!(
+                                "Imported type `A` needs a @subgraphId directive: @subgraphId(id: \"childtwo\")"
+                            );
+                            }
+                        }
+                    }
+                    None => panic!("Imported type `A` does not have a `@subgraphId` directive"),
+                };
+
+                // Type A has an @originalName directive with the correct name
+                match type_a
+                    .directives
+                    .iter()
+                    .find(|directive| directive.name.eq("originalName"))
+                {
+                    Some(directive) => {
+                        // Ensure the original name argument on the directive is correct
+                        match directive.arguments.iter().find(|(name, _)| name.eq("name")) {
+                            Some((_, Value::String(name))) if name.eq("T") => (),
+                            _ => {
+                                panic!(
+                                "Imported type `A` needs an originalName directive: @originalName(name: \"T\")"
+                            );
+                            }
+                        };
+                    }
+                    None => panic!("Imported type `A` does not have an `originalName` directive"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_placeholder_for_missing_type() {
+        let root_schema = schema_with_import(
+            SubgraphDeploymentId::new("root").unwrap(),
+            String::from("A"),
+            String::from("c1/subgraph"),
+        );
+        let child_1_schema = schema_with_name_as_import(
+            SubgraphDeploymentId::new("childone").unwrap(),
+            String::from("T"),
+            String::from("A"),
+            String::from("c2/subgraph"),
+        );
+        let child_2_schema = schema_with_type(
+            SubgraphDeploymentId::new("childtwo").unwrap(),
+            String::from("B"),
+        );
+
+        let mut schemas = HashMap::new();
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c1/subgraph").unwrap()),
+            Arc::new(child_1_schema),
+        );
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c2/subgraph").unwrap()),
+            Arc::new(child_2_schema),
+        );
+
+        // Call merged_schema
+        let merged = merged_schema(&root_schema, schemas);
+
+        match merged.document.get_object_type_definitions().iter().next() {
+            None => panic!("Failed to import placeholder for type `A`"),
+            Some(type_a) => {
+                // Has an id field
+                match type_a.fields.iter().find(|field| field.name.eq("id")) {
+                    Some(_) => (),
+                    _ => panic!("Placeholder for imported type does not have the correct fields"),
+                };
+
+                // Has a placeholder directive
+                match type_a
+                    .directives
+                    .iter()
+                    .find(|directive| directive.name.eq("placeholder"))
+                {
+                    Some(_) => (),
+                    _ => {
+                        panic!("Imported type `A` does not have a `@placeholder` directive");
+                    }
+                }
+            }
+        };
+    }
+
+    #[test]
+    fn test_placeholder_for_missing_schema() {
+        let root_schema = schema_with_import(
+            SubgraphDeploymentId::new("root").unwrap(),
+            String::from("A"),
+            String::from("c1/subgraph"),
+        );
+        let child_1_schema = schema_with_name_as_import(
+            SubgraphDeploymentId::new("childone").unwrap(),
+            String::from("T"),
+            String::from("A"),
+            String::from("c2/subgraph"),
+        );
+
+        let mut schemas = HashMap::new();
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c1/subgraph").unwrap()),
+            Arc::new(child_1_schema),
+        );
+        // Call merged_schema
+        let merged = merged_schema(&root_schema, schemas);
+
+        match merged.document.get_object_type_definitions().iter().next() {
+            None => panic!("Failed to import placeholder for type `A`"),
+            Some(type_a) => {
+                // Has an id field
+                match type_a.fields.iter().find(|field| field.name.eq("id")) {
+                    Some(_) => (),
+                    _ => panic!("Placeholder for imported type does not have the correct fields"),
+                };
+
+                // Has a placeholder directive
+                match type_a
+                    .directives
+                    .iter()
+                    .find(|directive| directive.name.eq("placeholder"))
+                {
+                    Some(_) => (),
+                    _ => {
+                        panic!("Imported type `A` does not have a `@placeholder` directive");
+                    }
+                }
+            }
+        };
+    }
+
+    #[test]
+    fn test_import_of_non_scalar_fields_for_imported_type() {
+        let root_schema = schema_with_import(
+            SubgraphDeploymentId::new("root").unwrap(),
+            String::from("A"),
+            String::from("c1/subgraph"),
+        );
+        let child_1_schema = schema_with_name_as_import(
+            SubgraphDeploymentId::new("childone").unwrap(),
+            String::from("T"),
+            String::from("A"),
+            String::from("c2/subgraph"),
+        );
+        let child_2_schema = schema_with_type_with_nonscalar_field(
+            SubgraphDeploymentId::new("childtwo").unwrap(),
+            String::from("T"),
+            String::from("B"),
+        );
+
+        let mut schemas = HashMap::new();
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c1/subgraph").unwrap()),
+            Arc::new(child_1_schema),
+        );
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c2/subgraph").unwrap()),
+            Arc::new(child_2_schema),
+        );
+
+        // Call merged_schema
+        let merged = merged_schema(&root_schema, schemas);
+
+        // Verify the output schema is correct
+        match merged
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq("A"))
+        {
+            None => panic!("Failed to import type `A`"),
+            Some(type_a) => {
+                // Type A is imported with all the correct fields
+                let id_field = type_a.fields.iter().find(|field| field.name.eq("id"));
+                let foo_field = type_a.fields.iter().find(|field| field.name.eq("foo"));
+
+                match (id_field, foo_field) {
+                    (Some(_), Some(_)) => (),
+                    _ => panic!("Imported type `A` does not have the correct fields"),
+                };
+
+                // Type A has a @subgraphId directive with the correct id
+                match type_a
+                    .directives
+                    .iter()
+                    .find(|directive| directive.name.eq("subgraphId"))
+                {
+                    Some(directive) => {
+                        // Ensure the id argument on the directive is correct
+                        match directive.arguments.iter().find(|(name, _)| name.eq("id")) {
+                            Some((_, Value::String(id))) if id.eq("childtwo") => (),
+                            _ => {
+                                panic!(
+                                "Imported type `A` needs a @subgraphId directive: @subgraphId(id: \"c2id\")"
+                            );
+                            }
+                        }
+                    }
+                    None => panic!("Imported type `A` does not have a `@subgraphId` directive"),
+                };
+
+                // Type A has an @originalName directive with the correct name
+                match type_a
+                    .directives
+                    .iter()
+                    .find(|directive| directive.name.eq("originalName"))
+                {
+                    Some(directive) => {
+                        // Ensure the original name argument on the directive is correct
+                        match directive.arguments.iter().find(|(name, _)| name.eq("name")) {
+                            Some((_, Value::String(name))) if name.eq("T") => (),
+                            _ => {
+                                panic!(
+                                "Imported type `A` needs an originalName directive: @originalName(name: \"T\")"
+                            );
+                            }
+                        };
+                    }
+                    None => panic!("Imported type `A` does not have an `originalName` directive"),
+                }
+            }
+        }
+        // Verify the output schema is correct
+        match merged
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq("B"))
+        {
+            None => panic!("Failed to import type `B`"),
+            Some(type_b) => {
+                // Type A is imported with all the correct fields
+                let id_field = type_b.fields.iter().find(|field| field.name.eq("id"));
+                let foo_field = type_b.fields.iter().find(|field| field.name.eq("bar"));
+
+                match (id_field, foo_field) {
+                    (Some(_), Some(_)) => (),
+                    _ => panic!("Imported type `B` does not have the correct fields"),
+                };
+
+                // Type A has a @subgraphId directive with the correct id
+                match type_b
+                    .directives
+                    .iter()
+                    .find(|directive| directive.name.eq("subgraphId"))
+                {
+                    Some(directive) => {
+                        // Ensure the id argument on the directive is correct
+                        match directive.arguments.iter().find(|(name, _)| name.eq("id")) {
+                            Some((_, Value::String(id))) if id.eq("childtwo") => (),
+                            _ => {
+                                panic!(
+                                "Imported type `B` needs a @subgraphId directive: @subgraphId(id: \"c2id\")"
+                            );
+                            }
+                        }
+                    }
+                    None => panic!("Imported type `B` does not have a `@subgraphId` directive"),
+                };
+            }
+        }
+    }
+
+    #[test]
+    fn test_schema_type_definition_removed() {
+        let root_schema = schema_with_import(
+            SubgraphDeploymentId::new("root").unwrap(),
+            String::from("A"),
+            String::from("c1/subgraph"),
+        );
+        let child_1_schema = schema_with_name_as_import(
+            SubgraphDeploymentId::new("childone").unwrap(),
+            String::from("T"),
+            String::from("A"),
+            String::from("c2/subgraph"),
+        );
+        let child_2_schema = schema_with_type(
+            SubgraphDeploymentId::new("childtwo").unwrap(),
+            String::from("T"),
+        );
+
+        let mut schemas = HashMap::new();
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("childone/subgraph").unwrap()),
+            Arc::new(child_1_schema),
+        );
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("childtwo/subgraph").unwrap()),
+            Arc::new(child_2_schema),
+        );
+
+        // Call merged_schema
+        let merged = merged_schema(&root_schema, schemas);
+
+        match merged
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
+        {
+            None => (),
+            Some(_) => {
+                panic!("_Schema_ type should be removed from the merged schema");
+            }
+        };
+    }
 }
-
-#[test]
-fn test_placeholder_for_missing_schema() {}
-
-#[test]
-fn test_placeholder_for_missing_type() {}
-
-#[test]
-fn test_original_name_directive() {}
-
-#[test]
-fn test_subgraph_id_directive_added_correctly() {}
-
-#[test]
-fn test_import_of_non_scalar_fields_for_imported_type() {}
