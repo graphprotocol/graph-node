@@ -15,7 +15,8 @@ use graph::prelude::{
     EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
 };
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{network_indexer, BlockIngestor, BlockStreamBuilder, Transport};
+use graph_chain_common::prelude::*;
+use graph_chain_ethereum::{BlockIngestor, BlockStreamBuilder, EthereumNetwork, Transport};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -579,20 +580,37 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
                     .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
                     .for_each(|network_subgraph| {
                         let network_name = network_subgraph.replace("ethereum/", "");
-                        let mut indexer = network_indexer::NetworkIndexer::new(
-                            &logger,
-                            eth_adapters
+
+                        let network = EthereumNetwork::new(EthereumNetworkOptions {
+                            logger: logger.clone(),
+                            adapter: eth_adapters
                                 .get(&network_name)
                                 .expect("adapter for network")
                                 .clone(),
-                            stores
+                            store: stores
                                 .get(&network_name)
                                 .expect("store for network")
                                 .clone(),
-                            metrics_registry.clone(),
-                            format!("network/{}", network_subgraph).into(),
+                            metrics_registry: metrics_registry.clone(),
                             None,
-                        );
+                        });
+
+                        let mut indexer = network.indexer().expect("indexer for network");
+
+                        // let mut indexer = network_indexer::NetworkIndexer::new(
+                        //     &logger,
+                        //     eth_adapters
+                        //         .get(&network_name)
+                        //         .expect("adapter for network")
+                        //         .clone(),
+                        //     stores
+                        //         .get(&network_name)
+                        //         .expect("store for network")
+                        //         .clone(),
+                        //     metrics_registry.clone(),
+                        //     format!("network/{}", network_subgraph).into(),
+                        //     None,
+                        // );
                         tokio::spawn(indexer.take_event_stream().unwrap().for_each(|_| {
                             // For now we simply ignore these events; we may later use them
                             // to drive subgraph indexing

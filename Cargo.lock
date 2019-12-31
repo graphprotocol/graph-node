@@ -570,6 +570,19 @@ dependencies = [
 [[package]]
 name = "derive_state_machine_future"
 version = "0.2.0"
+source = "git+https://github.com/jannis/state_machine_future?branch=context-generic-bounds#6c2a0338258e16e9c57b131bed84f33971b1149e"
+dependencies = [
+ "darling 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "heck 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "petgraph 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 0.15.42 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "derive_state_machine_future"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "darling 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1006,6 +1019,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-common"
+version = "0.17.0"
+dependencies = [
+ "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "graph 0.17.0",
+ "state_machine_future 0.2.0 (git+https://github.com/jannis/state_machine_future?branch=context-generic-bounds)",
+]
+
+[[package]]
 name = "graph-chain-ethereum"
 version = "0.17.0"
 dependencies = [
@@ -1014,6 +1037,7 @@ dependencies = [
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.17.0",
+ "graph-chain-common 0.17.0",
  "graph-core 0.17.0",
  "graph-mock 0.17.0",
  "graph-store-postgres 0.17.0",
@@ -1086,6 +1110,7 @@ dependencies = [
  "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "git-testament 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.17.0",
+ "graph-chain-common 0.17.0",
  "graph-chain-ethereum 0.17.0",
  "graph-core 0.17.0",
  "graph-mock 0.17.0",
@@ -2871,6 +2896,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "state_machine_future"
 version = "0.2.0"
+source = "git+https://github.com/jannis/state_machine_future?branch=context-generic-bounds#6c2a0338258e16e9c57b131bed84f33971b1149e"
+dependencies = [
+ "derive_state_machine_future 0.2.0 (git+https://github.com/jannis/state_machine_future?branch=context-generic-bounds)",
+ "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rent_to_own 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "state_machine_future"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "derive_state_machine_future 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -3748,6 +3783,7 @@ dependencies = [
 "checksum darling_macro 0.8.6 (registry+https://github.com/rust-lang/crates.io-index)" = "244e8987bd4e174385240cde20a3657f607fb0797563c28255c353b5819a07b1"
 "checksum derive_more 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7a141330240c921ec6d074a3e188a7c7ef95668bb95e7d44fa0e5778ec2a7afe"
 "checksum derive_more 0.99.2 (registry+https://github.com/rust-lang/crates.io-index)" = "2159be042979966de68315bce7034bb000c775f22e3e834e1c52ff78f041cae8"
+"checksum derive_state_machine_future 0.2.0 (git+https://github.com/jannis/state_machine_future?branch=context-generic-bounds)" = "<none>"
 "checksum derive_state_machine_future 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1220ad071cb8996454c20adf547a34ba3ac793759dab793d9dc04996a373ac83"
 "checksum diesel 1.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "9d7cc03b910de9935007861dce440881f69102aaaedfd4bc5a6f40340ca5840c"
 "checksum diesel-derive-enum 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "adbaf5e1344edeedc4d1cead2dc3ce6fc4115bb26b3704c533b92717940f2fb5"
@@ -3977,6 +4013,7 @@ dependencies = [
 "checksum socket2 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)" = "c4d11a52082057d87cb5caa31ad812f4504b97ab44732cd8359df2e9ff9f48e7"
 "checksum spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 "checksum stable_deref_trait 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "dba1a27d3efae4351c8051072d619e3ade2820635c3958d826bfea39d59b54c8"
+"checksum state_machine_future 0.2.0 (git+https://github.com/jannis/state_machine_future?branch=context-generic-bounds)" = "<none>"
 "checksum state_machine_future 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "530e1d624baae485bce12e6647acb76aafa253346ee8a16751974eed5a24b13d"
 "checksum static_assertions 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "c19be23126415861cb3a23e501d34a708f7f9b2183c5252d690941c2e69199d5"
 "checksum string 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "b639411d0b9c738748b5397d5ceba08e648f4f1992231aa859af1a017f31f60b"

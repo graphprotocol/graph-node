@@ -236,6 +236,10 @@ impl Bytes {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
+
+    pub fn hex(&self) -> String {
+        format!("{}", hex::encode(&self.0))
+    }
 }
 
 impl Display for Bytes {

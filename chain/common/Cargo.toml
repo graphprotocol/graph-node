@@ -1,0 +1,12 @@
+[package]
+name = "graph-chain-common"
+version = "0.17.0"
+edition = "2018"
+
+[dependencies]
+chrono = "0.4"
+graph = { path = "../../graph" }
+futures = "0.1"
+state_machine_future = { git = "https://github.com/jannis/state_machine_future", branch = "context-generic-bounds" }
+
+[dev-dependencies]

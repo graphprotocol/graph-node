@@ -21,6 +21,7 @@ url = "1.7.1"
 crossbeam-channel = "0.3.9"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
+graph-chain-common = { path = "../chain/common" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-mock = { path = "../mock" }
 graph-runtime-wasm = { path = "../runtime/wasm" }

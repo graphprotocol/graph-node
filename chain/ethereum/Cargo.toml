@@ -7,11 +7,12 @@ edition = "2018"
 chrono = "0.4"
 failure = "0.1.6"
 futures = "0.1.21"
+hex-literal = "0.2"
 jsonrpc-core = "13.2.0"
 graph = { path = "../../graph" }
-mock = { package = "graph-mock", path = "../../mock" }
+graph-chain-common = { path = "../common" }
 lazy_static = "1.2.0"
-hex-literal = "0.2"
+mock = { package = "graph-mock", path = "../../mock" }
 state_machine_future = "0.2"
 
 [dev-dependencies]
