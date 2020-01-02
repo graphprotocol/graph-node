@@ -1446,13 +1446,13 @@ impl EntityCache {
                 (None, Some(updates)) => {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
-                    data.merge(updates);
+                    data.merge_remove_null_fields(updates);
                     Some(Insert { key, data })
                 }
                 // Entity may have been changed
                 (Some(current), Some(updates)) => {
                     let mut data = current.clone();
-                    data.merge(updates);
+                    data.merge_remove_null_fields(updates);
                     if current != data {
                         Some(Overwrite { key, data })
                     } else {
