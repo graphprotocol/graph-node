@@ -7,11 +7,9 @@ extern crate rand;
 
 mod block_stream;
 
-mod ethereum_adapter;
 mod metrics_registry;
 mod store;
 
 pub use self::block_stream::{MockBlockStream, MockBlockStreamBuilder};
-pub use self::ethereum_adapter::MockEthereumAdapter;
 pub use self::metrics_registry::MockMetricsRegistry;
 pub use self::store::{FakeStore, MockStore};
