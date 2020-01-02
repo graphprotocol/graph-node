@@ -1,0 +1,201 @@
+use std::collections::BTreeMap;
+
+use graph::mock::MockStore;
+use graph::prelude::{
+    Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, Value,
+};
+
+fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
+    let subgraph_id = SubgraphDeploymentId::new("entity_cache").unwrap();
+
+    (
+        EntityKey {
+            subgraph_id: subgraph_id.clone(),
+            entity_type: "Band".into(),
+            entity_id: id.into(),
+        },
+        Entity::from(data),
+    )
+}
+
+fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
+    mods.sort_by_key(|m| m.entity_key().clone());
+    mods
+}
+
+#[test]
+fn empty_cache_modifications() {
+    let store = MockStore::new();
+    let cache = EntityCache::new();
+    let result = cache.as_modifications(&store);
+    assert_eq!(result.unwrap(), vec![]);
+}
+
+#[test]
+fn insert_modifications() {
+    let mut store = MockStore::new();
+
+    // Return no entities from the store, forcing the cache to treat any `set`
+    // operation as an insert.
+    store
+        .expect_get_many()
+        .returning(|_, _| Ok(BTreeMap::new()));
+
+    let mut cache = EntityCache::new();
+
+    let (mogwai_key, mogwai_data) = make_band(
+        "mogwai",
+        vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
+    );
+    cache.set(mogwai_key.clone(), mogwai_data.clone());
+
+    let (sigurros_key, sigurros_data) = make_band(
+        "sigurros",
+        vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
+    );
+    cache.set(sigurros_key.clone(), sigurros_data.clone());
+
+    let result = cache.as_modifications(&store);
+    assert_eq!(
+        sort_by_entity_key(result.unwrap()),
+        sort_by_entity_key(vec![
+            EntityModification::Insert {
+                key: mogwai_key,
+                data: mogwai_data,
+            },
+            EntityModification::Insert {
+                key: sigurros_key,
+                data: sigurros_data,
+            }
+        ])
+    );
+}
+
+#[test]
+fn overwrite_modifications() {
+    let mut store = MockStore::new();
+
+    // Prepopulate the store with entities so that the cache treats
+    // every set operation as an overwrite.
+    store.expect_get_many().returning(|_, _| {
+        let mut map = BTreeMap::new();
+
+        map.insert(
+            "Band".into(),
+            vec![
+                make_band(
+                    "mogwai",
+                    vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
+                )
+                .1,
+                make_band(
+                    "sigurros",
+                    vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
+                )
+                .1,
+            ],
+        );
+
+        Ok(map)
+    });
+
+    let mut cache = EntityCache::new();
+
+    let (mogwai_key, mogwai_data) = make_band(
+        "mogwai",
+        vec![
+            ("id", "mogwai".into()),
+            ("name", "Mogwai".into()),
+            ("founded", 1995.into()),
+        ],
+    );
+    cache.set(mogwai_key.clone(), mogwai_data.clone());
+
+    let (sigurros_key, sigurros_data) = make_band(
+        "sigurros",
+        vec![
+            ("id", "sigurros".into()),
+            ("name", "Sigur Ros".into()),
+            ("founded", 1994.into()),
+        ],
+    );
+    cache.set(sigurros_key.clone(), sigurros_data.clone());
+
+    let result = cache.as_modifications(&store);
+    assert_eq!(
+        sort_by_entity_key(result.unwrap()),
+        sort_by_entity_key(vec![
+            EntityModification::Overwrite {
+                key: mogwai_key,
+                data: mogwai_data,
+            },
+            EntityModification::Overwrite {
+                key: sigurros_key,
+                data: sigurros_data,
+            }
+        ])
+    );
+}
+
+#[test]
+fn consecutive_modifications() {
+    let mut store = MockStore::new();
+
+    // Prepopulate the store with data so that we can test setting a field to
+    // `Value::Null`.
+    store.expect_get_many().returning(|_, _| {
+        let mut map = BTreeMap::new();
+
+        map.insert(
+            "Band".into(),
+            vec![
+                make_band(
+                    "mogwai",
+                    vec![
+                        ("id", "mogwai".into()),
+                        ("name", "Mogwai".into()),
+                        ("label", "Chemikal Underground".into()),
+                    ],
+                )
+                .1,
+            ],
+        );
+
+        Ok(map)
+    });
+
+    let mut cache = EntityCache::new();
+
+    // First, add "founded" and change the "label".
+    let (update_key, update_data) = make_band(
+        "mogwai",
+        vec![
+            ("id", "mogwai".into()),
+            ("founded", 1995.into()),
+            ("label", "Rock Action Records".into()),
+        ],
+    );
+    cache.set(update_key.clone(), update_data.clone());
+
+    // Then, just reset the "label".
+    let (update_key, update_data) = make_band(
+        "mogwai",
+        vec![("id", "mogwai".into()), ("label", Value::Null)],
+    );
+    cache.set(update_key.clone(), update_data.clone());
+
+    // We expect a single overwrite modification for the above that leaves "id"
+    // and "name" untouched, sets "founded" and removes the "label" field.
+    let result = cache.as_modifications(&store);
+    assert_eq!(
+        sort_by_entity_key(result.unwrap()),
+        sort_by_entity_key(vec![EntityModification::Overwrite {
+            key: update_key,
+            data: Entity::from(vec![
+                ("id", "mogwai".into()),
+                ("name", "Mogwai".into()),
+                ("founded", 1995.into()),
+            ]),
+        },])
+    );
+}
