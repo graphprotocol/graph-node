@@ -1276,7 +1276,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
 /// An entity operation that can be transacted into the store; as opposed to
 /// `EntityOperation`, we already know whether a `Set` should be an `Insert`
 /// or `Update`
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EntityModification {
     /// Insert the entity
     Insert { key: EntityKey, data: Entity },

@@ -132,7 +132,7 @@ impl FromStr for ValueType {
 }
 
 /// An attribute value is represented as an enum with variants for all supported value types.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 pub enum Value {
     String(String),
@@ -414,7 +414,7 @@ where
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
 impl Entity {
     /// Creates a new entity with no attributes set.
