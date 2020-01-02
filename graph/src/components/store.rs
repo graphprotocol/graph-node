@@ -1172,6 +1172,7 @@ pub trait Store: Send + Sync + 'static {
     ) -> Result<Option<BlockNumber>, StoreError>;
 }
 
+#[automock]
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// Return the GraphQL schema supplied by the user
     fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
@@ -1188,15 +1189,19 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
 }
 
 /// Common trait for blockchain store implementations.
+#[automock]
 pub trait ChainStore: Send + Sync + 'static {
     /// Get a pointer to this blockchain's genesis block.
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
     /// Insert blocks into the store (or update if they are already present).
-    fn upsert_blocks<'a, B, E>(&self, _: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
+    fn upsert_blocks<B, E>(
+        &self,
+        _blocks: B,
+    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
     where
-        B: Stream<Item = EthereumBlock, Error = E> + Send + 'a,
-        E: From<Error> + Send + 'a,
+        B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
+        E: From<Error> + Send + 'static,
         Self: Sized,
     {
         unimplemented!()

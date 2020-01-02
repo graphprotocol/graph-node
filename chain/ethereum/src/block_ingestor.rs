@@ -146,7 +146,7 @@ where
             })
     }
 
-    fn do_poll<'a>(&'a self) -> impl Future<Item = (), Error = EthereumAdapterError> + 'a {
+    fn do_poll(&'static self) -> impl Future<Item = (), Error = EthereumAdapterError> + 'static {
         trace!(self.logger, "BlockIngestor::do_poll");
         let network_name = self.network_name.clone();
         // Get chain head ptr from store
@@ -248,12 +248,11 @@ where
     /// head block pointer. If missing blocks prevent such an update, return a Vec with at least
     /// one of the missing blocks' hashes.
     fn ingest_blocks<
-        'a,
-        B: Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'a,
+        B: Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'static,
     >(
-        &'a self,
+        &'static self,
         blocks: B,
-    ) -> impl Future<Item = Vec<H256>, Error = EthereumAdapterError> + Send + 'a {
+    ) -> impl Future<Item = Vec<H256>, Error = EthereumAdapterError> + Send + 'static {
         self.chain_store.upsert_blocks(blocks).and_then(move |()| {
             self.chain_store
                 .attempt_chain_head_update(self.ancestor_count)
@@ -266,10 +265,10 @@ where
 
     /// Requests the specified blocks via web3, returning them in a stream (potentially out of
     /// order).
-    fn get_blocks<'a>(
-        &'a self,
+    fn get_blocks(
+        &'static self,
         block_hashes: &[H256],
-    ) -> Box<dyn Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'a> {
+    ) -> Box<dyn Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'static> {
         let logger = self.logger.clone();
         let eth_adapter = self.eth_adapter.clone();
 
