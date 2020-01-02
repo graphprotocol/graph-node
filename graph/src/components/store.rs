@@ -2,6 +2,8 @@ use failure::Error;
 use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
 use lazy_static::lazy_static;
+use mockall::predicate::*;
+use mockall::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
@@ -776,6 +778,7 @@ pub enum TransactionAbortError {
 }
 
 /// Common trait for store implementations.
+#[automock]
 pub trait Store: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(
@@ -788,10 +791,10 @@ pub trait Store: Send + Sync + 'static {
 
     /// Look up multiple entities as of the latest block. Returns a map of
     /// entities by type.
-    fn get_many(
+    fn get_many<'a>(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
+        ids_for_type: BTreeMap<&'a str, Vec<&'a str>>,
     ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError>;
 
     /// Queries the store for entities that match the store query.
