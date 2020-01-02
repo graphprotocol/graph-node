@@ -223,7 +223,7 @@ impl Store for MockStore {
 
                     if entities_of_type.contains_key(&key.entity_id) {
                         let existing_entity = entities_of_type.get_mut(&key.entity_id).unwrap();
-                        existing_entity.merge(data);
+                        existing_entity.merge_remove_null_fields(data);
 
                         entity_changes
                             .push(EntityChange::from_key(key, EntityChangeOperation::Set));
@@ -248,7 +248,7 @@ impl Store for MockStore {
 
                     if entities_of_type.contains_key(&key.entity_id) {
                         let existing_entity = entities_of_type.get_mut(&key.entity_id).unwrap();
-                        existing_entity.merge(data);
+                        existing_entity.merge_remove_null_fields(data);
 
                         entity_changes
                             .push(EntityChange::from_key(key, EntityChangeOperation::Set));

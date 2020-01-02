@@ -444,14 +444,14 @@ impl Store {
                 // merge the changes into the entity.
                 let result = match entity {
                     Some(mut entity) => {
-                        entity.merge(data);
+                        entity.merge_remove_null_fields(data);
                         conn.update(&key, &entity, None).map(|_| 0)
                     }
                     None => {
                         // Merge with a new entity since that removes values that
                         // were set to Value::Null
                         let mut entity = Entity::new();
-                        entity.merge(data);
+                        entity.merge_remove_null_fields(data);
                         conn.insert(&key, &entity, None).map(|_| 1)
                     }
                 };
