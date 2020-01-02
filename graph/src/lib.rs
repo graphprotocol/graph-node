@@ -16,6 +16,7 @@ pub mod log;
 /// Module with mocks for different parts of the system.
 pub mod mock {
     pub use crate::components::ethereum::MockEthereumAdapter;
+    pub use crate::components::store::MockStore;
 }
 
 /// A prelude that makes all system component traits and data types available.
