@@ -11,14 +11,15 @@ use crate::host_exports::HostExports;
 use graph::components::store::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
+use graph::mock::MockEthereumAdapter;
 use graph::prelude::Error;
 use graph_core;
+use graph_mock::MockMetricsRegistry;
 use test_store::STORE;
+
 use web3::types::{Address, H160};
 
 use super::*;
-
-use graph_mock::{MockEthereumAdapter, MockMetricsRegistry};
 
 mod abi;
 
@@ -43,7 +44,7 @@ fn test_valid_module_and_store(
             id: ID!,
             name: String,
         }
-        
+
         type Thing @entity {
             id: ID!,
             value: String,

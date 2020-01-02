@@ -14,10 +14,11 @@ use std::io::Cursor;
 use std::time::Duration;
 use std::time::Instant;
 
+use graph::mock::MockEthereumAdapter;
 use graph::prelude::*;
 
 use graph_core::LinkResolver;
-use graph_mock::{MockEthereumAdapter, MockStore};
+use graph_mock::MockStore;
 
 use test_store::LOGGER;
 
