@@ -1270,7 +1270,7 @@ fn query_at_block() {
             .collect();
         let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
 
-        let result = dbg!(execute_query_document(query));
+        let result = execute_query_document(query);
 
         if STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap() {
             assert!(result.errors.is_none(), "unexpected error: {}", qid);
