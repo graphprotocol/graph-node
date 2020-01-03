@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use web3::types::H256;
 
-use crate::data::schema::SchemaReference;
+use crate::data::schema::{SchemaImportError, SchemaReference};
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
@@ -1192,12 +1192,15 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     fn resolve_schema_reference(
         &self,
         schema_reference: &SchemaReference,
-    ) -> Result<Arc<Schema>, Error>;
+    ) -> Result<Arc<Schema>, SchemaImportError>;
 
     fn resolve_import_graph(
         &self,
         schema: &Schema,
-    ) -> (HashMap<SchemaReference, Arc<Schema>>, Vec<Error>);
+    ) -> (
+        HashMap<SchemaReference, Arc<Schema>>,
+        Vec<SchemaImportError>,
+    );
 }
 
 /// Common trait for blockchain store implementations.

@@ -134,28 +134,6 @@ impl fmt::Display for SchemaReference {
     }
 }
 
-// impl SchemaReference {
-//     pub fn resolve<S: Store + SubgraphDeploymentStore>(
-//         &self,
-//         store: Arc<S>,
-//     ) -> Result<(Arc<Schema>, SubgraphDeploymentId), SchemaImportError> {
-//         let subgraph_id = match self {
-//             SchemaReference::ByName(name) => store
-//                 .resolve_subgraph_name_to_id(name.clone())
-//                 .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-//                 .and_then(|subgraph_id_opt| {
-//                     subgraph_id_opt.ok_or(SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-//                 })?,
-//             SchemaReference::ById(id) => id.clone(),
-//         };
-
-//         store
-//             .input_schema(&subgraph_id)
-//             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
-//             .map(|schema| (schema, subgraph_id))
-//     }
-// }
-
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {

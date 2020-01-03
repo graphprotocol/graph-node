@@ -3,7 +3,7 @@ use mockall::*;
 use std::collections::{BTreeMap, HashMap};
 
 use graph::components::store::*;
-use graph::data::schema::SchemaReference;
+use graph::data::schema::{SchemaImportError, SchemaReference};
 use graph::data::subgraph::schema::*;
 use graph::prelude::*;
 use graph_graphql::prelude::api_schema;
