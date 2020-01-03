@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::EthereumContractDataSourceEntity;
-use graph::data::schema::SchemaReference;
+use graph::data::schema::{SchemaImportError, SchemaReference};
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
@@ -1181,23 +1181,29 @@ impl SubgraphDeploymentStore for Store {
     fn resolve_schema_reference(
         &self,
         schema_reference: &SchemaReference,
-    ) -> Result<Arc<Schema>, Error> {
+    ) -> Result<Arc<Schema>, SchemaImportError> {
         let subgraph_id = match schema_reference {
             SchemaReference::ByName(name) => self
                 .resolve_subgraph_name_to_id(name.clone())
+                .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(schema_reference.clone()))
                 .and_then(|subgraph_id_opt| {
-                    subgraph_id_opt
-                        .ok_or(format_err!("Subgraph name `{}` not found ", name.clone()))
+                    subgraph_id_opt.ok_or(SchemaImportError::ImportedSubgraphNotFound(
+                        schema_reference.clone(),
+                    ))
                 })?,
             SchemaReference::ById(id) => id.clone(),
         };
         self.input_schema(&subgraph_id)
+            .map_err(|_| SchemaImportError::ImportedSchemaNotFound(schema_reference.clone()))
     }
 
     fn resolve_import_graph(
         &self,
         schema: &Schema,
-    ) -> (HashMap<SchemaReference, Arc<Schema>>, Vec<Error>) {
+    ) -> (
+        HashMap<SchemaReference, Arc<Schema>>,
+        Vec<SchemaImportError>,
+    ) {
         let mut imports = schema.imported_schemas();
         let mut visited = HashSet::new();
         let mut schemas = HashMap::new();

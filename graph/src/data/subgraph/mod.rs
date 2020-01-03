@@ -328,7 +328,7 @@ pub enum SubgraphAssignmentProviderEvent {
 #[derive(Fail, Debug)]
 pub enum SubgraphManifestValidationWarning {
     #[fail(display = "schema validation produced warnings: {:?}", _0)]
-    SchemaImportError(Error),
+    SchemaImportError(SchemaImportError),
 }
 
 #[derive(Fail, Debug)]
