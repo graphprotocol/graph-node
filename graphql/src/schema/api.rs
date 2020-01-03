@@ -109,9 +109,25 @@ fn add_directives(schema: &mut Document) {
         locations: vec![DirectiveLocation::Object],
     });
 
+    let original_name = Definition::DirectiveDefinition(DirectiveDefinition {
+        position: Pos::default(),
+        description: None,
+        name: "originalName".to_owned(),
+        arguments: vec![InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "name".to_owned(),
+            value_type: Type::NamedType("String".to_owned()),
+            default_value: None,
+            directives: vec![],
+        }],
+        locations: vec![DirectiveLocation::Object],
+    });
+
     schema.definitions.push(entity);
     schema.definitions.push(derived_from);
     schema.definitions.push(subgraph_id);
+    schema.definitions.push(original_name);
 }
 
 /// Adds a global `OrderDirection` type to the schema.
