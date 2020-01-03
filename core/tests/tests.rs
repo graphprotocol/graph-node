@@ -240,6 +240,7 @@ fn added_subgraph_id_eq(
     }
 }
 
+#[ignore]
 #[test]
 fn subgraph_provider_events() {
     let mut runtime = tokio::runtime::Runtime::new().unwrap();
@@ -249,7 +250,7 @@ fn subgraph_provider_events() {
             let logger_factory = LoggerFactory::new(logger.clone(), None);
             let ipfs = Arc::new(IpfsClient::default());
             let resolver = Arc::new(LinkResolver::from(IpfsClient::default()));
-            let store = Arc::new(MockStore::new(vec![]));
+            let store = Arc::new(MockStore::new());
             let stores: HashMap<String, Arc<MockStore>> = vec![store.clone()]
                 .into_iter()
                 .map(|s| ("mainnet".to_string(), s))

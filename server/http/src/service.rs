@@ -488,20 +488,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use graph_mock::{MockMetricsRegistry, MockStore};
-    use graphql_parser::query as q;
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
-    use web3::types::H256;
 
-    use graph::data::subgraph::schema::*;
     use graph::prelude::*;
+    use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
+    use graphql_parser::query as q;
+
+    use crate::test_utils;
 
     use super::GraphQLService;
     use super::GraphQLServiceMetrics;
-    use crate::test_utils;
 
     /// A simple stupid query runner for testing.
     pub struct TestGraphQlRunner;
@@ -539,40 +538,8 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
         let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
-        let store = Arc::new(MockStore::user_store());
-        let id = MockStore::user_subgraph_id();
-        let schema = store
-            .input_schema(&id)
-            .expect("Failed to get schema")
-            .as_ref()
-            .clone();
-        let manifest = SubgraphManifest {
-            id: id.clone(),
-            location: "".to_owned(),
-            spec_version: "".to_owned(),
-            description: None,
-            repository: None,
-            schema,
-            data_sources: vec![],
-            templates: vec![],
-        };
-
+        let (store, subgraph_id) = mock_store_with_users_subgraph();
         let graphql_runner = Arc::new(TestGraphQlRunner);
-        store
-            .apply_metadata_operations(
-                SubgraphDeploymentEntity::new(
-                    &manifest,
-                    false,
-                    false,
-                    None,
-                    Some(EthereumBlockPointer {
-                        hash: H256::zero(),
-                        number: 0,
-                    }),
-                )
-                .create_operations(&id),
-            )
-            .unwrap();
 
         let node_id = NodeId::new("test").unwrap();
         let mut service =
@@ -580,7 +547,10 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("http://localhost:8000/subgraphs/id/{}", id))
+            .uri(format!(
+                "http://localhost:8000/subgraphs/id/{}",
+                subgraph_id
+            ))
             .body(Body::from("{}"))
             .unwrap();
 
@@ -609,52 +579,23 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
         let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
-        let store = Arc::new(MockStore::user_store());
-        let id = MockStore::user_subgraph_id();
-        let schema = store
-            .input_schema(&id)
-            .expect("Failed to get schema")
-            .as_ref()
-            .clone();
-        let manifest = SubgraphManifest {
-            id: id.clone(),
-            location: "".to_owned(),
-            spec_version: "".to_owned(),
-            description: None,
-            repository: None,
-            schema,
-            data_sources: vec![],
-            templates: vec![],
-        };
+        let (store, subgraph_id) = mock_store_with_users_subgraph();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
         let mut runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(future::lazy(move || {
                 let res: Result<_, ()> = Ok({
-                    store
-                        .apply_metadata_operations(
-                            SubgraphDeploymentEntity::new(
-                                &manifest,
-                                false,
-                                false,
-                                None,
-                                Some(EthereumBlockPointer {
-                                    hash: H256::zero(),
-                                    number: 0,
-                                }),
-                            )
-                            .create_operations(&id),
-                        )
-                        .unwrap();
-
                     let node_id = NodeId::new("test").unwrap();
                     let mut service =
                         GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
 
                     let request = Request::builder()
                         .method(Method::POST)
-                        .uri(format!("http://localhost:8000/subgraphs/id/{}", id))
+                        .uri(format!(
+                            "http://localhost:8000/subgraphs/id/{}",
+                            subgraph_id
+                        ))
                         .body(Body::from("{\"query\": \"{ name }\"}"))
                         .unwrap();
 
