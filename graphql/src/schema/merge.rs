@@ -226,7 +226,7 @@ mod tests {
     use super::merged_schema;
 
     use graph::data::graphql::ext::*;
-    use graph::data::schema::{ImportedType, SchemaReference, SCHEMA_TYPE_NAME};
+    use graph::data::schema::{SchemaReference, SCHEMA_TYPE_NAME};
     use graph::prelude::*;
 
     use graphql_parser::schema::Value;
