@@ -23,27 +23,21 @@ pub fn merged_schema(
     //
     // If the schema is not available, then add a placeholder type to the root schema.
     //
-    // If the schema is available, copy the schema over.
+    // If the schema is available, copy the type over.
     // Check each field in the copied type and for non scalar fields, produce an (ImportedType, SchemaRefernce)
-    // tuple; the new vector element will either be for the same schema or for an imported schema.
+    // tuple.
     //
     // Copying a type:
     // 1. Clone the type
     // 2. Add a subgraph id directive
     // 3. If the type is imported with { name : "...", as: "..." }, change the name and
     //    add an @originalName(name: "...") directive
-    // 4. Push it onto the schema.document.definitions
-    //
-    // QUESTION: How should naming conflicts be handled?
-    // A subgraph developer will probably ensure that an imported type does not conflict with local subgraph types.
-    // However, the non scalar fields of an imported type are also imported and those types might overlap with local
-    // subgraph types. What should we do in this case?
-    // Presumably overlapping type names will not be accepted by GraphQL clients.
+
     let mut merged = root_schema.clone();
     let mut imports: Vec<(_, _)> = merged
         .imported_types()
         .iter()
-        .map(|(t, sr)| (t.clone(), sr.clone()))
+        .map(|(import, schema_reference)| (import.clone(), schema_reference.clone()))
         .collect();
 
     while let Some((import, schema_reference)) = imports.pop() {
@@ -130,7 +124,7 @@ pub fn merged_schema(
                         schema
                             .imported_types()
                             .iter()
-                            .find(|(import, schema_reference)| match import {
+                            .find(|(import, _)| match import {
                                 ImportedType::Name(name) => name.eq(&original_name),
                                 ImportedType::NameAs(_, az) => az.eq(&original_name),
                             })
