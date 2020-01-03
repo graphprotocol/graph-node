@@ -1,4 +1,3 @@
-use crate::components::store::{Store, SubgraphDeploymentStore};
 use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, TypeExt};
 use crate::data::graphql::scalar::BuiltInScalarType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
@@ -13,7 +12,7 @@ use graphql_parser::{
 };
 use serde::{Deserialize, Serialize};
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -135,27 +134,27 @@ impl fmt::Display for SchemaReference {
     }
 }
 
-impl SchemaReference {
-    pub fn resolve<S: Store + SubgraphDeploymentStore>(
-        &self,
-        store: Arc<S>,
-    ) -> Result<(Arc<Schema>, SubgraphDeploymentId), SchemaImportError> {
-        let subgraph_id = match self {
-            SchemaReference::ByName(name) => store
-                .resolve_subgraph_name_to_id(name.clone())
-                .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-                .and_then(|subgraph_id_opt| {
-                    subgraph_id_opt.ok_or(SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-                })?,
-            SchemaReference::ById(id) => id.clone(),
-        };
+// impl SchemaReference {
+//     pub fn resolve<S: Store + SubgraphDeploymentStore>(
+//         &self,
+//         store: Arc<S>,
+//     ) -> Result<(Arc<Schema>, SubgraphDeploymentId), SchemaImportError> {
+//         let subgraph_id = match self {
+//             SchemaReference::ByName(name) => store
+//                 .resolve_subgraph_name_to_id(name.clone())
+//                 .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
+//                 .and_then(|subgraph_id_opt| {
+//                     subgraph_id_opt.ok_or(SchemaImportError::ImportedSubgraphNotFound(self.clone()))
+//                 })?,
+//             SchemaReference::ById(id) => id.clone(),
+//         };
 
-        store
-            .input_schema(&subgraph_id)
-            .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
-            .map(|schema| (schema, subgraph_id))
-    }
-}
+//         store
+//             .input_schema(&subgraph_id)
+//             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
+//             .map(|schema| (schema, subgraph_id))
+//     }
+// }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
@@ -181,50 +180,6 @@ impl Schema {
             interfaces_for_type: BTreeMap::new(),
             types_for_interface: BTreeMap::new(),
         }
-    }
-
-    pub fn resolve_schema_references<S: Store + SubgraphDeploymentStore>(
-        &self,
-        store: Arc<S>,
-    ) -> (
-        HashMap<SchemaReference, Arc<Schema>>,
-        Vec<SchemaImportError>,
-    ) {
-        let mut schemas = HashMap::new();
-        let mut visit_log = HashSet::new();
-        let import_errors = self.resolve_import_graph(store, &mut schemas, &mut visit_log);
-        (schemas, import_errors)
-    }
-
-    fn resolve_import_graph<S: Store + SubgraphDeploymentStore>(
-        &self,
-        store: Arc<S>,
-        schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
-        visit_log: &mut HashSet<SubgraphDeploymentId>,
-    ) -> Vec<SchemaImportError> {
-        // Use the visit log to detect cycles in the import graph
-        self.imported_schemas()
-            .into_iter()
-            .fold(vec![], |mut errors, schema_ref| {
-                match schema_ref.clone().resolve(store.clone()) {
-                    Ok((schema, subgraph_id)) => {
-                        schemas.insert(schema_ref, schema.clone());
-                        // If this node in the graph has already been visited stop traversing
-                        if !visit_log.contains(&subgraph_id) {
-                            visit_log.insert(subgraph_id);
-                            errors.extend(schema.resolve_import_graph(
-                                store.clone(),
-                                schemas,
-                                visit_log,
-                            ));
-                        }
-                    }
-                    Err(err) => {
-                        errors.push(err);
-                    }
-                }
-                errors
-            })
     }
 
     pub fn collect_interfaces(

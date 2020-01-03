@@ -1,8 +1,9 @@
 use mockall::predicate::*;
 use mockall::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use graph::components::store::*;
+use graph::data::schema::SchemaReference;
 use graph::data::subgraph::schema::*;
 use graph::prelude::*;
 use graph_graphql::prelude::api_schema;
@@ -91,6 +92,16 @@ mock! {
         fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 
         fn uses_relational_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error>;
+
+        fn resolve_schema_reference(
+            &self,
+            _schema_reference: &SchemaReference,
+        ) -> Result<Arc<Schema>, Error>;
+
+        fn resolve_import_graph(
+            &self,
+            _schema: &Schema,
+        ) -> (HashMap<SchemaReference, Arc<Schema>>, Vec<Error>);
     }
 
     trait ChainStore: Send + Sync + 'static {
