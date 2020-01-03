@@ -5,7 +5,7 @@ use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
 use lru_time_cache::LruCache;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 use std::sync::{Arc, Mutex, RwLock};
@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::EthereumContractDataSourceEntity;
+use graph::data::schema::SchemaReference;
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
@@ -30,7 +31,8 @@ use graph::prelude::{
 };
 
 use graph_chain_ethereum::BlockIngestorMetrics;
-use graph_graphql::prelude::api_schema;
+use graph_graphql::prelude::{api_schema, merged_schema};
+use tokio::timer::Interval;
 use web3::types::H256;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
@@ -779,12 +781,13 @@ impl Store {
             (input_schema, network)
         };
 
-        // Parse the schema and add @subgraphId directives
+        // Parse the schema
         let input_schema = Schema::parse(&input_schema, subgraph_id.clone())?;
-        let mut schema = input_schema.clone();
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
+        let (imported_schemas, _) = self.resolve_import_graph(&input_schema);
+        let mut schema = merged_schema(&input_schema, imported_schemas);
         schema.document = api_schema(&schema.document)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
@@ -1173,6 +1176,52 @@ impl SubgraphDeploymentStore for Store {
 
     fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {
         Ok(self.subgraph_info(subgraph_id)?.network)
+    }
+
+    fn resolve_schema_reference(
+        &self,
+        schema_reference: &SchemaReference,
+    ) -> Result<Arc<Schema>, Error> {
+        let subgraph_id = match schema_reference {
+            SchemaReference::ByName(name) => self
+                .resolve_subgraph_name_to_id(name.clone())
+                .and_then(|subgraph_id_opt| {
+                    subgraph_id_opt
+                        .ok_or(format_err!("Subgraph name `{}` not found ", name.clone()))
+                })?,
+            SchemaReference::ById(id) => id.clone(),
+        };
+        self.input_schema(&subgraph_id)
+    }
+
+    fn resolve_import_graph(
+        &self,
+        schema: &Schema,
+    ) -> (HashMap<SchemaReference, Arc<Schema>>, Vec<Error>) {
+        let mut imports = schema.imported_schemas();
+        let mut visited = HashSet::new();
+        let mut schemas = HashMap::new();
+        let mut errors = vec![];
+
+        while let Some(schema_ref) = imports.pop() {
+            match self.resolve_schema_reference(&schema_ref) {
+                Ok(schema) => {
+                    schemas.insert(schema_ref, schema.clone());
+                    if !visited.contains(&schema.id) {
+                        visited.insert(schema.id.clone());
+                        schema
+                            .imported_schemas()
+                            .into_iter()
+                            .for_each(|schema_reference| imports.push(schema_reference));
+                    }
+                }
+                Err(e) => {
+                    errors.push(e);
+                }
+            }
+        }
+
+        (schemas, errors)
     }
 }
 

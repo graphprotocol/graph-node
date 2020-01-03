@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use web3::types::H256;
 
+use crate::data::schema::SchemaReference;
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
@@ -1198,6 +1199,16 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// Return the name of the network that the subgraph is indexing from. The
     /// names returned are things like `mainnet` or `ropsten`
     fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error>;
+
+    fn resolve_schema_reference(
+        &self,
+        schema_reference: &SchemaReference,
+    ) -> Result<Arc<Schema>, Error>;
+
+    fn resolve_import_graph(
+        &self,
+        schema: &Schema,
+    ) -> (HashMap<SchemaReference, Arc<Schema>>, Vec<Error>);
 }
 
 /// Common trait for blockchain store implementations.
