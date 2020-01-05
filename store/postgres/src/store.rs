@@ -118,11 +118,15 @@ pub struct StoreConfig {
 }
 
 #[derive(Clone)]
-struct SchemaPair {
+struct SchemaCacheEntry {
     /// The schema as supplied by the user
     input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
     api: Arc<Schema>,
+    /// The imported schemas which are referenced by name or were not available to merge
+    unstable_imports: Vec<(SchemaReference, Option<SubgraphDeploymentId>)>,
+    /// Timestamp for the last merge
+    last_refresh: Instant,
 }
 
 /// A Store based on Diesel and Postgres.
@@ -136,7 +140,7 @@ pub struct Store {
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
-    schema_cache: Mutex<LruCache<SubgraphDeploymentId, SchemaPair>>,
+    schema_cache: Mutex<LruCache<SubgraphDeploymentId, SchemaCacheEntry>>,
 
     /// A cache for the storage metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
@@ -699,9 +703,26 @@ impl Store {
         Ok(storage.clone())
     }
 
-    fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaPair, Error> {
-        if let Some(pair) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
-            return Ok(pair.clone());
+    fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaCacheEntry, Error> {
+        if let Some(entry) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
+            // Cache entry is stale and an unstable import has changed or is now available
+            // TODO: Is it okay to ignore entries unstable imports which are no longer available?
+            // TODO: Make this threshold an envvar?
+            let requires_refresh = entry.last_refresh.elapsed().as_secs() >= 120
+                && entry
+                    .unstable_imports
+                    .iter()
+                    .any(|(schema_reference, subgraph_id_opt)| {
+                        self.resolve_schema_reference(schema_reference)
+                            .map(|schema| match subgraph_id_opt {
+                                Some(subgraph_id) => schema.id.eq(subgraph_id),
+                                None => true,
+                            })
+                            .unwrap_or(false)
+                    });
+            if !requires_refresh {
+                return Ok(entry.clone());
+            }
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
@@ -733,14 +754,39 @@ impl Store {
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
-        let (imported_schemas, _) = self.resolve_import_graph(&input_schema);
+        let (imported_schemas, schema_import_errors) = self.resolve_import_graph(&input_schema);
+        let mut unstable_schemas = imported_schemas
+            .iter()
+            .filter_map(|(schema_reference, schema)| match schema_reference {
+                SchemaReference::ByName(_) => {
+                    Some((schema_reference.clone(), Some(schema.id.clone())))
+                }
+                _ => None,
+            })
+            .collect::<Vec<(SchemaReference, Option<SubgraphDeploymentId>)>>();
+        let mut missing_schemas = schema_import_errors
+            .iter()
+            .map(|e| match e {
+                SchemaImportError::ImportedSchemaNotFound(schema_reference) => {
+                    (schema_reference.clone(), None)
+                }
+                SchemaImportError::ImportedSubgraphNotFound(schema_reference) => {
+                    (schema_reference.clone(), None)
+                }
+            })
+            .collect::<Vec<(_, _)>>();
+        unstable_schemas.append(&mut missing_schemas);
+
+        // Merge the schemas and create the api schema
         let mut schema = merged_schema(&input_schema, imported_schemas);
         schema.document = api_schema(&schema.document)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
-        let pair = SchemaPair {
+        let pair = SchemaCacheEntry {
             input: Arc::new(input_schema),
             api: Arc::new(schema),
+            unstable_imports: unstable_schemas,
+            last_refresh: Instant::now(),
         };
 
         // Insert the schema into the cache.
