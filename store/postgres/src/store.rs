@@ -706,7 +706,7 @@ impl Store {
     fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaCacheEntry, Error> {
         if let Some(entry) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
             // Cache entry is stale and an unstable import has changed or is now available
-            // TODO: Is it okay to ignore entries unstable imports which are no longer available?
+            // TODO: Is it okay to ignore unstable imports which are no longer available?
             // TODO: Make this threshold an envvar?
             let requires_refresh = entry.last_refresh.elapsed().as_secs() >= 120
                 && entry
