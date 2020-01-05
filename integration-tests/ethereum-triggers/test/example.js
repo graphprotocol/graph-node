@@ -7,11 +7,11 @@ const GravatarRegistry = artifacts.require("./GravatarRegistry.sol");
 const srcDir = path.join(__dirname, "..");
 
 const fetchSubgraphs = createApolloFetch({
-  uri: "http://graph-node:8000/subgraphs"
+  uri: "http://localhost:8000/subgraphs"
 });
 
 const fetchSubgraph = createApolloFetch({
-  uri: "http://graph-node:8000/subgraphs/name/test/ethereum-triggers"
+  uri: "http://localhost:8000/subgraphs/name/test/ethereum-triggers"
 });
 
 const waitForSubgraphToBeSynced = async () => {

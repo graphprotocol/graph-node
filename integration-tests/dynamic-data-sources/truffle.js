@@ -19,11 +19,11 @@ module.exports = {
       network_id: "3"
     },
     test: {
-      host: "parity",
+      host: "localhost",
       port: 8545,
       network_id: "*",
       gas: "100000000000",
-      gasPrice: "1",
+      gasPrice: "1"
     }
   },
   compilers: {

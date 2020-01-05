@@ -7,11 +7,11 @@ const Factory = artifacts.require("./Factory.sol");
 const srcDir = path.join(__dirname, "..");
 
 const fetchSubgraphs = createApolloFetch({
-  uri: "http://graph-node:8000/subgraphs"
+  uri: "http://localhost:8000/subgraphs"
 });
 
 const fetchSubgraph = createApolloFetch({
-  uri: "http://graph-node:8000/subgraphs/name/test/dynamic-data-sources"
+  uri: "http://localhost:8000/subgraphs/name/test/dynamic-data-sources"
 });
 
 const waitForSubgraphToBeSynced = async () => {
@@ -136,7 +136,7 @@ contract("Dynamic data sources", accounts => {
           id: "0x79183957be84c0f4da451e534d5ba5ba3fb9c696",
           exchange: "0x79183957be84c0f4da451e534d5ba5ba3fb9c696",
           name: "DAI"
-        },
+        }
       ],
       createds: [
         {
@@ -148,7 +148,7 @@ contract("Dynamic data sources", accounts => {
           id: "0x79183957be84c0f4da451e534d5ba5ba3fb9c696",
           exchange: "0x79183957be84c0f4da451e534d5ba5ba3fb9c696",
           name: "DAI"
-        },
+        }
       ]
     });
   });
