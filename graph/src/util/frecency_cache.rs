@@ -1,4 +1,10 @@
-use std::collections::{btree_map, BTreeMap};
+use priority_queue::PriorityQueue;
+use std::cmp::Reverse;
+use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
+
+// The number of `evict` calls without access after which an entry is considered stale.
+const STALE_PERIOD: u64 = 100;
 
 pub trait CacheWeight {
     fn weight(&self) -> u64;
@@ -13,107 +19,173 @@ impl<T: CacheWeight> CacheWeight for Option<T> {
     }
 }
 
+/// `PartialEq` and `Hash` are delegated to the `key`.
 #[derive(Clone, Debug)]
-pub struct CacheEntry<V> {
+pub struct CacheEntry<K, V> {
     weight: u64,
-    frecency: ordered_float::OrderedFloat<f32>,
+    key: K,
     value: V,
+    will_stale: bool,
 }
 
-/// Each entry in the cache has a frecency, which is incremented by 1 on access and multiplied by
-/// 0.9 on each evict so that entries age. Entries also have a weight, upon eviction entries will
-/// be removed by order of least frecency until the max weight is respected. This cache only
-/// removes entries on calls to `evict`, so the max weight may be exceeded until `evict` is called.
-#[derive(Clone, Debug)]
-pub struct FrecencyCache<K, V>(BTreeMap<K, CacheEntry<V>>);
-
-impl<K: Ord, V> Default for FrecencyCache<K, V> {
-    fn default() -> Self {
-        FrecencyCache(BTreeMap::new())
+impl<K: Eq, V> PartialEq for CacheEntry<K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key.eq(&other.key)
     }
 }
 
-impl<K: Ord, V: CacheWeight> FrecencyCache<K, V> {
+impl<K: Eq, V> Eq for CacheEntry<K, V> {}
+
+impl<K: Hash, V> Hash for CacheEntry<K, V> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key.hash(state)
+    }
+}
+
+impl<K, V: Default> CacheEntry<K, V> {
+    fn cache_key(key: K) -> Self {
+        // Only the key matters for finding an entry in the cache.
+        CacheEntry {
+            key,
+            value: V::default(),
+            weight: 0,
+            will_stale: false,
+        }
+    }
+}
+
+// The priorities are `(stale, frequency)` tuples, first all stale entries will be popped and
+// then non-stale entries by least frequency.
+type Priority = (bool, Reverse<u64>);
+
+/// Each entry in the cache has a frecency, which is incremented by 1 on access and multiplied by
+/// 0.8 on each evict so that entries age. Entries also have a weight, upon eviction entries will
+/// be removed by order of least frecency until the max weight is respected. This cache only
+/// removes entries on calls to `evict`, so the max weight may be exceeded until `evict` is called.
+#[derive(Clone, Debug)]
+pub struct LfuCache<K: Eq + Hash, V> {
+    queue: PriorityQueue<CacheEntry<K, V>, Priority>,
+    total_weight: u64,
+    stale_counter: u64,
+}
+
+impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
+    fn default() -> Self {
+        LfuCache {
+            queue: PriorityQueue::new(),
+            total_weight: 0,
+            stale_counter: 0,
+        }
+    }
+}
+
+impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V> {
     pub fn new() -> Self {
-        FrecencyCache(BTreeMap::new())
+        LfuCache {
+            queue: PriorityQueue::new(),
+            total_weight: 0,
+            stale_counter: 0,
+        }
     }
 
     /// Updates and bumps freceny if already present.
     pub fn insert(&mut self, key: K, value: V) {
-        match self.0.entry(key) {
-            btree_map::Entry::Vacant(entry) => {
-                entry.insert(CacheEntry {
-                    frecency: 1.0.into(),
-                    weight: value.weight(),
-                    value,
-                });
+        let weight = value.weight();
+        match self.get_mut(key.clone()) {
+            None => {
+                self.total_weight += weight;
+                self.queue.push(
+                    CacheEntry {
+                        weight,
+                        key,
+                        value,
+                        will_stale: false,
+                    },
+                    (false, Reverse(1)),
+                );
             }
-            btree_map::Entry::Occupied(mut entry) => {
-                let entry = entry.get_mut();
-                *entry.frecency += 1.0;
-                entry.weight = value.weight();
+            Some(entry) => {
+                entry.weight = weight;
                 entry.value = value;
+                entry.will_stale = false;
+                self.total_weight += weight - entry.weight;
             }
         }
+    }
+
+    fn get_mut(&mut self, key: K) -> Option<&mut CacheEntry<K, V>> {
+        // Increment the frequency by 1
+        let key_entry = CacheEntry::cache_key(key);
+        self.queue
+            .change_priority_by(&key_entry, |(s, Reverse(f))| (s, Reverse(f + 1)));
+        self.queue.get_mut(&key_entry).map(|x| x.0)
     }
 
     pub fn get(&mut self, key: &K) -> Option<&V> {
-        self.0.get_mut(key).map(|e| {
-            *e.frecency += 1.0;
-            &e.value
-        })
+        self.get_mut(key.clone()).map(|x| &x.value)
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        self.0.remove(key).map(|e| e.value)
+        // `PriorityQueue` doesn't have a remove method, so emulate that by setting the priority to
+        // the absolute minimum and popping.
+        let key_entry = CacheEntry::cache_key(key.clone());
+        self.queue
+            .change_priority(&key_entry, (true, Reverse(u64::min_value())))
+            .and_then(|_| {
+                self.queue.pop().map(|(e, _)| {
+                    assert_eq!(e.key, key_entry.key);
+                    self.total_weight -= e.weight;
+                    e.value
+                })
+            })
     }
 
     pub fn contains_key(&self, key: &K) -> bool {
-        self.0.contains_key(key)
+        self.queue
+            .get(&CacheEntry::cache_key(key.clone()))
+            .is_some()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.queue.is_empty()
     }
 
     pub fn evict(&mut self, max_weight: u64) {
-        let total_weight: i64 = self.0.values().map(|e| e.weight as i64).sum();
-        if total_weight > max_weight as i64 {
-            let mut excess_weight: i64 = total_weight - max_weight as i64;
-            let mut entries: Vec<_> = std::mem::take(&mut self.0).into_iter().collect();
-            entries.sort_by_key(|(_, e)| std::cmp::Reverse(e.frecency));
+        if self.total_weight <= max_weight {
+            return;
+        }
 
-            // This loop halts because `excess_weight <= sum(entries.weight)` and this will evict
-            // all entries if necessary.
-            while excess_weight > 0 {
-                // Unwrap: If there were no entries left, `excess_weight` would be 0.
-                let evicted = entries.pop().unwrap();
-                excess_weight -= evicted.1.weight as i64;
+        self.stale_counter += 1;
+        if self.stale_counter == STALE_PERIOD {
+            self.stale_counter = 0;
+
+            // Entries marked `will_stale` are effectively set as stale.
+            // All entries are then marked `will_stale`.
+            for (e, p) in self.queue.iter_mut() {
+                p.0 = e.will_stale;
+                e.will_stale = true;
             }
+        }
 
-            self.0 = entries
-                .into_iter()
-                .map(|(k, mut e)| {
-                    // Age the entries.
-                    *e.frecency *= 0.9;
-                    (k, e)
-                })
-                .collect();
+        while self.total_weight > max_weight {
+            // Unwrap: If there were no entries left, `total_weight` would be 0.
+            let entry = self.queue.pop().unwrap().0;
+            self.total_weight -= entry.weight;
         }
     }
 }
 
-impl<K: Ord, V> IntoIterator for FrecencyCache<K, V> {
-    type Item = (K, CacheEntry<V>);
-    type IntoIter = btree_map::IntoIter<K, CacheEntry<V>>;
+impl<K: Ord + Eq + Hash + 'static, V: 'static> IntoIterator for LfuCache<K, V> {
+    type Item = (CacheEntry<K, V>, Priority);
+    type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        Box::new(self.queue.into_iter())
     }
 }
 
-impl<K: Ord, V> Extend<(K, CacheEntry<V>)> for FrecencyCache<K, V> {
-    fn extend<T: IntoIterator<Item = (K, CacheEntry<V>)>>(&mut self, iter: T) {
-        self.0.extend(iter);
+impl<K: Ord + Eq + Hash, V> Extend<(CacheEntry<K, V>, Priority)> for LfuCache<K, V> {
+    fn extend<T: IntoIterator<Item = (CacheEntry<K, V>, Priority)>>(&mut self, iter: T) {
+        self.queue.extend(iter);
     }
 }

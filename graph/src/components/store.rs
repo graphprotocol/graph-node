@@ -17,7 +17,7 @@ use web3::types::H256;
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
-use crate::util::frecency_cache::FrecencyCache;
+use crate::util::frecency_cache::LfuCache;
 
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
@@ -1324,7 +1324,7 @@ impl EntityModification {
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
-    current: FrecencyCache<EntityKey, Option<Entity>>,
+    current: LfuCache<EntityKey, Option<Entity>>,
     /// The accumulated changes to an entity. An entry of `None`
     /// means that the entity should be deleted
     updates: HashMap<EntityKey, Option<Entity>>,
@@ -1335,7 +1335,7 @@ impl EntityCache {
         Self::default()
     }
 
-    pub fn with_current(current: FrecencyCache<EntityKey, Option<Entity>>) -> EntityCache {
+    pub fn with_current(current: LfuCache<EntityKey, Option<Entity>>) -> EntityCache {
         EntityCache {
             current,
             updates: HashMap::new(),
@@ -1417,17 +1417,12 @@ impl EntityCache {
     /// `EntityModification`, making sure to only produce one when a change
     /// to the current state is actually needed.
     ///
-    /// Also returns the updated `FrecencyCache`.
+    /// Also returns the updated `LfuCache`.
     pub fn as_modifications(
         mut self,
         store: &(impl Store + ?Sized),
-    ) -> Result<
-        (
-            Vec<EntityModification>,
-            FrecencyCache<EntityKey, Option<Entity>>,
-        ),
-        QueryExecutionError,
-    > {
+    ) -> Result<(Vec<EntityModification>, LfuCache<EntityKey, Option<Entity>>), QueryExecutionError>
+    {
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
         let missing = self

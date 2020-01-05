@@ -150,7 +150,8 @@ impl WriteContext {
                     let modifications = match cache.as_modifications(store.as_ref()) {
                         Ok(mods) => mods,
                         Err(e) => return future::err(e.into()),
-                    };
+                    }
+                    .0;
 
                     let block_ptr = EthereumBlockPointer::from(&block_for_store.block);
 

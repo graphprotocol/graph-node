@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::util::frecency_cache::FrecencyCache;
+use crate::util::frecency_cache::LfuCache;
 use web3::types::Log;
 
 #[derive(Clone, Debug)]
@@ -16,7 +16,7 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    pub fn with_cache(frecency_cache: FrecencyCache<EntityKey, Option<Entity>>) -> Self {
+    pub fn with_cache(frecency_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
         BlockState {
             entity_cache: EntityCache::with_current(frecency_cache),
             created_data_sources: Vec::new(),
