@@ -48,7 +48,7 @@ tokio-timer = "0.2.11"
 tokio-threadpool = "0.1.14"
 url = "1.7.2"
 prometheus = "0.7.0"
-ordered-float = "1.0"
+priority-queue = "0.6.0"
 
 # Our fork contains a small but hacky patch.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches" }

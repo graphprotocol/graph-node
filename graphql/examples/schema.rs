@@ -1,5 +1,3 @@
-extern crate graph_graphql;
-
 use graphql_parser::parse_schema;
 use std::env;
 use std::fs;
