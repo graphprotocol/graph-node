@@ -7,4 +7,4 @@ pub mod ethereum;
 /// Security utilities.
 pub mod security;
 
-pub mod frecency_cache;
+pub mod lfu_cache;

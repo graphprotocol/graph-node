@@ -17,7 +17,7 @@ use web3::types::H256;
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
-use crate::util::frecency_cache::LfuCache;
+use crate::util::lfu_cache::LfuCache;
 
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
