@@ -12,7 +12,7 @@ use std::str::FromStr;
 
 use crate::data::subgraph::SubgraphDeploymentId;
 use crate::prelude::{format_err, EntityKey, QueryExecutionError};
-use crate::util::frecency_cache::CacheWeight;
+use crate::util::lfu_cache::CacheWeight;
 
 /// Custom scalars in GraphQL.
 pub mod scalar;

@@ -11,7 +11,7 @@ use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use graph::util::frecency_cache::LfuCache;
+use graph::util::lfu_cache::LfuCache;
 
 use super::SubgraphInstance;
 
@@ -44,7 +44,7 @@ struct IndexingState<T: RuntimeHostBuilder> {
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
     restarts: u64,
-    entity_frecency_cache: LfuCache<EntityKey, Option<Entity>>,
+    entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
 struct IndexingContext<B, T: RuntimeHostBuilder, S> {
@@ -400,7 +400,7 @@ impl SubgraphInstanceManager {
                 call_filter,
                 block_filter,
                 restarts: 0,
-                entity_frecency_cache: LfuCache::new(),
+                entity_lfu_cache: LfuCache::new(),
             },
             subgraph_metrics,
             host_metrics,
@@ -637,7 +637,7 @@ where
     // collected previously to every new event being processed
     process_triggers(
         logger.clone(),
-        BlockState::with_cache(std::mem::take(&mut ctx.state.entity_frecency_cache)),
+        BlockState::with_cache(std::mem::take(&mut ctx.state.entity_lfu_cache)),
         ctx,
         light_block.clone(),
         triggers,
@@ -766,8 +766,8 @@ where
         cache.evict(*ENTITY_CACHE_SIZE);
         section.end();
 
-        assert!(ctx.state.entity_frecency_cache.is_empty());
-        ctx.state.entity_frecency_cache = cache;
+        assert!(ctx.state.entity_lfu_cache.is_empty());
+        ctx.state.entity_lfu_cache = cache;
 
         if !mods.is_empty() {
             info!(logger1, "Applying {} entity operation(s)", mods.len());
