@@ -249,7 +249,25 @@ where
 
     fn locate_block(&self, bc: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
         match bc.block {
-            BlockLocator::Number(number) => Ok(number),
+            BlockLocator::Number(number) => self
+                .store
+                .block_ptr(bc.subgraph.clone())
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| {
+                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
+                    if ptr.number < number as u64 {
+                        Err(QueryExecutionError::ValueParseError(
+                            "block.number".to_owned(),
+                            format!(
+                                "subgraph {} has only indexed up to block number {} \
+                                 and data for block number {} is therefore not yet available",
+                                &bc.subgraph, ptr.number, number
+                            ),
+                        ))
+                    } else {
+                        Ok(number)
+                    }
+                }),
             BlockLocator::Hash(hash) => self
                 .store
                 .block_number(&bc.subgraph, hash)

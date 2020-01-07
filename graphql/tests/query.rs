@@ -1260,27 +1260,53 @@ fn can_use_nested_filter() {
 fn query_at_block() {
     use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
 
-    fn musicians_at(block: &str, ids: Vec<&str>, qid: &str) {
+    fn musicians_at(block: &str, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
         let query = graphql_parser::parse_query(&query).expect("invalid test query");
 
-        let ids: Vec<_> = ids
-            .into_iter()
-            .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
-            .collect();
-        let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
-
         let result = execute_query_document(query);
 
-        if STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap() {
-            assert!(result.errors.is_none(), "unexpected error: {}", qid);
-            assert_eq!(result.data, expected, "failed query: {}", qid);
-        } else {
-            assert!(
-                result.errors.is_some(),
-                "JSONB does not support time travel: {}",
-                qid
-            );
+        match (
+            STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap(),
+            expected,
+        ) {
+            (true, Ok(ids)) => {
+                let ids: Vec<_> = ids
+                    .into_iter()
+                    .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
+                    .collect();
+                let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
+                assert!(result.errors.is_none(), "unexpected error: {}\n", qid);
+                assert_eq!(result.data, expected, "failed query: {}", qid);
+            }
+            (true, Err(msg)) => {
+                assert!(
+                    result.errors.is_some(),
+                    "expected error `{}` but got successful result ({})",
+                    msg,
+                    qid
+                );
+                let errors = result.errors.unwrap();
+                let actual = errors
+                    .first()
+                    .expect("we expect one error message")
+                    .to_string();
+
+                assert!(
+                    actual.contains(msg),
+                    "expected error message `{}` but got {:?} ({})",
+                    msg,
+                    errors,
+                    qid
+                );
+            }
+            (false, _) => {
+                assert!(
+                    result.errors.is_some(),
+                    "JSONB does not support time travel: {}",
+                    qid
+                );
+            }
         }
     }
 
@@ -1288,11 +1314,15 @@ fn query_at_block() {
         format!("hash : \"0x{}\"", block.hash)
     }
 
-    musicians_at("number: 7000", vec!["m1", "m2", "m3", "m4"], "n7000");
-    musicians_at("number: 0", vec!["m1", "m2"], "n0");
-    musicians_at("number: 1", vec!["m1", "m2", "m3", "m4"], "n1");
+    const BLOCK_NOT_INDEXED: &str =
+        "subgraph graphqlTestsQuery has only indexed \
+         up to block number 1 and data for block number 7000 is therefore not yet available";
 
-    musicians_at(&hash(&*GENESIS_BLOCK), vec!["m1", "m2"], "h0");
-    musicians_at(&hash(&*BLOCK_ONE), vec!["m1", "m2", "m3", "m4"], "h1");
-    musicians_at(&hash(&*BLOCK_TWO), vec!["m1", "m2", "m3", "m4"], "h2");
+    musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
+    musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
+    musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
+
+    musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
+    musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
 }
