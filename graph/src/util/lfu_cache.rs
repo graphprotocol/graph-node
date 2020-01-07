@@ -58,10 +58,11 @@ impl<K, V: Default> CacheEntry<K, V> {
 // then non-stale entries by least frequency.
 type Priority = (bool, Reverse<u64>);
 
-/// Each entry in the cache has a frecency, which is incremented by 1 on access and multiplied by
-/// 0.8 on each evict so that entries age. Entries also have a weight, upon eviction entries will
-/// be removed by order of least frecency until the max weight is respected. This cache only
-/// removes entries on calls to `evict`, so the max weight may be exceeded until `evict` is called.
+/// Each entry in the cache has a frequency, which is incremented by 1 on access. Entries also have
+/// a weight, upon eviction first stale entries will be removed and then non-stale entries by order
+/// of least frequency until the max weight is respected. This cache only removes entries on calls
+/// to `evict`, so the max weight may be exceeded until `evict` is called. Every STALE_PERIOD
+/// evictions entities are checked for staleness.
 #[derive(Clone, Debug)]
 pub struct LfuCache<K: Eq + Hash, V> {
     queue: PriorityQueue<CacheEntry<K, V>, Priority>,
