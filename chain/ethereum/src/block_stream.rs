@@ -36,12 +36,7 @@ enum BlockStreamState {
     /// The BlockStream is reconciling the subgraph store state with the chain store state.
     ///
     /// Valid next states: YieldingBlocks, Idle
-    Reconciliation(
-        Box<
-            dyn Future<Item = Option<(VecDeque<EthereumBlockWithTriggers>, u64)>, Error = Error>
-                + Send,
-        >,
-    ),
+    Reconciliation(Box<dyn Future<Item = NextBlocks, Error = Error> + Send>),
 
     /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
     /// store up to date with the chain store.
@@ -94,6 +89,9 @@ enum ReconciliationStepOutcome {
     /// Subgraph pointer now matches chain head pointer.
     /// Reconciliation is complete.
     Done,
+
+    /// A revert was detected and processed.
+    Revert,
 }
 
 struct BlockStreamContext<S, C> {
@@ -141,6 +139,13 @@ pub struct BlockStream<S, C> {
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
     ctx: BlockStreamContext<S, C>,
+}
+
+enum NextBlocks {
+    /// Blocks and range size
+    Blocks(VecDeque<EthereumBlockWithTriggers>, u64),
+    Revert,
+    Done,
 }
 
 impl<S, C> BlockStream<S, C>
@@ -204,11 +209,7 @@ where
     }
 
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
-    fn next_blocks(
-        &self,
-    ) -> Box<
-        dyn Future<Item = Option<(VecDeque<EthereumBlockWithTriggers>, u64)>, Error = Error> + Send,
-    > {
+    fn next_blocks(&self) -> Box<dyn Future<Item = NextBlocks, Error = Error> + Send> {
         let ctx = self.clone();
 
         Box::new(future::loop_fn((), move |()| {
@@ -225,15 +226,21 @@ where
                 // Check outcome.
                 // Exit loop if done or there are blocks to process.
                 .and_then(move |outcome| match outcome {
-                    ReconciliationStepOutcome::YieldBlocks(next_blocks, range_size) => Ok(
-                        future::Loop::Break(Some((next_blocks.into_iter().collect(), range_size))),
-                    ),
+                    ReconciliationStepOutcome::YieldBlocks(next_blocks, range_size) => {
+                        Ok(future::Loop::Break(NextBlocks::Blocks(
+                            next_blocks.into_iter().collect(),
+                            range_size,
+                        )))
+                    }
                     ReconciliationStepOutcome::MoreSteps => Ok(future::Loop::Continue(())),
                     ReconciliationStepOutcome::Done => {
                         // Reconciliation is complete, so try to mark subgraph as Synced
                         ctx3.update_subgraph_synced_status()?;
 
-                        Ok(future::Loop::Break(None))
+                        Ok(future::Loop::Break(NextBlocks::Done))
+                    }
+                    ReconciliationStepOutcome::Revert => {
+                        Ok(future::Loop::Break(NextBlocks::Revert))
                     }
                 })
         }))
@@ -593,7 +600,7 @@ where
                                         metrics.reverted_blocks.set(reverted_block_number);
                                         // At this point, the loop repeats, and we try to move
                                         // the subgraph ptr another step in the right direction.
-                                        ReconciliationStepOutcome::MoreSteps
+                                        ReconciliationStepOutcome::Revert
                                     }),
                             )
                         }),
@@ -795,7 +802,7 @@ where
     S: Store,
     C: ChainStore,
 {
-    type Item = EthereumBlockWithTriggers;
+    type Item = BlockStreamEvent;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -821,7 +828,7 @@ where
                 BlockStreamState::Reconciliation(mut next_blocks_future) => {
                     match next_blocks_future.poll() {
                         // Reconciliation found blocks to process
-                        Ok(Async::Ready(Some((next_blocks, block_range_size)))) => {
+                        Ok(Async::Ready(NextBlocks::Blocks(next_blocks, block_range_size))) => {
                             let total_triggers =
                                 next_blocks.iter().map(|b| b.triggers.len()).sum::<usize>();
                             self.ctx.previous_triggers_per_block =
@@ -839,7 +846,7 @@ where
                         }
 
                         // Reconciliation completed. We're caught up to chain head.
-                        Ok(Async::Ready(None)) => {
+                        Ok(Async::Ready(NextBlocks::Done)) => {
                             // Reset error count
                             self.consecutive_err_count = 0;
 
@@ -848,6 +855,11 @@ where
 
                             // Poll for chain head update
                             continue;
+                        }
+
+                        Ok(Async::Ready(NextBlocks::Revert)) => {
+                            state = BlockStreamState::Reconciliation(self.ctx.next_blocks());
+                            break Ok(Async::Ready(Some(BlockStreamEvent::Revert)));
                         }
 
                         Ok(Async::NotReady) => {
@@ -878,7 +890,7 @@ where
                         // Yield one block
                         Some(next_block) => {
                             state = BlockStreamState::YieldingBlocks(next_blocks);
-                            break Ok(Async::Ready(Some(next_block)));
+                            break Ok(Async::Ready(Some(BlockStreamEvent::Block(next_block))));
                         }
 
                         // Done yielding blocks
