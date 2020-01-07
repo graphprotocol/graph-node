@@ -3,7 +3,14 @@ use futures::Stream;
 
 use crate::prelude::*;
 
-pub trait BlockStream: Stream<Item = EthereumBlockWithTriggers, Error = Error> {}
+pub enum BlockStreamEvent {
+    Block(EthereumBlockWithTriggers),
+
+    /// Signals that a revert happened and was processed.
+    Revert,
+}
+
+pub trait BlockStream: Stream<Item = BlockStreamEvent, Error = Error> {}
 
 pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
     type Stream: BlockStream + Send + 'static;

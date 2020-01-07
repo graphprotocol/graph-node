@@ -11,7 +11,7 @@ pub use self::adapter::{
     MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
-pub use self::stream::{BlockStream, BlockStreamBuilder};
+pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
 pub use self::types::{
     BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockPointer,
     EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,

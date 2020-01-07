@@ -19,10 +19,10 @@ impl MockBlockStream {
 }
 
 impl Stream for MockBlockStream {
-    type Item = EthereumBlockWithTriggers;
+    type Item = BlockStreamEvent;
     type Error = Error;
 
-    fn poll(&mut self) -> Result<Async<Option<EthereumBlockWithTriggers>>, Error> {
+    fn poll(&mut self) -> Result<Async<Option<BlockStreamEvent>>, Error> {
         Ok(Async::Ready(None))
     }
 }

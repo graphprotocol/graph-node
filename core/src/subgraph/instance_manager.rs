@@ -515,33 +515,46 @@ where
             }
         })
         .filter_map(|block_opt| block_opt)
-        // Process blocks from the stream as long as no restart is needed
-        .fold(ctx, move |ctx, block| {
-            let subgraph_metrics = ctx.subgraph_metrics.clone();
-            let start = Instant::now();
-            if block.triggers.len() > 0 {
-                subgraph_metrics
-                    .block_trigger_count
-                    .observe(block.triggers.len() as f64);
-            }
-            process_block(
-                logger.clone(),
-                ctx.inputs.eth_adapter.clone(),
-                ctx,
-                block_stream_cancel_handle.clone(),
-                block,
-            )
-            .map_err(|e| StreamEnd::Error(e))
-            .and_then(|(ctx, needs_restart)| match needs_restart {
-                false => Ok(ctx),
-                true => Err(StreamEnd::NeedsRestart(ctx)),
-            })
-            .then(move |res| {
-                let elapsed = start.elapsed().as_secs_f64();
-                subgraph_metrics.block_processing_duration.observe(elapsed);
-                res
-            })
-        })
+        // Process events from the stream as long as no restart is needed
+        .fold(
+            ctx,
+            move |mut ctx, event| -> Box<dyn Future<Item = _, Error = _> + Send> {
+                let block = match event {
+                    BlockStreamEvent::Revert => {
+                        // On revert, clear the entity cache.
+                        ctx.state.entity_lfu_cache = LfuCache::new();
+                        return Box::new(future::ok(ctx));
+                    }
+                    BlockStreamEvent::Block(block) => block,
+                };
+                let subgraph_metrics = ctx.subgraph_metrics.clone();
+                let start = Instant::now();
+                if block.triggers.len() > 0 {
+                    subgraph_metrics
+                        .block_trigger_count
+                        .observe(block.triggers.len() as f64);
+                }
+                Box::new(
+                    process_block(
+                        logger.clone(),
+                        ctx.inputs.eth_adapter.clone(),
+                        ctx,
+                        block_stream_cancel_handle.clone(),
+                        block,
+                    )
+                    .map_err(|e| StreamEnd::Error(e))
+                    .and_then(|(ctx, needs_restart)| match needs_restart {
+                        false => Ok(ctx),
+                        true => Err(StreamEnd::NeedsRestart(ctx)),
+                    })
+                    .then(move |res| {
+                        let elapsed = start.elapsed().as_secs_f64();
+                        subgraph_metrics.block_processing_duration.observe(elapsed);
+                        res
+                    }),
+                )
+            },
+        )
         .then(move |res| match res {
             Ok(_) => unreachable!("block stream finished without error"),
             Err(StreamEnd::NeedsRestart(mut ctx)) => {

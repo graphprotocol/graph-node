@@ -45,14 +45,14 @@ pub mod prelude {
     pub use web3;
 
     pub use crate::components::ethereum::{
-        BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamMetrics, ChainHeadUpdate,
-        ChainHeadUpdateListener, ChainHeadUpdateStream, EthereumAdapter, EthereumAdapterError,
-        EthereumBlock, EthereumBlockData, EthereumBlockFilter, EthereumBlockPointer,
-        EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
-        EthereumCallData, EthereumCallFilter, EthereumContractCall, EthereumContractCallError,
-        EthereumEventData, EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData,
-        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, ProviderEthRpcMetrics,
-        SubgraphEthRpcMetrics,
+        BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
+        ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream, EthereumAdapter,
+        EthereumAdapterError, EthereumBlock, EthereumBlockData, EthereumBlockFilter,
+        EthereumBlockPointer, EthereumBlockTriggerType, EthereumBlockWithCalls,
+        EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumCallFilter,
+        EthereumContractCall, EthereumContractCallError, EthereumEventData, EthereumLogFilter,
+        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
+        LightEthereumBlockExt, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryResultFuture, SubscriptionResultFuture,
