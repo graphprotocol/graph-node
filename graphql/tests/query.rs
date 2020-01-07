@@ -1258,7 +1258,7 @@ fn can_use_nested_filter() {
 
 #[test]
 fn query_at_block() {
-    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
+    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
     fn musicians_at(block: &str, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
@@ -1276,8 +1276,13 @@ fn query_at_block() {
                     .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
                     .collect();
                 let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
-                assert!(result.errors.is_none(), "unexpected error: {}\n", qid);
-                assert_eq!(result.data, expected, "failed query: {}", qid);
+                assert!(
+                    result.errors.is_none(),
+                    "unexpected error: {:?} ({})\n",
+                    result.errors,
+                    qid
+                );
+                assert_eq!(result.data, expected, "failed query: ({})", qid);
             }
             (true, Err(msg)) => {
                 assert!(
@@ -1317,6 +1322,7 @@ fn query_at_block() {
     const BLOCK_NOT_INDEXED: &str =
         "subgraph graphqlTestsQuery has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
+    const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
     musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
     musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
@@ -1325,4 +1331,5 @@ fn query_at_block() {
     musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
     musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
     musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
