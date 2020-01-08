@@ -22,6 +22,7 @@ use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
 use crate::asc_abi::*;
 use crate::mapping::ValidModule;
+use crate::UnresolvedContractCall;
 
 #[cfg(test)]
 mod test;
@@ -487,9 +488,8 @@ where
     /// function ethereum.call(call: SmartContractCall): Array<Token> | null
     fn ethereum_call(
         &mut self,
-        call_ptr: AscPtr<AscUnresolvedContractCall>,
+        call: UnresolvedContractCall,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let call = self.asc_get(call_ptr);
         let result = self.ctx.host_exports.ethereum_call(
             &mut self.task_sink,
             &mut self.ctx.logger,
@@ -998,7 +998,12 @@ where
             }
             ETHEREUM_CALL_FUNC_INDEX => {
                 let _section = stopwatch.start_section("host_export_ethereum_call");
-                self.ethereum_call(args.nth_checked(0)?)
+                let arg = if self.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
+                    self.asc_get::<_, AscUnresolvedContractCall_0_0_4>(args.nth_checked(0)?)
+                } else {
+                    self.asc_get::<_, AscUnresolvedContractCall>(args.nth_checked(0)?)
+                };
+                self.ethereum_call(arg)
             }
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
                 self.bytes_to_string(args.nth_checked(0)?)

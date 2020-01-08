@@ -226,14 +226,42 @@ impl HostExports {
             .contract
             .clone();
 
-        let function = contract
-            .function(unresolved_call.function_name.as_str())
-            .map_err(|e| {
-                HostExportError(format!(
-                    "Unknown function \"{}::{}\" called from WASM runtime: {}",
-                    unresolved_call.contract_name, unresolved_call.function_name, e
-                ))
-            })?;
+        let function = match unresolved_call.function_signature {
+            // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
+            // functions this always picks the same overloaded variant, which is incorrect
+            // and may lead to encoding/decoding errors
+            None => contract
+                .function(unresolved_call.function_name.as_str())
+                .map_err(|e| {
+                    HostExportError(format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime: {}",
+                        unresolved_call.contract_name, unresolved_call.function_name, e
+                    ))
+                })?,
+
+            // Behavior for apiVersion >= 0.0.04: look up function by signature of
+            // the form `functionName(uint256,string) returns (bytes32,string)`; this
+            // correctly picks the correct variant of an overloaded function
+            Some(ref function_signature) => contract
+                .functions_by_name(unresolved_call.function_name.as_str())
+                .map_err(|e| {
+                    HostExportError(format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime: {}",
+                        unresolved_call.contract_name, unresolved_call.function_name, e
+                    ))
+                })?
+                .iter()
+                .find(|f| function_signature == &f.signature())
+                .ok_or_else(|| {
+                    HostExportError(format!(
+                        "Unknown function \"{}::{}\" with signature `{}` \
+                         called from WASM runtime",
+                        unresolved_call.contract_name,
+                        unresolved_call.function_name,
+                        function_signature,
+                    ))
+                })?,
+        };
 
         let call = EthereumContractCall {
             address: unresolved_call.contract_address.clone(),
@@ -265,6 +293,7 @@ impl HostExports {
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name,
+              "function_signature" => &unresolved_call.function_signature,
               "time" => format!("{}ms", start_time.elapsed().as_millis()));
 
         result

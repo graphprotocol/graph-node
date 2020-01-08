@@ -506,6 +506,16 @@ pub(crate) struct AscUnresolvedContractCall {
     pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
 }
 
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscUnresolvedContractCall_0_0_4 {
+    pub contract_name: AscPtr<AscString>,
+    pub contract_address: AscPtr<AscAddress>,
+    pub function_name: AscPtr<AscString>,
+    pub function_signature: AscPtr<AscString>,
+    pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
+}
+
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
 pub(crate) enum JsonValueKind {
