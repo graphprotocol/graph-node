@@ -540,11 +540,17 @@ async fn main() {
                             format!("network/{}", network_subgraph).into(),
                             None,
                         );
-                        tokio::spawn(indexer.take_event_stream().unwrap().for_each(|_| {
-                            // For now we simply ignore these events; we may later use them
-                            // to drive subgraph indexing
-                            Ok(())
-                        }));
+                        graph::spawn(
+                            indexer
+                                .take_event_stream()
+                                .unwrap()
+                                .for_each(|_| {
+                                    // For now we simply ignore these events; we may later use them
+                                    // to drive subgraph indexing
+                                    Ok(())
+                                })
+                                .compat(),
+                        );
                     })
             };
 

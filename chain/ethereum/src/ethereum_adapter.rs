@@ -10,8 +10,8 @@ use std::time::Instant;
 use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::{
-    debug, err_msg, error, ethabi, format_err, hex, retry, stream, tiny_keccak, tokio_timer, trace,
-    warn, web3, ChainStore, Error, EthereumCallCache, Logger,
+    debug, err_msg, error, ethabi, format_err, hex, retry, stream, tiny_keccak, trace, warn, web3,
+    ChainStore, Error, EthereumCallCache, Logger, TimeoutError,
 };
 use web3::api::Web3;
 use web3::transports::batch::Batch;

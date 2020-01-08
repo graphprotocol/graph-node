@@ -572,22 +572,6 @@ mod tests {
             .block_on(
                 future::lazy(move || {
                     let res: Result<_, ()> = Ok({
-                        store
-                            .apply_metadata_operations(
-                                SubgraphDeploymentEntity::new(
-                                    &manifest,
-                                    false,
-                                    false,
-                                    None,
-                                    Some(EthereumBlockPointer {
-                                        hash: H256::zero(),
-                                        number: 0,
-                                    }),
-                                )
-                                .create_operations(&id),
-                            )
-                            .unwrap();
-
                         let node_id = NodeId::new("test").unwrap();
                         let mut service = GraphQLService::new(
                             logger,
@@ -600,7 +584,10 @@ mod tests {
 
                         let request = Request::builder()
                             .method(Method::POST)
-                            .uri(format!("http://localhost:8000/subgraphs/id/{}", id))
+                            .uri(format!(
+                                "http://localhost:8000/subgraphs/id/{}",
+                                subgraph_id
+                            ))
                             .body(Body::from("{\"query\": \"{ name }\"}"))
                             .unwrap();
 
