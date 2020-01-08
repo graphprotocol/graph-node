@@ -136,9 +136,13 @@ where
     ) -> Result<Self, FailureError> {
         // Build import resolver
         let mut imports = ImportsBuilder::new();
-        imports.push_resolver("env", &EnvModuleResolver);
-        if let Some(user_module) = valid_module.user_module.clone() {
-            imports.push_resolver(user_module, &ModuleResolver);
+
+        for host_module_name in valid_module.host_module_names.iter() {
+            if host_module_name.as_str() == "env" {
+                imports.push_resolver(host_module_name.clone(), &EnvModuleResolver);
+            } else {
+                imports.push_resolver(host_module_name.clone(), &ModuleResolver);
+            }
         }
 
         // Instantiate the runtime module using hosted functions and import resolver

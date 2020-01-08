@@ -160,7 +160,7 @@ impl Clone for MappingContext {
 /// A pre-processed and valid WASM module, ready to be started as a WasmiModule.
 pub(crate) struct ValidModule {
     pub(super) module: wasmi::Module,
-    pub(super) user_module: Option<String>,
+    pub(super) host_module_names: Vec<String>,
 }
 
 impl ValidModule {
@@ -173,34 +173,20 @@ impl ValidModule {
         // `inject_gas_counter` injects an import so the section must exist.
         let import_section = parsed_module.import_section().unwrap().clone();
 
-        // Hack: AS currently puts all user imports in one module, in addition
-        // to the built-in "env" module. The name of that module is not fixed,
-        // to able able to infer the name we allow only one module with imports,
-        // with "env" being optional.
-        let mut user_modules: Vec<_> = import_section
+        // Collect the names of all host modules used in the WASM module
+        let mut host_module_names: Vec<_> = import_section
             .entries()
             .into_iter()
             .map(|import| import.module().to_owned())
-            .filter(|module| module != "env")
             .collect();
-        user_modules.dedup();
-        let user_module = match user_modules.len() {
-            0 => None,
-            1 => Some(user_modules.into_iter().next().unwrap()),
-            _ => return Err(err_msg("WASM module has multiple import sections")),
-        };
+        host_module_names.dedup();
 
-        let module = wasmi::Module::from_parity_wasm_module(parsed_module).map_err(|e| {
-            format_err!(
-                "Invalid module `{}`: {}",
-                user_module.as_ref().unwrap_or(&String::new()),
-                e
-            )
-        })?;
+        let module = wasmi::Module::from_parity_wasm_module(parsed_module)
+            .map_err(|e| format_err!("Invalid WASM module: {}", e))?;
 
         Ok(ValidModule {
             module,
-            user_module,
+            host_module_names,
         })
     }
 }
