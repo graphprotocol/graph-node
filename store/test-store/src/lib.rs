@@ -29,12 +29,11 @@ lazy_static! {
         None => Logger::root(slog::Discard, o!()),
     };
 
-    // Use this for tests that need subscriptions from `STORE`.
     pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(Builder::new().basic_scheduler().enable_all().build().unwrap());
 
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<Store> = {
-        STORE_RUNTIME.lock().unwrap().block_on(future::lazy(|| -> Result<_, ()> {
+        STORE_RUNTIME.lock().unwrap().block_on(async {
             // Set up Store
             let logger = &*LOGGER;
             let postgres_url = postgres_test_url();
@@ -48,7 +47,7 @@ lazy_static! {
                 conn_pool_size,
                 &logger,
             );
-            Ok(Arc::new(Store::new(
+            Arc::new(Store::new(
                 StoreConfig {
                     postgres_url,
                     network_name: NETWORK_NAME.to_owned(),
@@ -57,8 +56,8 @@ lazy_static! {
                 net_identifiers,
                 postgres_conn_pool,
                 Arc::new(MockMetricsRegistry::new()),
-            )))
-        }).compat()).expect("could not create Diesel Store instance for test suite")
+            ))
+        })
     };
 
     pub static ref GENESIS_PTR: EthereumBlockPointer = (

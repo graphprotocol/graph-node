@@ -369,13 +369,14 @@ async fn main() {
     };
 
     // Test the IPFS client by getting the version from the IPFS daemon
-    let ipfs_test = ipfs_client.version();
+    let ipfs_test = ipfs_client.clone();
     let ipfs_ok_logger = logger.clone();
     let ipfs_err_logger = logger.clone();
     let ipfs_address_for_ok = ipfs_address.clone();
     let ipfs_address_for_err = ipfs_address.clone();
-    graph::spawn(
+    graph::spawn(async move {
         ipfs_test
+            .version()
             .map_err(move |e| {
                 error!(
                     ipfs_err_logger,
@@ -384,15 +385,15 @@ async fn main() {
                 );
                 panic!("Failed to connect to IPFS: {}", e);
             })
-            .map(move |_| {
+            .map_ok(move |_| {
                 info!(
                     ipfs_ok_logger,
                     "Successfully connected to IPFS node at: {}",
                     SafeDisplay(ipfs_address_for_ok)
                 );
             })
-            .compat(),
-    );
+            .await
+    });
 
     // Convert the client into a link resolver
     let link_resolver = Arc::new(LinkResolver::from(ipfs_client));

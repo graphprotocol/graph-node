@@ -25,15 +25,19 @@ use test_store::LOGGER;
 /// in the subgraph manifest with links to files just added into a local IPFS
 /// daemon on port 5001.
 fn add_subgraph_to_ipfs(
-    client: Arc<IpfsClient>,
+    client: IpfsClient,
     subgraph: &str,
 ) -> impl Future<Item = String, Error = Error> {
     /// Adds string to IPFS and returns link of the form `/ipfs/`.
-    fn add(client: &IpfsClient, data: String) -> impl Future<Item = String, Error = Error> {
-        client
-            .add(Cursor::new(data))
-            .map(|res| format!("/ipfs/{}", res.hash))
-            .map_err(|err| format_err!("error adding to IPFS {}", err))
+    fn add(client: IpfsClient, data: String) -> impl Future<Item = String, Error = Error> {
+        Box::pin(async move {
+            client
+                .add(Cursor::new(data))
+                .map_ok(|res| format!("/ipfs/{}", res.hash))
+                .map_err(|err| format_err!("error adding to IPFS {}", err))
+                .await
+        })
+        .compat()
     }
 
     let dir = format!("tests/subgraphs/{}", subgraph);
@@ -51,16 +55,16 @@ fn add_subgraph_to_ipfs(
     {
         let client = client.clone();
         ipfs_upload = Box::new(ipfs_upload.and_then(move |subgraph_string| {
-            add(&client, read_to_string(file.path()).unwrap()).map(move |link| {
+            add(client.clone(), read_to_string(file.path()).unwrap()).map(move |link| {
                 subgraph_string.replace(
                     &format!("link to {}", file.file_name().to_str().unwrap()),
-                    &format!("/ipfs/{}", link),
+                    &link,
                 )
             })
         }))
     }
     let add_client = client.clone();
-    ipfs_upload.and_then(move |subgraph_string| add(&add_client, subgraph_string))
+    ipfs_upload.and_then(move |subgraph_string| add(add_client, subgraph_string))
 }
 
 #[ignore]
@@ -238,10 +242,11 @@ fn added_subgraph_id_eq(
 }
 
 #[tokio::test]
+#[ignore]
 async fn subgraph_provider_events() {
     let logger = LOGGER.clone();
     let logger_factory = LoggerFactory::new(logger.clone(), None);
-    let ipfs = Arc::new(IpfsClient::default());
+    let ipfs = IpfsClient::default();
     let resolver = Arc::new(LinkResolver::from(IpfsClient::default()));
     let store = Arc::new(MockStore::new(vec![]));
     let stores: HashMap<String, Arc<MockStore>> = vec![store.clone()]

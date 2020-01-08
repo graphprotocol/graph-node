@@ -10,10 +10,7 @@ git-testament = "0.1"
 graphql-parser = "0.2.3"
 prometheus = "0.7"
 futures = { version = "0.3.1", features = ["compat"] }
-
-# If upstream upgrades to hyper 0.13, we can go back to it.
-# See https://github.com/ferristseng/rust-ipfs-api/pull/40.
-ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "update-to-hyper-013", features = ["hyper-tls"] }
+ipfs-api = { version = "0.6.0-rc", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 url = "1.7.1"
 crossbeam-channel = "0.3.9"

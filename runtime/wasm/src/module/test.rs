@@ -64,20 +64,19 @@ fn test_valid_module_and_store(
     ));
 
     let (task_sender, task_receiver) = channel(100);
-    let runtime = tokio::runtime::Builder::new()
-        .basic_scheduler()
-        .enable_all()
-        .build()
-        .unwrap();
-    runtime.spawn(
+    println!("spawning task receiver");
+    tokio::spawn(
         task_receiver
-            .for_each(|t: Box<dyn Future<Item = (), Error = ()> + Send>| {
-                tokio::spawn(t.compat());
-                future::ok(())
+            .compat()
+            .try_for_each(|t: Box<dyn Future<Item = (), Error = ()> + Send>| {
+                async {
+                    println!("received task");
+                    tokio::spawn(t.compat());
+                    Ok(())
+                }
             })
-            .compat(),
+            .map(|_| panic!("receiving task finished")),
     );
-    ::std::mem::forget(runtime);
     let module = WasmiModule::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref().clone()).unwrap()),
         mock_context(deployment_id, data_source, store.clone()),
@@ -186,7 +185,7 @@ fn mock_context(
     store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) -> MappingContext {
     MappingContext {
-        logger: Logger::root(slog::Discard, o!()),
+        logger: test_store::LOGGER.clone(),
         block: Default::default(),
         host_exports: Arc::new(mock_host_exports(subgraph_id, data_source, store)),
         state: BlockState::default(),
@@ -314,7 +313,7 @@ async fn ipfs_cat() {
     let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
 
-    let hash = ipfs.add(Cursor::new("42")).compat().await.unwrap().hash;
+    let hash = ipfs.add(Cursor::new("42")).await.unwrap().hash;
     let converted: AscPtr<AscString> = module
         .module
         .clone()
@@ -367,11 +366,7 @@ async fn ipfs_map() {
             let hash = if json_string == BAD_IPFS_HASH {
                 "Qm".to_string()
             } else {
-                ipfs.add(Cursor::new(json_string))
-                    .compat()
-                    .await
-                    .unwrap()
-                    .hash
+                ipfs.add(Cursor::new(json_string)).await.unwrap().hash
             };
             let user_data = RuntimeValue::from(module.asc_new(USER_DATA));
             let converted = module.module.clone().invoke_export(

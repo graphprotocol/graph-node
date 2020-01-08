@@ -19,10 +19,7 @@ ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master
 hex = "0.4.0"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
-
-# If upstream upgrades to hyper 0.13, we can go back to it.
-# See https://github.com/ferristseng/rust-ipfs-api/pull/40.
-ipfs-api = { git = "https://github.com/graphprotocol/rust-ipfs-api", branch = "update-to-hyper-013", features = ["hyper-tls"] }
+ipfs-api = { version = "0.6.0-rc", features = ["hyper-tls"] }
 parity-wasm = "0.40"
 failure = "0.1.6"
 lazy_static = "1.2.0"
