@@ -390,6 +390,19 @@ impl FromAscObj<AscUnresolvedContractCall> for UnresolvedContractCall {
             contract_name: heap.asc_get(asc_call.contract_name),
             contract_address: heap.asc_get(asc_call.contract_address),
             function_name: heap.asc_get(asc_call.function_name),
+            function_signature: None,
+            function_args: heap.asc_get(asc_call.function_args),
+        }
+    }
+}
+
+impl FromAscObj<AscUnresolvedContractCall_0_0_4> for UnresolvedContractCall {
+    fn from_asc_obj<H: AscHeap>(asc_call: AscUnresolvedContractCall_0_0_4, heap: &H) -> Self {
+        UnresolvedContractCall {
+            contract_name: heap.asc_get(asc_call.contract_name),
+            contract_address: heap.asc_get(asc_call.contract_address),
+            function_name: heap.asc_get(asc_call.function_name),
+            function_signature: Some(heap.asc_get(asc_call.function_signature)),
             function_args: heap.asc_get(asc_call.function_args),
         }
     }

@@ -22,6 +22,7 @@ pub(crate) struct UnresolvedContractCall {
     pub contract_name: String,
     pub contract_address: Address,
     pub function_name: String,
+    pub function_signature: Option<String>,
     pub function_args: Vec<ethabi::Token>,
 }
 
