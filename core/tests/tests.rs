@@ -1,9 +1,5 @@
-extern crate graph;
-extern crate graph_core;
-extern crate graph_mock;
-extern crate ipfs_api;
-extern crate semver;
-extern crate walkdir;
+#![allow(dead_code)]
+#![allow(unused_imports)]
 
 use ipfs_api::IpfsClient;
 use walkdir::WalkDir;
@@ -243,6 +239,7 @@ fn added_subgraph_id_eq(
 
 #[tokio::test]
 #[ignore]
+#[cfg(any())]
 async fn subgraph_provider_events() {
     let logger = LOGGER.clone();
     let logger_factory = LoggerFactory::new(logger.clone(), None);

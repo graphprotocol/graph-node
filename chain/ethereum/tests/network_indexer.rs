@@ -80,10 +80,10 @@ fn run_network_indexer(
         indexer
             .take_event_stream()
             .expect("failed to take stream from indexer")
-            .timeout(timeout)
             .map_err(|_| ())
             .forward(event_sink.sink_map_err(|_| ()))
-            .map(|_| ()),
+            .map(|_| ())
+            .timeout(timeout)
     );
 
     future::ok((chains, event_stream.collect()))
@@ -106,13 +106,16 @@ where
     };
 
     runtime
-        .block_on(future::lazy(move || {
-            // Reset store before running
-            remove_test_data(store.clone());
+        .block_on(
+            future::lazy(move || {
+                // Reset store before running
+                remove_test_data(store.clone());
 
-            // Run test
-            test(store.clone())
-        }))
+                // Run test
+                test(store.clone())
+            })
+            .compat(),
+        )
         .expect("failed to run test with clean store");
 }
 

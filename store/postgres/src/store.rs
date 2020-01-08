@@ -17,13 +17,13 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bail, debug, ethabi, format_err, info, o, serde_json, stream, tiny_keccak, tokio, trace, warn,
-    web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
+    bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
+    trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
     ChainHeadUpdateStream, ChainStore, Entity, EntityKey, EntityModification, EntityOrder,
     EntityQuery, EntityRange, Error, EthereumBlock, EthereumBlockPointer, EthereumCallCache,
-    EthereumNetworkIdentifier, EventProducer as _, Future, LightEthereumBlock, Logger,
-    MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _, StopwatchMetrics,
-    StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
+    EthereumNetworkIdentifier, EventProducer as _, Future, Future01CompatExt, LightEthereumBlock,
+    Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _,
+    StopwatchMetrics, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
     SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
     SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
