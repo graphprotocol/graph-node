@@ -50,7 +50,7 @@ fn read_u64_from_env(name: &str) -> Option<u64> {
 /// if the IPFS file at `path` is no bigger than `max_file_bytes`.
 /// If `max_file_bytes` is `None`, do not restrict the size of the file
 fn restrict_file_size<T>(
-    client: &ipfs_api::IpfsClient,
+    client: ipfs_api::IpfsClient,
     path: String,
     timeout: Duration,
     max_file_bytes: Option<u64>,
@@ -61,23 +61,24 @@ where
 {
     match max_file_bytes {
         Some(max_bytes) => Box::new(
-            client
-                .object_stat(&path)
-                .map_err(|e| failure::err_msg(e.to_string()))
-                .timeout(timeout)
-                .map_err(|e| failure::err_msg(e.to_string()))
-                .and_then(|res| futures03::future::ready(res))
-                .and_then(move |stat| match stat.cumulative_size > max_bytes {
-                    false => futures03::future::ok(()),
-                    true => futures03::future::err(format_err!(
+            Box::pin(async move {
+                let stat = tokio::time::timeout(timeout, client.object_stat(&path).err_into())
+                    .err_into()
+                    .await
+                    .and_then(|x| x);
+
+                stat.and_then(move |stat| match stat.cumulative_size > max_bytes {
+                    false => Ok(()),
+                    true => Err(format_err!(
                         "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
                         path,
                         max_bytes,
                         stat.cumulative_size
                     )),
                 })
-                .compat()
-                .and_then(|()| fut),
+            })
+            .compat()
+            .and_then(|()| fut),
         ),
         None => fut,
     }
@@ -154,17 +155,17 @@ impl LinkResolverTrait for LinkResolver {
 
                     let cat = client_for_cat
                         .cat(&path)
-                        .map(|b| BytesMut::from_iter(b.into_iter()))
-                        .concat2()
-                        .map(|x| x.to_vec())
-                        .map_err(|e| failure::err_msg(e.to_string()));
+                        .map_ok(|b| BytesMut::from_iter(b.into_iter()))
+                        .try_concat()
+                        .map_ok(|x| x.to_vec())
+                        .err_into();
 
                     restrict_file_size(
-                        &client_for_file_size,
+                        client_for_file_size.clone(),
                         path.clone(),
                         timeout_for_file_size,
                         max_file_size,
-                        Box::new(cat),
+                        Box::new(cat.compat()),
                     )
                     .map(move |data| {
                         // Only cache files if they are not too large
@@ -192,7 +193,7 @@ impl LinkResolverTrait for LinkResolver {
     ) -> Box<dyn Future<Item = JsonValueStream, Error = failure::Error> + Send + 'static> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
-        let mut stream = self.client.cat(&path).fuse();
+        let mut stream = self.client.cat(&path).fuse().compat();
         let mut buf = BytesMut::with_capacity(1024);
         // Count the number of lines we've already successfully deserialized.
         // We need that to adjust the line number in error messages from serde_json
@@ -252,7 +253,7 @@ impl LinkResolverTrait for LinkResolver {
             read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR).unwrap_or(DEFAULT_MAX_IPFS_MAP_FILE_SIZE);
 
         restrict_file_size(
-            &self.client,
+            self.client.clone(),
             path,
             self.timeout,
             Some(max_file_size),
@@ -275,7 +276,7 @@ mod tests {
 
         let logger = Logger::root(slog::Discard, o!());
 
-        let link = client.add(file).compat().await.unwrap().hash;
+        let link = client.add(file).await.unwrap().hash;
         let err = LinkResolver::cat(&resolver, &logger, &Link { link: link.clone() })
             .compat()
             .await
@@ -294,7 +295,7 @@ mod tests {
         let client = ipfs_api::IpfsClient::default();
         let resolver = super::LinkResolver::from(client.clone());
 
-        let link = client.add(text.as_bytes()).compat().await.unwrap().hash;
+        let link = client.add(text.as_bytes()).await.unwrap().hash;
 
         LinkResolver::json_stream(&resolver, &Link { link: link.clone() })
             .and_then(|stream| stream.map(|sv| sv.value).collect())

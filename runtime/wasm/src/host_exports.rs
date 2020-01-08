@@ -1,6 +1,5 @@
 use crate::UnresolvedContractCall;
 use ethabi::{Address, Token};
-use futures::sync::oneshot;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
 use graph::data::store;
@@ -274,10 +273,9 @@ impl HostExports {
         let eth_adapter = self.ethereum_adapter.clone();
         let logger1 = logger.clone();
         let call_cache = self.call_cache.clone();
-        let result = match block_on(
-            task_sink,
-            future::lazy(move || eth_adapter.contract_call(&logger1, call, call_cache)),
-        ) {
+        let result = match block_on(future::lazy(move || {
+            eth_adapter.contract_call(&logger1, call, call_cache)
+        })) {
             Ok(tokens) => Ok(Some(tokens)),
             Err(EthereumContractCallError::Revert(reason)) => {
                 info!(logger, "Contract call reverted"; "reason" => reason);
@@ -384,7 +382,6 @@ impl HostExports {
         link: String,
     ) -> Result<Vec<u8>, HostExportError<impl ExportError>> {
         block_on(
-            task_sink,
             self.link_resolver
                 .cat(logger, &Link { link })
                 .map_err(HostExportError),
@@ -433,7 +430,6 @@ impl HostExports {
         let mut last_log = Instant::now();
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
         block_on(
-            &mut task_sink.clone(),
             self.link_resolver
                 .json_stream(&Link { link })
                 .and_then(move |stream| {
@@ -693,16 +689,7 @@ fn test_string_to_h160_with_0x() {
 }
 
 fn block_on<I: Send + 'static, ER: Send + 'static>(
-    task_sink: &mut impl Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>,
     future: impl Future<Item = I, Error = ER> + Send + 'static,
 ) -> Result<I, ER> {
-    let (return_sender, return_receiver) = oneshot::channel();
-    task_sink
-        .send(Box::new(future.then(|res| {
-            return_sender.send(res).map_err(|_| unreachable!())
-        })))
-        .wait()
-        .map_err(|_| panic!("task receiver dropped"))
-        .unwrap();
-    return_receiver.wait().expect("`return_sender` dropped")
+    futures03::executor::block_on(tokio::spawn(future.compat())).unwrap()
 }

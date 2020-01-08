@@ -775,8 +775,8 @@ fn query_complexity() {
     };
 }
 
-#[test]
-fn query_complexity_subscriptions() {
+#[tokio::test]
+async fn query_complexity_subscriptions() {
     let logger = Logger::root(slog::Discard, o!());
     let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
