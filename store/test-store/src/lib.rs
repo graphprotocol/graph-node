@@ -109,7 +109,7 @@ pub fn transact_entity_operations(
     let mods = entity_cache
         .as_modifications(store.as_ref())
         .expect("failed to convert to modifications")
-        .0;
+        .modifications;
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),

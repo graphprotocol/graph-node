@@ -28,7 +28,7 @@ fn empty_cache_modifications() {
     let store = MockStore::new();
     let cache = EntityCache::new();
     let result = cache.as_modifications(&store);
-    assert_eq!(result.unwrap().0, vec![]);
+    assert_eq!(result.unwrap().modifications, vec![]);
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn insert_modifications() {
 
     let result = cache.as_modifications(&store);
     assert_eq!(
-        sort_by_entity_key(result.unwrap().0),
+        sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
             EntityModification::Insert {
                 key: mogwai_key,
@@ -123,7 +123,7 @@ fn overwrite_modifications() {
 
     let result = cache.as_modifications(&store);
     assert_eq!(
-        sort_by_entity_key(result.unwrap().0),
+        sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
             EntityModification::Overwrite {
                 key: mogwai_key,
@@ -188,7 +188,7 @@ fn consecutive_modifications() {
     // and "name" untouched, sets "founded" and removes the "label" field.
     let result = cache.as_modifications(&store);
     assert_eq!(
-        sort_by_entity_key(result.unwrap().0),
+        sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::Overwrite {
             key: update_key,
             data: Entity::from(vec![

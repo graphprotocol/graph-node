@@ -108,7 +108,6 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
             Some(entry) => {
                 entry.weight = weight;
                 entry.value = value;
-                entry.will_stale = false;
                 self.total_weight += weight - entry.weight;
             }
         }
@@ -119,7 +118,10 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
         let key_entry = CacheEntry::cache_key(key);
         self.queue
             .change_priority_by(&key_entry, |(s, Reverse(f))| (s, Reverse(f + 1)));
-        self.queue.get_mut(&key_entry).map(|x| x.0)
+        self.queue.get_mut(&key_entry).map(|x| {
+            x.0.will_stale = false;
+            x.0
+        })
     }
 
     pub fn get(&mut self, key: &K) -> Option<&V> {
@@ -151,6 +153,10 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
         self.queue.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
     pub fn evict(&mut self, max_weight: u64) {
         if self.total_weight <= max_weight {
             return;
@@ -160,8 +166,10 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
         if self.stale_counter == STALE_PERIOD {
             self.stale_counter = 0;
 
-            // Entries marked `will_stale` are effectively set as stale.
-            // All entries are then marked `will_stale`.
+            // Entries marked `will_stale` were not accessed in this period. Properly mark them as
+            // stale in their priorities. Also mark all entities as `will_stale` for the _next_
+            // period so that they will be marked stale next time unless they are updated between
+            // now and then.
             for (e, p) in self.queue.iter_mut() {
                 p.0 = e.will_stale;
                 e.will_stale = true;
@@ -169,8 +177,11 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
         }
 
         while self.total_weight > max_weight {
-            // Unwrap: If there were no entries left, `total_weight` would be 0.
-            let entry = self.queue.pop().unwrap().0;
+            let entry = self
+                .queue
+                .pop()
+                .expect("empty cache but total_weight > max_weight")
+                .0;
             self.total_weight -= entry.weight;
         }
     }
@@ -189,4 +200,54 @@ impl<K: Ord + Eq + Hash, V> Extend<(CacheEntry<K, V>, Priority)> for LfuCache<K,
     fn extend<T: IntoIterator<Item = (CacheEntry<K, V>, Priority)>>(&mut self, iter: T) {
         self.queue.extend(iter);
     }
+}
+
+#[test]
+fn entity_lru_cache() {
+    impl CacheWeight for u64 {
+        fn weight(&self) -> u64 {
+            *self
+        }
+    }
+
+    let mut cache: LfuCache<&'static str, u64> = LfuCache::new();
+    cache.insert("panda", 2);
+    cache.insert("cow", 1);
+
+    assert_eq!(cache.get(&"cow"), Some(&1));
+    assert_eq!(cache.get(&"panda"), Some(&2));
+
+    // Total weight is 3, nothing is evicted.
+    cache.evict(3);
+    assert_eq!(cache.len(), 2);
+
+    // "cow" was accessed twice, so "panda" is evicted.
+    cache.get(&"cow");
+    cache.evict(2);
+    assert!(cache.get(&"panda").is_none());
+
+    cache.insert("alligator", 2);
+
+    // Give "cow" and "alligator" a high frequency.
+    for _ in 0..1000 {
+        cache.get(&"cow");
+        cache.get(&"alligator");
+    }
+
+    cache.insert("lion", 3);
+
+    // Make "cow" and "alligator" stale and remove them.
+    for _ in 0..(2 * STALE_PERIOD) {
+        cache.get(&"lion");
+
+        // The "whale" is something to evict so the stale counter moves.
+        cache.insert("whale", 100);
+        cache.evict(10);
+    }
+
+    // Either "cow" and "alligator" fit in the cache, or just "lion".
+    // "lion" will be kept, it had lower frequency but was not stale.
+    assert!(cache.get(&"cow").is_none());
+    assert!(cache.get(&"alligator").is_none());
+    assert_eq!(cache.get(&"lion"), Some(&3));
 }
