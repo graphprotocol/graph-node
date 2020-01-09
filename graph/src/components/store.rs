@@ -1330,6 +1330,11 @@ pub struct EntityCache {
     updates: HashMap<EntityKey, Option<Entity>>,
 }
 
+pub struct ModificationsAndCache {
+    pub modifications: Vec<EntityModification>,
+    pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+}
+
 impl EntityCache {
     pub fn new() -> Self {
         Self::default()
@@ -1421,8 +1426,7 @@ impl EntityCache {
     pub fn as_modifications(
         mut self,
         store: &(impl Store + ?Sized),
-    ) -> Result<(Vec<EntityModification>, LfuCache<EntityKey, Option<Entity>>), QueryExecutionError>
-    {
+    ) -> Result<ModificationsAndCache, QueryExecutionError> {
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
         let missing = self
@@ -1489,6 +1493,9 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        Ok((mods, self.current))
+        Ok(ModificationsAndCache {
+            modifications: mods,
+            entity_lfu_cache: self.current,
+        })
     }
 }

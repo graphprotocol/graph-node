@@ -151,7 +151,7 @@ impl WriteContext {
                         Ok(mods) => mods,
                         Err(e) => return future::err(e.into()),
                     }
-                    .0;
+                    .modifications;
 
                     let block_ptr = EthereumBlockPointer::from(&block_for_store.block);
 

@@ -371,7 +371,8 @@ fn ipfs_map() {
             .state
             .entity_cache
             .as_modifications(store.as_ref())?
-            .0;
+            .modifications;
+
         // Bring the modifications into a predictable order (by entity_id)
         mods.sort_by(|a, b| {
             a.entity_key()
@@ -861,7 +862,7 @@ fn entity_store() {
         .entity_cache
         .as_modifications(store.as_ref())
         .unwrap()
-        .0;
+        .modifications;
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Overwrite { data, .. } => {
@@ -880,7 +881,7 @@ fn entity_store() {
         .entity_cache
         .as_modifications(store.as_ref())
         .unwrap()
-        .0;
+        .modifications;
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Insert { data, .. } => {

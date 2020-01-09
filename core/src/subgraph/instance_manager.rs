@@ -7,6 +7,7 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use graph::components::ethereum::triggers_in_block;
+use graph::components::store::ModificationsAndCache;
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
@@ -761,7 +762,10 @@ where
         }
 
         let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
-        let (mods, mut cache) = block_state
+        let ModificationsAndCache {
+            modifications: mods,
+            entity_lfu_cache: mut cache,
+        } = block_state
             .entity_cache
             .as_modifications(ctx.inputs.store.as_ref())
             .map_err(|e| {
@@ -779,6 +783,7 @@ where
         cache.evict(*ENTITY_CACHE_SIZE);
         section.end();
 
+        // Put the cache back in the ctx, asserting that the placeholder cache was not used.
         assert!(ctx.state.entity_lfu_cache.is_empty());
         ctx.state.entity_lfu_cache = cache;
 
