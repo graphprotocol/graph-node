@@ -1018,7 +1018,7 @@ dependencies = [
  "graph-mock 0.17.1",
  "graph-store-postgres 0.17.1",
  "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "jsonrpc-core 13.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jsonrpc-core 14.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "mockall 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "pretty_assertions 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
