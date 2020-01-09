@@ -1,6 +1,6 @@
 [package]
 name = "graph-mock"
-version = "0.17.0"
+version = "0.17.1"
 edition = "2018"
 
 [dependencies]
