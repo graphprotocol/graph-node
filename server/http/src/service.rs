@@ -287,34 +287,26 @@ where
                 .then(
                     move |result: Result<QueryResult, GraphQLServerError>| -> GraphQLResponse {
                         let elapsed = start.elapsed();
+                        service_metrics.observe_query_execution_time(
+                            elapsed.as_secs_f64(),
+                            sd_id.deref().to_string(),
+                        );
                         match result {
-                            Ok(_) => {
-                                service_metrics.observe_query_execution_time(
-                                    elapsed.as_secs_f64(),
-                                    sd_id.deref().to_string(),
-                                );
-                                info!(
-                                    logger,
-                                    "GraphQL query served";
-                                    "subgraph_deployment" => sd_id.deref(),
-                                    "query_time_ms" => elapsed.as_millis(),
-                                    "code" => LogCode::GraphQlQuerySuccess,
-                                )
-                            }
-                            Err(ref e) => {
-                                service_metrics.observe_query_execution_time(
-                                    elapsed.as_secs_f64(),
-                                    sd_id.deref().to_string(),
-                                );
-                                error!(
-                                    logger,
-                                    "GraphQL query failed";
-                                    "subgraph_deployment" => sd_id.deref(),
-                                    "error" => e.to_string(),
-                                    "query_time_ms" => elapsed.as_millis(),
-                                    "code" => LogCode::GraphQlQueryFailure,
-                                )
-                            }
+                            Ok(_) => info!(
+                                logger,
+                                "GraphQL query served";
+                                "subgraph_deployment" => sd_id.deref(),
+                                "query_time_ms" => elapsed.as_millis(),
+                                "code" => LogCode::GraphQlQuerySuccess,
+                            ),
+                            Err(ref e) => error!(
+                                logger,
+                                "GraphQL query failed";
+                                "subgraph_deployment" => sd_id.deref(),
+                                "error" => e.to_string(),
+                                "query_time_ms" => elapsed.as_millis(),
+                                "code" => LogCode::GraphQlQueryFailure,
+                            ),
                         }
                         GraphQLResponse::new(result)
                     },
