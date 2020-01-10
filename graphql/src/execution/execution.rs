@@ -359,6 +359,8 @@ where
         // See if this is an introspection or data field. We don't worry about
         // nonexistant fields; those will cause an error later when we execute
         // the data_set SelectionSet
+        // TODO: Does anything guarantee that the introspection and subgraph query fields
+        // do not overlap?
         if sast::get_field(introspection_query_type, &name).is_some() {
             intro_set.items.extend(selections)
         } else {
