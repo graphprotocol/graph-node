@@ -168,8 +168,8 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
 
             // Entries marked `will_stale` were not accessed in this period. Properly mark them as
             // stale in their priorities. Also mark all entities as `will_stale` for the _next_
-            // period so that they will be marked stale next time unless they are updated between
-            // now and then.
+            // period so that they will be marked stale next time unless they are updated or looked
+            // up between now and then.
             for (e, p) in self.queue.iter_mut() {
                 p.0 = e.will_stale;
                 e.will_stale = true;
