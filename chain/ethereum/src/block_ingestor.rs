@@ -132,15 +132,13 @@ where
                                             "Cleaned {} blocks from the block cache. \
                                              Only blocks with number greater than {} remain",
                                             count,
-                                            min_block;
-                                            "network_name" => &static_self.network_name,
+                                            min_block
                                         );
                                     }
                                 }
                                 Err(e) => warn!(
                                     static_self.logger,
-                                    "Failed to clean blocks from block cache: {}", e;
-                                    "network_name" => &static_self.network_name,
+                                    "Failed to clean blocks from block cache: {}", e
                                 ),
                             }
                         }
@@ -150,7 +148,7 @@ where
 
     fn do_poll(&'static self) -> impl Future<Item = (), Error = EthereumAdapterError> + 'static {
         trace!(self.logger, "BlockIngestor::do_poll");
-        let network_name = self.network_name.clone();
+
         // Get chain head ptr from store
         future::result(self.chain_store.chain_head_ptr())
             .from_err()
@@ -186,7 +184,6 @@ where
                                         "latest_block_head" => latest_number,
                                         "blocks_behind" => distance,
                                         "blocks_needed" => blocks_needed,
-                                        "network_name" => network_name,
                                         "code" => code,
                                     );
                                 }
