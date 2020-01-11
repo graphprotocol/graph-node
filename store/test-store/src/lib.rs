@@ -74,9 +74,9 @@ lazy_static! {
     ).into();
 }
 
-pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
+pub fn create_test_subgraph(subgraph_id: &str, schema: &str, id_type: IdType) {
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
-    let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = Schema::parse(schema, subgraph_id.clone(), id_type).unwrap();
 
     let manifest = SubgraphManifest {
         id: subgraph_id.clone(),

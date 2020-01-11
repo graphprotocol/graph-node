@@ -98,6 +98,7 @@ fn mock_schema() -> Schema {
              }
              ",
         SubgraphDeploymentId::new("mockschema").unwrap(),
+        IdType::String,
     )
     .unwrap()
 }
@@ -1116,6 +1117,7 @@ fn successfully_runs_introspection_query_against_complex_schema() {
     let mut schema = Schema::parse(
         COMPLEX_SCHEMA,
         SubgraphDeploymentId::new("complexschema").unwrap(),
+        IdType::String,
     )
     .unwrap();
     schema.document = api_schema(&schema.document).unwrap();
@@ -1225,6 +1227,7 @@ fn introspection_possible_types() {
     let mut schema = Schema::parse(
         COMPLEX_SCHEMA,
         SubgraphDeploymentId::new("complexschema").unwrap(),
+        IdType::String,
     )
     .unwrap();
     schema.document = api_schema(&schema.document).unwrap();

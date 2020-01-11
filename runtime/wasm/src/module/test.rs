@@ -50,6 +50,7 @@ fn test_valid_module_and_store(
             value: String,
             extra: String
         }",
+        IdType::String,
     );
     let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     let stopwatch_metrics = StopwatchMetrics::new(

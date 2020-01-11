@@ -16,7 +16,7 @@ use tokio::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
-use crate::components::store::StoreError;
+use crate::components::store::{IdType, StoreError};
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::Schema;
 use crate::data::subgraph::schema::{
@@ -380,9 +380,9 @@ impl SchemaData {
     ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
         info!(logger, "Resolve schema"; "link" => &self.file.link);
 
-        resolver
-            .cat(&logger, &self.file)
-            .and_then(|schema_bytes| Schema::parse(&String::from_utf8(schema_bytes)?, id))
+        resolver.cat(&logger, &self.file).and_then(|schema_bytes| {
+            Schema::parse(&String::from_utf8(schema_bytes)?, id, IdType::String)
+        })
     }
 }
 

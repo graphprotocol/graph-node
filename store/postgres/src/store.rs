@@ -728,7 +728,7 @@ impl Store {
         };
 
         // Parse the schema and add @subgraphId directives
-        let input_schema = Schema::parse(&input_schema, subgraph_id.clone())?;
+        let input_schema = Schema::parse(&input_schema, subgraph_id.clone(), IdType::String)?;
         let mut schema = input_schema.clone();
 
         // Generate an API schema for the subgraph and make sure all types in the

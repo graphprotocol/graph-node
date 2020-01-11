@@ -231,7 +231,7 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
 }
 
 fn insert_test_data(conn: &PgConnection) -> Layout {
-    let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone(), IdType::String).unwrap();
 
     let query = format!("create schema {}", SCHEMA_NAME);
     conn.batch_execute(&*query).unwrap();

@@ -77,7 +77,7 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
-    let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone(), IdType::Bytes).unwrap();
 
     let query = format!("create schema {}", SCHEMA_NAME);
     conn.batch_execute(&*query).unwrap();
@@ -85,7 +85,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let layout = Layout::create_relational_schema(
         &conn,
         SCHEMA_NAME,
-        IdType::Bytes,
+        schema.id_type,
         THINGS_SUBGRAPH_ID.clone(),
         &schema.document,
     )

@@ -11,6 +11,7 @@ lazy_static! {
 
         Arc::new(Schema {
             id: SubgraphDeploymentId::new("indexnode").unwrap(),
+            id_type: IdType::String,
             document: document,
             interfaces_for_type,
             types_for_interface,

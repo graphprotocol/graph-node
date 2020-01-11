@@ -589,8 +589,8 @@ fn entity_validation() {
           cruft: Cruft! @derivedFrom(field: \"thing\")
       }";
         let subgraph = SubgraphDeploymentId::new("doesntmatter").unwrap();
-        let schema =
-            graph::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+        let schema = graph::prelude::Schema::parse(DOCUMENT, subgraph, IdType::String)
+            .expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey {
             subgraph_id: SubgraphDeploymentId::new("doesntmatter").unwrap(),

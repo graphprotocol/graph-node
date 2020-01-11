@@ -1,5 +1,6 @@
 use graphql_parser::{self, schema::Document};
 
+use graph::components::store::IdType;
 use graph::data::schema::Schema;
 use graph::data::subgraph::SubgraphDeploymentId;
 use lazy_static::lazy_static;
@@ -116,5 +117,5 @@ lazy_static! {
 }
 
 pub fn introspection_schema(id: SubgraphDeploymentId) -> Schema {
-    Schema::new(id, INTROSPECTION_DOCUMENT.clone())
+    Schema::new(id, IdType::String, INTROSPECTION_DOCUMENT.clone())
 }

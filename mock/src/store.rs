@@ -157,8 +157,12 @@ pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId
                 }
             ";
 
-            let mut schema = Schema::parse(USERS_SCHEMA, subgraph_id_for_api_schema.clone())
-                .expect("failed to parse users schema");
+            let mut schema = Schema::parse(
+                USERS_SCHEMA,
+                subgraph_id_for_api_schema.clone(),
+                IdType::String,
+            )
+            .expect("failed to parse users schema");
             schema.document =
                 api_schema(&schema.document).expect("failed to generate users API schema");
             Ok(Arc::new(schema))

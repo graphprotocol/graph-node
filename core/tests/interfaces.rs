@@ -11,7 +11,7 @@ fn insert_and_query(
     entities: Vec<(Entity, &str)>,
     query: &str,
 ) -> Result<QueryResult, StoreError> {
-    create_test_subgraph(subgraph_id, schema);
+    create_test_subgraph(subgraph_id, schema, IdType::String);
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
 
     let insert_ops = entities

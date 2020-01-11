@@ -1,3 +1,4 @@
+use crate::components::store::IdType;
 use crate::data::graphql::validation::{
     get_object_type_definitions, validate_interface_implementation, validate_schema,
     SchemaValidationError,
@@ -17,6 +18,12 @@ use std::iter::FromIterator;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
     pub id: SubgraphDeploymentId,
+
+    /// Indicate whether this subgraph uses general strings as id's or
+    /// whether we can optimize for storing only byte arrays of the form
+    /// '0x..'
+    pub id_type: IdType,
+
     pub document: schema::Document,
 
     // Maps type name to implemented interfaces.
@@ -30,9 +37,10 @@ impl Schema {
     /// Create a new schema. The document must already have been
     /// validated. This function is only useful for creating an introspection
     /// schema, and should not be used otherwise
-    pub fn new(id: SubgraphDeploymentId, document: schema::Document) -> Self {
+    pub fn new(id: SubgraphDeploymentId, id_type: IdType, document: schema::Document) -> Self {
         Schema {
             id,
+            id_type,
             document,
             interfaces_for_type: BTreeMap::new(),
             types_for_interface: BTreeMap::new(),
@@ -92,7 +100,7 @@ impl Schema {
         return Ok((interfaces_for_type, types_for_interface));
     }
 
-    pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
+    pub fn parse(raw: &str, id: SubgraphDeploymentId, id_type: IdType) -> Result<Self, Error> {
         let document = graphql_parser::parse_schema(&raw)?;
         validate_schema(&document)?;
 
@@ -100,6 +108,7 @@ impl Schema {
 
         let mut schema = Schema {
             id: id.clone(),
+            id_type,
             document,
             interfaces_for_type,
             types_for_interface,
@@ -160,7 +169,11 @@ impl Schema {
 #[test]
 fn non_existing_interface() {
     let schema = "type Foo implements Bar @entity { foo: Int }";
-    let res = Schema::parse(schema, SubgraphDeploymentId::new("dummy").unwrap());
+    let res = Schema::parse(
+        schema,
+        SubgraphDeploymentId::new("dummy").unwrap(),
+        IdType::String,
+    );
     let error = res
         .unwrap_err()
         .downcast::<SchemaValidationError>()
@@ -183,7 +196,11 @@ fn invalid_interface_implementation() {
             x: Boolean
         }
     ";
-    let res = Schema::parse(schema, SubgraphDeploymentId::new("dummy").unwrap());
+    let res = Schema::parse(
+        schema,
+        SubgraphDeploymentId::new("dummy").unwrap(),
+        IdType::String,
+    );
     assert_eq!(
         res.unwrap_err().to_string(),
         "Entity type `Bar` cannot implement `Foo` because it is missing the \

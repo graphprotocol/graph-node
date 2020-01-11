@@ -86,18 +86,25 @@ mod tests {
 
     const EXAMPLE_SCHEMA: &'static str = "type Query @entity { users: [User!] }";
 
+    fn example_schema() -> Schema {
+        Schema::parse(
+            EXAMPLE_SCHEMA,
+            SubgraphDeploymentId::new("test").unwrap(),
+            IdType::String,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn rejects_invalid_json() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request = IndexNodeRequest::new(hyper::Chunk::from("!@#)%"), Arc::new(schema));
         request.wait().expect_err("Should reject invalid JSON");
     }
 
     #[test]
     fn rejects_json_without_query_field() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request = IndexNodeRequest::new(hyper::Chunk::from("{}"), Arc::new(schema));
         request
             .wait()
@@ -106,8 +113,7 @@ mod tests {
 
     #[test]
     fn rejects_json_with_non_string_query_field() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request = IndexNodeRequest::new(hyper::Chunk::from("{\"query\": 5}"), Arc::new(schema));
         request
             .wait()
@@ -116,8 +122,7 @@ mod tests {
 
     #[test]
     fn rejects_broken_queries() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request =
             IndexNodeRequest::new(hyper::Chunk::from("{\"query\": \"foo\"}"), Arc::new(schema));
         request.wait().expect_err("Should reject broken queries");
@@ -125,8 +130,7 @@ mod tests {
 
     #[test]
     fn accepts_valid_queries() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request = IndexNodeRequest::new(
             hyper::Chunk::from("{\"query\": \"{ user { name } }\"}"),
             Arc::new(schema),
@@ -140,8 +144,7 @@ mod tests {
 
     #[test]
     fn accepts_null_variables() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request = IndexNodeRequest::new(
             hyper::Chunk::from(
                 "\
@@ -161,8 +164,7 @@ mod tests {
 
     #[test]
     fn rejects_non_map_variables() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request = IndexNodeRequest::new(
             hyper::Chunk::from(
                 "\
@@ -178,8 +180,7 @@ mod tests {
 
     #[test]
     fn parses_variables() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
+        let schema = example_schema();
         let request = IndexNodeRequest::new(
             hyper::Chunk::from(
                 "\

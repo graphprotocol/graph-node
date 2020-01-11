@@ -58,6 +58,7 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
             }
             ",
         id,
+        IdType::String,
     )
     .expect("Test schema invalid")
 }

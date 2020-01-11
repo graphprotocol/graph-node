@@ -57,7 +57,8 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: Schema =
-        Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
+        Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone(), IdType::String)
+            .expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: EthereumBlockPointer = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -1595,8 +1596,8 @@ fn revert_block_with_dynamic_data_source_operations() {
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store| {
         let subgraph_id = SubgraphDeploymentId::new("EntityChangeTestSubgraph").unwrap();
-        let schema =
-            Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
+        let schema = Schema::parse(USER_GQL, subgraph_id.clone(), IdType::String)
+            .expect("Failed to parse user schema");
         let manifest = SubgraphManifest {
             id: subgraph_id.clone(),
             location: "/ipfs/test".to_owned(),
