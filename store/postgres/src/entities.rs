@@ -44,7 +44,7 @@ use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, BlockNumber, Entity,
     EntityChange, EntityChangeOperation, EntityCollection, EntityFilter, EntityKey,
-    EntityModification, EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger,
+    EntityModification, EntityOrder, EntityRange, Error, EthereumBlockPointer, IdType, Logger,
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, SubgraphDeploymentStore,
     ValueType, BLOCK_NUMBER_MAX,
 };
@@ -54,7 +54,7 @@ use crate::history_event::HistoryEvent;
 use crate::jsonb::PgJsonbExpressionMethods as _;
 use crate::jsonb_queries::FilterQuery;
 use crate::notification_listener::JsonNotification;
-use crate::relational::{IdType, Layout};
+use crate::relational::Layout;
 use crate::store::Store;
 
 lazy_static! {

@@ -21,7 +21,7 @@ use graph::prelude::{
     web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
     ChainHeadUpdateStream, ChainStore, Entity, EntityKey, EntityModification, EntityOrder,
     EntityQuery, EntityRange, Error, EthereumBlock, EthereumBlockPointer, EthereumCallCache,
-    EthereumNetworkIdentifier, EventProducer as _, Future, LightEthereumBlock, Logger,
+    EthereumNetworkIdentifier, EventProducer as _, Future, IdType, LightEthereumBlock, Logger,
     MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _, StopwatchMetrics,
     StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
     SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,

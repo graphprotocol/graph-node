@@ -72,7 +72,7 @@ pub mod prelude {
         AttributeIndexDefinition, BlockNumber, ChainStore, EntityCache, EntityChange,
         EntityChangeOperation, EntityCollection, EntityFilter, EntityKey, EntityLink,
         EntityModification, EntityOperation, EntityOrder, EntityQuery, EntityRange, EntityWindow,
-        EthereumCallCache, MetadataOperation, ParentLink, Store, StoreError, StoreEvent,
+        EthereumCallCache, IdType, MetadataOperation, ParentLink, Store, StoreError, StoreEvent,
         StoreEventStream, StoreEventStreamBox, SubgraphDeploymentStore, TransactionAbortError,
         WindowAttribute, BLOCK_NUMBER_MAX, SUBSCRIPTION_THROTTLE_INTERVAL,
     };

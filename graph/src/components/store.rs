@@ -778,6 +778,19 @@ pub enum TransactionAbortError {
     Other(String),
 }
 
+/// The SQL type to use for the GraphQL ID type for a subgraph. The store
+/// will always expect and return id's as strings, but the store will store
+/// them differently depending on which variant was used when the subgraph
+/// was created
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum IdType {
+    /// The 'id' attribute of entities can be any string
+    String,
+    /// The 'id' attribute of entities will only contain hex strings
+    /// of the form '0xdeadbeef'
+    Bytes,
+}
+
 /// Common trait for store implementations.
 #[automock]
 pub trait Store: Send + Sync + 'static {

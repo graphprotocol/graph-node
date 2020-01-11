@@ -22,8 +22,8 @@ use crate::relational_queries::{
 };
 use graph::prelude::{
     format_err, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
-    EntityFilter, EntityKey, EntityOrder, EntityRange, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, ValueType,
+    EntityFilter, EntityKey, EntityOrder, EntityRange, IdType, QueryExecutionError, StoreError,
+    StoreEvent, SubgraphDeploymentId, ValueType,
 };
 
 use crate::block_range::BLOCK_RANGE_COLUMN;
@@ -111,15 +111,6 @@ impl fmt::Display for SqlName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
-}
-
-/// The SQL type to use for GraphQL ID properties. We support
-/// strings and byte arrays
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum IdType {
-    String,
-    #[allow(dead_code)]
-    Bytes,
 }
 
 type EnumMap = BTreeMap<String, Vec<String>>;

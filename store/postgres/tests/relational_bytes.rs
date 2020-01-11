@@ -10,10 +10,10 @@ use std::fmt::Debug;
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
-    bigdecimal::One, web3::types::H256, Entity, EntityKey, Schema, SubgraphDeploymentId, Value,
-    BLOCK_NUMBER_MAX,
+    bigdecimal::One, web3::types::H256, Entity, EntityKey, IdType, Schema, SubgraphDeploymentId,
+    Value, BLOCK_NUMBER_MAX,
 };
-use graph_store_postgres::layout_for_tests::{IdType, Layout};
+use graph_store_postgres::layout_for_tests::Layout;
 
 use test_store::*;
 
