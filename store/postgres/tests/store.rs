@@ -14,7 +14,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
-use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
+use graph_store_postgres::layout_for_tests::{id_type, STRING_PREFIX_SIZE};
 use graph_store_postgres::Store as DieselStore;
 use web3::types::{Address, H256};
 
@@ -2208,4 +2208,57 @@ fn find_at_block() {
         shaqueeena_at_block(2, "teeko@email.com");
         shaqueeena_at_block(7000, "teeko@email.com");
     }
+}
+
+#[test]
+fn determine_id_type() {
+    fn make_subgraph(store: &dyn Store, subgraph: &SubgraphDeploymentId, id_type: IdType) {
+        let schema = Schema::parse("type User @entity { id: ID! }", subgraph.clone(), id_type)
+            .expect("Failed to parse schema");
+
+        let manifest = SubgraphManifest {
+            id: subgraph.clone(),
+            location: "/ipfs/test".to_owned(),
+            spec_version: "1".to_owned(),
+            description: None,
+            repository: None,
+            schema: TEST_SUBGRAPH_SCHEMA.clone(),
+            data_sources: vec![],
+            templates: vec![],
+        };
+
+        // Create SubgraphDeploymentEntity
+        let ops =
+            SubgraphDeploymentEntity::new(&manifest, false, false, None, Some(*TEST_BLOCK_0_PTR))
+                .create_operations(&subgraph);
+        store.create_subgraph_deployment(&schema, ops).unwrap();
+    }
+
+    run_test(|store| -> Result<(), ()> {
+        let string_subgraph = SubgraphDeploymentId::new("sg_string").unwrap();
+        let bytes_subgraph = SubgraphDeploymentId::new("sg_bytes").unwrap();
+
+        make_subgraph(&*store, &string_subgraph, IdType::String);
+        make_subgraph(&*store, &bytes_subgraph, IdType::Bytes);
+
+        // We can't get a connection from the store, since `get_conn()`
+        // is private, so just connect directly
+        let url = postgres_test_url();
+        let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+
+        assert_eq!(IdType::String, id_type(&conn, &string_subgraph).unwrap());
+
+        // Relational storage actually pays attention to the IdType; JSONB
+        // storage uses `String` no matter what we do
+        if store
+            .uses_relational_schema(&bytes_subgraph)
+            .expect("we can determine the storage type")
+        {
+            assert_eq!(IdType::Bytes, id_type(&conn, &bytes_subgraph).unwrap());
+        } else {
+            assert_eq!(IdType::String, id_type(&conn, &bytes_subgraph).unwrap());
+        }
+
+        Ok(())
+    })
 }
