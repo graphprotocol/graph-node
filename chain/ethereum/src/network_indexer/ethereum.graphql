@@ -1,6 +1,6 @@
 """ Block is an Ethereum block."""
 type Block @entity {
-  id: ID!
+  id: Bytes!
 
   """The number of this block, starting at 0 for the genesis block."""
   number: BigInt!
