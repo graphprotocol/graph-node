@@ -29,7 +29,7 @@ use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
-use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl};
 use inflector::cases::snakecase::to_snake_case;
 use lazy_static::lazy_static;
 use std::collections::hash_map::DefaultHasher;
@@ -180,6 +180,19 @@ mod public {
             state -> crate::entities::public::DeploymentSchemaStateMapping,
         }
     }
+
+    // Access to the bits of the information_schema we care about. It conists
+    // of views without primary key; we only read from it so it is fine to
+    // pretend it's a table and make up primary keys
+    table! {
+        information_schema.columns (table_schema, table_name, column_name) {
+            table_schema -> Text,
+            table_name -> Text,
+            column_name -> Text,
+            data_type -> Text,
+        }
+    }
+    allow_tables_to_appear_in_same_query!(deployment_schemas, columns);
 }
 
 // The entities table for the subgraph of subgraphs.
@@ -895,6 +908,32 @@ fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, Sto
     Ok(value)
 }
 
+/// Determine the `IdType` for a subgraph
+// Only public so that tests can access it
+pub fn id_type(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<IdType, StoreError> {
+    use self::public::columns;
+    use self::public::deployment_schemas as ds;
+
+    let (data_type, schema_name): (String, String) = columns::table
+        .select((columns::data_type, columns::column_name))
+        .inner_join(ds::table.on(ds::name.eq(columns::table_schema)))
+        .filter(columns::column_name.eq("id"))
+        .filter(ds::subgraph.eq(subgraph.as_str()))
+        .first(conn)?;
+    let id_type = match data_type.as_str() {
+        "character varying" | "text" => IdType::String,
+        "bytea" => IdType::Bytes,
+        _ => {
+            return Err(StoreError::Unknown(format_err!(
+                "unsupported type `{}` for primary key column in schema {}",
+                data_type,
+                schema_name
+            )))
+        }
+    };
+    Ok(id_type)
+}
+
 impl JsonStorage {
     fn find(
         &self,
@@ -1394,9 +1433,10 @@ impl Storage {
             }
             V::Relational => {
                 let subgraph_schema = store.input_schema(subgraph)?;
+                let id_type = id_type(conn, subgraph)?;
                 let layout = Layout::new(
                     &subgraph_schema.document,
-                    IdType::String,
+                    id_type,
                     subgraph.clone(),
                     schema.name,
                 )?;

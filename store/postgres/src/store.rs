@@ -704,9 +704,9 @@ impl Store {
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
-        let input_schema = if *subgraph_id == *SUBGRAPHS_ID {
+        let (input_schema, id_type) = if *subgraph_id == *SUBGRAPHS_ID {
             // The subgraph of subgraphs schema is built-in.
-            include_str!("subgraphs.graphql").to_owned()
+            (include_str!("subgraphs.graphql").to_owned(), IdType::String)
         } else {
             let manifest_entity = self
                 .get(EntityKey {
@@ -716,7 +716,7 @@ impl Store {
                 })?
                 .ok_or_else(|| format_err!("Subgraph entity not found {}", subgraph_id))?;
 
-            match manifest_entity.get("schema") {
+            let schema = match manifest_entity.get("schema") {
                 Some(Value::String(raw)) => raw.clone(),
                 _ => {
                     return Err(format_err!(
@@ -724,11 +724,13 @@ impl Store {
                         subgraph_id
                     ));
                 }
-            }
+            };
+            let conn = self.get_conn()?;
+            (schema, e::id_type(&conn, subgraph_id)?)
         };
 
         // Parse the schema and add @subgraphId directives
-        let input_schema = Schema::parse(&input_schema, subgraph_id.clone(), IdType::String)?;
+        let input_schema = Schema::parse(&input_schema, subgraph_id.clone(), id_type)?;
         let mut schema = input_schema.clone();
 
         // Generate an API schema for the subgraph and make sure all types in the
