@@ -1,5 +1,4 @@
 use ethabi::Token;
-use futures::sync::mpsc::channel;
 use hex;
 use std::collections::HashMap;
 use std::env;
@@ -27,13 +26,7 @@ fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
 ) -> (
-    WasmiModule<
-        impl Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send + 'static>>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    >,
+    WasmiModule,
     Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) {
     let store = STORE.clone();
@@ -63,24 +56,9 @@ fn test_valid_module_and_store(
         stopwatch_metrics,
     ));
 
-    let (task_sender, task_receiver) = channel(100);
-    println!("spawning task receiver");
-    tokio::spawn(
-        task_receiver
-            .compat()
-            .try_for_each(|t: Box<dyn Future<Item = (), Error = ()> + Send>| {
-                async {
-                    println!("received task");
-                    tokio::spawn(t.compat());
-                    Ok(())
-                }
-            })
-            .map(|_| panic!("receiving task finished")),
-    );
     let module = WasmiModule::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref().clone()).unwrap()),
         mock_context(deployment_id, data_source, store.clone()),
-        task_sender,
         host_metrics,
     )
     .unwrap();
@@ -88,16 +66,7 @@ fn test_valid_module_and_store(
     (module, store)
 }
 
-fn test_module(
-    subgraph_id: &str,
-    data_source: DataSource,
-) -> WasmiModule<
-    impl Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send + 'static>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-> {
+fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmiModule {
     test_valid_module_and_store(subgraph_id, data_source).0
 }
 
@@ -192,14 +161,7 @@ fn mock_context(
     }
 }
 
-impl<U> WasmiModule<U>
-where
-    U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-{
+impl WasmiModule {
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: RuntimeValue) -> AscPtr<P> {
         self.module
             .clone()
@@ -308,26 +270,30 @@ fn json_conversions() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(threaded_scheduler)]
 async fn ipfs_cat() {
-    let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
-    let ipfs = Arc::new(ipfs_api::IpfsClient::default());
+    graph::spawn_blocking(async {
+        let ipfs = Arc::new(ipfs_api::IpfsClient::default());
+        let hash = ipfs.add(Cursor::new("42")).await.unwrap().hash;
 
-    let hash = ipfs.add(Cursor::new("42")).await.unwrap().hash;
-    let converted: AscPtr<AscString> = module
-        .module
-        .clone()
-        .invoke_export(
-            "ipfsCatString",
-            &[RuntimeValue::from(module.asc_new(&hash))],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
-    let data: String = module.asc_get(converted);
-    assert_eq!(data, "42");
+        let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
+        let converted: AscPtr<AscString> = module
+            .module
+            .clone()
+            .invoke_export(
+                "ipfsCatString",
+                &[RuntimeValue::from(module.asc_new(&hash))],
+                &mut module,
+            )
+            .expect("call failed")
+            .expect("call returned nothing")
+            .try_into()
+            .expect("call did not return pointer");
+        let data: String = module.asc_get(converted);
+        assert_eq!(data, "42");
+    })
+    .await
+    .unwrap();
 }
 
 // The user_data value we use with calls to ipfs_map
@@ -435,14 +401,18 @@ async fn ipfs_map() {
     assert!(errmsg.contains("api returned error"))
 }
 
-#[test]
-fn ipfs_fail() {
-    let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_fail() {
+    graph::spawn_blocking(async {
+        let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
-    let hash = module.asc_new("invalid hash");
-    assert!(module
-        .takes_ptr_returns_ptr::<_, AscString>("ipfsCat", hash,)
-        .is_null());
+        let hash = module.asc_new("invalid hash");
+        assert!(module
+            .takes_ptr_returns_ptr::<_, AscString>("ipfsCat", hash,)
+            .is_null());
+    })
+    .await
+    .unwrap();
 }
 
 #[test]
@@ -830,7 +800,7 @@ fn entity_store() {
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
     test_store::insert_entities(subgraph_id, vec![("User", alex), ("User", steve)]).unwrap();
 
-    let get_user = move |module: &mut WasmiModule<_>, id: &str| -> Option<Entity> {
+    let get_user = move |module: &mut WasmiModule, id: &str| -> Option<Entity> {
         let entity_ptr: AscPtr<AscEntity> = module
             .module
             .clone()
@@ -848,7 +818,7 @@ fn entity_store() {
         }
     };
 
-    let load_and_set_user_name = |module: &mut WasmiModule<_>, id: &str, name: &str| {
+    let load_and_set_user_name = |module: &mut WasmiModule, id: &str, name: &str| {
         module
             .module
             .clone()

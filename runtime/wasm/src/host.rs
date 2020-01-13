@@ -79,7 +79,13 @@ where
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
-        crate::mapping::spawn_module(parsed_module, logger, subgraph_id, metrics)
+        crate::mapping::spawn_module(
+            parsed_module,
+            logger,
+            subgraph_id,
+            metrics,
+            tokio::runtime::Handle::current(),
+        )
     }
 
     fn build(

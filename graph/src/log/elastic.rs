@@ -6,8 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::prelude::{SecondsFormat, Utc};
-use futures::Future;
-use futures03::{FutureExt, TryFutureExt};
+use futures03::TryFutureExt;
 use reqwest;
 use reqwest::Client;
 use serde::ser::Serializer as SerdeSerializer;
@@ -183,7 +182,6 @@ impl ElasticDrain {
     }
 
     fn periodically_flush_logs(&self) {
-        use futures03::compat::Future01CompatExt;
         use futures03::stream::StreamExt;
 
         let flush_logger = self.error_logger.clone();
