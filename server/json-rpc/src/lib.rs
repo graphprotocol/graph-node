@@ -3,6 +3,8 @@ extern crate jsonrpc_http_server;
 extern crate lazy_static;
 extern crate serde;
 
+use graph::prelude::futures03::channel::{mpsc, oneshot};
+use graph::prelude::futures03::SinkExt;
 use graph::prelude::serde_json;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use jsonrpc_http_server::{
@@ -208,40 +210,90 @@ where
             logger,
         });
 
+        let (task_sender, task_receiver) =
+            mpsc::channel::<Box<dyn std::future::Future<Output = ()> + Send + Unpin>>(100);
+        graph::spawn(task_receiver.for_each(|f| {
+            async {
+                graph::spawn_blocking(f);
+            }
+        }));
+
+        async fn block_on<I: Send + 'static, ER: Send + 'static>(
+            mut task_sink: mpsc::Sender<Box<dyn std::future::Future<Output = ()> + Send + Unpin>>,
+            future: impl std::future::Future<Output = Result<I, ER>> + Send + Unpin + 'static,
+        ) -> Result<I, ER>
+        where
+            I: Debug,
+            ER: Debug,
+        {
+            let (return_sender, return_receiver) = oneshot::channel();
+            task_sink
+                .send(Box::new(future.map(move |res| {
+                    return_sender.send(res).expect("`return_receiver` dropped");
+                })))
+                .await
+                .expect("task receiver dropped");
+            return_receiver.await.expect("`return_sender` dropped")
+        }
+
         let me = arc_self.clone();
+        let sender = task_sender.clone();
         handler.add_method("subgraph_create", move |params: Params| {
             let me = me.clone();
-            params
-                .parse()
-                .into_future()
-                .and_then(move |params| me.create_handler(params))
+            Box::pin(block_on(
+                sender.clone(),
+                params
+                    .parse()
+                    .into_future()
+                    .and_then(move |params| me.create_handler(params))
+                    .compat(),
+            ))
+            .compat()
         });
 
         let me = arc_self.clone();
+        let sender = task_sender.clone();
         handler.add_method("subgraph_deploy", move |params: Params| {
             let me = me.clone();
-            params
-                .parse()
-                .into_future()
-                .and_then(move |params| me.deploy_handler(params))
+            Box::pin(block_on(
+                sender.clone(),
+                params
+                    .parse()
+                    .into_future()
+                    .and_then(move |params| me.deploy_handler(params))
+                    .compat(),
+            ))
+            .compat()
         });
 
         let me = arc_self.clone();
+        let sender = task_sender.clone();
         handler.add_method("subgraph_remove", move |params: Params| {
             let me = me.clone();
-            params
-                .parse()
-                .into_future()
-                .and_then(move |params| me.remove_handler(params))
+            Box::pin(block_on(
+                sender.clone(),
+                params
+                    .parse()
+                    .into_future()
+                    .and_then(move |params| me.remove_handler(params))
+                    .compat(),
+            ))
+            .compat()
         });
 
         let me = arc_self.clone();
+        let sender = task_sender.clone();
         handler.add_method("subgraph_reassign", move |params: Params| {
             let me = me.clone();
-            params
-                .parse()
-                .into_future()
-                .and_then(move |params| me.reassign_handler(params))
+            Box::pin(block_on(
+                sender.clone(),
+                params
+                    .parse()
+                    .into_future()
+                    .and_then(move |params| me.reassign_handler(params))
+                    .compat(),
+            ))
+            .compat()
         });
 
         ServerBuilder::new(handler)
