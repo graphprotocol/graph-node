@@ -573,8 +573,16 @@ where
                 // First, load the block in order to get the parent hash.
                 Box::new(
                     self.eth_adapter
-                        .load_block(&ctx.logger, subgraph_ptr.hash)
-                        .and_then(move |block| {
+                        .load_blocks(
+                            ctx.logger.clone(),
+                            ctx.chain_store.clone(),
+                            HashSet::from_iter(std::iter::once(subgraph_ptr.hash)),
+                        )
+                        .into_future()
+                        .map_err(|(e, _)| e)
+                        .and_then(move |(block, _)| {
+                            // There will be exactly one item in the stream.
+                            let block = block.unwrap();
                             debug!(
                                 ctx.logger,
                                 "Reverting block to get back to main chain";
