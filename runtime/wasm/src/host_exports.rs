@@ -203,7 +203,6 @@ impl HostExports {
     /// Returns `Ok(None)` if the call was reverted.
     pub(crate) fn ethereum_call(
         &self,
-        task_sink: &mut impl Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>,
         logger: &Logger,
         block: &LightEthereumBlock,
         unresolved_call: UnresolvedContractCall,
@@ -378,7 +377,6 @@ impl HostExports {
     pub(crate) fn ipfs_cat(
         &self,
         logger: &Logger,
-        task_sink: &mut impl Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>,
         link: String,
     ) -> Result<Vec<u8>, HostExportError<impl ExportError>> {
         block_on(
@@ -395,28 +393,20 @@ impl HostExports {
     // which is identical to `module` when it was first started. The signature
     // of the callback must be `callback(JSONValue, Value)`, and the `userData`
     // parameter is passed to the callback without any changes
-    pub(crate) fn ipfs_map<U>(
+    pub(crate) fn ipfs_map(
         &self,
-        module: &WasmiModule<U>,
+        module: &WasmiModule,
         link: String,
         callback: &str,
         user_data: store::Value,
         flags: Vec<String>,
-    ) -> Result<Vec<BlockState>, HostExportError<impl ExportError>>
-    where
-        U: Sink<SinkItem = Box<dyn Future<Item = (), Error = ()> + Send>>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-    {
+    ) -> Result<Vec<BlockState>, HostExportError<impl ExportError>> {
         const JSON_FLAG: &str = "json";
         if !flags.contains(&JSON_FLAG.to_string()) {
             return Err(HostExportError(format!("Flags must contain 'json'")));
         }
 
         let host_metrics = module.host_metrics.clone();
-        let task_sink = module.task_sink.clone();
         let valid_module = module.valid_module.clone();
         let ctx = module.ctx.clone();
         let callback = callback.to_owned();
@@ -438,7 +428,6 @@ impl HostExports {
                             let module = WasmiModule::from_valid_module_with_ctx(
                                 valid_module.clone(),
                                 ctx.clone(),
-                                task_sink.clone(),
                                 host_metrics.clone(),
                             )?;
                             let result =
@@ -691,5 +680,5 @@ fn test_string_to_h160_with_0x() {
 fn block_on<I: Send + 'static, ER: Send + 'static>(
     future: impl Future<Item = I, Error = ER> + Send + 'static,
 ) -> Result<I, ER> {
-    futures03::executor::block_on(tokio::spawn(future.compat())).unwrap()
+    tokio::spawn(future.compat()).compat().wait().unwrap()
 }

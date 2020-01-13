@@ -83,7 +83,7 @@ fn run_network_indexer(
             .map_err(|_| ())
             .forward(event_sink.sink_map_err(|_| ()))
             .map(|_| ())
-            .timeout(timeout)
+            .timeout(timeout),
     );
 
     future::ok((chains, event_stream.collect()))
