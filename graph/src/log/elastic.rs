@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use chrono::prelude::{SecondsFormat, Utc};
 use futures::Future;
+use futures03::{FutureExt, TryFutureExt};
 use reqwest;
-use reqwest::r#async::Client;
+use reqwest::Client;
 use serde::ser::Serializer as SerdeSerializer;
 use serde::Serialize;
 use serde_json::json;
@@ -272,7 +273,7 @@ impl ElasticDrain {
                         )
                         .body(batch_body)
                         .send()
-                        .and_then(|response| response.error_for_status())
+                        .and_then(|response| async { response.error_for_status() })
                         .map_err(move |e| {
                             // Log if there was a problem sending the logs
                             error!(
@@ -280,7 +281,6 @@ impl ElasticDrain {
                                 "Failed to send logs to Elasticsearch: {}", e
                             );
                         })
-                        .compat()
                         .await;
                 }
             },
