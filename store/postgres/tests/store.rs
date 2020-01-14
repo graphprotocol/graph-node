@@ -2259,6 +2259,9 @@ fn determine_id_type() {
             assert_eq!(IdType::String, id_type(&conn, &bytes_subgraph).unwrap());
         }
 
+        // The metadata subgraph is special, and uses 'IdType::String', always
+        assert_eq!(IdType::String, id_type(&conn, &*SUBGRAPHS_ID).unwrap());
+
         Ok(())
     })
 }

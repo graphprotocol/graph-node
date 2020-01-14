@@ -914,6 +914,10 @@ pub fn id_type(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<I
     use self::public::columns;
     use self::public::deployment_schemas as ds;
 
+    if subgraph.is_meta() {
+        return Ok(IdType::String);
+    }
+
     let (data_type, schema_name): (String, String) = columns::table
         .select((columns::data_type, columns::table_schema))
         .inner_join(ds::table.on(ds::name.eq(columns::table_schema)))
