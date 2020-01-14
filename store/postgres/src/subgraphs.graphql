@@ -96,15 +96,18 @@ type EthereumContractAbi @entity {
 }
 
 type EthereumBlockHandlerEntity @entity {
+    id: ID!
     handler: String!
     filter: EthereumBlockHandlerFilterEntity
 }
 
 type EthereumBlockHandlerFilterEntity @entity {
-     kind: String!
+    id: ID!
+    kind: String!
 }
 
 type EthereumCallHandlerEntity @entity {
+    id: ID!
     function: String!
     handler: String!
 }
