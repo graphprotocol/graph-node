@@ -859,7 +859,7 @@ impl Schema {
         Ok(())
     }
 
-    /// Validate `interfaceethat `object` implements `interface`.
+    /// Validate that `object` implements `interface`.
     fn validate_interface_implementation(
         object: &ObjectType,
         interface: &InterfaceType,
