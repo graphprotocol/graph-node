@@ -491,7 +491,7 @@ impl Connection {
     pub(crate) fn insert(
         &self,
         key: &EntityKey,
-        entity: &Entity,
+        entity: Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
         match self.storage_for(key) {
@@ -507,7 +507,7 @@ impl Connection {
     pub(crate) fn update(
         &self,
         key: &EntityKey,
-        entity: &Entity,
+        entity: Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
         match self.storage_for(key) {
@@ -946,10 +946,10 @@ impl JsonStorage {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: &Entity,
+        entity: Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        let data = entity_to_json(key, entity)?;
+        let data = entity_to_json(key, &entity)?;
         let event_source = HistoryEvent::to_event_source_string(&history_event);
 
         self.add_entity_history_record(conn, history_event, &key, OperationType::Insert)?;
@@ -994,7 +994,7 @@ impl JsonStorage {
         &self,
         conn: &PgConnection,
         key: &EntityKey,
-        entity: &Entity,
+        entity: Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         let data = entity_to_json(key, &entity)?;

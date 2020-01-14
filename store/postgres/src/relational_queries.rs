@@ -860,7 +860,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 pub struct InsertQuery<'a> {
     table: &'a Table,
     key: &'a EntityKey,
-    entity: &'a Entity,
+    entity: Entity,
     block: BlockNumber,
 }
 
@@ -868,7 +868,7 @@ impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
         key: &'a EntityKey,
-        entity: &'a Entity,
+        entity: Entity,
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
         for column in table.columns.iter() {

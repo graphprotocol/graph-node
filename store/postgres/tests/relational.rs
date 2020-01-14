@@ -133,7 +133,7 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
         entity_id: entity.id().unwrap(),
     };
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    layout.insert(&conn, &key, &entity, 0).expect(&errmsg);
+    layout.insert(&conn, &key, entity, 0).expect(&errmsg);
 }
 
 fn insert_user_entity(
@@ -365,7 +365,7 @@ fn update() {
             entity_id: entity.id().unwrap().clone(),
         };
         layout
-            .update(&conn, &key, &entity, 1)
+            .update(&conn, &key, entity.clone(), 1)
             .expect("Failed to update");
 
         // The missing 'strings' will show up as Value::Null in the
@@ -400,7 +400,7 @@ fn serialize_bigdecimal() {
             entity_id: entity.id().unwrap().clone(),
         };
         layout
-            .update(&conn, &key, &entity, 1)
+            .update(&conn, &key, entity.clone(), 1)
             .expect("Failed to update");
 
         let actual = layout

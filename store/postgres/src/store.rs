@@ -459,14 +459,14 @@ impl Store {
                 let result = match entity {
                     Some(mut entity) => {
                         entity.merge_remove_null_fields(data);
-                        conn.update(&key, &entity, None).map(|_| 0)
+                        conn.update(&key, entity, None).map(|_| 0)
                     }
                     None => {
                         // Merge with a new entity since that removes values that
                         // were set to Value::Null
                         let mut entity = Entity::new();
                         entity.merge_remove_null_fields(data);
-                        conn.insert(&key, &entity, None).map(|_| 1)
+                        conn.insert(&key, entity, None).map(|_| 1)
                     }
                 };
 
@@ -587,7 +587,7 @@ impl Store {
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_update");
-                    conn.update(&key, &data, history_event).map(|_| 0)
+                    conn.update(&key, data, history_event).map(|_| 0)
                 }
                 Insert { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -595,7 +595,7 @@ impl Store {
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_insert");
-                    conn.insert(&key, &data, history_event).map(|_| 1)
+                    conn.insert(&key, data, history_event).map(|_| 1)
                 }
                 Remove { key } => conn
                     .delete(&key, history_event)
