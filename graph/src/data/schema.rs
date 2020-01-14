@@ -1002,13 +1002,12 @@ type _Schema_ { id: ID! }";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
-    match schema.validate_schema_type_has_no_fields() {
-        Err(e) => assert_eq!(e, SchemaValidationError::SchemaTypeWithFields),
-        Ok(_) => panic!(
-            "Expected validation for `{}` to fail due to fields defined on the reserved type",
-            ROOT_SCHEMA,
-        ),
-    }
+    assert_eq!(
+        schema
+            .validate_schema_type_has_no_fields()
+            .expect_err("Expected validation to fail due to fields defined on the reserved type"),
+        SchemaValidationError::SchemaTypeWithFields
+    )
 }
 
 #[test]
@@ -1018,13 +1017,14 @@ type _Schema_ @illegal";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
-    match schema.validate_only_import_directives_on_schema_type() {
-        Err(e) => assert_eq!(e, SchemaValidationError::InvalidSchemaTypeDirectives),
-        Ok(_) => panic!(
-            "Expected validation for `{}` to fail due to extra imports defined on the reserved type",
-            ROOT_SCHEMA,
-        ),
-    }
+    assert_eq!(
+        schema
+            .validate_only_import_directives_on_schema_type()
+            .expect_err(
+                "Expected validation to fail due to extra imports defined on the reserved type"
+            ),
+        SchemaValidationError::InvalidSchemaTypeDirectives
+    )
 }
 
 #[test]
