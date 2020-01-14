@@ -64,7 +64,7 @@ pub enum SchemaValidationError {
 @import(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})")]
     ImportDirectiveInvalid,
     #[fail(
-        display = "Type `{}`, field `{}`, type `{}` is neither defined or imported",
+        display = "Type `{}`, field `{}`: type `{}` is neither defined nor imported",
         _0, _1, _2
     )]
     FieldTypeUnknown(String, String, String), // (type_name, field_name, field_type)
