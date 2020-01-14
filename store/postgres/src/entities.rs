@@ -918,8 +918,12 @@ pub fn id_type(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<I
         return Ok(IdType::String);
     }
 
-    let (data_type, schema_name): (String, String) = columns::table
-        .select((columns::data_type, columns::table_schema))
+    let (data_type, schema_name, table_name): (String, String, String) = columns::table
+        .select((
+            columns::data_type,
+            columns::table_schema,
+            columns::table_name,
+        ))
         .inner_join(ds::table.on(ds::name.eq(columns::table_schema)))
         .filter(columns::column_name.eq("id"))
         .filter(ds::subgraph.eq(subgraph.as_str()))
@@ -929,8 +933,9 @@ pub fn id_type(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<I
         "bytea" => IdType::Bytes,
         _ => {
             return Err(StoreError::Unknown(format_err!(
-                "unsupported type `{}` for primary key column in schema {}(`{}`)",
+                "unsupported type `{}` for primary key column in table {} in schema {}(`{}`)",
                 data_type,
+                table_name,
                 schema_name,
                 subgraph.as_str()
             )))
