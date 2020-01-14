@@ -45,7 +45,7 @@ where
     chain_store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     ancestor_count: u64,
-    network_name: String,
+    _network_name: String,
     logger: Logger,
     polling_interval: Duration,
 }
@@ -77,7 +77,7 @@ where
             chain_store,
             eth_adapter,
             ancestor_count,
-            network_name,
+            _network_name: network_name,
             logger,
             polling_interval,
         })
