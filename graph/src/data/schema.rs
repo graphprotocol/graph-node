@@ -59,9 +59,9 @@ pub enum SchemaValidationError {
     ImportedSubgraphIdInvalid(String),
     #[fail(display = "The _Schema_ type only allows @import directives")]
     InvalidSchemaTypeDirectives,
-    #[fail(
-        display = "@import directives must have the form @import(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ name: 'org/subgraph'}}) or @import(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})"
-    )]
+    #[fail(display = "@import directives must have the form \
+@import(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ name: 'org/subgraph'}}) or \
+@import(types: ['A', {{ name: 'B', as: 'C'}}], from: {{ id: 'Qm...'}})")]
     ImportDirectiveInvalid,
     #[fail(
         display = "Type `{}`, field `{}`, type `{}` is neither defined or imported",
