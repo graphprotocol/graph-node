@@ -324,7 +324,7 @@ fn indexing_starts_at_genesis() {
         let chains = vec![chain.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
+        run_network_indexer(store, None, chains, Duration::from_secs(1)).and_then(
             move |(_, events)| {
                 events.and_then(move |events| {
                     // Assert that the events emitted by the indexer match all
@@ -357,7 +357,7 @@ fn indexing_resumes_from_local_head() {
             store,
             Some(chain[2].inner().into()),
             chains,
-            Duration::from_secs(2),
+            Duration::from_secs(1),
         )
         .and_then(move |(_, events)| {
             events.and_then(move |events| {
@@ -389,15 +389,15 @@ fn indexing_picks_up_new_remote_head() {
         // 10 new blocks being added to the same chain
         let chain_20 = create_fork(chain_10.clone(), 9, 20);
 
-        // The third time we pull the remote head, there are 1000 blocks;
+        // The third time we pull the remote head, there are 50 blocks;
         // the first 20 blocks are identical to before
-        let chain_1000 = create_fork(chain_20.clone(), 19, 1000);
+        let chain_50 = create_fork(chain_20.clone(), 19, 50);
 
         // Use the two above chains in the test
-        let chains = vec![chain_10.clone(), chain_20.clone(), chain_1000.clone()];
+        let chains = vec![chain_10.clone(), chain_20.clone(), chain_50.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(20)).and_then(
+        run_network_indexer(store, None, chains, Duration::from_secs(4)).and_then(
             move |(chains, events)| {
                 thread::spawn(move || {
                     // Create the first chain update after 1s
@@ -417,9 +417,7 @@ fn indexing_picks_up_new_remote_head() {
                     // despite them requiring two remote head updates
                     assert_eq!(
                         events,
-                        (0..1000)
-                            .map(|n| add_block!(chain_1000, n))
-                            .collect::<Vec<_>>(),
+                        (0..50).map(|n| add_block!(chain_50, n)).collect::<Vec<_>>(),
                     );
 
                     Ok(())
@@ -443,7 +441,7 @@ fn indexing_does_not_move_past_a_gap() {
         let chains = vec![blocks.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
+        run_network_indexer(store, None, chains, Duration::from_secs(1)).and_then(
             move |(_, events)| {
                 events.and_then(move |events| {
                     // Assert that only blocks #0 - #4 were indexed and nothing more
@@ -523,7 +521,7 @@ fn indexing_handles_simple_reorg() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), forked_chain.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(5)).and_then(
+        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
             move |(chains, events)| {
                 // Trigger a reorg after 1s
                 thread::spawn(move || {
@@ -583,7 +581,7 @@ fn indexing_handles_consecutive_reorgs() {
             second_chain.clone(),
             third_chain.clone(),
         ];
-        run_network_indexer(store, None, chains, Duration::from_secs(10)).and_then(
+        run_network_indexer(store, None, chains, Duration::from_secs(6)).and_then(
             move |(chains, events)| {
                 thread::spawn(move || {
                     // Trigger the first reorg after 2s
