@@ -152,6 +152,19 @@ impl From<i64> for BigInt {
     }
 }
 
+impl From<U64> for BigInt {
+    /// This implementation assumes that U64 represents an unsigned U64,
+    /// and not a signed U64 (aka int64 in Solidity). Right now, this is
+    /// all we need (for block numbers). If it ever becomes necessary to
+    /// handle signed U64s, we should add the same
+    /// `{to,from}_{signed,unsigned}_u64` methods that we have for U64.
+    fn from(n: U64) -> BigInt {
+        let mut bytes: [u8; 16] = [0; 16];
+        n.to_little_endian(&mut bytes);
+        BigInt::from_unsigned_bytes_le(&bytes)
+    }
+}
+
 impl From<U128> for BigInt {
     /// This implementation assumes that U128 represents an unsigned U128,
     /// and not a signed U128 (aka int128 in Solidity). Right now, this is
