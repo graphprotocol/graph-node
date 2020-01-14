@@ -924,7 +924,8 @@ fn invalid_interface_implementation() {
     let res = Schema::parse(schema, SubgraphDeploymentId::new("dummy").unwrap());
     assert_eq!(
         res.unwrap_err().to_string(),
-        "Entity type `Bar` does not satisfy interface `Foo` because it is missing the following fields: x: Int, y: Int",
+        "Entity type `Bar` does not satisfy interface `Foo` because it is missing \
+         the following fields: x: Int, y: Int",
     );
 }
 
