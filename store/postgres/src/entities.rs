@@ -29,7 +29,7 @@ use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
 use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
-use diesel::{JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use inflector::cases::snakecase::to_snake_case;
 use lazy_static::lazy_static;
 use std::collections::hash_map::DefaultHasher;
@@ -135,7 +135,7 @@ mod public {
     /// subgraph from one version to another. Whether a subgraph scheme needs
     /// migrating is determined by `Table::needs_migrating`, the migration
     /// machinery is kicked off with a call to `Connection::migrate`
-    #[derive(DbEnum, Debug, Clone, Copy)]
+    #[derive(DbEnum, Debug, Clone, Copy, PartialEq)]
     pub enum DeploymentSchemaVersion {
         Split,
         Relational,
@@ -192,7 +192,6 @@ mod public {
             data_type -> Text,
         }
     }
-    allow_tables_to_appear_in_same_query!(deployment_schemas, columns);
 }
 
 // The entities table for the subgraph of subgraphs.
@@ -913,20 +912,29 @@ fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, Sto
 pub fn id_type(conn: &PgConnection, subgraph: &SubgraphDeploymentId) -> Result<IdType, StoreError> {
     use self::public::columns;
     use self::public::deployment_schemas as ds;
+    use self::public::DeploymentSchemaVersion;
 
     if subgraph.is_meta() {
         return Ok(IdType::String);
     }
 
-    let (data_type, schema_name, table_name): (String, String, String) = columns::table
-        .select((
-            columns::data_type,
-            columns::table_schema,
-            columns::table_name,
-        ))
-        .inner_join(ds::table.on(ds::name.eq(columns::table_schema)))
-        .filter(columns::column_name.eq("id"))
+    // These two queries should really be one, but it seems impossible to
+    // select from two tables with diesel when doing an inner_join.
+    let (schema_name, version): (String, self::public::DeploymentSchemaVersion) = ds::table
+        .select((ds::name, ds::version))
         .filter(ds::subgraph.eq(subgraph.as_str()))
+        .first(conn)?;
+    if version == DeploymentSchemaVersion::Split {
+        // JSONB storage always uses `String` as `ID`, but we can't tell
+        // that from the information_schema reliably, because `entity_history`
+        // has an integer `id` column
+        return Ok(IdType::String);
+    }
+
+    let (data_type, table_name): (String, String) = columns::table
+        .select((columns::data_type, columns::table_name))
+        .filter(columns::column_name.eq("id"))
+        .filter(columns::table_schema.eq(schema_name.as_str()))
         .first(conn)?;
     let id_type = match data_type.as_str() {
         "character varying" | "text" => IdType::String,
