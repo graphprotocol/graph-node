@@ -98,12 +98,12 @@ mock! {
         fn resolve_schema_reference(
             &self,
             _schema_reference: &SchemaReference,
-        ) -> Result<Arc<Schema>, Error>;
+        ) -> Result<Arc<Schema>, SchemaImportError>;
 
         fn resolve_import_graph(
             &self,
             _schema: &Schema,
-        ) -> (HashMap<SchemaReference, Arc<Schema>>, Vec<Error>);
+        ) -> (HashMap<SchemaReference, Arc<Schema>>, Vec<SchemaImportError>);
     }
 
     trait ChainStore: Send + Sync + 'static {
