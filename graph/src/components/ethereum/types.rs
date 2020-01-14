@@ -571,7 +571,7 @@ mod test {
                 topics: vec![],
                 data: Bytes::default(),
                 block_hash: Some(H256::zero()),
-                block_number: Some(U256::zero()),
+                block_number: Some(U64::zero()),
                 transaction_hash: Some(H256::zero()),
                 transaction_index: Some(tx_index.into()),
                 log_index: Some(log_index.into()),

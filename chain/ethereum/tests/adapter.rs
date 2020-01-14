@@ -24,7 +24,7 @@ fn mock_block() -> Block<U256> {
         state_root: H256::default(),
         transactions_root: H256::default(),
         receipts_root: H256::default(),
-        number: Some(U128::from(1)),
+        number: Some(U64::from(1)),
         gas_used: U256::from(100),
         gas_limit: U256::from(1000),
         extra_data: Bytes(String::from("0x00").into_bytes()),
