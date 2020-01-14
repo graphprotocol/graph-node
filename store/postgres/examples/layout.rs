@@ -61,6 +61,44 @@ fn print_migration(layout: &Layout) {
     }
 }
 
+fn print_views(layout: &Layout) {
+    for table in layout.tables.values() {
+        println!("\ncreate view {} as", table.qualified_name);
+        print!("select ");
+        for (i, column) in table.columns.iter().enumerate() {
+            if i > 0 {
+                print!(",\n       ");
+            }
+            if column.is_list() {
+                print!(
+                    "array(select (x->>'data')::{} from jsonb_array_elements(data->'{}'->'data') x)",
+                    column.column_type.sql_type(),
+                    column.field
+                );
+            } else {
+                if column.name.as_str() == "id" {
+                    print!("id");
+                } else {
+                    print!(
+                        "(data->'{}'->>'data')::{}",
+                        column.field,
+                        column.column_type.sql_type()
+                    );
+                }
+            }
+            print!(" as {}", column.name.as_str());
+        }
+        println!("\n  from {}.entities", layout.schema);
+        println!(" where entity = '{}';", table.object);
+    }
+}
+
+fn print_drop_views(layout: &Layout) {
+    for table in layout.tables.values() {
+        println!("drop view if exists {};", table.qualified_name);
+    }
+}
+
 fn print_drop(layout: &Layout) {
     for table in layout.tables.values() {
         println!("drop table {};", table.qualified_name);
@@ -102,12 +140,15 @@ pub fn main() {
     );
     match kind {
         "migrate" => {
+            print_drop_views(&layout);
             print_ddl(&layout);
             print_migration(&layout);
         }
         "drop" => print_drop(&layout),
         "delete" => print_delete_all(&layout),
         "ddl" => print_ddl(&layout),
+        "views" => print_views(&layout),
+        "drop-views" => print_drop_views(&layout),
         _ => {
             usage(&format!("illegal value {} for --generate", kind));
         }
