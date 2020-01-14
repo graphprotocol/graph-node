@@ -10,12 +10,12 @@ chrono = "0.4"
 isatty = "0.1"
 reqwest = "0.9"
 
-# graph-patches contains changes such as
+# master contains changes such as
 # https://github.com/paritytech/ethabi/pull/140, which upstream does not want
 # and we should try to implement on top of ethabi instead of inside it, and
 # tuple support which isn't upstreamed yet. For now, we shall deviate from
 # ethabi, but long term we want to find a way to drop our fork.
-ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "graph-patches" }
+ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 hex = "0.4.0"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
@@ -51,4 +51,4 @@ prometheus = "0.7.0"
 priority-queue = "0.6.0"
 
 # Our fork contains a small but hacky patch.
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches" }
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }

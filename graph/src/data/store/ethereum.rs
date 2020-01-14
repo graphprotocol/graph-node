@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use super::scalar;
 use crate::prelude::*;
-use web3::types::{Address, Bytes, H160, H2048, H256, H64, U128, U256};
+use web3::types::{Address, Bytes, H160, H2048, H256, H64, U128, U256, U64};
 
 impl From<U128> for Value {
     fn from(n: U128) -> Value {
@@ -54,6 +54,12 @@ impl TryFrom<Value> for Option<H256> {
             Value::Null => Ok(None),
             _ => Err(format_err!("Value is not an H256")),
         }
+    }
+}
+
+impl From<U64> for Value {
+    fn from(n: U64) -> Value {
+        Value::BigInt(BigInt::from(n))
     }
 }
 

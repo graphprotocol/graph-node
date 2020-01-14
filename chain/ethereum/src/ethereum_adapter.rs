@@ -541,7 +541,7 @@ where
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
-                        .block(BlockId::Number(BlockNumber::Number(block_num)))
+                        .block(BlockId::Number(BlockNumber::Number(block_num.into())))
                         .from_err::<Error>()
                         .map_err(|e| e.compat())
                         .and_then(move |block| {

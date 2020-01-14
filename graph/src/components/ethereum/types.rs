@@ -271,7 +271,7 @@ pub struct EthereumBlockData {
     pub state_root: H256,
     pub transactions_root: H256,
     pub receipts_root: H256,
-    pub number: U128,
+    pub number: U64,
     pub gas_used: U256,
     pub gas_limit: U256,
     pub timestamp: U256,
