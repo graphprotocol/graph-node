@@ -626,7 +626,7 @@ impl Schema {
                 schemas
                     .get(schema_ref)
                     .and_then(|schema| {
-                        let native_types = schema.document.get_object_type_definitions();
+                        let local_types = schema.document.get_object_type_definitions();
                         let imported_types = schema.imported_types();
 
                         // Ensure that the imported type is either native to
@@ -642,7 +642,7 @@ impl Schema {
                             ImportedType::NameAs(name, _) => name,
                         };
 
-                        let is_native = native_types.iter().any(|object| object.name.eq(name));
+                        let is_native = local_types.iter().any(|object| object.name.eq(name));
                         let is_imported = imported_types.iter().any(|(import, _)| match import {
                             ImportedType::Name(n) => name.eq(n),
                             ImportedType::NameAs(_, az) => name.eq(az),
