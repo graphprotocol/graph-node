@@ -159,9 +159,7 @@ impl From<U64> for BigInt {
     /// handle signed U64s, we should add the same
     /// `{to,from}_{signed,unsigned}_u64` methods that we have for U64.
     fn from(n: U64) -> BigInt {
-        let mut bytes: [u8; 16] = [0; 16];
-        n.to_little_endian(&mut bytes);
-        BigInt::from_unsigned_bytes_le(&bytes)
+        BigInt::from(n.as_u64())
     }
 }
 
@@ -293,5 +291,20 @@ impl<'de> Deserialize<'de> for Bytes {
 
         let hex_string = <String>::deserialize(deserializer)?;
         Bytes::from_str(&hex_string).map_err(D::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::BigInt;
+    use web3::types::U64;
+
+    #[test]
+    fn bigint_to_from_u64() {
+        for n in 0..100 {
+            let u = U64::from(n as u64);
+            let bn = BigInt::from(u);
+            assert_eq!(n, bn.to_u64());
+        }
     }
 }
