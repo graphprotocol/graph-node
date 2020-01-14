@@ -629,7 +629,7 @@ impl Schema {
                         let local_types = schema.document.get_object_type_definitions();
                         let imported_types = schema.imported_types();
 
-                        // Ensure that the imported type is either native to
+                        // Ensure that the imported type is either local to
                         // the respective schema or is itself imported
                         // If the imported type is itself imported, do not
                         // recursively check the schema
@@ -642,12 +642,12 @@ impl Schema {
                             ImportedType::NameAs(name, _) => name,
                         };
 
-                        let is_native = local_types.iter().any(|object| object.name.eq(name));
+                        let is_local = local_types.iter().any(|object| object.name.eq(name));
                         let is_imported = imported_types.iter().any(|(import, _)| match import {
                             ImportedType::Name(n) => name.eq(n),
                             ImportedType::NameAs(_, az) => name.eq(az),
                         });
-                        if !is_native && !is_imported {
+                        if !is_local && !is_imported {
                             Some(SchemaValidationError::ImportedTypeUndefined(
                                 name.to_string(),
                                 schema_handle.to_string(),
@@ -663,9 +663,9 @@ impl Schema {
     }
 
     fn validate_fields(&self) -> Vec<SchemaValidationError> {
-        let native_types = self.document.get_object_and_interface_type_fields();
+        let local_types = self.document.get_object_and_interface_type_fields();
         let imported_types = self.imported_types();
-        native_types
+        local_types
             .iter()
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
@@ -673,7 +673,7 @@ impl Schema {
                     if let Ok(_) = BuiltInScalarType::try_from(base.as_ref()) {
                         return errors;
                     }
-                    if native_types.contains_key(base) {
+                    if local_types.contains_key(base) {
                         return errors;
                     }
                     if imported_types
