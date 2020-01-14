@@ -1002,11 +1002,16 @@ where
             }
             ETHEREUM_CALL_FUNC_INDEX => {
                 let _section = stopwatch.start_section("host_export_ethereum_call");
+
+                // For apiVersion >= 0.0.4 the call passed from the mapping includes the
+                // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
+                // the the signature along with the call.
                 let arg = if self.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
                     self.asc_get::<_, AscUnresolvedContractCall_0_0_4>(args.nth_checked(0)?)
                 } else {
                     self.asc_get::<_, AscUnresolvedContractCall>(args.nth_checked(0)?)
                 };
+
                 self.ethereum_call(arg)
             }
             TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
