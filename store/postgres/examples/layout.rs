@@ -7,7 +7,7 @@ use std::fs;
 use std::process::exit;
 
 use graph::prelude::SubgraphDeploymentId;
-use graph_store_postgres::relational::{IdType, Layout};
+use graph_store_postgres::relational::{ColumnType, IdType, Layout};
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);
@@ -45,6 +45,11 @@ fn print_migration(layout: &Layout) {
             } else {
                 if column.name.as_str() == "id" {
                     print!("id");
+                } else if column.column_type == ColumnType::Bytes {
+                    print!(
+                        "decode(replace(data->'{}'->>'data','0x',''),'hex')",
+                        column.field
+                    );
                 } else {
                     print!(
                         "(data->'{}'->>'data')::{}",
