@@ -21,7 +21,7 @@ pub mod mock {
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
-pub use task_spawn::{spawn, spawn_blocking, spawn_blocking_ignore_panic};
+pub use task_spawn::{spawn, spawn_blocking, spawn_blocking_allow_panic};
 
 /// A prelude that makes all system component traits and data types available.
 ///

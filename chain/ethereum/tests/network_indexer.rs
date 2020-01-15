@@ -76,7 +76,7 @@ fn run_network_indexer(
     let (event_sink, event_stream) = futures::sync::mpsc::channel(100);
 
     // Run network indexer and forward its events to the channel
-    tokio::spawn(
+    graph::spawn(
         indexer
             .take_event_stream()
             .expect("failed to take stream from indexer")
