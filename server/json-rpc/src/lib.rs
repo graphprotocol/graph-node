@@ -218,7 +218,9 @@ where
             }
         }));
 
-        async fn block_on<I: Send + 'static, ER: Send + 'static>(
+        // This is a hack required because the json-rpc crate is not updated to tokio 0.2.
+        // We should watch the `jsonrpsee` crate and switch to that once it's ready.
+        async fn tokio02_spawn<I: Send + 'static, ER: Send + 'static>(
             mut task_sink: mpsc::Sender<Box<dyn std::future::Future<Output = ()> + Send + Unpin>>,
             future: impl std::future::Future<Output = Result<I, ER>> + Send + Unpin + 'static,
         ) -> Result<I, ER>
@@ -240,7 +242,7 @@ where
         let sender = task_sender.clone();
         handler.add_method("subgraph_create", move |params: Params| {
             let me = me.clone();
-            Box::pin(block_on(
+            Box::pin(tokio02_spawn(
                 sender.clone(),
                 params
                     .parse()
@@ -255,7 +257,7 @@ where
         let sender = task_sender.clone();
         handler.add_method("subgraph_deploy", move |params: Params| {
             let me = me.clone();
-            Box::pin(block_on(
+            Box::pin(tokio02_spawn(
                 sender.clone(),
                 params
                     .parse()
@@ -270,7 +272,7 @@ where
         let sender = task_sender.clone();
         handler.add_method("subgraph_remove", move |params: Params| {
             let me = me.clone();
-            Box::pin(block_on(
+            Box::pin(tokio02_spawn(
                 sender.clone(),
                 params
                     .parse()
@@ -285,7 +287,7 @@ where
         let sender = task_sender.clone();
         handler.add_method("subgraph_reassign", move |params: Params| {
             let me = me.clone();
-            Box::pin(block_on(
+            Box::pin(tokio02_spawn(
                 sender.clone(),
                 params
                     .parse()
