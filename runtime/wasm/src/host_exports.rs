@@ -680,5 +680,5 @@ fn test_string_to_h160_with_0x() {
 fn block_on<I: Send + 'static, ER: Send + 'static>(
     future: impl Future<Item = I, Error = ER> + Send + 'static,
 ) -> Result<I, ER> {
-    tokio::spawn(future.compat()).compat().wait().unwrap()
+    graph::spawn_blocking_allow_panic(future.compat()).compat().wait().unwrap()
 }

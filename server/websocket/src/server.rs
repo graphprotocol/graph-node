@@ -190,7 +190,7 @@ where
                                 ws_stream,
                                 graphql_runner.clone(),
                             );
-                            graph::spawn_blocking_ignore_panic(service.into_future().compat());
+                            graph::spawn_blocking_allow_panic(service.into_future().compat());
                         }
                         Err(e) => {
                             // We gracefully skip over failed connection attempts rather

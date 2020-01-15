@@ -24,7 +24,7 @@ pub fn spawn_blocking<T: Send + 'static>(
     tokio::task::spawn_blocking(move || block_on(abort_on_panic(f)))
 }
 
-pub fn spawn_blocking_ignore_panic<T: Send + 'static>(
+pub fn spawn_blocking_allow_panic<T: Send + 'static>(
     f: impl Future03<Output = T> + Send + 'static,
 ) -> JoinHandle<T> {
     tokio::task::spawn_blocking(move || block_on(f))
