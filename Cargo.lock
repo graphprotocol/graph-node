@@ -1342,6 +1342,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-tests"
+version = "0.0.1"
+
+[[package]]
 name = "graphql-parser"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

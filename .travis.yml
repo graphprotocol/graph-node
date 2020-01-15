@@ -70,8 +70,6 @@ script:
   - psql -c 'create database graph_node_test;' -U travis
   - RUST_BACKTRACE=1 GRAPH_STORAGE_SCHEME=json cargo test --verbose --all -- --nocapture
   - killall ipfs
-  # Run integration tests
-  - ./run-tests.sh
 
 deploy:
   provider: releases
