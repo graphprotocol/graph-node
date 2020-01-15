@@ -470,11 +470,10 @@ impl WasmiModule {
         &mut self,
         call: UnresolvedContractCall,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.ctx.host_exports.ethereum_call(
-            &mut self.ctx.logger,
-            &self.ctx.block,
-            call,
-        )?;
+        let result =
+            self.ctx
+                .host_exports
+                .ethereum_call(&mut self.ctx.logger, &self.ctx.block, call)?;
         Ok(Some(match result {
             Some(tokens) => RuntimeValue::from(self.asc_new(tokens.as_slice())),
             None => RuntimeValue::from(0),
