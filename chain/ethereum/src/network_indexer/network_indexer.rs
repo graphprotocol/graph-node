@@ -1175,7 +1175,7 @@ impl NetworkIndexer {
         });
 
         // Launch state machine
-        graph::spawn(
+        graph::spawn_blocking(
             state_machine
                 .map_err(move |e| {
                     error!(logger_for_err, "Network indexer failed: {}", e);
