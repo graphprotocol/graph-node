@@ -112,17 +112,19 @@ where
                 let graphql_runner = graphql_runner.clone();
 
                 // Run the query using the index node resolver
-                futures03::future::ok(execute_query(
-                    query,
-                    QueryExecutionOptions {
-                        logger: logger.clone(),
-                        resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
-                        deadline: None,
-                        max_complexity: None,
-                        max_depth: 100,
-                        max_first: std::u32::MAX,
-                    },
-                ))
+                tokio::task::block_in_place(|| {
+                    futures03::future::ok(execute_query(
+                        query,
+                        QueryExecutionOptions {
+                            logger: logger.clone(),
+                            resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
+                            deadline: None,
+                            max_complexity: None,
+                            max_depth: 100,
+                            max_first: std::u32::MAX,
+                        },
+                    ))
+                })
             })
             .then(move |result| {
                 let elapsed = start.elapsed().as_millis();
