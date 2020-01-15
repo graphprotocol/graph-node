@@ -266,11 +266,13 @@ where
             .and_then(move |body| GraphQLRequest::new(body, schema).compat())
             .and_then(move |query| {
                 // Run the query using the query runner
-                service
-                    .graphql_runner
-                    .run_query(query)
-                    .map_err(|e| GraphQLServerError::from(e))
-                    .compat()
+                tokio::task::block_in_place(|| {
+                    service
+                        .graphql_runner
+                        .run_query(query)
+                        .map_err(|e| GraphQLServerError::from(e))
+                        .compat()
+                })
             })
             .then(move |result| {
                 service_metrics.observe_query_execution_time(
@@ -559,55 +561,40 @@ mod tests {
         );
     }
 
-    #[test]
-    fn posting_valid_queries_yields_result_response() {
+    #[tokio::test(threaded_scheduler)]
+    async fn posting_valid_queries_yields_result_response() {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
         let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
         let (store, subgraph_id) = mock_store_with_users_subgraph();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
-        let mut runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime
-            .block_on(
-                future::lazy(move || {
-                    let res: Result<_, ()> = Ok({
-                        let node_id = NodeId::new("test").unwrap();
-                        let mut service = GraphQLService::new(
-                            logger,
-                            metrics,
-                            graphql_runner,
-                            store,
-                            8001,
-                            node_id,
-                        );
+        let node_id = NodeId::new("test").unwrap();
+        let mut service =
+            GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
 
-                        let request = Request::builder()
-                            .method(Method::POST)
-                            .uri(format!(
-                                "http://localhost:8000/subgraphs/id/{}",
-                                subgraph_id
-                            ))
-                            .body(Body::from("{\"query\": \"{ name }\"}"))
-                            .unwrap();
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(format!(
+                "http://localhost:8000/subgraphs/id/{}",
+                subgraph_id
+            ))
+            .body(Body::from("{\"query\": \"{ name }\"}"))
+            .unwrap();
 
-                        // The response must be a 200
-                        let response = futures03::executor::block_on(service.call(request))
-                            .expect("Should return a response");
-                        let data = test_utils::assert_successful_response(response);
-
-                        // The body should match the simulated query result
-                        let name = data
-                            .get("name")
-                            .expect("Query result data has no \"name\" field")
-                            .as_str()
-                            .expect("Query result field \"name\" is not a string");
-                        assert_eq!(name, "Jordi".to_string());
-                    });
-                    res
-                })
-                .compat(),
-            )
+        // The response must be a 200
+        let response = tokio::spawn(service.call(request))
+            .await
             .unwrap()
+            .expect("Should return a response");
+        let data = test_utils::assert_successful_response(response);
+
+        // The body should match the simulated query result
+        let name = data
+            .get("name")
+            .expect("Query result data has no \"name\" field")
+            .as_str()
+            .expect("Query result field \"name\" is not a string");
+        assert_eq!(name, "Jordi".to_string());
     }
 }
