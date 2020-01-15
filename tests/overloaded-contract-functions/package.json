@@ -9,8 +9,8 @@
     "deploy:local": "graph deploy test/overloaded-contract-functions --ipfs http://localhost:5001/ --node http://localhost:8020/"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "^0.17.1",
-    "@graphprotocol/graph-ts": "^0.17.0",
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
     "solc": "^0.6.1"
   },
   "dependencies": {
