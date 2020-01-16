@@ -74,6 +74,7 @@ lazy_static! {
     ).into();
 }
 
+#[cfg(debug_assertions)]
 pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
@@ -162,6 +163,7 @@ pub fn insert_entities(
     .map(|_| ())
 }
 
+#[cfg(debug_assertions)]
 pub mod block_store {
     use diesel::prelude::*;
     use std::str::FromStr;

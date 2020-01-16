@@ -38,6 +38,12 @@ matrix:
         - rustup component add rustfmt
         - cargo fmt --all -- --check
 
+    # Make sure release builds compile
+    - env: CHECK_RELEASE=true
+      rust: stable
+      script:
+        - cargo check --release
+
     # Check for warnings
     - env: RUSTFLAGS="-D warnings"
       rust: stable
