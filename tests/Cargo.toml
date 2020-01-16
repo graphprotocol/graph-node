@@ -1,3 +1,6 @@
 [package]
 name = "graph-tests"
 version = "0.0.1"
+
+[dev-dependencies]
+duct = "0.13"
