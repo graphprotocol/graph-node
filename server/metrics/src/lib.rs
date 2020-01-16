@@ -63,22 +63,20 @@ impl MetricsServerTrait for PrometheusMetricsServer {
         let server = self.clone();
         let new_service = make_service_fn(move |_req| {
             let server = server.clone();
+            let registry = server.registry.clone();
             async move {
                 Ok::<_, Error>(service_fn(move |_| {
-                    let registry = server.registry.clone();
-                    async move {
-                        let metric_families = registry.gather();
-                        let mut buffer = vec![];
-                        let encoder = TextEncoder::new();
-                        encoder.encode(&metric_families, &mut buffer).unwrap();
-                        Ok::<_, Error>(
-                            Response::builder()
-                                .status(200)
-                                .header(hyper::header::CONTENT_TYPE, encoder.format_type())
-                                .body(Body::from(buffer))
-                                .unwrap(),
-                        )
-                    }
+                    let metric_families = registry.gather();
+                    let mut buffer = vec![];
+                    let encoder = TextEncoder::new();
+                    encoder.encode(&metric_families, &mut buffer).unwrap();
+                    futures03::future::ok::<_, Error>(
+                        Response::builder()
+                            .status(200)
+                            .header(hyper::header::CONTENT_TYPE, encoder.format_type())
+                            .body(Body::from(buffer))
+                            .unwrap(),
+                    )
                 }))
             }
         });

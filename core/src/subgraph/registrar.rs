@@ -256,7 +256,7 @@ where
                     let sender = sender.clone();
                     let provider = provider.clone();
                     let logger = logger.clone();
-                    
+
                     // Blocking due to store interactions. Won't be blocking after #905.
                     graph::spawn_blocking(
                         start_subgraph(id, &*provider, logger)

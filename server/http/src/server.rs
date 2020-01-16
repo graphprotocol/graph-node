@@ -86,21 +86,14 @@ where
         let store = self.store.clone();
         let node_id = self.node_id.clone();
         let new_service = make_service_fn(move |_| {
-            let logger_for_service = logger_for_service.clone();
-            let metrics = metrics.clone();
-            let graphql_runner = graphql_runner.clone();
-            let store = store.clone();
-            let node_id = node_id.clone();
-            async move {
-                Result::<_, Error>::Ok(GraphQLService::new(
-                    logger_for_service.clone(),
-                    metrics.clone(),
-                    graphql_runner.clone(),
-                    store.clone(),
-                    ws_port,
-                    node_id.clone(),
-                ))
-            }
+            futures03::future::ok::<_, Error>(GraphQLService::new(
+                logger_for_service.clone(),
+                metrics.clone(),
+                graphql_runner.clone(),
+                store.clone(),
+                ws_port,
+                node_id.clone(),
+            ))
         });
 
         // Create a task to run the server and handle HTTP requests
