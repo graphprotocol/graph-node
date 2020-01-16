@@ -27,7 +27,7 @@
 
 "@graphprotocol/graph-cli@https://github.com/graphprotocol/graph-cli#master":
   version "0.17.1"
-  resolved "https://github.com/graphprotocol/graph-cli#083c1a8e928dbd22a2bd1d9c301ff2118f3ed030"
+  resolved "https://github.com/graphprotocol/graph-cli#6e51b05387a7b80928fc9c945b6427b5bd154e6e"
   dependencies:
     assemblyscript "https://github.com/AssemblyScript/assemblyscript#36040d5b5312f19a025782b5e36663823494c2f3"
     chalk "^3.0.0"
