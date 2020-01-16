@@ -335,7 +335,7 @@ impl SubgraphDeploymentEntity {
     ) -> Vec<MetadataOperation> {
         let mut entity = Entity::new();
         entity.set("totalEthereumBlocksCount", block_ptr.number);
-        entity.set("ethereumHeadBlockHash", block_ptr.hash_hex());
+        entity.set("ethereumHeadBlockHash", block_ptr.hash);
         entity.set("ethereumHeadBlockNumber", block_ptr.number);
 
         vec![update_metadata_operation(
