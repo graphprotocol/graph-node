@@ -25,9 +25,15 @@ fn run_cmd(args: Vec<&str>, cwd: PathBuf) {
 
     if !output.status.success() {
         panic!(format!(
-            "Failed to run command `{}`:\n\n{}",
+            "Failed to run command `{}`:\n{}",
             cmd_string,
-            String::from_utf8(output.stdout).unwrap()
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .trim()
+                .split("\n")
+                .map(|s| format!("│ {}", s))
+                .collect::<Vec<_>>()
+                .join("\n")
         ));
     }
 }
