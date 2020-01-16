@@ -8,10 +8,11 @@ const Contract = artifacts.require("./Contract.sol");
 const srcDir = path.join(__dirname, "..");
 
 const fetchSubgraphs = createApolloFetch({
-  uri: "http://localhost:8030/graphql"
+  uri: "http://localhost:18030/graphql"
 });
 const fetchSubgraph = createApolloFetch({
-  uri: "http://localhost:8000/subgraphs/name/test/overloaded-contract-functions"
+  uri:
+    "http://localhost:18000/subgraphs/name/test/overloaded-contract-functions"
 });
 
 const exec = cmd => {
@@ -70,8 +71,8 @@ contract("Contract", accounts => {
 
     // Create and deploy the subgraph
     exec(`yarn codegen`);
-    exec(`yarn create:local`);
-    exec(`yarn deploy:local`);
+    exec(`yarn create:test`);
+    exec(`yarn deploy:test`);
 
     // Wait for the subgraph to be indexed
     await waitForSubgraphToBeSynced();
