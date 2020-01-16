@@ -71,7 +71,7 @@ type DynamicEthereumContractDataSource @entity {
 
 type EthereumContractSource @entity {
     id: ID!
-    address: String
+    address: Bytes
     abi: String!
     startBlock: BigInt
 }
