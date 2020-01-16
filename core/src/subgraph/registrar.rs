@@ -111,7 +111,8 @@ where
 
         // Deploy named subgraphs found in store
         self.start_assigned_subgraphs().and_then(move |()| {
-            // Spawn a task to handle assignment events
+            // Spawn a task to handle assignment events.
+            // Blocking due to store interactions. Won't be blocking after #905.
             graph::spawn_blocking(
                 assignment_event_stream
                     .map_err(SubgraphAssignmentProviderError::Unknown)
@@ -255,6 +256,8 @@ where
                     let sender = sender.clone();
                     let provider = provider.clone();
                     let logger = logger.clone();
+                    
+                    // Blocking due to store interactions. Won't be blocking after #905.
                     graph::spawn_blocking(
                         start_subgraph(id, &*provider, logger)
                             .map(move |()| drop(sender))
