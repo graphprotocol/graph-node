@@ -1,0 +1,2 @@
+# Make `cargo watch` ignore changes in integration tests
+tests/integration-tests

@@ -11,3 +11,7 @@
 /docker/data/
 /docker/parity/chains/
 /docker/parity/network/
+
+/tests/integration-tests/**/build
+/tests/integration-tests/**/generated
+/tests/integration-tests/**/node_modules
