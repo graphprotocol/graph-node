@@ -2,8 +2,7 @@ FROM rust:latest
 
 # Replace this with the graph-node branch you want to build the image from;
 # Note: Docker Hub substitutes this automatically using our hooks/post_checkout script.
-ARG SOURCE_BRANCH
-ENV SOURCE_BRANCH=$SOURCE_BRANCH
+ENV SOURCE_BRANCH "master"
 
 # Install clang (required for dependencies)
 RUN apt-get update \
