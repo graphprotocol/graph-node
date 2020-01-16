@@ -1174,7 +1174,8 @@ impl NetworkIndexer {
             start_block,
         });
 
-        // Launch state machine
+        // Launch state machine.
+        // Blocking due to store interactions. Won't be blocking after #905.
         graph::spawn_blocking(
             state_machine
                 .map_err(move |e| {

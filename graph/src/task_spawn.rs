@@ -14,16 +14,19 @@ fn abort_on_panic<T: Send + 'static>(
     })
 }
 
+/// Aborts on panic.
 pub fn spawn<T: Send + 'static>(f: impl Future03<Output = T> + Send + 'static) -> JoinHandle<T> {
     tokio::spawn(abort_on_panic(f))
 }
 
+/// Aborts on panic.
 pub fn spawn_blocking<T: Send + 'static>(
     f: impl Future03<Output = T> + Send + 'static,
 ) -> JoinHandle<T> {
     tokio::task::spawn_blocking(move || block_on(abort_on_panic(f)))
 }
 
+/// Panics result in an `Err` in `JoinHandle`.
 pub fn spawn_blocking_allow_panic<T: Send + 'static>(
     f: impl Future03<Output = T> + Send + 'static,
 ) -> JoinHandle<T> {

@@ -214,6 +214,7 @@ where
             mpsc::channel::<Box<dyn std::future::Future<Output = ()> + Send + Unpin>>(100);
         graph::spawn(task_receiver.for_each(|f| {
             async {
+                // Blocking due to store interactions. Won't be blocking after #905.
                 graph::spawn_blocking(f);
             }
         }));

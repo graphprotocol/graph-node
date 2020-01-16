@@ -236,6 +236,7 @@ impl SubgraphInstanceManager {
         // Subgraph instance shutdown senders
         let instances: SharedInstanceKeepAliveMap = Default::default();
 
+        // Blocking due to store interactions. Won't be blocking after #905.
         graph::spawn_blocking(receiver.compat().try_for_each(move |event| {
             use self::SubgraphAssignmentProviderEvent::*;
 
