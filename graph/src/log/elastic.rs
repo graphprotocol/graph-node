@@ -262,7 +262,7 @@ impl ElasticDrain {
                     let client = Client::new();
                     let logger_for_err = flush_logger.clone();
 
-                    let _ = client
+                    client
                         .post(batch_url)
                         .header("Content-Type", "application/json")
                         .basic_auth(
@@ -272,7 +272,8 @@ impl ElasticDrain {
                         .body(batch_body)
                         .send()
                         .and_then(|response| async { response.error_for_status() })
-                        .map_err(move |e| {
+                        .map_ok(|_| ())
+                        .unwrap_or_else(move |e| {
                             // Log if there was a problem sending the logs
                             error!(
                                 logger_for_err,
