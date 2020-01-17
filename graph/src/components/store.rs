@@ -1,7 +1,6 @@
 use failure::Error;
 use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
-use futures03::compat::Compat;
 use lazy_static::lazy_static;
 use mockall::predicate::*;
 use mockall::*;
@@ -578,7 +577,7 @@ where
         let mut pending_event: Option<StoreEvent> = None;
         let mut source = self.source.fuse();
         let mut had_err = false;
-        let mut delay = Compat::new(tokio::time::delay_for(interval).map(Result::<_, ()>::Ok));
+        let mut delay = tokio::time::delay_for(interval).unit_error().compat();
         let logger = logger.clone();
 
         let source = Box::new(poll_fn(move || -> Poll<Option<StoreEvent>, ()> {
@@ -605,7 +604,7 @@ where
                 // Timer errors are harmless. Treat them as if the timer had
                 // become ready.
                 Ok(Async::Ready(())) | Err(_) => {
-                    delay = Compat::new(tokio::time::delay_for(interval).map(Ok));
+                    delay = tokio::time::delay_for(interval).unit_error().compat();
                     true
                 }
             };
