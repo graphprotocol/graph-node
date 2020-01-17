@@ -11,8 +11,8 @@ use std::str::FromStr;
 use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
     bigdecimal::One, web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityQuery, EntityRange, Future01CompatExt, Schema, SubgraphDeploymentId,
-    TryFutureExt, Value, ValueType, BLOCK_NUMBER_MAX,
+    EntityOrder, EntityQuery, EntityRange, Future01CompatExt, Schema, SubgraphDeploymentId, Value,
+    ValueType, BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
 
@@ -304,7 +304,7 @@ where
         Err(err) => err.into_inner(),
     };
 
-    let _ = runtime
+    runtime
         .block_on(async {
             // Reset state before starting
             remove_test_data(&conn);
@@ -313,7 +313,7 @@ where
             let layout = insert_test_data(&conn);
 
             // Run test
-            test(&conn, &layout).into_future().compat()
+            test(&conn, &layout).into_future().compat().await
         })
         .unwrap_or_else(|e| panic!("Failed to run ChainHead test: {:?}", e));
 }

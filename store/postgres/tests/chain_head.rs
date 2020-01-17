@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use graph::components::store::{ChainStore, Store as _};
-use graph::prelude::{Future01CompatExt, SubgraphDeploymentId, TryFutureExt};
+use graph::prelude::{Future01CompatExt, SubgraphDeploymentId};
 use graph_store_postgres::Store as DieselStore;
 
 use test_store::block_store::{
@@ -35,7 +35,7 @@ where
         Err(err) => err.into_inner(),
     };
 
-    let _ = runtime
+    runtime
         .block_on(async {
             // Reset state before starting
             block_store::remove();
@@ -44,7 +44,7 @@ where
             block_store::insert(chain, NETWORK_NAME);
 
             // Run test
-            test(store).into_future().compat()
+            test(store).into_future().compat().await
         })
         .unwrap_or_else(|e| panic!("Failed to run ChainHead test: {:?}", e));
 }

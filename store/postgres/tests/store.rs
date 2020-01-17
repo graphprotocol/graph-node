@@ -132,7 +132,7 @@ where
         Err(err) => err.into_inner(),
     };
 
-    let _ = runtime
+    runtime
         .block_on(async {
             // Reset state before starting
             remove_test_data(store.clone());
@@ -141,7 +141,7 @@ where
             insert_test_data(store.clone());
 
             // Run test
-            test(store).into_future().compat()
+            test(store).into_future().compat().await
         })
         .unwrap_or_else(|e| panic!("Failed to run Store test: {:?}", e));
 }
