@@ -270,7 +270,7 @@ fn json_conversions() {
     );
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test]
 async fn ipfs_cat() {
     graph::spawn_blocking(async {
         let ipfs = Arc::new(ipfs_api::IpfsClient::default());
@@ -396,7 +396,7 @@ async fn ipfs_map() {
     assert!(errmsg.contains("api returned error"))
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test]
 async fn ipfs_fail() {
     graph::spawn_blocking(async {
         let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
