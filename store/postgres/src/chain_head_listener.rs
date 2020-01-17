@@ -93,11 +93,7 @@ impl ChainHeadUpdateListener {
                         "head_block_number" => &update.head_block_number,
                     );
 
-                    futures03::future::ready(
-                        update_sender
-                            .broadcast(())
-                            .map_err(|_| panic!("no listeners for chain head updates")),
-                    )
+                    futures03::future::ready(update_sender.broadcast(()).map_err(|_| ()))
                 }),
         );
 
