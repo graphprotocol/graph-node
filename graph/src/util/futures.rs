@@ -151,7 +151,6 @@ where
         F: Fn() -> R + Send,
         R: Future<Item = I, Error = E> + Send,
     {
-        use futures03::compat::Compat;
         use futures03::future::TryFutureExt;
 
         let operation_name = self.inner.operation_name;
@@ -170,12 +169,11 @@ where
             log_after,
             limit_opt,
             move || {
-                Compat::new(
-                    try_it()
-                        .timeout(timeout)
-                        .map_err(|_| TimeoutError::Elapsed)
-                        .and_then(|res| futures03::future::ready(res.map_err(TimeoutError::Inner))),
-                )
+                try_it()
+                    .timeout(timeout)
+                    .map_err(|_| TimeoutError::Elapsed)
+                    .and_then(|res| futures03::future::ready(res.map_err(TimeoutError::Inner)))
+                    .compat()
             },
         )
     }
