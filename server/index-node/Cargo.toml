@@ -8,7 +8,7 @@ futures = "0.1.21"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 graphql-parser = "0.2.3"
-http = "0.1.5"
+http = "0.2.0"
 hyper = "0.12.35"
 lazy_static = "1.2.0"
 serde = "1.0"

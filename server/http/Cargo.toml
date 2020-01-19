@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 futures = "0.1.21"
 graphql-parser = "0.2.3"
-http = "0.1.18"
+http = "0.2.0"
 hyper = "0.12.35"
 serde = "1.0"
 graph = { path = "../../graph" }
