@@ -819,13 +819,14 @@ dependencies = [
 [[package]]
 name = "ethabi"
 version = "10.0.0"
-source = "git+https://github.com/graphprotocol/ethabi.git#8bb5d4d0061191322f19e7582345faed6a919a80"
+source = "git+https://github.com/graphprotocol/ethabi.git#4bf75f19f178157936e7c76e5ad601f58b1992df"
 dependencies = [
  "ethereum-types 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-hex 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.48 (registry+https://github.com/rust-lang/crates.io-index)",
  "tiny-keccak 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "uint 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
