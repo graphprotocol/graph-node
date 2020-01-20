@@ -1147,7 +1147,7 @@ dependencies = [
  "ipfs-api 0.6.0-rc (registry+https://github.com/rust-lang/crates.io-index)",
  "isatty 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "mockall 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mockall 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-bigint 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-wasm 0.40.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1187,7 +1187,7 @@ dependencies = [
  "hex-literal 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "jsonrpc-core 14.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "mockall 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mockall 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pretty_assertions 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "state_machine_future 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "test-store 0.1.0",
@@ -1239,7 +1239,7 @@ dependencies = [
  "graph 0.17.1",
  "graph-graphql 0.17.1",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "mockall 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mockall 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -2051,21 +2051,21 @@ dependencies = [
 
 [[package]]
 name = "mockall"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cfg-if 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "downcast 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fragile 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "mockall_derive 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mockall_derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "predicates 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "predicates-tree 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "mockall_derive"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cfg-if 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4548,8 +4548,8 @@ dependencies = [
 "checksum mio 0.6.21 (registry+https://github.com/rust-lang/crates.io-index)" = "302dec22bcf6bae6dfb69c647187f4b4d0fb6f535521f7bc022430ce8e12008f"
 "checksum mio-uds 0.6.7 (registry+https://github.com/rust-lang/crates.io-index)" = "966257a94e196b11bb43aca423754d87429960a768de9414f3691d6957abf125"
 "checksum miow 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f2f3b1cf331de6896aabf6e9d55dca90356cc9960cca7eaaf408a355ae919"
-"checksum mockall 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7601dfc82314f4e4ad844055452f71c1d5d171e4b530f817b9353bb2e63a271d"
-"checksum mockall_derive 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "a26211f315c132a546ed185f3a17f7617a8e58d8511025d5f8665017194cf8be"
+"checksum mockall 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b95a7e7cfbce0e99ebbf5356a085d3b5e320a7ef300f77cd50a7148aa362e7c2"
+"checksum mockall_derive 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d5a615a1ad92048ad5d9633251edb7492b8abc057d7a679a9898476aef173935"
 "checksum multiaddr 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "46c47add5e6a96020ca53393aebf77193fd5f578a4e7a73ab505f41e4be06e8c"
 "checksum multibase 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b9c35dac080fd6e16a99924c8dfdef0af89d797dd851adab25feaffacf7850d6"
 "checksum multihash 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c62469025f45dee2464ef9fc845f4683c543993792c1993e7d903c17a4546b74"
