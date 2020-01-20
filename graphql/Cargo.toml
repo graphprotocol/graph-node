@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 graph = { path = "../graph" }
 graphql-parser = "0.2.3"
-indexmap = "1.2"
+indexmap = "1.3"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"
 uuid = { version = "0.8.1", features = ["v4"] }
