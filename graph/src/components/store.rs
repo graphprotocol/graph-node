@@ -231,7 +231,7 @@ pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
 ///
 /// Details of how query generation for `EntityQuery` works can be found
 /// in `docs/implementation/query-prefetching.md`
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct EntityQuery {
     /// ID of the subgraph.
     pub subgraph_id: SubgraphDeploymentId,
@@ -655,7 +655,7 @@ pub enum EntityOperation {
 
 /// An operation on subgraph metadata. All operations implicitly only concern
 /// the subgraph of subgraphs.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum MetadataOperation {
     /// Locates the entity with type `entity` and the given `id` in the
     /// subgraph of subgraphs and sets its attributes according to the
