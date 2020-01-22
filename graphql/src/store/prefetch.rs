@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use graph::prelude::{
-    BlockNumber, Entity, EntityCollection, EntityFilter, EntityLink, EntityWindow, ParentLink,
-    QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
+    BlockNumber, Entity, EntityCollection, EntityFilter, EntityLink, EntityWindow, Logger,
+    ParentLink, QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
 };
 
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
@@ -840,6 +840,7 @@ where
     }
 
     fetch(
+        ctx.logger.clone(),
         store,
         &parents,
         &join,
@@ -854,6 +855,7 @@ where
 /// Query child entities for `parents` from the store. The `join` indicates
 /// in which child field to look for the parent's id/join field
 fn fetch<S: Store>(
+    logger: Logger,
     store: &S,
     parents: &Vec<Node>,
     join: &Join<'_>,
@@ -870,6 +872,7 @@ fn fetch<S: Store>(
         max_first,
     )?;
 
+    query.logger = Some(logger);
     if let Some(q::Value::String(id)) = arguments.get(&*ARG_ID) {
         query.filter = Some(
             EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.to_owned()))

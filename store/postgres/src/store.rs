@@ -375,8 +375,9 @@ impl Store {
         };
 
         // Process results; deserialize JSON data
+        let logger = query.logger.unwrap_or(self.logger.clone());
         conn.query(
-            &self.logger,
+            &logger,
             query.collection,
             query.filter,
             order,

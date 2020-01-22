@@ -259,6 +259,9 @@ pub struct EntityQuery {
     /// A range to limit the size of the result.
     pub range: EntityRange,
 
+    /// Optional logger for anything related to this query
+    pub logger: Option<Logger>,
+
     _force_use_of_new: (),
 }
 
@@ -276,6 +279,7 @@ impl EntityQuery {
             order_by: None,
             order_direction: None,
             range: EntityRange::first(100),
+            logger: None,
             _force_use_of_new: (),
         }
     }
