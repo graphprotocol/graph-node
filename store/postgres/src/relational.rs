@@ -414,7 +414,7 @@ impl Layout {
             }
             trace!(
                 logger,
-                "Executed SQL query";
+                "Query timing (SQL)";
                 "query" => text,
                 "time_ms" => elapsed.as_millis()
             );
