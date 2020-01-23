@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindManyQuery, FindQuery,
@@ -23,8 +23,8 @@ use crate::relational_queries::{
 };
 use graph::prelude::{
     format_err, trace, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
-    EntityFilter, EntityKey, EntityOrder, EntityRange, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, ValueType,
+    EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
+    StoreEvent, SubgraphDeploymentId, ValueType,
 };
 
 use crate::block_range::BLOCK_RANGE_COLUMN;
@@ -393,7 +393,7 @@ impl Layout {
     /// order is a tuple (attribute, value_type, direction)
     pub fn query(
         &self,
-        logger: &graph::prelude::Logger,
+        logger: &Logger,
         conn: &PgConnection,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
@@ -401,24 +401,36 @@ impl Layout {
         range: EntityRange,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
+        fn log_query_timing(logger: &Logger, query: &FilterQuery, elapsed: Duration) {
+            // 100kB
+            const MAXLEN: usize = 102_400;
+            let mut text = debug_query(&query).to_string().replace("\n", " ");
+            // If the query + bind variables is more than MAXLEN, truncate it;
+            // this will happen when queries have very large bind variables
+            // (e.g., long arrays of string ids)
+            if text.len() > MAXLEN {
+                text.truncate(MAXLEN);
+                text.push_str(" ...");
+            }
+            trace!(
+                logger,
+                "Executed SQL query";
+                "query" => text,
+                "time_ms" => elapsed.as_millis()
+            );
+        }
         let query = FilterQuery::new(&self, collection, filter.as_ref(), order, range, block)?;
-        let query_debug_info = query.clone();
+        let query_clone = query.clone();
 
         let start = Instant::now();
         let values = query.load::<EntityData>(conn).map_err(|e| {
             QueryExecutionError::ResolveEntitiesError(format!(
                 "{}, query = {:?}",
                 e,
-                debug_query(&query_debug_info).to_string()
+                debug_query(&query_clone).to_string()
             ))
         })?;
-
-        trace!(
-            logger,
-            "Executed SQL query";
-            "query" => debug_query(&query_debug_info).to_string().replace("\n", " "),
-            "time_ms" => start.elapsed().as_millis()
-        );
+        log_query_timing(logger, &query_clone, start.elapsed());
         values
             .into_iter()
             .map(|entity_data| entity_data.to_entity(self).map_err(|e| e.into()))
