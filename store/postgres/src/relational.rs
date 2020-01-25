@@ -402,8 +402,8 @@ impl Layout {
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         fn log_query_timing(logger: &Logger, query: &FilterQuery, elapsed: Duration) {
-            // 100kB
-            const MAXLEN: usize = 102_400;
+            // 20kB
+            const MAXLEN: usize = 20_480;
             let mut text = debug_query(&query).to_string().replace("\n", " ");
             // If the query + bind variables is more than MAXLEN, truncate it;
             // this will happen when queries have very large bind variables
