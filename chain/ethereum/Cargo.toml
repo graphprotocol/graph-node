@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 chrono = "0.4"
 failure = "0.1.6"
-futures = "0.1.21"
+futures = "0.3.1"
 jsonrpc-core = "14.0.5"
 graph = { path = "../../graph" }
 mock = { package = "graph-mock", path = "../../mock" }

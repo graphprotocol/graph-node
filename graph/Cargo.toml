@@ -17,7 +17,7 @@ reqwest = "0.10"
 # ethabi, but long term we want to find a way to drop our fork.
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 hex = "0.4.0"
-futures = "0.1.21"
+futures = "0.3.1"
 graphql-parser = "0.2.3"
 ipfs-api = { version = "0.6.0-rc", features = ["hyper-tls"] }
 parity-wasm = "0.40"
