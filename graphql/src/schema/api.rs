@@ -50,7 +50,7 @@ fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError>
         "Bytes",
         "BigInt",
     ]
-    .into_iter()
+    .iter()
     {
         match ast::get_named_type(schema, &name.to_string()) {
             None => {
@@ -122,7 +122,7 @@ fn add_order_direction_enum(schema: &mut Document) {
         name: "OrderDirection".to_string(),
         directives: vec![],
         values: ["asc", "desc"]
-            .into_iter()
+            .iter()
             .map(|name| EnumValue {
                 position: Pos::default(),
                 description: None,
@@ -893,7 +893,7 @@ mod tests {
                 "where",
                 "block"
             ]
-            .into_iter()
+            .iter()
             .map(|name| name.to_string())
             .collect::<Vec<String>>()
         );
@@ -984,7 +984,7 @@ mod tests {
                 "where",
                 "block"
             ]
-            .into_iter()
+            .iter()
             .map(|name| name.to_string())
             .collect::<Vec<String>>()
         );
