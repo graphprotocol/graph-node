@@ -672,6 +672,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn block_pointer_from_number(
         &self,
         logger: &Logger,
+        chain_store: Arc<dyn ChainStore>,
         block_number: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>;
 
@@ -687,6 +688,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn block_hash_by_block_number(
         &self,
         logger: &Logger,
+        chain_store: Arc<dyn ChainStore>,
         block_number: u64,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
@@ -711,6 +713,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         metrics: Arc<SubgraphEthRpcMetrics>,
+        chain_store: Arc<dyn ChainStore>,
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send>;
 
@@ -928,7 +931,11 @@ pub fn blocks_with_triggers(
     Box::new(
         trigger_futs
             .concat2()
-            .join(adapter.clone().block_hash_by_block_number(&logger, to))
+            .join(
+                adapter
+                    .clone()
+                    .block_hash_by_block_number(&logger, chain_store.clone(), to),
+            )
             .map(move |(triggers, to_hash)| {
                 let mut block_hashes: HashSet<H256> =
                     triggers.iter().map(EthereumTrigger::block_hash).collect();

@@ -346,6 +346,7 @@ where
                             ctx.eth_adapter.is_on_main_chain(
                                 &ctx.logger,
                                 ctx.metrics.ethrpc_metrics.clone(),
+                                ctx.chain_store.clone(),
                                 ptr,
                             )
                         },

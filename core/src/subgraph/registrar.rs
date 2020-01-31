@@ -534,7 +534,7 @@ fn resolve_subgraph_chain_blocks(
             0 => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
             min_start_block => Box::new(
                 ethereum_adapter
-                    .block_pointer_from_number(logger, min_start_block - 1)
+                    .block_pointer_from_number(logger, chain_store.clone(), min_start_block - 1)
                     .map(Some)
                     .map_err(move |_| {
                         SubgraphRegistrarError::ManifestValidationError(vec![

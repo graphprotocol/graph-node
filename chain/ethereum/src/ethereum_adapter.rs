@@ -835,10 +835,11 @@ where
     fn block_pointer_from_number(
         &self,
         logger: &Logger,
+        chain_store: Arc<dyn ChainStore>,
         block_number: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
         Box::new(
-            self.block_hash_by_block_number(logger, block_number)
+            self.block_hash_by_block_number(logger, chain_store.clone(), block_number)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt.ok_or_else(|| {
                         format_err!(
@@ -858,6 +859,7 @@ where
     fn block_hash_by_block_number(
         &self,
         logger: &Logger,
+        _chain_store: Arc<dyn ChainStore>,
         block_number: u64,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
@@ -925,10 +927,11 @@ where
         &self,
         logger: &Logger,
         _: Arc<SubgraphEthRpcMetrics>,
+        chain_store: Arc<dyn ChainStore>,
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         Box::new(
-            self.block_hash_by_block_number(&logger, block_ptr.number)
+            self.block_hash_by_block_number(&logger, chain_store, block_ptr.number)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt
                         .ok_or_else(|| {
