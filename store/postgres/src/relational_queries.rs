@@ -1404,12 +1404,16 @@ impl<'a> FilterQuery<'a> {
 
     /// Only one table/filter pair, and no window
     ///
-    /// Generate a query
+    /// The generated query makes sure we only convert the rows we actually
+    /// want to retrieve to JSONB
+    ///
     ///   select '..' as entity, to_jsonb(e.*) as data
-    ///     from table c
-    ///    where block_range @> $block
-    ///      and filter
-    ///    order by .. limit .. skip ..
+    ///     from
+    ///       (select *
+    ///          from table c
+    ///         where block_range @> $block
+    ///           and filter
+    ///         order by .. limit .. skip ..) c
     fn query_no_window_one_entity(
         &self,
         table: &Table,
@@ -1417,9 +1421,11 @@ impl<'a> FilterQuery<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(table, &mut out);
+        out.push_sql(" from (select * ");
         self.filtered_rows(table, filter, out.reborrow())?;
         self.sort_key.order_by(&mut out)?;
         self.limit(&mut out);
+        out.push_sql(") c");
         Ok(())
     }
 
