@@ -1343,6 +1343,18 @@ impl ChainStore for Store {
             .collect::<Result<Vec<H256>, _>>()
             .map_err(Error::from)
     }
+
+    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error> {
+        use crate::db_schema::ethereum_blocks::dsl;
+
+        let conn = self.get_conn()?;
+        diesel::delete(dsl::ethereum_blocks)
+            .filter(dsl::network_name.eq(&self.network_name))
+            .filter(dsl::number.eq(number as i64))
+            .filter(dsl::hash.ne(&format!("{:x}", hash)))
+            .execute(&conn)
+            .map_err(Error::from)
+    }
 }
 
 impl EthereumCallCache for Store {

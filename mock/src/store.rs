@@ -121,6 +121,8 @@ mock! {
         fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error>;
 
         fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
+
+        fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error>;
     }
 }
 

@@ -1265,6 +1265,10 @@ pub trait ChainStore: Send + Sync + 'static {
 
     /// Return the hashes of all blocks with the given number
     fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
+
+    /// Confirm that block number `number` has hash `hash` and that the store
+    /// may purge any other blocks with that number
+    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {

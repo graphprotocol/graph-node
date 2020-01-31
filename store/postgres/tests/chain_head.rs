@@ -195,6 +195,28 @@ fn block_hashes_by_number() {
 
         let hashes = store.block_hashes_by_block_number(127).unwrap();
         assert_eq!(0, hashes.len());
+
+        let deleted = store
+            .confirm_block_hash(1, &BLOCK_ONE.block_hash())
+            .unwrap();
+        assert_eq!(0, deleted);
+
+        let deleted = store
+            .confirm_block_hash(2, &BLOCK_TWO.block_hash())
+            .unwrap();
+        assert_eq!(1, deleted);
+
+        // Make sure that we do not delete anything for a nonexistent block
+        let deleted = store
+            .confirm_block_hash(127, &GENESIS_BLOCK.block_hash())
+            .unwrap();
+        assert_eq!(0, deleted);
+
+        let hashes = store.block_hashes_by_block_number(1).unwrap();
+        assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
+
+        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        assert_eq!(vec![BLOCK_TWO.block_hash()], hashes);
         Ok(())
     })
 }
