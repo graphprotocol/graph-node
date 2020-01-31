@@ -1262,6 +1262,9 @@ pub trait ChainStore: Send + Sync + 'static {
     /// We will never remove blocks that are within `ancestor_count` of
     /// the chain head.
     fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error>;
+
+    /// Return the hashes of all blocks with the given number
+    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {

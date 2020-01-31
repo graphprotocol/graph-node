@@ -1328,6 +1328,21 @@ impl ChainStore for Store {
             .unwrap_or(Ok((0, 0)))
             .map_err(|e| e.into())
     }
+
+    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error> {
+        use crate::db_schema::ethereum_blocks::dsl;
+
+        let conn = self.get_conn()?;
+        dsl::ethereum_blocks
+            .select(dsl::hash)
+            .filter(dsl::network_name.eq(&self.network_name))
+            .filter(dsl::number.eq(number as i64))
+            .get_results::<String>(&conn)?
+            .into_iter()
+            .map(|h| h.parse())
+            .collect::<Result<Vec<H256>, _>>()
+            .map_err(Error::from)
+    }
 }
 
 impl EthereumCallCache for Store {

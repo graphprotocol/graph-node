@@ -175,3 +175,26 @@ fn block_number() {
         Ok(())
     })
 }
+
+#[test]
+fn block_hashes_by_number() {
+    let chain = vec![
+        &*GENESIS_BLOCK,
+        &*BLOCK_ONE,
+        &*BLOCK_TWO,
+        &*BLOCK_TWO_NO_PARENT,
+    ];
+    run_test(chain, move |store| -> Result<(), ()> {
+        let hashes = store.block_hashes_by_block_number(1).unwrap();
+        assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
+
+        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        assert_eq!(2, hashes.len());
+        assert!(hashes.contains(&BLOCK_TWO.block_hash()));
+        assert!(hashes.contains(&BLOCK_TWO_NO_PARENT.block_hash()));
+
+        let hashes = store.block_hashes_by_block_number(127).unwrap();
+        assert_eq!(0, hashes.len());
+        Ok(())
+    })
+}

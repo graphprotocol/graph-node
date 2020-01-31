@@ -119,6 +119,8 @@ mock! {
         ) -> Result<Option<EthereumBlock>, Error>;
 
         fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error>;
+
+        fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
     }
 }
 
