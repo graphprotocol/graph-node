@@ -676,7 +676,12 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_number: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>;
 
-    /// Find a block by its number.
+    /// Find a block by its number. The `block_is_final` flag indicates whether
+    /// it is ok to remove blocks in the block cache with that number but with
+    /// a different hash which were left over from reorgs we saw before we
+    /// settled on a final block. Since our overall logic depends on being
+    /// able to access uncled blocks back to the main chain when we revert
+    /// blocks, we need to make sure we keep those in the block cache
     ///
     /// Careful: don't use this function without considering race conditions.
     /// Chain reorgs could happen at any time, and could affect the answer received.
@@ -690,6 +695,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
         block_number: u64,
+        block_is_final: bool,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Obtain all uncle blocks for a given block hash.
@@ -931,11 +937,12 @@ pub fn blocks_with_triggers(
     Box::new(
         trigger_futs
             .concat2()
-            .join(
-                adapter
-                    .clone()
-                    .block_hash_by_block_number(&logger, chain_store.clone(), to),
-            )
+            .join(adapter.clone().block_hash_by_block_number(
+                &logger,
+                chain_store.clone(),
+                to,
+                true,
+            ))
             .map(move |(triggers, to_hash)| {
                 let mut block_hashes: HashSet<H256> =
                     triggers.iter().map(EthereumTrigger::block_hash).collect();

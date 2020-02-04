@@ -839,7 +839,10 @@ where
         block_number: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
         Box::new(
-            self.block_hash_by_block_number(logger, chain_store.clone(), block_number)
+            // When this method is called (from the subgraph registrar), we don't
+            // know yet whether the block with the given number is final, it is
+            // therefore safer to assume it is not final
+            self.block_hash_by_block_number(logger, chain_store.clone(), block_number, false)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt.ok_or_else(|| {
                         format_err!(
@@ -861,6 +864,7 @@ where
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
         block_number: u64,
+        block_is_final: bool,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
 
@@ -874,7 +878,7 @@ where
             // If there was more than one hash, now that we know what the
             // 'right' one is, get rid of all the others
             if let Some(hash) = hash {
-                if num_hashes > 1 {
+                if block_is_final && num_hashes > 1 {
                     chain_store
                         .confirm_block_hash(block_number, hash)
                         .map(|_| ())
@@ -965,7 +969,7 @@ where
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         Box::new(
-            self.block_hash_by_block_number(&logger, chain_store, block_ptr.number)
+            self.block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt
                         .ok_or_else(|| {
