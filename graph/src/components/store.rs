@@ -162,14 +162,17 @@ impl WindowAttribute {
     }
 }
 
-/// How to join with the parent table when the child table does not
+/// How to connect children to their parent when the child table does not
 /// store parent id's
 #[derive(Clone, Debug, PartialEq)]
-pub struct ParentLink {
-    /// Name of the parent entity (concrete type, not an interface)
-    pub parent_type: String,
-    /// Name of the attribute where parent stores child ids
-    pub child_field: WindowAttribute,
+pub enum ParentLink {
+    /// The parent stores a list of child ids. The ith entry in the outer
+    /// vector contains the id of the children for `EntityWindow.ids[i]`
+    List(Vec<Vec<String>>),
+    /// The parent stores the id of one child. The ith entry in the
+    /// vector contains the id of the child of the parent with id
+    /// `EntityWindow.ids[i]`
+    Scalar(Vec<String>),
 }
 
 /// How to select children for their parents depending on whether the

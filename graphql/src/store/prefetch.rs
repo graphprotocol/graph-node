@@ -254,13 +254,61 @@ impl<'a> JoinCond<'a> {
         }
     }
 
-    fn entity_link(&self) -> EntityLink {
+    fn entity_link(&self, parents_by_id: Vec<(String, &Node)>) -> (Vec<String>, EntityLink) {
         match &self.relation {
-            JoinRelation::Direct(field) => EntityLink::Direct(field.window_attribute()),
-            JoinRelation::Derived(field) => EntityLink::Parent(ParentLink {
-                parent_type: self.parent_type.to_owned(),
-                child_field: field.window_attribute(),
-            }),
+            JoinRelation::Direct(field) => {
+                // we only need the parent ids
+                let ids = parents_by_id.into_iter().map(|(id, _)| id).collect();
+                (ids, EntityLink::Direct(field.window_attribute()))
+            }
+            JoinRelation::Derived(field) => {
+                let (ids, parent_link) = match field {
+                    JoinField::Scalar(child_field) => {
+                        // child_field contains a String id of the child; extract
+                        // those and the parent ids
+                        let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
+                            .into_iter()
+                            .filter_map(|(id, node)| {
+                                node.get(*child_field)
+                                    .and_then(|value| value.as_str())
+                                    .and_then(|child_id| Some((id, child_id.to_owned())))
+                            })
+                            .unzip();
+
+                        (ids, ParentLink::Scalar(child_ids))
+                    }
+                    JoinField::List(child_field) => {
+                        // child_field stores a list of child ids; extract them,
+                        // turn them into a list of strings and combine with the
+                        // parent ids
+                        let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
+                            .into_iter()
+                            .filter_map(|(id, node)| {
+                                node.get(*child_field)
+                                    .and_then(|value| match value {
+                                        StoreValue::List(values) => {
+                                            let values: Vec<_> = values
+                                                .into_iter()
+                                                .filter_map(|value| {
+                                                    value.as_str().map(|value| value.to_owned())
+                                                })
+                                                .collect();
+                                            if values.is_empty() {
+                                                None
+                                            } else {
+                                                Some(values)
+                                            }
+                                        }
+                                        _ => None,
+                                    })
+                                    .and_then(|child_ids| Some((id, child_ids)))
+                            })
+                            .unzip();
+                        (ids, ParentLink::List(child_ids))
+                    }
+                };
+                (ids, EntityLink::Parent(parent_link))
+            }
         }
     }
 }
@@ -416,20 +464,21 @@ impl<'a> Join<'a> {
         for cond in &self.conds {
             // Get the cond.parent_field attributes from each parent that
             // is of type cond.parent_type
-            let mut ids = parents
+            let mut parents_by_id = parents
                 .iter()
                 .filter(|parent| parent.typename() == cond.parent_type)
-                .filter_map(|parent| parent.id().ok())
+                .filter_map(|parent| parent.id().ok().map(|id| (id, parent)))
                 .collect::<Vec<_>>();
 
-            if !ids.is_empty() {
-                ids.sort_unstable();
-                ids.dedup();
+            if !parents_by_id.is_empty() {
+                parents_by_id.sort_unstable_by(|(id1, _), (id2, _)| id1.cmp(id2));
+                parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
 
+                let (ids, link) = cond.entity_link(parents_by_id);
                 windows.push(EntityWindow {
                     child_type: cond.child_type.to_owned(),
                     ids,
-                    link: cond.entity_link(),
+                    link,
                 });
             }
         }
