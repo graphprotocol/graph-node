@@ -12,8 +12,8 @@ use std::time::Duration;
 struct ErrorHandler(Logger, Box<Counter>);
 
 impl Debug for ErrorHandler {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ErrorHandler")
+    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Result::Ok(())
     }
 }
 
