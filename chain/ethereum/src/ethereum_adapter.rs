@@ -886,7 +886,7 @@ where
                             warn!(
                                 logger1,
                                 "Failed to remove {} ommers for block number {} \
-                                (hash `0x{:x}`): {}",
+                                 (hash `0x{:x}`): {}",
                                 num_hashes - 1,
                                 block_number,
                                 hash,
