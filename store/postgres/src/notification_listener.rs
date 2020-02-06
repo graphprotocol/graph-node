@@ -221,7 +221,7 @@ pub struct JsonNotification {
 // Any payload bigger than this is considered large. Any notification larger
 // than this will be put into the `large_notifications` table, and only
 // its id in the table will be sent via `notify`
-static LARGE_NOTIFICATION_THRESHOLD: usize = 128;
+static LARGE_NOTIFICATION_THRESHOLD: usize = 7800;
 
 impl JsonNotification {
     pub fn parse(
