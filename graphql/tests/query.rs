@@ -1322,7 +1322,8 @@ fn query_at_block() {
         format!("hash : \"0x{}\"", block.hash)
     }
 
-    const BLOCK_NOT_INDEXED: &str = "subgraph graphqlTestsQuery has only indexed \
+    const BLOCK_NOT_INDEXED: &str =
+        "subgraph graphqlTestsQuery has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 

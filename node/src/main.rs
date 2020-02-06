@@ -449,8 +449,12 @@ async fn main() {
     let stores_eth_adapters = eth_adapters.clone();
     let contention_logger = logger.clone();
 
-    let postgres_conn_pool =
-        create_connection_pool(postgres_url.clone(), store_conn_pool_size, &logger, connection_pool_registry);
+    let postgres_conn_pool = create_connection_pool(
+        postgres_url.clone(),
+        store_conn_pool_size,
+        &logger,
+        connection_pool_registry,
+    );
 
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_adapters.into_iter().map(
@@ -732,8 +736,10 @@ async fn main() {
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
     let (ping_send, ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
-    graph::spawn(ping_receive.for_each(move |pong_send| async move {
-        let _ = pong_send.clone().send(());
+    graph::spawn(ping_receive.for_each(move |pong_send| {
+        async move {
+            let _ = pong_send.clone().send(());
+        }
     }));
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(1));
