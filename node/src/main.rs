@@ -441,15 +441,16 @@ async fn main() {
         "conn_pool_size" => store_conn_pool_size,
     );
 
-    let postgres_conn_pool =
-        create_connection_pool(postgres_url.clone(), store_conn_pool_size, &logger);
-
+    let connection_pool_registry = metrics_registry.clone();
     let stores_metrics_registry = metrics_registry.clone();
     let graphql_metrics_registry = metrics_registry.clone();
     let stores_logger = logger.clone();
     let stores_error_logger = logger.clone();
     let stores_eth_adapters = eth_adapters.clone();
     let contention_logger = logger.clone();
+
+    let postgres_conn_pool =
+        create_connection_pool(postgres_url.clone(), store_conn_pool_size, &logger, connection_pool_registry);
 
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_adapters.into_iter().map(

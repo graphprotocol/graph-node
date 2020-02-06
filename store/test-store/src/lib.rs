@@ -46,6 +46,7 @@ lazy_static! {
                 postgres_url.clone(),
                 conn_pool_size,
                 &logger,
+                Arc::new(MockMetricsRegistry::new()),
             );
             Arc::new(Store::new(
                 StoreConfig {

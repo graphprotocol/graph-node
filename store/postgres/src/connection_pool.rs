@@ -4,13 +4,22 @@ use diesel::r2d2::{self, ConnectionManager, Pool};
 use graph::prelude::*;
 use graph::util::security::SafeDisplay;
 
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
-#[derive(Debug)]
-struct ErrorHandler(Logger);
+struct ErrorHandler(Logger, Box<Counter>);
+
+impl Debug for ErrorHandler {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ErrorHandler")
+    }
+}
 
 impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
     fn handle_error(&self, error: r2d2::Error) {
+        self.1.inc();
         error!(self.0, "Postgres connection error"; "error" => error.to_string());
     }
 }
@@ -19,10 +28,18 @@ pub fn create_connection_pool(
     postgres_url: String,
     pool_size: u32,
     logger: &Logger,
+    registry: Arc<dyn MetricsRegistry>,
 ) -> Pool<ConnectionManager<PgConnection>> {
     let logger_store = logger.new(o!("component" => "Store"));
     let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
-    let error_handler = Box::new(ErrorHandler(logger_pool.clone()));
+    let error_counter = registry
+        .new_counter(
+            String::from("store_connection_error_count"),
+            String::from("The number of Postgres connections errors"),
+            HashMap::new(),
+        )
+        .expect("failed to create `store_connection_error_count` counter");
+    let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
 
     // Connect to Postgres
     let conn_manager = ConnectionManager::new(postgres_url.clone());
