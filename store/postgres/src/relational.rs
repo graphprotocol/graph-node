@@ -21,6 +21,7 @@ use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterQuery, FindManyQuery, FindQuery,
     InsertQuery, RevertClampQuery, RevertRemoveQuery,
 };
+use graph::data::schema::SCHEMA_TYPE_NAME;
 use graph::prelude::{
     format_err, trace, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
@@ -174,6 +175,8 @@ impl Layout {
 
         for defn in &document.definitions {
             match defn {
+                // Do not create a table for the _Schema_ type
+                TypeDefinition(Object(obj_type)) if obj_type.name.eq(SCHEMA_TYPE_NAME) => {}
                 TypeDefinition(Object(obj_type)) => {
                     let table = Table::new(
                         obj_type,
