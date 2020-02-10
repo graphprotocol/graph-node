@@ -9,12 +9,6 @@ use serde::de;
 use serde::ser;
 use serde_yaml;
 use slog::{info, Logger};
-
-use std::fmt;
-use std::ops::Deref;
-use std::str::FromStr;
-use std::sync::Arc;
-use tokio::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
