@@ -421,21 +421,30 @@ impl Schema {
             };
 
             if let schema::Definition::TypeDefinition(ref mut type_definition) = definition {
-                let directives = match type_definition {
-                    TypeDefinition::Object(object_type) => &mut object_type.directives,
-                    TypeDefinition::Interface(interface_type) => &mut interface_type.directives,
-                    TypeDefinition::Enum(enum_type) => &mut enum_type.directives,
-                    TypeDefinition::Scalar(scalar_type) => &mut scalar_type.directives,
-                    TypeDefinition::InputObject(input_object_type) => {
-                        &mut input_object_type.directives
+                let (name, directives) = match type_definition {
+                    TypeDefinition::Object(object_type) => {
+                        (&object_type.name, &mut object_type.directives)
                     }
-                    TypeDefinition::Union(union_type) => &mut union_type.directives,
+                    TypeDefinition::Interface(interface_type) => {
+                        (&interface_type.name, &mut interface_type.directives)
+                    }
+                    TypeDefinition::Enum(enum_type) => (&enum_type.name, &mut enum_type.directives),
+                    TypeDefinition::Scalar(scalar_type) => {
+                        (&scalar_type.name, &mut scalar_type.directives)
+                    }
+                    TypeDefinition::InputObject(input_object_type) => {
+                        (&input_object_type.name, &mut input_object_type.directives)
+                    }
+                    TypeDefinition::Union(union_type) => {
+                        (&union_type.name, &mut union_type.directives)
+                    }
                 };
 
-                if directives
-                    .iter()
-                    .find(|directive| directive.name.eq("subgraphId"))
-                    .is_none()
+                if !name.eq(SCHEMA_TYPE_NAME)
+                    && directives
+                        .iter()
+                        .find(|directive| directive.name.eq("subgraphId"))
+                        .is_none()
                 {
                     directives.push(subgraph_id_directive);
                 }
@@ -701,7 +710,9 @@ impl Schema {
             .document
             .get_object_type_definitions()
             .iter()
-            .filter(|t| t.find_directive(String::from("entity")).is_none())
+            .filter(|t| {
+                t.find_directive(String::from("entity")).is_none() && !t.name.eq(SCHEMA_TYPE_NAME)
+            })
             .map(|t| t.name.to_owned())
             .collect::<Vec<_>>();
         if types_without_entity_directive.is_empty() {
