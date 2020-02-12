@@ -73,6 +73,88 @@ pub enum SchemaValidationError {
         _0, _1
     )]
     ImportedTypeUndefined(String, String), // (type_name, schema)
+    #[fail(display = "Fulltext directive name undefined")]
+    FulltextNameUndefined,
+    #[fail(display = "Fulltext directive name overlaps with type")]
+    FulltextNameOverlap(String),
+    #[fail(display = "Fulltext language is undefined")]
+    FulltextLanguageUndefined,
+    #[fail(display = "Fulltext language is invalid")]
+    FulltextLanguageInvalid(String),
+    #[fail(display = "Fulltext algorithm is undefined")]
+    FulltextAlgorithmUndefined,
+    #[fail(display = "Fulltext algorithm is invalid")]
+    FulltextAlgorithmInvalid(String),
+}
+
+enum FulltextLanguage {
+    Simple,
+    Danish,
+    Dutch,
+    English,
+    Finnish,
+    Fresh,
+    German,
+    Hungarian,
+    Italian,
+    Norwegian,
+    Portugese,
+    Romanian,
+    Russian,
+    Spanish,
+    Swedish,
+    Turkish,
+}
+
+impl TryFrom<&String> for FulltextLanguage {
+    type Error = String;
+    fn try_from(language: &String) -> Result<Self, Self::Error> {
+        match &language[..] {
+            "SIMPLE" => Ok(FulltextLanguage::Simple),
+            "DANISH" => Ok(FulltextLanguage::Danish),
+            "DUTCH" => Ok(FulltextLanguage::Dutch),
+            "ENGLISH" => Ok(FulltextLanguage::English),
+            "FINNISH" => Ok(FulltextLanguage::Finnish),
+            "FRESH" => Ok(FulltextLanguage::Fresh),
+            "GERMAN" => Ok(FulltextLanguage::German),
+            "HUNGARIAN" => Ok(FulltextLanguage::Hungarian),
+            "ITALIAN" => Ok(FulltextLanguage::Italian),
+            "NORWEGIAN" => Ok(FulltextLanguage::Norwegian),
+            "PORTUGESE" => Ok(FulltextLanguage::Portugese),
+            "ROMANIAN" => Ok(FulltextLanguage::Romanian),
+            "RUSSIAN" => Ok(FulltextLanguage::Russian),
+            "SPANISH" => Ok(FulltextLanguage::Spanish),
+            "SWEDISH" => Ok(FulltextLanguage::Swedish),
+            "TURKISH" => Ok(FulltextLanguage::Turkish),
+            invalid => Err(format!(
+                "Provided langauge for full text search is invalid: {}",
+                invalid
+            )),
+        }
+    }
+}
+
+enum FulltextAlgorithm {
+    A,
+    B,
+    C,
+    D,
+}
+
+impl TryFrom<&String> for FulltextAlgorithm {
+    type Error = String;
+    fn try_from(algorithm: &String) -> Result<Self, Self::Error> {
+        match &algorithm[..] {
+            "A" => Ok(FulltextAlgorithm::A),
+            "B" => Ok(FulltextAlgorithm::B),
+            "C" => Ok(FulltextAlgorithm::C),
+            "D" => Ok(FulltextAlgorithm::D),
+            invalid => Err(format!(
+                "Provided algorithm for fulltext search is invalid: {}",
+                invalid,
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
@@ -467,6 +549,7 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         errors.append(&mut self.validate_fields());
         errors.append(&mut self.validate_import_directives());
+        errors.append(&mut self.validate_fulltext_directives());
         errors.append(&mut self.validate_imported_types(schemas));
         if errors.is_empty() {
             Ok(())
@@ -604,6 +687,119 @@ impl Schema {
                 }
                 _ => None,
             })
+    }
+
+    fn validate_fulltext_directives(&self) -> Vec<SchemaValidationError> {
+        self.subgraph_schema_object_type()
+            .map_or(vec![], |subgraph_schema_type| {
+                subgraph_schema_type
+                    .directives
+                    .iter()
+                    .filter(|directives| directives.name.eq("fulltext"))
+                    .fold(vec![], |mut errors, fulltext| {
+                        self.validate_fulltext_directive_name(fulltext)
+                            .into_iter()
+                            .for_each(|err| errors.push(err));
+                        self.validate_fulltext_directive_language(fulltext)
+                            .into_iter()
+                            .for_each(|err| errors.push(err));
+                        self.validate_fulltext_directive_algorithm(fulltext)
+                            .into_iter()
+                            .for_each(|err| errors.push(err));
+                        self.validate_fulltext_directive_includes(fulltext)
+                            .into_iter()
+                            .for_each(|err| errors.push(err));
+                        errors
+                    })
+            })
+    }
+
+    fn validate_fulltext_directive_name(&self, fulltext: &Directive) -> Vec<SchemaValidationError> {
+        let name_value = fulltext
+            .arguments
+            .iter()
+            .find(|(key, _)| key.eq("name"))
+            .map(|(_, value)| value);
+        let name = match name_value {
+            Some(Value::String(name)) => name,
+            Some(_) | None => return vec![SchemaValidationError::FulltextNameUndefined],
+        };
+
+        // Validate that fulltext.name does not overlap with any of the types
+        // TODO: Validate that each fulltext directive has a distinct name
+        let mut all_types = self
+            .document
+            .get_object_and_interface_type_fields()
+            .into_iter()
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<String>>();
+        let mut imported_types = self
+            .imported_types()
+            .into_iter()
+            .map(|(imported_type, _)| match imported_type {
+                ImportedType::Name(name) => name.clone(),
+                ImportedType::NameAs(_, az) => az.clone(),
+            })
+            .collect::<Vec<String>>();
+        all_types.append(&mut imported_types);
+
+        if let Some(_) = all_types.iter().find(|typ| typ.eq(&name)) {
+            return vec![SchemaValidationError::FulltextNameOverlap(name.to_string())];
+        } else {
+            return vec![];
+        }
+    }
+
+    fn validate_fulltext_directive_language(
+        &self,
+        fulltext: &Directive,
+    ) -> Vec<SchemaValidationError> {
+        let language_value = fulltext
+            .arguments
+            .iter()
+            .find(|(key, _)| key.eq("language"))
+            .map(|(_, value)| value);
+        let language = match language_value {
+            Some(Value::Enum(language)) => language,
+            Some(_) | None => return vec![SchemaValidationError::FulltextLanguageUndefined],
+        };
+        match FulltextLanguage::try_from(language) {
+            Ok(_) => vec![],
+            Err(_) => vec![SchemaValidationError::FulltextLanguageInvalid(
+                language.to_string(),
+            )],
+        }
+    }
+
+    fn validate_fulltext_directive_algorithm(
+        &self,
+        fulltext: &Directive,
+    ) -> Vec<SchemaValidationError> {
+        let algorithm_value = fulltext
+            .arguments
+            .iter()
+            .find(|(key, _)| key.eq("algorithm"))
+            .map(|(_, value)| value);
+        let algorithm = match algorithm_value {
+            Some(Value::Enum(algorithm)) => algorithm,
+            Some(_) | None => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
+        };
+        match FulltextAlgorithm::try_from(algorithm) {
+            Ok(_) => vec![],
+            Err(_) => vec![SchemaValidationError::FulltextAlgorithmInvalid(
+                algorithm.to_string(),
+            )],
+        }
+    }
+
+    fn validate_fulltext_directive_includes(
+        &self,
+        fulltext: &Directive,
+    ) -> Vec<SchemaValidationError> {
+        // Validate the fulltext.include.fields.weight is a valid enum: A, B, C, D
+        // Validate that each entity in fulltext.include exists
+        // Validate that each entity field in fulltext.include exists on the related entity
+        vec![]
     }
 
     fn validate_import_directives(&self) -> Vec<SchemaValidationError> {
