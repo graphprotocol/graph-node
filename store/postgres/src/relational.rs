@@ -627,6 +627,7 @@ pub enum ColumnType {
     Bytes,
     Int,
     String,
+    TSVector,
     /// A user-defined enum. The string contains the name of the Postgres
     /// enum we created for it, fully qualified with the schema
     Enum(SqlName),
@@ -664,8 +665,7 @@ impl ColumnType {
         // It is not an enum, and therefore one of our builtin primitive types
         // or a reference to another type. For the latter, we use `ValueType::ID`
         // as the underlying type
-        let value_type = ValueType::from_str(name).unwrap_or(ValueType::ID);
-        match value_type {
+        match ValueType::from_str(name).unwrap_or(ValueType::ID) {
             ValueType::Boolean => Ok(ColumnType::Boolean),
             ValueType::BigDecimal => Ok(ColumnType::BigDecimal),
             ValueType::BigInt => Ok(ColumnType::BigInt),
@@ -687,6 +687,7 @@ impl ColumnType {
             ColumnType::Bytes => "bytea",
             ColumnType::Int => "integer",
             ColumnType::String => "text",
+            ColumnType::TSVector => "tsvector",
             ColumnType::Enum(name) => name.as_str(),
         }
     }
@@ -710,12 +711,33 @@ impl Column {
         SqlName::check_valid_identifier(&*field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
-
         Ok(Column {
             name: sql_name,
             field: field.name.clone(),
             column_type: ColumnType::from_field_type(&field.field_type, schema, enums, id_type)?,
             field_type: field.field_type.clone(),
+        })
+    }
+
+    fn new_fulltext(directive: &s::Directive) -> Result<Column, StoreError> {
+        let name = directive
+            .arguments
+            .iter()
+            .find(|(argument, _value)| argument == "name")
+            .and_then(|(_argument, value)| match value {
+                s::Value::String(s) => Some(s.as_str()),
+                _ => unreachable!(),
+            })
+            .unwrap(); // Can unwrap because validation has already been performed to ensure there is a name argument
+
+        SqlName::check_valid_identifier(name, "attribute")?;
+        let sql_name = SqlName::from(name);
+
+        Ok(Column {
+            name: sql_name,
+            field: directive.name.clone(),
+            field_type: q::Type::NamedType(String::from(directive.name.clone())),
+            column_type: ColumnType::TSVector,
         })
     }
 
@@ -752,6 +774,10 @@ impl Column {
         } else {
             false
         }
+    }
+
+    pub fn is_tsvector(&self) -> bool {
+        named_type(&self.field_type) == "fulltext"
     }
 
     /// Return `true` if this column stores user-supplied text. Such
@@ -816,12 +842,21 @@ impl Table {
         SqlName::check_valid_identifier(&*defn.name, "object")?;
 
         let table_name = SqlName::from(&*defn.name);
-        let columns = defn
+        let mut columns = defn
             .fields
             .iter()
             .filter(|field| !derived_column(field))
             .map(|field| Column::new(field, schema, enums, id_type))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<Column>, StoreError>>()?;
+
+        let fulltext_columns = defn
+            .directives
+            .iter()
+            .filter(|directive: &&s::Directive| directive.name == "fulltext")
+            .map(|directive| Column::new_fulltext(directive))
+            .collect::<Result<Vec<Column>, StoreError>>()?;
+        columns.extend(fulltext_columns);
+
         let table = Table {
             object: defn.name.clone(),
             name: table_name.clone(),
@@ -897,7 +932,11 @@ impl Table {
                 column.name.quoted()
             };
 
-            let method = if column.is_list() { "gin" } else { "btree" };
+            let method = if column.is_list() || column.is_tsvector() {
+                "gin"
+            } else {
+                "btree"
+            };
             write!(
                 out,
                 "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.\"{table_name}\" using {method}({index_expr});\n",
@@ -983,6 +1022,10 @@ mod tests {
         let layout = test_layout(FOREST_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
         assert_eq!(FOREST_DDL, sql);
+
+        let layout = test_layout(FULLTEXT_GQL);
+        let sql = layout.as_ddl().expect("Failed to generate DDL");
+        assert_eq!(FULLTEXT_DDL, sql);
     }
 
     const THING_GQL: &str = "
@@ -1182,6 +1225,80 @@ create index attr_0_0_animal_id
     on rel.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_forest
     on rel.\"animal\" using btree(\"forest\");
+
+create table rel.\"forest\" (
+        \"id\"                 text not null,
+
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+);
+create index attr_1_0_forest_id
+    on rel.\"forest\" using btree(\"id\");
+
+create table rel.\"habitat\" (
+        \"id\"                 text not null,
+        \"most_common\"        text not null,
+        \"dwellers\"           text[] not null,
+
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+);
+create index attr_2_0_habitat_id
+    on rel.\"habitat\" using btree(\"id\");
+create index attr_2_1_habitat_most_common
+    on rel.\"habitat\" using btree(\"most_common\");
+create index attr_2_2_habitat_dwellers
+    on rel.\"habitat\" using gin(\"dwellers\");
+
+";
+
+    const FULLTEXT_GQL: &str = "
+type Animal @entity @fulltext(
+    name: \"search\"
+    language: ENGLISH
+    algorithm: RANKED
+    includes: [\
+        {field: \"name\"},
+        {field: \"species\"}
+    ]) {
+    id: ID!,
+    name: String! @fulltext(name: \"search\")
+    species: String! @fulltext(name: \"search\")
+    forest: Forest
+}
+type Forest @entity {
+    id: ID!,
+    dwellers: [Animal!]! @derivedFrom(field: \"forest\")
+}
+type Habitat @entity {
+    id: ID!,
+    most_common: Animal!,
+    dwellers: [Animal!]!
+}";
+
+    const FULLTEXT_DDL: &str = "create table rel.\"animal\" (
+        \"id\"                 text not null,
+        \"name\"               text not null,
+        \"species\"            text not null,
+        \"forest\"             text,
+        \"search\"             tsvector,
+
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+);
+create index attr_0_0_animal_id
+    on rel.\"animal\" using btree(\"id\");
+create index attr_0_1_animal_name
+    on rel.\"animal\" using btree(left(\"name\", 256));
+create index attr_0_2_animal_species
+    on rel.\"animal\" using btree(left(\"species\", 256));
+create index attr_0_3_animal_forest
+    on rel.\"animal\" using btree(\"forest\");
+create index attr_0_4_animal_search
+    on rel.\"animal\" using gin(\"search\");
 
 create table rel.\"forest\" (
         \"id\"                 text not null,

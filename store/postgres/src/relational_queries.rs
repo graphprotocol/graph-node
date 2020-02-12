@@ -214,6 +214,9 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         out.push_sql("[]");
                         Ok(())
                     }
+                    ColumnType::TSVector => {
+                        unreachable!("tsvector columns cannot have values of type list")
+                    }
                 }
             }
             Value::Null => {
