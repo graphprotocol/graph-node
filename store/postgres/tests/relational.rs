@@ -251,7 +251,7 @@ fn scrub(entity: &Entity) -> Entity {
     let mut scrubbed = Entity::new();
     // merge_remove_null_fields has the side-effect of removing any attribute
     // that is Value::Null
-    scrubbed.merge_remove_null_fields(entity.clone());
+    scrubbed.merge_remove_null_fields(entity.clone(), None);
     scrubbed
 }
 

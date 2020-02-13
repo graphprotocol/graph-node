@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use graph::mock::MockStore;
 use graph::prelude::{
@@ -27,7 +27,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 fn empty_cache_modifications() {
     let store = MockStore::new();
     let cache = EntityCache::new();
-    let result = cache.as_modifications(&store);
+    let result = cache.as_modifications(&store, &HashMap::new());
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
@@ -55,7 +55,7 @@ fn insert_modifications() {
     );
     cache.set(sigurros_key.clone(), sigurros_data.clone());
 
-    let result = cache.as_modifications(&store);
+    let result = cache.as_modifications(&store, &HashMap::new());
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -121,7 +121,7 @@ fn overwrite_modifications() {
     );
     cache.set(sigurros_key.clone(), sigurros_data.clone());
 
-    let result = cache.as_modifications(&store);
+    let result = cache.as_modifications(&store, &HashMap::new());
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -186,7 +186,7 @@ fn consecutive_modifications() {
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
-    let result = cache.as_modifications(&store);
+    let result = cache.as_modifications(&store, &HashMap::new());
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::Overwrite {
