@@ -1,6 +1,7 @@
 use graphql_parser::schema::{Value, *};
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::str::FromStr;
 
@@ -8,6 +9,8 @@ use crate::execution::ObjectOrInterface;
 use crate::query::ast as qast;
 use graph::data::store;
 use graph::prelude::*;
+
+use graph::data::schema::SCHEMA_TYPE_NAME;
 
 pub(crate) enum FilterOp {
     Not,
@@ -431,6 +434,54 @@ pub fn get_derived_from_field<'a>(
             _ => None,
         })
         .and_then(|derived_from_field_name| get_field(object_type, derived_from_field_name))
+}
+
+pub fn get_fulltext_fields<'a>(
+    definitions: &'a Vec<Definition>,
+) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error> {
+    let mut fulltext_entities = HashMap::new();
+    for defn in definitions {
+        match defn {
+            Definition::TypeDefinition(TypeDefinition::Object(obj_type))
+                if obj_type.name != SCHEMA_TYPE_NAME =>
+            {
+                let fulltext_fields = obj_type
+                    .fields
+                    .iter()
+                    .cloned()
+                    .filter(|field| fulltext_column(field))
+                    .fold(HashMap::new(), |mut acc, field| {
+                        for directive in &field.directives {
+                            directive
+                                .arguments
+                                .iter()
+                                .cloned()
+                                .filter(|(name, _value)| name == "name")
+                                .for_each(|(_name, value)| {
+                                    if let Value::String(s) = value {
+                                        acc.entry(field.name.clone())
+                                            .or_insert_with(|| Vec::new())
+                                            .push(s)
+                                    }
+                                })
+                        }
+                        acc
+                    });
+                if !fulltext_fields.is_empty() {
+                    fulltext_entities.insert(obj_type.name.clone(), fulltext_fields);
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(fulltext_entities)
+}
+
+fn fulltext_column(field: &Field) -> bool {
+    field
+        .directives
+        .iter()
+        .any(|dir| dir.name == Name::from("fulltext"))
 }
 
 fn scalar_value_type(schema: &Document, field_type: &Type) -> ValueType {
