@@ -1110,6 +1110,13 @@ impl SubgraphDeploymentStore for Store {
         Ok(self.cached_schema(subgraph_id)?.api)
     }
 
+    fn fulltext_fields(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error> {
+        get_fulltext_fields(&self.api_schema(subgraph_id)?.document.definitions)
+    }
+
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
         self.get_entity_conn(subgraph)
             .map(|econn| econn.uses_relational_schema())
