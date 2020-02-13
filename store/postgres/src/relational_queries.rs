@@ -215,7 +215,19 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         Ok(())
                     }
                     ColumnType::TSVector => {
-                        unreachable!("tsvector columns cannot have values of type list")
+                        let mut iter = values.iter().peekable();
+                        out.push_sql("(");
+                        while let Some(value) = iter.next() {
+                            out.push_sql("to_tsvector(");
+                            out.push_bind_param::<Text, _>(&value)?;
+                            if iter.peek().is_some() {
+                                out.push_sql(") || ");
+                            } else {
+                                out.push_sql(")");
+                            }
+                        }
+                        out.push_sql(")");
+                        Ok(())
                     }
                 }
             }

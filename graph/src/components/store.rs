@@ -1466,6 +1466,7 @@ impl EntityCache {
     pub fn as_modifications(
         mut self,
         store: &(impl Store + ?Sized),
+        fulltext_entity_fields: &HashMap<String, HashMap<String, Vec<Attribute>>>,
     ) -> Result<ModificationsAndCache, QueryExecutionError> {
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
@@ -1506,14 +1507,21 @@ impl EntityCache {
                 (None, Some(updates)) => {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
-                    data.merge_remove_null_fields(updates);
+                    data.merge_remove_null_fields(
+                        updates,
+                        fulltext_entity_fields.get(&key.entity_type),
+                    );
+                    //                    data.add_fulltext_fields(updates);
                     self.current.insert(key.clone(), Some(data.clone()));
                     Some(Insert { key, data })
                 }
                 // Entity may have been changed
                 (Some(current), Some(updates)) => {
                     let mut data = current.clone();
-                    data.merge_remove_null_fields(updates);
+                    data.merge_remove_null_fields(
+                        updates,
+                        fulltext_entity_fields.get(&key.entity_type),
+                    );
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
                         Some(Overwrite { key, data })

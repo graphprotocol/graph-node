@@ -465,7 +465,7 @@ impl Store {
                         // Merge with a new entity since that removes values that
                         // were set to Value::Null
                         let mut entity = Entity::new();
-                        entity.merge_remove_null_fields(data);
+                        entity.merge_remove_null_fields(data, None);
                         conn.insert(&key, entity, None).map(|_| 1)
                     }
                 };
@@ -1526,3 +1526,4 @@ fn contract_call_id(
 /// it very hard to export items just for testing
 #[cfg(debug_assertions)]
 pub use crate::entities::delete_all_entities_for_test_use_only;
+use graph_graphql::schema::ast::get_fulltext_fields;
