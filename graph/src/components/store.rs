@@ -1203,6 +1203,14 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 
+    /// Return the fulltext entities and fields that were defined in the user's schema.
+    /// The map of fulltext entity fields will be use during entity operations to update the
+    /// "virtual" fulltext fields.
+    fn fulltext_fields(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error>;
+
     /// Return true if the subgraph uses the relational storage scheme; if
     /// it is false, the subgraph uses JSONB storage. This method exposes
     /// store internals that should really be hidden and should be used
