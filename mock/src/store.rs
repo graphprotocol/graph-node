@@ -1,6 +1,6 @@
 use mockall::predicate::*;
 use mockall::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use graph::components::store::*;
 use graph::data::subgraph::schema::*;
@@ -89,6 +89,8 @@ mock! {
         fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 
         fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+
+        fn fulltext_fields(&self, subgraph_id: &SubgraphDeploymentId) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error>;
 
         fn uses_relational_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error>;
 

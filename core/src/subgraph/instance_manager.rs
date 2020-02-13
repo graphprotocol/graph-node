@@ -31,6 +31,7 @@ struct IndexingInputs<B, S> {
     deployment_id: SubgraphDeploymentId,
     network_name: String,
     start_blocks: Vec<u64>,
+    fulltext_fields: HashMap<String, HashMap<Attribute, Vec<Attribute>>>,
     store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     stream_builder: B,
@@ -59,10 +60,10 @@ struct IndexingContext<B, T: RuntimeHostBuilder, S> {
     /// Sensors to measure the execution of the subgraph instance
     pub subgraph_metrics: Arc<SubgraphInstanceMetrics>,
 
-    /// Sensors to measue the execution of the subgraphs runtime hosts
+    /// Sensors to measure the execution of the subgraph's runtime hosts
     pub host_metrics: Arc<HostMetrics>,
 
-    /// Sensors to measue the execution of eth rpc calls
+    /// Sensors to measure the execution of eth rpc calls
     pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
 
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
@@ -372,6 +373,7 @@ impl SubgraphInstanceManager {
         ));
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
+        let fulltext_fields = store.fulltext_fields(&deployment_id)?;
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
@@ -379,6 +381,7 @@ impl SubgraphInstanceManager {
                 deployment_id: deployment_id.clone(),
                 network_name,
                 start_blocks,
+                fulltext_fields,
                 store,
                 eth_adapter,
                 stream_builder,
