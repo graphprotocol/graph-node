@@ -85,6 +85,10 @@ pub enum SchemaValidationError {
     FulltextAlgorithmUndefined,
     #[fail(display = "Fulltext algorithm is invalid")]
     FulltextAlgorithmInvalid(String),
+    #[fail(display = "Fulltext include undefined")]
+    FulltextIncludeUndefined,
+    #[fail(display = "Fulltext include invalid")]
+    FulltextIncludeInvalid,
 }
 
 enum FulltextLanguage {
@@ -135,22 +139,41 @@ impl TryFrom<&String> for FulltextLanguage {
 }
 
 enum FulltextAlgorithm {
-    A,
-    B,
-    C,
-    D,
+    Ranked,
+    ProximityRanked,
 }
 
 impl TryFrom<&String> for FulltextAlgorithm {
     type Error = String;
     fn try_from(algorithm: &String) -> Result<Self, Self::Error> {
         match &algorithm[..] {
-            "A" => Ok(FulltextAlgorithm::A),
-            "B" => Ok(FulltextAlgorithm::B),
-            "C" => Ok(FulltextAlgorithm::C),
-            "D" => Ok(FulltextAlgorithm::D),
+            "RANKED" => Ok(FulltextAlgorithm::Ranked),
+            "PROXIMITY_RANKED" => Ok(FulltextAlgorithm::ProximityRanked),
             invalid => Err(format!(
                 "Provided algorithm for fulltext search is invalid: {}",
+                invalid,
+            )),
+        }
+    }
+}
+
+enum FulltextWeight {
+    A,
+    B,
+    C,
+    D,
+}
+
+impl TryFrom<&String> for FulltextWeight {
+    type Error = String;
+    fn try_from(weight: &String) -> Result<Self, Self::Error> {
+        match &weight[..] {
+            "A" => Ok(FulltextWeight::A),
+            "B" => Ok(FulltextWeight::B),
+            "C" => Ok(FulltextWeight::C),
+            "D" => Ok(FulltextWeight::D),
+            invalid => Err(format!(
+                "Provided algorithm for fulltext weight is invalid: {}",
                 invalid,
             )),
         }
@@ -722,7 +745,7 @@ impl Schema {
             .map(|(_, value)| value);
         let name = match name_value {
             Some(Value::String(name)) => name,
-            Some(_) | None => return vec![SchemaValidationError::FulltextNameUndefined],
+            _ => return vec![SchemaValidationError::FulltextNameUndefined],
         };
 
         // Validate that fulltext.name does not overlap with any of the types
@@ -761,7 +784,7 @@ impl Schema {
             .map(|(_, value)| value);
         let language = match language_value {
             Some(Value::Enum(language)) => language,
-            Some(_) | None => return vec![SchemaValidationError::FulltextLanguageUndefined],
+            _ => return vec![SchemaValidationError::FulltextLanguageUndefined],
         };
         match FulltextLanguage::try_from(language) {
             Ok(_) => vec![],
@@ -782,7 +805,7 @@ impl Schema {
             .map(|(_, value)| value);
         let algorithm = match algorithm_value {
             Some(Value::Enum(algorithm)) => algorithm,
-            Some(_) | None => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
+            _ => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
         };
         match FulltextAlgorithm::try_from(algorithm) {
             Ok(_) => vec![],
@@ -796,10 +819,112 @@ impl Schema {
         &self,
         fulltext: &Directive,
     ) -> Vec<SchemaValidationError> {
-        // Validate the fulltext.include.fields.weight is a valid enum: A, B, C, D
+        // Only allow fulltext directive on local types
+        let local_types: Vec<&ObjectType> = self
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .collect();
+
         // Validate that each entity in fulltext.include exists
-        // Validate that each entity field in fulltext.include exists on the related entity
-        vec![]
+        let include_value = fulltext
+            .arguments
+            .iter()
+            .find(|(key, _)| key.eq("include"))
+            .map(|(_, value)| value);
+        let includes = match include_value {
+            Some(Value::List(includes)) if includes.len() > 0 => includes,
+            _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
+        };
+
+        match includes.iter().find(|include| match include {
+            Value::Object(include) => {
+                let entity_key_pair = include.iter().find(|(key, _)| key[..].eq("entity"));
+                let fields_key_pair = include.iter().find(|(key, _)| key[..].eq("fields"));
+                let entity = match entity_key_pair {
+                    Some((_, Value::String(entity))) => entity,
+                    _ => return true,
+                };
+                let fields = match fields_key_pair {
+                    Some((_, Value::List(fields))) => fields,
+                    _ => return true,
+                };
+
+                // Validate that each entity field in fulltext.include exists on the related entity
+                let searchable_type = local_types.iter().find(|typ| typ.name[..].eq(entity));
+                match searchable_type {
+                    Some(typ) => {
+                        fields
+                            .iter()
+                            .find(|field_item| {
+                                let (field_name, field_weight) = match field_item {
+                                    Value::Object(field_map) => {
+                                        let name = field_map
+                                            .iter()
+                                            .find(|(key, value)| {
+                                                key[..].eq("name")
+                                                    && match value {
+                                                        Value::String(_) => true,
+                                                        _ => false,
+                                                    }
+                                            })
+                                            .map(|(_, value)| match value {
+                                                Value::String(name) => name,
+                                                _ => unreachable!(),
+                                            });
+                                        let weight = field_map
+                                            .iter()
+                                            .find(|(key, value)| {
+                                                key[..].eq("weight")
+                                                    && match value {
+                                                        Value::Enum(_) => true,
+                                                        _ => false,
+                                                    }
+                                            })
+                                            .map(|(_, value)| match value {
+                                                Value::Enum(weight) => weight,
+                                                _ => unreachable!(),
+                                            });
+                                        if name.is_none() || weight.is_none() {
+                                            return true;
+                                        }
+                                        (name.unwrap(), weight.unwrap())
+                                    }
+                                    _ => return true,
+                                };
+
+                                let field_exists = typ
+                                    .fields
+                                    .iter()
+                                    .find(|field| {
+                                        // Validate the field exists on the type
+                                        let field_is_valid = field.name.eq(field_name);
+                                        // Validate the field is a String field
+                                        let is_string_field = match BuiltInScalarType::try_from(
+                                            field.field_type.get_base_type().as_ref(),
+                                        ) {
+                                            Ok(BuiltInScalarType::String) => true,
+                                            _ => false,
+                                        };
+                                        field_is_valid && is_string_field
+                                    })
+                                    .is_some();
+
+                                // Validate the weight is a valid enum: A, B, C, D
+                                let weight_is_valid =
+                                    FulltextWeight::try_from(field_weight).is_ok();
+                                !(field_exists && weight_is_valid)
+                            })
+                            .is_some()
+                    }
+                    None => return true,
+                }
+            }
+            _ => true,
+        }) {
+            None => vec![],
+            Some(_) => vec![SchemaValidationError::FulltextIncludeInvalid],
+        }
     }
 
     fn validate_import_directives(&self) -> Vec<SchemaValidationError> {
