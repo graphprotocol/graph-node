@@ -503,12 +503,37 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(&mut self, update: Entity) {
+    pub fn merge_remove_null_fields(
+        &mut self,
+        update: Entity,
+        fulltext_fields: Option<&HashMap<Attribute, Vec<Attribute>>>,
+    ) {
+        let mut fulltext_updates: HashMap<Attribute, Vec<Value>> = HashMap::new();
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
+                Value::String(s) => {
+                    match fulltext_fields {
+                        Some(fields) => match fields.get(&key) {
+                            Some(attributes) => {
+                                for attribute in attributes {
+                                    fulltext_updates
+                                        .entry(attribute.clone())
+                                        .or_insert_with(Vec::new)
+                                        .push(Value::String(s.clone()))
+                                }
+                            }
+                            None => (),
+                        },
+                        None => (),
+                    }
+                    self.insert(key, Value::String(s))
+                }
                 _ => self.insert(key, value),
             };
+        }
+        for (attribute, values) in fulltext_updates {
+            self.insert(attribute, Value::List(values));
         }
     }
 }

@@ -716,7 +716,7 @@ where
         entity_lfu_cache: mut cache,
     } = block_state
         .entity_cache
-        .as_modifications(ctx.inputs.store.as_ref())
+        .as_modifications(ctx.inputs.store.as_ref(), &ctx.inputs.fulltext_fields)
         .map_err(|e| {
             CancelableError::from(format_err!(
                 "Error while processing block stream for a subgraph: {}",
