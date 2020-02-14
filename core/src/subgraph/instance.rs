@@ -42,7 +42,7 @@ where
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
-        let templates = manifest.templates;
+        let templates = Arc::new(manifest.templates);
 
         let mut this = SubgraphInstance {
             host_builder,
@@ -87,7 +87,7 @@ where
         &mut self,
         logger: Logger,
         data_source: DataSource,
-        top_level_templates: Vec<DataSourceTemplate>,
+        top_level_templates: Arc<Vec<DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
@@ -219,7 +219,7 @@ where
         &mut self,
         logger: &Logger,
         data_source: DataSource,
-        top_level_templates: Vec<DataSourceTemplate>,
+        top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Arc<T::Host>, Error> {
         // Protect against creating more than the allowed maximum number of data sources

@@ -36,7 +36,7 @@ struct IndexingInputs<B, S> {
     eth_adapter: Arc<dyn EthereumAdapter>,
     stream_builder: B,
     templates_use_calls: bool,
-    top_level_templates: Vec<DataSourceTemplate>,
+    top_level_templates: Arc<Vec<DataSourceTemplate>>,
 }
 
 struct IndexingState<T: RuntimeHostBuilder> {
@@ -345,7 +345,7 @@ impl SubgraphInstanceManager {
             template.has_call_handler() || template.has_block_handler_with_call_filter()
         });
 
-        let top_level_templates = manifest.templates.clone();
+        let top_level_templates = Arc::new(manifest.templates.clone());
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance

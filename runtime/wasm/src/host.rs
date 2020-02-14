@@ -27,7 +27,7 @@ struct RuntimeHostConfig {
     data_source_network: String,
     data_source_name: String,
     contract: Source,
-    templates: Vec<DataSourceTemplate>,
+    templates: Arc<Vec<DataSourceTemplate>>,
 }
 
 pub struct RuntimeHostBuilder<S> {
@@ -93,7 +93,7 @@ where
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
-        top_level_templates: Vec<DataSourceTemplate>,
+        top_level_templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
@@ -115,7 +115,7 @@ where
         // deprecated, or the top-level templates field.
         let templates = match top_level_templates.is_empty() {
             false => top_level_templates,
-            true => data_source.templates,
+            true => Arc::new(data_source.templates),
         };
 
         RuntimeHost::new(

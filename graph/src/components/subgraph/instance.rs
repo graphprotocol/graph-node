@@ -52,7 +52,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         &mut self,
         logger: &Logger,
         data_source: DataSource,
-        top_level_templates: Vec<DataSourceTemplate>,
+        top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Arc<H>, Error>;
 }

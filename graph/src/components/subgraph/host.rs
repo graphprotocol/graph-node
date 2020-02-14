@@ -117,7 +117,7 @@ pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
-        top_level_templates: Vec<DataSourceTemplate>,
+        top_level_templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;

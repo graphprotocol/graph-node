@@ -133,7 +133,7 @@ fn mock_host_exports(
         data_source.name,
         data_source.source.address,
         data_source.network,
-        data_source.templates,
+        Arc::new(data_source.templates),
         data_source.mapping.abis,
         mock_ethereum_adapter,
         Arc::new(graph_core::LinkResolver::from(
