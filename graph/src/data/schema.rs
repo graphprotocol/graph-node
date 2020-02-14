@@ -1067,6 +1067,24 @@ type _Schema_ @import(types: ["T", "A", "C"])"#;
 }
 
 #[test]
+fn test_enums_pass_field_validation() {
+    const ROOT_SCHEMA: &str = r#"
+enum Color {
+  RED
+  GREEN
+}
+
+type A @entity {
+  id: ID!
+  color: Color
+}"#;
+
+    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
+    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    assert_eq!(schema.validate_fields().len(), 0);
+}
+
+#[test]
 fn test_recursively_imported_type_validates() {
     const ROOT_SCHEMA: &str = r#"
 type _Schema_ @import(types: ["T"], from: { name: "child1/subgraph" })"#;
