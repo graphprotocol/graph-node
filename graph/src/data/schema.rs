@@ -603,7 +603,9 @@ impl Schema {
                 if !subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| !directive.name.eq("import"))
+                    .filter(|directive| {
+                        !directive.name.eq("import") && !directive.name.eq("fulltext")
+                    })
                     .collect::<Vec<&Directive>>()
                     .is_empty()
                 {
