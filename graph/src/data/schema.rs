@@ -673,6 +673,12 @@ impl Schema {
 
     fn validate_fields(&self) -> Vec<SchemaValidationError> {
         let local_types = self.document.get_object_and_interface_type_fields();
+        let local_enums = self
+            .document
+            .get_enum_definitions()
+            .iter()
+            .map(|enu| enu.name.clone())
+            .collect::<Vec<String>>();
         let imported_types = self.imported_types();
         local_types
             .iter()
@@ -693,6 +699,9 @@ impl Schema {
                             _ => false,
                         })
                     {
+                        return errors;
+                    }
+                    if local_enums.iter().any(|enu| enu.eq(base)) {
                         return errors;
                     }
                     errors.push(SchemaValidationError::FieldTypeUnknown(
