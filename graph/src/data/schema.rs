@@ -1492,7 +1492,7 @@ type T @entity { id: ID! }
 fn test_fulltext_directive_validation() {
     const SCHEMA: &str = r#"
 type _Schema_ @fulltext(
-  name: "jf"
+  name: "metadata"
   language: ENGLISH
   algorithm: RANKED
   include: [
