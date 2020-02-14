@@ -1,8 +1,12 @@
-use crate::schema::ast;
-use graph::prelude::*;
-use graphql_parser::schema::{Value, *};
+use graphql_parser::schema::{Name, Type::NamedType, UnionType, Value, *};
 use graphql_parser::Pos;
 use inflector::Inflector;
+
+use crate::schema::ast;
+
+use graph::data::graphql::ext::DocumentExt;
+use graph::data::schema::SCHEMA_TYPE_NAME;
+use graph::prelude::*;
 
 #[derive(Fail, Debug)]
 pub enum APISchemaError {
@@ -31,12 +35,68 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
     add_block_height_type(&mut schema);
+    add_fulltext_unions(&mut schema, &object_types);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema, &input_schema)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
     add_subscription_type(&mut schema, &object_types, &interface_types)?;
     Ok(schema)
+}
+
+fn add_fulltext_unions(schema: &mut Document, object_types: &Vec<&ObjectType>) {
+    // Collect the fulltext directives from the _Schema_ type
+    let fulltexts = object_types
+        .iter()
+        .find(|obj| obj.name.eq(SCHEMA_TYPE_NAME))
+        .map(|schema_type| {
+            schema_type
+                .directives
+                .iter()
+                .filter(|directive| directive.name.eq("fulltext"))
+                .collect::<Vec<&Directive>>()
+        })
+        .unwrap_or(vec![]);
+    fulltexts.iter().for_each(|fulltext| {
+        // For each fulltext directive:
+        //   1. Transform @fulltext.name by uppercasing the first character, prepending Fulltext, and appending Entity
+        //   2. Collect the entities names included in the search from @fulltext.include[i].entity
+        //   3. Construct a UnionType using the derived name and the collection of entities
+
+        let mut original_name = fulltext.name.clone();
+        let (first_character, remaining_characters) = original_name.split_at_mut(1);
+        first_character.make_ascii_uppercase();
+        remaining_characters.make_ascii_lowercase();
+        let union_name =
+            vec!["_Fulltext", first_character, remaining_characters, "Entity"].join("");
+
+        if let Some((_, Value::List(includes))) = fulltext
+            .arguments
+            .iter()
+            .find(|(name, _)| name.eq("include"))
+        {
+            let entity_names = includes
+                .into_iter()
+                .filter_map(|include| match include {
+                    Value::Object(include) => match include.get("entity") {
+                        Some(Value::String(entity)) => Some(entity.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+
+            let fulltext_union = Definition::TypeDefinition(TypeDefinition::Union(UnionType {
+                position: Pos::default(),
+                description: None,
+                name: union_name,
+                directives: vec![],
+                types: entity_names,
+            }));
+
+            schema.definitions.push(fulltext_union);
+        }
+    })
 }
 
 /// Adds built-in GraphQL scalar types (`Int`, `String` etc.) to the schema.
