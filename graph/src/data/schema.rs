@@ -841,14 +841,14 @@ impl Schema {
 
         match includes.iter().find(|include| match include {
             Value::Object(include) => {
-                let entity_key_pair = include.iter().find(|(key, _)| key[..].eq("entity"));
-                let fields_key_pair = include.iter().find(|(key, _)| key[..].eq("fields"));
+                let entity_key_pair = include.get("entity");
+                let fields_key_pair = include("fields");
                 let entity = match entity_key_pair {
-                    Some((_, Value::String(entity))) => entity,
+                    Some(Value::String(entity)) => entity,
                     _ => return true,
                 };
                 let fields = match fields_key_pair {
-                    Some((_, Value::List(fields))) => fields,
+                    Some(Value::List(fields)) => fields,
                     _ => return true,
                 };
 
