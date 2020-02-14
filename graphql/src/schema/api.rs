@@ -46,7 +46,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 
 fn add_fulltext_unions(schema: &mut Document, object_types: &Vec<&ObjectType>) {
     // Collect the fulltext directives from the _Schema_ type
-    let fulltexts = object_types
+    object_types
         .iter()
         .find(|obj| obj.name.eq(SCHEMA_TYPE_NAME))
         .map(|schema_type| {
@@ -56,47 +56,59 @@ fn add_fulltext_unions(schema: &mut Document, object_types: &Vec<&ObjectType>) {
                 .filter(|directive| directive.name.eq("fulltext"))
                 .collect::<Vec<&Directive>>()
         })
-        .unwrap_or(vec![]);
-    fulltexts.iter().for_each(|fulltext| {
-        // For each fulltext directive:
-        //   1. Transform @fulltext.name by uppercasing the first character, prepending Fulltext, and appending Entity
-        //   2. Collect the entities names included in the search from @fulltext.include[i].entity
-        //   3. Construct a UnionType using the derived name and the collection of entities
+        .unwrap_or(vec![])
+        .iter()
+        .for_each(|fulltext| {
+            // For each fulltext directive:
+            //   1. Transform @fulltext.name by uppercasing the first character, prepending Fulltext, and appending Entity
+            //   2. Collect the entities names included in the search from @fulltext.include[i].entity
+            //   3. Construct a UnionType using the derived name and the collection of entities
 
-        let mut original_name = fulltext.name.clone();
-        let (first_character, remaining_characters) = original_name.split_at_mut(1);
-        first_character.make_ascii_uppercase();
-        remaining_characters.make_ascii_lowercase();
-        let union_name =
-            vec!["_Fulltext", first_character, remaining_characters, "Entity"].join("");
-
-        if let Some((_, Value::List(includes))) = fulltext
-            .arguments
-            .iter()
-            .find(|(name, _)| name.eq("include"))
-        {
-            let entity_names = includes
-                .into_iter()
-                .filter_map(|include| match include {
-                    Value::Object(include) => match include.get("entity") {
-                        Some(Value::String(entity)) => Some(entity.clone()),
-                        _ => None,
-                    },
-                    _ => None,
+            let mut original_name = fulltext
+                .arguments
+                .iter()
+                .find(|(name, _)| name.eq("name"))
+                .map(|(_, value)| {
+                    match value {
+                        Value::String(name) => name.clone(),
+                        // This is unreachable because of deploy validation
+                        _ => unreachable!(),
+                    }
                 })
-                .collect();
+                .unwrap();
+            let (first_character, remaining_characters) = original_name.split_at_mut(1);
+            first_character.make_ascii_uppercase();
+            remaining_characters.make_ascii_lowercase();
+            let union_name =
+                vec!["_Fulltext", first_character, remaining_characters, "Entity"].join("");
 
-            let fulltext_union = Definition::TypeDefinition(TypeDefinition::Union(UnionType {
-                position: Pos::default(),
-                description: None,
-                name: union_name,
-                directives: vec![],
-                types: entity_names,
-            }));
+            if let Some((_, Value::List(includes))) = fulltext
+                .arguments
+                .iter()
+                .find(|(name, _)| name.eq("include"))
+            {
+                let entity_names = includes
+                    .into_iter()
+                    .filter_map(|include| match include {
+                        Value::Object(include) => match include.get("entity") {
+                            Some(Value::String(entity)) => Some(entity.clone()),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .collect();
 
-            schema.definitions.push(fulltext_union);
-        }
-    })
+                let fulltext_union = Definition::TypeDefinition(TypeDefinition::Union(UnionType {
+                    position: Pos::default(),
+                    description: None,
+                    name: union_name,
+                    directives: vec![],
+                    types: entity_names,
+                }));
+
+                schema.definitions.push(fulltext_union);
+            }
+        })
 }
 
 /// Adds built-in GraphQL scalar types (`Int`, `String` etc.) to the schema.
@@ -509,22 +521,106 @@ fn add_query_type(
         return Err(APISchemaError::TypeExists(type_name));
     }
 
+    let mut fields = object_types
+        .iter()
+        .map(|t| &t.name)
+        .chain(interface_types.iter().map(|t| &t.name))
+        .flat_map(|name| query_fields_for_type(schema, name))
+        .collect::<Vec<Field>>();
+    let mut fulltext_fields = object_types
+        .iter()
+        .find(|obj| obj.name.eq(SCHEMA_TYPE_NAME))
+        .map(|schema_type| {
+            schema_type
+                .directives
+                .iter()
+                .filter(|directive| directive.name.eq("fulltext"))
+                .collect::<Vec<&Directive>>()
+        })
+        .unwrap_or(vec![])
+        .iter()
+        .filter_map(|fulltext| query_field_for_fulltext(fulltext))
+        .collect();
+    fields.append(&mut fulltext_fields);
+
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
         description: None,
         name: type_name,
         implements_interfaces: vec![],
         directives: vec![],
-        fields: object_types
-            .iter()
-            .map(|t| &t.name)
-            .chain(interface_types.iter().map(|t| &t.name))
-            .flat_map(|name| query_fields_for_type(schema, name))
-            .collect(),
+        fields: fields,
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
     Ok(())
+}
+
+fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
+    // let name = ;
+    let mut original_name = fulltext
+        .arguments
+        .iter()
+        .find(|(name, _)| name.eq("name"))
+        .map(|(_, value)| {
+            match value {
+                Value::String(name) => name.clone(),
+                // This is unreachable because of deploy validation
+                _ => unreachable!(),
+            }
+        })
+        .unwrap();
+    let (first_character, remaining_characters) = original_name.split_at_mut(1);
+    first_character.make_ascii_uppercase();
+    remaining_characters.make_ascii_lowercase();
+    let union_type_name =
+        vec!["_Fulltext", first_character, remaining_characters, "Entity"].join("");
+    let arguments = vec![
+        // text: String
+        InputValue {
+            position: Pos::default(),
+            description: None,
+            name: String::from("text"),
+            value_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
+            default_value: None,
+            directives: vec![],
+        },
+        // first: Int
+        InputValue {
+            position: Pos::default(),
+            description: None,
+            name: String::from("first"),
+            value_type: Type::NamedType(String::from("Int")),
+            default_value: None,
+            directives: vec![],
+        },
+        // skip: Int
+        InputValue {
+            position: Pos::default(),
+            description: None,
+            name: String::from("skip"),
+            value_type: Type::NamedType(String::from("Int")),
+            default_value: None,
+            directives: vec![],
+        },
+        // block: BlockHeight
+        InputValue {
+            position: Pos::default(),
+            description: None,
+            name: String::from("block"),
+            value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
+            default_value: None,
+            directives: vec![],
+        },
+    ];
+    Some(Field {
+        position: Pos::default(),
+        description: None,
+        name: original_name, // fulltext.name
+        arguments: arguments,
+        field_type: Type::NamedType(union_type_name), // search enum name
+        directives: vec![],
+    })
 }
 
 /// Adds a root `Subscription` object type to the schema.
