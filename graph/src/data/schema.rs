@@ -471,6 +471,16 @@ impl Schema {
             })
     }
 
+    pub fn name_argument_value_from_directive(directive: &Directive) -> Value {
+        directive
+            .arguments
+            .iter()
+            .find(|(name, _value)| name == "name")
+            .expect("full text directive must have name argument")
+            .1
+            .clone()
+    }
+
     fn schema_reference_from_directive_argument(
         &self,
         from: &(Name, Value),
@@ -603,7 +613,9 @@ impl Schema {
                 if !subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| !directive.name.eq("import"))
+                    .filter(|directive| {
+                        !(directive.name == "import" || directive.name == "fulltext")
+                    })
                     .collect::<Vec<&Directive>>()
                     .is_empty()
                 {
