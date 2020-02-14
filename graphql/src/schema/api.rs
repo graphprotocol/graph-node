@@ -619,7 +619,7 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
         name: original_name, // fulltext.name
         arguments: arguments,
         field_type: Type::NamedType(union_type_name), // search enum name
-        directives: vec![],
+        directives: vec![fulltext.clone()],
     })
 }
 
