@@ -823,6 +823,7 @@ where
         .fold((ctx, block_state), move |(ctx, block_state), trigger| {
             let logger = logger.clone();
             let block = block.clone();
+            let block_ptr = EthereumBlockPointer::from(block.as_ref());
             let subgraph_metrics = ctx.subgraph_metrics.clone();
             let trigger_type = match trigger {
                 EthereumTrigger::Log(_) => TriggerType::Event,
@@ -845,7 +846,8 @@ where
                 })
                 .map_err(move |e| match transaction_id {
                     Some(tx_hash) => format_err!(
-                        "Failed to process trigger in transaction {}: {}",
+                        "Failed to process trigger in block {}, transaction {:x}: {}",
+                        block_ptr,
                         tx_hash,
                         e
                     ),
