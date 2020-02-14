@@ -57,6 +57,7 @@ pub enum QueryExecutionError {
     UndefinedFragment(String),
     // Using slow and prefetch query resolution yield different results
     IncorrectPrefetchResult { slow: q::Value, prefetch: q::Value },
+    FullTextQueryRequiresEqualFilter,
 }
 
 impl Error for QueryExecutionError {
@@ -200,7 +201,8 @@ impl fmt::Display for QueryExecutionError {
             IncorrectPrefetchResult{ .. } => write!(f, "Running query with prefetch \
                            and slow query resolution yielded different results. \
                            This is a bug. Please open an issue at \
-                           https://github.com/graphprotocol/graph-node")
+                           https://github.com/graphprotocol/graph-node"),
+            FullTextQueryRequiresEqualFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
         }
     }
 }
