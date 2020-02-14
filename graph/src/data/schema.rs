@@ -75,15 +75,15 @@ pub enum SchemaValidationError {
     ImportedTypeUndefined(String, String), // (type_name, schema)
     #[fail(display = "Fulltext directive name undefined")]
     FulltextNameUndefined,
-    #[fail(display = "Fulltext directive name overlaps with type")]
+    #[fail(display = "Fulltext directive name overlaps with type: {}", _0)]
     FulltextNameOverlap(String),
     #[fail(display = "Fulltext language is undefined")]
     FulltextLanguageUndefined,
-    #[fail(display = "Fulltext language is invalid")]
+    #[fail(display = "Fulltext language is invalid: {}", _0)]
     FulltextLanguageInvalid(String),
     #[fail(display = "Fulltext algorithm is undefined")]
     FulltextAlgorithmUndefined,
-    #[fail(display = "Fulltext algorithm is invalid")]
+    #[fail(display = "Fulltext algorithm is invalid: {}", _0)]
     FulltextAlgorithmInvalid(String),
     #[fail(display = "Fulltext include undefined")]
     FulltextIncludeUndefined,
