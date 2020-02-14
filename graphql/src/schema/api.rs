@@ -558,7 +558,7 @@ fn add_query_type(
 
 fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
     // let name = ;
-    let mut original_name = fulltext
+    let original_name = fulltext
         .arguments
         .iter()
         .find(|(name, _)| name.eq("name"))
@@ -570,7 +570,8 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
             }
         })
         .unwrap();
-    let (first_character, remaining_characters) = original_name.split_at_mut(1);
+    let mut original_name_clone = original_name.clone();
+    let (first_character, remaining_characters) = original_name_clone.split_at_mut(1);
     first_character.make_ascii_uppercase();
     remaining_characters.make_ascii_lowercase();
     let union_type_name =
@@ -997,7 +998,7 @@ mod tests {
             "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
 
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
             .expect("Query type is missing in derived API schema");
@@ -1144,5 +1145,44 @@ mod tests {
             .map(|name| name.to_string())
             .collect::<Vec<String>>()
         );
+    }
+
+    #[test]
+    fn api_schema_contains_fulltext_query_field_on_query_type() {
+        const SCHEMA: &str = r#"
+type _Schema_ @fulltext(
+  name: "metadata"
+  language: ENGLISH
+  algorithm: RANKED
+  include: [
+    {
+      entity: "Gravatar",
+      fields: [
+        { name: "displayName", weight: A },
+        { name: "imageUrl", weight: C },
+      ]
+    }
+  ]
+)
+type Gravatar @entity {
+  id: ID!
+  owner: Bytes!
+  displayName: String!
+  imageUrl: String!
+}
+"#;
+        let input_schema = parse_schema(SCHEMA).expect("Failed to parse input schema");
+        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+
+        dbg!(&schema);
+
+        let query_type = ast::get_named_type(&schema, &"Query".to_string())
+            .expect("Query type is missing in derived API schema");
+
+        let _metadata_field = match query_type {
+            TypeDefinition::Object(t) => ast::get_field(t, &String::from("metadata")),
+            _ => None,
+        }
+        .expect("\"metadata\" field is missing on Query type");
     }
 }
