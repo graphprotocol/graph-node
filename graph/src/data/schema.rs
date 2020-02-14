@@ -1515,7 +1515,5 @@ type Gravatar @entity {
     let document = graphql_parser::parse_schema(SCHEMA).expect("Failed to parse schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id1").unwrap(), document);
 
-    let errors = schema.validate_fulltext_directives();
-
-    dbg!(errors);
+    assert_eq!(schema.validate_fulltext_directives().len(), 0);
 }
