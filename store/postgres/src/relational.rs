@@ -22,7 +22,7 @@ use crate::relational_queries::{
     DeleteQuery, EntityData, FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
     RevertRemoveQuery, UpdateQuery,
 };
-use graph::data::schema::SCHEMA_TYPE_NAME;
+use graph::data::schema::{Schema, SCHEMA_TYPE_NAME};
 use graph::prelude::{
     format_err, trace, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
@@ -842,17 +842,34 @@ impl Table {
         SqlName::check_valid_identifier(&*defn.name, "object")?;
 
         let table_name = SqlName::from(&*defn.name);
+        let mut fulltext_fields = Vec::new();
         let mut columns = defn
             .fields
             .iter()
             .filter(|field| !derived_column(field))
-            .map(|field| Column::new(field, schema, enums, id_type))
+            .map(|field| {
+                fulltext_fields.append(
+                    &mut field
+                        .directives
+                        .iter()
+                        .filter(|directive: &&s::Directive| {
+                            directive.name == "fulltext"
+                                && !fulltext_fields.iter().any(
+                                    |&existing_directive: &&s::Directive| {
+                                        Schema::name_argument_value_from_directive(
+                                            existing_directive,
+                                        ) == Schema::name_argument_value_from_directive(directive)
+                                    },
+                                )
+                        })
+                        .collect::<Vec<&s::Directive>>(),
+                );
+                Column::new(dbg!(field), schema, enums, id_type)
+            })
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
-        let fulltext_columns = defn
-            .directives
+        let fulltext_columns = dbg!(fulltext_fields)
             .iter()
-            .filter(|directive: &&s::Directive| directive.name == "fulltext")
             .map(|directive| Column::new_fulltext(directive))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         columns.extend(fulltext_columns);
