@@ -251,6 +251,7 @@ enum Comparison {
     NotEqual,
     GreaterOrEqual,
     Greater,
+    Match,
 }
 
 impl Comparison {
@@ -263,6 +264,7 @@ impl Comparison {
             NotEqual => " != ",
             GreaterOrEqual => " >= ",
             Greater => " > ",
+            Match => " @@ ",
         }
     }
 }
@@ -358,7 +360,7 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
             unreachable!("text columns are only ever compared to strings");
         };
         match self.op {
-            Equal => {
+            Equal | Match => {
                 if large {
                     out.push_sql("(");
                     self.push_prefix_cmp(self.op, out.reborrow())?;
@@ -547,6 +549,10 @@ impl<'a> QueryFilter<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
+
+        if column.is_fulltext() {
+            PrefixComparison::new(Comparison::Match, column, value).walk_ast(out.reborrow())?;
+        }
 
         if column.is_text() && value.is_string() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
@@ -1481,17 +1487,19 @@ impl<'a> FilterCollection<'a> {
 /// is `None`, the sort key should be ignored
 #[derive(Debug, Clone)]
 pub struct SortKey {
-    name: Option<SqlName>,
+    column: Option<Column>,
+    value: Option<Value>,
     direction: EntityOrder,
 }
 
 impl SortKey {
     /// Generate selecting the sort key if it is needed
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if let Some(name) = &self.name {
-            if name.as_str() != PRIMARY_KEY_COLUMN {
+        if let Some(column) = &self.column {
+            let name = column.name.as_str();
+            if name != PRIMARY_KEY_COLUMN {
                 out.push_sql(", c.");
-                out.push_identifier(name.as_str())?;
+                out.push_identifier(name)?;
             }
         }
         Ok(())
@@ -1500,16 +1508,44 @@ impl SortKey {
     /// Generate
     ///   order by [name direction,] id
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if let Some(name) = &self.name {
-            out.push_identifier(name.as_str())?;
-            out.push_sql(" ");
-            out.push_sql(self.direction.to_sql());
-            out.push_sql(" nulls last");
-            if name.as_str() != PRIMARY_KEY_COLUMN {
-                out.push_sql(", ");
-                out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        if let Some(column) = &self.column {
+            match column.column_type {
+                ColumnType::TSVector => {
+                    let sort_value = &self
+                        .value
+                        .as_ref()
+                        .and_then(|v| v.as_str())
+                        .expect("fulltext search queries can only use EntityFilter::Equal");
+
+                    // TODO: Support additional ranking algorithms, use the algorithm specified in the subgraph schema
+                    out.push_sql("ts_rank(");
+                    let name = column.name.as_str();
+                    out.push_identifier(name)?;
+                    out.push_sql(", to_tsquery(");
+
+                    out.push_identifier(sort_value.clone())?;
+                    out.push_sql(" ");
+                    out.push_sql(self.direction.to_sql());
+                    out.push_sql(" nulls last");
+                    if name != PRIMARY_KEY_COLUMN {
+                        out.push_sql(", ");
+                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                    }
+                    Ok(())
+                }
+                _ => {
+                    let name = column.name.as_str();
+                    out.push_identifier(name)?;
+                    out.push_sql(" ");
+                    out.push_sql(self.direction.to_sql());
+                    out.push_sql(" nulls last");
+                    if name != PRIMARY_KEY_COLUMN {
+                        out.push_sql(", ");
+                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                    }
+                    Ok(())
+                }
             }
-            Ok(())
         } else {
             out.push_identifier(PRIMARY_KEY_COLUMN)
         }
@@ -1538,7 +1574,7 @@ impl QueryFragment<Pg> for FilterRange {
 /// The parallel to `EntityQuery`.
 ///
 /// Details of how query generation for `FilterQuery` works can be found
-/// in `docs/implementation/query-prefetching.md`
+/// `https://github.com/graphprotocol/rfcs/blob/master/engineering-plans/0001-graphql-query-prefetching.md`
 #[derive(Debug, Clone)]
 pub struct FilterQuery<'a> {
     collection: FilterCollection<'a>,
@@ -1568,13 +1604,29 @@ impl<'a> FilterQuery<'a> {
         let sort_key = match order {
             Some((ref attribute, _, direction)) => {
                 let column = first_table.column_for_field(&attribute)?;
-                SortKey {
-                    name: Some(column.name.clone()),
-                    direction,
+                if column.is_fulltext() {
+                    match filter {
+                        Some(entity_filter) => match entity_filter {
+                            EntityFilter::Equal(_attribute, value) => SortKey {
+                                column: Some(column.clone()),
+                                value: Some(value.clone()),
+                                direction,
+                            },
+                            _ => return Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+                        },
+                        None => return Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+                    }
+                } else {
+                    SortKey {
+                        column: Some(column.clone()),
+                        value: None,
+                        direction,
+                    }
                 }
             }
             None => SortKey {
-                name: None,
+                column: None,
+                value: None,
                 direction: EntityOrder::Ascending,
             },
         };
@@ -1837,7 +1889,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
         // considerably and produces faster queries
         //
         // Details of how all this works can be found in
-        // `docs/implementation/query-prefetching.md`
+        // `https://github.com/graphprotocol/rfcs/blob/master/engineering-plans/0001-graphql-query-prefetching.md`
         match &self.collection {
             FilterCollection::All(entities) => {
                 if entities.len() == 1 {

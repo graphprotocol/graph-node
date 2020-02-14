@@ -776,7 +776,7 @@ impl Column {
         }
     }
 
-    pub fn is_tsvector(&self) -> bool {
+    pub fn is_fulltext(&self) -> bool {
         named_type(&self.field_type) == "fulltext"
     }
 
@@ -932,7 +932,7 @@ impl Table {
                 column.name.quoted()
             };
 
-            let method = if column.is_list() || column.is_tsvector() {
+            let method = if column.is_list() || column.is_fulltext() {
                 "gin"
             } else {
                 "btree"
