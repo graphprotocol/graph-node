@@ -1,10 +1,9 @@
-use graphql_parser::schema::{Name, Type::NamedType, UnionType, Value, *};
+use graphql_parser::schema::{Name, UnionType, Value, *};
 use graphql_parser::Pos;
 use inflector::Inflector;
 
 use crate::schema::ast;
 
-use graph::data::graphql::ext::DocumentExt;
 use graph::data::schema::SCHEMA_TYPE_NAME;
 use graph::prelude::*;
 
