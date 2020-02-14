@@ -1,5 +1,6 @@
 use graphql_parser::schema::{
-    Definition, Directive, Document, Field, InterfaceType, Name, ObjectType, Type, TypeDefinition,
+    Definition, Directive, Document, EnumType, Field, InterfaceType, Name, ObjectType, Type,
+    TypeDefinition,
 };
 
 use std::collections::HashMap;
@@ -25,6 +26,8 @@ pub trait DocumentExt {
 
     fn get_object_and_interface_type_fields(&self) -> HashMap<&Name, &Vec<Field>>;
 
+    fn get_enum_definitions(&self) -> Vec<&EnumType>;
+
     fn find_interface(&self, name: &str) -> Option<&InterfaceType>;
 }
 
@@ -47,6 +50,16 @@ impl DocumentExt for Document {
                 Definition::TypeDefinition(TypeDefinition::Interface(t)) => {
                     Some((&t.name, &t.fields))
                 }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn get_enum_definitions(&self) -> Vec<&EnumType> {
+        self.definitions
+            .iter()
+            .filter_map(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Enum(e)) => Some(e),
                 _ => None,
             })
             .collect()
