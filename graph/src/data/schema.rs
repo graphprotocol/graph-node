@@ -842,7 +842,7 @@ impl Schema {
         match includes.iter().find(|include| match include {
             Value::Object(include) => {
                 let entity_key_pair = include.get("entity");
-                let fields_key_pair = include("fields");
+                let fields_key_pair = include.get("fields");
                 let entity = match entity_key_pair {
                     Some(Value::String(entity)) => entity,
                     _ => return true,
@@ -1486,4 +1486,36 @@ type T @entity { id: ID! }
         ),
         _ => (),
     }
+}
+
+#[test]
+fn test_fulltext_directive_validation() {
+    const SCHEMA: &str = r#"
+type _Schema_ @fulltext(
+  name: "jf"
+  language: ENGLISH
+  algorithm: RANKED
+  include: [
+    {
+      entity: "Gravatar",
+      fields: [
+        { name: "displayName", weight: A },
+        { name: "imageUrl", weight: C },
+      ]
+    }
+  ]
+)
+type Gravatar @entity {
+  id: ID!
+  owner: Bytes!
+  displayName: String!
+  imageUrl: String!
+}"#;
+
+    let document = graphql_parser::parse_schema(SCHEMA).expect("Failed to parse schema");
+    let schema = Schema::new(SubgraphDeploymentId::new("id1").unwrap(), document);
+
+    let errors = schema.validate_fulltext_directives();
+
+    dbg!(errors);
 }
