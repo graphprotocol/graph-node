@@ -1225,6 +1225,55 @@ impl Schema {
             .into_iter()
             .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
     }
+
+    pub fn subgraph_schema_fulltext_directives(document: &Document) -> Vec<&Directive> {
+        document
+            .get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
+            .map_or(vec![], |subgraph_schema_type| {
+                subgraph_schema_type
+                    .directives
+                    .iter()
+                    .filter(|directives| directives.name.eq("fulltext"))
+                    .collect()
+            })
+    }
+
+    pub fn entity_fulltext_directives<'a>(
+        entity: &str,
+        document: &'a Document,
+    ) -> Vec<&'a Directive> {
+        Self::subgraph_schema_fulltext_directives(document)
+            .into_iter()
+            .filter(|directive| {
+                match directive
+                    .arguments
+                    .iter()
+                    .find(|(argument, _value)| argument == "include")
+                    .map(|(_name, value)| value)
+                {
+                    Some(Value::List(includes)) if includes.len() > 0 => {
+                        return includes
+                            .iter()
+                            .find(|include| match include {
+                                Value::Object(include) => match include.get("entity") {
+                                    Some(Value::String(fulltext_entity))
+                                        if fulltext_entity == entity =>
+                                    {
+                                        true
+                                    }
+                                    _ => false,
+                                },
+                                _ => false,
+                            })
+                            .is_some();
+                    }
+                    _ => return false,
+                };
+            })
+            .collect()
+    }
 }
 
 #[test]
