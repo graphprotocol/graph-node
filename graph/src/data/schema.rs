@@ -841,14 +841,8 @@ impl Schema {
 
         match includes.iter().find(|include| match include {
             Value::Object(include) => {
-                let entity_value = include.get("entity");
-                let fields_value = include.get("fields");
-                let entity = match entity_value {
-                    Some(Value::String(entity)) => entity,
-                    _ => return true,
-                };
-                let fields = match fields_value {
-                    Some(Value::List(fields)) => fields,
+                let (entity, fields) = match (include.get("entity"), include.get("fields")) {
+                    (Some(Value::String(entity)), Some(Value::List(fields))) => (entity, fields),
                     _ => return true,
                 };
 
@@ -859,42 +853,20 @@ impl Schema {
                         fields
                             .iter()
                             .find(|field_item| {
+                                // Ensure that the field in the include exists on the type and is a String
+                                // Ensure that the weight is valid
                                 let (field_name, field_weight) = match field_item {
                                     Value::Object(field_map) => {
-                                        let name = field_map
-                                            .iter()
-                                            .find(|(key, value)| {
-                                                key[..].eq("name")
-                                                    && match value {
-                                                        Value::String(_) => true,
-                                                        _ => false,
-                                                    }
-                                            })
-                                            .map(|(_, value)| match value {
-                                                Value::String(name) => name,
-                                                _ => unreachable!(),
-                                            });
-                                        let weight = field_map
-                                            .iter()
-                                            .find(|(key, value)| {
-                                                key[..].eq("weight")
-                                                    && match value {
-                                                        Value::Enum(_) => true,
-                                                        _ => false,
-                                                    }
-                                            })
-                                            .map(|(_, value)| match value {
-                                                Value::Enum(weight) => weight,
-                                                _ => unreachable!(),
-                                            });
-                                        if name.is_none() || weight.is_none() {
-                                            return true;
+                                        match (field_map.get("name"), field_map.get("weight")) {
+                                            (
+                                                Some(Value::String(name)),
+                                                Some(Value::Enum(weight)),
+                                            ) => (name, weight),
+                                            _ => return true,
                                         }
-                                        (name.unwrap(), weight.unwrap())
                                     }
                                     _ => return true,
                                 };
-
                                 let field_exists = typ
                                     .fields
                                     .iter()
@@ -911,14 +883,13 @@ impl Schema {
                                         field_is_valid && is_string_field
                                     })
                                     .is_some();
-
-                                // Validate the weight is a valid enum: A, B, C, D
                                 let weight_is_valid =
                                     FulltextWeight::try_from(field_weight).is_ok();
                                 !(field_exists && weight_is_valid)
                             })
                             .is_some()
                     }
+                    // No entity matches the entity include object
                     None => return true,
                 }
             }
