@@ -174,19 +174,26 @@ impl Layout {
                 // Do not create a table for the _Schema_ type
                 TypeDefinition(Object(obj_type)) if obj_type.name.eq(SCHEMA_TYPE_NAME) => {}
                 TypeDefinition(Object(obj_type)) => {
-                    let table =
-                        Table::new(obj_type, &schema, &enums, id_type, tables.len() as u32)?;
-                    tables.push(table);
+                    tables.push(Table::new(
+                        obj_type,
+                        &schema,
+                        Schema::entity_fulltext_directives(&obj_type.name, document),
+                        &enums,
+                        id_type,
+                        tables.len() as u32,
+                    )?);
                 }
                 TypeDefinition(Interface(_)) => { /* we do not care about interfaces */ }
                 TypeDefinition(Enum(enum_type)) => {
                     SqlName::check_valid_identifier(&enum_type.name, "enum")?;
-                    let values: Vec<_> = enum_type
-                        .values
-                        .iter()
-                        .map(|value| value.name.to_owned())
-                        .collect();
-                    enums.insert(enum_type.name.clone(), values);
+                    enums.insert(
+                        enum_type.name.clone(),
+                        enum_type
+                            .values
+                            .iter()
+                            .map(|value| value.name.to_owned())
+                            .collect(),
+                    );
                 }
                 other => {
                     return Err(StoreError::Unknown(format_err!(
@@ -735,8 +742,8 @@ impl Column {
 
         Ok(Column {
             name: sql_name,
-            field: directive.name.clone(),
-            field_type: q::Type::NamedType(String::from(directive.name.clone())),
+            field: name.to_string(),
+            field_type: q::Type::NamedType(String::from("fulltext".to_string())),
             column_type: ColumnType::TSVector,
         })
     }
@@ -835,6 +842,7 @@ impl Table {
     fn new(
         defn: &s::ObjectType,
         schema: &str,
+        fulltext_directives: Vec<&s::Directive>,
         enums: &EnumMap,
         id_type: IdType,
         position: u32,
@@ -842,37 +850,17 @@ impl Table {
         SqlName::check_valid_identifier(&*defn.name, "object")?;
 
         let table_name = SqlName::from(&*defn.name);
-        let mut fulltext_fields = Vec::new();
-        let mut columns = defn
+        let columns = defn
             .fields
             .iter()
             .filter(|field| !derived_column(field))
-            .map(|field| {
-                fulltext_fields.append(
-                    &mut field
-                        .directives
-                        .iter()
-                        .filter(|directive: &&s::Directive| {
-                            directive.name == "fulltext"
-                                && !fulltext_fields.iter().any(
-                                    |&existing_directive: &&s::Directive| {
-                                        Schema::name_argument_value_from_directive(
-                                            existing_directive,
-                                        ) == Schema::name_argument_value_from_directive(directive)
-                                    },
-                                )
-                        })
-                        .collect::<Vec<&s::Directive>>(),
-                );
-                Column::new(dbg!(field), schema, enums, id_type)
-            })
+            .map(|field| Column::new(field, schema, enums, id_type))
+            .chain(
+                fulltext_directives
+                    .iter()
+                    .map(|field_name| Column::new_fulltext(field_name))
+            )
             .collect::<Result<Vec<Column>, StoreError>>()?;
-
-        let fulltext_columns = dbg!(fulltext_fields)
-            .iter()
-            .map(|directive| Column::new_fulltext(directive))
-            .collect::<Result<Vec<Column>, StoreError>>()?;
-        columns.extend(fulltext_columns);
 
         let table = Table {
             object: defn.name.clone(),
