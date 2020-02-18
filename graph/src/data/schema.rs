@@ -1,5 +1,4 @@
-use crate::components::store::{Store, SubgraphDeploymentStore};
-use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt, TypeExt};
+use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, TypeExt};
 use crate::data::graphql::scalar::BuiltInScalarType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
@@ -75,43 +74,6 @@ pub enum SchemaValidationError {
     ImportedTypeUndefined(String, String), // (type_name, schema)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Strings(Vec<String>);
-
-impl fmt::Display for Strings {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let s = (&self.0).join(", ");
-        write!(f, "{}", s)
-    }
-}
-
-#[derive(Debug, Fail, PartialEq, Eq)]
-pub enum SchemaValidationError {
-    #[fail(display = "Interface {} not defined", _0)]
-    UndefinedInterface(String),
-
-    #[fail(display = "@entity directive missing on the following type: {}", _0)]
-    EntityDirectivesMissing(Strings),
-
-    #[fail(
-        display = "Entity type `{}` cannot implement `{}` because it is missing \
-                   the required fields: {}",
-        _0, _1, _2
-    )]
-    CannotImplement(String, String, Strings), // (type, interface, missing_fields)
-    #[fail(
-        display = "Field `{}` in type `{}` has invalid @derivedFrom: {}",
-        _1, _0, _2
-    )]
-    DerivedFromInvalid(String, String, String), // (type, field, reason)
-    #[fail(display = "_SubgraphSchema_ type is solely for imports and should have no fields")]
-    SubgraphSchemaTypeFieldsInvalid,
-    #[fail(display = "_SubgraphSchema_ type only allows @import directives")]
-    SubgraphSchemaDirectivesInvalid,
-    #[fail(display = "@import defined incorrectly")]
-    ImportDirectiveInvalid,
-}
-
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
 pub enum SchemaImportError {
     #[fail(display = "Schema for imported subgraph `{}` was not found", _0)]
@@ -133,33 +95,6 @@ impl Hash for ImportedType {
             Self::NameAs(name, az) => {
                 name.hash(state);
                 String::from(" as ").hash(state);
-                az.hash(state);
-            }
-        };
-    }
-}
-
-impl fmt::Display for ImportedType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            Self::Name(name) => write!(f, "{}", name),
-            Self::NameAs(name, az) => write!(f, "name: {}, as: {}", name, az),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ImportedType {
-    Name(String),
-    NameAs(String, String),
-}
-
-impl Hash for ImportedType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Self::Name(name) => name.hash(state),
-            Self::NameAs(name, az) => {
-                name.hash(state);
                 az.hash(state);
             }
         };

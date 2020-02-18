@@ -32,7 +32,6 @@ use graph::prelude::{
 
 use graph_chain_ethereum::BlockIngestorMetrics;
 use graph_graphql::prelude::{api_schema, merged_schema};
-use tokio::timer::Interval;
 use web3::types::H256;
 
 use crate::chain_head_listener::ChainHeadUpdateListener;

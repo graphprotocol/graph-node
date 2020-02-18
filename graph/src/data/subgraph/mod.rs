@@ -12,13 +12,12 @@ use serde::de;
 use serde::ser;
 use serde_yaml;
 use slog::{info, Logger};
-use tokio::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::{Store, StoreError, SubgraphDeploymentStore};
 use crate::data::query::QueryExecutionError;
-use crate::data::schema::{Schema, SchemaImportError, SchemaReference, SchemaValidationError};
+use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
     EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
@@ -28,7 +27,6 @@ use crate::data::subgraph::schema::{
 use crate::prelude::{format_err, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
 
-use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
