@@ -11,6 +11,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use web3::types::H160;
+use futures03::stream::TryStreamExt;
 
 use graph_graphql::prelude::validate_entity;
 
@@ -379,10 +380,10 @@ impl HostExports {
         logger: &Logger,
         link: String,
     ) -> Result<Vec<u8>, HostExportError<impl ExportError>> {
-        block_on(
+        block_on03(
             self.link_resolver
                 .cat(logger, &Link { link })
-                .map_err(HostExportError),
+                .map_err(HostExportError)
         )
     }
 
@@ -417,9 +418,39 @@ impl HostExports {
         );
 
         let start = Instant::now();
-        let mut last_log = Instant::now();
+        let mut last_log = start;
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
-        block_on(
+
+        todo!();
+        /*
+        block_on03(async {
+            let stream: JsonValueStream = self.link_resolver.json_stream(&Link { link }).await?;
+            futures03::stream::StreamExt::and_then(stream, move |sv| todo!());
+            stream.and_then(move |sv| {
+                let module = WasmiModule::from_valid_module_with_ctx(
+                    valid_module.clone(),
+                    ctx.clone(),
+                    host_metrics.clone(),
+                )?;
+                let result =
+                    module.handle_json_callback(&*callback, &sv.value, &user_data);
+                // Log progress every 15s
+                if last_log.elapsed() > Duration::from_secs(15) {
+                    debug!(
+                        logger,
+                        "Processed {} lines in {}s so far",
+                        sv.line,
+                        start.elapsed().as_secs()
+                    );
+                    last_log = Instant::now();
+                }
+                result
+            }).try_collect().await
+        })
+        */
+
+        /*
+        block_on03(
             self.link_resolver
                 .json_stream(&Link { link })
                 .and_then(move |stream| {
@@ -448,6 +479,7 @@ impl HostExports {
                 })
                 .map_err(move |e| HostExportError(format!("{}: {}", errmsg, e.to_string()))),
         )
+        */
     }
 
     /// Expects a decimal string.
@@ -677,12 +709,12 @@ fn test_string_to_h160_with_0x() {
     )
 }
 
-fn block_on<I: Send + 'static, ER: Send + 'static>(
-    future: impl Future<Item = I, Error = ER> + Send + 'static,
+fn block_on<I, ER>(
+    future: impl Future<Item = I, Error = ER>,
 ) -> Result<I, ER> {
-    // We don't know if the task is blocking or not, but use `blocking` to be cautious.
-    graph::spawn_blocking_allow_panic(future.compat())
-        .compat()
-        .wait()
-        .unwrap()
+    block_on03(future.compat())
+}
+
+fn block_on03<T>(future: impl futures03::Future<Output=T>) -> T {
+    graph::block_on_allow_panic(future)
 }

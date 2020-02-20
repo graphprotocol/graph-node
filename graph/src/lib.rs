@@ -21,7 +21,7 @@ pub mod mock {
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
-pub use task_spawn::{spawn, spawn_blocking, spawn_blocking_allow_panic};
+pub use task_spawn::{spawn, spawn_blocking, spawn_blocking_allow_panic, block_on_allow_panic};
 
 /// A prelude that makes all system component traits and data types available.
 ///
@@ -48,9 +48,12 @@ pub mod prelude {
     pub use std::fmt::Debug;
     pub use std::iter::FromIterator;
     pub use std::sync::Arc;
+    pub use std::pin::Pin;
     pub use tiny_keccak;
     pub use tokio;
     pub use web3;
+
+    pub type DynFut<'a, Out> = Pin<Box<dyn futures03::Future<Output=Result<Out, Error>> + Send + 'a>>;
 
     pub use crate::components::ethereum::{
         BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,

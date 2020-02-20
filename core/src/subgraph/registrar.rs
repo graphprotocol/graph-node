@@ -250,7 +250,7 @@ where
                 // started. We wait for the spawned tasks to complete by giving
                 // each a `sender` and waiting for all of them to be dropped, so
                 // the receiver terminates without receiving anything.
-                let (sender, receiver) = futures::sync::mpsc::channel::<()>(1);
+                let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
                 for id in subgraph_ids {
                     let sender = sender.clone();
                     let provider = provider.clone();
@@ -308,13 +308,16 @@ where
         let logger_for_subgraph_version = logger.clone();
         let logger_for_debug = logger.clone();
         let name_inner = name.clone();
-
+        todo!();
+        /*
         Box::new(
             UnvalidatedSubgraphManifest::resolve(
                 hash.to_ipfs_link(),
                 self.resolver.clone(),
-                logger,
+                &logger,
             )
+            .boxed()
+            .compat()
             .map_err(SubgraphRegistrarError::ResolveError)
             .and_then(move |unvalidated| {
                 future::result(unvalidated.validate(store_for_validation)).map_err(
@@ -374,6 +377,7 @@ where
                 Ok(())
             }),
         )
+        */
     }
 
     fn remove_subgraph(

@@ -5,7 +5,8 @@ edition = "2018"
 
 [dependencies]
 bytes = "0.5"
-futures = "0.1.21"
+futures01 = { package="futures", version="0.1.29" }
+futures = { version="0.3.4", features=["compat"] }
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
 ipfs-api = { version = "0.6.0-rc", features = ["hyper-tls"] }

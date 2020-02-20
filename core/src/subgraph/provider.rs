@@ -1,4 +1,4 @@
-use futures::sync::mpsc::{channel, Receiver, Sender};
+use futures01::sync::mpsc::{channel, Receiver, Sender};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
@@ -102,10 +102,13 @@ where
         let logger_for_data_sources = logger.clone();
 
         info!(logger, "Resolve subgraph files using IPFS");
-
+        todo!();
+        /*
         Box::new(
-            SubgraphManifest::resolve(Link { link }, self.resolver.clone(), logger_for_resolve)
+            SubgraphManifest::resolve(Link { link }, self.resolver.clone(), &logger_for_resolve)
                 .map_err(SubgraphAssignmentProviderError::ResolveError)
+                .boxed()
+                .compat()
                 .and_then(move |manifest| {
                     (
                         future::ok(manifest),
@@ -181,6 +184,7 @@ where
                     e
                 }),
         )
+        */
     }
 
     fn stop(
