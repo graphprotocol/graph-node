@@ -192,20 +192,18 @@ where
             .collect::<Vec<UnresolvedDataSource>>()
     }
 
-    fn resolve_data_sources(
+    async fn resolve_data_sources(
         self: Arc<Self>,
         unresolved_data_sources: Vec<UnresolvedDataSource>,
         logger: Logger,
-    ) -> impl Future<Item = Vec<DataSource>, Error = Error> + Send {
+    ) -> Result<Vec<DataSource>, Error> {
         // Resolve the data sources and return them
-        stream::iter_ok(unresolved_data_sources).fold(vec![], move |mut resolved, data_source| {
-            data_source
-                .resolve(&*self.link_resolver, logger.clone())
-                .and_then(|data_source| {
-                    resolved.push(data_source);
-                    future::ok(resolved)
-                })
-        })
+        let mut result = Vec::new();
+        for item in unresolved_data_sources.into_iter() {
+            let resolved = item.resolve(&*self.link_resolver, &logger).await?;
+            result.push(resolved);
+        }
+        Ok(result)
     }
 }
 
@@ -259,7 +257,10 @@ where
                         future::ok(self5.convert_to_unresolved_data_sources(typed_entities))
                     })
                     .and_then(move |unresolved_data_sources| {
-                        self6.resolve_data_sources(unresolved_data_sources, logger)
+                        self6
+                            .resolve_data_sources(unresolved_data_sources, logger)
+                            .boxed()
+                            .compat()
                     })
                     .map(move |data_sources| {
                         if data_sources.is_empty() {

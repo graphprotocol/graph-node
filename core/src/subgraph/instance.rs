@@ -1,4 +1,4 @@
-use futures::sync::mpsc::Sender;
+use futures01::sync::mpsc::Sender;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::env;

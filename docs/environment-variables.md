@@ -86,10 +86,6 @@ triggers in each request (defaults to 100000).
   operations per WebSocket connection. Any operation created after the limit
   will return an error to the client. Default: unlimited.
 
-## Tokio
-
-- `GRAPH_TOKIO_THREAD_COUNT`: controls the number of threads allotted to the Tokio runtime. Default is 100.
-
 ## Miscellaneous
 
 - `GRAPH_NODE_ID`: sets the node ID, allowing to run multiple Graph Nodes

@@ -32,3 +32,31 @@ pub fn spawn_blocking_allow_panic<T: Send + 'static>(
 ) -> JoinHandle<T> {
     tokio::task::spawn_blocking(move || block_on(f))
 }
+
+/// Panics if there is no current tokio::Runtime
+pub fn block_on_allow_panic<T>(f: impl Future03<Output = T> + Send) -> T {
+    let rt = tokio::runtime::Handle::current();
+
+    rt.enter(move || {
+        // TODO: It should be possible to just call block_on directly, but we
+        // ran into this bug https://github.com/rust-lang/futures-rs/issues/2090
+        // which will panic if we're already in block_on. So, detect if this
+        // function would panic. Once we fix this, we can remove the requirement
+        // of + Send for f (and few functions that call this that had +Send
+        // added) The test which ran into this bug was
+        // runtime::wasm::test::ipfs_fail
+        let enter = futures03::executor::enter();
+        let oh_no = enter.is_err();
+        drop(enter);
+
+        // If the function would panic, fallback to the old ways.
+        if oh_no {
+            use futures::future::Future as _;
+            let compat = async { Result::<T, ()>::Ok(f.await) }.boxed().compat();
+            // This unwrap does not panic because of the above line always returning Ok
+            compat.wait().unwrap()
+        } else {
+            block_on(f)
+        }
+    })
+}

@@ -1,5 +1,5 @@
-use futures::future::{loop_fn, Loop};
-use futures::sync::mpsc::{channel, Receiver, Sender};
+use futures01::future::{loop_fn, Loop};
+use futures01::sync::mpsc::{channel, Receiver, Sender};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::RwLock;

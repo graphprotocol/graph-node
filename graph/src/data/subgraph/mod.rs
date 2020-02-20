@@ -1,8 +1,11 @@
 use ethabi::Contract;
 use failure;
 use failure::{Error, SyncFailure};
-use futures::prelude::*;
-use futures::stream;
+use futures03::{
+    future::{try_join, try_join3},
+    stream::FuturesOrdered,
+    TryStreamExt as _,
+};
 use parity_wasm;
 use parity_wasm::elements::Module;
 use serde::de;
@@ -43,7 +46,7 @@ where
     let address = s.trim_start_matches("0x");
     Address::from_str(address)
         .map_err(D::Error::custom)
-        .map(|addr| Some(addr))
+        .map(Some)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -383,17 +386,16 @@ pub struct UnresolvedSchema {
 }
 
 impl UnresolvedSchema {
-    pub fn resolve(
+    pub async fn resolve(
         self,
         id: SubgraphDeploymentId,
         resolver: &impl LinkResolver,
-        logger: Logger,
-    ) -> impl Future<Item = Schema, Error = failure::Error> + Send {
+        logger: &Logger,
+    ) -> Result<Schema, failure::Error> {
         info!(logger, "Resolve schema"; "link" => &self.file.link);
 
-        resolver
-            .cat(&logger, &self.file)
-            .and_then(|schema_bytes| Schema::parse(&String::from_utf8(schema_bytes)?, id))
+        let schema_bytes = resolver.cat(&logger, &self.file).await?;
+        Schema::parse(&String::from_utf8(schema_bytes)?, id)
     }
 }
 
@@ -450,11 +452,11 @@ pub struct MappingABI {
 }
 
 impl UnresolvedMappingABI {
-    pub fn resolve(
+    pub async fn resolve(
         self,
         resolver: &impl LinkResolver,
-        logger: Logger,
-    ) -> impl Future<Item = MappingABI, Error = failure::Error> + Send {
+        logger: &Logger,
+    ) -> Result<MappingABI, failure::Error> {
         info!(
             logger,
             "Resolve ABI";
@@ -462,16 +464,13 @@ impl UnresolvedMappingABI {
             "link" => &self.file.link
         );
 
-        resolver
-            .cat(&logger, &self.file)
-            .and_then(|contract_bytes| {
-                let contract = Contract::load(&*contract_bytes).map_err(SyncFailure::new)?;
-                Ok(MappingABI {
-                    name: self.name,
-                    contract,
-                    link: self.file,
-                })
-            })
+        let contract_bytes = resolver.cat(&logger, &self.file).await?;
+        let contract = Contract::load(&*contract_bytes).map_err(SyncFailure::new)?;
+        Ok(MappingABI {
+            name: self.name,
+            contract,
+            link: self.file,
+        })
     }
 }
 
@@ -569,11 +568,11 @@ pub struct Mapping {
 }
 
 impl UnresolvedMapping {
-    pub fn resolve(
+    pub async fn resolve(
         self,
         resolver: &impl LinkResolver,
-        logger: Logger,
-    ) -> impl Future<Item = Mapping, Error = failure::Error> + Send {
+        logger: &Logger,
+    ) -> Result<Mapping, failure::Error> {
         let UnresolvedMapping {
             kind,
             api_version,
@@ -588,18 +587,20 @@ impl UnresolvedMapping {
 
         info!(logger, "Resolve mapping"; "link" => &link.link);
 
-        // resolve each abi
-        stream::futures_ordered(
+        let (abis, runtime) = try_join(
+            // resolve each abi
             abis.into_iter()
-                .map(|unresolved_abi| unresolved_abi.resolve(resolver, logger.clone())),
-        )
-        .collect()
-        .join(
-            resolver.cat(&logger, &link).and_then(|module_bytes| {
+                .map(|unresolved_abi| unresolved_abi.resolve(resolver, logger))
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+            async {
+                let module_bytes = resolver.cat(logger, &link).await?;
                 Ok(Arc::new(parity_wasm::deserialize_buffer(&module_bytes)?))
-            }),
+            },
         )
-        .map(move |(abis, runtime)| Mapping {
+        .await?;
+
+        Ok(Mapping {
             kind,
             api_version,
             language,
@@ -645,11 +646,11 @@ pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping, UnresolvedData
 pub type DataSource = BaseDataSource<Mapping, DataSourceTemplate>;
 
 impl UnresolvedDataSource {
-    pub fn resolve(
+    pub async fn resolve(
         self,
         resolver: &impl LinkResolver,
-        logger: Logger,
-    ) -> impl Future<Item = DataSource, Error = failure::Error> {
+        logger: &Logger,
+    ) -> Result<DataSource, failure::Error> {
         let UnresolvedDataSource {
             kind,
             network,
@@ -660,31 +661,32 @@ impl UnresolvedDataSource {
         } = self;
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
-        mapping
-            .resolve(resolver, logger.clone())
-            .join(
-                stream::futures_ordered(
-                    templates
-                        .into_iter()
-                        .map(|template| template.resolve(resolver, logger.clone())),
-                )
-                .collect(),
-            )
-            .map(|(mapping, templates)| DataSource {
-                kind,
-                network,
-                name,
-                source,
-                mapping,
-                templates,
-            })
+
+        let (mapping, templates) = try_join(
+            mapping.resolve(&*resolver, logger),
+            templates
+                .into_iter()
+                .map(|template| template.resolve(resolver, logger))
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+        )
+        .await?;
+
+        Ok(DataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            templates,
+        })
     }
 }
 
 impl DataSource {
     pub fn try_from_template(
         template: DataSourceTemplate,
-        params: &Vec<String>,
+        params: &[String],
     ) -> Result<Self, failure::Error> {
         // Obtain the address from the parameters
         let string = params
@@ -758,11 +760,11 @@ pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping
 pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
 
 impl UnresolvedDataSourceTemplate {
-    pub fn resolve(
+    pub async fn resolve(
         self,
         resolver: &impl LinkResolver,
-        logger: Logger,
-    ) -> impl Future<Item = DataSourceTemplate, Error = failure::Error> {
+        logger: &Logger,
+    ) -> Result<DataSourceTemplate, failure::Error> {
         let UnresolvedDataSourceTemplate {
             kind,
             network,
@@ -773,15 +775,13 @@ impl UnresolvedDataSourceTemplate {
 
         info!(logger, "Resolve data source template"; "name" => &name);
 
-        mapping
-            .resolve(resolver, logger)
-            .map(|mapping| DataSourceTemplate {
-                kind,
-                network,
-                name,
-                source,
-                mapping,
-            })
+        Ok(DataSourceTemplate {
+            kind,
+            network,
+            name,
+            source,
+            mapping: mapping.resolve(resolver, logger).await?,
+        })
     }
 }
 
@@ -794,11 +794,10 @@ impl DataSourceTemplate {
         self.mapping
             .block_handlers
             .iter()
-            .find(|handler| match handler.filter {
+            .any(|handler| match handler.filter {
                 Some(BlockHandlerFilter::Call) => true,
                 _ => false,
             })
-            .is_some()
     }
 }
 
@@ -837,12 +836,14 @@ impl UnvalidatedSubgraphManifest {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub fn resolve(
+    pub async fn resolve(
         link: Link,
         resolver: Arc<impl LinkResolver>,
-        logger: Logger,
-    ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
-        SubgraphManifest::resolve(link, resolver, logger).map(|manifest| Self(manifest))
+        logger: &Logger,
+    ) -> Result<Self, SubgraphManifestResolveError> {
+        Ok(Self(
+            SubgraphManifest::resolve(link, resolver.deref(), logger).await?,
+        ))
     }
 
     pub fn validate<S: Store + SubgraphDeploymentStore>(
@@ -855,7 +856,7 @@ impl UnvalidatedSubgraphManifest {
         let (schemas, import_errors) = self.0.schema.resolve_schema_references(store);
         let validation_warnings = import_errors
             .into_iter()
-            .map(|err| SubgraphManifestValidationWarning::SchemaValidationWarning(err))
+            .map(SubgraphManifestValidationWarning::SchemaValidationWarning)
             .collect();
 
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
@@ -897,7 +898,7 @@ impl UnvalidatedSubgraphManifest {
                         call_filtered_block_handler_count += 1
                     }
                 });
-            return non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1;
+            non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
         });
         if has_too_many_block_handlers {
             errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
@@ -941,48 +942,47 @@ impl SubgraphManifest {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub fn resolve(
+    pub async fn resolve(
         link: Link,
-        resolver: Arc<impl LinkResolver>,
-        logger: Logger,
-    ) -> impl Future<Item = Self, Error = SubgraphManifestResolveError> + Send {
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<Self, SubgraphManifestResolveError> {
         info!(logger, "Resolve manifest"; "link" => &link.link);
 
-        resolver
-            .cat(&logger, &link)
+        let file_bytes = resolver
+            .cat(logger, &link)
+            .await
+            .map_err(SubgraphManifestResolveError::ResolveError)?;
+
+        let file = String::from_utf8(file_bytes.to_vec())
+            .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
+        let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
+
+        let raw_mapping = raw
+            .as_mapping_mut()
+            .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
+
+        // Inject the IPFS hash as the ID of the subgraph
+        // into the definition.
+        raw_mapping.insert(
+            serde_yaml::Value::from("id"),
+            serde_yaml::Value::from(link.link.trim_start_matches("/ipfs/")),
+        );
+
+        // Inject the IPFS link as the location of the data
+        // source into the definition
+        raw_mapping.insert(
+            serde_yaml::Value::from("location"),
+            serde_yaml::Value::from(link.link),
+        );
+
+        // Parse the YAML data into an UnresolvedSubgraphManifest
+        let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
+
+        unresolved
+            .resolve(&*resolver, logger)
+            .await
             .map_err(SubgraphManifestResolveError::ResolveError)
-            .and_then(move |file_bytes| {
-                let file = String::from_utf8(file_bytes.to_vec())
-                    .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
-                let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
-                {
-                    let raw_mapping = raw
-                        .as_mapping_mut()
-                        .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
-
-                    // Inject the IPFS hash as the ID of the subgraph
-                    // into the definition.
-                    raw_mapping.insert(
-                        serde_yaml::Value::from("id"),
-                        serde_yaml::Value::from(link.link.trim_start_matches("/ipfs/")),
-                    );
-
-                    // Inject the IPFS link as the location of the data
-                    // source into the definition
-                    raw_mapping.insert(
-                        serde_yaml::Value::from("location"),
-                        serde_yaml::Value::from(link.link),
-                    );
-                }
-                // Parse the YAML data into an UnresolvedSubgraphManifest
-                let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
-                Ok(unresolved)
-            })
-            .and_then(move |unresolved| {
-                unresolved
-                    .resolve(&*resolver, logger)
-                    .map_err(SubgraphManifestResolveError::ResolveError)
-            })
     }
 
     pub fn network_name(&self) -> String {
@@ -990,7 +990,7 @@ impl SubgraphManifest {
         self.data_sources
             .iter()
             .cloned()
-            .filter(|d| d.kind == "ethereum/contract".to_string())
+            .filter(|d| &d.kind == "ethereum/contract")
             .filter_map(|d| d.network)
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")
@@ -1005,11 +1005,11 @@ impl SubgraphManifest {
 }
 
 impl UnresolvedSubgraphManifest {
-    pub fn resolve(
+    pub async fn resolve(
         self,
         resolver: &impl LinkResolver,
-        logger: Logger,
-    ) -> impl Future<Item = SubgraphManifest, Error = failure::Error> {
+        logger: &Logger,
+    ) -> Result<SubgraphManifest, failure::Error> {
         let UnresolvedSubgraphManifest {
             id,
             location,
@@ -1029,44 +1029,39 @@ impl UnresolvedSubgraphManifest {
             // and skip to 0.0.4 to avoid ambiguity.
             Ok(ref ver) if *ver <= semver::Version::new(0, 0, 3) => {}
             _ => {
-                return Box::new(futures::future::err(format_err!(
+                return Err(format_err!(
                     "This Graph Node only supports manifest spec versions <= 0.0.2,
                     but subgraph `{}` uses `{}`",
                     id,
                     spec_version
-                ))) as Box<dyn Future<Item = _, Error = _> + Send>;
+                ));
             }
         }
 
-        Box::new(
-            schema
-                .resolve(id.clone(), resolver, logger.clone())
-                .join(
-                    stream::futures_ordered(
-                        data_sources
-                            .into_iter()
-                            .map(|ds| ds.resolve(resolver, logger.clone())),
-                    )
-                    .collect(),
-                )
-                .join(
-                    stream::futures_ordered(
-                        templates
-                            .into_iter()
-                            .map(|template| template.resolve(resolver, logger.clone())),
-                    )
-                    .collect(),
-                )
-                .map(|((schema, data_sources), templates)| SubgraphManifest {
-                    id,
-                    location,
-                    spec_version,
-                    description,
-                    repository,
-                    schema,
-                    data_sources,
-                    templates,
-                }),
+        let (schema, data_sources, templates) = try_join3(
+            schema.resolve(id.clone(), resolver, logger),
+            data_sources
+                .into_iter()
+                .map(|ds| ds.resolve(resolver, logger))
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+            templates
+                .into_iter()
+                .map(|template| template.resolve(resolver, logger))
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
         )
+        .await?;
+
+        Ok(SubgraphManifest {
+            id,
+            location,
+            spec_version,
+            description,
+            repository,
+            schema,
+            data_sources,
+            templates,
+        })
     }
 }

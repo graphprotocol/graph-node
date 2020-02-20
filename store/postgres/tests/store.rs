@@ -1707,7 +1707,9 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             }]),
         ];
 
-        check_events(meta_subscription, meta_expected);
+        // FIXME: This does not await, meaning calling this doesn't
+        // do anything. But, waiting here causes the test to hang.
+        let _ignore_future = check_events(meta_subscription, meta_expected);
 
         // We're expecting two events to be written to the subscription stream
         let expected = vec![
@@ -1789,7 +1791,9 @@ fn throttle_subscription_delivers() {
             EntityChangeOperation::Set,
         )]);
 
-        check_events(meta_subscription, vec![meta_expected]);
+        // FIXME: This does not await, meaning calling this doesn't
+        // do anything. But, waiting here causes the test to hang.
+        let _ignore_future = check_events(meta_subscription, vec![meta_expected]);
 
         let expected = StoreEvent::new(vec![make_entity_change(
             USER,

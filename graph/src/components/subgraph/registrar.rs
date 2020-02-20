@@ -23,12 +23,12 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         name: SubgraphName,
     ) -> Box<dyn Future<Item = CreateSubgraphResult, Error = SubgraphRegistrarError> + Send + 'static>;
 
-    fn create_subgraph_version(
-        &self,
+    fn create_subgraph_version<'a>(
+        &'a self,
         name: SubgraphName,
         hash: SubgraphDeploymentId,
         assignment_node_id: NodeId,
-    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
+    ) -> DynTryFuture<'a, (), SubgraphRegistrarError>;
 
     fn remove_subgraph(
         &self,

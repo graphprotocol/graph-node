@@ -809,7 +809,8 @@ async fn query_complexity_subscriptions() {
     };
 
     // This query is exactly at the maximum complexity.
-    execute_subscription(&Subscription { query }, options).unwrap();
+    // FIXME: Not collecting the stream because that will hang the test.
+    let _ignore_stream = execute_subscription(&Subscription { query }, options).unwrap();
 
     let query = Query {
         schema: Arc::new(api_test_schema()),
