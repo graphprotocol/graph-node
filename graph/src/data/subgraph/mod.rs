@@ -596,6 +596,8 @@ impl UnresolvedMapping {
 
         info!(logger, "Resolve mapping"; "link" => &link.link);
 
+        // COMPILER PERFORMANCE TOGGLE
+        //let (abis, runtime) = futures03::future::try_join(
         let (abis, runtime) = try_join2(
             // resolve each abi
             collect_futures(abis.into_iter().map(|unresolved_abi| unresolved_abi.resolve(resolver, logger))),
@@ -668,6 +670,9 @@ impl UnresolvedDataSource {
         } = self;
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
+
+        // COMPILER PERFORMANCE TOGGLE
+        //let (mapping, templates) = futures03::future::try_join( 
         let (mapping, templates) = try_join2(
             mapping.resolve(&*resolver, logger),
             collect_futures(templates.into_iter().map(|template| template.resolve(resolver, logger))),
@@ -1033,6 +1038,8 @@ impl UnresolvedSubgraphManifest {
             }
         }
 
+        // COMPILER PERFORMANCE TOGGLE
+        //let (schema, data_sources, templates) = futures03::future::try_join3(
         let (schema, data_sources, templates) = try_join3(
             schema.resolve(id.clone(), resolver, logger),
             collect_futures(data_sources.into_iter().map(|ds| ds.resolve(resolver, logger))),

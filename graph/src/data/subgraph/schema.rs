@@ -84,7 +84,7 @@ impl TypedEntity for SubgraphEntity {
 }
 
 trait OperationList {
-    fn add(&mut self, entity: &str, id: String, entity: Entity);
+    fn add(&mut self, entity: &str, id: String, data: Entity);
 }
 
 struct MetadataOperationList(Vec<MetadataOperation>);
