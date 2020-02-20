@@ -61,10 +61,7 @@ pub struct JsonRpcServer<R> {
     logger: Logger,
 }
 
-impl<R> JsonRpcServer<R>
-where
-    R: SubgraphRegistrar,
-{
+impl<R: SubgraphRegistrar> JsonRpcServer<R> {
     /// Handler for the `subgraph_create` endpoint.
     fn create_handler(
         &self,
@@ -94,10 +91,10 @@ where
     }
 
     /// Handler for the `subgraph_deploy` endpoint.
-    fn deploy_handler(
-        &self,
+    fn deploy_handler<'a>(
+        &'a self,
         params: SubgraphDeployParams,
-    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+    ) -> DynTryFuture<'a, Value, jsonrpc_core::Error> {
         let logger = self.logger.clone();
 
         info!(logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));
@@ -105,7 +102,7 @@ where
         let node_id = params.node_id.clone().unwrap_or(self.node_id.clone());
         let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
 
-        Box::new(
+        Box::pin(
             self.registrar
                 .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id)
                 .map_err(move |e| {
@@ -118,7 +115,7 @@ where
                         json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string())
                     }
                 })
-                .map(move |_| routes),
+                .map(move |_| Ok(routes)),
         )
     }
 
@@ -256,15 +253,16 @@ where
 
         let me = arc_self.clone();
         let sender = task_sender.clone();
+
         handler.add_method("subgraph_deploy", move |params: Params| {
             let me = me.clone();
             Box::pin(tokio02_spawn(
                 sender.clone(),
-                params
-                    .parse()
-                    .into_future()
-                    .and_then(move |params| me.deploy_handler(params))
-                    .compat(),
+                async move {
+                    let params = params.parse()?;
+                    me.deploy_handler(params).await
+                }
+                .boxed(),
             ))
             .compat()
         });

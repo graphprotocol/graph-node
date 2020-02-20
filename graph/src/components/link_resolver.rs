@@ -1,7 +1,8 @@
 use failure;
-use futures::prelude::*;
+use futures03::{prelude::Stream, Future};
 use serde_json::Value;
 use slog::Logger;
+use std::pin::Pin;
 use std::time::Duration;
 
 use crate::data::subgraph::Link;
@@ -15,7 +16,7 @@ pub struct JsonStreamValue {
 }
 
 pub type JsonValueStream =
-    Box<dyn Stream<Item = JsonStreamValue, Error = failure::Error> + Send + 'static>;
+    Pin<Box<dyn Stream<Item = Result<JsonStreamValue, failure::Error>> + Send + 'static>>;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 pub trait LinkResolver: Send + Sync + 'static {
@@ -30,18 +31,18 @@ pub trait LinkResolver: Send + Sync + 'static {
         Self: Sized;
 
     /// Fetches the link contents as bytes.
-    fn cat(
-        &self,
-        logger: &Logger,
-        link: &Link,
-    ) -> Box<dyn Future<Item = Vec<u8>, Error = failure::Error> + Send>;
+    fn cat<'a>(
+        &'a self,
+        logger: &'a Logger,
+        link: &'a Link,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, failure::Error>> + Send + 'a>>;
 
     /// Read the contents of `link` and deserialize them into a stream of JSON
     /// values. The values must each be on a single line; newlines are significant
     /// as they are used to split the file contents and each line is deserialized
     /// separately.
-    fn json_stream(
-        &self,
-        link: &Link,
-    ) -> Box<dyn Future<Item = JsonValueStream, Error = failure::Error> + Send + 'static>;
+    fn json_stream<'a>(
+        &'a self,
+        link: &'a Link,
+    ) -> Pin<Box<dyn Future<Output = Result<JsonValueStream, failure::Error>> + Send + 'a>>;
 }

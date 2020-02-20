@@ -146,9 +146,9 @@ where
     E: Debug + Send + Send + Sync + 'static,
 {
     /// Rerun the provided function as many times as needed.
-    pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = TimeoutError<E>>
+    pub fn run<F, R>(self, mut try_it: F) -> impl Future<Item = I, Error = TimeoutError<E>>
     where
-        F: Fn() -> R + Send,
+        F: FnMut() -> R + Send,
         R: Future<Item = I, Error = E> + Send,
     {
         use futures03::future::TryFutureExt;
@@ -246,12 +246,12 @@ fn run_retry<I, E, F, R>(
     condition: RetryIf<I, E>,
     log_after: u64,
     limit_opt: Option<usize>,
-    try_it_with_timeout: F,
+    mut try_it_with_timeout: F,
 ) -> impl Future<Item = I, Error = TimeoutError<E>> + Send
 where
     I: Debug + Send,
     E: Debug + Send + Sync + 'static,
-    F: Fn() -> R + Send,
+    F: FnMut() -> R + Send,
     R: Future<Item = I, Error = TimeoutError<E>> + Send,
 {
     let condition = Arc::new(condition);

@@ -1,6 +1,7 @@
 use bytes::BytesMut;
-use futures::{stream::poll_fn, try_ready};
-use ipfs_api;
+use futures01::{stream::poll_fn, try_ready};
+use futures03::stream::FuturesUnordered;
+use ipfs_api::{response::ObjectStatResponse, IpfsClient};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use std::env;
@@ -11,25 +12,25 @@ use std::time::Duration;
 use graph::prelude::{LinkResolver as LinkResolverTrait, *};
 use serde_json::Value;
 
-// Environment variable for limiting the `ipfs.map` file size limit.
+/// Environment variable for limiting the `ipfs.map` file size limit.
 const MAX_IPFS_MAP_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
 
-// The default file size limit for `ipfs.map` is 256MiB.
+/// The default file size limit for `ipfs.map` is 256MiB.
 const DEFAULT_MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
 
-// Environment variable for limiting the `ipfs.cat` file size limit.
+/// Environment variable for limiting the `ipfs.cat` file size limit.
 const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
 
 lazy_static! {
-    // The default file size limit for the IPFS cahce is 1MiB.
+    /// The default file size limit for the IPFS cache is 1MiB.
     static ref MAX_IPFS_CACHE_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_FILE_SIZE")
         .unwrap_or(1024 * 1024);
 
-    // The default size limit for the IPFS cache is 50 items.
+    /// The default size limit for the IPFS cache is 50 items.
     static ref MAX_IPFS_CACHE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_SIZE")
         .unwrap_or(50);
 
-    // The timeout for IPFS requests in seconds
+    /// The timeout for IPFS requests in seconds
     static ref IPFS_TIMEOUT: Duration = Duration::from_secs(
         read_u64_from_env("GRAPH_IPFS_TIMEOUT").unwrap_or(60)
     );
@@ -46,56 +47,93 @@ fn read_u64_from_env(name: &str) -> Option<u64> {
     })
 }
 
-/// Wrap the future `fut` into another future that only resolves successfully
-/// if the IPFS file at `path` is no bigger than `max_file_bytes`.
-/// If `max_file_bytes` is `None`, do not restrict the size of the file
-fn restrict_file_size<T>(
-    client: ipfs_api::IpfsClient,
-    path: String,
+/// The IPFS APIs don't have a quick "do you have the file" function. Instead, we
+/// just rely on whether an API times out. That makes sense for IPFS, but not for
+/// our application. We want to be able to quickly select from a potential list
+/// of clients where hopefully one already has the file, and just get the file
+/// from that.
+///
+/// The strategy here then is to use the object_stat API as a proxy for "do you
+/// have the file". Whichever client has or gets the file first wins. This API is
+/// a good choice, because it doesn't involve us actually starting to download
+/// the file from each client, which would be wasteful of bandwidth and memory in
+/// the case multiple clients respond in a timely manner. In addition, we may
+/// make good use of the stat returned.
+async fn select_fastest_client_with_stat<'a>(
+    clients: &'a [IpfsClient],
+    path: &'_ str,
     timeout: Duration,
-    max_file_bytes: Option<u64>,
-    fut: Box<dyn Future<Item = T, Error = failure::Error> + Send>,
-) -> Box<dyn Future<Item = T, Error = failure::Error> + Send>
-where
-    T: Send + 'static,
-{
-    match max_file_bytes {
-        Some(max_bytes) => Box::new(
-            Box::pin(async move {
-                let stat = tokio::time::timeout(timeout, client.object_stat(&path).err_into())
-                    .err_into()
-                    .await
-                    .and_then(|x| x);
+) -> Result<(ObjectStatResponse, &'a IpfsClient), failure::Error> {
+    let mut err: Option<failure::Error> = None;
 
-                stat.and_then(move |stat| match stat.cumulative_size > max_bytes {
-                    false => Ok(()),
-                    true => Err(format_err!(
-                        "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
-                        path,
-                        max_bytes,
-                        stat.cumulative_size
-                    )),
-                })
-            })
-            .compat()
-            .and_then(|()| fut),
-        ),
-        None => fut,
+    let mut stats: FuturesUnordered<_> = clients
+        .iter()
+        .map(|c| tokio::time::timeout(timeout, c.object_stat(path).map_ok(move |s| (s, c))))
+        .collect();
+
+    while let Some(result) = stats.next().await {
+        match result {
+            // If there is a timeout, use that error if it's the only error.
+            // Prefer other types if error when possible
+            Err(e) => {
+                if err.is_none() {
+                    err = Some(e.into())
+                }
+            }
+            Ok(Err(e)) => {
+                err = Some(e.into());
+            }
+            Ok(Ok(value)) => {
+                return Ok(value);
+            }
+        }
     }
+
+    Err(err.unwrap_or_else(|| {
+        format_err!(
+            "No IPFS clients were supplied to handle the call to object_stat. File: {}",
+            path
+        )
+    }))
+}
+
+// Returns an error if the stat is bigger than `max_file_bytes`
+fn restrict_file_size(
+    path: &str,
+    stat: &ObjectStatResponse,
+    max_file_bytes: &Option<u64>,
+) -> Result<(), failure::Error> {
+    if let Some(max_file_bytes) = max_file_bytes {
+        if stat.cumulative_size > *max_file_bytes {
+            return Err(format_err!(
+                "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
+                path,
+                max_file_bytes,
+                stat.cumulative_size
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone)]
 pub struct LinkResolver {
-    client: ipfs_api::IpfsClient,
+    clients: Arc<Vec<IpfsClient>>,
     cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
     timeout: Duration,
     retry: bool,
 }
 
-impl From<ipfs_api::IpfsClient> for LinkResolver {
-    fn from(client: ipfs_api::IpfsClient) -> Self {
+impl From<IpfsClient> for LinkResolver {
+    fn from(client: IpfsClient) -> Self {
+        vec![client].into()
+    }
+}
+
+impl From<Vec<IpfsClient>> for LinkResolver {
+    fn from(clients: Vec<IpfsClient>) -> Self {
         Self {
-            client,
+            clients: Arc::new(clients),
             cache: Arc::new(Mutex::new(LruCache::with_capacity(
                 *MAX_IPFS_CACHE_SIZE as usize,
             ))),
@@ -117,168 +155,156 @@ impl LinkResolverTrait for LinkResolver {
     }
 
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
-    fn cat(
-        &self,
-        logger: &Logger,
-        link: &Link,
-    ) -> Box<dyn Future<Item = Vec<u8>, Error = failure::Error> + Send> {
-        // Discard the `/ipfs/` prefix (if present) to get the hash.
-        let path = link.link.trim_start_matches("/ipfs/").to_owned();
-        let path_for_error = path.clone();
+    fn cat<'a>(&'a self, logger: &'a Logger, link: &'a Link) -> DynTryFuture<'a, Vec<u8>> {
+        async move {
+            // Discard the `/ipfs/` prefix (if present) to get the hash.
+            let path = link.link.trim_start_matches("/ipfs/").to_owned();
 
-        if let Some(data) = self.cache.lock().unwrap().get(&path) {
-            trace!(logger, "IPFS cache hit"; "hash" => &path);
-            return Box::new(future::ok(data.clone()));
-        } else {
+            if let Some(data) = self.cache.lock().unwrap().get(&path) {
+                trace!(logger, "IPFS cache hit"; "hash" => &path);
+                return Ok(data.clone());
+            }
             trace!(logger, "IPFS cache miss"; "hash" => &path);
-        }
 
-        let client_for_cat = self.client.clone();
-        let client_for_file_size = self.client.clone();
-        let cache_for_writing = self.cache.clone();
+            let (stat, client) =
+                select_fastest_client_with_stat(&self.clients, &path, self.timeout).await?;
 
-        let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
-        let timeout_for_file_size = self.timeout.clone();
+            // FIXME: Having an env variable here is a problem for consensus.
+            // Index Nodes should not disagree on whether the file should be read.
+            let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
+            restrict_file_size(&path, &stat, &max_file_size)?;
 
-        let retry_fut = if self.retry {
-            retry("ipfs.cat", &logger).no_limit()
-        } else {
-            retry("ipfs.cat", &logger).limit(1)
-        };
+            let path = path.clone();
+            let retry_fut = if self.retry {
+                retry("ipfs.cat", &logger).no_limit()
+            } else {
+                retry("ipfs.cat", &logger).limit(1)
+            }
+            .timeout(self.timeout);
 
-        Box::new(
-            retry_fut
-                .timeout(self.timeout)
+            let result = retry_fut
                 .run(move || {
-                    let cache_for_writing = cache_for_writing.clone();
                     let path = path.clone();
+                    async move {
+                        let data = client
+                            .cat(&path)
+                            .map_ok(|b| BytesMut::from_iter(b.into_iter()))
+                            .try_concat()
+                            .await?
+                            .to_vec();
 
-                    let cat = client_for_cat
-                        .cat(&path)
-                        .map_ok(|b| BytesMut::from_iter(b.into_iter()))
-                        .try_concat()
-                        .map_ok(|x| x.to_vec())
-                        .err_into();
-
-                    restrict_file_size(
-                        client_for_file_size.clone(),
-                        path.clone(),
-                        timeout_for_file_size,
-                        max_file_size,
-                        Box::new(cat.compat()),
-                    )
-                    .map(move |data| {
                         // Only cache files if they are not too large
                         if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
-                            let mut cache = cache_for_writing.lock().unwrap();
+                            let mut cache = self.cache.lock().unwrap();
                             if !cache.contains_key(&path) {
-                                cache.insert(path, data.clone());
+                                cache.insert(path.to_owned(), data.clone());
                             }
                         }
-                        data
-                    })
+                        Result::<Vec<u8>, Error>::Ok(data)
+                    }
+                    .boxed()
+                    .compat()
                 })
-                .map_err(move |e| {
-                    e.into_inner().unwrap_or(format_err!(
-                        "ipfs.cat took too long or failed to load `{}`",
-                        path_for_error,
-                    ))
-                }),
-        )
+                .compat()
+                .await?;
+            Ok(result)
+        }
+        .boxed()
     }
 
-    fn json_stream(
-        &self,
-        link: &Link,
-    ) -> Box<dyn Future<Item = JsonValueStream, Error = failure::Error> + Send + 'static> {
-        // Discard the `/ipfs/` prefix (if present) to get the hash.
-        let path = link.link.trim_start_matches("/ipfs/").to_owned();
-        let mut stream = self.client.cat(&path).fuse().compat();
-        let mut buf = BytesMut::with_capacity(1024);
-        // Count the number of lines we've already successfully deserialized.
-        // We need that to adjust the line number in error messages from serde_json
-        // to translate from line numbers in the snippet we are deserializing
-        // to the line number in the overall file
-        let mut count = 0;
+    fn json_stream<'a>(&'a self, link: &'a Link) -> DynTryFuture<'a, JsonValueStream> {
+        async move {
+            // Discard the `/ipfs/` prefix (if present) to get the hash.
+            let path = link.link.trim_start_matches("/ipfs/");
 
-        let stream: JsonValueStream = Box::new(poll_fn(
-            move || -> Poll<Option<JsonStreamValue>, failure::Error> {
-                loop {
-                    if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
-                        let line_bytes = buf.split_to(offset + 1);
-                        count += 1;
-                        if line_bytes.len() > 1 {
-                            let line = std::str::from_utf8(&line_bytes)?;
-                            let res = match serde_json::from_str::<Value>(line) {
-                                Ok(v) => Ok(Async::Ready(Some(JsonStreamValue {
-                                    value: v,
-                                    line: count,
-                                }))),
-                                Err(e) => {
-                                    // Adjust the line number in the serde error. This
-                                    // is fun because we can only get at the full error
-                                    // message, and not the error message without line number
-                                    let msg = e.to_string();
-                                    let msg = msg.split(" at line ").next().unwrap();
-                                    Err(format_err!(
-                                        "{} at line {} column {}: '{}'",
-                                        msg,
-                                        e.line() + count - 1,
-                                        e.column(),
-                                        line
-                                    ))
-                                }
-                            };
-                            return res;
-                        }
-                    } else {
-                        // We only get here if there is no complete line in buf, and
-                        // it is therefore ok to immediately pass an Async::NotReady
-                        // from stream through.
-                        // If we get a None from poll, but still have something in buf,
-                        // that means the input was not terminated with a newline. We
-                        // add that so that the last line gets picked up in the next
-                        // run through the loop.
-                        match try_ready!(stream.poll()) {
-                            Some(b) => buf.extend_from_slice(&b),
-                            None if buf.len() > 0 => buf.extend_from_slice(&[b'\n']),
-                            None => return Ok(Async::Ready(None)),
+            let (stat, client) =
+                select_fastest_client_with_stat(&self.clients, path, self.timeout).await?;
+
+            let max_file_size = read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR)
+                .or(Some(DEFAULT_MAX_IPFS_MAP_FILE_SIZE));
+            restrict_file_size(path, &stat, &max_file_size)?;
+
+            let mut stream = client.cat(&path).compat().fuse();
+
+            let mut buf = BytesMut::with_capacity(1024);
+
+            // Count the number of lines we've already successfully deserialized.
+            // We need that to adjust the line number in error messages from serde_json
+            // to translate from line numbers in the snippet we are deserializing
+            // to the line number in the overall file
+            let mut count = 0;
+
+            let stream: JsonValueStream = Box::pin(
+                poll_fn(move || -> Poll<Option<JsonStreamValue>, failure::Error> {
+                    loop {
+                        if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
+                            let line_bytes = buf.split_to(offset + 1);
+                            count += 1;
+                            if line_bytes.len() > 1 {
+                                let line = std::str::from_utf8(&line_bytes)?;
+                                let res = match serde_json::from_str::<Value>(line) {
+                                    Ok(v) => Ok(Async::Ready(Some(JsonStreamValue {
+                                        value: v,
+                                        line: count,
+                                    }))),
+                                    Err(e) => {
+                                        // Adjust the line number in the serde error. This
+                                        // is fun because we can only get at the full error
+                                        // message, and not the error message without line number
+                                        let msg = e.to_string();
+                                        let msg = msg.split(" at line ").next().unwrap();
+                                        Err(format_err!(
+                                            "{} at line {} column {}: '{}'",
+                                            msg,
+                                            e.line() + count - 1,
+                                            e.column(),
+                                            line
+                                        ))
+                                    }
+                                };
+                                return res;
+                            }
+                        } else {
+                            // We only get here if there is no complete line in buf, and
+                            // it is therefore ok to immediately pass an Async::NotReady
+                            // from stream through.
+                            // If we get a None from poll, but still have something in buf,
+                            // that means the input was not terminated with a newline. We
+                            // add that so that the last line gets picked up in the next
+                            // run through the loop.
+                            match try_ready!(stream.poll()) {
+                                Some(b) => buf.extend_from_slice(&b),
+                                None if buf.len() > 0 => buf.extend_from_slice(&[b'\n']),
+                                None => return Ok(Async::Ready(None)),
+                            }
                         }
                     }
-                }
-            },
-        ));
-
-        let max_file_size =
-            read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR).unwrap_or(DEFAULT_MAX_IPFS_MAP_FILE_SIZE);
-
-        restrict_file_size(
-            self.client.clone(),
-            path,
-            self.timeout,
-            Some(max_file_size),
-            Box::new(future::ok(stream)),
-        )
+                })
+                .compat(),
+            );
+            Ok(stream)
+        }
+        .boxed()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ipfs_api::IpfsClient;
     use serde_json::json;
 
     #[tokio::test]
     async fn max_file_size() {
         env::set_var(MAX_IPFS_FILE_SIZE_VAR, "200");
         let file: &[u8] = &[0u8; 201];
-        let client = ipfs_api::IpfsClient::default();
+        let client = IpfsClient::default();
         let resolver = super::LinkResolver::from(client.clone());
 
         let logger = Logger::root(slog::Discard, o!());
 
         let link = client.add(file).await.unwrap().hash;
         let err = LinkResolver::cat(&resolver, &logger, &Link { link: link.clone() })
-            .compat()
             .await
             .unwrap_err();
         env::remove_var(MAX_IPFS_FILE_SIZE_VAR);
@@ -292,15 +318,13 @@ mod tests {
     }
 
     async fn json_round_trip(text: &'static str) -> Result<Vec<Value>, failure::Error> {
-        let client = ipfs_api::IpfsClient::default();
+        let client = IpfsClient::default();
         let resolver = super::LinkResolver::from(client.clone());
 
         let link = client.add(text.as_bytes()).await.unwrap().hash;
 
-        LinkResolver::json_stream(&resolver, &Link { link: link.clone() })
-            .and_then(|stream| stream.map(|sv| sv.value).collect())
-            .compat()
-            .await
+        let stream = LinkResolver::json_stream(&resolver, &Link { link }).await?;
+        stream.map_ok(|sv| sv.value).try_collect().await
     }
 
     #[tokio::test]

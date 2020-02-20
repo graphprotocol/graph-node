@@ -1,4 +1,4 @@
-use futures::future;
+use futures01::future;
 use std::env;
 use std::str::FromStr;
 use std::time::{Duration, Instant};

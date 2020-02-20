@@ -125,8 +125,9 @@ async fn main() {
                 .takes_value(true)
                 .required(true)
                 .long("ipfs")
+                .multiple(true)
                 .value_name("HOST:PORT")
-                .help("HTTP address of an IPFS node"),
+                .help("HTTP addresses of IPFS nodes"),
         )
         .arg(
             Arg::with_name("http-port")
@@ -323,8 +324,9 @@ async fn main() {
     info!(logger, "Starting up");
 
     // Parse the IPFS URL from the `--ipfs` command line argument
-    let ipfs_address = matches
-        .value_of("ipfs")
+    let ipfs_addresses: Vec<_> = matches
+        .values_of("ipfs")
+        .expect("At least one IPFS node is required")
         .map(|uri| {
             if uri.starts_with("http://") || uri.starts_with("https://") {
                 String::from(uri)
@@ -332,8 +334,7 @@ async fn main() {
                 format!("http://{}", uri)
             }
         })
-        .unwrap()
-        .to_owned();
+        .collect();
 
     // Optionally, identify the Elasticsearch logging configuration
     let elastic_config =
@@ -348,55 +349,62 @@ async fn main() {
     // Create a component and subgraph logger factory
     let logger_factory = LoggerFactory::new(logger.clone(), elastic_config);
 
-    info!(
-        logger,
-        "Trying IPFS node at: {}",
-        SafeDisplay(&ipfs_address)
-    );
-
-    // Try to create an IPFS client for this URL
-    let ipfs_client = match IpfsClient::new_from_uri(ipfs_address.as_ref()) {
-        Ok(ipfs_client) => ipfs_client,
-        Err(e) => {
-            error!(
+    // Try to create IPFS clients for each URL
+    let ipfs_clients: Vec<_> = ipfs_addresses
+        .into_iter()
+        .map(|ipfs_address| {
+            info!(
                 logger,
-                "Failed to create IPFS client for `{}`: {}",
-                SafeDisplay(&ipfs_address),
-                e
+                "Trying IPFS node at: {}",
+                SafeDisplay(&ipfs_address)
             );
-            panic!("Could not connect to IPFS");
-        }
-    };
 
-    // Test the IPFS client by getting the version from the IPFS daemon
-    let ipfs_test = ipfs_client.clone();
-    let ipfs_ok_logger = logger.clone();
-    let ipfs_err_logger = logger.clone();
-    let ipfs_address_for_ok = ipfs_address.clone();
-    let ipfs_address_for_err = ipfs_address.clone();
-    graph::spawn(async move {
-        ipfs_test
-            .version()
-            .map_err(move |e| {
-                error!(
-                    ipfs_err_logger,
-                    "Is there an IPFS node running at \"{}\"?",
-                    SafeDisplay(ipfs_address_for_err),
-                );
-                panic!("Failed to connect to IPFS: {}", e);
-            })
-            .map_ok(move |_| {
-                info!(
-                    ipfs_ok_logger,
-                    "Successfully connected to IPFS node at: {}",
-                    SafeDisplay(ipfs_address_for_ok)
-                );
-            })
-            .await
-    });
+            let ipfs_client = match IpfsClient::new_from_uri(&ipfs_address) {
+                Ok(ipfs_client) => ipfs_client,
+                Err(e) => {
+                    error!(
+                        logger,
+                        "Failed to create IPFS client for `{}`: {}",
+                        SafeDisplay(&ipfs_address),
+                        e
+                    );
+                    panic!("Could not connect to IPFS");
+                }
+            };
+
+            // Test the IPFS client by getting the version from the IPFS daemon
+            let ipfs_test = ipfs_client.clone();
+            let ipfs_ok_logger = logger.clone();
+            let ipfs_err_logger = logger.clone();
+            let ipfs_address_for_ok = ipfs_address.clone();
+            let ipfs_address_for_err = ipfs_address.clone();
+            graph::spawn(async move {
+                ipfs_test
+                    .version()
+                    .map_err(move |e| {
+                        error!(
+                            ipfs_err_logger,
+                            "Is there an IPFS node running at \"{}\"?",
+                            SafeDisplay(ipfs_address_for_err),
+                        );
+                        panic!("Failed to connect to IPFS: {}", e);
+                    })
+                    .map_ok(move |_| {
+                        info!(
+                            ipfs_ok_logger,
+                            "Successfully connected to IPFS node at: {}",
+                            SafeDisplay(ipfs_address_for_ok)
+                        );
+                    })
+                    .await
+            });
+
+            ipfs_client
+        })
+        .collect();
 
     // Convert the client into a link resolver
-    let link_resolver = Arc::new(LinkResolver::from(ipfs_client));
+    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients));
 
     // Set up Prometheus registry
     let prometheus_registry = Arc::new(Registry::new());
@@ -684,15 +692,16 @@ async fn main() {
                     .expect("Subgraph hash must be a valid IPFS hash");
 
                 graph::spawn(
-                    subgraph_registrar
-                        .create_subgraph(name.clone())
-                        .and_then(move |_| {
-                            subgraph_registrar.create_subgraph_version(name, subgraph_id, node_id)
-                        })
-                        .map_err(|e| {
-                            panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)
-                        })
-                        .compat(),
+                    async move {
+                        subgraph_registrar
+                            .create_subgraph(name.clone())
+                            .compat()
+                            .await?;
+                        subgraph_registrar
+                            .create_subgraph_version(name, subgraph_id, node_id)
+                            .await
+                    }
+                    .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
                 );
             }
 
