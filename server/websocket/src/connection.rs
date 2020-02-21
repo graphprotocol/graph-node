@@ -1,11 +1,13 @@
 use futures::future::IntoFuture;
-use futures::stream::SplitStream;
 use futures::sync::mpsc;
+use futures03::stream::SplitStream;
 use graphql_parser::parse_query;
+use http::StatusCode;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
+use tokio::prelude::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
@@ -86,7 +88,7 @@ fn send_message(
     msg: OutgoingMessage,
 ) -> Result<(), WsError> {
     sink.unbounded_send(msg.into())
-        .map_err(|_| WsError::Http(500))
+        .map_err(|_| WsError::Http(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
 /// Helper function to send error messages.
@@ -96,7 +98,7 @@ fn send_error_string(
     error: String,
 ) -> Result<(), WsError> {
     sink.unbounded_send(OutgoingMessage::from_error_string(operation_id, error).into())
-        .map_err(|_| WsError::Http(500))
+        .map_err(|_| WsError::Http(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
 /// Responsible for recording operation ids and stopping them.
@@ -168,7 +170,7 @@ pub struct GraphQlConnection<Q, S> {
 impl<Q, S> GraphQlConnection<Q, S>
 where
     Q: GraphQlRunner,
-    S: tokio_io::AsyncRead + tokio_io::AsyncWrite + Send + 'static,
+    S: AsyncRead + AsyncWrite + Send + 'static + Unpin,
 {
     /// Creates a new GraphQL subscription service.
     pub(crate) fn new(
@@ -186,18 +188,18 @@ where
         }
     }
 
-    fn handle_incoming_messages(
-        ws_stream: SplitStream<WebSocketStream<S>>,
+    async fn handle_incoming_messages(
+        mut ws_stream: SplitStream<WebSocketStream<S>>,
         mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
         connection_id: String,
         schema: Arc<Schema>,
         graphql_runner: Arc<Q>,
-    ) -> impl Future<Item = (), Error = WsError> {
+    ) -> Result<(), WsError> {
         let mut operations = Operations::new(msg_sink.clone());
 
         // Process incoming messages as long as the WebSocket is open
-        ws_stream.for_each(move |ws_msg| {
+        while let Some(ws_msg) = ws_stream.try_next().await? {
             use self::IncomingMessage::*;
             use self::OutgoingMessage::*;
 
@@ -221,7 +223,7 @@ where
                     msg_sink.close().unwrap();
 
                     // Return an error here to terminate the connection
-                    Err(WsError::ConnectionClosed(None))
+                    Err(WsError::ConnectionClosed)
                 }
 
                 // When receiving a stop request
@@ -353,15 +355,16 @@ where
                     graph::spawn(run_subscription.compat());
                     Ok(())
                 }
-            }
-        })
+            }?
+        }
+        Ok(())
     }
 }
 
 impl<Q, S> IntoFuture for GraphQlConnection<Q, S>
 where
     Q: GraphQlRunner,
-    S: tokio_io::AsyncRead + tokio_io::AsyncWrite + Send + 'static,
+    S: AsyncRead + AsyncWrite + Send + 'static + Unpin,
 {
     type Future = Box<dyn Future<Item = Self::Item, Error = Self::Error> + Send>;
     type Item = ();
@@ -387,20 +390,20 @@ where
         );
 
         // Send outgoing messages asynchronously
-        let ws_writer = msg_stream.forward(ws_sink.sink_map_err(|_| ()));
+        let ws_writer = msg_stream.forward(ws_sink.compat().sink_map_err(|_| ()));
 
         // Silently swallow internal send results and errors. There is nothing
         // we can do about these errors ourselves. Clients will be disconnected
         // as a result of this but most will try to reconnect (GraphiQL for sure,
         // Apollo maybe).
         let ws_writer = ws_writer.map(|_| ());
-        let ws_reader = ws_reader.map(|_| ()).map_err(|_| ());
+        let ws_reader = Box::pin(ws_reader.map_err(|_| ()));
 
         // Return a future that is fulfilled when either we or the client close
         // our/their end of the WebSocket stream
         let logger = self.logger.clone();
         let id = self.id.clone();
-        Box::new(ws_reader.select(ws_writer).then(move |_| {
+        Box::new(ws_reader.compat().select(ws_writer).then(move |_| {
             debug!(logger, "GraphQL over WebSocket connection closed"; "connection" => id);
             Ok(())
         }))

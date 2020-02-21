@@ -1,11 +1,11 @@
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
-use http::Uri;
+use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
-use tokio01::net::TcpListener;
+use tokio::net::TcpListener;
 use tokio_tungstenite::accept_hdr_async;
-use tokio_tungstenite::tungstenite::{handshake::server::Request, Error as WsError};
+use tokio_tungstenite::tungstenite::handshake::server::Request;
 
 use crate::connection::GraphQlConnection;
 
@@ -69,141 +69,112 @@ where
     }
 }
 
+#[async_trait]
 impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
     S: SubgraphDeploymentStore + Store,
 {
-    type ServeError = ();
-
-    fn serve(
-        &mut self,
-        port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
-        let logger = self.logger.clone();
-        let error_logger = self.logger.clone();
-
+    async fn serve(self, port: u16) {
         info!(
-            logger,
+            self.logger,
             "Starting GraphQL WebSocket server at: ws://localhost:{}", port
         );
 
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        let graphql_runner = self.graphql_runner.clone();
-        let store = self.store.clone();
+        let mut socket = TcpListener::bind(&addr)
+            .await
+            .expect("Failed to bind WebSocket port");
 
-        let socket = TcpListener::bind(&addr).expect("Failed to bind WebSocket port");
+        let mut incoming = socket.incoming();
+        while let Some(stream_res) = incoming.next().await {
+            let stream = match stream_res {
+                Ok(stream) => stream,
+                Err(e) => {
+                    trace!(self.logger, "Connection error: {}", e);
+                    continue;
+                }
+            };
+            let logger = self.logger.clone();
+            let logger2 = self.logger.clone();
+            let graphql_runner = self.graphql_runner.clone();
+            let store = self.store.clone();
+            let store2 = self.store.clone();
 
-        let task = socket
-            .incoming()
-            .map_err(move |e| {
-                trace!(error_logger, "Connection error: {}", e);
+            // Subgraph that the request is resolved to (if any)
+            let subgraph_id = Arc::new(Mutex::new(None));
+            let accept_subgraph_id = subgraph_id.clone();
+
+            accept_hdr_async(stream, move |request: &Request, mut response: Response<()>| {
+                // Try to obtain the subgraph ID or name from the URL path.
+                // Return a 404 if the URL path contains no name/ID segment.
+                let path = request.uri().path();
+                let subgraph_id = Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
+                    .map_err(|e| {
+                        error!(
+                            logger,
+                            "Error resolving subgraph ID from URL path";
+                            "error" => e.to_string()
+                        );
+
+                        Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR).body(None).unwrap()
+                    }).and_then(|subgraph_id_opt| {
+                        subgraph_id_opt.ok_or_else(|| {
+                            Response::builder().status(StatusCode::NOT_FOUND).body(None).unwrap()
+                        })
+                    })?;
+
+                // Check if the subgraph is deployed
+                match store.is_deployed(&subgraph_id) {
+                    Err(_) | Ok(false) => {
+                        error!(logger, "Failed to establish WS connection, no data found for subgraph";
+                                        "subgraph_id" => subgraph_id.to_string(),
+                        );
+                        return Err(Response::builder().status(StatusCode::NOT_FOUND).body(None).unwrap());
+                    }
+                    Ok(true) => (),
+                }
+
+                *accept_subgraph_id.lock().unwrap() = Some(subgraph_id);
+                response.headers_mut().insert("Sec-WebSocket-Protocol", HeaderValue::from_static("graphql-ws"));
+                Ok(response)
             })
-            .for_each(move |stream| {
-                let logger = logger.clone();
-                let logger2 = logger.clone();
-                let graphql_runner = graphql_runner.clone();
-                let store = store.clone();
-                let store2 = store.clone();
+            .then(move |result| async move {
+                match result {
+                    Ok(ws_stream) => {
+                        // Obtain the subgraph ID or name that we resolved the request to
+                        let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
 
-                // Subgraph that the request is resolved to (if any)
-                let subgraph_id = Arc::new(Mutex::new(None));
-                let accept_subgraph_id = subgraph_id.clone();
+                        // Get the subgraph schema
+                        let schema = match store2.api_schema(&subgraph_id) {
+                            Ok(schema) => schema,
+                            Err(e) => {
+                                error!(logger2, "Failed to establish WS connection, could not find schema";
+                                                "subgraph" => subgraph_id.to_string(),
+                                                "error" => e.to_string(),
+                                );
+                                return;
+                            }
+                        };
 
-                accept_hdr_async(stream, move |request: &Request| {
-                    // Try to obtain the subgraph ID or name from the URL path.
-                    // Return a 404 if the URL path contains no name/ID segment.
+                        // Spawn a GraphQL over WebSocket connection
+                        let service = GraphQlConnection::new(
+                            &logger2,
+                            schema,
+                            ws_stream,
+                            graphql_runner.clone(),
+                        );
 
-                    // request.path is straight from the HTTP request line
-                    // and might be an absolute URI (according to RFC7230
-                    // section 5.3.2, "a server MUST accept the absolute-form
-                    // in requests").
-                    //
-                    // Use hyper's URI parser to extract the path part of the
-                    // URI. This will be a no-op in the normal case where
-                    // request.path is only a path.
-                    let path = request.path.parse::<Uri>()
-                        .map_err(|e| {
-                            debug!(
-                                logger,
-                                "Could not parse WebSockets request.path";
-                                "error" => e.to_string()
-                            );
-
-                            WsError::Http(400)
-                        })?
-                        .path().to_owned();
-
-                    let subgraph_id = Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
-                        .map_err(|e| {
-                            error!(
-                                logger,
-                                "Error resolving subgraph ID from URL path";
-                                "error" => e.to_string()
-                            );
-
-                            WsError::Http(500)
-                        }).and_then(|subgraph_id_opt| {
-                            subgraph_id_opt.ok_or_else(|| WsError::Http(404))
-                        })?;
-
-                    // Check if the subgraph is deployed
-                    match store.is_deployed(&subgraph_id) {
-                        Err(_) | Ok(false) => {
-                            error!(logger, "Failed to establish WS connection, no data found for subgraph";
-                                            "subgraph_id" => subgraph_id.to_string(),
-                            );
-                            return Err(WsError::Http(404));
-                        }
-                        Ok(true) => (),
+                        // Blocking due to store interactions. Won't be blocking after #905.
+                        graph::spawn_blocking_allow_panic(service.into_future().compat());
                     }
-
-                    *accept_subgraph_id.lock().unwrap() = Some(subgraph_id);
-
-                    Ok(Some(vec![(
-                        String::from("Sec-WebSocket-Protocol"),
-                        String::from("graphql-ws"),
-                    )]))
-                })
-                .then(move |result| {
-                    match result {
-                        Ok(ws_stream) => {
-                            // Obtain the subgraph ID or name that we resolved the request to
-                            let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
-
-                            // Get the subgraph schema
-                            let schema = match store2.api_schema(&subgraph_id) {
-                                Ok(schema) => schema,
-                                Err(e) => {
-                                    error!(logger2, "Failed to establish WS connection, could not find schema";
-                                                    "subgraph" => subgraph_id.to_string(),
-                                                    "error" => e.to_string(),
-                                    );
-                                    return Ok(())
-                                }
-                            };
-
-                            // Spawn a GraphQL over WebSocket connection
-                            let service = GraphQlConnection::new(
-                                &logger2,
-                                schema,
-                                ws_stream,
-                                graphql_runner.clone(),
-                            );
-
-                            // Blocking due to store interactions. Won't be blocking after #905.
-                            graph::spawn_blocking_allow_panic(service.into_future().compat());
-                        }
-                        Err(e) => {
-                            // We gracefully skip over failed connection attempts rather
-                            // than tearing down the entire stream
-                            trace!(logger2, "Failed to establish WebSocket connection: {}", e);
-                        }
+                    Err(e) => {
+                        // We gracefully skip over failed connection attempts rather
+                        // than tearing down the entire stream
+                        trace!(logger2, "Failed to establish WebSocket connection: {}", e);
                     }
-                    Ok(())
-                })
-            });
-
-        Ok(Box::new(task))
+                }
+            }).await
+        }
     }
 }

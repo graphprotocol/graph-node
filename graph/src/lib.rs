@@ -31,6 +31,7 @@ pub use task_spawn::{spawn, spawn_blocking, spawn_blocking_allow_panic};
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
+    pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use ethabi;
     pub use failure::{self, bail, err_msg, format_err, Error, Fail, SyncFailure};
@@ -40,6 +41,7 @@ pub mod prelude {
     pub use futures03;
     pub use futures03::compat::{Future01CompatExt, Sink01CompatExt, Stream01CompatExt};
     pub use futures03::future::{FutureExt as _, TryFutureExt};
+    pub use futures03::sink::SinkExt as _;
     pub use futures03::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
     pub use serde_derive::{Deserialize, Serialize};
