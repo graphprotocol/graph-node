@@ -1,12 +1,8 @@
-use futures::prelude::*;
+use async_trait::async_trait;
 
 /// Common trait for GraphQL subscription servers.
+#[async_trait]
 pub trait SubscriptionServer {
-    type ServeError;
-
     /// Returns a Future that, when spawned, brings up the GraphQL subscription server.
-    fn serve(
-        &mut self,
-        port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError>;
+    async fn serve(self, port: u16);
 }
