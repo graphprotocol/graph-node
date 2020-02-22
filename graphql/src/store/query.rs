@@ -19,7 +19,23 @@ pub fn build_query<'a>(
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
-        ObjectOrInterface::Object(object) => vec![object.name.clone()],
+        ObjectOrInterface::Object(object) => vec![object
+            .directives
+            .iter()
+            .find(|directive| directive.name.eq("originalName"))
+            .map_or(object.name.clone(), |directive| {
+                directive
+                    .arguments
+                    .iter()
+                    .find(|(key, _)| key.eq("name"))
+                    .map(|(_, value)| match value {
+                        q::Value::String(name) => name.clone(),
+                        _ => panic!(
+                            "@originalName directive argument 'name' should be a string value"
+                        ),
+                    })
+                    .expect("@originalName directive should have a name argument")
+            })],
         ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
             .iter()
             .map(|o| o.name.clone())
@@ -214,6 +230,13 @@ pub fn parse_subgraph_id<'a>(
 ) -> Result<SubgraphDeploymentId, QueryExecutionError> {
     let entity = entity.into();
     let entity_name = entity.name().clone();
+    if let Some(_) = entity
+        .directives()
+        .iter()
+        .find(|directive| directive.name == "placeholder")
+    {
+        return Err(QueryExecutionError::SubgraphDeploymentUnavailable);
+    }
     entity
         .directives()
         .iter()
