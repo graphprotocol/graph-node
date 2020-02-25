@@ -1022,7 +1022,13 @@ pub fn coerce_argument_values<'a>(
         let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
         match coercion::coerce_input_value(value, &argument_def, &resolver, &ctx.variable_values) {
             Ok(Some(value)) => {
-                coerced_values.insert(&argument_def.name, value);
+                if argument_def.name == "text".to_string() {
+                    let mut t = BTreeMap::new();
+                    t.insert(field.name.clone(), value);
+                    coerced_values.insert(&argument_def.name, q::Value::Object(t));
+                } else {
+                    coerced_values.insert(&argument_def.name, value);
+                }
             }
             Ok(None) => {}
             Err(e) => errors.push(e),

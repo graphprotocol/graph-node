@@ -1177,7 +1177,7 @@ impl SubgraphDeploymentStore for Store {
         &self,
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error> {
-        get_fulltext_fields(&self.api_schema(subgraph_id)?.document.definitions)
+        Schema::subgraph_fulltext_entity_fields(&self.api_schema(subgraph_id)?.document)
     }
 
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
@@ -1526,4 +1526,3 @@ fn contract_call_id(
 /// it very hard to export items just for testing
 #[cfg(debug_assertions)]
 pub use crate::entities::delete_all_entities_for_test_use_only;
-use graph_graphql::schema::ast::get_fulltext_fields;
