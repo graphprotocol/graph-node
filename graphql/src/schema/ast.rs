@@ -443,7 +443,7 @@ pub fn get_fulltext_fields<'a>(
     for defn in definitions {
         match defn {
             Definition::TypeDefinition(TypeDefinition::Object(obj_type))
-                if obj_type.name != SCHEMA_TYPE_NAME =>
+                if obj_type.name == SCHEMA_TYPE_NAME =>
             {
                 let fulltext_fields = obj_type
                     .fields

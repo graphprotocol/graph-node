@@ -93,12 +93,34 @@ fn build_filter(
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
         Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
-        None | Some(q::Value::Null) => Ok(None),
+        Some(q::Value::Null) => Ok(None),
+        None => match arguments.get(&"text".to_string()) {
+            Some(q::Value::Object(filter)) => build_text_filter_from_object(entity, filter),
+            None => Ok(None),
+            _ => Err(QueryExecutionError::InvalidFilterError),
+        },
         _ => Err(QueryExecutionError::InvalidFilterError),
     }
 }
 
-/// Parses a GraphQL input object into a EntityFilter, if present.
+fn build_text_filter_from_object(
+    _entity: ObjectOrInterface,
+    object: &BTreeMap<q::Name, q::Value>,
+) -> Result<Option<EntityFilter>, QueryExecutionError> {
+    if object.len() != 1 {
+        return Err(QueryExecutionError::FullTextQueryRequiresEqualFilter);
+    }
+
+    Ok(object.into_iter().next().map_or(None, |(key, value)| {
+        if let q::Value::String(s) = value {
+            Some(EntityFilter::Equal(key.clone(), Value::String(s.clone())))
+        } else {
+            None
+        }
+    }))
+}
+
+/// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: ObjectOrInterface,
     object: &BTreeMap<q::Name, q::Value>,
@@ -175,24 +197,42 @@ fn build_order_by(
     entity: ObjectOrInterface,
     arguments: &HashMap<&q::Name, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
-    arguments
-        .get(&"orderBy".to_string())
-        .map_or(Ok(None), |value| match value {
-            q::Value::Enum(name) => {
-                let field = sast::get_field(entity, &name).ok_or_else(|| {
-                    QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
-                })?;
-                sast::get_field_value_type(&field.field_type)
-                    .map(|value_type| Some((name.to_owned(), value_type)))
-                    .map_err(|_| {
-                        QueryExecutionError::OrderByNotSupportedError(
-                            entity.name().to_owned(),
-                            name.clone(),
-                        )
-                    })
+    match arguments.get(&"orderBy".to_string()) {
+        Some(q::Value::Enum(name)) => {
+            let field = sast::get_field(entity, &name).ok_or_else(|| {
+                QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
+            })?;
+            sast::get_field_value_type(&field.field_type)
+                .map(|value_type| Some((name.to_owned(), value_type)))
+                .map_err(|_| {
+                    QueryExecutionError::OrderByNotSupportedError(
+                        entity.name().to_owned(),
+                        name.clone(),
+                    )
+                })
+        }
+        _ => match arguments.get(&"text".to_string()) {
+            Some(q::Value::Object(filter)) => build_text_order_from_object(entity, filter),
+            None => Ok(None),
+            _ => Err(QueryExecutionError::InvalidFilterError),
+        },
+    }
+}
+
+fn build_text_order_from_object(
+    _entity: ObjectOrInterface,
+    object: &BTreeMap<q::Name, q::Value>,
+) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
+    object.into_iter().next().map_or(
+        Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+        |(key, value)| {
+            if let q::Value::String(_) = value {
+                Ok(Some((key.clone(), ValueType::String)))
+            } else {
+                Err(QueryExecutionError::FullTextQueryRequiresEqualFilter)
             }
-            _ => Ok(None),
-        })
+        },
+    )
 }
 
 /// Parses GraphQL arguments into a EntityOrder, if present.

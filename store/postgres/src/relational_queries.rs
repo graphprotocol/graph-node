@@ -179,6 +179,12 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     out.push_sql(name.as_str());
                     Ok(())
                 }
+                ColumnType::TSVector => {
+                    out.push_sql("to_tsquery(");
+                    out.push_bind_param::<Text, _>(s)?;
+                    out.push_sql(")");
+                    Ok(())
+                }
                 _ => unreachable!("only string and enum columns have values of type string"),
             },
             Value::Int(i) => out.push_bind_param::<Integer, _>(i),
@@ -359,7 +365,7 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
             unreachable!("text columns are only ever compared to strings");
         };
         match self.op {
-            Equal | Match => {
+            Equal => {
                 if large {
                     out.push_sql("(");
                     self.push_prefix_cmp(self.op, out.reborrow())?;
@@ -369,6 +375,9 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
                 } else {
                     self.push_prefix_cmp(self.op, out.reborrow())?;
                 }
+            }
+            Match => {
+                self.push_full_cmp(self.op, out.reborrow())?;
             }
             NotEqual => {
                 if large {
@@ -551,9 +560,7 @@ impl<'a> QueryFilter<'a> {
 
         if column.is_fulltext() {
             PrefixComparison::new(Comparison::Match, column, value).walk_ast(out.reborrow())?;
-        }
-
-        if column.is_text() && value.is_string() {
+        } else if column.is_text() && value.is_string() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
         } else {
             out.push_identifier(column.name.as_str())?;
@@ -1299,7 +1306,7 @@ impl SortKey {
                     let sort_value = &self
                         .value
                         .as_ref()
-                        .and_then(|v| v.as_str())
+                        .and_then(|v| v.clone().as_string())
                         .expect("fulltext search queries can only use EntityFilter::Equal");
 
                     // TODO: Support additional ranking algorithms, use the algorithm specified in the subgraph schema
@@ -1308,8 +1315,8 @@ impl SortKey {
                     out.push_identifier(name)?;
                     out.push_sql(", to_tsquery(");
 
-                    out.push_identifier(sort_value.clone())?;
-                    out.push_sql(" ");
+                    out.push_bind_param::<Text, _>(&sort_value)?;
+                    out.push_sql(")) ");
                     out.push_sql(self.direction.to_sql());
                     out.push_sql(" nulls last");
                     if name != PRIMARY_KEY_COLUMN {
