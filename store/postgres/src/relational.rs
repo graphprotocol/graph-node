@@ -858,7 +858,7 @@ impl Table {
             .chain(
                 fulltext_directives
                     .iter()
-                    .map(|field_name| Column::new_fulltext(field_name))
+                    .map(|field_name| Column::new_fulltext(field_name)),
             )
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
@@ -877,6 +877,10 @@ impl Table {
     pub fn column(&self, name: &SqlName) -> Result<&Column, StoreError> {
         self.columns
             .iter()
+            .filter(|column| match column.column_type {
+                ColumnType::TSVector => false,
+                _ => true,
+            })
             .find(|column| &column.name == name)
             .ok_or_else(|| StoreError::UnknownField(name.to_string()))
     }
