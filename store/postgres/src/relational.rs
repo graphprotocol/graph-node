@@ -404,7 +404,12 @@ impl Layout {
         range: EntityRange,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        fn log_query_timing(logger: &Logger, query: &FilterQuery, elapsed: Duration) {
+        fn log_query_timing(
+            logger: &Logger,
+            query: &FilterQuery,
+            elapsed: Duration,
+            entity_count: usize,
+        ) {
             // 20kB
             const MAXLEN: usize = 20_480;
             let mut text = debug_query(&query).to_string().replace("\n", " ");
@@ -419,7 +424,8 @@ impl Layout {
                 logger,
                 "Query timing (SQL)";
                 "query" => text,
-                "time_ms" => elapsed.as_millis()
+                "time_ms" => elapsed.as_millis(),
+                "entity_count" => entity_count
             );
         }
         let query = FilterQuery::new(&self, collection, filter.as_ref(), order, range, block)?;
@@ -433,7 +439,7 @@ impl Layout {
                 debug_query(&query_clone).to_string()
             ))
         })?;
-        log_query_timing(logger, &query_clone, start.elapsed());
+        log_query_timing(logger, &query_clone, start.elapsed(), values.len());
         values
             .into_iter()
             .map(|entity_data| entity_data.to_entity(self).map_err(|e| e.into()))
