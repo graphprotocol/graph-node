@@ -299,7 +299,6 @@ impl<'a> FilterQuery<'a> {
     ///          order by {order}
     ///          limit {first} skip {skip}))
     ///
-    #[allow(unreachable_code, unused_variables)]
     fn query_window(&self, windows: &Vec<EntityWindow>, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 

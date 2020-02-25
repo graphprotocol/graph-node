@@ -1202,9 +1202,6 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    //  self.children(None, None, block, ParentFilter::Outer, out)
-    //  window.children(Some(&self.sort_key), Some(&self.range), self.block, ParentFilter::None, out.reborrow()
-
     fn children(
         &self,
         limit: ParentLimit<'_>,
