@@ -8,9 +8,9 @@ use postgres::{Connection, TlsMode};
 use std::env;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::sync::mpsc::{channel, Receiver};
 use graph::prelude::serde_json;
@@ -303,29 +303,32 @@ impl JsonNotification {
             // Use the large_notifications row ID as the payload for NOTIFY
             select(pg_notify(channel, &payload_id.to_string())).execute(conn)?;
 
-            // Delete any notifications older than 5 minutes; this serves
-            // as a regular cleanup so the table doesn't grow in size indefinitely
+            // Prune old large_notifications. We want to keep the size of the
+            // table manageable, but there's a lot of latitude in how often
+            // we need to clean up before old notifications slow down
+            // data access.
             //
-            // We make sure that we do not wait for any locks when we do the
-            // cleanup to avoid stalling this transaction. There is not much
-            // danger in this cleanup sometimes leaving rows behind, as long
-            // as they get cleaned up eventually
+            // To avoid checking whether cleanup is needed too often, we
+            // only check once every LARGE_NOTIFICATION_CLEANUP_INTERVAL
+            // (per graph-node process) It would be even better to do this
+            // cleanup only once for all graph-node processes accessing the
+            // same database, but that requires a lot more infrastructure
+            lazy_static! {
+                static ref LAST_CLEANUP_CHECK: Mutex<Instant> = Mutex::new(Instant::now());
+            }
 
-            // 'delete' locks the table in 'row exclusive' mode; see that we
-            // can get that lock without waiting
-            let lock =
-                diesel::sql_query("lock table large_notifications in row exclusive mode nowait")
-                    .execute(conn);
-            if lock.is_ok() {
-                diesel::sql_query(format!(
-                    "delete from large_notifications
-                     where id in
-                        (select id from large_notifications
-                         where created_at < current_timestamp - interval '{}s'
-                         for update skip locked)",
-                    LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
-                ))
-                .execute(conn)?;
+            // If we can't get the lock, another thread in this process is
+            // already checking, and we can just skip checking
+            if let Some(mut last_check) = LAST_CLEANUP_CHECK.try_lock().ok() {
+                if last_check.elapsed() > *LARGE_NOTIFICATION_CLEANUP_INTERVAL {
+                    diesel::sql_query(format!(
+                        "delete from large_notifications
+                         where created_at < current_timestamp - interval '{}s'",
+                        LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
+                    ))
+                    .execute(conn)?;
+                    *last_check = Instant::now();
+                }
             }
         }
         Ok(())
