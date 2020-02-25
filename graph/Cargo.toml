@@ -21,7 +21,7 @@ hex = "0.4.0"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
 ipfs-api = { version = "0.6.0-rc", features = ["hyper-tls"] }
-parity-wasm = "0.40"
+parity-wasm = "0.41"
 failure = "0.1.6"
 lazy_static = "1.2.0"
 mockall = "0.6"
