@@ -12,6 +12,7 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -22,7 +23,7 @@ use crate::relational_queries::{
     DeleteQuery, EntityData, FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
     RevertRemoveQuery, UpdateQuery,
 };
-use graph::data::schema::{Schema, SCHEMA_TYPE_NAME};
+use graph::data::schema::{FulltextAlgorithm, FulltextLanguage, Schema, SCHEMA_TYPE_NAME};
 use graph::prelude::{
     format_err, trace, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
@@ -634,7 +635,7 @@ pub enum ColumnType {
     Bytes,
     Int,
     String,
-    TSVector,
+    TSVector((FulltextLanguage, FulltextAlgorithm)),
     /// A user-defined enum. The string contains the name of the Postgres
     /// enum we created for it, fully qualified with the schema
     Enum(SqlName),
@@ -694,7 +695,7 @@ impl ColumnType {
             ColumnType::Bytes => "bytea",
             ColumnType::Int => "integer",
             ColumnType::String => "text",
-            ColumnType::TSVector => "tsvector",
+            ColumnType::TSVector((_, _)) => "tsvector",
             ColumnType::Enum(name) => name.as_str(),
         }
     }
@@ -730,12 +731,45 @@ impl Column {
         let name = directive
             .arguments
             .iter()
-            .find(|(argument, _value)| argument == "name")
+            .find(|(name, _value)| name == "name")
             .and_then(|(_argument, value)| match value {
                 s::Value::String(s) => Some(s.as_str()),
                 _ => unreachable!(),
             })
-            .unwrap(); // Can unwrap because validation has already been performed to ensure there is a name argument
+            .ok_or(StoreError::DirectiveArgumentMissing(
+                directive.name.clone(),
+                "name".to_string(),
+            ))?;
+        let algorithm = directive
+            .arguments
+            .iter()
+            .find(|(name, _value)| name == "algorithm")
+            .map(|(_argument, value)| match value {
+                s::Value::Enum(e) => match FulltextAlgorithm::try_from(e) {
+                    Ok(algorithm) => Ok(algorithm),
+                    Err(e) => Err(StoreError::MalformedDirective(e)),
+                },
+                _ => unreachable!(),
+            })
+            .ok_or(StoreError::DirectiveArgumentMissing(
+                directive.name.clone(),
+                "algorithm".to_string(),
+            ))??;
+        let language = directive
+            .arguments
+            .iter()
+            .find(|(name, _value)| name == "language")
+            .map(|(_argument, value)| match value {
+                s::Value::Enum(e) => match FulltextLanguage::try_from(e) {
+                    Ok(language) => Ok(language),
+                    Err(e) => Err(StoreError::MalformedDirective(e)),
+                },
+                _ => unreachable!(),
+            })
+            .ok_or(StoreError::DirectiveArgumentMissing(
+                directive.name.clone(),
+                "language".to_string(),
+            ))??;
 
         SqlName::check_valid_identifier(name, "attribute")?;
         let sql_name = SqlName::from(name);
@@ -744,7 +778,7 @@ impl Column {
             name: sql_name,
             field: name.to_string(),
             field_type: q::Type::NamedType(String::from("fulltext".to_string())),
-            column_type: ColumnType::TSVector,
+            column_type: ColumnType::TSVector((language, algorithm)),
         })
     }
 
@@ -878,7 +912,7 @@ impl Table {
         self.columns
             .iter()
             .filter(|column| match column.column_type {
-                ColumnType::TSVector => false,
+                ColumnType::TSVector(_) => false,
                 _ => true,
             })
             .find(|column| &column.name == name)
