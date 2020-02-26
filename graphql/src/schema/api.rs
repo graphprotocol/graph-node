@@ -1116,8 +1116,6 @@ type Gravatar @entity {
         let input_schema = parse_schema(SCHEMA).expect("Failed to parse input schema");
         let schema = api_schema(&input_schema).expect("Failed to derive API schema");
 
-        dbg!(&schema);
-
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
             .expect("Query type is missing in derived API schema");
 
