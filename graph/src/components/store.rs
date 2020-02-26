@@ -748,6 +748,8 @@ pub enum StoreError {
     UnknownTable(String),
     #[fail(display = "malformed directive '{}'", _0)]
     MalformedDirective(String),
+    #[fail(display = "directive '{}' is missing an argument '{}'", _0, _1)]
+    DirectiveArgumentMissing(String, String),
     #[fail(display = "query execution failed: {}", _0)]
     QueryExecutionError(String),
     #[fail(display = "invalid identifier: {}", _0)]
