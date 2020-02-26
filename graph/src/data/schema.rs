@@ -119,7 +119,7 @@ impl TryFrom<&String> for FulltextLanguage {
             "DUTCH" => Ok(FulltextLanguage::Dutch),
             "ENGLISH" => Ok(FulltextLanguage::English),
             "FINNISH" => Ok(FulltextLanguage::Finnish),
-            "FRESH" => Ok(FulltextLanguage::Fresh),
+            "FRENCH" => Ok(FulltextLanguage::French),
             "GERMAN" => Ok(FulltextLanguage::German),
             "HUNGARIAN" => Ok(FulltextLanguage::Hungarian),
             "ITALIAN" => Ok(FulltextLanguage::Italian),
@@ -750,25 +750,33 @@ impl Schema {
             _ => return vec![SchemaValidationError::FulltextNameUndefined],
         };
 
-        // Validate that fulltext.name does not overlap with any of the types
-        // TODO: Validate that each fulltext directive has a distinct name
-        let mut all_types = self
-            .document
-            .get_object_and_interface_type_fields()
-            .into_iter()
-            .map(|(name, _)| name.clone())
-            .collect::<Vec<String>>();
-        let mut imported_types = self
-            .imported_types()
-            .into_iter()
-            .map(|(imported_type, _)| match imported_type {
-                ImportedType::Name(name) => name.clone(),
-                ImportedType::NameAs(_, az) => az.clone(),
+        // Validate that each fulltext directive has a distinct name
+        if self
+            .subgraph_schema_object_type()
+            .map_or(vec![], |subgraph_schema_type| {
+                subgraph_schema_type
+                    .directives
+                    .iter()
+                    .filter(|directive| directive.name.eq("fulltext"))
+                    .filter(|fulltext| {
+                        // Collect all @fulltext directives with the same name
+                        fulltext
+                            .arguments
+                            .iter()
+                            .find(|(key, value)| {
+                                key.eq("name")
+                                    && match value {
+                                        Value::String(n) => name.eq(n),
+                                        _ => false,
+                                    }
+                            })
+                            .is_some()
+                    })
+                    .collect()
             })
-            .collect::<Vec<String>>();
-        all_types.append(&mut imported_types);
-
-        if let Some(_) = all_types.iter().find(|typ| typ.eq(&name)) {
+            .len()
+            > 1
+        {
             return vec![SchemaValidationError::FulltextNameConflict(
                 name.to_string(),
             )];
