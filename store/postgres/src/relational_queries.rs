@@ -179,7 +179,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     out.push_sql(name.as_str());
                     Ok(())
                 }
-                ColumnType::TSVector => {
+                ColumnType::TSVector(_) => {
                     out.push_sql("to_tsquery(");
                     out.push_bind_param::<Text, _>(s)?;
                     out.push_sql(")");
@@ -219,11 +219,14 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         out.push_sql("[]");
                         Ok(())
                     }
-                    ColumnType::TSVector => {
+                    // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
+                    ColumnType::TSVector((language, _)) => {
                         let mut iter = values.iter().peekable();
                         out.push_sql("(");
                         while let Some(value) = iter.next() {
                             out.push_sql("to_tsvector(");
+                            out.push_bind_param::<Text, _>(&language.as_sql())?;
+                            out.push_sql("::regconfig, ");
                             out.push_bind_param::<Text, _>(&value)?;
                             if iter.peek().is_some() {
                                 out.push_sql(") || ");
@@ -1301,16 +1304,15 @@ impl SortKey {
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         out.push_sql("order by ");
         if let Some(column) = &self.column {
-            match column.column_type {
-                ColumnType::TSVector => {
+            match &column.column_type {
+                ColumnType::TSVector((_, algorithm)) => {
                     let sort_value = &self
                         .value
                         .as_ref()
                         .and_then(|v| v.clone().as_string())
                         .expect("fulltext search queries can only use EntityFilter::Equal");
 
-                    // TODO: Support additional ranking algorithms, use the algorithm specified in the subgraph schema
-                    out.push_sql("ts_rank(");
+                    out.push_sql(&algorithm.as_sql());
                     let name = column.name.as_str();
                     out.push_identifier(name)?;
                     out.push_sql(", to_tsquery(");
