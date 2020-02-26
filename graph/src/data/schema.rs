@@ -76,7 +76,7 @@ pub enum SchemaValidationError {
     #[fail(display = "Fulltext directive name undefined")]
     FulltextNameUndefined,
     #[fail(display = "Fulltext directive name overlaps with type: {}", _0)]
-    FulltextNameOverlap(String),
+    FulltextNameConflict(String),
     #[fail(display = "Fulltext language is undefined")]
     FulltextLanguageUndefined,
     #[fail(display = "Fulltext language is invalid: {}", _0)]
@@ -769,7 +769,9 @@ impl Schema {
         all_types.append(&mut imported_types);
 
         if let Some(_) = all_types.iter().find(|typ| typ.eq(&name)) {
-            return vec![SchemaValidationError::FulltextNameOverlap(name.to_string())];
+            return vec![SchemaValidationError::FulltextNameConflict(
+                name.to_string(),
+            )];
         } else {
             return vec![];
         }
