@@ -131,7 +131,7 @@ impl TryFrom<&String> for FulltextLanguage {
             "SWEDISH" => Ok(FulltextLanguage::Swedish),
             "TURKISH" => Ok(FulltextLanguage::Turkish),
             invalid => Err(format!(
-                "Provided langauge for fulltext search is invalid: {}",
+                "Provided language for fulltext search is invalid: {}",
                 invalid
             )),
         }
