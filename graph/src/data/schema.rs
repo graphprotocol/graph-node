@@ -87,7 +87,7 @@ pub enum SchemaValidationError {
     FulltextAlgorithmInvalid(String),
     #[fail(display = "Fulltext include undefined")]
     FulltextIncludeUndefined,
-    #[fail(display = "Fulltext include invalid")]
+    #[fail(display = "Fulltext include is invalid")]
     FulltextIncludeInvalid,
 }
 
