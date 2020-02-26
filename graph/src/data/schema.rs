@@ -85,8 +85,6 @@ pub enum SchemaValidationError {
     FulltextAlgorithmUndefined,
     #[fail(display = "Fulltext algorithm is invalid: {}", _0)]
     FulltextAlgorithmInvalid(String),
-    #[fail(display = "Fulltext include undefined")]
-    FulltextIncludeUndefined,
     #[fail(display = "Fulltext include is invalid")]
     FulltextIncludeInvalid,
 }
@@ -846,7 +844,7 @@ impl Schema {
             .map(|(_, value)| value);
         let includes = match include_value {
             Some(Value::List(includes)) if includes.len() > 0 => includes,
-            _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
+            _ => return vec![SchemaValidationError::FulltextIncludeInvalid],
         };
 
         match includes.iter().find(|include| match include {
