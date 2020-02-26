@@ -97,7 +97,7 @@ enum FulltextLanguage {
     Dutch,
     English,
     Finnish,
-    Fresh,
+    French,
     German,
     Hungarian,
     Italian,
