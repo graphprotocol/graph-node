@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use crate::execution::ObjectOrInterface;
 use crate::query::ast as qast;
+use graph::data::schema::ImportedType;
 use graph::data::store;
 use graph::prelude::*;
 
@@ -411,6 +412,23 @@ pub fn get_input_object_definitions(schema: &Document) -> Vec<InputObjectType> {
         .collect()
 }
 
+/// Determines if the field is an imported type
+pub fn is_field_imported(
+    subgraph_id: &SubgraphDeploymentId,
+    schema: &Document,
+    field_definition: &Field,
+) -> bool {
+    let field_type_name = get_field_name(&field_definition.field_type);
+    Schema::new(subgraph_id.clone(), schema.clone())
+        .imported_types()
+        .iter()
+        .find(|(imported, _)| match imported {
+            ImportedType::Name(name) => name.eq(&field_type_name),
+            ImportedType::NameAs(_, az) => az.eq(&field_type_name),
+        })
+        .is_some()
+}
+
 /// If the field has a `@derivedFrom(field: "foo")` directive, obtain the
 /// name of the field (e.g. `"foo"`)
 pub fn get_derived_from_directive<'a>(field_definition: &Field) -> Option<&Directive> {
@@ -497,9 +515,14 @@ pub fn validate_entity(
 
     for field in &object_type.fields {
         let is_derived = get_derived_from_directive(field).is_some();
+        let is_imported = is_field_imported(&key.subgraph_id, schema, field);
         match (entity.get(&field.name), is_derived) {
             (Some(value), false) => {
-                let scalar_type = scalar_value_type(schema, &field.field_type);
+                let scalar_type = if !is_imported {
+                    scalar_value_type(schema, &field.field_type)
+                } else {
+                    ValueType::ID
+                };
                 if is_list(&field.field_type) {
                     // Check for inhomgeneous lists to produce a better
                     // error message for them; other problems, like
