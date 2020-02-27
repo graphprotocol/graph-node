@@ -99,3 +99,4 @@ triggers in each request (defaults to 100000).
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running
   tests. Set to `postgresql://<DBUSER>:<DBPASSWORD>@<DBHOST>:<DBPORT>/<DBNAME>`
+- `GRAPH_KILL_IF_UNRESPONSIVE`: If set, the process will be killed if unresponsive.
