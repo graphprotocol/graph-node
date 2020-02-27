@@ -354,13 +354,14 @@ impl<'a> Join<'a> {
     }
 
     /// Perform the join. The child nodes are distributed into the parent nodes
-    /// according to the join condition, and are stored in the `response_key`
-    /// entry in each parent's `children` map.
+    /// according to the `parent_id` returned by the database in each child as
+    /// attribute `g$parent_id`, and are stored in the `response_key` entry
+    /// in each parent's `children` map.
     ///
     /// The `children` must contain the nodes in the correct order for each
     /// parent; we simply pick out matching children for each parent but
     /// otherwise maintain the order in `children`
-    fn perform(&self, parents: &mut Vec<Node>, children: Vec<Node>, response_key: &str) {
+    fn perform(parents: &mut Vec<Node>, children: Vec<Node>, response_key: &str) {
         let children: Vec<_> = children.into_iter().map(|child| Rc::new(child)).collect();
 
         if parents.len() == 1 {
@@ -369,92 +370,43 @@ impl<'a> Join<'a> {
             return;
         }
 
-        // Organize the join conditions by child type. We do not precompute that
-        // in `new`, because `perform` is only called once for each instance
-        // of a `Join`. For each child type, there might be multiple parent
-        // types that require different ways of joining to them
-        let conds_by_child: HashMap<_, Vec<_>> =
-            self.conds.iter().fold(HashMap::default(), |mut map, cond| {
-                map.entry(cond.child_type).or_default().push(cond);
-                map
-            });
-
-        // Build a map (parent_type, child_key) -> Vec<child> for joining by grouping
-        // children by their child_field
-        let mut grouped: BTreeMap<(&str, &str), Vec<Rc<Node>>> = BTreeMap::default();
+        // Build a map parent_id -> Vec<child> that we will use to add
+        // children to their parent. This relies on the fact that interfaces
+        // make sure that id's are distinct across all implementations of the
+        // interface.
+        let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
         for child in children.iter() {
-            for cond in conds_by_child.get(child.typename()).expect(&format!(
-                "query results only contain known types: {}",
-                child.typename()
-            )) {
-                match child
-                    .get("g$parent_id")
-                    .expect("the query that produces 'child' ensures there is always a g$parent_id")
-                {
-                    StoreValue::String(key) => grouped
-                        .entry((cond.parent_type, key))
-                        .or_default()
-                        .push(child.clone()),
-                    StoreValue::List(list) => {
-                        for key in list {
-                            match key {
-                                StoreValue::String(key) => grouped
-                                    .entry((cond.parent_type, key))
-                                    .or_default()
-                                    .push(child.clone()),
-                                _ => unreachable!("a list of join keys contains only strings"),
-                            }
-                        }
-                    }
-                    _ => unreachable!("join fields are strings or lists"),
-                }
+            match child
+                .get("g$parent_id")
+                .expect("the query that produces 'child' ensures there is always a g$parent_id")
+            {
+                StoreValue::String(key) => grouped.entry(key).or_default().push(child.clone()),
+                _ => unreachable!("the parent_id returned by the query is always a string"),
             }
         }
 
-        // Organize the join conditions by parent type.
-        let conds_by_parent: HashMap<_, Vec<_>> =
-            self.conds.iter().fold(HashMap::default(), |mut map, cond| {
-                map.entry(cond.parent_type).or_default().push(cond);
-                map
-            });
-
         // Add appropriate children using grouped map
         for parent in parents.iter_mut() {
-            // It is possible that we do not have a join condition for some
-            // parent types. That can happen, for example, if the parents
-            // were the result of querying for an interface type, and we
-            // have to get children for some of the parents, but not others.
-            // If a parent type is not mentioned in any join conditions,
-            // we skip it by looping over an empty vector.
-            //
-            // See the test interface_inline_fragment_with_subquery in
-            // core/tests/interfaces.rs for an example.
-            for cond in conds_by_parent.get(parent.typename()).unwrap_or(&vec![]) {
-                // Set the `response_key` field in `parent`. Make sure that even
-                // if `parent` has no matching `children`, the field gets set (to
-                // an empty `Vec`)
-                // This is complicated by the fact that, if there was a type
-                // condition, we should only change parents that meet the type
-                // condition; we set it for all parents regardless, as that does
-                // not cause problems in later processing, but make sure that we
-                // do not clobber an entry under this `response_key` that might
-                // have been set by a previous join by appending values rather
-                // than using straight insert into the parent
-                let mut values = parent
-                    .id()
-                    .ok()
-                    .and_then(|id| {
-                        grouped
-                            .get(&(cond.parent_type, &id))
-                            .map(|values| values.clone())
-                    })
-                    .unwrap_or(vec![]);
-                parent
-                    .children
-                    .entry(response_key.to_owned())
-                    .or_default()
-                    .append(&mut values);
-            }
+            // Set the `response_key` field in `parent`. Make sure that even
+            // if `parent` has no matching `children`, the field gets set (to
+            // an empty `Vec`)
+            // This is complicated by the fact that, if there was a type
+            // condition, we should only change parents that meet the type
+            // condition; we set it for all parents regardless, as that does
+            // not cause problems in later processing, but make sure that we
+            // do not clobber an entry under this `response_key` that might
+            // have been set by a previous join by appending values rather
+            // than using straight insert into the parent
+            let mut values = parent
+                .id()
+                .ok()
+                .and_then(|id| grouped.get(&*id).map(|values| values.clone()))
+                .unwrap_or(vec![]);
+            parent
+                .children
+                .entry(response_key.to_owned())
+                .or_default()
+                .append(&mut values);
         }
     }
 
@@ -668,7 +620,7 @@ where
                                     &child_object_type,
                                 ) {
                                     Ok(children) => {
-                                        join.perform(&mut parents, children, response_key)
+                                        Join::perform(&mut parents, children, response_key)
                                     }
                                     Err(mut e) => errors.append(&mut e),
                                 }
