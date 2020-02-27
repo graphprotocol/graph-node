@@ -115,8 +115,11 @@ pub struct StoreConfig {
     pub network_name: String,
 }
 
+/// Commonly needed information about a subgraph that we cache in
+/// `Store.subgraph_cache`. Only immutable subgraph data can be cached this
+/// way as the cache lives for the lifetime of the `Store` object
 #[derive(Clone)]
-struct SchemaPair {
+struct SubgraphInfo {
     /// The schema as supplied by the user
     input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
@@ -134,7 +137,9 @@ pub struct Store {
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
-    schema_cache: Mutex<LruCache<SubgraphDeploymentId, SchemaPair>>,
+
+    /// A cache of commonly needed data about a subgraph.
+    subgraph_cache: Mutex<LruCache<SubgraphDeploymentId, SubgraphInfo>>,
 
     /// A cache for the storage metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
@@ -179,7 +184,7 @@ impl Store {
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0 as u64).into(),
             conn: pool,
-            schema_cache: Mutex::new(LruCache::with_capacity(100)),
+            subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
             storage_cache: e::make_storage_cache(),
             registry,
         };
@@ -703,9 +708,9 @@ impl Store {
         Ok(storage.clone())
     }
 
-    fn cached_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SchemaPair, Error> {
-        if let Some(pair) = self.schema_cache.lock().unwrap().get(&subgraph_id) {
-            return Ok(pair.clone());
+    fn subgraph_info(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SubgraphInfo, Error> {
+        if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
+            return Ok(info.clone());
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
@@ -741,14 +746,14 @@ impl Store {
         schema.document = api_schema(&schema.document)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
-        let pair = SchemaPair {
+        let info = SubgraphInfo {
             input: Arc::new(input_schema),
             api: Arc::new(schema),
         };
 
         // Insert the schema into the cache.
-        let mut cache = self.schema_cache.lock().unwrap();
-        cache.insert(subgraph_id.clone(), pair);
+        let mut cache = self.subgraph_cache.lock().unwrap();
+        cache.insert(subgraph_id.clone(), info);
 
         Ok(cache.get(&subgraph_id).unwrap().clone())
     }
@@ -1103,11 +1108,11 @@ impl StoreTrait for Store {
 
 impl SubgraphDeploymentStore for Store {
     fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        Ok(self.cached_schema(subgraph_id)?.input)
+        Ok(self.subgraph_info(subgraph_id)?.input)
     }
 
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        Ok(self.cached_schema(subgraph_id)?.api)
+        Ok(self.subgraph_info(subgraph_id)?.api)
     }
 
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
