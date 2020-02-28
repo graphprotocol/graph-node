@@ -307,7 +307,7 @@ type {} @entity {{
         type_name_b: String,
     ) -> Schema {
         let schema = format!(
-          r#"
+            r#"
 type {} @entity {{
   id: ID!
   b: {}!
@@ -317,7 +317,7 @@ type {} @entity {{
   id: ID!
   a: {}!
 }}
-"# ,
+"#,
             type_name_a, type_name_b, type_name_b, type_name_a,
         );
         let document = graphql_parser::parse_schema(&schema).unwrap();
@@ -345,7 +345,6 @@ type {} @entity {{
 
         let merged = merged_schema(&root_schema, schemas);
 
-
         match merged
             .document
             .get_object_type_definitions()
@@ -355,7 +354,7 @@ type {} @entity {{
             None => panic!("Failed to merge type A"),
             _ => {
                 // These assertsions exist in other tests
-            },
+            }
         }
 
         match merged
@@ -367,7 +366,7 @@ type {} @entity {{
             None => panic!("Failed to merge type B"),
             _ => {
                 // These assertsions exist in other tests
-            },
+            }
         }
     }
 
