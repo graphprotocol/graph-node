@@ -1121,12 +1121,10 @@ impl StoreTrait for Store {
 
     fn block_number(
         &self,
-        _: &SubgraphDeploymentId,
+        subgraph_id: &SubgraphDeploymentId,
         hash: H256,
     ) -> Result<Option<BlockNumber>, StoreError> {
         use crate::db_schema::ethereum_blocks::dsl;
-
-        let hash = format!("{:x}", hash);
 
         // We should also really check that the block with the given hash is
         // on the chain starting at the subgraph's current head. That check is
@@ -1134,16 +1132,26 @@ impl StoreTrait for Store {
         // available. Ideally, we'd have the last REORG_THRESHOLD blocks in
         // memory so that we can check against them, and then mark in the
         // database the blocks on the main chain that we consider final
-        let number: Option<i64> = dsl::ethereum_blocks
-            .select(dsl::number)
-            .filter(dsl::hash.eq(hash))
-            .filter(dsl::network_name.eq(&self.network_name))
+        let block: Option<(i64, String)> = dsl::ethereum_blocks
+            .select((dsl::number, dsl::network_name))
+            .filter(dsl::hash.eq(format!("{:x}", hash)))
             .first(&*self.get_conn()?)
             .optional()?;
-        number
-            .map(|number| {
-                BlockNumber::try_from(number)
-                    .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
+        let subgraph_network = self.network_name(subgraph_id)?;
+        block
+            .map(|(number, network_name)| {
+                if subgraph_network.is_none() || Some(&network_name) == subgraph_network.as_ref() {
+                    BlockNumber::try_from(number)
+                        .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
+                } else {
+                    Err(StoreError::QueryExecutionError(format!(
+                        "subgraph {} belongs to network {} but block {:x} belongs to network {}",
+                        subgraph_id,
+                        subgraph_network.unwrap_or("(none)".to_owned()),
+                        hash,
+                        network_name
+                    )))
+                }
             })
             .transpose()
     }
