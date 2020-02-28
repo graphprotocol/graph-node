@@ -892,7 +892,7 @@ impl Table {
             .chain(
                 fulltext_directives
                     .iter()
-                    .map(|field_name| Column::new_fulltext(field_name)),
+                    .map(|directive| Column::new_fulltext(directive)),
             )
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
@@ -1296,19 +1296,25 @@ create index attr_2_2_habitat_dwellers
     on rel.\"habitat\" using gin(\"dwellers\");
 
 ";
-
     const FULLTEXT_GQL: &str = "
-type Animal @entity @fulltext(
+type _Schema_ @fulltext(
     name: \"search\"
     language: ENGLISH
     algorithm: RANKED
-    includes: [\
-        {field: \"name\"},
-        {field: \"species\"}
-    ]) {
+    include: [\
+        {
+            entity: \"Animal\",
+            fields: [
+                {field: \"name\", weight: A},
+                {field: \"species\", weight: A}
+            ]
+        }
+    ]
+)
+type Animal @entity  {
     id: ID!,
-    name: String! @fulltext(name: \"search\")
-    species: String! @fulltext(name: \"search\")
+    name: String!
+    species: String!
     forest: Forest
 }
 type Forest @entity {

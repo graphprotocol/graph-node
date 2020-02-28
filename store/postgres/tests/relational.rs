@@ -18,7 +18,21 @@ use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
 
 use test_store::*;
 
-const THINGS_GQL: &str = "
+const THINGS_GQL: &str = r#"
+    type _Schema_ @fulltext(
+        name: "user_search"
+        language: ENGLISH
+        algorithm: RANKED
+        include: [
+            {
+                entity: "User",
+                fields: [
+                    { name: "name", weight: A },
+                    { name: "email", weight: A },
+                ]
+            }
+        ]
+    )
     type Thing @entity {
         id: ID!
         bigThing: Thing!
@@ -71,7 +85,7 @@ const THINGS_GQL: &str = "
         favorite_color: Color,
         drinks: [String!]
     }
-";
+"#;
 
 const SCHEMA_NAME: &str = "layout";
 
@@ -156,6 +170,13 @@ fn insert_user_entity(
     let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
     user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
     user.insert("email".to_owned(), Value::String(email.to_owned()));
+    user.insert(
+        "user_search".to_owned(),
+        Value::List(vec![
+            Value::String(name.to_owned()),
+            Value::String(email.to_owned()),
+        ]),
+    );
     user.insert("age".to_owned(), Value::Int(age));
     user.insert(
         "seconds_age".to_owned(),
@@ -584,6 +605,25 @@ fn find_string_contains() {
     test_find(
         vec!["2"],
         user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
+    )
+}
+
+#[test]
+fn find_fulltext_prefix() {
+    test_find(
+        vec!["1"],
+        user_query().filter(EntityFilter::Equal("user_search".into(), "Joh:*".into())),
+    )
+}
+
+#[test]
+fn find_fulltext_and() {
+    test_find(
+        vec!["3"],
+        user_query().filter(EntityFilter::Equal(
+            "user_search".into(),
+            "Shaqueeena & teeko@email.com".into(),
+        )),
     )
 }
 
