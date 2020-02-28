@@ -301,6 +301,76 @@ type {} @entity {{
         Schema::new(subgraph_id, document)
     }
 
+    fn schema_with_type_with_circular_dependency(
+        subgraph_id: SubgraphDeploymentId,
+        type_name_a: String,
+        type_name_b: String,
+    ) -> Schema {
+        let schema = format!(
+          r#"
+type {} @entity {{
+  id: ID!
+  b: {}!
+}}
+
+type {} @entity {{
+  id: ID!
+  a: {}!
+}}
+"# ,
+            type_name_a, type_name_b, type_name_b, type_name_a,
+        );
+        let document = graphql_parser::parse_schema(&schema).unwrap();
+        Schema::new(subgraph_id, document)
+    }
+
+    #[test]
+    fn test_import_with_circular_dependencies() {
+        let root_schema = schema_with_import(
+            SubgraphDeploymentId::new("root").unwrap(),
+            String::from("A"),
+            String::from("c1/subgraph"),
+        );
+        let child_1_schema = schema_with_type_with_circular_dependency(
+            SubgraphDeploymentId::new("childone").unwrap(),
+            String::from("A"),
+            String::from("B"),
+        );
+
+        let mut schemas = HashMap::new();
+        schemas.insert(
+            SchemaReference::ByName(SubgraphName::new("c1/subgraph").unwrap()),
+            Arc::new(child_1_schema),
+        );
+
+        let merged = merged_schema(&root_schema, schemas);
+
+
+        match merged
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq("A"))
+        {
+            None => panic!("Failed to merge type A"),
+            _ => {
+                // These assertsions exist in other tests
+            },
+        }
+
+        match merged
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq("B"))
+        {
+            None => panic!("Failed to merge type B"),
+            _ => {
+                // These assertsions exist in other tests
+            },
+        }
+    }
+
     #[test]
     fn test_recursive_import() {
         let root_schema = schema_with_import(
