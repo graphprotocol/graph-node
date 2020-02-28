@@ -511,7 +511,7 @@ async fn main() {
                 generic_store.clone(),
                 node_id.clone(),
             );
-            let subscription_server = GraphQLSubscriptionServer::new(
+            let mut subscription_server = GraphQLSubscriptionServer::new(
                 &logger,
                 graphql_runner.clone(),
                 generic_store.clone(),
@@ -705,7 +705,12 @@ async fn main() {
             );
 
             // Serve GraphQL subscriptions over WebSockets
-            graph::spawn(subscription_server.serve(ws_port));
+            graph::spawn(
+                subscription_server
+                    .serve(ws_port)
+                    .expect("Failed to start GraphQL subscription server")
+                    .compat(),
+            );
 
             // Run the index node server
             graph::spawn(
