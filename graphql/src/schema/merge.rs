@@ -8,7 +8,7 @@ use graph::data::graphql::scalar::BuiltInScalarType;
 use graph::data::schema::{ImportedType, SchemaReference, SCHEMA_TYPE_NAME};
 use graph::prelude::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 
 /// Optimistically merges a subgraph schema with all of its imports.
@@ -40,11 +40,16 @@ pub fn merged_schema(
         .map(|(import, schema_reference)| (import.clone(), schema_reference.clone()))
         .collect();
 
+    let mut visited = HashSet::new();
     while let Some((import, schema_reference)) = imports.pop() {
         let (original_name, new_name) = match import {
             ImportedType::Name(name) => (name.clone(), name),
             ImportedType::NameAs(name, az) => (name, az),
         };
+
+        if visited.contains(&new_name) {
+            continue;
+        }
 
         match schemas.get(&schema_reference) {
             Some(schema) => {
@@ -100,6 +105,7 @@ pub fn merged_schema(
                         .document
                         .definitions
                         .push(Definition::TypeDefinition(TypeDefinition::Object(new_obj)));
+                    visited.insert(new_name);
 
                     // Import each none scalar field
                     obj.fields
