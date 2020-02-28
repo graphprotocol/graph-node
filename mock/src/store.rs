@@ -91,7 +91,9 @@ mock! {
         fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 
         fn uses_relational_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error>;
-    }
+
+        fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error>;
+}
 
     trait ChainStore: Send + Sync + 'static {
         fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;

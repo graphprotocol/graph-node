@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
+use graph::data::subgraph::schema::EthereumContractDataSourceEntity;
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
@@ -27,6 +28,7 @@ use graph::prelude::{
     SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
     SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
+
 use graph_chain_ethereum::BlockIngestorMetrics;
 use graph_graphql::prelude::api_schema;
 use web3::types::H256;
@@ -124,6 +126,8 @@ struct SubgraphInfo {
     input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
     api: Arc<Schema>,
+    /// The name of the network from which the subgraph is syncing
+    network: Option<String>,
 }
 
 /// A Store based on Diesel and Postgres.
@@ -714,9 +718,13 @@ impl Store {
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
-        let input_schema = if *subgraph_id == *SUBGRAPHS_ID {
-            // The subgraph of subgraphs schema is built-in.
-            include_str!("subgraphs.graphql").to_owned()
+        let (input_schema, network) = if *subgraph_id == *SUBGRAPHS_ID {
+            // The subgraph of subgraphs schema is built-in. Use an impossible
+            // network name so that we will never find blocks for this subgraph
+            (
+                include_str!("subgraphs.graphql").to_owned(),
+                Some("subgraphs".to_owned()),
+            )
         } else {
             let manifest_entity = self
                 .get(EntityKey {
@@ -726,7 +734,7 @@ impl Store {
                 })?
                 .ok_or_else(|| format_err!("Subgraph entity not found {}", subgraph_id))?;
 
-            match manifest_entity.get("schema") {
+            let input_schema = match manifest_entity.get("schema") {
                 Some(Value::String(raw)) => raw.clone(),
                 _ => {
                     return Err(format_err!(
@@ -734,7 +742,41 @@ impl Store {
                         subgraph_id
                     ));
                 }
+            };
+
+            fn bad_data_source(code: i32, subgraph_id: &SubgraphDeploymentId) -> Error {
+                return format_err!(
+                    "Data source for subgraph is malformed, code: {}, subgraph: {}",
+                    code,
+                    subgraph_id
+                );
             }
+
+            let network = match manifest_entity.get("dataSources") {
+                Some(Value::List(dss)) => match dss.first() {
+                    Some(Value::String(dsid)) => {
+                        let data_source = self
+                            .get(EntityKey {
+                                subgraph_id: SUBGRAPHS_ID.clone(),
+                                entity_type: EthereumContractDataSourceEntity::TYPENAME.to_owned(),
+                                entity_id: dsid.to_owned(),
+                            })?
+                            .ok_or_else(|| bad_data_source(1, subgraph_id))?;
+                        match data_source.get("network") {
+                            Some(Value::String(network)) => Ok(Some(network.to_owned())),
+                            None => Ok(None),
+                            _ => Err(bad_data_source(2, subgraph_id)),
+                        }
+                    }
+                    // The NetworkIndexer puts us here as it does not create
+                    // data sources for the subgraphs it creates, and the
+                    // manifest contains an empty list of data sources
+                    None => Ok(None),
+                    _ => Err(bad_data_source(3, subgraph_id)),
+                },
+                _ => Err(bad_data_source(4, subgraph_id)),
+            }?;
+            (input_schema, network)
         };
 
         // Parse the schema and add @subgraphId directives
@@ -749,6 +791,7 @@ impl Store {
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
             api: Arc::new(schema),
+            network: network,
         };
 
         // Insert the schema into the cache.
@@ -1118,6 +1161,10 @@ impl SubgraphDeploymentStore for Store {
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
         self.get_entity_conn(subgraph)
             .map(|econn| econn.uses_relational_schema())
+    }
+
+    fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {
+        Ok(self.subgraph_info(subgraph_id)?.network)
     }
 }
 

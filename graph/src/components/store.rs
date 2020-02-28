@@ -1191,6 +1191,10 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// store internals that should really be hidden and should be used
     /// sparingly and only when absolutely needed
     fn uses_relational_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error>;
+
+    /// Return the name of the network that the subgraph is indexing from. The
+    /// names returned are things like `mainnet` or `ropsten`
+    fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error>;
 }
 
 /// Common trait for blockchain store implementations.
