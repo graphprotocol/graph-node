@@ -1023,9 +1023,10 @@ pub fn coerce_argument_values<'a>(
         match coercion::coerce_input_value(value, &argument_def, &resolver, &ctx.variable_values) {
             Ok(Some(value)) => {
                 if argument_def.name == "text".to_string() {
-                    let mut t = BTreeMap::new();
-                    t.insert(field.name.clone(), value);
-                    coerced_values.insert(&argument_def.name, q::Value::Object(t));
+                    coerced_values.insert(
+                        &argument_def.name,
+                        q::Value::Object(BTreeMap::from_iter(vec![(field.name.clone(), value)])),
+                    );
                 } else {
                     coerced_values.insert(&argument_def.name, value);
                 }

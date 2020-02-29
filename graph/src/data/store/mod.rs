@@ -508,32 +508,36 @@ impl Entity {
         update: Entity,
         fulltext_fields: Option<&HashMap<Attribute, Vec<Attribute>>>,
     ) {
-        let mut fulltext_updates: HashMap<Attribute, Vec<Value>> = HashMap::new();
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
-                Value::String(s) => {
-                    match fulltext_fields {
-                        Some(fields) => match fields.get(&key) {
-                            Some(attributes) => {
-                                for attribute in attributes {
+                Value::String(s) => self.insert(key, Value::String(s)),
+                _ => self.insert(key, value),
+            };
+        }
+
+        if let Some(fields) = fulltext_fields {
+            self.iter()
+                .fold(
+                    BTreeMap::new(),
+                    |mut fulltext_updates, (attribute, value)| {
+                        if let Some(fulltext_fields) = fields.get(attribute) {
+                            if let Value::String(s) = value {
+                                for fulltext_field in fulltext_fields {
                                     fulltext_updates
-                                        .entry(attribute.clone())
+                                        .entry(fulltext_field.clone())
                                         .or_insert_with(Vec::new)
                                         .push(Value::String(s.clone()))
                                 }
                             }
-                            None => (),
-                        },
-                        None => (),
-                    }
-                    self.insert(key, Value::String(s))
-                }
-                _ => self.insert(key, value),
-            };
-        }
-        for (attribute, values) in fulltext_updates {
-            self.insert(attribute, Value::List(values));
+                        }
+                        fulltext_updates
+                    },
+                )
+                .into_iter()
+                .for_each(|(attribute, values)| {
+                    self.insert(attribute, Value::List(values));
+                });
         }
     }
 }
