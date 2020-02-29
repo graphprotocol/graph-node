@@ -10,7 +10,7 @@ fn abort_on_panic<T: Send + 'static>(
     // We're crashing, unwind safety doesn't matter.
     AssertUnwindSafe(f).catch_unwind().unwrap_or_else(|_| {
         println!("Panic in tokio task, aborting!");
-        std::process::exit(1)
+        std::process::abort()
     })
 }
 

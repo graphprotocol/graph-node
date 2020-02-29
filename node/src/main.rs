@@ -753,7 +753,7 @@ async fn main() {
             } else if std::env::var_os("GRAPH_KILL_IF_UNRESPONSIVE").is_some() {
                 // The node is unresponsive, kill it in hopes it will be restarted.
                 crit!(contention_logger, "Node is unresponsive, killing process");
-                std::process::exit(1)
+                std::process::abort()
             }
         }
     });

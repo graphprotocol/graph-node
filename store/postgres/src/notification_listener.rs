@@ -145,7 +145,7 @@ impl NotificationListener {
                                  Aborting to avoid inconsistent state. ({})",
                                 msg
                             );
-                            std::process::exit(1);
+                            std::process::abort();
                         }
                     })
                     .filter(|notification| notification.channel == channel_name.0)
