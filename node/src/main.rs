@@ -1,4 +1,5 @@
 use clap::{App, Arg};
+use coredump::register_panic_handler;
 use git_testament::{git_testament, render_testament};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
@@ -57,6 +58,9 @@ enum ConnectionType {
 #[tokio::main]
 async fn main() {
     env_logger::init();
+
+    // Dump core on panic
+    register_panic_handler().expect("Failed to register coredump panic handler");
 
     // Setup CLI using Clap, provide general info and capture postgres url
     let matches = App::new("graph-node")
