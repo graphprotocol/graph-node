@@ -107,17 +107,19 @@ fn build_text_filter_from_object(
     _entity: ObjectOrInterface,
     object: &BTreeMap<q::Name, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
-    if object.len() != 1 {
-        return Err(QueryExecutionError::FullTextQueryRequiresEqualFilter);
-    }
-
-    Ok(object.into_iter().next().map_or(None, |(key, value)| {
-        if let q::Value::String(s) = value {
-            Some(EntityFilter::Equal(key.clone(), Value::String(s.clone())))
-        } else {
-            None
-        }
-    }))
+    object.into_iter().next().map_or(
+        Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+        |(key, value)| {
+            if let q::Value::String(s) = value {
+                Ok(Some(EntityFilter::Equal(
+                    key.clone(),
+                    Value::String(s.clone()),
+                )))
+            } else {
+                Err(QueryExecutionError::FullTextQueryRequiresEqualFilter)
+            }
+        },
+    )
 }
 
 /// Parses a GraphQL input object into an EntityFilter, if present.
