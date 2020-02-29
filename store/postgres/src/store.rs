@@ -1114,7 +1114,9 @@ impl SubgraphDeploymentStore for Store {
         &self,
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error> {
-        Schema::subgraph_fulltext_entity_fields(&self.api_schema(subgraph_id)?.document)
+        Ok(Schema::subgraph_fulltext_entity_fields(
+            &self.api_schema(subgraph_id)?.document,
+        ))
     }
 
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {

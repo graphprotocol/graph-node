@@ -1274,73 +1274,63 @@ impl Schema {
             })
     }
 
+    // Creates a reference of each entities fulltext covered fields and which fulltext
+    // fields they need to push updates to
     pub fn subgraph_fulltext_entity_fields(
         document: &Document,
-    ) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error> {
-        Ok(Self::subgraph_schema_fulltext_directives(document)
+    ) -> HashMap<Name, HashMap<Name, Vec<Name>>> {
+        Self::subgraph_schema_fulltext_directives(document)
             .into_iter()
             .fold(HashMap::new(), |mut outer_acc, directive| {
-                let fulltext_name = directive
-                    .arguments
-                    .iter()
-                    .find(|(argument, _value)| argument == "name")
-                    .and_then(|(_argument, value)| match value {
-                        Value::String(s) => Some(s.as_str()),
-                        _ => unreachable!(), // Validation should require that fulltext name arguments are Value::String()
-                    })
-                    .unwrap();
-
                 directive
                     .arguments
                     .iter()
-                    .find(|(name, _value)| name == "include")
-                    .map(|(_name, value)| match value {
-                        Value::List(includes) if includes.len() > 0 => {
-                            includes
+                    .find(|(argument, _value)| argument == "name")
+                    .map(|(_argument, value)| {
+                        if let Value::String(fulltext_name) = value {
+                            directive
+                                .arguments
                                 .iter()
-                                .for_each(|include| {
-                                    match include {
-                                        Value::Object(include) => {
-                                            let fulltext_entity = match include.get("entity") {
-                                                Some(Value::String(entity)) => {
-                                                    entity
-                                                }
-                                                _ => panic!("@fulltext includes argument must have an entity argument of type String")
-                                            };
-                                            match include.get("fields") {
-                                                Some(Value::List(fields)) => {
-                                                    fields
-                                                        .iter()
-                                                        .for_each(|field| {
-                                                            match field {
-                                                                Value::Object(field_object) => {
-                                                                    match field_object.get("name") {
-                                                                        Some(Value::String(field_name)) => {
-                                                                            outer_acc.entry(fulltext_entity.clone())
-                                                                                .or_insert_with(|| HashMap::new())
-                                                                                .entry(field_name.clone())
-                                                                                .or_insert_with(|| Vec::new())
-                                                                                .push(String::from(fulltext_name.clone()));
-                                                                        }
-                                                                        _ => panic!("@fulltext field object must have a name argument of type String")
-                                                                    };
-                                                                },
-                                                                _ => unreachable!()
+                                .find(|(name, _value)| name == "include")
+                                .map(|(_name, value)| {
+                                    if let Value::List(includes) = value {
+                                        for include in includes {
+                                            if let Value::Object(include) = include {
+                                                if let (
+                                                    Some(Value::String(entity)),
+                                                    Some(Value::List(fields)),
+                                                ) =
+                                                    (include.get("entity"), include.get("fields"))
+                                                {
+                                                    for field in fields {
+                                                        if let Value::Object(field_object) = field {
+                                                            if let (
+                                                                Some(Value::Enum(_weight)),
+                                                                Some(Value::String(field_name)),
+                                                            ) = (
+                                                                field_object.get("weight"),
+                                                                field_object.get("name"),
+                                                            ) {
+                                                                outer_acc
+                                                                    .entry(entity.clone())
+                                                                    .or_insert_with(|| {
+                                                                        HashMap::new()
+                                                                    })
+                                                                    .entry(field_name.clone())
+                                                                    .or_insert_with(|| Vec::new())
+                                                                    .push(fulltext_name.clone());
                                                             }
-                                                        })
+                                                        }
+                                                    }
                                                 }
-                                                _ => panic!("@fulltext includes argument must have a fields argument of type List")
                                             }
-                                        },
-                                        _ => panic!("Includes argument on @fulltext directive must be an object")
+                                        }
                                     }
-                                })
+                                });
                         }
-                        _ => unreachable!()
                     });
                 outer_acc
             })
-        )
     }
 
     pub fn entity_fulltext_directives<'a>(
