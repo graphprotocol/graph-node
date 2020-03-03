@@ -1183,9 +1183,11 @@ async fn subscription_gets_result_even_without_events() {
     // Execute the subscription and expect at least one result to be
     // available in the result stream
     let stream = execute_subscription(&Subscription { query }, options).unwrap();
-    let results = stream
+    let results: Vec<_> = stream
         .take(1)
         .collect()
+        .map(Result::<_, ()>::Ok)
+        .compat()
         .timeout(Duration::from_secs(3))
         .await
         .unwrap()

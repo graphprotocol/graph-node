@@ -58,7 +58,7 @@ where
         logger: options.logger,
         resolver: Arc::new(options.resolver),
         schema: subscription.query.schema.clone(),
-        document: &subscription.query.document,
+        document: subscription.query.document.clone(),
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
         deadline: None,
@@ -99,7 +99,7 @@ where
                         selection_set,
                         source_stream,
                         options.timeout,
-                    )?;
+                    );
                     Ok(response_stream)
                 }
             }
@@ -112,13 +112,10 @@ where
     }
 }
 
-fn create_source_event_stream<'a, R>(
-    ctx: &'a ExecutionContext<'a, R>,
+fn create_source_event_stream(
+    ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
-) -> Result<StoreEventStreamBox, SubscriptionError>
-where
-    R: Resolver,
-{
+) -> Result<StoreEventStreamBox, SubscriptionError> {
     let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
@@ -139,29 +136,23 @@ where
     resolve_field_stream(ctx, subscription_type, field, argument_values)
 }
 
-fn resolve_field_stream<'a, R>(
-    ctx: &'a ExecutionContext<'a, R>,
-    object_type: &'a s::ObjectType,
-    field: &'a q::Field,
+fn resolve_field_stream(
+    ctx: &ExecutionContext<impl Resolver>,
+    object_type: &s::ObjectType,
+    field: &q::Field,
     _argument_values: HashMap<&q::Name, q::Value>,
-) -> Result<StoreEventStreamBox, SubscriptionError>
-where
-    R: Resolver,
-{
+) -> Result<StoreEventStreamBox, SubscriptionError> {
     ctx.resolver
         .resolve_field_stream(&ctx.schema.document, object_type, field)
         .map_err(SubscriptionError::from)
 }
 
-fn map_source_to_response_stream<'a, R>(
-    ctx: &ExecutionContext<'a, R>,
-    selection_set: &'a q::SelectionSet,
+fn map_source_to_response_stream(
+    ctx: &ExecutionContext<impl Resolver + 'static>,
+    selection_set: &q::SelectionSet,
     source_stream: StoreEventStreamBox,
     timeout: Option<Duration>,
-) -> Result<QueryResultStream, SubscriptionError>
-where
-    R: Resolver + 'static,
-{
+) -> QueryResultStream {
     let logger = ctx.logger.clone();
     let resolver = ctx.resolver.clone();
     let schema = ctx.schema.clone();
@@ -175,50 +166,53 @@ where
     // at least once. This satisfies the GraphQL over Websocket protocol
     // requirement of "respond[ing] with at least one GQL_DATA message", see
     // https://github.com/apollographql/subscriptions-transport-ws/blob/master/PROTOCOL.md#gql_data
-    let trigger_stream = stream::iter_ok(vec![StoreEvent {
+    let trigger_stream = futures03::stream::iter(vec![Ok(StoreEvent {
         tag: 0,
         changes: Default::default(),
-    }]);
+    })]);
 
-    Ok(Box::new(trigger_stream.chain(source_stream).map(
-        move |event| {
-            execute_subscription_event(
-                logger.clone(),
-                resolver.clone(),
-                schema.clone(),
-                document.clone(),
-                &selection_set,
-                variable_values.clone(),
-                event,
-                timeout.clone(),
-                max_first,
-            )
-        },
-    )))
+    Box::new(
+        trigger_stream
+            .chain(source_stream.compat())
+            .then(move |res| match res {
+                Err(()) => {
+                    futures03::future::ready(QueryExecutionError::EventStreamError.into()).boxed()
+                }
+                Ok(event) => execute_subscription_event(
+                    logger.clone(),
+                    resolver.clone(),
+                    schema.clone(),
+                    document.clone(),
+                    selection_set.clone(),
+                    variable_values.clone(),
+                    event,
+                    timeout.clone(),
+                    max_first,
+                )
+                .boxed(),
+            }),
+    )
 }
 
-fn execute_subscription_event<R1>(
+async fn execute_subscription_event(
     logger: Logger,
-    resolver: Arc<R1>,
+    resolver: Arc<impl Resolver + 'static>,
     schema: Arc<Schema>,
     document: q::Document,
-    selection_set: &q::SelectionSet,
+    selection_set: q::SelectionSet,
     variable_values: Arc<HashMap<q::Name, q::Value>>,
     event: StoreEvent,
     timeout: Option<Duration>,
     max_first: u32,
-) -> QueryResult
-where
-    R1: Resolver + 'static,
-{
+) -> QueryResult {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
 
     // Create a fresh execution context with deadline.
     let ctx = ExecutionContext {
-        logger: logger,
-        resolver: resolver,
-        schema: schema,
-        document: &document,
+        logger,
+        resolver,
+        schema,
+        document,
         fields: vec![],
         variable_values,
         deadline: timeout.map(|t| Instant::now() + t),
@@ -228,9 +222,16 @@ where
     };
 
     // We have established that this exists earlier in the subscription execution
-    let subscription_type = sast::get_root_subscription_type(&ctx.schema.document).unwrap();
+    let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
+        .unwrap()
+        .clone();
 
-    let result = execute_selection_set(&ctx, selection_set, subscription_type, &None);
+    let result = graph::spawn_blocking_allow_panic(async move {
+        execute_selection_set(&ctx, &selection_set, &subscription_type, &None)
+    })
+    .await
+    .map_err(|e| vec![QueryExecutionError::Panic(e.to_string())])
+    .and_then(|x| x);
 
     match result {
         Ok(value) => QueryResult::new(Some(value)),

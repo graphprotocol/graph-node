@@ -239,9 +239,9 @@ impl<S> Resolver for StoreResolver<S>
 where
     S: Store,
 {
-    fn prefetch<'r>(
+    fn prefetch(
         &self,
-        ctx: &ExecutionContext<'r, Self>,
+        ctx: &ExecutionContext<Self>,
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))

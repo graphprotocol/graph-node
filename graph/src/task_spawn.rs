@@ -19,6 +19,12 @@ pub fn spawn<T: Send + 'static>(f: impl Future03<Output = T> + Send + 'static) -
     tokio::spawn(abort_on_panic(f))
 }
 
+pub fn spawn_allow_panic<T: Send + 'static>(
+    f: impl Future03<Output = T> + Send + 'static,
+) -> JoinHandle<T> {
+    tokio::spawn(f)
+}
+
 /// Aborts on panic.
 pub fn spawn_blocking<T: Send + 'static>(
     f: impl Future03<Output = T> + Send + 'static,

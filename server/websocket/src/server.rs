@@ -165,8 +165,7 @@ where
                             graphql_runner.clone(),
                         );
 
-                        // Blocking due to store interactions. Won't be blocking after #905.
-                        graph::spawn_blocking_allow_panic(service.into_future().compat());
+                        graph::spawn_allow_panic(service.into_future().compat());
                     }
                     Err(e) => {
                         // We gracefully skip over failed connection attempts rather

@@ -502,9 +502,9 @@ where
     R: GraphQlRunner,
     S: Store + SubgraphDeploymentStore,
 {
-    fn prefetch<'r>(
+    fn prefetch(
         &self,
-        _: &ExecutionContext<'r, Self>,
+        _: &ExecutionContext<Self>,
         _: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         Ok(None)
