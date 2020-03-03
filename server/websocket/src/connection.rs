@@ -336,6 +336,8 @@ where
                                     OutgoingMessage::from_query_result(result_id.clone(), result)
                                 })
                                 .map(WsMessage::from)
+                                .map(Ok)
+                                .compat()
                                 .forward(result_sink.sink_map_err(|_| ()))
                                 .map(|_| ())
                         });
@@ -352,7 +354,7 @@ where
                     });
                     operations.insert(id, guard);
 
-                    graph::spawn(run_subscription.compat());
+                    graph::spawn_allow_panic(run_subscription.compat());
                     Ok(())
                 }
             }?

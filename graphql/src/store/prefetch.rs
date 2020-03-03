@@ -457,15 +457,11 @@ impl<'a> Join<'a> {
 /// cases where the store contains data that violates the data model by having
 /// multiple values for what should be a relationship to a single object in
 /// @derivedFrom fields
-pub fn run<'a, R, S>(
-    ctx: &ExecutionContext<'a, R>,
+pub fn run(
+    ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
-    store: Arc<S>,
-) -> Result<q::Value, Vec<QueryExecutionError>>
-where
-    R: Resolver,
-    S: Store,
-{
+    store: Arc<impl Store>,
+) -> Result<q::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(ctx, store.as_ref(), selection_set).map(|nodes| {
         let mut map = BTreeMap::default();
         map.insert(PREFETCH_KEY.to_owned(), q::Value::Boolean(true));
@@ -480,15 +476,11 @@ where
 }
 
 /// Executes the root selection set of a query.
-fn execute_root_selection_set<'a, R, S>(
-    ctx: &ExecutionContext<'a, R>,
-    store: &S,
-    selection_set: &'a q::SelectionSet,
-) -> Result<Vec<Node>, Vec<QueryExecutionError>>
-where
-    R: Resolver,
-    S: Store,
-{
+fn execute_root_selection_set(
+    ctx: &ExecutionContext<impl Resolver>,
+    store: &impl Store,
+    selection_set: &q::SelectionSet,
+) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.schema.document) {
         Some(t) => t,
@@ -546,17 +538,13 @@ fn object_or_interface_by_name<'a>(
     }
 }
 
-fn execute_selection_set<'a, R, S>(
-    ctx: &ExecutionContext<'a, R>,
-    store: &S,
+fn execute_selection_set(
+    ctx: &ExecutionContext<impl Resolver>,
+    store: &impl Store,
     mut parents: Vec<Node>,
-    selection_set: &'a q::SelectionSet,
+    selection_set: &q::SelectionSet,
     object_type: &ObjectOrInterface,
-) -> Result<Vec<Node>, Vec<QueryExecutionError>>
-where
-    R: Resolver,
-    S: Store,
-{
+) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
     // Group fields with the same response key, so we can execute them together
@@ -657,15 +645,12 @@ where
 /// Collects fields of a selection set. The resulting map indicates for each
 /// response key from which types to fetch what fields to express the effect
 /// of fragment spreads
-fn collect_fields<'a, R>(
-    ctx: &ExecutionContext<'a, R>,
+fn collect_fields<'a>(
+    ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &ObjectOrInterface,
     selection_set: &'a q::SelectionSet,
     visited_fragments: Option<HashSet<&'a q::Name>>,
-) -> HashMap<&'a String, HashMap<TypeCondition, Vec<&'a q::Field>>>
-where
-    R: Resolver,
-{
+) -> HashMap<&'a String, HashMap<TypeCondition, Vec<&'a q::Field>>> {
     let mut visited_fragments = visited_fragments.unwrap_or_default();
     let mut grouped_fields: HashMap<_, HashMap<_, Vec<_>>> = HashMap::new();
 
@@ -785,19 +770,15 @@ where
 }
 
 /// Executes a field.
-fn execute_field<'a, R, S>(
-    ctx: &ExecutionContext<'a, R>,
-    store: &S,
+fn execute_field(
+    ctx: &ExecutionContext<impl Resolver>,
+    store: &impl Store,
     object_type: &ObjectOrInterface<'_>,
     parents: &Vec<Node>,
-    join: &Join<'a>,
-    field: &'a q::Field,
-    field_definition: &'a s::Field,
-) -> Result<Vec<Node>, Vec<QueryExecutionError>>
-where
-    R: Resolver,
-    S: Store,
-{
+    join: &Join<'_>,
+    field: &q::Field,
+    field_definition: &s::Field,
+) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let mut argument_values = match object_type {
         ObjectOrInterface::Object(object_type) => {
             crate::execution::coerce_argument_values(ctx, object_type, field)

@@ -456,9 +456,9 @@ impl<'a> IntrospectionResolver<'a> {
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 impl<'a> Resolver for IntrospectionResolver<'a> {
-    fn prefetch<'r>(
+    fn prefetch(
         &self,
-        _: &ExecutionContext<'r, Self>,
+        _: &ExecutionContext<Self>,
         _: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
         Ok(None)

@@ -64,9 +64,9 @@ impl<'a> ObjectOrInterface<'a> {
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 pub trait Resolver: Clone + Send + Sync {
     /// Prepare for executing a query by prefetching as much data as possible
-    fn prefetch<'a>(
+    fn prefetch(
         &self,
-        ctx: &ExecutionContext<'a, Self>,
+        ctx: &ExecutionContext<Self>,
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>>;
 
