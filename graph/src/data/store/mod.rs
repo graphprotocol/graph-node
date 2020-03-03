@@ -503,11 +503,7 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(
-        &mut self,
-        update: Entity,
-        fulltext_fields: Option<&HashMap<Attribute, Vec<Attribute>>>,
-    ) {
+    pub fn merge_remove_null_fields(&mut self, update: Entity) {
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
@@ -515,30 +511,37 @@ impl Entity {
                 _ => self.insert(key, value),
             };
         }
+    }
 
-        if let Some(fields) = fulltext_fields {
-            self.iter()
-                .fold(
-                    BTreeMap::new(),
-                    |mut fulltext_updates, (attribute, value)| {
-                        if let Some(fulltext_fields) = fields.get(attribute) {
-                            if let Value::String(s) = value {
-                                for fulltext_field in fulltext_fields {
-                                    fulltext_updates
-                                        .entry(fulltext_field.clone())
-                                        .or_insert_with(Vec::new)
-                                        .push(Value::String(s.clone()))
-                                }
-                            }
+    /// Merges fulltext field modifications into this entity.
+    ///
+    /// Each Fulltext API is represented by a virtual field on this entity.
+    /// All updates to fields included in a Fulltext API are also merged into its virtual field.
+    pub fn merge_fulltext_field_updates(
+        &mut self,
+        fulltext_fields: &HashMap<Attribute, Vec<Attribute>>,
+    ) {
+        self.iter()
+            .fold(
+                BTreeMap::new(),
+                |mut fulltext_updates, (attribute, value)| {
+                    if let (Some(fulltext_fields), Value::String(s)) =
+                        (fulltext_fields.get(attribute), value)
+                    {
+                        for fulltext_field in fulltext_fields {
+                            fulltext_updates
+                                .entry(fulltext_field.clone())
+                                .or_insert_with(Vec::new)
+                                .push(Value::String(s.clone()))
                         }
-                        fulltext_updates
-                    },
-                )
-                .into_iter()
-                .for_each(|(attribute, values)| {
-                    self.insert(attribute, Value::List(values));
-                });
-        }
+                    }
+                    fulltext_updates
+                },
+            )
+            .into_iter()
+            .for_each(|(attribute, values)| {
+                self.insert(attribute, Value::List(values));
+            });
     }
 }
 

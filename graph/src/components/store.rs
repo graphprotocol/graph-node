@@ -1509,21 +1509,20 @@ impl EntityCache {
                 (None, Some(updates)) => {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
-                    data.merge_remove_null_fields(
-                        updates,
-                        fulltext_entity_fields.get(&key.entity_type),
-                    );
-                    //                    data.add_fulltext_fields(updates);
+                    data.merge_remove_null_fields(updates);
+                    if let Some(fulltext_fields) = fulltext_entity_fields.get(&key.entity_type) {
+                        data.merge_fulltext_field_updates(fulltext_fields);
+                    }
                     self.current.insert(key.clone(), Some(data.clone()));
                     Some(Insert { key, data })
                 }
                 // Entity may have been changed
                 (Some(current), Some(updates)) => {
                     let mut data = current.clone();
-                    data.merge_remove_null_fields(
-                        updates,
-                        fulltext_entity_fields.get(&key.entity_type),
-                    );
+                    data.merge_remove_null_fields(updates);
+                    if let Some(fulltext_fields) = fulltext_entity_fields.get(&key.entity_type) {
+                        data.merge_fulltext_field_updates(fulltext_fields);
+                    }
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
                         Some(Overwrite { key, data })
