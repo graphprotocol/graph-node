@@ -1100,8 +1100,8 @@ type _Schema_ @fulltext(
     {
       entity: "Gravatar",
       fields: [
-        { name: "displayName", weight: A },
-        { name: "imageUrl", weight: C },
+        { name: "displayName"},
+        { name: "imageUrl"},
       ]
     }
   ]
