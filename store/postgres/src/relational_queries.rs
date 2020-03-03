@@ -1123,7 +1123,7 @@ impl<'a> FilterWindow<'a> {
                 // unnest($parent_ids) as p(id)
                 out.push_sql("unnest(");
                 out.push_bind_param::<Array<Text>, _>(&self.ids)?;
-                out.push_sql(") as p(id)");
+                out.push_sql("::text[]) as p(id)");
             }
             TableLink::Parent(ParentIds::List(child_ids)) => {
                 // Type C
@@ -1158,7 +1158,7 @@ impl<'a> FilterWindow<'a> {
                     }
                     out.push_sql("]");
                 }
-                out.push_sql("])) as p(id, child_ids)");
+                out.push_sql("]::text[][])) as p(id, child_ids)");
             }
             TableLink::Parent(ParentIds::Scalar(child_ids)) => {
                 // Type D
@@ -1631,7 +1631,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("select c.* from ");
         out.push_sql("unnest(");
         out.push_bind_param::<Array<Text>, _>(parent_ids)?;
-        out.push_sql(") as q(id)\n");
+        out.push_sql("::text[]) as q(id)\n");
         out.push_sql(" cross join lateral (");
         for (i, window) in windows.iter().enumerate() {
             if i > 0 {

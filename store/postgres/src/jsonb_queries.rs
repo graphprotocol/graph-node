@@ -222,7 +222,7 @@ impl<'a> FilterQuery<'a> {
                 // unnest($parent_ids) as p(id)
                 out.push_sql("unnest(");
                 out.push_bind_param::<Array<Text>, _>(&window.ids)?;
-                out.push_sql(") as p(id)");
+                out.push_sql("::text[]) as p(id)");
             }
             EntityLink::Parent(ParentLink::List(child_ids)) => {
                 // Type C
@@ -231,16 +231,16 @@ impl<'a> FilterQuery<'a> {
                 out.push_bind_param::<Array<Text>, _>(&window.ids)?;
                 out.push_sql("::text[]), reduce_dim(");
                 Self::matrix_literal(child_ids, out);
-                out.push_sql(")) as p(id, child_ids)");
+                out.push_sql("::text[][])) as p(id, child_ids)");
             }
             EntityLink::Parent(ParentLink::Scalar(child_ids)) => {
                 // Type D
                 // unnest($parent_ids, $child_ids) as p(id, child_id)
                 out.push_sql("unnest(");
                 out.push_bind_param::<Array<Text>, _>(&window.ids)?;
-                out.push_sql(",");
+                out.push_sql("::text[],");
                 out.push_bind_param::<Array<Text>, _>(&child_ids)?;
-                out.push_sql(") as p(id, child_id)");
+                out.push_sql("::text[]) as p(id, child_id)");
             }
         }
         Ok(())
@@ -314,7 +314,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("select c.id, c.data, c.entity from ");
         out.push_sql("unnest(");
         out.push_bind_param::<Array<Text>, _>(&parent_ids)?;
-        out.push_sql(") as q(id) cross join lateral (");
+        out.push_sql("::text[]) as q(id) cross join lateral (");
         for (index, window) in windows.iter().enumerate() {
             if index > 0 {
                 out.push_sql("\nunion all\n");
