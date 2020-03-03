@@ -119,7 +119,7 @@ pub struct StoreConfig {
 }
 
 /// Commonly needed information about a subgraph that we cache in
-/// `Store.subgraph_cache`. Only immutable subgraph data can be cached this
+/// `Store.schema_cache`. Only immutable subgraph data can be cached this
 /// way as the cache lives for the lifetime of the `Store` object
 #[derive(Clone)]
 struct SchemaCacheEntry {
@@ -191,7 +191,7 @@ impl Store {
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0 as u64).into(),
             conn: pool,
-            subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
+            schema_cache: Mutex::new(LruCache::with_capacity(100)),
             storage_cache: e::make_storage_cache(),
             registry,
         };
@@ -833,7 +833,7 @@ impl Store {
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
 
-        let pair = SchemaCacheEntry {
+        let entry = SchemaCacheEntry {
             input: Arc::new(input_schema),
             api: Arc::new(schema),
             network: network,
@@ -842,8 +842,8 @@ impl Store {
         };
 
         // Insert the schema into the cache.
-        let mut cache = self.subgraph_cache.lock().unwrap();
-        cache.insert(subgraph_id.clone(), info);
+        let mut cache = self.schema_cache.lock().unwrap();
+        cache.insert(subgraph_id.clone(), entry);
 
         Ok(cache.get(&subgraph_id).unwrap().clone())
     }
@@ -1206,11 +1206,11 @@ impl StoreTrait for Store {
 
 impl SubgraphDeploymentStore for Store {
     fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.input)
+        Ok(self.cached_schema(subgraph_id)?.input)
     }
 
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.api)
+        Ok(self.cached_schema(subgraph_id)?.api)
     }
 
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
@@ -1219,7 +1219,7 @@ impl SubgraphDeploymentStore for Store {
     }
 
     fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.network)
+        Ok(self.cached_schema(subgraph_id)?.network)
     }
 
     fn resolve_schema_reference(
