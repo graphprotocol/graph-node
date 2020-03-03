@@ -465,7 +465,7 @@ impl Store {
                         // Merge with a new entity since that removes values that
                         // were set to Value::Null
                         let mut entity = Entity::new();
-                        entity.merge_remove_null_fields(data, None);
+                        entity.merge_remove_null_fields(data);
                         conn.insert(&key, entity, None).map(|_| 1)
                     }
                 };
