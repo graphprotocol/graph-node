@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
-use graph::data::subgraph::schema::EthereumContractDataSourceEntity;
 use graph::data::schema::{SchemaImportError, SchemaReference};
+use graph::data::subgraph::schema::EthereumContractDataSourceEntity;
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
@@ -147,7 +147,7 @@ pub struct Store {
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
     schema_cache: Mutex<LruCache<SubgraphDeploymentId, SchemaCacheEntry>>,
-    
+
     /// A cache for the storage metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
@@ -831,7 +831,6 @@ impl Store {
         let mut schema = merged_schema(&input_schema, imported_schemas);
         schema.document = api_schema(&schema.document)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
-
 
         let entry = SchemaCacheEntry {
             input: Arc::new(input_schema),
