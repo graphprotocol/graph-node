@@ -22,5 +22,5 @@ uuid = { version = "0.8.1", features = ["v4"] }
 graph-mock = { path = "../mock" }
 walkdir = "2.3.1"
 test-store = { path = "../store/test-store" }
-hex = "0.4.0"
+hex = "0.4.2"
 graphql-parser = "0.2.3"
