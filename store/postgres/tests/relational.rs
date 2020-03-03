@@ -27,8 +27,8 @@ const THINGS_GQL: &str = r#"
             {
                 entity: "User",
                 fields: [
-                    { name: "name", weight: A },
-                    { name: "email", weight: A },
+                    { name: "name"},
+                    { name: "email"},
                 ]
             }
         ]

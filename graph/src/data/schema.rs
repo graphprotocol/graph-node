@@ -189,29 +189,6 @@ impl FulltextAlgorithm {
     }
 }
 
-enum FulltextWeight {
-    A,
-    B,
-    C,
-    D,
-}
-
-impl TryFrom<&String> for FulltextWeight {
-    type Error = String;
-    fn try_from(weight: &String) -> Result<Self, Self::Error> {
-        match &weight[..] {
-            "A" => Ok(FulltextWeight::A),
-            "B" => Ok(FulltextWeight::B),
-            "C" => Ok(FulltextWeight::C),
-            "D" => Ok(FulltextWeight::D),
-            invalid => Err(format!(
-                "Provided algorithm for fulltext weight is invalid: {}",
-                invalid,
-            )),
-        }
-    }
-}
-
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
 pub enum SchemaImportError {
     #[fail(display = "Schema for imported subgraph `{}` was not found", _0)]
@@ -906,17 +883,11 @@ impl Schema {
                             .iter()
                             .find(|field_item| {
                                 // Ensure that the field in the include exists on the type and is a String
-                                // Ensure that the weight is valid
-                                let (field_name, field_weight) = match field_item {
-                                    Value::Object(field_map) => {
-                                        match (field_map.get("name"), field_map.get("weight")) {
-                                            (
-                                                Some(Value::String(name)),
-                                                Some(Value::Enum(weight)),
-                                            ) => (name, weight),
-                                            _ => return true,
-                                        }
-                                    }
+                                let field_name = match field_item {
+                                    Value::Object(field_map) => match field_map.get("name") {
+                                        Some(Value::String(name)) => name,
+                                        _ => return true,
+                                    },
                                     _ => return true,
                                 };
                                 let field_exists = typ
@@ -935,9 +906,7 @@ impl Schema {
                                         field_is_valid && is_string_field
                                     })
                                     .is_some();
-                                let weight_is_valid =
-                                    FulltextWeight::try_from(field_weight).is_ok();
-                                !(field_exists && weight_is_valid)
+                                !field_exists
                             })
                             .is_some()
                     }
@@ -1274,8 +1243,11 @@ impl Schema {
             })
     }
 
-    // Creates a reference of each entities fulltext covered fields and which fulltext
-    // fields they need to push updates to
+    // Create a reference of entities that are included in Fulltext APIs. It maps the entity to its
+    // fields that are covered by the Fulltext API. The included fields map to the fulltext APIs
+    // which they contribute to.
+    // HashMap<entity_name, HashMap<fulltext_field_name, Vec<fulltext_name>>>
+    // Pattern matching is not exhaustive, unexpected types will be caught by validation.
     pub fn subgraph_fulltext_entity_fields(
         document: &Document,
     ) -> HashMap<Name, HashMap<Name, Vec<Name>>> {
@@ -1304,13 +1276,9 @@ impl Schema {
                                                 {
                                                     for field in fields {
                                                         if let Value::Object(field_object) = field {
-                                                            if let (
-                                                                Some(Value::Enum(_weight)),
-                                                                Some(Value::String(field_name)),
-                                                            ) = (
-                                                                field_object.get("weight"),
-                                                                field_object.get("name"),
-                                                            ) {
+                                                            if let Some(Value::String(field_name)) =
+                                                                field_object.get("name")
+                                                            {
                                                                 outer_acc
                                                                     .entry(entity.clone())
                                                                     .or_insert_with(|| {
@@ -1630,8 +1598,8 @@ type _Schema_ @fulltext(
     {
       entity: "Gravatar",
       fields: [
-        { name: "displayName", weight: A },
-        { name: "imageUrl", weight: C },
+        { name: "displayName"},
+        { name: "imageUrl"},
       ]
     }
   ]

@@ -1215,8 +1215,8 @@ type _Schema_ @fulltext(
         {
             entity: \"Animal\",
             fields: [
-                {field: \"name\", weight: A},
-                {field: \"species\", weight: A}
+                {field: \"name\"},
+                {field: \"species\"}
             ]
         }
     ]
