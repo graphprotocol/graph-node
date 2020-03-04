@@ -43,6 +43,7 @@ pub trait LinkResolver: Send + Sync + 'static {
     /// separately.
     fn json_stream<'a>(
         &'a self,
+        logger: &'a Logger,
         link: &'a Link,
     ) -> Pin<Box<dyn Future<Output = Result<JsonValueStream, failure::Error>> + Send + 'a>>;
 }

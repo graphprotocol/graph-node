@@ -61,37 +61,42 @@ fn read_u64_from_env(name: &str) -> Option<u64> {
 /// make good use of the stat returned.
 async fn select_fastest_client_with_stat<'a>(
     clients: &'a [IpfsClient],
+    logger: &'a Logger,
     path: &'_ str,
     timeout: Duration,
+    do_retry: bool,
 ) -> Result<(ObjectStatResponse, &'a IpfsClient), failure::Error> {
     let mut err: Option<failure::Error> = None;
 
     let mut stats: FuturesUnordered<_> = clients
         .iter()
-        .map(|c| tokio::time::timeout(timeout, c.object_stat(path).map_ok(move |s| (s, c))))
+        .enumerate()
+        .map(|(i, c)| {
+            let retry_fut = if do_retry {
+                retry("object.stat", logger).no_limit()
+            } else {
+                retry("object.stat", logger).limit(1)
+            }
+            .timeout(timeout);
+
+            retry_fut
+                .run(move || c.object_stat(path).map_ok(move |s| (s, i)).boxed().compat())
+                .compat()
+        })
         .collect();
 
     while let Some(result) = stats.next().await {
         match result {
-            // If there is a timeout, use that error if it's the only error.
-            // Prefer other types if error when possible
-            Err(e) => {
-                if err.is_none() {
-                    err = Some(e.into())
-                }
+            Ok((stat, index)) => {
+                return Ok((stat, &clients[index]));
             }
-            Ok(Err(e)) => {
-                err = Some(e.into());
-            }
-            Ok(Ok(value)) => {
-                return Ok(value);
-            }
+            Err(e) => err = Some(e.into()),
         }
     }
 
     Err(err.unwrap_or_else(|| {
         format_err!(
-            "No IPFS clients were supplied to handle the call to object_stat. File: {}",
+            "No IPFS clients were supplied to handle the call to object.stat. File: {}",
             path
         )
     }))
@@ -166,8 +171,14 @@ impl LinkResolverTrait for LinkResolver {
             }
             trace!(logger, "IPFS cache miss"; "hash" => &path);
 
-            let (stat, client) =
-                select_fastest_client_with_stat(&self.clients, &path, self.timeout).await?;
+            let (stat, client) = select_fastest_client_with_stat(
+                &self.clients,
+                logger,
+                &path,
+                self.timeout,
+                self.retry,
+            )
+            .await?;
 
             // FIXME: Having an env variable here is a problem for consensus.
             // Index Nodes should not disagree on whether the file should be read.
@@ -212,13 +223,23 @@ impl LinkResolverTrait for LinkResolver {
         .boxed()
     }
 
-    fn json_stream<'a>(&'a self, link: &'a Link) -> DynTryFuture<'a, JsonValueStream> {
+    fn json_stream<'a>(
+        &'a self,
+        logger: &'a Logger,
+        link: &'a Link,
+    ) -> DynTryFuture<'a, JsonValueStream> {
         async move {
             // Discard the `/ipfs/` prefix (if present) to get the hash.
             let path = link.link.trim_start_matches("/ipfs/");
 
-            let (stat, client) =
-                select_fastest_client_with_stat(&self.clients, path, self.timeout).await?;
+            let (stat, client) = select_fastest_client_with_stat(
+                &self.clients,
+                logger,
+                path,
+                self.timeout,
+                self.retry,
+            )
+            .await?;
 
             let max_file_size = read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR)
                 .or(Some(DEFAULT_MAX_IPFS_MAP_FILE_SIZE));
@@ -321,9 +342,10 @@ mod tests {
         let client = IpfsClient::default();
         let resolver = super::LinkResolver::from(client.clone());
 
+        let logger = Logger::root(slog::Discard, o!());
         let link = client.add(text.as_bytes()).await.unwrap().hash;
 
-        let stream = LinkResolver::json_stream(&resolver, &Link { link }).await?;
+        let stream = LinkResolver::json_stream(&resolver, &logger, &Link { link }).await?;
         stream.map_ok(|sv| sv.value).try_collect().await
     }
 
