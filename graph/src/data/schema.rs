@@ -114,21 +114,21 @@ impl TryFrom<&String> for FulltextLanguage {
     fn try_from(language: &String) -> Result<Self, Self::Error> {
         match &language[..] {
             "SIMPLE" => Ok(FulltextLanguage::Simple),
-            "DANISH" => Ok(FulltextLanguage::Danish),
-            "DUTCH" => Ok(FulltextLanguage::Dutch),
-            "ENGLISH" => Ok(FulltextLanguage::English),
-            "FINNISH" => Ok(FulltextLanguage::Finnish),
-            "FRENCH" => Ok(FulltextLanguage::French),
-            "GERMAN" => Ok(FulltextLanguage::German),
-            "HUNGARIAN" => Ok(FulltextLanguage::Hungarian),
-            "ITALIAN" => Ok(FulltextLanguage::Italian),
-            "NORWEGIAN" => Ok(FulltextLanguage::Norwegian),
-            "PORTUGESE" => Ok(FulltextLanguage::Portugese),
-            "ROMANIAN" => Ok(FulltextLanguage::Romanian),
-            "RUSSIAN" => Ok(FulltextLanguage::Russian),
-            "SPANISH" => Ok(FulltextLanguage::Spanish),
-            "SWEDISH" => Ok(FulltextLanguage::Swedish),
-            "TURKISH" => Ok(FulltextLanguage::Turkish),
+            "DA" => Ok(FulltextLanguage::Danish),
+            "NL" => Ok(FulltextLanguage::Dutch),
+            "EN" => Ok(FulltextLanguage::English),
+            "FI" => Ok(FulltextLanguage::Finnish),
+            "FR" => Ok(FulltextLanguage::French),
+            "DE" => Ok(FulltextLanguage::German),
+            "HU" => Ok(FulltextLanguage::Hungarian),
+            "IT" => Ok(FulltextLanguage::Italian),
+            "NO" => Ok(FulltextLanguage::Norwegian),
+            "PT" => Ok(FulltextLanguage::Portugese),
+            "RO" => Ok(FulltextLanguage::Romanian),
+            "RU" => Ok(FulltextLanguage::Russian),
+            "ES" => Ok(FulltextLanguage::Spanish),
+            "SV" => Ok(FulltextLanguage::Swedish),
+            "TR" => Ok(FulltextLanguage::Turkish),
             invalid => Err(format!(
                 "Provided language for fulltext search is invalid: {}",
                 invalid
@@ -1592,7 +1592,7 @@ fn test_fulltext_directive_validation() {
     const SCHEMA: &str = r#"
 type _Schema_ @fulltext(
   name: "metadata"
-  language: ENGLISH
+  language: EN
   algorithm: RANKED
   include: [
     {
