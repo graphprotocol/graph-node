@@ -8,7 +8,7 @@ use uuid::Uuid;
 use graph::components::ethereum::triggers_in_block;
 use graph::components::store::ModificationsAndCache;
 use graph::data::subgraph::schema::{
-    DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
+    DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity, SubgraphFulltextEntities,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -31,7 +31,7 @@ struct IndexingInputs<B, S> {
     deployment_id: SubgraphDeploymentId,
     network_name: String,
     start_blocks: Vec<u64>,
-    fulltext_fields: HashMap<String, HashMap<Attribute, Vec<Attribute>>>,
+    fulltext_fields: SubgraphFulltextEntities,
     store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     stream_builder: B,
