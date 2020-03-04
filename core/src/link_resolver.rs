@@ -166,8 +166,27 @@ impl LinkResolverTrait for LinkResolver {
             }
             trace!(logger, "IPFS cache miss"; "hash" => &path);
 
-            let (stat, client) =
-                select_fastest_client_with_stat(&self.clients, &path, self.timeout).await?;
+            let retry_fut = if self.retry {
+                retry("object.stat", &logger).no_limit()
+            } else {
+                retry("object.stat", &logger).limit(1)
+            }
+            .timeout(self.timeout);
+
+            // Pick the client that a) has the file and b) responds to
+            // `object.stat` fastest
+            let (stat, client) = retry_fut
+                .run(|| {
+                    let path_for_stat = path.clone();
+                    async move {
+                        select_fastest_client_with_stat(&self.clients, &path_for_stat, self.timeout)
+                            .await
+                    }
+                    .boxed()
+                    .compat()
+                })
+                .compat()
+                .await?;
 
             // FIXME: Having an env variable here is a problem for consensus.
             // Index Nodes should not disagree on whether the file should be read.
