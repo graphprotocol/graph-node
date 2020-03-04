@@ -3,6 +3,7 @@ use graphql_parser::query;
 use graphql_parser::schema;
 use serde::de;
 use serde::{Deserialize, Serialize};
+use stable_hash::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::fmt;
@@ -132,6 +133,7 @@ impl FromStr for ValueType {
     }
 }
 
+// Note: Do not modify fields without also making a backward compatible change to the StableHash impl (below)
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
@@ -144,6 +146,44 @@ pub enum Value {
     Null,
     Bytes(scalar::Bytes),
     BigInt(scalar::BigInt),
+}
+
+impl StableHash for Value {
+    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+        use Value::*;
+        let discriminant = match self {
+            Null => "", // This is the default.
+            String(inner) => {
+                inner.stable_hash(sequence_number.next_child(), state);
+                "String"
+            }
+            Int(inner) => {
+                inner.stable_hash(sequence_number.next_child(), state);
+                "Int"
+            }
+            BigDecimal(inner) => {
+                scalar::big_decimal_stable_hash(inner, sequence_number.next_child(), state);
+                "BigDecimal"
+            }
+            Bool(inner) => {
+                inner.stable_hash(sequence_number.next_child(), state);
+                "Bool"
+            }
+            List(inner) => {
+                inner.stable_hash(sequence_number.next_child(), state);
+                "List"
+            }
+            Bytes(inner) => {
+                inner.stable_hash(sequence_number.next_child(), state);
+                "Bytes"
+            }
+            BigInt(inner) => {
+                inner.stable_hash(sequence_number.next_child(), state);
+                "BigInt"
+            }
+        };
+        discriminant.stable_hash(sequence_number, state);
+    }
 }
 
 impl Value {
@@ -414,9 +454,18 @@ where
     }
 }
 
+// Note: Do not modify fields without making a backward compatible change to the
+//  StableHash impl (below) An entity is represented as a map of attribute names
+//  to values.
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
+
+impl StableHash for Entity {
+    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+        self.0.stable_hash(sequence_number.next_child(), state);
+    }
+}
 
 impl Entity {
     /// Creates a new entity with no attributes set.
