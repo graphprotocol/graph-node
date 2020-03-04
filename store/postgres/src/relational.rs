@@ -1299,7 +1299,7 @@ create index attr_2_2_habitat_dwellers
     const FULLTEXT_GQL: &str = "
 type _Schema_ @fulltext(
     name: \"search\"
-    language: ENGLISH
+    language: EN
     algorithm: RANKED
     include: [\
         {
