@@ -2,12 +2,30 @@ use graphql_parser::{query as q, schema as s, Style};
 use std::collections::HashMap;
 use std::result::Result;
 use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
 
 use graph::prelude::*;
 
 use crate::execution::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref SUBSCRIPTION_QUERY_SEMAPHORE: Semaphore = {
+        // This is duplicating the logic in main.rs to get the connection pool size, which is
+        // unfourtunate. But because this module has no share state otherwise, it's not simple to
+        // refactor so that the semaphore isn't a global.
+        let db_conn_pool_size = std::env::var("STORE_CONNECTION_POOL_SIZE")
+            .unwrap_or("10".into())
+            .parse::<usize>()
+            .expect("invalid STORE_CONNECTION_POOL_SIZE");
+
+        // Limit the amount of connections that can be taken up by subscription queries.
+        Semaphore::new((0.7 * db_conn_pool_size as f64).ceil() as usize)
+    };
+}
 
 /// Options available for subscription execution.
 pub struct SubscriptionExecutionOptions<R>
@@ -226,6 +244,9 @@ async fn execute_subscription_event(
         .unwrap()
         .clone();
 
+    // Use a semaphore to prevent subscription queries, which can be numerous and might query all at
+    // once, from flooding the blocking thread pool and the DB connection pool.
+    let _permit = SUBSCRIPTION_QUERY_SEMAPHORE.acquire();
     let result = graph::spawn_blocking_allow_panic(async move {
         execute_selection_set(&ctx, &selection_set, &subscription_type, &None)
     })
