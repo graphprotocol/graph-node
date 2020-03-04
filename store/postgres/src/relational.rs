@@ -472,7 +472,7 @@ impl Layout {
         Ok(())
     }
 
-    pub fn update_metadata(
+    pub fn update_unversioned(
         &self,
         conn: &PgConnection,
         key: &EntityKey,

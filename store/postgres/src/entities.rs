@@ -493,7 +493,7 @@ impl Connection {
     ) -> Result<usize, StoreError> {
         match &*self.metadata {
             Storage::Json(_) => unreachable!("JSONB storage of subgraph metadata is not supported"),
-            Storage::Relational(layout) => layout.update_metadata(&self.conn, key, entity),
+            Storage::Relational(layout) => layout.update_unversioned(&self.conn, key, entity),
         }
     }
 
