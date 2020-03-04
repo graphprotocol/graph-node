@@ -157,54 +157,36 @@ impl LinkResolverTrait for LinkResolver {
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
     fn cat<'a>(&'a self, logger: &'a Logger, link: &'a Link) -> DynTryFuture<'a, Vec<u8>> {
         async move {
-            // Discard the `/ipfs/` prefix (if present) to get the hash.
-            let path = link.link.trim_start_matches("/ipfs/").to_owned();
-
-            if let Some(data) = self.cache.lock().unwrap().get(&path) {
-                trace!(logger, "IPFS cache hit"; "hash" => &path);
-                return Ok(data.clone());
-            }
-            trace!(logger, "IPFS cache miss"; "hash" => &path);
-
             let retry_fut = if self.retry {
-                retry("object.stat", &logger).no_limit()
+                retry("object.stat + ipfs.cat", &logger).no_limit()
             } else {
-                retry("object.stat", &logger).limit(1)
+                retry("object.stat + ipfs.cat", &logger).limit(1)
             }
             .timeout(self.timeout);
 
-            // Pick the client that a) has the file and b) responds to
-            // `object.stat` fastest
-            let (stat, client) = retry_fut
-                .run(|| {
-                    let path_for_stat = path.clone();
-                    async move {
-                        select_fastest_client_with_stat(&self.clients, &path_for_stat, self.timeout)
-                            .await
-                    }
-                    .boxed()
-                    .compat()
-                })
-                .compat()
-                .await?;
-
-            // FIXME: Having an env variable here is a problem for consensus.
-            // Index Nodes should not disagree on whether the file should be read.
-            let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
-            restrict_file_size(&path, &stat, &max_file_size)?;
-
-            let path = path.clone();
-            let retry_fut = if self.retry {
-                retry("ipfs.cat", &logger).no_limit()
-            } else {
-                retry("ipfs.cat", &logger).limit(1)
-            }
-            .timeout(self.timeout);
-
-            let result = retry_fut
+            retry_fut
                 .run(move || {
-                    let path = path.clone();
                     async move {
+                        // Pick the client that a) has the file and b) responds to
+                        // Discard the `/ipfs/` prefix (if present) to get the hash.
+                        let path = link.link.trim_start_matches("/ipfs/").to_owned();
+
+                        if let Some(data) = self.cache.lock().unwrap().get(&path) {
+                            trace!(logger, "IPFS cache hit"; "hash" => &path);
+                            return Ok(data.clone());
+                        }
+                        trace!(logger, "IPFS cache miss"; "hash" => &path);
+
+                        // `object.stat` fastest
+                        let (stat, client) =
+                            select_fastest_client_with_stat(&self.clients, &path, self.timeout)
+                                .await?;
+
+                        // FIXME: Having an env variable here is a problem for consensus.
+                        // Index Nodes should not disagree on whether the file should be read.
+                        let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
+                        restrict_file_size(&path, &stat, &max_file_size)?;
+
                         let data = client
                             .cat(&path)
                             .map_ok(|b| BytesMut::from_iter(b.into_iter()))
@@ -219,15 +201,16 @@ impl LinkResolverTrait for LinkResolver {
                                 cache.insert(path.to_owned(), data.clone());
                             }
                         }
-                        Result::<Vec<u8>, Error>::Ok(data)
+
+                        Result::<_, Error>::Ok(data)
                     }
                     .boxed()
                     .compat()
                 })
                 .compat()
-                .await?;
-            Ok(result)
+                .await
         }
+        .map_err(Into::into)
         .boxed()
     }
 
