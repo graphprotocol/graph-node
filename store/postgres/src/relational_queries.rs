@@ -1021,8 +1021,7 @@ impl<'a> QueryId for UpdateQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for UpdateQuery<'a> {}
 
-/// A query that removes all versions whose block range lies entirely
-/// beyond `block`
+/// A query that deletes all versions of an entity
 #[derive(Debug, Clone, Constructor)]
 pub struct DeleteQuery<'a> {
     table: &'a Table,
