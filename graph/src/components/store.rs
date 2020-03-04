@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use mockall::predicate::*;
 use mockall::*;
 use serde::{Deserialize, Serialize};
+use stable_hash::prelude::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::fmt;
@@ -30,6 +31,8 @@ lazy_static! {
             .unwrap_or(Duration::from_millis(1000));
 }
 
+// Note: Do not modify fields without making a backward compatible change to
+// the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
@@ -41,6 +44,17 @@ pub struct EntityKey {
 
     /// ID of the individual entity.
     pub entity_id: String,
+}
+
+impl StableHash for EntityKey {
+    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+        self.subgraph_id
+            .stable_hash(sequence_number.next_child(), state);
+        self.entity_type
+            .stable_hash(sequence_number.next_child(), state);
+        self.entity_id
+            .stable_hash(sequence_number.next_child(), state);
+    }
 }
 
 /// Supported types of store filters.

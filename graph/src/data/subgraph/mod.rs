@@ -12,6 +12,7 @@ use serde::de;
 use serde::ser;
 use serde_yaml;
 use slog::{info, Logger};
+use stable_hash::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
@@ -49,8 +50,16 @@ where
         .map(Some)
 }
 
+// Note: This has a StableHash impl. Do not modify fields without a backward
+// compatible change to the StableHash impl (below)
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SubgraphDeploymentId(String);
+
+impl StableHash for SubgraphDeploymentId {
+    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+        self.0.stable_hash(sequence_number.next_child(), state);
+    }
+}
 
 impl SubgraphDeploymentId {
     pub fn new(s: impl Into<String>) -> Result<Self, ()> {

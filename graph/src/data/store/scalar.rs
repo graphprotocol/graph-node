@@ -3,6 +3,10 @@ use num_bigint;
 use serde::{self, Deserialize, Serialize};
 use web3::types::*;
 
+use stable_hash::{
+    prelude::*,
+    utils::{AsBytes, AsInt},
+};
 use std::fmt::{self, Display, Formatter};
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::str::FromStr;
@@ -15,6 +19,36 @@ pub type BigDecimal = bigdecimal::BigDecimal;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
+
+pub(crate) fn big_decimal_stable_hash(
+    decimal: &BigDecimal,
+    mut sequence_number: impl SequenceNumber,
+    state: &mut impl StableHasher,
+) {
+    let (int, exp) = decimal.as_bigint_and_exponent();
+    // This only allows for backward compatible changes between
+    // BigDecimal and unsigned ints
+    exp.stable_hash(sequence_number.next_child(), state);
+    big_int_stable_hash(&int, sequence_number, state);
+}
+
+fn big_int_stable_hash(
+    int: &num_bigint::BigInt,
+    sequence_number: impl SequenceNumber,
+    state: &mut impl StableHasher,
+) {
+    AsInt {
+        is_negative: int.sign() == BigIntSign::Minus,
+        little_endian: &int.to_bytes_le().1,
+    }
+    .stable_hash(sequence_number, state)
+}
+
+impl StableHash for BigInt {
+    fn stable_hash(&self, sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+        big_int_stable_hash(&self.0, sequence_number, state);
+    }
+}
 
 impl BigInt {
     pub fn from_unsigned_bytes_le(bytes: &[u8]) -> Self {
@@ -247,6 +281,12 @@ impl Rem for BigInt {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bytes(Box<[u8]>);
 
+impl StableHash for Bytes {
+    fn stable_hash(&self, sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+        AsBytes(&self.0).stable_hash(sequence_number, state);
+    }
+}
+
 impl Bytes {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
@@ -296,7 +336,11 @@ impl<'de> Deserialize<'de> for Bytes {
 
 #[cfg(test)]
 mod test {
-    use super::BigInt;
+    use super::{big_decimal_stable_hash, BigDecimal, BigInt};
+    use stable_hash::prelude::*;
+    use stable_hash::utils::stable_hash_with_hasher;
+    use std::str::FromStr;
+    use twox_hash::XxHash64;
     use web3::types::U64;
 
     #[test]
@@ -305,6 +349,52 @@ mod test {
             let u = U64::from(n as u64);
             let bn = BigInt::from(u);
             assert_eq!(n, bn.to_u64());
+        }
+    }
+
+    fn xx_stable_hash(value: impl StableHash) -> u64 {
+        stable_hash_with_hasher::<XxHash64, _>(&value)
+    }
+
+    fn same_stable_hash(left: impl StableHash, right: impl StableHash) {
+        let left = xx_stable_hash(left);
+        let right = xx_stable_hash(right);
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn big_int_stable_hash_same_as_int() {
+        same_stable_hash(0, BigInt::from(0u64));
+        same_stable_hash(1, BigInt::from(1u64));
+        same_stable_hash(1u64 << 20, BigInt::from(1u64 << 20));
+
+        same_stable_hash(-1, BigInt::from_signed_bytes_le(&(-1i32).to_le_bytes()));
+    }
+
+    struct BigDecimalStableHash(BigDecimal);
+    impl StableHash for BigDecimalStableHash {
+        fn stable_hash(&self, sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+            big_decimal_stable_hash(&self.0, sequence_number, state);
+        }
+    }
+
+    #[test]
+    fn big_decimal_stable_hash_same_as_uint() {
+        same_stable_hash(0, BigDecimalStableHash(BigDecimal::from(0u64)));
+        same_stable_hash(4, BigDecimalStableHash(BigDecimal::from(4i64)));
+        same_stable_hash(
+            1u64 << 21,
+            BigDecimalStableHash(BigDecimal::from(1u64 << 21)),
+        );
+    }
+
+    #[test]
+    fn big_decimal_stable() {
+        let cases = vec![(5580731626265347763, "0.1"), (15037326160029728810, "-0.1")];
+        for case in cases.iter() {
+            let dec = BigDecimal::from_str(case.1).unwrap();
+            let dec = BigDecimalStableHash(dec);
+            assert_eq!(case.0, xx_stable_hash(dec));
         }
     }
 }
