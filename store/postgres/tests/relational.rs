@@ -21,7 +21,7 @@ use test_store::*;
 const THINGS_GQL: &str = r#"
     type _Schema_ @fulltext(
         name: "user_search"
-        language: ENGLISH
+        language: EN
         algorithm: RANKED
         include: [
             {
