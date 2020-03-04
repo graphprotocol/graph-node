@@ -1131,32 +1131,38 @@ impl<'a> FilterWindow<'a> {
                 out.push_sql("rows from (unnest(");
                 out.push_bind_param::<Array<Text>, _>(&self.ids)?;
                 out.push_sql("::text[]), reduce_dim(array[");
-                // Diesel does not support arrays of arrays as bind variables, nor
-                // arrays containing nulls, so we have to manually serialize
-                // the child_ids
-                for (i, ids) in child_ids.iter().enumerate() {
-                    if i > 0 {
-                        out.push_sql(", ");
-                    }
-                    out.push_sql("array[");
-                    for (j, id) in ids.iter().enumerate() {
-                        if j > 0 {
+                if child_ids.is_empty() {
+                    // If there are no child_ids, make sure we are producing an
+                    // empty array of arrays
+                    out.push_sql("array[null]");
+                } else {
+                    // Diesel does not support arrays of arrays as bind variables, nor
+                    // arrays containing nulls, so we have to manually serialize
+                    // the child_ids
+                    for (i, ids) in child_ids.iter().enumerate() {
+                        if i > 0 {
                             out.push_sql(", ");
                         }
-                        match id {
-                            None => out.push_sql("null"),
-                            Some(id) => {
-                                out.push_sql("'");
-                                if id.contains('\'') {
-                                    out.push_sql(&id.replace('\'', "''"));
-                                } else {
-                                    out.push_sql(&id);
+                        out.push_sql("array[");
+                        for (j, id) in ids.iter().enumerate() {
+                            if j > 0 {
+                                out.push_sql(", ");
+                            }
+                            match id {
+                                None => out.push_sql("null"),
+                                Some(id) => {
+                                    out.push_sql("'");
+                                    if id.contains('\'') {
+                                        out.push_sql(&id.replace('\'', "''"));
+                                    } else {
+                                        out.push_sql(&id);
+                                    }
+                                    out.push_sql("'");
                                 }
-                                out.push_sql("'");
                             }
                         }
+                        out.push_sql("]");
                     }
-                    out.push_sql("]");
                 }
                 out.push_sql("]::text[][])) as p(id, child_ids)");
             }
