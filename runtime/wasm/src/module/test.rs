@@ -1,6 +1,6 @@
 use ethabi::Token;
 use hex;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::io::Cursor;
 use std::str::FromStr;
@@ -350,7 +350,7 @@ async fn ipfs_map() {
             .ctx
             .state
             .entity_cache
-            .as_modifications(store.as_ref(), &HashMap::new())?
+            .as_modifications(store.as_ref(), &BTreeMap::new())?
             .modifications;
 
         // Bring the modifications into a predictable order (by entity_id)
@@ -842,7 +842,7 @@ fn entity_store() {
         .ctx
         .state
         .entity_cache
-        .as_modifications(store.as_ref(), &HashMap::new())
+        .as_modifications(store.as_ref(), &BTreeMap::new())
         .unwrap()
         .modifications;
     assert_eq!(1, mods.len());
@@ -857,8 +857,8 @@ fn entity_store() {
     // Load, set, save cycle for a new entity with fulltext API
     module.ctx.state.entity_cache = EntityCache::new();
     load_and_set_user_name(&mut module, "herobrine", "Brine-O");
-    let mut fulltext_entities = HashMap::new();
-    let mut fulltext_fields = HashMap::new();
+    let mut fulltext_entities = BTreeMap::new();
+    let mut fulltext_fields = BTreeMap::new();
     fulltext_fields.insert("name".to_string(), vec!["search".to_string()]);
     fulltext_entities.insert("User".to_string(), fulltext_fields);
     let mut mods = module

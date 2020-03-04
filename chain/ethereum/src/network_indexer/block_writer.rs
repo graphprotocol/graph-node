@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use graph::prelude::*;
@@ -149,7 +149,7 @@ impl WriteContext {
 
                     // Collect all entity modifications to be made
                     let modifications =
-                        match cache.as_modifications(store.as_ref(), &HashMap::new()) {
+                        match cache.as_modifications(store.as_ref(), &BTreeMap::new()) {
                             Ok(mods) => mods,
                             Err(e) => return future::err(e.into()),
                         }
