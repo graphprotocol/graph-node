@@ -390,10 +390,8 @@ async fn ipfs_map() {
     assert!(errmsg.contains("JSON value is not a string."));
 
     // Bad IPFS hash.
-    let errmsg = run_ipfs_map(BAD_IPFS_HASH.to_string())
-        .unwrap_err()
-        .to_string();
-    assert!(errmsg.contains("api returned error"))
+    let errmsg = dbg!(run_ipfs_map(BAD_IPFS_HASH.to_string()).unwrap_err()).to_string();
+    assert!(dbg!(errmsg).contains("ApiError"));
 }
 
 #[tokio::test]

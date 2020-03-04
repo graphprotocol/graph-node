@@ -421,8 +421,10 @@ impl HostExports {
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
         let result = block_on03(async move {
-            let mut stream: JsonValueStream =
-                self.link_resolver.json_stream(&Link { link: link }).await?;
+            let mut stream: JsonValueStream = self
+                .link_resolver
+                .json_stream(&logger, &Link { link: link })
+                .await?;
             let mut v = Vec::new();
             while let Some(sv) = stream.next().await {
                 let sv = sv?;
