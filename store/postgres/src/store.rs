@@ -14,7 +14,8 @@ use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::{
-    SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
+    SubgraphDeploymentEntity, SubgraphFulltextEntities, SubgraphManifestEntity, TypedEntity as _,
+    SUBGRAPHS_ID,
 };
 use graph::prelude::{
     bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
@@ -1113,7 +1114,7 @@ impl SubgraphDeploymentStore for Store {
     fn fulltext_fields(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error> {
+    ) -> Result<SubgraphFulltextEntities, Error> {
         Ok(Schema::subgraph_fulltext_entity_fields(
             &self.api_schema(subgraph_id)?.document,
         ))

@@ -70,6 +70,12 @@ pub trait TypedEntity {
     }
 }
 
+// Maps an entity to its fields that are covered by a Fulltext API.
+pub type SubgraphFulltextEntities = BTreeMap<Name, SubgraphFulltextFields>;
+
+// Maps an entities Fulltext included fields to the Fulltext fields to which they contribute.
+pub type SubgraphFulltextFields = BTreeMap<Name, Vec<Name>>;
+
 #[derive(Debug)]
 pub struct SubgraphEntity {
     name: SubgraphName,

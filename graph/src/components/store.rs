@@ -1194,7 +1194,7 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     fn fulltext_fields(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<HashMap<String, HashMap<String, Vec<String>>>, Error>;
+    ) -> Result<SubgraphFulltextEntities, Error>;
 
     /// Return true if the subgraph uses the relational storage scheme; if
     /// it is false, the subgraph uses JSONB storage. This method exposes
@@ -1447,7 +1447,7 @@ impl EntityCache {
     pub fn as_modifications(
         mut self,
         store: &(impl Store + ?Sized),
-        fulltext_entity_fields: &HashMap<String, HashMap<String, Vec<Attribute>>>,
+        fulltext_entity_fields: &SubgraphFulltextEntities,
     ) -> Result<ModificationsAndCache, QueryExecutionError> {
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
@@ -1490,7 +1490,7 @@ impl EntityCache {
                     let mut data = Entity::new();
                     data.merge_remove_null_fields(updates);
                     if let Some(fulltext_fields) = fulltext_entity_fields.get(&key.entity_type) {
-                        data.merge_fulltext_field_updates(fulltext_fields);
+                        data.merge_fulltext_field_modifications(fulltext_fields);
                     }
                     self.current.insert(key.clone(), Some(data.clone()));
                     Some(Insert { key, data })
@@ -1500,7 +1500,7 @@ impl EntityCache {
                     let mut data = current.clone();
                     data.merge_remove_null_fields(updates);
                     if let Some(fulltext_fields) = fulltext_entity_fields.get(&key.entity_type) {
-                        data.merge_fulltext_field_updates(fulltext_fields);
+                        data.merge_fulltext_field_modifications(fulltext_fields);
                     }
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {

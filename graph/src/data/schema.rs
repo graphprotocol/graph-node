@@ -1,7 +1,7 @@
 use crate::components::store::{Store, SubgraphDeploymentStore};
 use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, TypeExt};
 use crate::data::graphql::scalar::BuiltInScalarType;
-use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
+use crate::data::subgraph::{schema::SubgraphFulltextEntities, SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
 
 use failure::Error;
@@ -1243,17 +1243,14 @@ impl Schema {
             })
     }
 
-    // Create a reference of entities that are included in Fulltext APIs. It maps the entity to its
-    // fields that are covered by the Fulltext API. The included fields map to the fulltext APIs
-    // which they contribute to.
-    // HashMap<entity_name, HashMap<fulltext_field_name, Vec<fulltext_name>>>
-    // Pattern matching is not exhaustive, unexpected types will be caught by validation.
-    pub fn subgraph_fulltext_entity_fields(
-        document: &Document,
-    ) -> HashMap<Name, HashMap<Name, Vec<Name>>> {
+    // Create a reference of entities that are included in Fulltext APIs. The result maps the entity
+    // to its fields that are covered by the Fulltext API. The included fields map to the fulltext APIs
+    // which they contribute to. Pattern matching is not exhaustive here as unexpected types will be
+    // caught by validation.
+    pub fn subgraph_fulltext_entity_fields(document: &Document) -> SubgraphFulltextEntities {
         Self::subgraph_schema_fulltext_directives(document)
             .into_iter()
-            .fold(HashMap::new(), |mut outer_acc, directive| {
+            .fold(BTreeMap::new(), |mut outer_acc, directive| {
                 directive
                     .arguments
                     .iter()
@@ -1282,7 +1279,7 @@ impl Schema {
                                                                 outer_acc
                                                                     .entry(entity.clone())
                                                                     .or_insert_with(|| {
-                                                                        HashMap::new()
+                                                                        BTreeMap::new()
                                                                     })
                                                                     .entry(field_name.clone())
                                                                     .or_insert_with(|| Vec::new())
