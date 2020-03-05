@@ -601,6 +601,11 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
+        if values.is_empty() {
+            out.push_sql("false");
+            return Ok(());
+        }
+
         // NULLs in SQL are very special creatures, and we need to treat
         // them special. For non-NULL values, we generate
         //   attribute {in|not in} (value1, value2, ...)
@@ -612,6 +617,8 @@ impl<'a> QueryFilter<'a> {
         // Note that when we have no non-NULL values at all, we must
         // not generate `attribute {in|not in} ()` since the empty `()`
         // is a syntax error
+        //
+        // Because we checked above, one of these two will be true
         let have_nulls = values.iter().any(|value| value == &Value::Null);
         let have_non_nulls = values.iter().any(|value| value != &Value::Null);
 

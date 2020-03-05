@@ -715,6 +715,14 @@ fn find_string_in() {
 }
 
 #[test]
+fn find_empty_in() {
+    test_find(
+        vec![],
+        user_query().filter(EntityFilter::In("name".to_owned(), vec![])),
+    )
+}
+
+#[test]
 fn find_string_not_in() {
     test_find(
         vec!["1", "2"],
