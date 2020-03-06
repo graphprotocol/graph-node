@@ -1,3 +1,4 @@
+use crate::data::schema::SCHEMA_TYPE_NAME;
 use graphql_parser::schema::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, Name, ObjectType, Type,
     TypeDefinition,
@@ -24,6 +25,10 @@ impl ObjectTypeExt for InterfaceType {
 pub trait DocumentExt {
     fn get_object_type_definitions(&self) -> Vec<&ObjectType>;
 
+    fn get_entity_definitions(&self) -> Vec<&ObjectType>;
+
+    fn get_schema_type_definition(&self) -> Option<&ObjectType>;
+
     fn get_object_and_interface_type_fields(&self) -> HashMap<&Name, &Vec<Field>>;
 
     fn get_enum_definitions(&self) -> Vec<&EnumType>;
@@ -40,6 +45,35 @@ impl DocumentExt for Document {
                 _ => None,
             })
             .collect()
+    }
+
+    fn get_entity_definitions(&self) -> Vec<&ObjectType> {
+        self.definitions
+            .iter()
+            .filter_map(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Object(t))
+                    if !t.name.eq(SCHEMA_TYPE_NAME) =>
+                {
+                    Some(t)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn get_schema_type_definition(&self) -> Option<&ObjectType> {
+        self.definitions
+            .iter()
+            .find(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Object(t)) => {
+                    t.name.eq(SCHEMA_TYPE_NAME)
+                }
+                _ => false,
+            })
+            .map(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Object(t)) => t,
+                _ => unreachable!(),
+            })
     }
 
     fn get_object_and_interface_type_fields(&self) -> HashMap<&Name, &Vec<Field>> {
