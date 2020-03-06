@@ -27,8 +27,8 @@ use crate::components::store::{
     AttributeIndexDefinition, EntityCollection, EntityFilter, EntityKey, EntityOperation,
     EntityQuery, EntityRange, MetadataOperation,
 };
+use crate::data::graphql::ext::*;
 use crate::data::graphql::{TryFromValue, ValueMap};
-use crate::data::schema::SCHEMA_TYPE_NAME;
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
 use crate::data::subgraph::{SubgraphManifest, SubgraphName};
 use crate::prelude::*;
@@ -1241,38 +1241,35 @@ pub fn attribute_index_definitions(
     document: Document,
 ) -> Vec<AttributeIndexDefinition> {
     let mut indexing_ops = vec![];
-    for (entity_number, schema_type) in document.definitions.clone().into_iter().enumerate() {
-        if let Definition::TypeDefinition(TypeDefinition::Object(schema_object)) = schema_type {
-            if schema_object.name.eq(SCHEMA_TYPE_NAME) {
+    for (entity_number, schema_object) in document.get_entity_definitions().into_iter().enumerate()
+    {
+        for (attribute_number, entity_field) in schema_object
+            .fields
+            .clone()
+            .into_iter()
+            .filter(|f| f.name != "id")
+            .enumerate()
+        {
+            // Skip derived fields since they are not stored in objects
+            // of this type. We can not put this check into the filter
+            // above since that changes how indexes are numbered
+            if is_derived_field(&entity_field) {
                 continue;
             }
-            for (attribute_number, entity_field) in schema_object
-                .fields
-                .into_iter()
-                .filter(|f| f.name != "id")
-                .enumerate()
-            {
-                // Skip derived fields since they are not stored in objects
-                // of this type. We can not put this check into the filter
-                // above since that changes how indexes are numbered
-                if is_derived_field(&entity_field) {
-                    continue;
-                }
-                indexing_ops.push(AttributeIndexDefinition {
-                    subgraph_id: subgraph_id.clone(),
-                    entity_number,
-                    attribute_number,
-                    field_value_type: match inner_type_name(
-                        &entity_field.field_type,
-                        &document.definitions,
-                    ) {
-                        Ok(value_type) => value_type,
-                        Err(_) => continue,
-                    },
-                    attribute_name: entity_field.name,
-                    entity_name: schema_object.name.clone(),
-                });
-            }
+            indexing_ops.push(AttributeIndexDefinition {
+                subgraph_id: subgraph_id.clone(),
+                entity_number,
+                attribute_number,
+                field_value_type: match inner_type_name(
+                    &entity_field.field_type,
+                    &document.definitions,
+                ) {
+                    Ok(value_type) => value_type,
+                    Err(_) => continue,
+                },
+                attribute_name: entity_field.name,
+                entity_name: schema_object.name.clone(),
+            });
         }
     }
     indexing_ops
