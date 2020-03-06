@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
@@ -69,6 +70,8 @@ const LOG_LOG: usize = 37;
 const BIG_INT_POW: usize = 38;
 const DATA_SOURCE_ADDRESS: usize = 39;
 const DATA_SOURCE_NETWORK: usize = 40;
+const DATA_SOURCE_CREATE_WITH_CONTEXT: usize = 41;
+const DATA_SOURCE_CONTEXT: usize = 42;
 
 /// Transform function index into the function name string
 fn fn_index_to_metrics_string(index: usize) -> Option<String> {
@@ -882,6 +885,27 @@ impl WasmiModule {
             &mut self.ctx.state,
             name,
             params,
+            None,
+        )?;
+        Ok(None)
+    }
+
+    /// function createWithContext(name: string, params: Array<string>, context: Entity): void
+    fn data_source_create_with_context(
+        &mut self,
+        name_ptr: AscPtr<AscString>,
+        params_ptr: AscPtr<Array<AscPtr<AscString>>>,
+        context_ptr: AscPtr<AscEntity>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let name: String = self.asc_get(name_ptr);
+        let params: Vec<String> = self.asc_get(params_ptr);
+        let context: HashMap<_, _> = self.asc_get(context_ptr);
+        self.ctx.host_exports.data_source_create(
+            &self.ctx.logger,
+            &mut self.ctx.state,
+            name,
+            params,
+            Some(context.into()),
         )?;
         Ok(None)
     }
@@ -897,6 +921,13 @@ impl WasmiModule {
     fn data_source_network(&mut self) -> Result<Option<RuntimeValue>, Trap> {
         Ok(Some(RuntimeValue::from(
             self.asc_new(&self.ctx.host_exports.data_source_network()),
+        )))
+    }
+
+    /// function dataSource.context(): Entity
+    fn data_source_context(&mut self) -> Result<Option<RuntimeValue>, Trap> {
+        Ok(Some(RuntimeValue::from(
+            self.asc_new(&self.ctx.host_exports.data_source_context()),
         )))
     }
 
@@ -1035,6 +1066,12 @@ impl Externals for WasmiModule {
             LOG_LOG => self.log_log(args.nth_checked(0)?, args.nth_checked(1)?),
             DATA_SOURCE_ADDRESS => self.data_source_address(),
             DATA_SOURCE_NETWORK => self.data_source_network(),
+            DATA_SOURCE_CREATE_WITH_CONTEXT => self.data_source_create_with_context(
+                args.nth_checked(0)?,
+                args.nth_checked(1)?,
+                args.nth_checked(2)?,
+            ),
+            DATA_SOURCE_CONTEXT => self.data_source_context(),
             _ => panic!("Unimplemented function at {}", index),
         };
         // Record execution time
@@ -1142,6 +1179,10 @@ impl ModuleImportResolver for ModuleResolver {
             "dataSource.create" => FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_INDEX),
             "dataSource.address" => FuncInstance::alloc_host(signature, DATA_SOURCE_ADDRESS),
             "dataSource.network" => FuncInstance::alloc_host(signature, DATA_SOURCE_NETWORK),
+            "dataSource.createWithContext" => {
+                FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_WITH_CONTEXT)
+            }
+            "dataSource.context" => FuncInstance::alloc_host(signature, DATA_SOURCE_CONTEXT),
 
             // ens.nameByHash
             "ens.nameByHash" => FuncInstance::alloc_host(signature, ENS_NAME_BY_HASH),

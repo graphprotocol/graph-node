@@ -25,9 +25,9 @@
   dependencies:
     regenerator-runtime "^0.13.2"
 
-"@graphprotocol/graph-cli@https://github.com/graphprotocol/graph-cli#master":
+"@graphprotocol/graph-cli@https://github.com/graphprotocol/graph-cli#leo/ds-context-codegn":
   version "0.17.1"
-  resolved "https://github.com/graphprotocol/graph-cli#383e660b47af7fbba5f5f5d4eacffd337fe9e8a6"
+  resolved "https://github.com/graphprotocol/graph-cli#6fa400b91855cfd1f7260971310432e6be5d70a5"
   dependencies:
     assemblyscript "https://github.com/AssemblyScript/assemblyscript#36040d5b5312f19a025782b5e36663823494c2f3"
     chalk "^3.0.0"
@@ -52,9 +52,9 @@
   optionalDependencies:
     keytar "^5.0.0"
 
-"@graphprotocol/graph-ts@https://github.com/graphprotocol/graph-ts#master":
+"@graphprotocol/graph-ts@https://github.com/graphprotocol/graph-ts#leo/data-source-context":
   version "0.17.0"
-  resolved "https://github.com/graphprotocol/graph-ts#4b43a5e30126f696f7f2b26e78994029d26d673c"
+  resolved "https://github.com/graphprotocol/graph-ts#94c7a4bc754523efec639698ee60775294d50aa0"
   dependencies:
     assemblyscript "https://github.com/AssemblyScript/assemblyscript#36040d5b5312f19a025782b5e36663823494c2f3"
 

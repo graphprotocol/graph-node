@@ -1,9 +1,9 @@
-extern crate duct;
-
 use duct::cmd;
+use lazy_static::lazy_static;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 fn test_dir(name: &str) -> PathBuf {
     let cwd = env::current_dir().expect("failed to identify working directory");
@@ -23,24 +23,23 @@ fn run_cmd(args: Vec<&str>, cwd: PathBuf) {
         .run()
         .expect("failed to start command");
 
+    let pretty_output = String::from_utf8(output.stdout)
+        .unwrap()
+        .trim()
+        .split("\n")
+        .map(|s| format!("│ {}", s))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    print!("{}", pretty_output);
+
     if !output.status.success() {
-        panic!(format!(
-            "Failed to run command `{}`:\n{}",
-            cmd_string,
-            String::from_utf8(output.stdout)
-                .unwrap()
-                .trim()
-                .split("\n")
-                .map(|s| format!("│ {}", s))
-                .collect::<Vec<_>>()
-                .join("\n")
-        ));
+        panic!("failed to run command `{}`", cmd_string);
     }
 }
 
-#[test]
-fn overloaded_contract_functions() {
-    let dir = test_dir("integration-tests/overloaded-contract-functions");
+fn run_test(test: &str) {
+    let dir = test_dir(&format!("{}{}", "integration-tests/", test));
     let graph = dir.join("node_modules/.bin/graph").clone();
     let graph_node = fs::canonicalize("../target/debug/graph-node").unwrap();
 
@@ -51,8 +50,27 @@ fn overloaded_contract_functions() {
             "test",
             "--standalone-node",
             graph_node.to_str().unwrap(),
+            "--node-logs",
             "yarn test",
         ],
         dir,
     );
+}
+
+lazy_static! {
+    // Necessary due to port conflict when running multiple nodes at once.
+    // TODO: Allow tests to run in parallel.
+    static ref TEST_MUTEX: Mutex<()> = Mutex::new(());
+}
+
+#[test]
+fn overloaded_contract_functions() {
+    let _m = TEST_MUTEX.lock();
+    run_test("overloaded-contract-functions")
+}
+
+#[test]
+fn data_source_context() {
+    let _m = TEST_MUTEX.lock();
+    run_test("data-source-context")
 }

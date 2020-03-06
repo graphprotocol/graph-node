@@ -1451,6 +1451,7 @@ fn mock_data_source(path: &str) -> DataSource {
                 runtime: Arc::new(runtime),
             },
         }],
+        context: None,
     }
 }
 

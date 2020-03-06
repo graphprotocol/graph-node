@@ -1,6 +1,8 @@
 [package]
 name = "graph-tests"
 version = "0.0.1"
+edition = "2018"
 
 [dev-dependencies]
 duct = "0.13"
+lazy_static = "1.4.0"

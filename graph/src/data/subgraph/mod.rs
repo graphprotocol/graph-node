@@ -17,8 +17,10 @@ use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::{Store, StoreError, SubgraphDeploymentStore};
+use crate::components::subgraph::DataSourceTemplateInfo;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
+use crate::data::store::Entity;
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
     EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
@@ -28,6 +30,7 @@ use crate::data::subgraph::schema::{
 use crate::prelude::{format_err, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
 
+use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -640,13 +643,15 @@ impl From<EthereumContractMappingEntity> for UnresolvedMapping {
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 pub struct BaseDataSource<M, T> {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
     pub source: Source,
     pub mapping: M,
+    pub context: Option<Entity>,
+
     #[serde(default)]
     pub templates: Vec<T>, // Deprecated in manifest spec version 0.0.2
 }
@@ -667,6 +672,7 @@ impl UnresolvedDataSource {
             source,
             mapping,
             templates,
+            context,
         } = self;
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
@@ -688,15 +694,22 @@ impl UnresolvedDataSource {
             source,
             mapping,
             templates,
+            context,
         })
     }
 }
 
-impl DataSource {
-    pub fn try_from_template(
-        template: DataSourceTemplate,
-        params: &[String],
-    ) -> Result<Self, failure::Error> {
+impl TryFrom<DataSourceTemplateInfo> for DataSource {
+    type Error = failure::Error;
+
+    fn try_from(info: DataSourceTemplateInfo) -> Result<Self, failure::Error> {
+        let DataSourceTemplateInfo {
+            data_source: _,
+            template,
+            params,
+            context,
+        } = info;
+
         // Obtain the address from the parameters
         let string = params
             .get(0)
@@ -726,6 +739,8 @@ impl DataSource {
                 start_block: 0,
             },
             mapping: template.mapping,
+            context,
+
             templates: Vec::new(),
         })
     }
@@ -740,6 +755,7 @@ impl From<EthereumContractDataSourceEntity> for UnresolvedDataSource {
             source: entity.source.into(),
             mapping: entity.mapping.into(),
             templates: entity.templates.into_iter().map(Into::into).collect(),
+            context: None,
         }
     }
 }
