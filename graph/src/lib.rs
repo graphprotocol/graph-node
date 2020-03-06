@@ -52,6 +52,7 @@ pub mod prelude {
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;
     pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
+    pub use std::convert::TryFrom;
     pub use std::fmt::Debug;
     pub use std::iter::FromIterator;
     pub use std::pin::Pin;

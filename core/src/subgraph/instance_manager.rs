@@ -871,15 +871,14 @@ where
 
     for info in created_data_sources {
         // Try to instantiate a data source from the template
-        let data_source = DataSource::try_from_template(info.template, &info.params)?;
-        let host_metrics = host_metrics.clone();
+        let data_source = DataSource::try_from(info)?;
 
         // Try to create a runtime host for the data source
         let host = ctx.state.instance.add_dynamic_data_source(
             &logger,
             data_source.clone(),
             ctx.inputs.top_level_templates.clone(),
-            host_metrics,
+            host_metrics.clone(),
         )?;
 
         data_sources.push(data_source);

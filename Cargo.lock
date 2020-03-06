@@ -1415,6 +1415,7 @@ name = "graph-tests"
 version = "0.0.1"
 dependencies = [
  "duct 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

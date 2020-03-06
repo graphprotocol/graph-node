@@ -7,6 +7,7 @@ pub struct DataSourceTemplateInfo {
     pub data_source: String,
     pub template: DataSourceTemplate,
     pub params: Vec<String>,
+    pub context: Option<Entity>,
 }
 
 #[derive(Debug, Default)]

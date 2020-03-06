@@ -41,7 +41,8 @@ pub(crate) struct HostExports {
     pub(crate) api_version: Version,
     data_source_name: String,
     data_source_address: Option<Address>,
-    data_source_network: Option<String>,
+    data_source_network: String,
+    data_source_context: Option<Entity>,
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<MappingABI>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -64,7 +65,8 @@ impl HostExports {
         api_version: Version,
         data_source_name: String,
         data_source_address: Option<Address>,
-        data_source_network: Option<String>,
+        data_source_network: String,
+        data_source_context: Option<Entity>,
         templates: Arc<Vec<DataSourceTemplate>>,
         abis: Vec<MappingABI>,
         ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -79,6 +81,7 @@ impl HostExports {
             data_source_name,
             data_source_address,
             data_source_network,
+            data_source_context,
             templates,
             abis,
             ethereum_adapter,
@@ -575,6 +578,7 @@ impl HostExports {
         state: &mut BlockState,
         name: String,
         params: Vec<String>,
+        context: Option<Entity>,
     ) -> Result<(), HostExportError<impl ExportError>> {
         info!(
             logger,
@@ -609,6 +613,7 @@ impl HostExports {
             data_source: self.data_source_name.clone(),
             template,
             params,
+            context,
         });
 
         Ok(())
@@ -640,7 +645,11 @@ impl HostExports {
     }
 
     pub(crate) fn data_source_network(&self) -> String {
-        self.data_source_network.clone().unwrap_or_default()
+        self.data_source_network.clone()
+    }
+
+    pub(crate) fn data_source_context(&self) -> Entity {
+        self.data_source_context.clone().unwrap_or_default()
     }
 }
 
