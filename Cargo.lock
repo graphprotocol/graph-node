@@ -1172,7 +1172,7 @@ dependencies = [
  "tiny-keccak 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-retry 0.2.0 (git+https://github.com/graphprotocol/rust-tokio-retry?branch=update-to-tokio-02)",
- "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "web3 0.8.0 (git+https://github.com/graphprotocol/rust-web3)",
 ]
 
@@ -1273,7 +1273,7 @@ dependencies = [
  "ipfs-api 0.6.0-rc (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometheus 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "url 1.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

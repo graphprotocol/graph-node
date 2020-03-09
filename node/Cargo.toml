@@ -12,7 +12,7 @@ prometheus = "0.7"
 futures = { version = "0.3.1", features = ["compat"] }
 ipfs-api = { version = "0.6.0-rc", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
-url = "1.7.1"
+url = "2.1.1"
 crossbeam-channel = "0.4.2"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
