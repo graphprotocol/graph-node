@@ -41,7 +41,7 @@ petgraph = "0.5.0"
 tiny-keccak = "1.5.0"
 tokio = { version = "0.2.13", features = ["stream", "rt-threaded", "rt-util", "blocking", "time", "sync", "macros", "test-util"] }
 tokio-retry = { git = "https://github.com/graphprotocol/rust-tokio-retry", branch = "update-to-tokio-02" }
-url = "1.7.2"
+url = "2.1.1"
 prometheus = "0.7.0"
 priority-queue = "0.7.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
