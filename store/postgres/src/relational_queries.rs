@@ -2204,19 +2204,33 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         //     set block_range = int4range(lower(block_range), null)
         //   where block_range @> $block
         //     and not block_range @> INTMAX
+        //     and lower(block_range) <= $block
+        //     and coalesce(upper(block_range), INTMAX) < INTMAX
         //   returning id
+        //
+        // The query states the same thing twice, once in terms of ranges
+        // and once in terms of the range bounds. That makes it possible
+        // for Postgres to use either the exclusion index on the table
+        // or the BRIN index
         out.push_sql("update ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql("\n   set ");
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" = int4range(lower(");
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql("), null)\n where");
+        out.push_sql("), null)\n where ");
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" @> ");
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql(" and not ");
         out.push_sql(BLOCK_RANGE_CURRENT);
+        out.push_sql(" and lower(");
+        out.push_sql(BLOCK_RANGE_COLUMN);
+        out.push_sql(") <= ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(" and coalesce(upper(");
+        out.push_sql(BLOCK_RANGE_COLUMN);
+        out.push_sql("), 2147483647) < 2147483647");
         out.push_sql("\nreturning ");
         out.push_sql(PRIMARY_KEY_COLUMN);
         out.push_sql("::text");
@@ -2238,6 +2252,14 @@ impl<'a> LoadQuery<PgConnection, RevertEntityData> for RevertClampQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for RevertClampQuery<'a> {}
+
+#[test]
+fn block_number_max_is_i32_max() {
+    // The code in RevertClampQuery::walk_ast embeds i32::MAX
+    // aka BLOCK_NUMBER_MAX in strings for efficiency. This assertion
+    // makes sure that BLOCK_NUMBER_MAX still is what we think it is
+    assert_eq!(2147483647, graph::prelude::BLOCK_NUMBER_MAX);
+}
 
 /// A query that removes all dynamic data sources for a given subgraph
 /// whose block range lies entirely beyond `block`. The query only deletes
