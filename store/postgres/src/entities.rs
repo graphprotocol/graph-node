@@ -536,28 +536,26 @@ impl Connection {
         &self,
         block_ptr: &EthereumBlockPointer,
     ) -> Result<(StoreEvent, i32), StoreError> {
+        let block = block_ptr
+            .number
+            .try_into()
+            .expect("block numbers fit into an i32");
+
         // Revert the block in the subgraph itself
         let (event, count) = match &*self.storage {
             Storage::Json(json) => json.revert_block(&self.conn, block_ptr.hash_hex())?,
-            Storage::Relational(layout) => {
-                let block = block_ptr.number.try_into().unwrap();
-                layout.revert_block(&self.conn, block)?
-            }
+            Storage::Relational(layout) => layout.revert_block(&self.conn, block)?,
         };
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        let (meta_event, _) = match &*self.metadata {
+        let meta_event = match &*self.metadata {
             Storage::Json(_) => unreachable!("JSONB storage of subgraph metadata is not supported"),
-            Storage::Relational(relational) => relational.revert_block(
-                &self.conn,
-                block_ptr
-                    .number
-                    .try_into()
-                    .expect("block numbers fit into an i32"),
-            ),
+            Storage::Relational(relational) => {
+                relational.revert_metadata(&self.conn, &self.storage.subgraph(), block)
+            }
         }?;
         Ok((event.extend(meta_event), count))
     }

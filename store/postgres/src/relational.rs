@@ -18,8 +18,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::relational_queries::{
-    ClampRangeQuery, ConflictingEntityQuery, DeleteQuery, EntityData, FilterQuery, FindManyQuery,
-    FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
+    ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery, DeleteDynamicDataSourcesQuery,
+    DeleteQuery, EntityData, FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
+    RevertRemoveQuery, UpdateQuery,
 };
 use graph::data::schema::SCHEMA_TYPE_NAME;
 use graph::prelude::{
@@ -540,6 +541,78 @@ impl Layout {
             changes.extend(set);
         }
         Ok((StoreEvent::new(changes), count))
+    }
+
+    /// Revert the metadata (dynamic data sources and related entities) for
+    /// the given `subgraph`. This function can only be called on the `Layout`
+    /// for the metadata subgraph.
+    ///
+    /// For metadata, reversion always means deletion since the metadata that
+    /// is subject to reversion is only ever created but never updated
+    pub fn revert_metadata(
+        &self,
+        conn: &PgConnection,
+        subgraph: &SubgraphDeploymentId,
+        block: BlockNumber,
+    ) -> Result<StoreEvent, StoreError> {
+        assert!(self.subgraph.is_meta());
+        const DDS: &str = "DynamicEthereumContractDataSource";
+
+        // Delete dynamic data sources for this subgraph at the given block
+        // and get their id's
+        let dds = DeleteDynamicDataSourcesQuery::new(subgraph.as_str(), block)
+            .get_results(conn)?
+            .into_iter()
+            .map(|data| data.id)
+            .collect::<Vec<_>>();
+
+        // Calculate how long id's are and make sure they have all the same length
+        let prefix_len = dds.iter().map(|id| id.len()).min();
+        assert_eq!(prefix_len, dds.iter().map(|id| id.len()).max());
+        let prefix_len = prefix_len.unwrap_or(0) as i32;
+
+        let mut changes: Vec<EntityChange> = dds
+            .iter()
+            .map(|id| EntityChange {
+                subgraph_id: self.subgraph.clone(),
+                entity_type: DDS.to_owned(),
+                entity_id: id.to_owned(),
+                operation: EntityChangeOperation::Removed,
+            })
+            .collect();
+
+        if !dds.is_empty() {
+            // Remove subordinate entities for the dynamic data sources from
+            // the various metadata tables. We do not need to consider the
+            // table for dynamic data sources, not any table whose name starts
+            // with 'Subgraph'. Since the set of metadata entities might change
+            // in the future, it is safer to exclude entity types that we know
+            // do not contain data of interest rather than check for inclusion
+            // in a whitelist, as it should generally be safe to do the deletion
+            // on all metadata tables
+            //
+            // This code is far from ideal since it relies on a few unenforceable
+            // assumptions, most importantly, that the id of any entity that
+            // belongs to a dynmaic data source starts with the id of that data
+            // source
+            for table in self
+                .tables
+                .values()
+                .filter(|table| table.object != DDS && !table.object.starts_with("Subgraph"))
+            {
+                let deleted = DeleteByPrefixQuery::new(table, &dds, prefix_len)
+                    .get_results(conn)?
+                    .into_iter()
+                    .map(|data| EntityChange {
+                        subgraph_id: self.subgraph.clone(),
+                        entity_type: table.object.clone(),
+                        entity_id: data.id,
+                        operation: EntityChangeOperation::Removed,
+                    });
+                changes.extend(deleted);
+            }
+        }
+        Ok(StoreEvent::new(changes))
     }
 }
 
