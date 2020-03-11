@@ -3,7 +3,7 @@ use graphql_parser::query::{Name, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
-use crate::prelude::{format_err, BigInt};
+use crate::prelude::{format_err, BigInt, Entity};
 use web3::types::{H160, H256};
 
 pub trait TryFromValue: Sized {
@@ -108,6 +108,19 @@ where
                 Ok(values)
             }),
             _ => Err(format_err!("Cannot parse value into a vector: {:?}", value)),
+        }
+    }
+}
+
+/// Assumes the entity is stored as a JSON string.
+impl TryFromValue for Entity {
+    fn try_from_value(value: &Value) -> Result<Self, Error> {
+        match value {
+            Value::String(s) => serde_json::from_str(s).map_err(Into::into),
+            _ => Err(format_err!(
+                "Cannot parse entity, value is not a string: {:?}",
+                value
+            )),
         }
     }
 }

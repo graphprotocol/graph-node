@@ -47,6 +47,7 @@ where
                       kind
                       network
                       name
+                      context
                       source { address abi }
                       mapping {
                         kind
@@ -55,8 +56,8 @@ where
                         file
                         entities
                         abis { name file }
-                        blockHandlers { handler filter}
-                        callHandlers {  function handler}
+                        blockHandlers { handler filter }
+                        callHandlers {  function handler }
                         eventHandlers { event handler }
                       }
                       templates {
@@ -127,7 +128,7 @@ where
         &self,
         deployment_id: SubgraphDeploymentId,
         query_result: q::Value,
-    ) -> Result<Vec<EthereumContractDataSourceEntity>, Error> {
+    ) -> Result<Vec<UnresolvedDataSource>, Error> {
         let data = match query_result {
             q::Value::Object(obj) => Ok(obj),
             _ => Err(format_err!(
@@ -168,28 +169,17 @@ where
 
         // Parse the raw data sources into typed entities
         let entities = values.iter().try_fold(vec![], |mut entities, value| {
-            entities.push(EthereumContractDataSourceEntity::try_from_value(value)?);
+            entities.push(UnresolvedDataSource::try_from_value(value)?);
             Ok(entities)
-        }) as Result<Vec<_>, Error>;
+        });
 
-        entities.map_err(|e| {
+        entities.map_err(|e: Error| {
             format_err!(
                 "Failed to parse dynamic data source entities of deployment `{}`: {}",
                 deployment_id,
                 e
             )
         })
-    }
-
-    fn convert_to_unresolved_data_sources(
-        &self,
-        entities: Vec<EthereumContractDataSourceEntity>,
-    ) -> Vec<UnresolvedDataSource> {
-        // Turn the entities into unresolved data sources
-        entities
-            .into_iter()
-            .map(Into::into)
-            .collect::<Vec<UnresolvedDataSource>>()
     }
 
     async fn resolve_data_sources(
@@ -246,18 +236,14 @@ where
                 let self3 = self1.clone();
                 let self4 = self1.clone();
                 let self5 = self1.clone();
-                let self6 = self1.clone();
 
                 future::result(self2.dynamic_data_sources_query(&deployment_id1, state.skip))
                     .and_then(move |query| self3.query_dynamic_data_sources(deployment_id2, query))
                     .and_then(move |query_result| {
                         self4.parse_data_sources(deployment_id3, query_result)
                     })
-                    .and_then(move |typed_entities| {
-                        future::ok(self5.convert_to_unresolved_data_sources(typed_entities))
-                    })
                     .and_then(move |unresolved_data_sources| {
-                        self6
+                        self5
                             .resolve_data_sources(unresolved_data_sources, logger)
                             .boxed()
                             .compat()
