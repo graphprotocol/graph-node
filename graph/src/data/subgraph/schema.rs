@@ -540,27 +540,6 @@ impl<'a> From<&'a super::DataSource> for EthereumContractDataSourceEntity {
     }
 }
 
-impl TryFromValue for EthereumContractDataSourceEntity {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        let map = match value {
-            q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
-                "Cannot parse value into a data source entity: {:?}",
-                value
-            )),
-        }?;
-
-        Ok(Self {
-            kind: map.get_required("kind")?,
-            name: map.get_required("name")?,
-            network: map.get_optional("network")?,
-            source: map.get_required("source")?,
-            mapping: map.get_required("mapping")?,
-            templates: map.get_optional("templates")?.unwrap_or_default(),
-        })
-    }
-}
-
 #[derive(Debug)]
 pub struct DynamicEthereumContractDataSourceEntity {
     kind: String,
@@ -572,6 +551,7 @@ pub struct DynamicEthereumContractDataSourceEntity {
     source: EthereumContractSourceEntity,
     mapping: EthereumContractMappingEntity,
     templates: Vec<EthereumContractDataSourceTemplateEntity>,
+    context: Option<Entity>,
 }
 
 impl DynamicEthereumContractDataSourceEntity {
@@ -593,8 +573,20 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
         let mapping_id = format!("{}-mapping", id);
         self.mapping.generate(&mapping_id, ops);
 
-        let template_ids: Vec<Value> = self
-            .templates
+        let Self {
+            kind,
+            deployment,
+            ethereum_block_hash,
+            ethereum_block_number,
+            name,
+            network,
+            source: _,
+            mapping: _,
+            templates,
+            context,
+        } = self;
+
+        let template_ids: Vec<Value> = templates
             .into_iter()
             .enumerate()
             .map(|(i, template)| {
@@ -606,15 +598,21 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
 
         let mut entity = Entity::new();
         entity.set("id", id);
-        entity.set("kind", self.kind);
-        entity.set("network", self.network);
-        entity.set("name", self.name);
+        entity.set("kind", kind);
+        entity.set("network", network);
+        entity.set("name", name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
         entity.set("templates", template_ids);
-        entity.set("deployment", self.deployment);
-        entity.set("ethereumBlockHash", self.ethereum_block_hash);
-        entity.set("ethereumBlockNumber", self.ethereum_block_number);
+        entity.set("deployment", deployment);
+        entity.set("ethereumBlockHash", ethereum_block_hash);
+        entity.set("ethereumBlockNumber", ethereum_block_number);
+        entity.set(
+            "context",
+            context
+                .as_ref()
+                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
+        );
         ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
@@ -634,21 +632,30 @@ impl<'a, 'b, 'c>
         ),
     ) -> Self {
         let (deployment_id, data_source, block_ptr) = data;
+        let DataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            templates,
+            context,
+        } = data_source;
 
         Self {
-            kind: data_source.kind.clone(),
+            kind: kind.clone(),
             deployment: deployment_id.to_string(),
             ethereum_block_hash: block_ptr.hash.clone(),
             ethereum_block_number: block_ptr.number,
-            name: data_source.name.clone(),
-            network: data_source.network.clone(),
-            source: data_source.source.clone().into(),
-            mapping: EthereumContractMappingEntity::from(&data_source.mapping),
-            templates: data_source
-                .templates
+            name: name.clone(),
+            network: network.clone(),
+            source: source.clone().into(),
+            mapping: EthereumContractMappingEntity::from(mapping),
+            templates: templates
                 .iter()
                 .map(|template| EthereumContractDataSourceTemplateEntity::from(template))
                 .collect(),
+            context: context.clone(),
         }
     }
 }

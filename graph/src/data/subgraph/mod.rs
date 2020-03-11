@@ -18,17 +18,19 @@ use web3::types::{Address, H256};
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::{Store, StoreError, SubgraphDeploymentStore};
 use crate::components::subgraph::DataSourceTemplateInfo;
+use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
-    EthereumContractDataSourceEntity, EthereumContractDataSourceTemplateEntity,
-    EthereumContractDataSourceTemplateSourceEntity, EthereumContractEventHandlerEntity,
-    EthereumContractMappingEntity, EthereumContractSourceEntity, SUBGRAPHS_ID,
+    EthereumContractDataSourceTemplateEntity, EthereumContractDataSourceTemplateSourceEntity,
+    EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
+    EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
 use crate::prelude::{format_err, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
+use graphql_parser::query as q;
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -746,17 +748,30 @@ impl TryFrom<DataSourceTemplateInfo> for DataSource {
     }
 }
 
-impl From<EthereumContractDataSourceEntity> for UnresolvedDataSource {
-    fn from(entity: EthereumContractDataSourceEntity) -> Self {
-        Self {
-            kind: entity.kind,
-            network: entity.network,
-            name: entity.name,
-            source: entity.source.into(),
-            mapping: entity.mapping.into(),
-            templates: entity.templates.into_iter().map(Into::into).collect(),
-            context: None,
-        }
+impl TryFromValue for UnresolvedDataSource {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => Ok(map),
+            _ => Err(format_err!(
+                "Cannot parse value into a data source entity: {:?}",
+                value
+            )),
+        }?;
+
+        let source_entity: EthereumContractSourceEntity = map.get_required("source")?;
+        let mapping_entity: EthereumContractMappingEntity = map.get_required("mapping")?;
+        let templates: Vec<EthereumContractDataSourceTemplateEntity> =
+            map.get_optional("templates")?.unwrap_or_default();
+
+        Ok(Self {
+            kind: map.get_required("kind")?,
+            name: map.get_required("name")?,
+            network: map.get_optional("network")?,
+            source: source_entity.into(),
+            mapping: mapping_entity.into(),
+            templates: templates.into_iter().map(Into::into).collect(),
+            context: map.get_optional("context")?,
+        })
     }
 }
 

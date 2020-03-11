@@ -54,6 +54,7 @@ type EthereumContractDataSource @entity {
     source: EthereumContractSource!
     mapping: EthereumContractMapping!
     templates: [EthereumContractDataSourceTemplate!]
+    context: String # arbitrary entity serialized to JSON
 }
 
 type DynamicEthereumContractDataSource @entity {
@@ -67,6 +68,7 @@ type DynamicEthereumContractDataSource @entity {
     ethereumBlockHash: Bytes!
     ethereumBlockNumber: BigInt!
     deployment: SubgraphDeployment!
+    context: String # arbitrary entity serialized to JSON
 }
 
 type EthereumContractSource @entity {
