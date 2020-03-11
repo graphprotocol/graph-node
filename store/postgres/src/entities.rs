@@ -491,7 +491,7 @@ impl Connection {
     pub(crate) fn insert(
         &self,
         key: &EntityKey,
-        entity: &Entity,
+        entity: &mut Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
         match self.storage_for(key) {
@@ -507,7 +507,7 @@ impl Connection {
     pub(crate) fn update(
         &self,
         key: &EntityKey,
-        entity: &Entity,
+        entity: &mut Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
         match self.storage_for(key) {

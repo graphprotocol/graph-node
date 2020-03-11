@@ -1094,8 +1094,8 @@ mod tests {
         const SCHEMA: &str = r#"
 type _Schema_ @fulltext(
   name: "metadata"
-  language: EN
-  algorithm: RANKED
+  language: en
+  algorithm: ranked
   include: [
     {
       entity: "Gravatar",

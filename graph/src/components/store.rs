@@ -731,8 +731,6 @@ pub enum StoreError {
     UnknownTable(String),
     #[fail(display = "malformed directive '{}'", _0)]
     MalformedDirective(String),
-    #[fail(display = "directive '{}' is missing an argument '{}'", _0, _1)]
-    DirectiveArgumentMissing(String, String),
     #[fail(display = "query execution failed: {}", _0)]
     QueryExecutionError(String),
     #[fail(display = "invalid identifier: {}", _0)]
@@ -1188,14 +1186,6 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 
-    /// Return the fulltext entities and fields that were defined in the user's schema.
-    /// The map of fulltext entity fields will be use during entity operations to update the
-    /// "virtual" fulltext fields.
-    fn fulltext_fields(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<SubgraphFulltextEntities, Error>;
-
     /// Return true if the subgraph uses the relational storage scheme; if
     /// it is false, the subgraph uses JSONB storage. This method exposes
     /// store internals that should really be hidden and should be used
@@ -1447,7 +1437,6 @@ impl EntityCache {
     pub fn as_modifications(
         mut self,
         store: &(impl Store + ?Sized),
-        fulltext_entity_fields: &SubgraphFulltextEntities,
     ) -> Result<ModificationsAndCache, QueryExecutionError> {
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
@@ -1489,9 +1478,6 @@ impl EntityCache {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
                     data.merge_remove_null_fields(updates);
-                    if let Some(fulltext_fields) = fulltext_entity_fields.get(&key.entity_type) {
-                        data.merge_fulltext_field_modifications(fulltext_fields);
-                    }
                     self.current.insert(key.clone(), Some(data.clone()));
                     Some(Insert { key, data })
                 }
@@ -1499,9 +1485,6 @@ impl EntityCache {
                 (Some(current), Some(updates)) => {
                     let mut data = current.clone();
                     data.merge_remove_null_fields(updates);
-                    if let Some(fulltext_fields) = fulltext_entity_fields.get(&key.entity_type) {
-                        data.merge_fulltext_field_modifications(fulltext_fields);
-                    }
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
                         Some(Overwrite { key, data })

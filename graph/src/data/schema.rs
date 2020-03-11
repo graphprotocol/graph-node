@@ -1,7 +1,7 @@
 use crate::components::store::{Store, SubgraphDeploymentStore};
-use crate::data::graphql::ext::{DirectiveFinder, DocumentExt, TypeExt};
+use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::scalar::BuiltInScalarType;
-use crate::data::subgraph::{schema::SubgraphFulltextEntities, SubgraphDeploymentId, SubgraphName};
+use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
 
 use failure::Error;
@@ -113,22 +113,22 @@ impl TryFrom<&String> for FulltextLanguage {
     type Error = String;
     fn try_from(language: &String) -> Result<Self, Self::Error> {
         match &language[..] {
-            "SIMPLE" => Ok(FulltextLanguage::Simple),
-            "DA" => Ok(FulltextLanguage::Danish),
-            "NL" => Ok(FulltextLanguage::Dutch),
-            "EN" => Ok(FulltextLanguage::English),
-            "FI" => Ok(FulltextLanguage::Finnish),
-            "FR" => Ok(FulltextLanguage::French),
-            "DE" => Ok(FulltextLanguage::German),
-            "HU" => Ok(FulltextLanguage::Hungarian),
-            "IT" => Ok(FulltextLanguage::Italian),
-            "NO" => Ok(FulltextLanguage::Norwegian),
-            "PT" => Ok(FulltextLanguage::Portugese),
-            "RO" => Ok(FulltextLanguage::Romanian),
-            "RU" => Ok(FulltextLanguage::Russian),
-            "ES" => Ok(FulltextLanguage::Spanish),
-            "SV" => Ok(FulltextLanguage::Swedish),
-            "TR" => Ok(FulltextLanguage::Turkish),
+            "simple" => Ok(FulltextLanguage::Simple),
+            "da" => Ok(FulltextLanguage::Danish),
+            "nl" => Ok(FulltextLanguage::Dutch),
+            "en" => Ok(FulltextLanguage::English),
+            "fi" => Ok(FulltextLanguage::Finnish),
+            "fr" => Ok(FulltextLanguage::French),
+            "de" => Ok(FulltextLanguage::German),
+            "hu" => Ok(FulltextLanguage::Hungarian),
+            "it" => Ok(FulltextLanguage::Italian),
+            "no" => Ok(FulltextLanguage::Norwegian),
+            "pt" => Ok(FulltextLanguage::Portugese),
+            "ro" => Ok(FulltextLanguage::Romanian),
+            "ru" => Ok(FulltextLanguage::Russian),
+            "es" => Ok(FulltextLanguage::Spanish),
+            "sv" => Ok(FulltextLanguage::Swedish),
+            "tr" => Ok(FulltextLanguage::Turkish),
             invalid => Err(format!(
                 "Provided language for fulltext search is invalid: {}",
                 invalid
@@ -138,8 +138,8 @@ impl TryFrom<&String> for FulltextLanguage {
 }
 
 impl FulltextLanguage {
-    pub fn as_sql(&self) -> String {
-        String::from(match self {
+    pub fn as_sql(&self) -> &'static str {
+        match self {
             Self::Simple => "simple",
             Self::Danish => "danish",
             Self::Dutch => "dutch",
@@ -156,7 +156,7 @@ impl FulltextLanguage {
             Self::Spanish => "spanish",
             Self::Swedish => "swedish",
             Self::Turkish => "turkish",
-        })
+        }
     }
 }
 
@@ -170,8 +170,8 @@ impl TryFrom<&String> for FulltextAlgorithm {
     type Error = String;
     fn try_from(algorithm: &String) -> Result<Self, Self::Error> {
         match &algorithm[..] {
-            "RANKED" => Ok(FulltextAlgorithm::Ranked),
-            "PROXIMITY_RANKED" => Ok(FulltextAlgorithm::ProximityRanked),
+            "ranked" => Ok(FulltextAlgorithm::Ranked),
+            "proximity_ranked" => Ok(FulltextAlgorithm::ProximityRanked),
             invalid => Err(format!(
                 "Provided algorithm for fulltext search is invalid: {}",
                 invalid,
@@ -181,14 +181,74 @@ impl TryFrom<&String> for FulltextAlgorithm {
 }
 
 impl FulltextAlgorithm {
-    pub fn as_sql(&self) -> String {
-        String::from(match self {
+    pub fn as_sql(&self) -> &'static str {
+        match self {
             Self::Ranked => "ts_rank(",
             Self::ProximityRanked => "ts_rank_cd(",
-        })
+        }
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FulltextConfig {
+    pub language: FulltextLanguage,
+    pub algorithm: FulltextAlgorithm,
+}
+
+pub struct FulltextDefinition {
+    pub config: FulltextConfig,
+    pub included_fields: HashSet<String>,
+    pub name: String,
+}
+
+impl From<&Directive> for FulltextDefinition {
+    // Assumes the input is a Fulltext Directive that has already been validated because it makes
+    // liberal use of unwrap() where specific types are expected
+    fn from(directive: &Directive) -> Self {
+        let name = directive
+            .argument("name")
+            .unwrap()
+            .as_string()
+            .unwrap()
+            .clone();
+
+        let algorithm = FulltextAlgorithm::try_from(
+            directive.argument("algorithm").unwrap().as_enum().unwrap(),
+        )
+        .unwrap();
+
+        let language =
+            FulltextLanguage::try_from(directive.argument("language").unwrap().as_enum().unwrap())
+                .unwrap();
+
+        let included_entity_list = directive.argument("include").unwrap().as_list().unwrap();
+        // Currently fulltext query fields are limited to 1 entity, so we just take the first (and only) included Entity
+        let included_entity = included_entity_list.first().unwrap().as_object().unwrap();
+        let included_field_values = included_entity.get("fields").unwrap().as_list().unwrap();
+        let included_fields: HashSet<String> = included_field_values
+            .into_iter()
+            .map(|field| {
+                field
+                    .as_object()
+                    .unwrap()
+                    .get("name")
+                    .unwrap()
+                    .as_string()
+                    .unwrap()
+                    .clone()
+            })
+            .collect();
+
+        FulltextDefinition {
+            config: FulltextConfig {
+                language,
+                algorithm,
+            },
+            included_fields,
+            name: name,
+        }
+    }
+}
 #[derive(Debug, Fail, PartialEq, Eq, Clone)]
 pub enum SchemaImportError {
     #[fail(display = "Schema for imported subgraph `{}` was not found", _0)]
@@ -1229,80 +1289,12 @@ impl Schema {
             .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
     }
 
-    pub fn subgraph_schema_fulltext_directives(document: &Document) -> Vec<&Directive> {
-        document
-            .get_object_type_definitions()
-            .into_iter()
-            .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
-            .map_or(vec![], |subgraph_schema_type| {
-                subgraph_schema_type
-                    .directives
-                    .iter()
-                    .filter(|directives| directives.name.eq("fulltext"))
-                    .collect()
-            })
-    }
-
-    // Create a reference of entities that are included in Fulltext APIs. The result maps the entity
-    // to its fields that are covered by the Fulltext API. The included fields map to the fulltext APIs
-    // which they contribute to. Pattern matching is not exhaustive here as unexpected types will be
-    // caught by validation.
-    pub fn subgraph_fulltext_entity_fields(document: &Document) -> SubgraphFulltextEntities {
-        Self::subgraph_schema_fulltext_directives(document)
-            .into_iter()
-            .fold(BTreeMap::new(), |mut outer_acc, directive| {
-                directive
-                    .arguments
-                    .iter()
-                    .find(|(argument, _value)| argument == "name")
-                    .map(|(_argument, value)| {
-                        if let Value::String(fulltext_name) = value {
-                            directive
-                                .arguments
-                                .iter()
-                                .find(|(name, _value)| name == "include")
-                                .map(|(_name, value)| {
-                                    if let Value::List(includes) = value {
-                                        for include in includes {
-                                            if let Value::Object(include) = include {
-                                                if let (
-                                                    Some(Value::String(entity)),
-                                                    Some(Value::List(fields)),
-                                                ) =
-                                                    (include.get("entity"), include.get("fields"))
-                                                {
-                                                    for field in fields {
-                                                        if let Value::Object(field_object) = field {
-                                                            if let Some(Value::String(field_name)) =
-                                                                field_object.get("name")
-                                                            {
-                                                                outer_acc
-                                                                    .entry(entity.clone())
-                                                                    .or_insert_with(|| {
-                                                                        BTreeMap::new()
-                                                                    })
-                                                                    .entry(field_name.clone())
-                                                                    .or_insert_with(|| Vec::new())
-                                                                    .push(fulltext_name.clone());
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                });
-                        }
-                    });
-                outer_acc
-            })
-    }
-
-    pub fn entity_fulltext_directives<'a>(
+    pub fn entity_fulltext_definitions<'a>(
         entity: &str,
         document: &'a Document,
-    ) -> Vec<&'a Directive> {
-        Self::subgraph_schema_fulltext_directives(document)
+    ) -> Vec<FulltextDefinition> {
+        document
+            .get_fulltext_directives()
             .into_iter()
             .filter(|directive| {
                 match directive
@@ -1330,6 +1322,7 @@ impl Schema {
                     _ => return false,
                 };
             })
+            .map(|directive| FulltextDefinition::from(directive))
             .collect()
     }
 }
@@ -1589,8 +1582,8 @@ fn test_fulltext_directive_validation() {
     const SCHEMA: &str = r#"
 type _Schema_ @fulltext(
   name: "metadata"
-  language: EN
-  algorithm: RANKED
+  language: en
+  algorithm: ranked
   include: [
     {
       entity: "Gravatar",

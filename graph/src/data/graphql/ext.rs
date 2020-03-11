@@ -1,9 +1,10 @@
+use crate::data::schema::SCHEMA_TYPE_NAME;
 use graphql_parser::schema::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, Name, ObjectType, Type,
-    TypeDefinition,
+    TypeDefinition, Value,
 };
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {
     fn field(&self, name: &Name) -> Option<&Field>;
@@ -24,11 +25,15 @@ impl ObjectTypeExt for InterfaceType {
 pub trait DocumentExt {
     fn get_object_type_definitions(&self) -> Vec<&ObjectType>;
 
+    fn get_object_type_definition(&self, name: &str) -> Option<&ObjectType>;
+
     fn get_object_and_interface_type_fields(&self) -> HashMap<&Name, &Vec<Field>>;
 
     fn get_enum_definitions(&self) -> Vec<&EnumType>;
 
     fn find_interface(&self, name: &str) -> Option<&InterfaceType>;
+
+    fn get_fulltext_directives<'a>(&'a self) -> Vec<&'a Directive>;
 }
 
 impl DocumentExt for Document {
@@ -40,6 +45,12 @@ impl DocumentExt for Document {
                 _ => None,
             })
             .collect()
+    }
+
+    fn get_object_type_definition(&self, name: &str) -> Option<&ObjectType> {
+        self.get_object_type_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq(name))
     }
 
     fn get_object_and_interface_type_fields(&self) -> HashMap<&Name, &Vec<Field>> {
@@ -71,6 +82,17 @@ impl DocumentExt for Document {
             _ => None,
         })
     }
+
+    fn get_fulltext_directives(&self) -> Vec<&Directive> {
+        self.get_object_type_definition(SCHEMA_TYPE_NAME)
+            .map_or(vec![], |subgraph_schema_type| {
+                subgraph_schema_type
+                    .directives
+                    .iter()
+                    .filter(|directives| directives.name.eq("fulltext"))
+                    .collect()
+            })
+    }
 }
 
 pub trait TypeExt {
@@ -83,6 +105,56 @@ impl TypeExt for Type {
             Type::NamedType(name) => name,
             Type::NonNullType(inner) => Self::get_base_type(&inner),
             Type::ListType(inner) => Self::get_base_type(&inner),
+        }
+    }
+}
+
+pub trait DirectiveExt {
+    fn argument(&self, name: &str) -> Option<&Value>;
+}
+
+impl DirectiveExt for Directive {
+    fn argument(&self, name: &str) -> Option<&Value> {
+        self.arguments
+            .iter()
+            .find(|(key, _value)| key == name)
+            .map(|(_argument, value)| value)
+    }
+}
+
+pub trait ValueExt {
+    fn as_object(&self) -> Option<&BTreeMap<Name, Value>>;
+    fn as_list(&self) -> Option<&Vec<Value>>;
+    fn as_string(&self) -> Option<&String>;
+    fn as_enum(&self) -> Option<&Name>;
+}
+
+impl ValueExt for Value {
+    fn as_object(&self) -> Option<&BTreeMap<Name, Value>> {
+        match self {
+            Value::Object(object) => Some(object),
+            _ => None,
+        }
+    }
+
+    fn as_list(&self) -> Option<&Vec<Value>> {
+        match self {
+            Value::List(list) => Some(list),
+            _ => None,
+        }
+    }
+
+    fn as_string(&self) -> Option<&String> {
+        match self {
+            Value::String(string) => Some(string),
+            _ => None,
+        }
+    }
+
+    fn as_enum(&self) -> Option<&Name> {
+        match self {
+            Value::Enum(e) => Some(e),
+            _ => None,
         }
     }
 }
@@ -104,5 +176,11 @@ impl DirectiveFinder for Field {
         self.directives
             .iter()
             .find(|directive| directive.name.eq(&name))
+    }
+}
+
+impl DirectiveFinder for Vec<Directive> {
+    fn find_directive(&self, name: Name) -> Option<&Directive> {
+        self.iter().find(|directive| directive.name.eq(&name))
     }
 }

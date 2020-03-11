@@ -86,7 +86,7 @@ fn build_range(
     }
 }
 
-/// Parses GraphQL arguments into a EntityFilter, if present.
+/// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
     entity: ObjectOrInterface,
     arguments: &HashMap<&q::Name, q::Value>,
@@ -95,7 +95,7 @@ fn build_filter(
         Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
         Some(q::Value::Null) => Ok(None),
         None => match arguments.get(&"text".to_string()) {
-            Some(q::Value::Object(filter)) => build_text_filter_from_object(entity, filter),
+            Some(q::Value::Object(filter)) => build_fulltext_filter_from_object(entity, filter),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
         },
@@ -103,12 +103,12 @@ fn build_filter(
     }
 }
 
-fn build_text_filter_from_object(
+fn build_fulltext_filter_from_object(
     _entity: ObjectOrInterface,
     object: &BTreeMap<q::Name, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     object.into_iter().next().map_or(
-        Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+        Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let q::Value::String(s) = value {
                 Ok(Some(EntityFilter::Equal(
@@ -116,7 +116,7 @@ fn build_text_filter_from_object(
                     Value::String(s.clone()),
                 )))
             } else {
-                Err(QueryExecutionError::FullTextQueryRequiresEqualFilter)
+                Err(QueryExecutionError::FulltextQueryRequiresFilter)
             }
         },
     )
@@ -214,24 +214,23 @@ fn build_order_by(
                 })
         }
         _ => match arguments.get(&"text".to_string()) {
-            Some(q::Value::Object(filter)) => build_text_order_from_object(entity, filter),
+            Some(q::Value::Object(filter)) => build_fulltext_order_by_from_object(filter),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
         },
     }
 }
 
-fn build_text_order_from_object(
-    _entity: ObjectOrInterface,
+fn build_fulltext_order_by_from_object(
     object: &BTreeMap<q::Name, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     object.into_iter().next().map_or(
-        Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+        Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let q::Value::String(_) = value {
                 Ok(Some((key.clone(), ValueType::String)))
             } else {
-                Err(QueryExecutionError::FullTextQueryRequiresEqualFilter)
+                Err(QueryExecutionError::FulltextQueryRequiresFilter)
             }
         },
     )

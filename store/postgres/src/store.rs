@@ -14,8 +14,7 @@ use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::{
-    SubgraphDeploymentEntity, SubgraphFulltextEntities, SubgraphManifestEntity, TypedEntity as _,
-    SUBGRAPHS_ID,
+    SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
 use graph::prelude::{
     bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
@@ -451,14 +450,14 @@ impl Store {
                 let result = match entity {
                     Some(mut entity) => {
                         entity.merge_remove_null_fields(data);
-                        conn.update(&key, &entity, None).map(|_| 0)
+                        conn.update(&key, &mut entity, None).map(|_| 0)
                     }
                     None => {
                         // Merge with a new entity since that removes values that
                         // were set to Value::Null
                         let mut entity = Entity::new();
                         entity.merge_remove_null_fields(data);
-                        conn.insert(&key, &entity, None).map(|_| 1)
+                        conn.insert(&key, &mut entity, None).map(|_| 1)
                     }
                 };
 
@@ -573,21 +572,21 @@ impl Store {
 
             let do_count = !modification.entity_key().subgraph_id.is_meta();
             let n = match modification {
-                Overwrite { key, data } => {
+                Overwrite { key, mut data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
                     self.check_interface_entity_uniqueness(conn, &key)?;
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_update");
-                    conn.update(&key, &data, history_event).map(|_| 0)
+                    conn.update(&key, &mut data, history_event).map(|_| 0)
                 }
-                Insert { key, data } => {
+                Insert { key, mut data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
                     self.check_interface_entity_uniqueness(conn, &key)?;
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_insert");
-                    conn.insert(&key, &data, history_event).map(|_| 1)
+                    conn.insert(&key, &mut data, history_event).map(|_| 1)
                 }
                 Remove { key } => conn
                     .delete(&key, history_event)
@@ -1109,15 +1108,6 @@ impl SubgraphDeploymentStore for Store {
 
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         Ok(self.cached_schema(subgraph_id)?.api)
-    }
-
-    fn fulltext_fields(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<SubgraphFulltextEntities, Error> {
-        Ok(Schema::subgraph_fulltext_entity_fields(
-            &self.api_schema(subgraph_id)?.document,
-        ))
     }
 
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
