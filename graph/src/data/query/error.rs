@@ -59,7 +59,7 @@ pub enum QueryExecutionError {
     IncorrectPrefetchResult { slow: q::Value, prefetch: q::Value },
     Panic(String),
     EventStreamError,
-    FullTextQueryRequiresEqualFilter,
+    FulltextQueryRequiresFilter,
 }
 
 impl Error for QueryExecutionError {
@@ -206,7 +206,7 @@ impl fmt::Display for QueryExecutionError {
                            https://github.com/graphprotocol/graph-node"),
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
-            FullTextQueryRequiresEqualFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
+            FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
         }
     }
 }

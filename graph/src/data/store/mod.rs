@@ -11,7 +11,7 @@ use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use crate::data::subgraph::{schema::SubgraphFulltextFields, SubgraphDeploymentId};
+use crate::data::subgraph::SubgraphDeploymentId;
 use crate::prelude::{format_err, EntityKey, QueryExecutionError};
 use crate::util::lfu_cache::CacheWeight;
 
@@ -507,38 +507,9 @@ impl Entity {
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
-                Value::String(s) => self.insert(key, Value::String(s)),
                 _ => self.insert(key, value),
             };
         }
-    }
-
-    /// Merges fulltext field modifications into this entity.
-    ///
-    /// Each Fulltext API is represented by a virtual field on this entity.
-    /// All updates to fields included in a Fulltext API are also merged into its virtual field.
-    pub fn merge_fulltext_field_modifications(&mut self, fulltext_fields: &SubgraphFulltextFields) {
-        self.iter()
-            .fold(
-                BTreeMap::new(),
-                |mut fulltext_updates, (attribute, value)| {
-                    if let (Some(fulltext_fields), Value::String(s)) =
-                        (fulltext_fields.get(attribute), value)
-                    {
-                        for fulltext_field in fulltext_fields {
-                            fulltext_updates
-                                .entry(fulltext_field.clone())
-                                .or_insert_with(Vec::new)
-                                .push(Value::String(s.clone()))
-                        }
-                    }
-                    fulltext_updates
-                },
-            )
-            .into_iter()
-            .for_each(|(attribute, values)| {
-                self.insert(attribute, Value::List(values));
-            });
     }
 }
 

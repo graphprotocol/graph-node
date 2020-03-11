@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::time::Instant;
 
 use graph::prelude::*;
@@ -148,12 +147,11 @@ impl WriteContext {
                     let stopwatch = metrics.stopwatch.clone();
 
                     // Collect all entity modifications to be made
-                    let modifications =
-                        match cache.as_modifications(store.as_ref(), &BTreeMap::new()) {
-                            Ok(mods) => mods,
-                            Err(e) => return future::err(e.into()),
-                        }
-                        .modifications;
+                    let modifications = match cache.as_modifications(store.as_ref()) {
+                        Ok(mods) => mods,
+                        Err(e) => return future::err(e.into()),
+                    }
+                    .modifications;
 
                     let block_ptr = EthereumBlockPointer::from(&block_for_store.block);
 
