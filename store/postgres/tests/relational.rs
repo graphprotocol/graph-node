@@ -20,9 +20,9 @@ use test_store::*;
 
 const THINGS_GQL: &str = r#"
     type _Schema_ @fulltext(
-        name: "user_search"
-        language: EN
-        algorithm: RANKED
+        name: "userSearch"
+        language: en
+        algorithm: ranked
         include: [
             {
                 entity: "User",
@@ -171,7 +171,7 @@ fn insert_user_entity(
     user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
     user.insert("email".to_owned(), Value::String(email.to_owned()));
     user.insert(
-        "user_search".to_owned(),
+        "userSearch".to_owned(),
         Value::List(vec![
             Value::String(name.to_owned()),
             Value::String(email.to_owned()),
@@ -612,7 +612,7 @@ fn find_string_contains() {
 fn find_fulltext_prefix() {
     test_find(
         vec!["1"],
-        user_query().filter(EntityFilter::Equal("user_search".into(), "Joh:*".into())),
+        user_query().filter(EntityFilter::Equal("userSearch".into(), "Joh:*".into())),
     )
 }
 
@@ -621,7 +621,7 @@ fn find_fulltext_and() {
     test_find(
         vec!["3"],
         user_query().filter(EntityFilter::Equal(
-            "user_search".into(),
+            "userSearch".into(),
             "Shaqueeena & teeko@email.com".into(),
         )),
     )

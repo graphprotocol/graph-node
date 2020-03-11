@@ -221,21 +221,18 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         Ok(())
                     }
                     // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
-                    ColumnType::TSVector((language, _)) => {
-                        let mut iter = values.iter().peekable();
+                    ColumnType::TSVector(config) => {
                         out.push_sql("(");
-                        while let Some(value) = iter.next() {
+                        for (i, value) in values.iter().enumerate() {
+                            if i > 0 {
+                                out.push_sql(") || ");
+                            }
                             out.push_sql("to_tsvector(");
-                            out.push_bind_param::<Text, _>(&language.as_sql())?;
+                            out.push_bind_param::<Text, _>(&config.language.as_sql().to_string())?;
                             out.push_sql("::regconfig, ");
                             out.push_bind_param::<Text, _>(&value)?;
-                            if iter.peek().is_some() {
-                                out.push_sql(") || ");
-                            } else {
-                                out.push_sql(")");
-                            }
                         }
-                        out.push_sql(")");
+                        out.push_sql("))");
                         Ok(())
                     }
                 }
@@ -562,10 +559,12 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        if column.is_fulltext() {
-            PrefixComparison::new(Comparison::Match, column, value).walk_ast(out.reborrow())?;
-        } else if column.is_text() && value.is_string() {
+        if column.is_text() && value.is_string() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
+        } else if column.is_fulltext() {
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(Comparison::Match.as_str());
+            QueryValue(value, &column.column_type).walk_ast(out)?;
         } else {
             out.push_identifier(column.name.as_str())?;
 
@@ -902,7 +901,19 @@ impl<'a> InsertQuery<'a> {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
+        let mut entity = entity;
         for column in table.columns.iter() {
+            match column.fulltext_fields.as_ref() {
+                Some(fields) => {
+                    let fulltext_updates = fields
+                        .iter()
+                        .filter_map(|field| entity.get(field))
+                        .cloned()
+                        .collect();
+                    entity.insert(column.field.to_string(), Value::List(fulltext_updates));
+                }
+                None => (),
+            }
             if !column.is_nullable() && !entity.contains_key(&column.field) {
                 return Err(StoreError::QueryExecutionError(format!(
                     "can not insert entity {}[{}] since value for non-nullable attribute {} is missing. \
@@ -1215,7 +1226,7 @@ enum ParentLimit<'a> {
     /// Limit children to a specific parent
     Outer,
     /// Limit children by sorting and picking top n
-    Ranked(&'a SortKey, &'a FilterRange),
+    Ranked(&'a SortKey<'a>, &'a FilterRange),
 }
 
 impl<'a> ParentLimit<'a> {
@@ -1430,7 +1441,7 @@ pub enum FilterCollection<'a> {
 }
 
 impl<'a> FilterCollection<'a> {
-    fn new(
+    pub fn new(
         layout: &'a Layout,
         collection: EntityCollection,
         filter: Option<&'a EntityFilter>,
@@ -1442,7 +1453,7 @@ impl<'a> FilterCollection<'a> {
                 // into the corresponding table, and check and bind the filter
                 // to it
                 let entities = entities
-                    .into_iter()
+                    .iter()
                     .map(|entity| {
                         layout
                             .table_for_entity(&entity)
@@ -1495,17 +1506,17 @@ impl<'a> FilterCollection<'a> {
 
 /// Convenience to pass the name of the column to order by around. If `name`
 /// is `None`, the sort key should be ignored
-#[derive(Debug, Clone)]
-pub struct SortKey {
-    column: Option<Column>,
-    value: Option<Value>,
+#[derive(Debug, Clone, Copy)]
+pub struct SortKey<'a> {
+    column: Option<&'a Column>,
+    value: Option<&'a str>,
     direction: EntityOrder,
 }
 
-impl SortKey {
+impl<'a> SortKey<'a> {
     /// Generate selecting the sort key if it is needed
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if let Some(column) = &self.column {
+        if let Some(column) = self.column {
             let name = column.name.as_str();
             if name != PRIMARY_KEY_COLUMN {
                 out.push_sql(", c.");
@@ -1518,21 +1529,15 @@ impl SortKey {
     /// Generate
     ///   order by [name direction,] id
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if let Some(column) = &self.column {
+        if let Some(column) = self.column {
             match &column.column_type {
-                ColumnType::TSVector((_, algorithm)) => {
-                    let sort_value = &self
-                        .value
-                        .as_ref()
-                        .and_then(|v| v.clone().as_string())
-                        .expect("fulltext search queries can only use EntityFilter::Equal");
-
-                    out.push_sql(&algorithm.as_sql());
+                ColumnType::TSVector(config) => {
+                    out.push_sql(config.algorithm.as_sql());
                     let name = column.name.as_str();
                     out.push_identifier(name)?;
                     out.push_sql(", to_tsquery(");
 
-                    out.push_bind_param::<Text, _>(&sort_value)?;
+                    out.push_bind_param::<Text, _>(&String::from(self.value.unwrap()))?;
                     out.push_sql(")) ");
                     out.push_sql(self.direction.to_sql());
                     out.push_sql(" nulls last");
@@ -1586,48 +1591,47 @@ impl QueryFragment<Pg> for FilterRange {
 /// `https://github.com/graphprotocol/rfcs/blob/master/engineering-plans/0001-graphql-query-prefetching.md`
 #[derive(Debug, Clone)]
 pub struct FilterQuery<'a> {
-    collection: FilterCollection<'a>,
-    sort_key: SortKey,
+    collection: &'a FilterCollection<'a>,
+    sort_key: SortKey<'a>,
     range: FilterRange,
     block: BlockNumber,
 }
 
 impl<'a> FilterQuery<'a> {
     pub fn new(
-        layout: &'a Layout,
-        collection: EntityCollection,
+        collection: &'a FilterCollection,
         filter: Option<&'a EntityFilter>,
         order: Option<(String, ValueType, EntityOrder)>,
         range: EntityRange,
         block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
-        let collection = FilterCollection::new(layout, collection, filter)?;
-
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
         // in that interface so that all tables have a column for that. It is
         // therefore enough to just look at the first table to get the name
-        let first_table = collection
-            .first_table()
-            .expect("an entity query always contains at least one entity type/table");
+        let first_table = collection.first_table().unwrap();
         let sort_key = match order {
             Some((ref attribute, _, direction)) => {
                 let column = first_table.column_for_field(&attribute)?;
                 if column.is_fulltext() {
                     match filter {
                         Some(entity_filter) => match entity_filter {
-                            EntityFilter::Equal(_attribute, value) => SortKey {
-                                column: Some(column.clone()),
-                                value: Some(value.clone()),
-                                direction,
-                            },
-                            _ => return Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+                            EntityFilter::Equal(_, value) => {
+                                let sort_value = value.as_str();
+
+                                SortKey {
+                                    column: Some(column),
+                                    value: sort_value,
+                                    direction,
+                                }
+                            }
+                            _ => unreachable!(),
                         },
-                        None => return Err(QueryExecutionError::FullTextQueryRequiresEqualFilter),
+                        None => unreachable!(),
                     }
                 } else {
                     SortKey {
-                        column: Some(column.clone()),
+                        column: Some(column),
                         value: None,
                         direction,
                     }

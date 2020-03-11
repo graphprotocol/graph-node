@@ -8,7 +8,7 @@ use uuid::Uuid;
 use graph::components::ethereum::triggers_in_block;
 use graph::components::store::ModificationsAndCache;
 use graph::data::subgraph::schema::{
-    DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity, SubgraphFulltextEntities,
+    DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -31,7 +31,6 @@ struct IndexingInputs<B, S> {
     deployment_id: SubgraphDeploymentId,
     network_name: String,
     start_blocks: Vec<u64>,
-    fulltext_fields: SubgraphFulltextEntities,
     store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     stream_builder: B,
@@ -373,7 +372,6 @@ impl SubgraphInstanceManager {
         ));
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
-        let fulltext_fields = store.fulltext_fields(&deployment_id)?;
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
@@ -381,7 +379,6 @@ impl SubgraphInstanceManager {
                 deployment_id: deployment_id.clone(),
                 network_name,
                 start_blocks,
-                fulltext_fields,
                 store,
                 eth_adapter,
                 stream_builder,
@@ -716,7 +713,7 @@ where
         entity_lfu_cache: mut cache,
     } = block_state
         .entity_cache
-        .as_modifications(ctx.inputs.store.as_ref(), &ctx.inputs.fulltext_fields)
+        .as_modifications(ctx.inputs.store.as_ref())
         .map_err(|e| {
             CancelableError::from(format_err!(
                 "Error while processing block stream for a subgraph: {}",

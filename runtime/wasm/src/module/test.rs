@@ -350,7 +350,7 @@ async fn ipfs_map() {
             .ctx
             .state
             .entity_cache
-            .as_modifications(store.as_ref(), &BTreeMap::new())?
+            .as_modifications(store.as_ref())?
             .modifications;
 
         // Bring the modifications into a predictable order (by entity_id)
@@ -842,7 +842,7 @@ fn entity_store() {
         .ctx
         .state
         .entity_cache
-        .as_modifications(store.as_ref(), &BTreeMap::new())
+        .as_modifications(store.as_ref())
         .unwrap()
         .modifications;
     assert_eq!(1, mods.len());
@@ -865,7 +865,7 @@ fn entity_store() {
         .ctx
         .state
         .entity_cache
-        .as_modifications(store.as_ref(), &fulltext_entities)
+        .as_modifications(store.as_ref())
         .unwrap()
         .modifications;
     assert_eq!(1, mods.len());
@@ -873,7 +873,6 @@ fn entity_store() {
         EntityModification::Insert { data, .. } => {
             assert_eq!(Some(&Value::from("herobrine")), data.get("id"));
             assert_eq!(Some(&Value::from("Brine-O")), data.get("name"));
-            assert_eq!(Some(&Value::from(vec!["Brine-O"])), data.get("search"));
         }
         _ => assert!(false, "expected Insert modification"),
     }

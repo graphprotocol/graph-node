@@ -9,7 +9,6 @@ use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{Store, StoreConfig};
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::collections::BTreeMap;
 use std::env;
 use std::sync::Mutex;
 use web3::types::H256;
@@ -109,7 +108,7 @@ pub fn transact_entity_operations(
     let mut entity_cache = EntityCache::new();
     entity_cache.append(ops);
     let mods = entity_cache
-        .as_modifications(store.as_ref(), &BTreeMap::new())
+        .as_modifications(store.as_ref())
         .expect("failed to convert to modifications")
         .modifications;
     let metrics_registry = Arc::new(MockMetricsRegistry::new());

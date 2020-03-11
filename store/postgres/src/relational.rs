@@ -12,7 +12,7 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::convert::TryFrom;
+use std::convert::From;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -20,10 +20,10 @@ use std::time::{Duration, Instant};
 
 use crate::relational_queries::{
     ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery, DeleteDynamicDataSourcesQuery,
-    DeleteQuery, EntityData, FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
-    RevertRemoveQuery, UpdateQuery,
+    DeleteQuery, EntityData, FilterCollection, FilterQuery, FindManyQuery, FindQuery, InsertQuery,
+    RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
-use graph::data::schema::{FulltextAlgorithm, FulltextLanguage, Schema, SCHEMA_TYPE_NAME};
+use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::prelude::{
     format_err, trace, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
@@ -178,7 +178,7 @@ impl Layout {
                     tables.push(Table::new(
                         obj_type,
                         &schema,
-                        Schema::entity_fulltext_directives(&obj_type.name, document),
+                        Schema::entity_fulltext_definitions(&obj_type.name, document),
                         &enums,
                         id_type,
                         tables.len() as u32,
@@ -416,7 +416,9 @@ impl Layout {
                 "entity_count" => entity_count
             );
         }
-        let query = FilterQuery::new(&self, collection, filter.as_ref(), order, range, block)?;
+
+        let filter_collection = FilterCollection::new(&self, collection, filter.as_ref())?;
+        let query = FilterQuery::new(&filter_collection, filter.as_ref(), order, range, block)?;
         let query_clone = query.clone();
 
         let start = Instant::now();
@@ -635,7 +637,7 @@ pub enum ColumnType {
     Bytes,
     Int,
     String,
-    TSVector((FulltextLanguage, FulltextAlgorithm)),
+    TSVector(FulltextConfig),
     /// A user-defined enum. The string contains the name of the Postgres
     /// enum we created for it, fully qualified with the schema
     Enum(SqlName),
@@ -695,7 +697,7 @@ impl ColumnType {
             ColumnType::Bytes => "bytea",
             ColumnType::Int => "integer",
             ColumnType::String => "text",
-            ColumnType::TSVector((_, _)) => "tsvector",
+            ColumnType::TSVector(_) => "tsvector",
             ColumnType::Enum(name) => name.as_str(),
         }
     }
@@ -707,6 +709,7 @@ pub struct Column {
     pub field: String,
     pub field_type: q::Type,
     pub column_type: ColumnType,
+    pub fulltext_fields: Option<HashSet<String>>,
 }
 
 impl Column {
@@ -724,61 +727,20 @@ impl Column {
             field: field.name.clone(),
             column_type: ColumnType::from_field_type(&field.field_type, schema, enums, id_type)?,
             field_type: field.field_type.clone(),
+            fulltext_fields: None,
         })
     }
 
-    fn new_fulltext(directive: &s::Directive) -> Result<Column, StoreError> {
-        let name = directive
-            .arguments
-            .iter()
-            .find(|(name, _value)| name == "name")
-            .and_then(|(_argument, value)| match value {
-                s::Value::String(s) => Some(s.as_str()),
-                _ => unreachable!(),
-            })
-            .ok_or(StoreError::DirectiveArgumentMissing(
-                directive.name.clone(),
-                "name".to_string(),
-            ))?;
-        let algorithm = directive
-            .arguments
-            .iter()
-            .find(|(name, _value)| name == "algorithm")
-            .map(|(_argument, value)| match value {
-                s::Value::Enum(e) => match FulltextAlgorithm::try_from(e) {
-                    Ok(algorithm) => Ok(algorithm),
-                    Err(e) => Err(StoreError::MalformedDirective(e)),
-                },
-                _ => unreachable!(),
-            })
-            .ok_or(StoreError::DirectiveArgumentMissing(
-                directive.name.clone(),
-                "algorithm".to_string(),
-            ))??;
-        let language = directive
-            .arguments
-            .iter()
-            .find(|(name, _value)| name == "language")
-            .map(|(_argument, value)| match value {
-                s::Value::Enum(e) => match FulltextLanguage::try_from(e) {
-                    Ok(language) => Ok(language),
-                    Err(e) => Err(StoreError::MalformedDirective(e)),
-                },
-                _ => unreachable!(),
-            })
-            .ok_or(StoreError::DirectiveArgumentMissing(
-                directive.name.clone(),
-                "language".to_string(),
-            ))??;
-
-        SqlName::check_valid_identifier(name, "attribute")?;
-        let sql_name = SqlName::from(name);
+    fn new_fulltext(def: &FulltextDefinition) -> Result<Column, StoreError> {
+        SqlName::check_valid_identifier(&def.name, "attribute")?;
+        let sql_name = SqlName::from(def.name.as_str());
 
         Ok(Column {
             name: sql_name,
-            field: name.to_string(),
+            field: def.name.to_string(),
             field_type: q::Type::NamedType(String::from("fulltext".to_string())),
-            column_type: ColumnType::TSVector((language, algorithm)),
+            column_type: ColumnType::TSVector(def.config.clone()),
+            fulltext_fields: Some(def.included_fields.clone()),
         })
     }
 
@@ -876,7 +838,7 @@ impl Table {
     fn new(
         defn: &s::ObjectType,
         schema: &str,
-        fulltext_directives: Vec<&s::Directive>,
+        fulltexts: Vec<FulltextDefinition>,
         enums: &EnumMap,
         id_type: IdType,
         position: u32,
@@ -889,11 +851,7 @@ impl Table {
             .iter()
             .filter(|field| !derived_column(field))
             .map(|field| Column::new(field, schema, enums, id_type))
-            .chain(
-                fulltext_directives
-                    .iter()
-                    .map(|directive| Column::new_fulltext(directive)),
-            )
+            .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
         let table = Table {
@@ -1299,14 +1257,14 @@ create index attr_2_2_habitat_dwellers
     const FULLTEXT_GQL: &str = "
 type _Schema_ @fulltext(
     name: \"search\"
-    language: EN
-    algorithm: RANKED
+    language: en
+    algorithm: ranked
     include: [\
         {
             entity: \"Animal\",
             fields: [
-                {field: \"name\"},
-                {field: \"species\"}
+                {name: \"name\"},
+                {name: \"species\"}
             ]
         }
     ]

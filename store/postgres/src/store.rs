@@ -15,8 +15,7 @@ use uuid::Uuid;
 use graph::components::store::Store as StoreTrait;
 use graph::data::subgraph::schema::EthereumContractDataSourceEntity;
 use graph::data::subgraph::schema::{
-    SubgraphDeploymentEntity, SubgraphFulltextEntities, SubgraphManifestEntity, TypedEntity as _,
-    SUBGRAPHS_ID,
+    SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
 use graph::prelude::{
     bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
@@ -1172,15 +1171,6 @@ impl SubgraphDeploymentStore for Store {
 
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
         Ok(self.subgraph_info(subgraph_id)?.api)
-    }
-
-    fn fulltext_fields(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<SubgraphFulltextEntities, Error> {
-        Ok(Schema::subgraph_fulltext_entity_fields(
-            &self.api_schema(subgraph_id)?.document,
-        ))
     }
 
     fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
