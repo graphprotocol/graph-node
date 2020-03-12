@@ -77,6 +77,11 @@ pub enum SchemaValidationError {
     FulltextNameUndefined,
     #[fail(display = "Fulltext directive name overlaps with type: {}", _0)]
     FulltextNameConflict(String),
+    #[fail(
+        display = "Fulltext directive name overlaps with existing entity field: {}",
+        _0
+    )]
+    FulltextNameCollision(String),
     #[fail(display = "Fulltext language is undefined")]
     FulltextLanguageUndefined,
     #[fail(display = "Fulltext language is invalid: {}", _0)]
@@ -87,6 +92,23 @@ pub enum SchemaValidationError {
     FulltextAlgorithmInvalid(String),
     #[fail(display = "Fulltext include is invalid")]
     FulltextIncludeInvalid,
+    #[fail(display = "Fulltext directive requires an 'include' list")]
+    FulltextMissingInclude,
+    #[fail(display = "Fulltext 'include' list must contain an object")]
+    FulltextIncludeObjectMissing,
+    #[fail(
+        display = "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
+    )]
+    FulltextIncludeObjectMissingOrIncorrectProperties,
+    #[fail(display = "Fulltext directive includes an Entity not found on the subgraph schema")]
+    FulltextIncludedEntityNotFound,
+    #[fail(display = "Fulltext include field must have a 'name' attribute")]
+    FulltextIncludedFieldMissingRequiredProperty,
+    #[fail(
+        display = "Fulltext included Entity field, {}, not found or not a string",
+        _0
+    )]
+    FulltextIncludedFieldInvalid(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -545,7 +567,7 @@ impl Schema {
             .arguments
             .iter()
             .find(|(name, _value)| name == "name")
-            .expect("full text directive must have name argument")
+            .expect("fulltext directive must have name argument")
             .1
             .clone()
     }
@@ -647,7 +669,7 @@ impl Schema {
             .unwrap_or_else(|err| errors.push(err));
         self.validate_schema_type_has_no_fields()
             .unwrap_or_else(|err| errors.push(err));
-        self.validate_only_import_directives_on_schema_type()
+        self.validate_directives_on_schema_type()
             .unwrap_or_else(|err| errors.push(err));
         errors.append(&mut self.validate_fields());
         errors.append(&mut self.validate_import_directives());
@@ -675,7 +697,7 @@ impl Schema {
         }
     }
 
-    fn validate_only_import_directives_on_schema_type(&self) -> Result<(), SchemaValidationError> {
+    fn validate_directives_on_schema_type(&self) -> Result<(), SchemaValidationError> {
         match self
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
@@ -819,40 +841,48 @@ impl Schema {
     }
 
     fn validate_fulltext_directive_name(&self, fulltext: &Directive) -> Vec<SchemaValidationError> {
-        let name_value = fulltext
-            .arguments
-            .iter()
-            .find(|(key, _)| key.eq("name"))
-            .map(|(_, value)| value);
-        let name = match name_value {
+        let name = match fulltext.argument("name") {
             Some(Value::String(name)) => name,
             _ => return vec![SchemaValidationError::FulltextNameUndefined],
         };
 
+        let local_types: Vec<&ObjectType> = self
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .collect();
+
+        // Validate that the fulltext field doesn't collide with any entity fields
+        if local_types
+            .iter()
+            .find(|typ| {
+                typ.fields
+                    .iter()
+                    .find(|field| field.name.eq(name))
+                    .is_some()
+            })
+            .is_some()
+        {
+            return vec![SchemaValidationError::FulltextNameCollision(
+                name.to_string(),
+            )];
+        }
+
         // Validate that each fulltext directive has a distinct name
         if self
             .subgraph_schema_object_type()
-            .map_or(vec![], |subgraph_schema_type| {
-                subgraph_schema_type
-                    .directives
-                    .iter()
-                    .filter(|directive| directive.name.eq("fulltext"))
-                    .filter(|fulltext| {
-                        // Collect all @fulltext directives with the same name
-                        fulltext
-                            .arguments
-                            .iter()
-                            .find(|(key, value)| {
-                                key.eq("name")
-                                    && match value {
-                                        Value::String(n) => name.eq(n),
-                                        _ => false,
-                                    }
-                            })
-                            .is_some()
-                    })
-                    .collect()
+            .unwrap()
+            .directives
+            .iter()
+            .filter(|directive| directive.name.eq("fulltext"))
+            .filter_map(|fulltext| {
+                // Collect all @fulltext directives with the same name
+                match fulltext.argument("name") {
+                    Some(Value::String(n)) if name.eq(n) => Some(n.as_str()),
+                    _ => None,
+                }
             })
+            .collect::<Vec<&_>>()
             .len()
             > 1
         {
@@ -868,12 +898,7 @@ impl Schema {
         &self,
         fulltext: &Directive,
     ) -> Vec<SchemaValidationError> {
-        let language_value = fulltext
-            .arguments
-            .iter()
-            .find(|(key, _)| key.eq("language"))
-            .map(|(_, value)| value);
-        let language = match language_value {
+        let language = match fulltext.argument("language") {
             Some(Value::Enum(language)) => language,
             _ => return vec![SchemaValidationError::FulltextLanguageUndefined],
         };
@@ -889,12 +914,7 @@ impl Schema {
         &self,
         fulltext: &Directive,
     ) -> Vec<SchemaValidationError> {
-        let algorithm_value = fulltext
-            .arguments
-            .iter()
-            .find(|(key, _)| key.eq("algorithm"))
-            .map(|(_, value)| value);
-        let algorithm = match algorithm_value {
+        let algorithm = match fulltext.argument("algorithm") {
             Some(Value::Enum(algorithm)) => algorithm,
             _ => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
         };
@@ -918,67 +938,68 @@ impl Schema {
             .collect();
 
         // Validate that each entity in fulltext.include exists
-        let include_value = fulltext
-            .arguments
-            .iter()
-            .find(|(key, _)| key.eq("include"))
-            .map(|(_, value)| value);
-        let includes = match include_value {
+        let includes = match fulltext.argument("include") {
             Some(Value::List(includes)) if includes.len() > 0 => includes,
-            _ => return vec![SchemaValidationError::FulltextIncludeInvalid],
+            _ => return vec![SchemaValidationError::FulltextMissingInclude],
         };
 
-        match includes.iter().find(|include| match include {
-            Value::Object(include) => {
-                let (entity, fields) = match (include.get("entity"), include.get("fields")) {
-                    (Some(Value::String(entity)), Some(Value::List(fields))) => (entity, fields),
-                    _ => return true,
-                };
+        for include in includes {
+            match include.as_object() {
+                None => return vec![SchemaValidationError::FulltextIncludeObjectMissing],
+                Some(include_entity) => {
+                    let (entity, fields) =
+                        match (include_entity.get("entity"), include_entity.get("fields")) {
+                            (Some(Value::String(entity)), Some(Value::List(fields))) => {
+                                (entity, fields)
+                            }
+                            _ => return vec![SchemaValidationError::FulltextIncludeObjectMissingOrIncorrectProperties],
+                        };
 
-                // Validate that each entity field in fulltext.include exists on the related entity
-                let searchable_type = local_types.iter().find(|typ| typ.name[..].eq(entity));
-                match searchable_type {
-                    Some(typ) => {
-                        fields
+                    // Validate the included entity type is one of the local types
+                    let entity_type = match local_types
+                        .iter()
+                        .cloned()
+                        .find(|typ| typ.name[..].eq(entity))
+                    {
+                        None => return vec![SchemaValidationError::FulltextIncludedEntityNotFound],
+                        Some(t) => t.clone(),
+                    };
+
+                    for field_value in fields {
+                        let field_name = match field_value {
+                            Value::Object(field_map) => match field_map.get("name") {
+                                Some(Value::String(name)) => name,
+                                _ => return vec![SchemaValidationError::FulltextIncludedFieldMissingRequiredProperty],
+                            },
+                            _ => return vec![SchemaValidationError::FulltextIncludeObjectMissingOrIncorrectProperties],
+                        };
+
+                        // Validate the included field is a String field on the local entity types specified
+                        if !&entity_type
+                            .fields
                             .iter()
-                            .find(|field_item| {
-                                // Ensure that the field in the include exists on the type and is a String
-                                let field_name = match field_item {
-                                    Value::Object(field_map) => match field_map.get("name") {
-                                        Some(Value::String(name)) => name,
-                                        _ => return true,
-                                    },
-                                    _ => return true,
-                                };
-                                let field_exists = typ
-                                    .fields
-                                    .iter()
-                                    .find(|field| {
-                                        // Validate the field exists on the type
-                                        let field_is_valid = field.name.eq(field_name);
-                                        // Validate the field is a String field
-                                        let is_string_field = match BuiltInScalarType::try_from(
-                                            field.field_type.get_base_type().as_ref(),
-                                        ) {
-                                            Ok(BuiltInScalarType::String) => true,
-                                            _ => false,
-                                        };
-                                        field_is_valid && is_string_field
-                                    })
-                                    .is_some();
-                                !field_exists
+                            .find(|field| {
+                                match BuiltInScalarType::try_from(
+                                    field.field_type.get_base_type().as_ref(),
+                                ) {
+                                    Ok(BuiltInScalarType::String) if !field.name.eq(field_name) => {
+                                        true
+                                    }
+                                    _ => false,
+                                }
                             })
                             .is_some()
+                        {
+                            return vec![SchemaValidationError::FulltextIncludedFieldInvalid(
+                                field_name.clone(),
+                            )];
+                        };
                     }
-                    // No entity matches the entity include object
-                    None => return true,
                 }
             }
-            _ => true,
-        }) {
-            None => vec![],
-            Some(_) => vec![SchemaValidationError::FulltextIncludeInvalid],
         }
+        // Fulltext include validations all passed, so we return an empty vector
+        return vec![];
     }
 
     fn validate_import_directives(&self) -> Vec<SchemaValidationError> {
@@ -1297,12 +1318,7 @@ impl Schema {
             .get_fulltext_directives()
             .into_iter()
             .filter(|directive| {
-                match directive
-                    .arguments
-                    .iter()
-                    .find(|(argument, _value)| argument == "include")
-                    .map(|(_name, value)| value)
-                {
+                match directive.argument("include") {
                     Some(Value::List(includes)) if includes.len() > 0 => {
                         return includes
                             .iter()
@@ -1450,11 +1466,9 @@ type _Schema_ @illegal";
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
     assert_eq!(
-        schema
-            .validate_only_import_directives_on_schema_type()
-            .expect_err(
-                "Expected validation to fail due to extra imports defined on the reserved type"
-            ),
+        schema.validate_directives_on_schema_type().expect_err(
+            "Expected validation to fail due to extra imports defined on the reserved type"
+        ),
         SchemaValidationError::InvalidSchemaTypeDirectives
     )
 }
@@ -1604,5 +1618,5 @@ type Gravatar @entity {
     let document = graphql_parser::parse_schema(SCHEMA).expect("Failed to parse schema");
     let schema = Schema::new(SubgraphDeploymentId::new("id1").unwrap(), document);
 
-    assert_eq!(schema.validate_fulltext_directives().len(), 0);
+    assert_eq!(schema.validate_fulltext_directives(), vec![]);
 }

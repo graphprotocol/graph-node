@@ -4,7 +4,7 @@ use inflector::Inflector;
 
 use crate::schema::ast;
 
-use graph::data::schema::SCHEMA_TYPE_NAME;
+use graph::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
 use graph::prelude::*;
 
 #[derive(Fail, Debug)]
@@ -458,17 +458,8 @@ fn add_query_type(
         .chain(interface_types.iter().map(|t| &t.name))
         .flat_map(|name| query_fields_for_type(schema, name))
         .collect::<Vec<Field>>();
-    let mut fulltext_fields = object_types
-        .iter()
-        .find(|obj| obj.name.eq(SCHEMA_TYPE_NAME))
-        .map(|schema_type| {
-            schema_type
-                .directives
-                .iter()
-                .filter(|directive| directive.name.eq("fulltext"))
-                .collect::<Vec<&Directive>>()
-        })
-        .unwrap_or(vec![])
+    let mut fulltext_fields = schema
+        .get_fulltext_directives()
         .iter()
         .filter_map(|fulltext| query_field_for_fulltext(fulltext))
         .collect();
@@ -488,33 +479,18 @@ fn add_query_type(
 }
 
 fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
-    let original_name = fulltext
-        .arguments
-        .iter()
-        .find(|(name, _)| name.eq("name"))
-        .map(|(_, value)| {
-            match value {
-                Value::String(name) => name.clone(),
-                // This is unreachable because of deploy validation
-                _ => unreachable!(),
-            }
-        })
-        .unwrap();
+    let name = fulltext
+        .argument("name")
+        .unwrap()
+        .as_string()
+        .unwrap()
+        .clone();
 
-    let entity_name = fulltext
-        .arguments
-        .iter()
-        .find(|(name, _)| &name[..] == "include")
-        .and_then(|(_, value)| match value {
-            Value::List(includes) => includes.iter().next().and_then(|value| match value {
-                Value::Object(include) => match include.get("entity") {
-                    Some(Value::String(entity)) => Some(entity),
-                    _ => None,
-                },
-                _ => None,
-            }),
-            _ => None,
-        })?;
+    let includes = fulltext.argument("include").unwrap().as_list().unwrap();
+    // Only one include is allowed per fulltext directive
+    let include = includes.iter().next().unwrap();
+    let included_entity = include.as_object().unwrap();
+    let entity_name = included_entity.get("entity").unwrap().as_string().unwrap();
 
     let arguments = vec![
         // text: String
@@ -532,7 +508,7 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
             description: None,
             name: String::from("first"),
             value_type: Type::NamedType(String::from("Int")),
-            default_value: None,
+            default_value: Some(Value::Int(100.into())),
             directives: vec![],
         },
         // skip: Int
@@ -541,7 +517,7 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
             description: None,
             name: String::from("skip"),
             value_type: Type::NamedType(String::from("Int")),
-            default_value: None,
+            default_value: Some(Value::Int(0.into())),
             directives: vec![],
         },
         // block: BlockHeight
@@ -557,7 +533,7 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
     Some(Field {
         position: Pos::default(),
         description: None,
-        name: original_name, // fulltext.name
+        name: name,
         arguments: arguments,
         field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
             Box::new(Type::NamedType(entity_name.clone())),
