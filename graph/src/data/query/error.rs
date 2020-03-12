@@ -217,7 +217,7 @@ impl From<QueryExecutionError> for Vec<QueryExecutionError> {
 
 impl From<FromHexError> for QueryExecutionError {
     fn from(e: FromHexError) -> Self {
-        QueryExecutionError::ValueParseError("Bytes".to_string(), e.description().to_string())
+        QueryExecutionError::ValueParseError("Bytes".to_string(), e.to_string())
     }
 }
 
