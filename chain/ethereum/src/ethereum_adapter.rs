@@ -266,9 +266,12 @@ where
         filter: EthGetLogsFilter,
     ) -> impl Future<Item = Vec<Log>, Error = Error> {
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
-        // The first one is for Infura when it hits the log limit, the second for Alchemy timeouts.
-        const TOO_MANY_LOGS_FINGERPRINTS: &[&str] =
-            &["ServerError(-32005)", "503 Service Unavailable"];
+        // The first one is for Infura when it hits the log limit, the rest for Alchemy timeouts.
+        const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
+            "ServerError(-32005)",
+            "503 Service Unavailable",
+            "ServerError(-32000)",
+        ];
 
         if from > to {
             panic!(
