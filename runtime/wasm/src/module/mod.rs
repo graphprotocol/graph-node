@@ -473,7 +473,7 @@ impl WasmiModule {
         let result =
             self.ctx
                 .host_exports
-                .ethereum_call(&mut self.ctx.logger, &self.ctx.block, call)?;
+                .ethereum_call(&self.ctx.logger, &self.ctx.block, call)?;
         Ok(Some(match result {
             Some(tokens) => RuntimeValue::from(self.asc_new(tokens.as_slice())),
             None => RuntimeValue::from(0),
@@ -485,10 +485,7 @@ impl WasmiModule {
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let string = self
-            .ctx
-            .host_exports
-            .bytes_to_string(self.asc_get(bytes_ptr))?;
+        let string = host_exports::bytes_to_string(&self.ctx.logger, self.asc_get(bytes_ptr));
         Ok(Some(RuntimeValue::from(self.asc_new(&string))))
     }
 
