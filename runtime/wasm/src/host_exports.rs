@@ -296,25 +296,6 @@ impl HostExports {
         result
     }
 
-    pub(crate) fn bytes_to_string(
-        &self,
-        bytes: Vec<u8>,
-    ) -> Result<String, HostExportError<impl ExportError>> {
-        let s = String::from_utf8(bytes).map_err(|e| {
-            HostExportError(format!(
-                "Failed to parse byte array using `toString()`. This may be caused by attempting \
-                 to convert a value such as an address that cannot be parsed to a unicode string. \
-                 Try 'toHexString()' instead. Bytes: `{bytes:?}`. Error: {error}",
-                error = e.utf8_error(),
-                bytes = e.into_bytes(),
-            ))
-        })?;
-        // The string may have been encoded in a fixed length
-        // buffer and padded with null characters, so trim
-        // trailing nulls.
-        Ok(s.trim_end_matches('\u{0000}').to_string())
-    }
-
     /// Converts bytes to a hex string.
     /// References:
     /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
@@ -670,6 +651,25 @@ pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError<impl 
         .map_err(|e| HostExportError(format!("Failed to convert string to Address/H160: {}", e)))
 }
 
+pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
+    let s = String::from_utf8_lossy(&bytes);
+
+    // If the string was re-allocated, that means it was not UTF8.
+    if matches!(s, std::borrow::Cow::Owned(_)) {
+        warn!(
+            logger,
+            "Bytes contain invalid UTF8. This may be caused by attempting \
+            to convert a value such as an address that cannot be parsed to a unicode string. \
+            You may want to use 'toHexString()' instead. String: '{}'",
+            s,
+        )
+    }
+
+    // The string may have been encoded in a fixed length buffer and padded with null
+    // characters, so trim trailing nulls.
+    s.trim_end_matches('\u{0000}').to_string()
+}
+
 #[test]
 fn test_string_to_h160_with_0x() {
     assert_eq!(
@@ -684,4 +684,26 @@ fn block_on<I, ER>(future: impl Future<Item = I, Error = ER> + Send) -> Result<I
 
 fn block_on03<T>(future: impl futures03::Future<Output = T> + Send) -> T {
     graph::block_on_allow_panic(future)
+}
+
+#[test]
+fn bytes_to_string_is_lossy() {
+    assert_eq!(
+        "Downcoin WETH-USDT",
+        bytes_to_string(
+            &graph::log::logger(true),
+            vec![68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84]
+        )
+    );
+
+    assert_eq!(
+        "Downcoin WETH-USDT�",
+        bytes_to_string(
+            &graph::log::logger(true),
+            vec![
+                68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84, 160,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ]
+        )
+    )
 }
