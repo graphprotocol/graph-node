@@ -739,7 +739,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> Box<dyn std::future::Future<Output = Result<Vec<Log>, Error>> + Send + Unpin>;
+    ) -> DynTryFuture<'static, Vec<Log>, Error>;
 
     fn calls_in_block_range(
         &self,
