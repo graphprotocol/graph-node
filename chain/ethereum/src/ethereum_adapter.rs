@@ -4,7 +4,6 @@ use futures::prelude::*;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::iter::FromIterator;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -13,8 +12,8 @@ use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::{
     debug, err_msg, error, ethabi, format_err,
     futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-    hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, Error, EthereumCallCache,
-    Logger, TimeoutError,
+    hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, DynTryFuture, Error,
+    EthereumCallCache, Logger, TimeoutError,
 };
 use web3::api::Web3;
 use web3::transports::batch::Batch;
@@ -260,7 +259,7 @@ where
         from: u64,
         to: u64,
         filter: EthGetLogsFilter,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<Log>, Error>> + Send>> {
+    ) -> DynTryFuture<'static, Vec<Log>, Error> {
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
         // The first one is for Infura when it hits the log limit, the rest for Alchemy timeouts.
         const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
@@ -1035,18 +1034,18 @@ where
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> Box<dyn std::future::Future<Output = Result<Vec<Log>, Error>> + Send + Unpin> {
+    ) -> DynTryFuture<'static, Vec<Log>, Error> {
         let eth: Self = self.clone();
         let logger = logger.clone();
-        Box::new(
-            futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
-                eth.clone()
-                    .log_stream(logger.clone(), subgraph_metrics.clone(), from, to, filter)
-                    .into_stream()
-            }))
-            .flatten()
-            .try_concat(),
-        )
+
+        futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
+            eth.clone()
+                .log_stream(logger.clone(), subgraph_metrics.clone(), from, to, filter)
+                .into_stream()
+        }))
+        .flatten()
+        .try_concat()
+        .boxed()
     }
 
     fn calls_in_block_range(
