@@ -4,14 +4,17 @@ use futures::prelude::*;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::iter::FromIterator;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
 use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::{
-    debug, err_msg, error, ethabi, format_err, hex, retry, stream, tiny_keccak, trace, warn, web3,
-    ChainStore, Error, EthereumCallCache, Logger, TimeoutError,
+    debug, err_msg, error, ethabi, format_err,
+    futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
+    hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, Error, EthereumCallCache,
+    Logger, TimeoutError,
 };
 use web3::api::Web3;
 use web3::transports::batch::Batch;
@@ -28,13 +31,6 @@ lazy_static! {
         .unwrap_or("200".into())
         .parse::<u64>()
         .expect("invalid trace stream step size");
-
-    /// Maximum number of chunks to request in parallel when streaming logs. The default is low
-    /// because this can have a quadratic effect on the number of parallel requests.
-    static ref LOG_STREAM_PARALLEL_CHUNKS: u64 = std::env::var("ETHEREUM_PARALLEL_BLOCK_RANGES")
-        .unwrap_or("10".into())
-        .parse::<u64>()
-        .expect("invalid number of parallel Ethereum block ranges to scan");
 
     /// Maximum range size for `eth.getLogs` requests that dont filter on
     /// contract address, only event signature, and are therefore expensive.
@@ -264,7 +260,7 @@ where
         from: u64,
         to: u64,
         filter: EthGetLogsFilter,
-    ) -> impl Future<Item = Vec<Log>, Error = Error> {
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<Log>, Error>> + Send>> {
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
         // The first one is for Infura when it hits the log limit, the rest for Alchemy timeouts.
         const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
@@ -288,68 +284,65 @@ where
             true => (to - from).min(*MAX_EVENT_ONLY_RANGE - 1),
         };
 
-        stream::unfold((from, step), move |(start, step)| {
-            if start > to {
-                return None;
-            }
+        // Typically this will loop only once and fetch the entire range in one request. But if the
+        // node returns an error that signifies the request is to heavy to process, the range will
+        // be broken down to smaller steps.
+        futures03::stream::try_unfold((from, step), move |(start, step)| {
+            let logger = logger.clone();
+            let filter = filter.clone();
+            let eth = eth.clone();
+            let subgraph_metrics = subgraph_metrics.clone();
 
-            // Make as many parallel requests of size `step` as necessary,
-            // respecting `LOG_STREAM_PARALLEL_CHUNKS`.
-            let mut chunk_futures = vec![];
-            let mut low = start;
-            for _ in 0..*LOG_STREAM_PARALLEL_CHUNKS {
-                if low == to + 1 {
-                    break;
+            async move {
+                if start > to {
+                    return Ok(None);
                 }
-                let high = (low + step).min(to);
+
+                let end = (start + step).min(to);
                 debug!(
                     logger,
-                    "Requesting logs for blocks [{}, {}], {}", low, high, filter
+                    "Requesting logs for blocks [{}, {}], {}", start, end, filter
                 );
-                chunk_futures.push(eth.logs_with_sigs(
-                    &logger,
-                    subgraph_metrics.clone(),
-                    low,
-                    high,
-                    filter.clone(),
-                    TOO_MANY_LOGS_FINGERPRINTS,
-                ));
-                low = high + 1;
-            }
-            let logger = logger.clone();
-            Some(
-                stream::futures_ordered(chunk_futures)
-                    .collect()
-                    .map(|chunks| chunks.into_iter().flatten().collect::<Vec<Log>>())
-                    .then(move |res| match res {
-                        Err(e) => {
-                            let string_err = e.to_string();
+                let res = eth
+                    .logs_with_sigs(
+                        &logger,
+                        subgraph_metrics.clone(),
+                        start,
+                        end,
+                        filter.clone(),
+                        TOO_MANY_LOGS_FINGERPRINTS,
+                    )
+                    .compat()
+                    .await;
 
-                            // If the step is already 0, we're hitting the log
-                            // limit even for a single block. We hope this never
-                            // happens, but if it does, make sure to error.
-                            if TOO_MANY_LOGS_FINGERPRINTS
-                                .iter()
-                                .any(|f| string_err.contains(f))
-                                && step > 0
-                            {
-                                // The range size for a request is `step + 1`.
-                                // So it's ok if the step goes down to 0, in
-                                // that case we'll request one block at a time.
-                                let new_step = step / 10;
-                                debug!(logger, "Reducing block range size to scan for events";
+                match res {
+                    Err(e) => {
+                        let string_err = e.to_string();
+
+                        // If the step is already 0, the request is too heavy even for a single
+                        // block. We hope this never happens, but if it does, make sure to error.
+                        if TOO_MANY_LOGS_FINGERPRINTS
+                            .iter()
+                            .any(|f| string_err.contains(f))
+                            && step > 0
+                        {
+                            // The range size for a request is `step + 1`. So it's ok if the step
+                            // goes down to 0, in that case we'll request one block at a time.
+                            let new_step = step / 10;
+                            debug!(logger, "Reducing block range size to scan for events";
                                                "new_size" => new_step + 1);
-                                Ok((vec![], (start, new_step)))
-                            } else {
-                                warn!(logger, "Unexpected RPC error"; "error" => &string_err);
-                                Err(err_msg(string_err))
-                            }
+                            Ok(Some((vec![], (start, new_step))))
+                        } else {
+                            warn!(logger, "Unexpected RPC error"; "error" => &string_err);
+                            Err(err_msg(string_err))
                         }
-                        Ok(logs) => Ok((logs, (low, step))),
-                    }),
-            )
+                    }
+                    Ok(logs) => Ok(Some((logs, (end + 1, step)))),
+                }
+            }
         })
-        .concat2()
+        .try_concat()
+        .boxed()
     }
 
     fn call(
@@ -1042,15 +1035,17 @@ where
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send> {
-        let eth = self.clone();
+    ) -> Box<dyn std::future::Future<Output = Result<Vec<Log>, Error>> + Send + Unpin> {
+        let eth: Self = self.clone();
         let logger = logger.clone();
         Box::new(
-            stream::iter_ok(log_filter.eth_get_logs_filters().map(move |filter| {
-                eth.log_stream(logger.clone(), subgraph_metrics.clone(), from, to, filter)
+            futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
+                eth.clone()
+                    .log_stream(logger.clone(), subgraph_metrics.clone(), from, to, filter)
+                    .into_stream()
             }))
-            .buffered(*LOG_STREAM_PARALLEL_CHUNKS as usize)
-            .concat2(),
+            .flatten()
+            .try_concat(),
         )
     }
 

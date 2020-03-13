@@ -1,6 +1,7 @@
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::SyncFailure;
 use futures::Future;
+use futures03::future::TryFutureExt;
 use mockall::predicate::*;
 use mockall::*;
 use petgraph::graphmap::GraphMap;
@@ -738,7 +739,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send>;
+    ) -> Box<dyn std::future::Future<Output = Result<Vec<Log>, Error>> + Send + Unpin>;
 
     fn calls_in_block_range(
         &self,
@@ -894,7 +895,8 @@ pub fn blocks_with_triggers(
     if !log_filter.is_empty() {
         trigger_futs.push(Box::new(
             eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
-                .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
+                .map_ok(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect())
+                .compat(),
         ))
     }
 
