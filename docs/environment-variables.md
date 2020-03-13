@@ -12,12 +12,12 @@ those.
 
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
   defaults to 500ms)
-- `ETHEREUM_RPC_MAX_PARALLEL_REQUESTS`: how many RPC connections to start in
-  parallel for block retrieval (defaults to 64)
+- `ETHEREUM_RPC_MAX_PARALLEL_REQUESTS`: Maximum number of concurrent HTTP
+  requests to an Ethereum RPC endpoint (defaults to 64).
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
-to be processed in a batch. If this is too small it may cause too many requests
-to the ethereum node, if it is too large it may cause unreasonably expensive
-calls to the ethereum node and excessive memory usage (defaults to 100).
+  to be processed in a batch. If this is too small it may cause too many requests
+  to the ethereum node, if it is too large it may cause unreasonably expensive
+  calls to the ethereum node and excessive memory usage (defaults to 100).
 - `ETHEREUM_TRACE_STREAM_STEP_SIZE`: `graph-node` queries traces for a given
   block range when a subgraph defines call handlers or block handlers with a
   call filter. The value of this variable controls the number of blocks to scan
@@ -27,9 +27,7 @@ calls to the ethereum node and excessive memory usage (defaults to 100).
 - `ETHEREUM_BLOCK_BATCH_SIZE`: number of Ethereum blocks to request in parallel
   (defaults to 50)
 - `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`: Maximum number of blocks to scan for
-triggers in each request (defaults to 100000).
-- `ETHEREUM_PARALLEL_BLOCK_RANGES`: Maximum number of parallel `eth_getLogs`
-  calls to make when scanning logs for a subgraph. Defaults to 100.
+  triggers in each request (defaults to 100000).
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
   requests that dont filter on contract address, only event signature.
 - `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`: Timeout for Ethereum JSON-RPC requests.
