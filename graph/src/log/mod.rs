@@ -6,6 +6,7 @@ use slog_term::*;
 use std::{env, fmt, io, result};
 
 pub mod codes;
+pub mod loggly;
 pub mod elastic;
 pub mod factory;
 pub mod split;

@@ -126,10 +126,11 @@ pub mod prelude {
         StreamExtension,
     };
     pub use crate::log::codes::LogCode;
-    pub use crate::log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
+    pub use crate::log::elastic::{elastic_logger, ElasticLoggingConfig};
     pub use crate::log::factory::{
         ComponentLoggerConfig, ElasticComponentLoggerConfig, LoggerFactory,
     };
+    pub use crate::log::loggly::{loggly_logger, LogglyConfig};
     pub use crate::log::split::split_logger;
     pub use crate::util::futures::{retry, TimeoutError};
 }

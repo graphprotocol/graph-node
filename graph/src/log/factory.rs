@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use crate::data::subgraph::SubgraphDeploymentId;
 use crate::log::elastic::*;
+use crate::log::loggly::*;
 use crate::log::split::*;
 use slog::*;
 
@@ -20,14 +21,20 @@ pub struct ComponentLoggerConfig {
 pub struct LoggerFactory {
     parent: Logger,
     elastic_config: Option<ElasticLoggingConfig>,
+    loggly_config: Option<LogglyConfig>,
 }
 
 impl LoggerFactory {
     /// Creates a new factory using a parent logger and optional Elasticsearch configuration.
-    pub fn new(logger: Logger, elastic_config: Option<ElasticLoggingConfig>) -> Self {
+    pub fn new(
+        logger: Logger,
+        elastic_config: Option<ElasticLoggingConfig>,
+        loggly_config: Option<LogglyConfig>,
+    ) -> Self {
         Self {
             parent: logger,
             elastic_config,
+            loggly_config,
         }
     }
 
@@ -36,6 +43,7 @@ impl LoggerFactory {
         Self {
             parent,
             elastic_config: self.elastic_config.clone(),
+            loggly_config: self.loggly_config.clone(),
         }
     }
 
@@ -81,24 +89,40 @@ impl LoggerFactory {
             .parent
             .new(o!("subgraph_id" => subgraph_id.to_string()));
 
-        self.elastic_config
-            .clone()
-            .map(|elastic_config| {
-                split_logger(
+        let logger = match self.elastic_config.clone() {
+            Some(elastic_config) => split_logger(
+                term_logger.clone(),
+                elastic_logger(
+                    ElasticDrainConfig {
+                        general: elastic_config,
+                        index: String::from("subgraph-logs"),
+                        document_type: String::from("log"),
+                        custom_id_key: String::from("subgraphId"),
+                        custom_id_value: subgraph_id.to_string(),
+                        flush_interval: Duration::from_secs(5),
+                    },
                     term_logger.clone(),
-                    elastic_logger(
-                        ElasticDrainConfig {
-                            general: elastic_config,
-                            index: String::from("subgraph-logs"),
-                            document_type: String::from("log"),
-                            custom_id_key: String::from("subgraphId"),
-                            custom_id_value: subgraph_id.to_string(),
-                            flush_interval: Duration::from_secs(5),
-                        },
-                        term_logger.clone(),
-                    ),
-                )
-            })
-            .unwrap_or(term_logger)
+                ),
+            ),
+            None => term_logger.clone(),
+        };
+
+        let logger = match self.loggly_config.clone() {
+            Some(loggly_config) => split_logger(
+                logger,
+                loggly_logger(
+                    LogglyDrainConfig {
+                        general: loggly_config,
+                        flush_interval: Duration::from_secs(5),
+                        id_prefix: subgraph_id.to_string(),
+                    },
+                    o!("subgraph_id" => subgraph_id.to_string()),
+                    term_logger.clone(),
+                ),
+            ),
+            None => logger,
+        };
+
+        logger
     }
 }

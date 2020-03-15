@@ -178,6 +178,13 @@ async fn main() {
                 .help("Enable debug logging"),
         )
         .arg(
+            Arg::with_name("loggly-token")
+                .long("loggly-token")
+                .value_name("TOKEN")
+                .env("GRAPH_LOGGLY_TOKEN")
+                .help("Loggly API token for subgraph logs"),
+        )
+        .arg(
             Arg::with_name("elasticsearch-url")
                 .long("elasticsearch-url")
                 .value_name("URL")
@@ -346,8 +353,13 @@ async fn main() {
                 password: matches.value_of("elasticsearch-password").map(|s| s.into()),
             });
 
+    // Optionally, identify the Loggly configuration
+    let loggly_config = matches.value_of("loggly-token").map(|token| LogglyConfig {
+        token: token.into(),
+    });
+
     // Create a component and subgraph logger factory
-    let logger_factory = LoggerFactory::new(logger.clone(), elastic_config);
+    let logger_factory = LoggerFactory::new(logger.clone(), elastic_config, loggly_config);
 
     // Try to create IPFS clients for each URL
     let ipfs_clients: Vec<_> = ipfs_addresses
