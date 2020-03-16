@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 chrono = "0.4"
-failure = "0.1.6"
+failure = "0.1.7"
 futures = "0.1.21"
 jsonrpc-core = "14.0.5"
 graph = { path = "../../graph" }
