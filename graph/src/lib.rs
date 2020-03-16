@@ -13,6 +13,9 @@ pub mod ext;
 /// Logging utilities
 pub mod log;
 
+/// `CheapClone` trait.
+pub mod cheap_clone;
+
 /// Module with mocks for different parts of the system.
 pub mod mock {
     pub use crate::components::ethereum::MockEthereumAdapter;
@@ -99,6 +102,7 @@ pub mod prelude {
     };
     pub use crate::components::{EventConsumer, EventProducer};
 
+    pub use crate::cheap_clone::CheapClone;
     pub use crate::data::graphql::{SerializableValue, TryFromValue, ValueMap};
     pub use crate::data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
