@@ -288,7 +288,6 @@ impl Layout {
 
     /// Find the table with the provided `name`. The name must exactly match
     /// the name of an existing table. No conversions of the name are done
-    #[allow(dead_code)]
     pub fn table(&self, name: &SqlName) -> Result<&Table, StoreError> {
         self.tables
             .values()

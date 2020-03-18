@@ -1250,11 +1250,6 @@ impl JsonStorage {
 }
 
 impl Storage {
-    /// The version for newly created subgraph schemas. Changing this most
-    /// likely also requires changing `create_schema`
-    #[allow(dead_code)]
-    const DEFAULT_VERSION: public::DeploymentSchemaVersion = public::DeploymentSchemaVersion::Split;
-
     /// Look up the schema for `subgraph` and return its entity storage.
     /// Returns an error if `subgraph` does not have an entry in
     /// `deployment_schemas`, which can only happen if `create_schema` was not
