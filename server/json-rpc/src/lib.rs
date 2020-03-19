@@ -63,87 +63,78 @@ pub struct JsonRpcServer<R> {
 
 impl<R: SubgraphRegistrar> JsonRpcServer<R> {
     /// Handler for the `subgraph_create` endpoint.
-    fn create_handler(
+    async fn create_handler(
         &self,
         params: SubgraphCreateParams,
-    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
-        let logger = self.logger.clone();
+    ) -> Result<Value, jsonrpc_core::Error> {
+        info!(&self.logger, "Received subgraph_create request"; "params" => format!("{:?}", params));
 
-        info!(logger, "Received subgraph_create request"; "params" => format!("{:?}", params));
-
-        Box::new(
-            self.registrar
-                .create_subgraph(params.name.clone())
-                .map_err(move |e| {
-                    error!(logger, "subgraph_create failed";
-                           "error" => format!("{:?}", e),
-                           "params" => format!("{:?}", params));
-                    if let SubgraphRegistrarError::Unknown(_) = e {
-                        json_rpc_error(JSON_RPC_CREATE_ERROR, "internal error".to_owned())
-                    } else {
-                        json_rpc_error(JSON_RPC_CREATE_ERROR, e.to_string())
-                    }
-                })
-                .map(move |result| {
-                    serde_json::to_value(result).expect("invalid subgraph creation result")
-                }),
-        )
+        match self
+            .registrar
+            .create_subgraph(params.name.clone())
+            .compat()
+            .await
+        {
+            Ok(result) => {
+                Ok(serde_json::to_value(result).expect("invalid subgraph creation result"))
+            }
+            Err(e) => Err(json_rpc_error(
+                &self.logger,
+                "subgraph_create",
+                e,
+                JSON_RPC_CREATE_ERROR,
+                params,
+            )),
+        }
     }
 
     /// Handler for the `subgraph_deploy` endpoint.
-    fn deploy_handler<'a>(
-        &'a self,
+    async fn deploy_handler(
+        &self,
         params: SubgraphDeployParams,
-    ) -> DynTryFuture<'a, Value, jsonrpc_core::Error> {
-        let logger = self.logger.clone();
-
-        info!(logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));
+    ) -> Result<Value, jsonrpc_core::Error> {
+        info!(&self.logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));
 
         let node_id = params.node_id.clone().unwrap_or(self.node_id.clone());
         let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
-
-        Box::pin(
-            self.registrar
-                .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id)
-                .map_err(move |e| {
-                    error!(logger, "subgraph_deploy failed";
-                           "error" => format!("{:?}", e),
-                           "params" => format!("{:?}", params));
-                    if let SubgraphRegistrarError::Unknown(_) = e {
-                        json_rpc_error(JSON_RPC_DEPLOY_ERROR, "internal error".to_owned())
-                    } else {
-                        json_rpc_error(JSON_RPC_DEPLOY_ERROR, e.to_string())
-                    }
-                })
-                .map(move |_| Ok(routes)),
-        )
+        match self
+            .registrar
+            .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id)
+            .await
+        {
+            Ok(_) => Ok(routes),
+            Err(e) => Err(json_rpc_error(
+                &self.logger,
+                "subgraph_deploy",
+                e,
+                JSON_RPC_DEPLOY_ERROR,
+                params,
+            )),
+        }
     }
 
     /// Handler for the `subgraph_remove` endpoint.
-    fn remove_handler(
+    async fn remove_handler(
         &self,
         params: SubgraphRemoveParams,
-    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
-        let logger = self.logger.clone();
+    ) -> Result<Value, jsonrpc_core::Error> {
+        info!(&self.logger, "Received subgraph_remove request"; "params" => format!("{:?}", params));
 
-        info!(logger, "Received subgraph_remove request"; "params" => format!("{:?}", params));
-
-        Box::new(
-            self.registrar
-                .remove_subgraph(params.name.clone())
-                .map_err(move |e| {
-                    error!(logger, "subgraph_remove failed";
-                           "error" => format!("{:?}", e),
-                           "params" => format!("{:?}", params));
-                    if let SubgraphRegistrarError::Unknown(_) = e {
-                        json_rpc_error(JSON_RPC_REMOVE_ERROR, "internal error".to_owned())
-                    } else {
-                        json_rpc_error(JSON_RPC_REMOVE_ERROR, e.to_string())
-                    }
-                })
-                .map(|_| Ok(Value::Null))
-                .flatten(),
-        )
+        match self
+            .registrar
+            .remove_subgraph(params.name.clone())
+            .compat()
+            .await
+        {
+            Ok(_) => Ok(Value::Null),
+            Err(e) => Err(json_rpc_error(
+                &self.logger,
+                "subgraph_remove",
+                e,
+                JSON_RPC_REMOVE_ERROR,
+                params,
+            )),
+        }
     }
 
     /// Handler for the `subgraph_assign` endpoint.
@@ -159,14 +150,13 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
             self.registrar
                 .reassign_subgraph(params.ipfs_hash.clone(), params.node_id.clone())
                 .map_err(move |e| {
-                    error!(logger, "subgraph_reassign failed";
-                           "error" => format!("{:?}", e),
-                           "params" => format!("{:?}", params));
-                    if let SubgraphRegistrarError::Unknown(_) = e {
-                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, "internal error".to_owned())
-                    } else {
-                        json_rpc_error(JSON_RPC_REASSIGN_ERROR, e.to_string())
-                    }
+                    json_rpc_error(
+                        &logger,
+                        "subgraph_reassign",
+                        e,
+                        JSON_RPC_REASSIGN_ERROR,
+                        params,
+                    )
                 })
                 .map(|_| Ok(Value::Null))
                 .flatten(),
@@ -242,11 +232,11 @@ where
             let me = me.clone();
             Box::pin(tokio02_spawn(
                 sender.clone(),
-                params
-                    .parse()
-                    .into_future()
-                    .and_then(move |params| me.create_handler(params))
-                    .compat(),
+                async move {
+                    let params = params.parse()?;
+                    me.create_handler(params).await
+                }
+                .boxed(),
             ))
             .compat()
         });
@@ -273,11 +263,11 @@ where
             let me = me.clone();
             Box::pin(tokio02_spawn(
                 sender.clone(),
-                params
-                    .parse()
-                    .into_future()
-                    .and_then(move |params| me.remove_handler(params))
-                    .compat(),
+                async move {
+                    let params = params.parse()?;
+                    me.remove_handler(params).await
+                }
+                .boxed(),
             ))
             .compat()
         });
@@ -305,7 +295,23 @@ where
     }
 }
 
-fn json_rpc_error(code: i64, message: String) -> jsonrpc_core::Error {
+fn json_rpc_error(
+    logger: &Logger,
+    operation: &str,
+    e: SubgraphRegistrarError,
+    code: i64,
+    params: impl std::fmt::Debug,
+) -> jsonrpc_core::Error {
+    error!(logger, "{} failed", operation;
+        "error" => format!("{:?}", e),
+        "params" => format!("{:?}", params));
+
+    let message = if let SubgraphRegistrarError::Unknown(_) = e {
+        "internal error".to_owned()
+    } else {
+        e.to_string()
+    };
+
     jsonrpc_core::Error {
         code: jsonrpc_core::ErrorCode::ServerError(code),
         message,
