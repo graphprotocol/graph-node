@@ -249,6 +249,23 @@ impl Layout {
         Ok(layout)
     }
 
+    /// Determine if it is possible to copy the data of `source` into `self`
+    /// by checking that our schema is compatible with `source`.
+    /// Returns a list of errors if copying is not possible. An empty
+    /// vector indicates that copying is possible
+    pub fn can_copy_from(&self, base: &Layout) -> Vec<String> {
+        // We allow both not copying tables at all from the source, as well
+        // as adding new tables in `self`; we only need to check that tables
+        // that actually need to be copied from the source are compatible
+        // with the corresponding tables in `self`
+        self.tables
+            .values()
+            .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
+            .map(|(dst, src)| dst.can_copy_from(src))
+            .flatten()
+            .collect()
+    }
+
     /// Generate the DDL for the entire layout, i.e., all `create table`
     /// and `create index` etc. statements needed in the database schema
     ///
@@ -286,12 +303,11 @@ impl Layout {
 
     /// Find the table with the provided `name`. The name must exactly match
     /// the name of an existing table. No conversions of the name are done
-    pub fn table(&self, name: &SqlName) -> Result<&Table, StoreError> {
+    pub fn table(&self, name: &SqlName) -> Option<&Table> {
         self.tables
             .values()
             .find(|table| &table.name == name)
             .map(|rc| rc.as_ref())
-            .ok_or_else(|| StoreError::UnknownTable(name.to_string()))
     }
 
     pub fn table_for_entity(&self, entity: &str) -> Result<&Arc<Table>, StoreError> {
@@ -637,6 +653,19 @@ pub struct EnumType {
     values: Arc<BTreeSet<String>>,
 }
 
+impl EnumType {
+    fn is_assignable_from(&self, source: &Self) -> Option<String> {
+        if source.values.is_subset(self.values.as_ref()) {
+            None
+        } else {
+            Some(format!(
+                "the enum type {} contains values not present in {}",
+                source.name, self.name
+            ))
+        }
+    }
+}
+
 /// This is almost the same as graph::data::store::ValueType, but without
 /// ID and List; with this type, we only care about scalar types that directly
 /// correspond to Postgres scalar types
@@ -814,6 +843,34 @@ impl Column {
         named_type(&self.field_type) == "String" && !self.is_list()
     }
 
+    fn can_copy_from(&self, source: &Self, object: &str) -> Option<String> {
+        if !self.is_nullable() && source.is_nullable() {
+            Some(format!(
+                "The attribute {}.{} is non-nullable, \
+                             but the corresponding attribute in the source is nullable",
+                object, self.field
+            ))
+        } else if let ColumnType::Enum(self_enum_type) = &self.column_type {
+            if let ColumnType::Enum(source_enum_type) = &source.column_type {
+                self_enum_type.is_assignable_from(source_enum_type)
+            } else {
+                Some(format!(
+                    "The attribute {}.{} is an enum {}, \
+                                 but its type in the source is {}",
+                    object, self.field, self.field_type, source.field_type
+                ))
+            }
+        } else if self.column_type != source.column_type || self.is_list() != source.is_list() {
+            Some(format!(
+                "The attribute {}.{} has type {}, \
+                             but its type in the source is {}",
+                object, self.field, self.field_type, source.field_type
+            ))
+        } else {
+            None
+        }
+    }
+
     /// Generate the DDL for one column, i.e. the part of a `create table`
     /// statement for this column.
     ///
@@ -890,7 +947,7 @@ impl Table {
 
     /// Find the column `name` in this table. The name must be in snake case,
     /// i.e., use SQL conventions
-    pub fn column(&self, name: &SqlName) -> Result<&Column, StoreError> {
+    pub fn column(&self, name: &SqlName) -> Option<&Column> {
         self.columns
             .iter()
             .filter(|column| match column.column_type {
@@ -898,7 +955,6 @@ impl Table {
                 _ => true,
             })
             .find(|column| &column.name == name)
-            .ok_or_else(|| StoreError::UnknownField(name.to_string()))
     }
 
     /// Find the column for `field` in this table. The name must be the
@@ -908,6 +964,26 @@ impl Table {
             .iter()
             .find(|column| &column.field == field)
             .ok_or_else(|| StoreError::UnknownField(field.to_string()))
+    }
+
+    fn can_copy_from(&self, source: &Self) -> Vec<String> {
+        self.columns
+            .iter()
+            .filter_map(|dcol| match source.column(&dcol.name) {
+                Some(scol) => dcol.can_copy_from(scol, &self.object),
+                None => {
+                    if !dcol.is_nullable() {
+                        Some(format!(
+                            "The attribute {}.{} is non-nullable, \
+                         but there is no such attribute in the source",
+                            self.object, dcol.field
+                        ))
+                    } else {
+                        None
+                    }
+                }
+            })
+            .collect()
     }
 
     /// Generate the DDL for one table, i.e. one `create table` statement
@@ -1038,7 +1114,7 @@ mod tests {
         assert!(!big_thing.is_nullable());
         // Field lookup happens by the SQL name, not the GraphQL name
         let bad_sql_name = SqlName("bigThing".to_owned());
-        assert!(table.column(&bad_sql_name).is_err());
+        assert!(table.column(&bad_sql_name).is_none());
     }
 
     #[test]
@@ -1058,6 +1134,69 @@ mod tests {
         let layout = test_layout(FULLTEXT_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
         assert_eq!(FULLTEXT_DDL, sql);
+    }
+
+    #[test]
+    fn can_copy_from() {
+        let source = test_layout(THING_GQL);
+        // We can always copy from an identical layout
+        assert!(source.can_copy_from(&source).is_empty());
+
+        // We allow leaving out and adding types, and leaving out attributes
+        // of existing types
+        let dest = test_layout("type Scalar { id: ID } type Other { id: ID, int: Int! }");
+        assert!(dest.can_copy_from(&source).is_empty());
+
+        // We allow making a non-nullable attribute nullable
+        let dest = test_layout("type Thing { id: ID! }");
+        assert!(dest.can_copy_from(&source).is_empty());
+
+        // We can not turn a non-nullable attribute into a nullable attribute
+        let dest = test_layout("type Scalar { id: ID! }");
+        assert_eq!(
+            vec![
+                "The attribute Scalar.id is non-nullable, but the \
+                 corresponding attribute in the source is nullable"
+            ],
+            dest.can_copy_from(&source)
+        );
+
+        // We can not change a scalar field to an array
+        let dest = test_layout("type Scalar { id: ID, string: [String] }");
+        assert_eq!(
+            vec![
+                "The attribute Scalar.string has type [String], \
+                 but its type in the source is String"
+            ],
+            dest.can_copy_from(&source)
+        );
+        // We can not change an array field to a scalar
+        assert_eq!(
+            vec![
+                "The attribute Scalar.string has type String, \
+                 but its type in the source is [String]"
+            ],
+            source.can_copy_from(&dest)
+        );
+        // We can not change the underlying type of a field
+        let dest = test_layout("type Scalar { id: ID, color: Int }");
+        assert_eq!(
+            vec![
+                "The attribute Scalar.color has type Int, but \
+                 its type in the source is Color"
+            ],
+            dest.can_copy_from(&source)
+        );
+        // We can not change the underlying type of a field in arrays
+        let source = test_layout("type Scalar { id: ID, color: [Int!]! }");
+        let dest = test_layout("type Scalar { id: ID, color: [String!]! }");
+        assert_eq!(
+            vec![
+                "The attribute Scalar.color has type [String!]!, but \
+                 its type in the source is [Int!]!"
+            ],
+            dest.can_copy_from(&source)
+        );
     }
 
     const THING_GQL: &str = "

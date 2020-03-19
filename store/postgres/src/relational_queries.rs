@@ -146,7 +146,7 @@ impl EntityData {
                     if key == "g$parent_id" {
                         let value = Self::value_from_json(&ColumnType::String, json)?;
                         entity.insert("g$parent_id".to_owned(), value);
-                    } else if let Some(column) = table.column(&SqlName::from_snake_case(key)).ok() {
+                    } else if let Some(column) = table.column(&SqlName::from_snake_case(key)) {
                         let value = Self::value_from_json(&column.column_type, json)?;
                         if value != Value::Null {
                             entity.insert(column.field.clone(), value);
