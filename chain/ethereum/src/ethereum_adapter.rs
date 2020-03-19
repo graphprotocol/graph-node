@@ -233,13 +233,20 @@ where
             );
         }
 
+        // Filters with no address can be more expensive, so use a reduced step size.
+        let step_size = match addresses.is_empty() {
+            false => *TRACE_STREAM_STEP_SIZE,
+            true => *TRACE_STREAM_STEP_SIZE / 4,
+        }
+        .max(1);
+
         let eth = self.clone();
         let logger = logger.to_owned();
         stream::unfold(from, move |start| {
             if start > to {
                 return None;
             }
-            let end = (start + *TRACE_STREAM_STEP_SIZE - 1).min(to);
+            let end = (start + step_size - 1).min(to);
             let new_start = end + 1;
             if start == end {
                 debug!(logger, "Requesting traces for block {}", start);
