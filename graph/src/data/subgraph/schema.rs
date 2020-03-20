@@ -551,7 +551,7 @@ pub struct DynamicEthereumContractDataSourceEntity {
     source: EthereumContractSourceEntity,
     mapping: EthereumContractMappingEntity,
     templates: Vec<EthereumContractDataSourceTemplateEntity>,
-    context: Option<Entity>,
+    context: Option<DataSourceContext>,
 }
 
 impl DynamicEthereumContractDataSourceEntity {

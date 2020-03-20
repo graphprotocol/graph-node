@@ -26,7 +26,7 @@ struct RuntimeHostConfig {
     mapping: Mapping,
     data_source_network: String,
     data_source_name: String,
-    data_source_context: Option<Entity>,
+    data_source_context: Option<DataSourceContext>,
     contract: Source,
     templates: Arc<Vec<DataSourceTemplate>>,
 }
