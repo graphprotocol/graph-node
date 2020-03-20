@@ -9,8 +9,8 @@
     "deploy:test": "graph deploy test/data-source-context --ipfs http://localhost:15001/ --node http://localhost:18020/"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#leo/ds-context-codegn",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#leo/data-source-context",
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
     "solc": "^0.6.1"
   },
   "dependencies": {
