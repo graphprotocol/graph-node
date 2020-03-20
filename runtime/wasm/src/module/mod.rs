@@ -890,7 +890,7 @@ impl WasmiModule {
         Ok(None)
     }
 
-    /// function createWithContext(name: string, params: Array<string>, context: Entity): void
+    /// function createWithContext(name: string, params: Array<string>, context: DataSourceContext): void
     fn data_source_create_with_context(
         &mut self,
         name_ptr: AscPtr<AscString>,
@@ -924,7 +924,7 @@ impl WasmiModule {
         )))
     }
 
-    /// function dataSource.context(): Entity
+    /// function dataSource.context(): DataSourceContext
     fn data_source_context(&mut self) -> Result<Option<RuntimeValue>, Trap> {
         Ok(Some(RuntimeValue::from(
             self.asc_new(&self.ctx.host_exports.data_source_context()),

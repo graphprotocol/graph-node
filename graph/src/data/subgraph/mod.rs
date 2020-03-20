@@ -381,6 +381,9 @@ impl From<serde_yaml::Error> for SubgraphManifestResolveError {
     }
 }
 
+/// Data source contexts are conveniently represented as entities.
+pub type DataSourceContext = Entity;
+
 /// IPLD link.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 pub struct Link {
@@ -652,7 +655,7 @@ pub struct BaseDataSource<M, T> {
     pub name: String,
     pub source: Source,
     pub mapping: M,
-    pub context: Option<Entity>,
+    pub context: Option<DataSourceContext>,
 
     #[serde(default)]
     pub templates: Vec<T>, // Deprecated in manifest spec version 0.0.2

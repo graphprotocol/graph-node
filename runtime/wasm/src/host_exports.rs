@@ -42,7 +42,7 @@ pub(crate) struct HostExports {
     data_source_name: String,
     data_source_address: Option<Address>,
     data_source_network: String,
-    data_source_context: Option<Entity>,
+    data_source_context: Option<DataSourceContext>,
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<MappingABI>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -66,7 +66,7 @@ impl HostExports {
         data_source_name: String,
         data_source_address: Option<Address>,
         data_source_network: String,
-        data_source_context: Option<Entity>,
+        data_source_context: Option<DataSourceContext>,
         templates: Arc<Vec<DataSourceTemplate>>,
         abis: Vec<MappingABI>,
         ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -578,7 +578,7 @@ impl HostExports {
         state: &mut BlockState,
         name: String,
         params: Vec<String>,
-        context: Option<Entity>,
+        context: Option<DataSourceContext>,
     ) -> Result<(), HostExportError<impl ExportError>> {
         info!(
             logger,
