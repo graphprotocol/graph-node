@@ -17,7 +17,7 @@ futures = "0.1.21"
 graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-graphql = { path = "../../graphql" }
-graphql-parser = "0.2.3"
+graphql-parser = "0.3.0"
 Inflector = "0.11.3"
 lazy_static = "1.1"
 lru_time_cache = "0.9"
@@ -27,7 +27,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
 clap = "2.33.0"
-graphql-parser = "0.2.3"
+graphql-parser = "0.3.0"
 hex = "0.4.2"
 parity-wasm = "0.40"
 test-store = { path = "../test-store" }
