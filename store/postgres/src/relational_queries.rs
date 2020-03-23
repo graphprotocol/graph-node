@@ -2173,3 +2173,79 @@ impl<'a> LoadQuery<PgConnection, RevertEntityData> for DeleteByPrefixQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for DeleteByPrefixQuery<'a> {}
+
+/// Copy the data of one table to another table
+#[derive(Debug, Clone)]
+pub struct CopyEntityDataQuery<'a> {
+    src: &'a Table,
+    dst: &'a Table,
+    // A list of columns common between src and dst that
+    // need to be copied
+    columns: Vec<&'a Column>,
+}
+
+impl<'a> CopyEntityDataQuery<'a> {
+    pub fn new(dst: &'a Table, src: &'a Table) -> Result<Self, StoreError> {
+        let mut columns = Vec::new();
+        for dcol in &dst.columns {
+            if let Some(scol) = src.column(&dcol.name) {
+                if let Some(msg) = dcol.is_assignable_from(scol, &src.object) {
+                    return Err(format_err!("{}", msg).into());
+                } else {
+                    columns.push(dcol);
+                }
+            } else if !dcol.is_nullable() {
+                return Err(format_err!(
+                    "The attribute {}.{} is non-nullable, \
+                     but there is no such attribute in the source",
+                    dst.object,
+                    dcol.field
+                )
+                .into());
+            } else {
+                columns.push(dcol);
+            }
+        }
+
+        Ok(Self { src, dst, columns })
+    }
+}
+
+impl<'a> QueryFragment<Pg> for CopyEntityDataQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Construct a query
+        //   insert into {dst}({columns})
+        //   select {columns} from {src}
+        out.push_sql("insert into ");
+        out.push_sql(self.dst.qualified_name.as_str());
+        out.push_sql("(");
+        for column in &self.columns {
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(", ");
+        }
+        out.push_sql("block_range)");
+        out.push_sql("\nselect ");
+        for column in &self.columns {
+            out.push_identifier(column.name.as_str())?;
+            if let ColumnType::Enum(enum_type) = &column.column_type {
+                // Have Postgres convert to the right enum type
+                out.push_sql("::text::");
+                out.push_sql(enum_type.name.as_str());
+            }
+            out.push_sql(", ");
+        }
+        out.push_sql("block_range from ");
+        out.push_sql(self.src.qualified_name.as_str());
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for CopyEntityDataQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for CopyEntityDataQuery<'a> {}

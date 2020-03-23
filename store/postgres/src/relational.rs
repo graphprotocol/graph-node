@@ -19,9 +19,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::relational_queries::{
-    ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery, DeleteDynamicDataSourcesQuery,
-    DeleteQuery, EntityData, FilterCollection, FilterQuery, FindManyQuery, FindQuery, InsertQuery,
-    RevertClampQuery, RevertRemoveQuery, UpdateQuery,
+    self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery,
+    DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
+    FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::prelude::{
@@ -247,6 +247,34 @@ impl Layout {
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql)?;
         Ok(layout)
+    }
+
+    fn copy_from(
+        &self,
+        conn: &PgConnection,
+        base: &Layout,
+        block: BlockNumber,
+    ) -> Result<(), StoreError> {
+        // This can not be used to copy data to or from the metadata subgraph
+        assert!(!self.subgraph.is_meta());
+        assert!(!base.subgraph.is_meta());
+
+        // 1. Copy subgraph data
+        // We allow both not copying tables at all from the source, as well
+        // as adding new tables in `self`; we only need to check that tables
+        // that actually need to be copied from the source are compatible
+        // with the corresponding tables in `self`
+        for (dst, src) in self
+            .tables
+            .values()
+            .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
+        {
+            rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
+        }
+        // 2. Copy dynamic data sources and adjust their ID
+        // 3. Set graftBase and graftBlock in SubgraphDeployment
+        // 4. Set latestEthereumBlock in SubgraphDeployment
+        Ok(())
     }
 
     /// Determine if it is possible to copy the data of `source` into `self`
@@ -843,7 +871,7 @@ impl Column {
         named_type(&self.field_type) == "String" && !self.is_list()
     }
 
-    fn can_copy_from(&self, source: &Self, object: &str) -> Option<String> {
+    pub fn is_assignable_from(&self, source: &Self, object: &str) -> Option<String> {
         if !self.is_nullable() && source.is_nullable() {
             Some(format!(
                 "The attribute {}.{} is non-nullable, \
@@ -970,7 +998,7 @@ impl Table {
         self.columns
             .iter()
             .filter_map(|dcol| match source.column(&dcol.name) {
-                Some(scol) => dcol.can_copy_from(scol, &self.object),
+                Some(scol) => dcol.is_assignable_from(scol, &self.object),
                 None => {
                     if !dcol.is_nullable() {
                         Some(format!(
