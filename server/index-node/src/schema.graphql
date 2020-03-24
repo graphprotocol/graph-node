@@ -7,6 +7,7 @@ scalar String
 type Query {
   indexingStatusesForSubgraphName(subgraphName: String!): [SubgraphIndexingStatus!]!
   indexingStatuses(subgraphs: [String!]): [SubgraphIndexingStatus!]!
+  proofOfIndexing(subgraph: String!, blockNumber: BigInt!): Bytes
 }
 
 type SubgraphIndexingStatus {

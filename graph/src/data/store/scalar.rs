@@ -1,3 +1,4 @@
+use failure::Fail;
 use hex;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
@@ -7,6 +8,7 @@ use stable_hash::{
     prelude::*,
     utils::{AsBytes, AsInt},
 };
+use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::str::FromStr;
@@ -50,6 +52,45 @@ impl StableHash for BigInt {
     }
 }
 
+#[derive(Fail, Debug)]
+pub enum BigIntOutOfRangeError {
+    #[fail(display = "Cannot convert negative BigInt into type")]
+    Negative,
+    #[fail(display = "BigInt value is too large for type")]
+    Overflow,
+}
+
+impl<'a> TryFrom<&'a BigInt> for u64 {
+    type Error = BigIntOutOfRangeError;
+    fn try_from(value: &'a BigInt) -> Result<u64, BigIntOutOfRangeError> {
+        let (sign, bytes) = value.to_bytes_le();
+
+        if sign == num_bigint::Sign::Minus {
+            return Err(BigIntOutOfRangeError::Negative);
+        }
+
+        if bytes.len() > 8 {
+            return Err(BigIntOutOfRangeError::Overflow);
+        }
+
+        // Replace this with u64::from_le_bytes when stabilized
+        let mut n = 0u64;
+        let mut shift_dist = 0;
+        for b in bytes {
+            n = ((b as u64) << shift_dist) | n;
+            shift_dist += 8;
+        }
+        Ok(n)
+    }
+}
+
+impl TryFrom<BigInt> for u64 {
+    type Error = BigIntOutOfRangeError;
+    fn try_from(value: BigInt) -> Result<u64, BigIntOutOfRangeError> {
+        (&value).try_into()
+    }
+}
+
 impl BigInt {
     pub fn from_unsigned_bytes_le(bytes: &[u8]) -> Self {
         BigInt(num_bigint::BigInt::from_bytes_le(
@@ -74,25 +115,9 @@ impl BigInt {
         self.0.to_signed_bytes_le()
     }
 
+    /// Deprecated. Use try_into instead
     pub fn to_u64(&self) -> u64 {
-        let (sign, bytes) = self.to_bytes_le();
-
-        if sign == num_bigint::Sign::Minus {
-            panic!("cannot convert negative BigInt into u64");
-        }
-
-        if bytes.len() > 8 {
-            panic!("BigInt value is too large for a u64");
-        }
-
-        // Replace this with u64::from_le_bytes when stabilized
-        let mut n = 0u64;
-        let mut shift_dist = 0;
-        for b in bytes {
-            n = ((b as u64) << shift_dist) | n;
-            shift_dist += 8;
-        }
-        n
+        self.try_into().unwrap()
     }
 
     pub fn from_unsigned_u256(n: &U256) -> Self {

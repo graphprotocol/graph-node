@@ -26,7 +26,9 @@ use crate::relational_queries::{
     FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
-use graph::data::subgraph::schema::DynamicEthereumContractDataSourceEntity;
+use graph::data::subgraph::schema::{
+    DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
+};
 use graph::prelude::{
     format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger,
@@ -93,7 +95,7 @@ impl SqlName {
         Ok(())
     }
 
-    pub fn from_snake_case(s: String) -> Self {
+    pub fn verbatim(s: String) -> Self {
         SqlName(s)
     }
 
@@ -154,15 +156,13 @@ impl Layout {
     /// SQL type `id_type`. The subgraph ID is passed in `subgraph`, and
     /// the name of the database schema in which the subgraph's tables live
     /// is in `schema`.
-    pub fn new<V>(
+    pub fn new(
         document: &s::Document,
         id_type: IdType,
         subgraph: SubgraphDeploymentId,
-        schema: V,
-    ) -> Result<Layout, StoreError>
-    where
-        V: Into<String>,
-    {
+        schema: impl Into<String>,
+        create_proof_of_indexing: bool,
+    ) -> Result<Layout, StoreError> {
         use s::Definition::*;
         use s::TypeDefinition::*;
 
@@ -173,8 +173,45 @@ impl Layout {
         let mut tables = Vec::new();
         let mut enums = EnumMap::new();
 
-        for defn in &document.definitions {
-            match defn {
+        let table_name = SqlName::verbatim(POI_TABLE.to_owned());
+
+        if create_proof_of_indexing {
+            let poi_table = Table {
+                object: POI_OBJECT.to_owned(),
+                qualified_name: SqlName::qualified_name(&schema, &table_name),
+                name: table_name,
+                columns: vec![
+                    Column {
+                        name: SqlName::from("digest"),
+                        field: "digest".to_owned(),
+                        field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
+                            "String".to_owned(),
+                        ))),
+                        column_type: ColumnType::String,
+                        fulltext_fields: None,
+                        is_reference: false,
+                    },
+                    Column {
+                        name: SqlName::from(PRIMARY_KEY_COLUMN),
+                        field: PRIMARY_KEY_COLUMN.to_owned(),
+                        field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
+                            "String".to_owned(),
+                        ))),
+                        column_type: ColumnType::String,
+                        fulltext_fields: None,
+                        is_reference: false,
+                    },
+                ],
+                /// The position of this table in all the tables for this layout; this
+                /// is really only needed for the tests to make the names of indexes
+                /// predictable
+                position: tables.len() as u32,
+            };
+            tables.push(poi_table);
+        }
+
+        for definition in &document.definitions {
+            match definition {
                 // Do not create a table for the _Schema_ type
                 TypeDefinition(Object(obj_type)) if obj_type.name.eq(SCHEMA_TYPE_NAME) => {}
                 TypeDefinition(Object(obj_type)) => {
@@ -244,7 +281,7 @@ impl Layout {
         document: &s::Document,
     ) -> Result<Layout, StoreError> {
         let layout =
-            crate::relational::Layout::new(document, IdType::String, subgraph, schema_name)?;
+            crate::relational::Layout::new(document, IdType::String, subgraph, schema_name, true)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
@@ -357,7 +394,7 @@ impl Layout {
                 write!(out, "{}'{}'", sep, value)?;
                 sep = ", "
             }
-            write!(out, ");\n")?;
+            writeln!(out, ");")?;
         }
         // We sort tables here solely because the unit tests rely on
         // 'create table' statements appearing in a fixed order
@@ -367,6 +404,7 @@ impl Layout {
         for table in tables {
             table.as_ddl(&mut out, self)?;
         }
+
         Ok(out)
     }
 
@@ -1061,16 +1099,16 @@ impl Table {
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
     fn as_ddl(&self, out: &mut String, layout: &Layout) -> fmt::Result {
-        write!(
+        writeln!(
             out,
-            "create table {}.{} (\n",
+            "create table {}.{} (",
             layout.schema,
             self.name.quoted()
         )?;
         for column in self.columns.iter() {
             write!(out, "    ")?;
             column.as_ddl(out)?;
-            write!(out, ",\n")?;
+            writeln!(out, ",")?;
         }
         // Add block_range column and constraint
         write!(
@@ -1119,7 +1157,7 @@ impl Table {
                 index_expr = index_expr,
             )?;
         }
-        write!(out, "\n")
+        writeln!(out)
     }
 }
 
@@ -1157,7 +1195,8 @@ mod tests {
     fn test_layout(gql: &str) -> Layout {
         let schema = parse_schema(gql).expect("Test schema invalid");
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
-        Layout::new(&schema, IdType::String, subgraph, "rel").expect("Failed to construct Layout")
+        Layout::new(&schema, IdType::String, subgraph, "rel", false)
+            .expect("Failed to construct Layout")
     }
 
     #[test]

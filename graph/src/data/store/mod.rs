@@ -169,7 +169,7 @@ pub enum Value {
 impl StableHash for Value {
     fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
         use Value::*;
-        let discriminant = match self {
+        match self {
             Null => "", // This is the default.
             String(inner) => {
                 inner.stable_hash(sequence_number.next_child(), state);
@@ -199,8 +199,8 @@ impl StableHash for Value {
                 inner.stable_hash(sequence_number.next_child(), state);
                 "BigInt"
             }
-        };
-        discriminant.stable_hash(sequence_number, state);
+        }
+        .stable_hash(sequence_number, state);
     }
 }
 
@@ -483,6 +483,22 @@ impl StableHash for Entity {
     fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
         self.0.stable_hash(sequence_number.next_child(), state);
     }
+}
+
+#[macro_export]
+macro_rules! entity {
+    ($($name:ident: $value:expr,)*) => {
+        {
+            let mut result = $crate::data::store::Entity::new();
+            $(
+                result.set(stringify!($name), $crate::data::store::Value::from($value));
+            )*
+            result
+        }
+    };
+    ($($name:ident: $value:expr),*) => {
+        entity! {$($name: $value,)*}
+    };
 }
 
 impl Entity {

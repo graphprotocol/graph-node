@@ -97,8 +97,30 @@ pub struct CancelHandle {
     guard: Weak<Mutex<Vec<oneshot::Sender<()>>>>,
 }
 
-impl CancelHandle {
-    pub fn is_canceled(&self) -> bool {
+pub trait CancelToken {
+    fn is_canceled(&self) -> bool;
+    fn check_cancel(&self) -> Result<(), Canceled> {
+        if self.is_canceled() {
+            Err(Canceled)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+pub struct NeverCancel;
+
+impl CancelToken for NeverCancel {
+    #[inline]
+    fn is_canceled(&self) -> bool {
+        false
+    }
+}
+
+pub struct Canceled;
+
+impl CancelToken for CancelHandle {
+    fn is_canceled(&self) -> bool {
         // Has been canceled if and only if the guard is gone.
         self.guard.upgrade().is_none()
     }
@@ -236,14 +258,20 @@ impl<F: Future> FutureExtension for F {
 }
 
 #[derive(Debug)]
-pub enum CancelableError<E> {
+pub enum CancelableError<E = Error> {
     Cancel,
     Error(E),
 }
 
 impl From<Error> for CancelableError<Error> {
     fn from(e: Error) -> Self {
-        CancelableError::Error(e)
+        Self::Error(e)
+    }
+}
+
+impl<E> From<Canceled> for CancelableError<E> {
+    fn from(_: Canceled) -> Self {
+        Self::Cancel
     }
 }
 

@@ -15,8 +15,9 @@ use lazy_static::lazy_static;
 lazy_static! {
     static ref SUBSCRIPTION_QUERY_SEMAPHORE: Semaphore = {
         // This is duplicating the logic in main.rs to get the connection pool size, which is
-        // unfourtunate. But because this module has no share state otherwise, it's not simple to
+        // unfortunate. But because this module has no share state otherwise, it's not simple to
         // refactor so that the semaphore isn't a global.
+        // See also 82d5dad6-b633-4350-86d9-70c8b2e65805
         let db_conn_pool_size = std::env::var("STORE_CONNECTION_POOL_SIZE")
             .unwrap_or("10".into())
             .parse::<usize>()

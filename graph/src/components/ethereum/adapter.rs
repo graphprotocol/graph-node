@@ -815,7 +815,7 @@ fn parse_block_triggers(
     triggers
 }
 
-pub fn triggers_in_block(
+pub async fn triggers_in_block(
     adapter: Arc<dyn EthereumAdapter>,
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
@@ -824,29 +824,29 @@ pub fn triggers_in_block(
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
     ethereum_block: BlockFinality,
-) -> Box<dyn Future<Item = EthereumBlockWithTriggers, Error = Error> + Send> {
-    Box::new(match &ethereum_block {
-        BlockFinality::Final(block) => Box::new(
-            blocks_with_triggers(
+) -> Result<EthereumBlockWithTriggers, Error> {
+    match &ethereum_block {
+        BlockFinality::Final(block) => {
+            let mut blocks = blocks_with_triggers(
                 adapter,
                 logger,
                 chain_store,
                 subgraph_metrics,
                 block.number(),
                 block.number(),
-                log_filter.clone(),
-                call_filter.clone(),
-                block_filter.clone(),
+                log_filter,
+                call_filter,
+                block_filter,
             )
-            .map(|blocks| {
-                assert!(blocks.len() <= 1);
-                blocks
-                    .into_iter()
-                    .next()
-                    .unwrap_or(EthereumBlockWithTriggers::new(vec![], ethereum_block))
-            }),
-        ) as Box<dyn Future<Item = _, Error = _> + Send>,
-        BlockFinality::NonFinal(full_block) => Box::new(future::ok({
+            .compat()
+            .await?;
+            assert!(blocks.len() <= 1);
+
+            Ok(blocks
+                .pop()
+                .unwrap_or_else(|| EthereumBlockWithTriggers::new(vec![], ethereum_block)))
+        }
+        BlockFinality::NonFinal(full_block) => {
             let mut triggers = Vec::new();
             triggers.append(&mut parse_log_triggers(
                 log_filter,
@@ -854,9 +854,9 @@ pub fn triggers_in_block(
             ));
             triggers.append(&mut parse_call_triggers(call_filter, &full_block));
             triggers.append(&mut parse_block_triggers(block_filter, &full_block));
-            EthereumBlockWithTriggers::new(triggers, ethereum_block)
-        })),
-    })
+            Ok(EthereumBlockWithTriggers::new(triggers, ethereum_block))
+        }
+    }
 }
 
 /// Returns blocks with triggers, corresponding to the specified range and filters.

@@ -6,8 +6,9 @@ use std::time::Instant;
 
 use graph::components::ethereum::triggers_in_block;
 use graph::components::store::ModificationsAndCache;
+use graph::components::subgraph::{ProofOfIndexing, ProofOfIndexingDigest};
 use graph::data::subgraph::schema::{
-    DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
+    DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity, POI_OBJECT,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -626,6 +627,7 @@ where
     .await?;
 
     // If new data sources have been created, restart the subgraph after this block.
+    // This is necessary to re-create the block stream.
     let needs_restart = !block_state.created_data_sources.is_empty();
     let host_metrics = ctx.host_metrics.clone();
 
@@ -657,7 +659,6 @@ where
             EthereumBlockFilter::from_data_sources(data_sources.iter()),
             block.clone(),
         )
-        .compat()
         .await?;
 
         let triggers = block_with_triggers.triggers;
@@ -687,6 +688,7 @@ where
 
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
+
         for trigger in triggers.into_iter() {
             block_state = SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
                 &logger,
@@ -705,6 +707,15 @@ where
     if block_stream_cancel_handle.is_canceled() {
         return Err(CancelableError::Cancel);
     }
+
+    update_proof_of_indexing(
+        &mut block_state.proof_of_indexing,
+        &ctx.host_metrics.stopwatch,
+        ctx.inputs.store.as_ref(),
+        &ctx.inputs.deployment_id,
+        &mut block_state.entity_cache,
+    )
+    .await?;
 
     let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
@@ -764,6 +775,63 @@ where
             Err(format_err!("Error while processing block stream for a subgraph: {}", e).into())
         }
     }
+}
+
+/// Transform the proof of indexing changes into entity updates that will be
+/// inserted when as_modifications is called.
+async fn update_proof_of_indexing(
+    proof_of_indexing: &mut ProofOfIndexing,
+    stopwatch: &StopwatchMetrics,
+    store: &(impl Store + SubgraphDeploymentStore),
+    deployment_id: &SubgraphDeploymentId,
+    entity_cache: &mut EntityCache,
+) -> Result<(), Error> {
+    // Need to take this out whether or not we hit the early return. Otherwise it accumulates
+    let mut proof_of_indexing = if let Some(proof_of_indexing) = proof_of_indexing.take() {
+        proof_of_indexing
+    } else {
+        return Ok(());
+    };
+
+    let _section_guard = stopwatch.start_section("update_proof_of_indexing");
+
+    // Check if the PoI table actually exists. Do not update PoI unless the subgraph
+    // was deployed after the feature was implemented
+    if !store.supports_proof_of_indexing(&deployment_id).await? {
+        return Ok(());
+    }
+
+    for (causality_region, stream) in proof_of_indexing.drain() {
+        // Create the special POI entity key specific to this causality_region
+        let entity_key = EntityKey {
+            subgraph_id: deployment_id.clone(),
+            entity_type: POI_OBJECT.to_owned(),
+            entity_id: causality_region,
+        };
+
+        // Grab the current digest attribute on this entity
+        let prev_poi = entity_cache
+            .get(store, &entity_key)
+            .map_err(Error::from)?
+            .map(|entity| match entity.get("digest") {
+                Some(Value::String(s)) => ProofOfIndexingDigest(s.clone()),
+                _ => panic!("Expected POI entity to have a digest and for it to be a string"),
+            });
+
+        // Finish the POI stream, getting the new POI value.
+        let ProofOfIndexingDigest(updated_proof_of_indexing) = stream.finish(&prev_poi);
+
+        // Put this onto an entity with the same digest attribute
+        // that was expected before when reading.
+        let new_poi_entity = entity! {
+            id: entity_key.entity_id.clone(),
+            digest: updated_proof_of_indexing,
+        };
+
+        entity_cache.set(entity_key, new_poi_entity);
+    }
+
+    Ok(())
 }
 
 async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send + Sync>(

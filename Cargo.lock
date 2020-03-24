@@ -990,9 +990,9 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fragile"
-version = "0.3.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f8140122fa0d5dcb9fc8627cfce2b37cc1500f752636d46ea28bc26785c2f9"
+checksum = "69a039c3498dc930fe810151a34ba0c1c70b02b8625035592e74432f678591f2"
 
 [[package]]
 name = "fuchsia-cprng"
@@ -1225,6 +1225,8 @@ dependencies = [
  "slog-envlogger",
  "slog-term",
  "stable-hash",
+ "strum",
+ "strum_macros",
  "test-store",
  "tiny-keccak",
  "tokio 0.2.18",
@@ -1400,7 +1402,7 @@ name = "graph-server-index-node"
 version = "0.18.0"
 dependencies = [
  "failure",
- "futures 0.1.29",
+ "futures 0.3.4",
  "graph",
  "graph-graphql",
  "graphql-parser",
@@ -1455,6 +1457,7 @@ name = "graph-store-postgres"
 version = "0.18.0"
 dependencies = [
  "Inflector",
+ "async-trait",
  "clap",
  "derive_more",
  "diesel",
@@ -1473,10 +1476,13 @@ dependencies = [
  "hex-literal",
  "lazy_static",
  "lru_time_cache",
+ "maybe-owned",
  "parity-wasm",
  "postgres",
  "serde",
+ "stable-hash",
  "test-store",
+ "twox-hash",
  "uuid 0.8.1",
 ]
 
@@ -2050,6 +2056,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
+name = "maybe-owned"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "006ac35c23dc00cd88083b27297224aedc893d628aff7374352b4f3d57315fa9"
+
+[[package]]
 name = "maybe-uninit"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2181,9 +2193,9 @@ dependencies = [
 
 [[package]]
 name = "mockall"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b95a7e7cfbce0e99ebbf5356a085d3b5e320a7ef300f77cd50a7148aa362e7c2"
+checksum = "48c9eefc7768ee7a28a09d64e40203d57ad20af8525b7428d5f2f55d8c621984"
 dependencies = [
  "cfg-if",
  "downcast",
@@ -2196,9 +2208,9 @@ dependencies = [
 
 [[package]]
 name = "mockall_derive"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5a615a1ad92048ad5d9633251edb7492b8abc057d7a679a9898476aef173935"
+checksum = "447326d4e6d99ea272b6e5599cbbfc1e3407c23a856ccf1eb9427ad73267376f"
 dependencies = [
  "cfg-if",
  "proc-macro2 1.0.9",
@@ -3507,7 +3519,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stable-hash"
 version = "0.1.0"
-source = "git+https://github.com/graphprotocol/stable-hash#f3d4be4fe57bff479e249d4e126c3f6c699fc732"
+source = "git+https://github.com/graphprotocol/stable-hash#75d7ed4f5d2adce4d194b7aac6d78ec315298690"
 dependencies = [
  "num-traits",
 ]

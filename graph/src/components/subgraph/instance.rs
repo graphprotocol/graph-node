@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use web3::types::Log;
 
+use super::ProofOfIndexing;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 
@@ -16,6 +17,7 @@ pub struct DataSourceTemplateInfo {
 pub struct BlockState {
     pub entity_cache: EntityCache,
     pub created_data_sources: Vec<DataSourceTemplateInfo>,
+    pub proof_of_indexing: ProofOfIndexing,
 }
 
 impl BlockState {
@@ -23,6 +25,7 @@ impl BlockState {
         BlockState {
             entity_cache: EntityCache::with_current(lfu_cache),
             created_data_sources: Vec::new(),
+            proof_of_indexing: Default::default(),
         }
     }
 }

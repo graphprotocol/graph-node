@@ -321,7 +321,7 @@ pub fn main() {
     let schema = ensure(parse_schema(&schema), "Failed to parse schema");
     let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
     let layout = ensure(
-        Layout::new(&schema, IdType::String, subgraph, db_schema),
+        Layout::new(&schema, IdType::String, subgraph, db_schema, false),
         "Failed to construct Mapping",
     );
     match kind {

@@ -8,7 +8,7 @@ use failure::Error;
 use graphql_parser;
 use graphql_parser::{
     query::{Name, Value},
-    schema::{self, InterfaceType, ObjectType, TypeDefinition, *},
+    schema::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
     Pos,
 };
 use inflector::Inflector;
@@ -257,7 +257,7 @@ impl From<&Directive> for FulltextDefinition {
                 algorithm,
             },
             included_fields,
-            name: name,
+            name,
         }
     }
 }
@@ -438,7 +438,7 @@ impl Schema {
         // miss interfaces that have no implementors.
         let mut types_for_interface =
             BTreeMap::from_iter(document.definitions.iter().filter_map(|d| match d {
-                schema::Definition::TypeDefinition(TypeDefinition::Interface(t)) => {
+                Definition::TypeDefinition(TypeDefinition::Interface(t)) => {
                     Some((t.name.clone(), vec![]))
                 }
                 _ => None,
@@ -451,7 +451,7 @@ impl Schema {
                     .definitions
                     .iter()
                     .find_map(|def| match def {
-                        schema::Definition::TypeDefinition(TypeDefinition::Interface(i))
+                        Definition::TypeDefinition(TypeDefinition::Interface(i))
                             if i.name.eq(&implemented_interface) =>
                         {
                             Some(i.clone())
@@ -475,7 +475,7 @@ impl Schema {
             }
         }
 
-        return Ok((interfaces_for_type, types_for_interface));
+        Ok((interfaces_for_type, types_for_interface))
     }
 
     pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
@@ -568,7 +568,7 @@ impl Schema {
                 arguments: vec![subgraph_id_argument],
             };
 
-            if let schema::Definition::TypeDefinition(ref mut type_definition) = definition {
+            if let Definition::TypeDefinition(ref mut type_definition) = definition {
                 let (name, directives) = match type_definition {
                     TypeDefinition::Object(object_type) => {
                         (&object_type.name, &mut object_type.directives)
@@ -1232,26 +1232,20 @@ impl Schema {
         document
             .get_fulltext_directives()
             .into_iter()
-            .filter(|directive| {
-                match directive.argument("include") {
-                    Some(Value::List(includes)) if includes.len() > 0 => {
-                        return includes
-                            .iter()
-                            .find(|include| match include {
-                                Value::Object(include) => match include.get("entity") {
-                                    Some(Value::String(fulltext_entity))
-                                        if fulltext_entity == entity =>
-                                    {
-                                        true
-                                    }
-                                    _ => false,
-                                },
-                                _ => false,
-                            })
-                            .is_some();
-                    }
-                    _ => return false,
-                };
+            .filter(|directive| match directive.argument("include") {
+                Some(Value::List(includes)) if includes.len() > 0 => includes
+                    .iter()
+                    .find(|include| match include {
+                        Value::Object(include) => match include.get("entity") {
+                            Some(Value::String(fulltext_entity)) if fulltext_entity == entity => {
+                                true
+                            }
+                            _ => false,
+                        },
+                        _ => false,
+                    })
+                    .is_some(),
+                _ => false,
             })
             .map(|directive| FulltextDefinition::from(directive))
             .collect()

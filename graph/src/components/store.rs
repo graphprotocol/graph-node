@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use web3::types::H256;
 
+use crate::components::subgraph::ProofOfIndexingDigest;
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
@@ -27,8 +28,8 @@ lazy_static! {
             .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!(
                 "failed to parse env var SUBSCRIPTION_THROTTLE_INTERVAL"
             )))
-            .map(|millis| Duration::from_millis(millis))
-            .unwrap_or(Duration::from_millis(1000));
+            .map(Duration::from_millis)
+            .unwrap_or_else(|| Duration::from_millis(1000));
 }
 
 // Note: Do not modify fields without making a backward compatible change to
@@ -129,7 +130,7 @@ pub enum EntityOrder {
 
 impl EntityOrder {
     /// Return `"asc"` or `"desc"` as is used in SQL
-    pub fn to_sql(&self) -> &'static str {
+    pub fn to_sql(self) -> &'static str {
         match self {
             EntityOrder::Ascending => "asc",
             EntityOrder::Descending => "desc",
@@ -800,7 +801,6 @@ pub enum TransactionAbortError {
 }
 
 /// Common trait for store implementations.
-#[automock]
 pub trait Store: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(
@@ -808,15 +808,31 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error>;
 
+    fn supports_proof_of_indexing<'a>(
+        &'a self,
+        subgraph_id: &'a SubgraphDeploymentId,
+    ) -> DynTryFuture<'a, bool>;
+
+    /// A value of None indicates that the table is not available. Re-deploying
+    /// the subgraph fixes this. It is undesirable to force everything to
+    /// re-sync from scratch, so existing deployments will continue without a
+    /// Proof of Indexing. Once all subgraphs have been re-deployed the Option
+    /// can be removed.
+    fn get_proof_of_indexing<'a>(
+        &'a self,
+        subgraph_id: &'a SubgraphDeploymentId,
+        block_number: u64,
+    ) -> DynTryFuture<'a, Option<ProofOfIndexingDigest>>;
+
     /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
     /// Look up multiple entities as of the latest block. Returns a map of
     /// entities by type.
-    fn get_many<'a>(
+    fn get_many(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-        ids_for_type: BTreeMap<&'a str, Vec<&'a str>>,
+        ids_for_type: BTreeMap<&str, Vec<&str>>,
     ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError>;
 
     /// Queries the store for entities that match the store query.
@@ -1193,6 +1209,137 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
         block_hash: H256,
     ) -> Result<Option<BlockNumber>, StoreError>;
+}
+
+mock! {
+    pub Store {
+        fn get_many_mock<'a>(
+            &self,
+            _subgraph_id: &SubgraphDeploymentId,
+            _ids_for_type: BTreeMap<&'a str, Vec<&'a str>>,
+        ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError>;
+    }
+}
+
+// The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
+impl Store for MockStore {
+    fn block_ptr(
+        &self,
+        _subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!();
+    }
+
+    fn supports_proof_of_indexing<'a>(
+        &'a self,
+        _subgraph_id: &'a SubgraphDeploymentId,
+    ) -> DynTryFuture<'a, bool> {
+        unimplemented!();
+    }
+
+    fn get_proof_of_indexing<'a>(
+        &'a self,
+        _subgraph_id: &'a SubgraphDeploymentId,
+        _block_number: u64,
+    ) -> DynTryFuture<'a, Option<ProofOfIndexingDigest>> {
+        unimplemented!();
+    }
+
+    fn get(&self, _key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+        unimplemented!()
+    }
+
+    fn get_many(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        ids_for_type: BTreeMap<&str, Vec<&str>>,
+    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        self.get_many_mock(subgraph_id, ids_for_type)
+    }
+
+    fn find(&self, _query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        unimplemented!()
+    }
+
+    fn find_one(&self, _query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
+        unimplemented!()
+    }
+
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
+        unimplemented!()
+    }
+
+    fn transact_block_operations(
+        &self,
+        _subgraph_id: SubgraphDeploymentId,
+        _block_ptr_to: EthereumBlockPointer,
+        _mods: Vec<EntityModification>,
+        _stopwatch: StopwatchMetrics,
+    ) -> Result<bool, StoreError> {
+        unimplemented!()
+    }
+
+    fn apply_metadata_operations(
+        &self,
+        _operations: Vec<MetadataOperation>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn build_entity_attribute_indexes(
+        &self,
+        _subgraph: &SubgraphDeploymentId,
+        _indexes: Vec<AttributeIndexDefinition>,
+    ) -> Result<(), SubgraphAssignmentProviderError> {
+        unimplemented!()
+    }
+
+    fn revert_block_operations(
+        &self,
+        _subgraph_id: SubgraphDeploymentId,
+        _block_ptr_from: EthereumBlockPointer,
+        _block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+        unimplemented!()
+    }
+
+    fn create_subgraph_deployment(
+        &self,
+        _schema: &Schema,
+        _ops: Vec<MetadataOperation>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn start_subgraph_deployment(
+        &self,
+        _logger: &Logger,
+        _subgraph_id: &SubgraphDeploymentId,
+        _ops: Vec<MetadataOperation>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn migrate_subgraph_deployment(
+        &self,
+        _logger: &Logger,
+        _subgraph_id: &SubgraphDeploymentId,
+        _block_ptr: &EthereumBlockPointer,
+    ) {
+        unimplemented!()
+    }
+
+    fn block_number(
+        &self,
+        _subgraph_id: &SubgraphDeploymentId,
+        _block_hash: H256,
+    ) -> Result<Option<BlockNumber>, StoreError> {
+        unimplemented!()
+    }
 }
 
 #[automock]

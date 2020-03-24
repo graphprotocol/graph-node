@@ -39,6 +39,13 @@ pub fn spawn_blocking_allow_panic<T: Send + 'static>(
     tokio::task::spawn_blocking(move || block_on(f))
 }
 
+/// Does not abort on panic
+pub async fn spawn_blocking_async_allow_panic<R: 'static + Send>(
+    f: impl 'static + FnOnce() -> R + Send,
+) -> R {
+    tokio::task::spawn_blocking(f).await.unwrap()
+}
+
 /// Panics if there is no current tokio::Runtime
 pub fn block_on_allow_panic<T>(f: impl Future03<Output = T> + Send) -> T {
     let rt = tokio::runtime::Handle::current();

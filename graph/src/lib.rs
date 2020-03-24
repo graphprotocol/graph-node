@@ -26,6 +26,7 @@ pub mod mock {
 mod task_spawn;
 pub use task_spawn::{
     block_on_allow_panic, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic,
+    spawn_blocking_async_allow_panic,
 };
 
 pub use bytes;
@@ -39,6 +40,7 @@ pub use url;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
+    pub use super::entity;
     pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use ethabi;
@@ -133,8 +135,8 @@ pub mod prelude {
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
     pub use crate::ext::futures::{
-        CancelGuard, CancelHandle, CancelableError, FutureExtension, SharedCancelGuard,
-        StreamExtension,
+        CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
+        SharedCancelGuard, StreamExtension,
     };
     pub use crate::log::codes::LogCode;
     pub use crate::log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
