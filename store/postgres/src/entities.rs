@@ -32,15 +32,17 @@ use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use inflector::cases::snakecase::to_snake_case;
 use lazy_static::lazy_static;
+use maybe_owned::MaybeOwned;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::{Hash, Hasher};
+use std::ops::Deref as _;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use graph::data::schema::Schema as SubgraphSchema;
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
+use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE, SUBGRAPHS_ID};
 use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, BlockNumber, Entity,
     EntityChange, EntityChangeOperation, EntityCollection, EntityFilter, EntityKey,
@@ -306,8 +308,8 @@ pub(crate) fn make_storage_cache() -> StorageCache {
 /// is no mechanism in place to notify other index nodes that a subgraph has
 /// been migrated
 #[derive(Constructor)]
-pub(crate) struct Connection {
-    conn: PooledConnection<ConnectionManager<PgConnection>>,
+pub(crate) struct Connection<'a> {
+    conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
     /// The storage of the subgraph we are dealing with; entities
     /// go into this
     storage: Arc<Storage>,
@@ -316,7 +318,7 @@ pub(crate) struct Connection {
     metadata: Arc<Storage>,
 }
 
-impl Connection {
+impl Connection<'_> {
     /// Return the storage for `key`, which must refer either to the subgraph
     /// for this connection, or the metadata subgraph.
     ///
@@ -348,7 +350,7 @@ impl Connection {
         let state = dsl::table
             .select(dsl::state)
             .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
-            .first::<State>(&self.conn)?;
+            .first::<State>(self.conn.as_ref())?;
 
         match state {
             State::Init => {
@@ -374,7 +376,7 @@ impl Connection {
                         diesel::update(dsl::table)
                             .set(dsl::state.eq(State::Ready))
                             .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
-                            .execute(&self.conn)?;
+                            .execute(self.conn.as_ref())?;
                         info!(logger, "Subgraph successfully initialized";
                               "time_ms" => start.elapsed().as_millis());
                     }
@@ -385,7 +387,7 @@ impl Connection {
                         diesel::update(dsl::table)
                             .set(dsl::state.eq(State::Ready))
                             .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
-                            .execute(&self.conn)?;
+                            .execute(self.conn.as_ref())?;
                     }
                 }
             }
@@ -405,7 +407,7 @@ impl Connection {
                 dsl::table.filter(dsl::subgraph.eq(self.storage.subgraph().to_string())),
             )
             .set(dsl::migrating.eq(false))
-            .execute(&self.conn)
+            .execute(self.conn.deref())
             .map(|_| ())?,
         )
     }
@@ -583,6 +585,8 @@ impl Connection {
         &self,
         block_ptr: &EthereumBlockPointer,
     ) -> Result<(StoreEvent, i32), StoreError> {
+        // At 1 block per 15 seconds, the maximum i32
+        // value affords just over 1020 years of blocks.
         let block = block_ptr
             .number
             .try_into()
@@ -691,7 +695,7 @@ impl Connection {
         let do_migrate = self.conn.transaction(|| -> Result<bool, Error> {
             let lock =
                 diesel::sql_query("lock table public.deployment_schemas in exclusive mode nowait")
-                    .execute(&self.conn);
+                    .execute(self.conn.deref());
             if lock.is_err() {
                 return Ok(false);
             }
@@ -704,7 +708,7 @@ impl Connection {
             let query = diesel::sql_query(query)
                 .bind::<Text, _>(subgraph.to_string())
                 .bind::<Integer, _>(MIGRATION_LIMIT);
-            Ok(query.execute(&self.conn)? > 0)
+            Ok(query.execute(self.conn.deref())? > 0)
         })?;
 
         if do_migrate {
@@ -729,7 +733,7 @@ impl Connection {
             // the migration
             diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
                 .set(dsl::migrating.eq(false))
-                .execute(&self.conn)?;
+                .execute(self.conn.deref())?;
             result
         } else {
             Ok(false)
@@ -785,7 +789,7 @@ impl Connection {
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
         let v = serde_json::to_value(event)?;
-        JsonNotification::send("store_events", &v, &*self.conn)
+        JsonNotification::send("store_events", &v, &self.conn)
     }
 
     pub(crate) fn transaction<T, E, F>(&self, f: F) -> Result<T, E>
@@ -816,7 +820,7 @@ impl Connection {
         let count = deployment_schemas::table
             .filter(deployment_schemas::subgraph.eq(schema.id.to_string()))
             .count()
-            .first::<i64>(&self.conn)?;
+            .first::<i64>(self.conn.deref())?;
         if count > 0 {
             return Ok(());
         }
@@ -829,7 +833,7 @@ impl Connection {
                 deployment_schemas::state.eq(s::Init),
             ))
             .returning(deployment_schemas::name)
-            .get_results(&self.conn)?;
+            .get_results(self.conn.deref())?;
         let schema_name = schemas
             .first()
             .ok_or_else(|| format_err!("failed to read schema name for {} back", &schema.id))?;
@@ -898,6 +902,13 @@ impl Connection {
             Storage::Relational(layout) => layout,
         }
     }
+
+    pub(crate) fn supports_proof_of_indexing(&self) -> bool {
+        match &*self.storage {
+            Storage::Json(_) => false,
+            Storage::Relational(layout) => layout.tables.contains_key(POI_OBJECT),
+        }
+    }
 }
 
 // Find the database schema for `subgraph`. If no explicit schema exists,
@@ -910,6 +921,28 @@ fn find_schema(
         .filter(deployment_schemas::subgraph.eq(subgraph.to_string()))
         .first::<Schema>(conn)
         .optional()?)
+}
+
+fn supports_proof_of_indexing(
+    conn: &diesel::pg::PgConnection,
+    subgraph_id: &SubgraphDeploymentId,
+    schema: &str,
+) -> Result<bool, StoreError> {
+    if subgraph_id == &*SUBGRAPHS_ID {
+        return Ok(false);
+    }
+    #[derive(Debug, QueryableByName)]
+    struct Table {
+        #[sql_type = "Text"]
+        pub table_name: String,
+    }
+    let query =
+        "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name=$2";
+    let result: Vec<Table> = diesel::sql_query(query)
+        .bind::<Text, _>(schema)
+        .bind::<Text, _>(POI_TABLE)
+        .load(conn)?;
+    Ok(result.len() > 0)
 }
 
 fn entity_to_json(key: &EntityKey, entity: &Entity) -> Result<serde_json::Value, Error> {
@@ -1374,11 +1407,13 @@ impl Storage {
             }
             V::Relational => {
                 let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
+                let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
                 let layout = Layout::new(
                     &subgraph_schema.document,
                     IdType::String,
                     subgraph.clone(),
                     schema.name,
+                    has_poi,
                 )?;
                 Storage::Relational(layout)
             }

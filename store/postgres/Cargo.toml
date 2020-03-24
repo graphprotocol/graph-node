@@ -4,6 +4,7 @@ version = "0.18.0"
 edition = "2018"
 
 [dependencies]
+async-trait = "0.1.27"
 derive_more = { version = "0.99.2" }
 diesel = { version = "1.4.3", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 # We use diesel-dynamic-schema straight from git as the project has not
@@ -21,9 +22,12 @@ graphql-parser = "0.2.3"
 Inflector = "0.11.3"
 lazy_static = "1.1"
 lru_time_cache = "0.9"
+maybe-owned = "0.3.2"
 postgres = "0.15.2"
 serde = "1.0"
 uuid = { version = "0.8.1", features = ["v4"] }
+stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
+twox-hash = "1.5.0"
 
 [dev-dependencies]
 clap = "2.33.0"

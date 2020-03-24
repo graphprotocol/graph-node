@@ -43,15 +43,22 @@ pub fn create_connection_pool(
 
     // Connect to Postgres
     let conn_manager = ConnectionManager::new(postgres_url.clone());
+    // Set the time we wait for a connection to 6h. The default is 30s
+    // which can be too little if database connections are highly
+    // contended; if we don't get a connection within the timeout,
+    // ultimately subgraphs get marked as failed. This effectively
+    // turns off this timeout and makes it possible that work needing
+    // a database connection blocks for a very long time
+    //
+    // When running tests however, use the default of 30 seconds.
+    // There should not be a lot of contention when running tests,
+    // and this can help debug the issue faster when a test appears
+    // to be hanging but really there is just no connection to postgres
+    // available.
+    let timeout_seconds = if cfg!(test) { 30 } else { 6 * 60 * 60 };
     let pool = Pool::builder()
         .error_handler(error_handler)
-        // Set the time we wait for a connection to 6h. The default is 30s
-        // which can be too little if database connections are highly
-        // contended; if we don't get a connection within the timeout,
-        // ultimately subgraphs get marked as failed. This effectively
-        // turns off this timeout and makes it possible that work needing
-        // a database connection blocks for a very long time
-        .connection_timeout(Duration::from_secs(6 * 60 * 60))
+        .connection_timeout(Duration::from_secs(timeout_seconds))
         .max_size(pool_size)
         .build(conn_manager)
         .unwrap();

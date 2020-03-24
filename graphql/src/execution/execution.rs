@@ -689,7 +689,6 @@ fn resolve_field_value_for_named_type(
     // Try to resolve the type name into the actual type
     let named_type = sast::get_named_type(&ctx.schema.document, type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
-
     match named_type {
         // Let the resolver decide how the field (with the given object type)
         // is resolved into an entity based on the (potential) parent object
@@ -716,10 +715,22 @@ fn resolve_field_value_for_named_type(
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL scalars
         s::TypeDefinition::Scalar(t) => match object_value {
-            Some(q::Value::Object(o)) => {
-                ctx.resolver
-                    .resolve_scalar_value(object_type, o, field, t, o.get(&field.name))
-            }
+            Some(q::Value::Object(o)) => ctx.resolver.resolve_scalar_value(
+                object_type,
+                o,
+                field,
+                t,
+                o.get(&field.name),
+                argument_values,
+            ),
+            None => ctx.resolver.resolve_scalar_value(
+                object_type,
+                &BTreeMap::new(),
+                field,
+                t,
+                None,
+                argument_values,
+            ),
             _ => Ok(q::Value::Null),
         },
 

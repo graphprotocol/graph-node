@@ -1,7 +1,6 @@
 use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Instant;
@@ -16,8 +15,7 @@ use crate::response::IndexNodeResponse;
 use crate::schema::SCHEMA;
 
 /// An asynchronous response to a GraphQL request.
-pub type IndexNodeServiceResponse =
-    Pin<Box<dyn std::future::Future<Output = Result<Response<Body>, GraphQLServerError>> + Send>>;
+pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQLServerError>;
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
@@ -81,12 +79,13 @@ where
     }
 
     fn index(&self) -> IndexNodeServiceResponse {
-        Box::pin(async {
+        async {
             Ok(Response::builder()
                 .status(200)
                 .body(Body::from("OK"))
                 .unwrap())
-        })
+        }
+        .boxed()
     }
 
     fn handle_graphiql(&self) -> IndexNodeServiceResponse {

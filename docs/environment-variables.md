@@ -108,3 +108,5 @@ those.
   additional SQL queries that get logged when `sql` is given. These are
   queries caused by mappings when processing blocks for a subgraph, and
   queries caused by subscriptions. Defaults to no logging.
+- `STORE_CONNECTION_POOL_SIZE`: How many simultaneous connections to allow to the store.
+  Due to implementation details, this value may not be strictly adhered to. Defaults to 10. 

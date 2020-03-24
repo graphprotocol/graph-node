@@ -536,6 +536,8 @@ where
                                         block_filter.clone(),
                                         BlockFinality::NonFinal(block),
                                     )
+                                    .boxed()
+                                    .compat()
                                 })
                                 .map(move |block| {
                                     ReconciliationStep::ProcessDescendantBlocks(vec![block], 1)
@@ -758,13 +760,11 @@ where
 
             // Update subgraph entities to promote pending versions to current
             for subgraph in subgraphs_to_update {
-                let mut data = Entity::new();
-                data.set("id", subgraph.id().unwrap());
-                data.set("pendingVersion", Value::Null);
-                data.set(
-                    "currentVersion",
-                    subgraph.get("pendingVersion").unwrap().to_owned(),
-                );
+                let data = entity! {
+                    id: subgraph.id().unwrap(),
+                    pendingVersion: Value::Null,
+                    currentVersion: subgraph.get("pendingVersion").unwrap().to_owned(),
+                };
                 ops.push(MetadataOperation::Set {
                     entity: SubgraphEntity::TYPENAME.to_owned(),
                     id: subgraph.id().unwrap(),

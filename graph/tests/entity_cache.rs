@@ -38,7 +38,7 @@ fn insert_modifications() {
     // Return no entities from the store, forcing the cache to treat any `set`
     // operation as an insert.
     store
-        .expect_get_many()
+        .expect_get_many_mock()
         .returning(|_, _| Ok(BTreeMap::new()));
 
     let mut cache = EntityCache::new();
@@ -75,9 +75,9 @@ fn insert_modifications() {
 fn overwrite_modifications() {
     let mut store = MockStore::new();
 
-    // Prepopulate the store with entities so that the cache treats
+    // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
-    store.expect_get_many().returning(|_, _| {
+    store.expect_get_many_mock().returning(|_, _| {
         let mut map = BTreeMap::new();
 
         map.insert(
@@ -141,9 +141,9 @@ fn overwrite_modifications() {
 fn consecutive_modifications() {
     let mut store = MockStore::new();
 
-    // Prepopulate the store with data so that we can test setting a field to
+    // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
-    store.expect_get_many().returning(|_, _| {
+    store.expect_get_many_mock().returning(|_, _| {
         let mut map = BTreeMap::new();
 
         map.insert(

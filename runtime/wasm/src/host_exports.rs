@@ -4,6 +4,7 @@ use ethabi::{Address, Token};
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
+use graph::components::subgraph::ProofOfIndexingEvent;
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::store;
 use graph::prelude::serde_json;
@@ -46,6 +47,11 @@ pub(crate) struct HostExports {
     data_source_address: Option<Address>,
     data_source_network: String,
     data_source_context: Option<DataSourceContext>,
+    /// Some data sources have indeterminism or different notions of time. These
+    /// need to be each be stored separately to separate causality between them,
+    /// and merge the results later. Right now, this is just the ethereum
+    /// networks but will be expanded for ipfs and the availability chain.
+    causality_region: String,
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<MappingABI>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -82,6 +88,8 @@ impl HostExports {
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
+        let causality_region = format!("ethereum/{}", data_source_network);
+
         Self {
             subgraph_id,
             api_version,
@@ -89,6 +97,7 @@ impl HostExports {
             data_source_address,
             data_source_network,
             data_source_context,
+            causality_region,
             templates,
             abis,
             ethereum_adapter,
@@ -136,6 +145,15 @@ impl HostExports {
         entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), HostExportError<impl ExportError>> {
+        state.proof_of_indexing.write(
+            &self.causality_region,
+            &ProofOfIndexingEvent::SetEntity {
+                entity_type: &entity_type,
+                id: &entity_id,
+                data: &data,
+            },
+        );
+
         // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
             Some(ref v) if v != &Value::String(entity_id.clone()) => {
@@ -177,6 +195,13 @@ impl HostExports {
         entity_type: String,
         entity_id: String,
     ) {
+        state.proof_of_indexing.write(
+            &self.causality_region,
+            &ProofOfIndexingEvent::RemoveEntity {
+                entity_type: &entity_type,
+                id: &entity_id,
+            },
+        );
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type,

@@ -121,7 +121,10 @@ pub trait Resolver: Clone + Send + Sync {
         _field: &q::Field,
         _scalar_type: &s::ScalarType,
         value: Option<&q::Value>,
+        _argument_values: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
+        // This code is duplicated.
+        // See also c2112309-44fd-4a84-92a0-5a651e6ed548
         Ok(value.cloned().unwrap_or(q::Value::Null))
     }
 

@@ -4,26 +4,37 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, select, update};
 use futures::sync::mpsc::{channel, Sender};
+use futures03::FutureExt as _;
+use graph::prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError};
+use graph::spawn_blocking_async_allow_panic;
+use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
+use stable_hash::utils::stable_hash_with_hasher;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
-use graph::components::store::Store as StoreTrait;
-use graph::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity as _, SUBGRAPHS_ID};
+use graph::components::store::{EntityCollection, Store as StoreTrait};
+use graph::components::subgraph::ProofOfIndexingDigest;
+use graph::data::subgraph::schema::{
+    SubgraphDeploymentEntity, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
+};
 use graph::prelude::{
     bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
     trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
-    ChainHeadUpdateStream, ChainStore, Entity, EntityKey, EntityModification, EntityOrder,
-    EntityQuery, EntityRange, Error, EthereumBlock, EthereumBlockPointer, EthereumCallCache,
-    EthereumNetworkIdentifier, EventProducer as _, Future, Future01CompatExt, LightEthereumBlock,
-    Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _,
-    StopwatchMetrics, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
-    SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
-    SubgraphEntityPair, TransactionAbortError, BLOCK_NUMBER_MAX,
+    ChainHeadUpdateStream, ChainStore, CheapClone, DynTryFuture, Entity, EntityKey,
+    EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
+    EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, EventProducer as _, Future,
+    Future01CompatExt, LightEthereumBlock, Logger, MetadataOperation, MetricsRegistry,
+    QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
+    StoreEventStream, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError,
+    Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_chain_ethereum::BlockIngestorMetrics;
@@ -36,6 +47,22 @@ use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::history_event::HistoryEvent;
 use crate::metadata;
 use crate::store_events::StoreEventListener;
+
+// TODO: Integrate with https://github.com/graphprotocol/graph-node/pull/1522/files
+lazy_static! {
+    static ref CONNECTION_LIMITER: Semaphore = {
+        // TODO: Consolidate access to db. There are 3 places right now where connections
+        // are limited. Move everything to use the `with_connection` API and remove the
+        // other limiters
+        // See also 82d5dad6-b633-4350-86d9-70c8b2e65805
+        let db_conn_pool_size = std::env::var("STORE_CONNECTION_POOL_SIZE")
+            .unwrap_or("10".into())
+            .parse::<usize>()
+            .expect("invalid STORE_CONNECTION_POOL_SIZE");
+
+        Semaphore::new(db_conn_pool_size)
+    };
+}
 
 embed_migrations!("./migrations");
 
@@ -131,13 +158,12 @@ struct SubgraphInfo {
     graft_block: Option<BlockNumber>,
 }
 
-/// A Store based on Diesel and Postgres.
-pub struct Store {
+pub struct StoreInner {
     logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
 
     /// listen to StoreEvents generated when applying entity operations
-    listener: StoreEventListener,
+    listener: Mutex<StoreEventListener>,
     chain_head_update_listener: ChainHeadUpdateListener,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
@@ -152,6 +178,19 @@ pub struct Store {
     pub(crate) storage_cache: e::StorageCache,
 
     registry: Arc<dyn MetricsRegistry>,
+}
+
+/// A Store based on Diesel and Postgres.
+#[derive(Clone)]
+pub struct Store(Arc<StoreInner>);
+
+impl CheapClone for Store {}
+
+impl Deref for Store {
+    type Target = StoreInner;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Store {
@@ -176,10 +215,10 @@ impl Store {
         let block_ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         // Create the store
-        let mut store = Store {
+        let store = StoreInner {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
-            listener,
+            listener: Mutex::new(listener),
             chain_head_update_listener: ChainHeadUpdateListener::new(
                 &logger,
                 block_ingestor_metrics,
@@ -193,6 +232,7 @@ impl Store {
             storage_cache: e::make_storage_cache(),
             registry,
         };
+        let store = Store(Arc::new(store));
 
         // Add network to store and check network identifiers
         store.add_network_if_missing(net_identifiers).unwrap();
@@ -201,8 +241,9 @@ impl Store {
         store.handle_store_events(store_events);
         store.periodically_clean_up_stale_subscriptions();
 
-        // We're ready for processing entity changes
-        store.listener.start();
+        let mut listener = store.listener.lock().unwrap();
+        listener.start();
+        drop(listener);
 
         // Return the store
         store
@@ -666,17 +707,142 @@ impl Store {
         Ok(())
     }
 
-    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        let start_time = Instant::now();
-        let conn = self.conn.get();
-        let wait = start_time.elapsed();
-        if wait > Duration::from_millis(10) {
-            warn!(self.logger, "Possible contention in DB connection pool";
-                               "wait_ms" => wait.as_millis())
+    /// Execute a closure with a connection to the database.
+    ///
+    /// # API
+    ///   The API of using a closure to bound the usage of the connection serves several
+    ///   purposes:
+    ///
+    ///   * Moves blocking database access out of the `Future::poll`. Within
+    ///     `Future::poll` (which includes all `async` methods) it is illegal to
+    ///     perform a blocking operation. This includes all accesses to the
+    ///     database, acquiring of locks, etc. Calling a blocking operation can
+    ///     cause problems with `Future` combinators (including but not limited
+    ///     to select, timeout, and FuturesUnordered) and problems with
+    ///     executors/runtimes. This method moves the database work onto another
+    ///     thread in a way which does not block `Future::poll`.
+    ///
+    ///   * Limit the total number of connections. Because the supplied closure
+    ///     takes a reference, we know the scope of the usage of all entity
+    ///     connections and can limit their use in a non-blocking way.
+    ///
+    /// # Cancellation
+    ///   The normal pattern for futures in Rust is drop to cancel. Once we
+    ///   spawn the database work in a thread though, this expectation no longer
+    ///   holds because the spawned task is the independent of this future. So,
+    ///   this method provides a cancel token which indicates that the `Future`
+    ///   has been dropped. This isn't *quite* as good as drop on cancel,
+    ///   because a drop on cancel can do things like cancel http requests that
+    ///   are in flight, but checking for cancel periodically is a significant
+    ///   improvement.
+    ///
+    ///   The implementation of the supplied closure should check for cancel
+    ///   between every operation that is potentially blocking. This includes
+    ///   any method which may interact with the database. The check can be
+    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
+    ///   to check for cancel, so when in doubt it is better to have too many
+    ///   checks than too few.
+    ///
+    /// # Panics:
+    ///   * This task will panic if the supplied closure panics
+    ///   * This task will panic if the supplied closure returns Err(Cancelled)
+    ///     when the supplied cancel token is not cancelled.
+    async fn with_conn<T: Send + 'static>(
+        &self,
+        f: impl 'static
+            + Send
+            + FnOnce(
+                &PooledConnection<ConnectionManager<PgConnection>>,
+                &CancelHandle,
+            ) -> Result<T, CancelableError>,
+    ) -> Result<T, Error> {
+        let _permit = CONNECTION_LIMITER.acquire().await;
+        let store = self.clone();
+
+        let cancel_guard = CancelGuard::new();
+        let cancel_handle = cancel_guard.handle();
+
+        let result = spawn_blocking_async_allow_panic(move || {
+            // It is possible time has passed between scheduling on the
+            // threadpool and being executed. Time to check for cancel.
+            cancel_handle.check_cancel()?;
+
+            // A failure to establish a connection is propagated as though the
+            // closure failed.
+            let conn = store.get_conn()?;
+
+            // It is possible time has passed while establishing a connection.
+            // Time to check for cancel.
+            cancel_handle.check_cancel()?;
+
+            f(&conn, &cancel_handle)
+        })
+        .await;
+
+        drop(cancel_guard);
+
+        // Finding cancel isn't technically unreachable, since there is nothing
+        // stopping the supplied closure from returning Canceled even if the
+        // supplied handle wasn't canceled. That would be very unexpected, the
+        // doc comment for this function says we will panic in this scenario.
+        match result {
+            Ok(t) => Ok(t),
+            Err(CancelableError::Error(e)) => Err(e),
+            Err(CancelableError::Cancel) => panic!("The closure supplied to with_entity_conn must not return Err(Canceled) unless the supplied token was canceled."),
         }
-        conn.map_err(Error::from)
     }
 
+    /// Executes a closure with an `e::Connection` reference.
+    /// The `e::Connection` gives access to subgraph specific storage in the database - mostly for
+    /// storing and loading entities local to that subgraph.
+    ///
+    /// This uses `with_conn` under the hood. Please see it's documentation for important details
+    /// about usage.
+    async fn with_entity_conn<T: Send + 'static>(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        f: impl 'static + Send + FnOnce(&e::Connection, &CancelHandle) -> Result<T, CancelableError>,
+    ) -> Result<T, Error> {
+        let store = self.cheap_clone();
+        // Unfortunate clone in order to pass a 'static closure to with_conn.
+        let subgraph = subgraph.clone();
+
+        // Duplicated logic: No need to make re-usable when the
+        // other end will go away.
+        // See also 220c1ae9-3e8a-42d3-bcc5-b1244a69b8a9
+        let start = Instant::now();
+        let registry = self.registry.cheap_clone();
+
+        self.with_conn(move |conn, cancel_handle| {
+            registry
+                .global_counter(format!("{}_get_entity_conn_secs", &subgraph))
+                .map_err(Into::<Error>::into)?
+                .inc_by(start.elapsed().as_secs_f64());
+
+            cancel_handle.check_cancel()?;
+            let storage = store
+                .storage(&conn, &subgraph)
+                .map_err(Into::<Error>::into)?;
+            cancel_handle.check_cancel()?;
+            let metadata = store
+                .storage(&conn, &*SUBGRAPHS_ID)
+                .map_err(Into::<Error>::into)?;
+            cancel_handle.check_cancel()?;
+            let conn = e::Connection::new(conn.into(), storage, metadata);
+
+            f(&conn, cancel_handle)
+        })
+        .await
+    }
+
+    /// Deprecated. Use `with_conn` instead.
+    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+        self.conn.get().map_err(Error::from)
+    }
+
+    // Duplicated logic - this function may eventually go away.
+    // See also 220c1ae9-3e8a-42d3-bcc5-b1244a69b8a9
+    /// Deprecated. Use `with_entity_conn` instead
     fn get_entity_conn(&self, subgraph: &SubgraphDeploymentId) -> Result<e::Connection, Error> {
         let start = Instant::now();
         let conn = self.get_conn()?;
@@ -685,7 +851,7 @@ impl Store {
             .inc_by(start.elapsed().as_secs_f64());
         let storage = self.storage(&conn, subgraph)?;
         let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;
-        Ok(e::Connection::new(conn, storage, metadata))
+        Ok(e::Connection::new(conn.into(), storage, metadata))
     }
 
     /// Return the storage for the subgraph. Since constructing a `Storage`
@@ -705,7 +871,8 @@ impl Store {
 
         let storage = Arc::new(e::Storage::new(conn, subgraph)?);
         if storage.is_cacheable() {
-            self.storage_cache
+            &self
+                .storage_cache
                 .lock()
                 .unwrap()
                 .insert(subgraph.clone(), storage.clone());
@@ -741,7 +908,7 @@ impl Store {
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
             api: Arc::new(schema),
-            network: network,
+            network,
             graft_block,
         };
 
@@ -803,6 +970,69 @@ impl StoreTrait for Store {
                 .get_entity_conn(&*SUBGRAPHS_ID)
                 .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
         )
+    }
+
+    fn supports_proof_of_indexing<'a>(
+        &'a self,
+        subgraph_id: &'a SubgraphDeploymentId,
+    ) -> DynTryFuture<'a, bool> {
+        self.with_entity_conn(subgraph_id, |conn, cancel| {
+            cancel.check_cancel()?;
+            Ok(conn.supports_proof_of_indexing())
+        })
+        .boxed()
+    }
+
+    fn get_proof_of_indexing<'a>(
+        &'a self,
+        subgraph_id: &'a SubgraphDeploymentId,
+        block_number: u64,
+    ) -> DynTryFuture<'a, Option<ProofOfIndexingDigest>> {
+        let logger = self.logger.cheap_clone();
+
+        self.with_entity_conn(subgraph_id, move |conn, cancel| {
+            cancel.check_cancel()?;
+
+            if !conn.supports_proof_of_indexing() {
+                return Ok(None);
+            }
+
+            let entities = conn
+                .query(
+                    &logger,
+                    EntityCollection::All(vec![POI_OBJECT.to_owned()]),
+                    None,
+                    None,
+                    EntityRange {
+                        first: None,
+                        skip: 0,
+                    },
+                    block_number.try_into().unwrap(),
+                )
+                .map_err(Error::from)?;
+            cancel.check_cancel()?;
+
+            let by_causality_region = entities
+                .into_iter()
+                .map(|e| {
+                    let causality_region = e.id()?;
+                    let digest = match e.get("digest") {
+                        None => Err(format_err!("Entity is missing a digest attribute")),
+                        Some(Value::String(s)) => Ok(s.to_owned()),
+                        _ => Err(format_err!("Entity has non-string digest attribute")),
+                    }?;
+
+                    let poi = ProofOfIndexingDigest(digest);
+
+                    Ok((causality_region, poi))
+                })
+                .collect::<Result<HashMap<_, _>, Error>>()?;
+
+            let hash = stable_hash_with_hasher::<twox_hash::XxHash64, _>(&by_causality_region);
+            let hash = format!("{:x}", hash);
+            Ok(Some(ProofOfIndexingDigest(hash)))
+        })
+        .boxed()
     }
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {

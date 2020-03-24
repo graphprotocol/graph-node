@@ -5,8 +5,9 @@ use graph::data::graphql::{TryFromValue, ValueList, ValueMap};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::*;
 use graph_graphql::prelude::{
-    object_value, BlockConstraint, ExecutionContext, ObjectOrInterface, Resolver,
+    object, BlockConstraint, ExecutionContext, IntoValue, ObjectOrInterface, Resolver,
 };
+use std::convert::TryInto;
 use web3::types::H256;
 
 /// Resolver for the index node GraphQL API.
@@ -39,14 +40,17 @@ struct EthereumBlock(EthereumBlockPointer);
 
 impl From<EthereumBlock> for q::Value {
     fn from(block: EthereumBlock) -> Self {
-        object_value(vec![
-            (
-                "__typename",
-                q::Value::String(String::from("EthereumBlock")),
-            ),
-            ("hash", q::Value::String(block.0.hash_hex())),
-            ("number", q::Value::String(format!("{}", block.0.number))),
-        ])
+        object! {
+            __typename: "EthereumBlock",
+            hash: block.0.hash_hex(),
+            number: format!("{}", block.0.number),
+        }
+    }
+}
+
+impl IntoValue for EthereumBlock {
+    fn into_value(self) -> q::Value {
+        self.into()
     }
 }
 
@@ -70,29 +74,15 @@ enum ChainIndexingStatus {
 impl From<ChainIndexingStatus> for q::Value {
     fn from(status: ChainIndexingStatus) -> Self {
         match status {
-            ChainIndexingStatus::Ethereum(inner) => object_value(vec![
+            ChainIndexingStatus::Ethereum(inner) => object! {
                 // `__typename` is needed for the `ChainIndexingStatus` interface
                 // in GraphQL to work.
-                (
-                    "__typename",
-                    q::Value::String(String::from("EthereumIndexingStatus")),
-                ),
-                ("network", q::Value::String(inner.network)),
-                (
-                    "chainHeadBlock",
-                    inner
-                        .chain_head_block
-                        .map_or(q::Value::Null, q::Value::from),
-                ),
-                (
-                    "earliestBlock",
-                    inner.earliest_block.map_or(q::Value::Null, q::Value::from),
-                ),
-                (
-                    "latestBlock",
-                    inner.latest_block.map_or(q::Value::Null, q::Value::from),
-                ),
-            ]),
+                __typename: "EthereumIndexingStatus",
+                network: inner.network,
+                chainHeadBlock: inner.chain_head_block,
+                earliestBlock: inner.earliest_block,
+                latestBlock: inner.latest_block,
+            },
         }
     }
 }
@@ -135,7 +125,7 @@ impl IndexingStatusWithoutNode {
             failed: self.failed,
             error: self.error,
             chains: self.chains,
-            node: node,
+            node,
         }
     }
 
@@ -155,10 +145,9 @@ impl IndexingStatusWithoutNode {
                 .map(|n| n.to_u64()),
         ) {
             // Only return an Ethereum block if we can parse both the block hash and number
-            (Some(hash), Some(number)) => Ok(Some(EthereumBlock(EthereumBlockPointer {
-                hash: hash,
-                number: number,
-            }))),
+            (Some(hash), Some(number)) => {
+                Ok(Some(EthereumBlock(EthereumBlockPointer { hash, number })))
+            }
             _ => Ok(None),
         }
     }
@@ -187,24 +176,15 @@ impl TryFromValue for IndexingStatusWithoutNode {
 
 impl From<IndexingStatus> for q::Value {
     fn from(status: IndexingStatus) -> Self {
-        object_value(vec![
-            (
-                "__typename",
-                q::Value::String(String::from("SubgraphIndexingStatus")),
-            ),
-            ("subgraph", q::Value::String(status.subgraph)),
-            ("synced", q::Value::Boolean(status.synced)),
-            ("failed", q::Value::Boolean(status.failed)),
-            (
-                "error",
-                status.error.map_or(q::Value::Null, q::Value::String),
-            ),
-            (
-                "chains",
-                q::Value::List(status.chains.into_iter().map(q::Value::from).collect()),
-            ),
-            ("node", q::Value::String(status.node)),
-        ])
+        object! {
+            __typename: "SubgraphIndexingStatus",
+            subgraph: status.subgraph,
+            synced: status.synced,
+            failed: status.failed,
+            error: status.error,
+            chains: status.chains.into_iter().map(q::Value::from).collect::<Vec<_>>(),
+            node: status.node,
+        }
     }
 }
 
@@ -272,10 +252,10 @@ where
 
         // Build a `where` filter that both subgraph deployments and subgraph deployment
         // assignments have to match
-        let where_filter = object_value(match subgraphs {
-            Some(ref ids) => vec![("id_in", ids.clone())],
-            None => vec![],
-        });
+        let where_filter = match subgraphs {
+            Some(ref ids) => object! { id_in: ids.clone() },
+            None => object! {},
+        };
 
         // Build a query for matching subgraph deployments
         let query = Query {
@@ -369,7 +349,7 @@ where
         );
 
         // Build a `where` filter that the subgraph has to match
-        let where_filter = object_value(vec![("name", q::Value::String(subgraph_name.clone()))]);
+        let where_filter = object! { name: subgraph_name.clone() };
 
         // Build a query for matching subgraph deployments
         let query = Query {
@@ -470,16 +450,50 @@ where
             })
             .collect::<Vec<_>>();
 
-        let transformed_data = object_value(vec![
-            ("subgraphDeployments", q::Value::List(deployments)),
-            (
-                "subgraphDeploymentAssignments",
+        let transformed_data = object! {
+            subgraphDeployments: deployments,
+            subgraphDeploymentAssignments:
                 data.get_required::<q::Value>("subgraphDeploymentAssignments")
                     .expect("missing deployment assignments"),
-            ),
-        ]);
+        };
 
         Ok(IndexingStatuses::from(transformed_data).into())
+    }
+
+    fn resolve_proof_of_indexing(
+        &self,
+        argument_values: &HashMap<&q::Name, q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        let subgraph_id = argument_values
+            .get_required::<String>("subgraph")
+            .expect("subgraphId not provided");
+
+        let block_number = argument_values
+            .get_required::<BigInt>("blockNumber")
+            .expect("blockNumber not provided")
+            .try_into()
+            .unwrap();
+
+        let deployment_id = SubgraphDeploymentId::new(subgraph_id.clone()).unwrap();
+
+        let poi_fut = self
+            .store
+            .get_proof_of_indexing(&deployment_id, block_number);
+        let poi = match futures::executor::block_on(poi_fut) {
+            Ok(Some(poi)) => q::Value::String(poi.0),
+            Ok(None) => q::Value::Null,
+            Err(e) => {
+                error!(
+                    self.logger,
+                    "Failed to query proof of indexing";
+                    "subgraph" => subgraph_id,
+                    "error" => format!("{:?}", e)
+                );
+                q::Value::Null
+            }
+        };
+
+        Ok(poi)
     }
 }
 
@@ -512,6 +526,31 @@ where
 
     fn locate_block(&self, _: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
         Ok(BLOCK_NUMBER_MAX)
+    }
+
+    /// Resolves a scalar value for a given scalar type.
+    fn resolve_scalar_value(
+        &self,
+        parent_object_type: &s::ObjectType,
+        _parent: &BTreeMap<String, q::Value>,
+        field: &q::Field,
+        scalar_type: &s::ScalarType,
+        value: Option<&q::Value>,
+        argument_values: &HashMap<&q::Name, q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        // Check if we are resolving the proofOfIndexing bytes
+        if &parent_object_type.name == "Query"
+            && &field.name == "proofOfIndexing"
+            && &scalar_type.name == "Bytes"
+        {
+            return self.resolve_proof_of_indexing(argument_values);
+        }
+
+        // Fallback to the same as is in the default trait implementation. There
+        // is no way to call back into the default implementation for the trait.
+        // So, note that this is duplicated.
+        // See also c2112309-44fd-4a84-92a0-5a651e6ed548
+        Ok(value.cloned().unwrap_or(q::Value::Null))
     }
 
     fn resolve_objects(

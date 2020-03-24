@@ -16,7 +16,7 @@ state_machine_future = "0.2"
 
 [dev-dependencies]
 diesel = { version = "1.4.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }
-mockall = "0.6.0"
+mockall = "0.7.0"
 graph-core = { path = "../../core" }
 graph-store-postgres = { path = "../../store/postgres" }
 pretty_assertions = "0.6.1"

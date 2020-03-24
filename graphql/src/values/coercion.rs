@@ -87,7 +87,7 @@ fn coerce_to_definition<'a>(
 
 /// Coerces an argument into a GraphQL value.
 ///
-/// `Ok(None)` happens when no value is found for a nullabe type.
+/// `Ok(None)` happens when no value is found for a nullable type.
 pub(crate) fn coerce_input_value<'a>(
     mut value: Option<Value>,
     def: &InputValue,
@@ -127,7 +127,6 @@ pub(crate) fn coerce_input_value<'a>(
     ))
 }
 
-/// `R` is a name resolver.
 pub(crate) fn coerce_value<'a>(
     value: &Value,
     ty: &Type,

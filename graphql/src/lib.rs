@@ -33,7 +33,8 @@ pub mod prelude {
     pub use super::schema::{api_schema, ast::validate_entity, APISchemaError};
     pub use super::store::{build_query, StoreResolver};
     pub use super::subscription::{execute_subscription, SubscriptionExecutionOptions};
-    pub use super::values::{object_value, MaybeCoercible};
+    pub use super::values::{object_value, IntoValue, MaybeCoercible};
 
     pub use super::graphql_parser::{query::Name, schema::ObjectType};
+    pub use crate::object;
 }
