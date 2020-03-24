@@ -30,6 +30,7 @@ mod functions;
 mod history_event;
 mod jsonb;
 mod jsonb_queries;
+mod metadata;
 mod notification_listener;
 pub mod relational;
 mod relational_queries;

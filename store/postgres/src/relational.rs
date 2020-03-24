@@ -7,7 +7,9 @@
 //! The pivotal struct in this module is the `Layout` which handles all the
 //! information about mapping a GraphQL schema to database tables
 use diesel::connection::SimpleConnection;
-use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
+use diesel::{
+    debug_query, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
+};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
@@ -24,6 +26,7 @@ use crate::relational_queries::{
     FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
+use graph::data::subgraph::schema::DynamicEthereumContractDataSourceEntity;
 use graph::prelude::{
     format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
@@ -271,7 +274,23 @@ impl Layout {
         {
             rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
         }
+
         // 2. Copy dynamic data sources and adjust their ID
+        use crate::metadata::dynamic_ethereum_contract_data_source as decds;
+        // Find existing dynamic data sources
+        let dds = decds::table
+            .select(decds::id)
+            .filter(decds::deployment.eq(base.subgraph.as_str()))
+            .load::<String>(conn)?;
+        // Create an equal number of brand new ids
+        let new_dds = (0..dds.len())
+            .map(|_| DynamicEthereumContractDataSourceEntity::make_id())
+            .collect::<Vec<_>>();
+        // Copy the data sources and all their subordinate entities, translating
+        // ids into new ids in the process and attaching them to `self.subgraph`
+        rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, self.subgraph.as_str())
+            .execute(conn)?;
+
         // 3. Set graftBase and graftBlock in SubgraphDeployment
         // 4. Set latestEthereumBlock in SubgraphDeployment
         Ok(())
