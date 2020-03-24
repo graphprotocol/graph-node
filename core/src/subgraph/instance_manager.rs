@@ -3,7 +3,6 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::Instant;
-use uuid::Uuid;
 
 use graph::components::ethereum::triggers_in_block;
 use graph::components::store::ModificationsAndCache;
@@ -866,7 +865,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
             data_source,
             &block_ptr,
         ));
-        let id = format!("{}-dynamic", Uuid::new_v4().to_simple());
+        let id = DynamicEthereumContractDataSourceEntity::make_id();
         let operations = entity.write_entity_operations(id.as_ref());
         entity_cache.append(operations);
     }

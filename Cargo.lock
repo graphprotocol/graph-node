@@ -1230,6 +1230,7 @@ dependencies = [
  "tokio-retry",
  "twox-hash",
  "url 2.1.1",
+ "uuid 0.8.1",
  "web3",
 ]
 
@@ -1282,7 +1283,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "test-store",
- "uuid 0.8.1",
  "walkdir",
 ]
 

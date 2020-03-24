@@ -19,6 +19,7 @@ use rand::rngs::OsRng;
 use rand::Rng;
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use uuid::Uuid;
 use web3::types::*;
 
 use super::SubgraphDeploymentId;
@@ -560,6 +561,10 @@ pub struct DynamicEthereumContractDataSourceEntity {
 impl DynamicEthereumContractDataSourceEntity {
     pub fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
         WriteOperations::write_entity_operations(self, id)
+    }
+
+    pub fn make_id() -> String {
+        format!("{}-dynamic", Uuid::new_v4().to_simple())
     }
 }
 

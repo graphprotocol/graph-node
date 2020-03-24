@@ -49,6 +49,6 @@ url = "2.1.1"
 prometheus = "0.7.0"
 priority-queue = "0.7.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
-
+uuid = { version = "0.8.1", features = ["v4"] }
 # Our fork contains a small but hacky patch.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
