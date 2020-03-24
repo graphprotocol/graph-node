@@ -11,6 +11,7 @@ use graphql_parser::{
     schema::{self, InterfaceType, ObjectType, TypeDefinition, *},
     Pos,
 };
+use inflector::Inflector;
 use serde::{Deserialize, Serialize};
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -93,14 +94,14 @@ pub enum SchemaValidationError {
     #[fail(display = "Fulltext include is invalid")]
     FulltextIncludeInvalid,
     #[fail(display = "Fulltext directive requires an 'include' list")]
-    FulltextMissingInclude,
+    FulltextIncludeUndefined,
     #[fail(display = "Fulltext 'include' list must contain an object")]
     FulltextIncludeObjectMissing,
     #[fail(
         display = "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
     )]
-    FulltextIncludeObjectMissingOrIncorrectProperties,
-    #[fail(display = "Fulltext directive includes an Entity not found on the subgraph schema")]
+    FulltextIncludeEntityMissingOrIncorrectAttributes,
+    #[fail(display = "Fulltext directive includes an entity not found on the subgraph schema")]
     FulltextIncludedEntityNotFound,
     #[fail(display = "Fulltext include field must have a 'name' attribute")]
     FulltextIncludedFieldMissingRequiredProperty,
@@ -823,18 +824,19 @@ impl Schema {
                     .iter()
                     .filter(|directives| directives.name.eq("fulltext"))
                     .fold(vec![], |mut errors, fulltext| {
-                        self.validate_fulltext_directive_name(fulltext)
-                            .into_iter()
-                            .for_each(|err| errors.push(err));
-                        self.validate_fulltext_directive_language(fulltext)
-                            .into_iter()
-                            .for_each(|err| errors.push(err));
-                        self.validate_fulltext_directive_algorithm(fulltext)
-                            .into_iter()
-                            .for_each(|err| errors.push(err));
-                        self.validate_fulltext_directive_includes(fulltext)
-                            .into_iter()
-                            .for_each(|err| errors.push(err));
+                        errors.extend(self.validate_fulltext_directive_name(fulltext).into_iter());
+                        errors.extend(
+                            self.validate_fulltext_directive_language(fulltext)
+                                .into_iter(),
+                        );
+                        errors.extend(
+                            self.validate_fulltext_directive_algorithm(fulltext)
+                                .into_iter(),
+                        );
+                        errors.extend(
+                            self.validate_fulltext_directive_includes(fulltext)
+                                .into_iter(),
+                        );
                         errors
                     })
             })
@@ -852,13 +854,18 @@ impl Schema {
             .into_iter()
             .collect();
 
-        // Validate that the fulltext field doesn't collide with any entity fields
+        // Validate that the fulltext field doesn't collide with any top-level Query fields
+        // generated for entity types. The name conversions should always align with those used
+        // to generate the field names in `graph::data::schema::api::query_fields_for_type()`.
         if local_types
             .iter()
             .find(|typ| {
                 typ.fields
                     .iter()
-                    .find(|field| field.name.eq(name))
+                    .find(|field| {
+                        name == &field.name.as_str().to_camel_case()
+                            || name == &field.name.to_plural().to_camel_case()
+                    })
                     .is_some()
             })
             .is_some()
@@ -940,7 +947,7 @@ impl Schema {
         // Validate that each entity in fulltext.include exists
         let includes = match fulltext.argument("include") {
             Some(Value::List(includes)) if includes.len() > 0 => includes,
-            _ => return vec![SchemaValidationError::FulltextMissingInclude],
+            _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
         };
 
         for include in includes {
@@ -952,7 +959,7 @@ impl Schema {
                             (Some(Value::String(entity)), Some(Value::List(fields))) => {
                                 (entity, fields)
                             }
-                            _ => return vec![SchemaValidationError::FulltextIncludeObjectMissingOrIncorrectProperties],
+                            _ => return vec![SchemaValidationError::FulltextIncludeEntityMissingOrIncorrectAttributes],
                         };
 
                     // Validate the included entity type is one of the local types
@@ -971,7 +978,7 @@ impl Schema {
                                 Some(Value::String(name)) => name,
                                 _ => return vec![SchemaValidationError::FulltextIncludedFieldMissingRequiredProperty],
                             },
-                            _ => return vec![SchemaValidationError::FulltextIncludeObjectMissingOrIncorrectProperties],
+                            _ => return vec![SchemaValidationError::FulltextIncludeEntityMissingOrIncorrectAttributes],
                         };
 
                         // Validate the included field is a String field on the local entity types specified
