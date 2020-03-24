@@ -8,6 +8,7 @@ async-trait = "0.1.25"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 diesel = { version = "1.4.3", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 chrono = "0.4"
+Inflector = "0.11.3"
 isatty = "0.1"
 reqwest = "0.10"
 
