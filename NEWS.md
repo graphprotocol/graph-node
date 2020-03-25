@@ -1,6 +1,6 @@
 # NEWS
 
-## 0.18.0
+## Unreleased
 
 **NOTE: JSONB storage is deprecated and will be removed in the next release.
 This only affects subgraphs that were deployed with a graph-node version
