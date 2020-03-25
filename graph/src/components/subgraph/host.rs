@@ -1,5 +1,4 @@
 use failure::Error;
-use futures::prelude::*;
 use futures::sync::mpsc;
 use std::collections::HashMap;
 use std::fmt;
@@ -18,36 +17,36 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     fn matches_call(&self, call: &EthereumCall) -> bool;
 
     /// Returns true if the RuntimeHost has a handler for an Ethereum block.
-    fn matches_block(&self, call: EthereumBlockTriggerType, block_number: u64) -> bool;
+    fn matches_block(&self, call: &EthereumBlockTriggerType, block_number: u64) -> bool;
 
     /// Process an Ethereum event and return a vector of entity operations.
-    fn process_log(
-        &self,
-        logger: Logger,
-        block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
-        log: Arc<Log>,
+    fn process_log<'a>(
+        &'a self,
+        logger: &'a Logger,
+        block: &'a Arc<LightEthereumBlock>,
+        transaction: &'a Arc<Transaction>,
+        log: &'a Arc<Log>,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
+    ) -> DynTryFuture<'a, BlockState>;
 
     /// Process an Ethereum call and return a vector of entity operations
-    fn process_call(
-        &self,
-        logger: Logger,
-        block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
-        call: Arc<EthereumCall>,
+    fn process_call<'a>(
+        &'a self,
+        logger: &'a Logger,
+        block: &'a Arc<LightEthereumBlock>,
+        transaction: &'a Arc<Transaction>,
+        call: &'a Arc<EthereumCall>,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
+    ) -> DynTryFuture<'a, BlockState>;
 
     /// Process an Ethereum block and return a vector of entity operations
-    fn process_block(
-        &self,
-        logger: Logger,
-        block: Arc<LightEthereumBlock>,
-        trigger_type: EthereumBlockTriggerType,
+    fn process_block<'a>(
+        &'a self,
+        logger: &'a Logger,
+        block: &'a Arc<LightEthereumBlock>,
+        trigger_type: &'a EthereumBlockTriggerType,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
+    ) -> DynTryFuture<'a, BlockState>;
 }
 
 pub struct HostMetrics {
@@ -94,15 +93,15 @@ impl HostMetrics {
         }
     }
 
-    pub fn observe_handler_execution_time(&self, duration: f64, handler: String) {
+    pub fn observe_handler_execution_time(&self, duration: f64, handler: &str) {
         self.handler_execution_time
-            .with_label_values(vec![handler.as_ref()].as_slice())
+            .with_label_values(vec![handler].as_slice())
             .observe(duration);
     }
 
-    pub fn observe_host_fn_execution_time(&self, duration: f64, fn_name: String) {
+    pub fn observe_host_fn_execution_time(&self, duration: f64, fn_name: &str) {
         self.host_fn_execution_time
-            .with_label_values(vec![fn_name.as_ref()].as_slice())
+            .with_label_values(vec![fn_name].as_slice())
             .observe(duration);
     }
 }

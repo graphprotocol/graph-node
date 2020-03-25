@@ -125,94 +125,71 @@ where
         self.hosts.iter().any(|host| host.matches_log(log))
     }
 
-    fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: Arc<LightEthereumBlock>,
+    fn process_trigger<'a>(
+        &'a self,
+        logger: &'a Logger,
+        block: &'a Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
-        Self::process_trigger_in_runtime_hosts(
-            logger,
-            self.hosts.iter().cloned(),
-            block,
-            trigger,
-            state,
-        )
+    ) -> DynTryFuture<'a, BlockState> {
+        Self::process_trigger_in_runtime_hosts(logger, &self.hosts, block, trigger, state)
     }
 
-    fn process_trigger_in_runtime_hosts(
-        logger: &Logger,
-        hosts: impl Iterator<Item = Arc<T::Host>>,
-        block: Arc<LightEthereumBlock>,
+    fn process_trigger_in_runtime_hosts<'a>(
+        logger: &'a Logger,
+        hosts: &'a [Arc<T::Host>],
+        block: &'a Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
-        state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
-        let logger = logger.to_owned();
-        match trigger {
-            EthereumTrigger::Log(log) => {
-                let transaction = block
-                    .transaction_for_log(&log)
-                    .map(Arc::new)
-                    .ok_or_else(|| format_err!("Found no transaction for event"));
-                let matching_hosts: Vec<_> = hosts.filter(|host| host.matches_log(&log)).collect();
-                let log = Arc::new(log);
+        mut state: BlockState,
+    ) -> DynTryFuture<'a, BlockState> {
+        async move {
+            match trigger {
+                EthereumTrigger::Log(log) => {
+                    let log = Arc::new(log);
 
-                // Process the log in each host in the same order the corresponding data
-                // sources appear in the subgraph manifest
-                Box::new(future::result(transaction).and_then(|transaction| {
-                    stream::iter_ok(matching_hosts).fold(state, move |state, host| {
-                        host.process_log(
-                            logger.clone(),
-                            block.clone(),
-                            transaction.clone(),
-                            log.clone(),
-                            state,
-                        )
-                    })
-                }))
-            }
-            EthereumTrigger::Call(call) => {
-                let transaction = block
-                    .transaction_for_call(&call)
-                    .map(Arc::new)
-                    .ok_or_else(|| format_err!("Found no transaction for call"));
-                let matching_hosts: Vec<_> = hosts
-                    .into_iter()
-                    .filter(|host| host.matches_call(&call))
-                    .collect();
-                let call = Arc::new(call);
+                    let transaction = block
+                        .transaction_for_log(&log)
+                        .map(Arc::new)
+                        .ok_or_else(|| format_err!("Found no transaction for event"))?;
+                    let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
+                    // Process the log in each host in the same order the corresponding data
+                    // sources appear in the subgraph manifest
+                    let transaction = Arc::new(transaction);
+                    for host in matching_hosts {
+                        state = host
+                            .process_log(logger, block, &transaction, &log, state)
+                            .await?;
+                    }
+                }
+                EthereumTrigger::Call(call) => {
+                    let call = Arc::new(call);
 
-                Box::new(future::result(transaction).and_then(|transaction| {
-                    stream::iter_ok(matching_hosts).fold(state, move |state, host| {
-                        host.process_call(
-                            logger.clone(),
-                            block.clone(),
-                            transaction.clone(),
-                            call.clone(),
-                            state,
-                        )
-                    })
-                }))
-            }
-            EthereumTrigger::Block(ptr, trigger_type) => {
-                let matching_hosts: Vec<_> = hosts
-                    .into_iter()
-                    .filter(|host| host.matches_block(trigger_type.clone(), ptr.number))
-                    .collect();
+                    let transaction = block
+                        .transaction_for_call(&call)
+                        .ok_or_else(|| format_err!("Found no transaction for call"))?;
+                    let transaction = Arc::new(transaction);
+                    let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
 
-                Box::new(
-                    stream::iter_ok(matching_hosts).fold(state, move |state, host| {
-                        host.process_block(
-                            logger.clone(),
-                            block.clone(),
-                            trigger_type.clone(),
-                            state,
-                        )
-                    }),
-                )
+                    for host in matching_hosts {
+                        state = host
+                            .process_call(logger, block, &transaction, &call, state)
+                            .await?;
+                    }
+                }
+                EthereumTrigger::Block(ptr, trigger_type) => {
+                    let matching_hosts = hosts
+                        .iter()
+                        .filter(|host| host.matches_block(&trigger_type, ptr.number));
+                    for host in matching_hosts {
+                        state = host
+                            .process_block(logger, block, &trigger_type, state)
+                            .await?;
+                    }
+                }
             }
+            Ok(state)
         }
+        .boxed()
     }
 
     fn add_dynamic_data_source(

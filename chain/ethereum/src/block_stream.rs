@@ -798,18 +798,9 @@ where
     }
 }
 
-impl<S, C> BlockStreamTrait for BlockStream<S, C>
-where
-    S: Store,
-    C: ChainStore,
-{
-}
+impl<S: Store, C: ChainStore> BlockStreamTrait for BlockStream<S, C> {}
 
-impl<S, C> Stream for BlockStream<S, C>
-where
-    S: Store,
-    C: ChainStore,
-{
+impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
     type Item = BlockStreamEvent;
     type Error = Error;
 

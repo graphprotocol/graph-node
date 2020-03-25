@@ -74,12 +74,12 @@ const DATA_SOURCE_CREATE_WITH_CONTEXT: usize = 41;
 const DATA_SOURCE_CONTEXT: usize = 42;
 
 /// Transform function index into the function name string
-fn fn_index_to_metrics_string(index: usize) -> Option<String> {
+fn fn_index_to_metrics_string(index: usize) -> Option<&'static str> {
     match index {
-        STORE_GET_FUNC_INDEX => Some(String::from("store_get")),
-        ETHEREUM_CALL_FUNC_INDEX => Some(String::from("ethereum_call")),
-        IPFS_MAP_FUNC_INDEX => Some(String::from("ipfs_map")),
-        IPFS_CAT_FUNC_INDEX => Some(String::from("ipfs_cat")),
+        STORE_GET_FUNC_INDEX => Some("store_get"),
+        ETHEREUM_CALL_FUNC_INDEX => Some("ethereum_call"),
+        IPFS_MAP_FUNC_INDEX => Some("ipfs_map"),
+        IPFS_CAT_FUNC_INDEX => Some("ipfs_cat"),
         _ => None,
     }
 }
