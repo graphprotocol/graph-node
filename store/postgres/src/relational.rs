@@ -14,7 +14,7 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::convert::From;
+use std::convert::{From, TryInto};
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -29,8 +29,8 @@ use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYP
 use graph::data::subgraph::schema::DynamicEthereumContractDataSourceEntity;
 use graph::prelude::{
     format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
-    EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
-    StoreEvent, SubgraphDeploymentId, Value, ValueType,
+    EntityFilter, EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger,
+    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, Value, ValueType,
 };
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, BLOCK_UNVERSIONED};
@@ -256,7 +256,7 @@ impl Layout {
         &self,
         conn: &PgConnection,
         base: &Layout,
-        block: BlockNumber,
+        block: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         // This can not be used to copy data to or from the metadata subgraph
         assert!(!self.subgraph.is_meta());
@@ -291,8 +291,11 @@ impl Layout {
         rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, self.subgraph.as_str())
             .execute(conn)?;
 
-        // 3. Set graftBase and graftBlock in SubgraphDeployment
-        // 4. Set latestEthereumBlock in SubgraphDeployment
+        // 3. Rewind the subgraph. `revert_block` gets rid of everything
+        // including the block passed to it. We want to preserve `block`
+        // and therefore revert `block+1`
+        self.revert_block(conn, (block.number + 1).try_into().unwrap())?;
+
         Ok(())
     }
 
