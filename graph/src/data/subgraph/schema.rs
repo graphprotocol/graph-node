@@ -223,6 +223,9 @@ pub struct SubgraphDeploymentEntity {
     ethereum_head_block_hash: Option<H256>,
     ethereum_head_block_number: Option<u64>,
     total_ethereum_blocks_count: u64,
+    graft_base: Option<SubgraphDeploymentId>,
+    graft_block_hash: Option<H256>,
+    graft_block_number: Option<u64>,
 }
 
 impl TypedEntity for SubgraphDeploymentEntity {
@@ -249,7 +252,21 @@ impl SubgraphDeploymentEntity {
             ethereum_head_block_hash: chain_head_block.map(Into::into),
             ethereum_head_block_number: chain_head_block.map(Into::into),
             total_ethereum_blocks_count: chain_head_block.map_or(0, |block| block.number + 1),
+            graft_base: None,
+            graft_block_hash: None,
+            graft_block_number: None,
         }
+    }
+
+    pub fn graft(mut self, base: Option<(SubgraphDeploymentId, EthereumBlockPointer)>) -> Self {
+        if let Some((subgraph, ptr)) = base {
+            self.graft_base = Some(subgraph);
+            self.graft_block_hash = Some(ptr.hash);
+            self.graft_block_number = Some(ptr.number);
+            self.latest_ethereum_block_hash = Some(ptr.hash);
+            self.latest_ethereum_block_number = Some(ptr.number);
+        }
+        self
     }
 
     // Overwrite entity if it exists. Only in debug builds so it's not used outside tests.
@@ -309,6 +326,13 @@ impl SubgraphDeploymentEntity {
         );
         entity.set("totalEthereumBlocksCount", self.total_ethereum_blocks_count);
         entity.set("entityCount", 0 as u64);
+        entity.set(
+            "graftBase",
+            Value::from(self.graft_base.map(|sid| sid.to_string())),
+        );
+        entity.set("graftBlockHash", Value::from(self.graft_block_hash));
+        entity.set("graftBlockNumber", Value::from(self.graft_block_number));
+
         ops.push(set_metadata_operation(
             Self::TYPENAME,
             id.to_string(),

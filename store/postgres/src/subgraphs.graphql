@@ -32,6 +32,9 @@ type SubgraphDeployment @entity {
     totalEthereumBlocksCount: BigInt!
     entityCount: BigInt!
     dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
+    graftBase: SubgraphDeployment
+    graftBlockHash: Bytes
+    graftBlockNumber: BigInt
 }
 
 type SubgraphDeploymentAssignment @entity {
