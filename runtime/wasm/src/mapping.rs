@@ -1,11 +1,12 @@
 use crate::module::WasmiModule;
 use ethabi::LogParam;
 use futures::sync::mpsc;
-use futures::sync::oneshot;
+use futures03::channel::oneshot::Sender;
 use graph::components::ethereum::*;
 use graph::prelude::*;
 use std::thread;
 use std::time::Instant;
+use strum_macros::AsStaticStr;
 use web3::types::{Log, Transaction};
 
 /// Spawn a wasm module in its own thread.
@@ -101,7 +102,7 @@ pub fn spawn_module(
     Ok(mapping_request_sender)
 }
 
-#[derive(Debug)]
+#[derive(Debug, AsStaticStr)]
 pub(crate) enum MappingTrigger {
     Log {
         transaction: Arc<Transaction>,
@@ -127,7 +128,7 @@ type MappingResponse = (Result<BlockState, Error>, futures::Finished<Instant, Er
 pub struct MappingRequest {
     pub(crate) ctx: MappingContext,
     pub(crate) trigger: MappingTrigger,
-    pub(crate) result_sender: oneshot::Sender<MappingResponse>,
+    pub(crate) result_sender: Sender<MappingResponse>,
 }
 
 #[derive(Debug)]
@@ -138,11 +139,8 @@ pub(crate) struct MappingContext {
     pub(crate) state: BlockState,
 }
 
-/// Cloning an `MappingContext` clones all its fields,
-/// except the `state_operations`, since they are an output
-/// accumulator and are therefore initialized with an empty state.
-impl Clone for MappingContext {
-    fn clone(&self) -> Self {
+impl MappingContext {
+    pub fn clone_with_empty_block_state(&self) -> Self {
         MappingContext {
             logger: self.logger.clone(),
             host_exports: self.host_exports.clone(),

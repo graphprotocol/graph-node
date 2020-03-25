@@ -79,39 +79,39 @@ fn multiple_data_sources_per_subgraph() {
             true
         }
 
-        fn matches_block(&self, _call: EthereumBlockTriggerType, _block_number: u64) -> bool {
+        fn matches_block(&self, _call: &EthereumBlockTriggerType, _block_number: u64) -> bool {
             true
         }
 
-        fn process_log(
-            &self,
-            _: Logger,
-            _: Arc<LightEthereumBlock>,
-            _: Arc<Transaction>,
-            _: Arc<Log>,
+        fn process_log<'a>(
+            &'a self,
+            _: &'a Logger,
+            _: &'a Arc<LightEthereumBlock>,
+            _: &'a Arc<Transaction>,
+            _: &'a Arc<Log>,
             _: BlockState,
-        ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
+        ) -> DynTryFuture<'a, BlockState> {
             unimplemented!();
         }
 
-        fn process_call(
-            &self,
-            _logger: Logger,
-            _block: Arc<LightEthereumBlock>,
-            _transaction: Arc<Transaction>,
-            _call: Arc<EthereumCall>,
+        fn process_call<'a>(
+            &'a self,
+            _logger: &'a Logger,
+            _block: &'a Arc<LightEthereumBlock>,
+            _transaction: &'a Arc<Transaction>,
+            _call: &'a Arc<EthereumCall>,
             _state: BlockState,
-        ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
+        ) -> DynTryFuture<'a, BlockState> {
             unimplemented!();
         }
 
-        fn process_block(
-            &self,
-            _logger: Logger,
-            _block: Arc<LightEthereumBlock>,
-            _trigger_type: EthereumBlockTriggerType,
+        fn process_block<'a>(
+            &'a self,
+            _logger: &'a Logger,
+            _block: &'a Arc<LightEthereumBlock>,
+            _trigger_type: &'a EthereumBlockTriggerType,
             _state: BlockState,
-        ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send> {
+        ) -> DynTryFuture<'a, BlockState> {
             unimplemented!();
         }
     }

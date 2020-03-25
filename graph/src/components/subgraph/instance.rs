@@ -31,22 +31,22 @@ pub trait SubgraphInstance<H: RuntimeHost> {
     fn matches_log(&self, log: &Log) -> bool;
 
     /// Process and Ethereum trigger and return the resulting entity operations as a future.
-    fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: Arc<LightEthereumBlock>,
+    fn process_trigger<'a>(
+        &'a self,
+        logger: &'a Logger,
+        block: &'a Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
+    ) -> DynTryFuture<'a, BlockState>;
 
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
-    fn process_trigger_in_runtime_hosts(
-        logger: &Logger,
-        hosts: impl Iterator<Item = Arc<H>>,
-        block: Arc<LightEthereumBlock>,
+    fn process_trigger_in_runtime_hosts<'a>(
+        logger: &'a Logger,
+        hosts: &'a [Arc<H>],
+        block: &'a Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> Box<dyn Future<Item = BlockState, Error = Error> + Send>;
+    ) -> DynTryFuture<'a, BlockState>;
 
     /// Adds dynamic data sources to the subgraph.
     fn add_dynamic_data_source(

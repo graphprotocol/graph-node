@@ -392,7 +392,7 @@ impl HostExports {
 
         let host_metrics = module.host_metrics.clone();
         let valid_module = module.valid_module.clone();
-        let ctx = module.ctx.clone();
+        let ctx = module.ctx.clone_with_empty_block_state();
         let callback = callback.to_owned();
         // Create a base error message to avoid borrowing headaches
         let errmsg = format!(
@@ -407,14 +407,14 @@ impl HostExports {
         let result = block_on03(async move {
             let mut stream: JsonValueStream = self
                 .link_resolver
-                .json_stream(&logger, &Link { link: link })
+                .json_stream(&logger, &Link { link })
                 .await?;
             let mut v = Vec::new();
             while let Some(sv) = stream.next().await {
                 let sv = sv?;
                 let module = WasmiModule::from_valid_module_with_ctx(
                     valid_module.clone(),
-                    ctx.clone(),
+                    ctx.clone_with_empty_block_state(),
                     host_metrics.clone(),
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;

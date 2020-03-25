@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1.25"
-bigdecimal = { version = "0.0.14", features = ["serde"] }
+bigdecimal = { version = "0.1.0", features = ["serde"] }
 diesel = { version = "1.4.3", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 chrono = "0.4"
 isatty = "0.1"
@@ -20,7 +20,7 @@ ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master
 hex = "0.4.2"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
-ipfs-api = { version = "0.6.0-rc", features = ["hyper-tls"] }
+ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
 parity-wasm = "0.40"
 failure = "0.1.7"
 lazy_static = "1.2.0"

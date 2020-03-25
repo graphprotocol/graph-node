@@ -155,7 +155,7 @@ impl EthereumCall {
             value: call.value,
             gas_used,
             input: call.input.clone(),
-            output: output,
+            output,
             block_number: trace.block_number,
             block_hash: trace.block_hash,
             transaction_hash: trace.transaction_hash,
@@ -314,8 +314,8 @@ pub struct EthereumTransactionData {
     pub input: Bytes,
 }
 
-impl<'a> From<&'a Transaction> for EthereumTransactionData {
-    fn from(tx: &'a Transaction) -> EthereumTransactionData {
+impl From<&'_ Transaction> for EthereumTransactionData {
+    fn from(tx: &Transaction) -> EthereumTransactionData {
         EthereumTransactionData {
             hash: tx.hash,
             index: tx.transaction_index.unwrap(),

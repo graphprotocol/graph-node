@@ -1,4 +1,3 @@
-use futures01::future::{loop_fn, Loop};
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -409,11 +408,11 @@ impl SubgraphInstanceManager {
         // forward; this is easier than updating the existing block stream.
         //
         // This task has many calls to the store, so mark it as `blocking`.
-        let subgraph_runner = loop_fn(ctx, move |ctx| run_subgraph(ctx)).then(move |res| {
+        graph::spawn_blocking(async move {
+            let res = run_subgraph(ctx).await;
             subgraph_metrics_unregister.unregister(registry);
-            future::result(res)
+            res
         });
-        graph::spawn_blocking(subgraph_runner.compat());
 
         Ok(())
     }
@@ -437,175 +436,155 @@ impl EventConsumer<SubgraphAssignmentProviderEvent> for SubgraphInstanceManager 
     }
 }
 
-fn run_subgraph<B, T, S>(
-    ctx: IndexingContext<B, T, S>,
-) -> impl Future<Item = Loop<(), IndexingContext<B, T, S>>, Error = ()>
+async fn run_subgraph<B, T, S>(mut ctx: IndexingContext<B, T, S>) -> Result<(), ()>
 where
     B: BlockStreamBuilder,
     T: RuntimeHostBuilder,
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
-    let logger = ctx.state.logger.clone();
-
-    debug!(logger, "Starting or restarting subgraph");
-
     // Clone a few things for different parts of the async processing
+    let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
+    let store_for_err = ctx.inputs.store.cheap_clone();
+    let logger = ctx.state.logger.cheap_clone();
     let id_for_err = ctx.inputs.deployment_id.clone();
-    let store_for_err = ctx.inputs.store.clone();
-    let logger_for_err = logger.clone();
-    let logger_for_block_stream_errors = logger.clone();
 
-    let block_stream_canceler = CancelGuard::new();
-    let block_stream_cancel_handle = block_stream_canceler.handle();
-    let block_stream = ctx
-        .inputs
-        .stream_builder
-        .build(
-            logger.clone(),
-            ctx.inputs.deployment_id.clone(),
-            ctx.inputs.network_name.clone(),
-            ctx.inputs.start_blocks.clone(),
-            ctx.state.log_filter.clone(),
-            ctx.state.call_filter.clone(),
-            ctx.state.block_filter.clone(),
-            ctx.inputs.templates_use_calls,
-            ctx.block_stream_metrics.clone(),
-        )
-        .from_err()
-        .cancelable(&block_stream_canceler, || CancelableError::Cancel);
+    loop {
+        debug!(logger, "Starting or restarting subgraph");
 
-    // Keep the stream's cancel guard around to be able to shut it down
-    // when the subgraph deployment is unassigned
-    ctx.state
-        .instances
-        .write()
-        .unwrap()
-        .insert(ctx.inputs.deployment_id.clone(), block_stream_canceler);
+        let block_stream_canceler = CancelGuard::new();
+        let block_stream_cancel_handle = block_stream_canceler.handle();
+        let mut block_stream = ctx
+            .inputs
+            .stream_builder
+            .build(
+                logger.clone(),
+                ctx.inputs.deployment_id.clone(),
+                ctx.inputs.network_name.clone(),
+                ctx.inputs.start_blocks.clone(),
+                ctx.state.log_filter.clone(),
+                ctx.state.call_filter.clone(),
+                ctx.state.block_filter.clone(),
+                ctx.inputs.templates_use_calls,
+                ctx.block_stream_metrics.clone(),
+            )
+            .from_err()
+            .cancelable(&block_stream_canceler, || CancelableError::Cancel)
+            .compat();
 
-    debug!(logger, "Starting block stream");
+        // Keep the stream's cancel guard around to be able to shut it down
+        // when the subgraph deployment is unassigned
+        ctx.state
+            .instances
+            .write()
+            .unwrap()
+            .insert(ctx.inputs.deployment_id.clone(), block_stream_canceler);
 
-    // The processing stream may be end due to an error or for restarting to
-    // account for new data sources.
-    enum StreamEnd<B: BlockStreamBuilder, T: RuntimeHostBuilder, S> {
-        Error(CancelableError<Error>),
-        NeedsRestart(IndexingContext<B, T, S>),
-    }
+        debug!(logger, "Starting block stream");
 
-    block_stream
-        // Log and drop the errors from the block_stream
-        // The block stream will continue attempting to produce blocks
-        .then(move |result| match result {
-            Ok(block) => Ok(Some(block)),
-            Err(e) => {
-                debug!(
-                    logger_for_block_stream_errors,
-                    "Block stream produced a non-fatal error";
-                    "error" => format!("{}", e),
-                );
-                Ok(None)
-            }
-        })
-        .filter_map(|block_opt| block_opt)
         // Process events from the stream as long as no restart is needed
-        .fold(
-            ctx,
-            move |mut ctx, event| -> Box<dyn Future<Item = _, Error = _> + Send> {
-                let block = match event {
-                    BlockStreamEvent::Revert => {
-                        // On revert, clear the entity cache.
-                        ctx.state.entity_lfu_cache = LfuCache::new();
-                        return Box::new(future::ok(ctx));
-                    }
-                    BlockStreamEvent::Block(block) => block,
-                };
-                let subgraph_metrics = ctx.subgraph_metrics.clone();
-                let start = Instant::now();
-                if block.triggers.len() > 0 {
-                    subgraph_metrics
-                        .block_trigger_count
-                        .observe(block.triggers.len() as f64);
+        loop {
+            let block = match block_stream.next().await {
+                Some(Ok(BlockStreamEvent::Block(block))) => block,
+                Some(Ok(BlockStreamEvent::Revert)) => {
+                    // On revert, clear the entity cache.
+                    ctx.state.entity_lfu_cache = LfuCache::new();
+                    continue;
                 }
-                Box::new(
-                    process_block(
-                        logger.clone(),
-                        ctx.inputs.eth_adapter.clone(),
-                        ctx,
-                        block_stream_cancel_handle.clone(),
-                        block,
-                    )
-                    .map_err(|e| StreamEnd::Error(e))
-                    .and_then(|(ctx, needs_restart)| match needs_restart {
-                        false => Ok(ctx),
-                        true => Err(StreamEnd::NeedsRestart(ctx)),
-                    })
-                    .then(move |res| {
-                        let elapsed = start.elapsed().as_secs_f64();
-                        subgraph_metrics.block_processing_duration.observe(elapsed);
-                        res
-                    }),
-                )
-            },
-        )
-        .then(move |res| match res {
-            Ok(_) => unreachable!("block stream finished without error"),
-            Err(StreamEnd::NeedsRestart(mut ctx)) => {
-                // Increase the restart counter
-                ctx.state.restarts += 1;
-
-                // Cancel the stream for real
-                ctx.state
-                    .instances
-                    .write()
-                    .unwrap()
-                    .remove(&ctx.inputs.deployment_id);
-
-                // And restart the subgraph
-                Ok(Loop::Continue(ctx))
-            }
-
-            Err(StreamEnd::Error(CancelableError::Cancel)) => {
-                debug!(
-                    logger_for_err,
-                    "Subgraph block stream shut down cleanly";
-                    "id" => id_for_err.to_string(),
-                );
-                Err(())
-            }
-
-            // Handle unexpected stream errors by marking the subgraph as failed.
-            Err(StreamEnd::Error(CancelableError::Error(e))) => {
-                error!(
-                    logger_for_err,
-                    "Subgraph instance failed to run: {}", e;
-                    "id" => id_for_err.to_string(),
-                    "code" => LogCode::SubgraphSyncingFailure
-                );
-
-                // Set subgraph status to Failed
-                let status_ops =
-                    SubgraphDeploymentEntity::update_failed_operations(&id_for_err, true);
-                if let Err(e) = store_for_err.apply_metadata_operations(status_ops) {
-                    error!(
-                        logger_for_err,
-                        "Failed to set subgraph status to Failed: {}", e;
-                        "id" => id_for_err.to_string(),
-                        "code" => LogCode::SubgraphSyncingFailureNotRecorded
+                // Log and drop the errors from the block_stream
+                // The block stream will continue attempting to produce blocks
+                Some(Err(e)) => {
+                    debug!(
+                        &logger,
+                        "Block stream produced a non-fatal error";
+                        "error" => format!("{}", e),
                     );
+                    continue;
                 }
-                Err(())
+                None => unreachable!("The block stream stopped producing blocks"),
+            };
+
+            if block.triggers.len() > 0 {
+                subgraph_metrics
+                    .block_trigger_count
+                    .observe(block.triggers.len() as f64);
             }
-        })
+
+            let start = Instant::now();
+
+            let res = process_block(
+                &logger,
+                ctx.inputs.eth_adapter.cheap_clone(),
+                ctx,
+                block_stream_cancel_handle.clone(),
+                block,
+            )
+            .await;
+
+            let elapsed = start.elapsed().as_secs_f64();
+            subgraph_metrics.block_processing_duration.observe(elapsed);
+
+            match res {
+                Ok((c, needs_restart)) => {
+                    ctx = c;
+                    if needs_restart {
+                        // Increase the restart counter
+                        ctx.state.restarts += 1;
+
+                        // Cancel the stream for real
+                        ctx.state
+                            .instances
+                            .write()
+                            .unwrap()
+                            .remove(&ctx.inputs.deployment_id);
+
+                        // And restart the subgraph
+                        break;
+                    }
+                }
+                Err(CancelableError::Cancel) => {
+                    debug!(
+                        &logger,
+                        "Subgraph block stream shut down cleanly";
+                        "id" => id_for_err.to_string(),
+                    );
+                    return Err(());
+                }
+                // Handle unexpected stream errors by marking the subgraph as failed.
+                Err(CancelableError::Error(e)) => {
+                    error!(
+                        &logger,
+                        "Subgraph instance failed to run: {}", e;
+                        "id" => id_for_err.to_string(),
+                        "code" => LogCode::SubgraphSyncingFailure
+                    );
+
+                    // Set subgraph status to Failed
+                    let status_ops =
+                        SubgraphDeploymentEntity::update_failed_operations(&id_for_err, true);
+                    if let Err(e) = store_for_err.apply_metadata_operations(status_ops) {
+                        error!(
+                            &logger,
+                            "Failed to set subgraph status to Failed: {}", e;
+                            "id" => id_for_err.to_string(),
+                            "code" => LogCode::SubgraphSyncingFailureNotRecorded
+                        );
+                    }
+                    return Err(());
+                }
+            }
+        }
+    }
 }
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-fn process_block<B, T: RuntimeHostBuilder, S>(
-    logger: Logger,
+async fn process_block<B, T: RuntimeHostBuilder, S>(
+    logger: &Logger,
     eth_adapter: Arc<dyn EthereumAdapter>,
     mut ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
-) -> impl Future<Item = (IndexingContext<B, T, S>, bool), Error = CancelableError<Error>>
+) -> Result<(IndexingContext<B, T, S>, bool), CancelableError<Error>>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
@@ -618,13 +597,12 @@ where
         "block_number" => format!("{:?}", block_ptr.number),
         "block_hash" => format!("{:?}", block_ptr.hash)
     ));
-    let logger1 = logger.clone();
 
     if triggers.len() == 1 {
-        info!(logger, "1 trigger found in this block for this subgraph");
+        info!(&logger, "1 trigger found in this block for this subgraph");
     } else if triggers.len() > 1 {
         info!(
-            logger,
+            &logger,
             "{} triggers found in this block for this subgraph",
             triggers.len()
         );
@@ -639,221 +617,195 @@ where
 
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
-    process_triggers(
-        logger.clone(),
+    let (mut ctx, mut block_state) = process_triggers(
+        &logger,
         BlockState::with_cache(std::mem::take(&mut ctx.state.entity_lfu_cache)),
         ctx,
-        light_block.clone(),
+        &light_block,
         triggers,
     )
-    .and_then(move |(ctx, block_state)| {
-        // If new data sources have been created, restart the subgraph after this block.
-        let needs_restart = !block_state.created_data_sources.is_empty();
-        let host_metrics = ctx.host_metrics.clone();
+    .await?;
 
-        // This loop will:
-        // 1. Instantiate created data sources.
-        // 2. Process those data sources for the current block.
-        // Until no data sources are created or MAX_DATA_SOURCES is hit.
+    // If new data sources have been created, restart the subgraph after this block.
+    let needs_restart = !block_state.created_data_sources.is_empty();
+    let host_metrics = ctx.host_metrics.clone();
 
-        // Note that this algorithm processes data sources spawned on the same block _breadth
-        // first_ on the tree implied by the parent-child relationship between data sources. Only a
-        // very contrived subgraph would be able to observe this.
-        loop_fn(
-            (ctx, block_state),
-            move |(mut ctx, mut block_state)| -> Box<dyn Future<Item = _, Error = _> + Send> {
-                if block_state.created_data_sources.is_empty() {
-                    // No new data sources, nothing to do.
-                    return Box::new(future::ok(Loop::Break((ctx, block_state))));
-                }
+    // This loop will:
+    // 1. Instantiate created data sources.
+    // 2. Process those data sources for the current block.
+    // Until no data sources are created or MAX_DATA_SOURCES is hit.
 
-                // Instantiate dynamic data sources, removing them from the block state.
-                let (data_sources, runtime_hosts) = match create_dynamic_data_sources(
-                    logger.clone(),
-                    &mut ctx,
-                    host_metrics.clone(),
-                    block_state.created_data_sources.drain(..),
-                ) {
-                    Ok(ok) => ok,
-                    Err(err) => return Box::new(future::err(err.into())),
-                };
+    // Note that this algorithm processes data sources spawned on the same block _breadth
+    // first_ on the tree implied by the parent-child relationship between data sources. Only a
+    // very contrived subgraph would be able to observe this.
+    while !block_state.created_data_sources.is_empty() {
+        // Instantiate dynamic data sources, removing them from the block state.
+        let (data_sources, runtime_hosts) = create_dynamic_data_sources(
+            logger.clone(),
+            &mut ctx,
+            host_metrics.clone(),
+            block_state.created_data_sources.drain(..),
+        )?;
 
-                // Reprocess the triggers from this block that match the new data sources
-                let logger = logger.clone();
-                let logger1 = logger.clone();
-                let light_block = light_block.clone();
-                Box::new(
-                    triggers_in_block(
-                        eth_adapter.clone(),
-                        logger,
-                        ctx.inputs.store.clone(),
-                        ctx.ethrpc_metrics.clone(),
-                        EthereumLogFilter::from_data_sources(data_sources.iter()),
-                        EthereumCallFilter::from_data_sources(data_sources.iter()),
-                        EthereumBlockFilter::from_data_sources(data_sources.iter()),
-                        block.clone(),
-                    )
-                    .and_then(move |block_with_triggers| {
-                        let triggers = block_with_triggers.triggers;
-
-                        if triggers.len() == 1 {
-                            info!(
-                                logger1,
-                                "1 trigger found in this block for the new data sources"
-                            );
-                        } else if triggers.len() > 1 {
-                            info!(
-                                logger1,
-                                "{} triggers found in this block for the new data sources",
-                                triggers.len()
-                            );
-                        }
-
-                        // Add entity operations for the new data sources to the block state
-                        // and add runtimes for the data sources to the subgraph instance.
-                        persist_dynamic_data_sources(
-                            logger1.clone(),
-                            &mut ctx,
-                            &mut block_state.entity_cache,
-                            data_sources,
-                            block_ptr_for_new_data_sources,
-                        );
-
-                        let logger = logger1.clone();
-                        Box::new(
-                            stream::iter_ok(triggers)
-                                .fold(block_state, move |block_state, trigger| {
-                                    // Process the triggers in each host in the same order the
-                                    // corresponding data sources have been created.
-                                    SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
-                                        &logger,
-                                        runtime_hosts.iter().cloned(),
-                                        light_block.clone(),
-                                        trigger,
-                                        block_state,
-                                    )
-                                })
-                                .and_then(|block_state| {
-                                    future::ok(Loop::Continue((ctx, block_state)))
-                                }),
-                        )
-                    }),
-                )
-            },
+        // Reprocess the triggers from this block that match the new data sources
+        let block_with_triggers = triggers_in_block(
+            eth_adapter.clone(),
+            logger.cheap_clone(),
+            ctx.inputs.store.clone(),
+            ctx.ethrpc_metrics.clone(),
+            EthereumLogFilter::from_data_sources(data_sources.iter()),
+            EthereumCallFilter::from_data_sources(data_sources.iter()),
+            EthereumBlockFilter::from_data_sources(data_sources.iter()),
+            block.clone(),
         )
-        .map(move |(ctx, block_state)| (ctx, block_state, needs_restart))
-        .from_err()
-    })
+        .compat()
+        .await?;
+
+        let triggers = block_with_triggers.triggers;
+
+        if triggers.len() == 1 {
+            info!(
+                &logger,
+                "1 trigger found in this block for the new data sources"
+            );
+        } else if triggers.len() > 1 {
+            info!(
+                &logger,
+                "{} triggers found in this block for the new data sources",
+                triggers.len()
+            );
+        }
+
+        // Add entity operations for the new data sources to the block state
+        // and add runtimes for the data sources to the subgraph instance.
+        persist_dynamic_data_sources(
+            logger.clone(),
+            &mut ctx,
+            &mut block_state.entity_cache,
+            data_sources,
+            block_ptr_for_new_data_sources,
+        );
+
+        // Process the triggers in each host in the same order the
+        // corresponding data sources have been created.
+        for trigger in triggers.into_iter() {
+            block_state = SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
+                &logger,
+                &runtime_hosts,
+                &light_block,
+                trigger,
+                block_state,
+            )
+            .await?;
+        }
+    }
+
     // Apply entity operations and advance the stream
-    .and_then(move |(mut ctx, block_state, needs_restart)| {
-        // Avoid writing to store if block stream has been canceled
-        if block_stream_cancel_handle.is_canceled() {
-            return Err(CancelableError::Cancel);
+
+    // Avoid writing to store if block stream has been canceled
+    if block_stream_cancel_handle.is_canceled() {
+        return Err(CancelableError::Cancel);
+    }
+
+    let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
+    let ModificationsAndCache {
+        modifications: mods,
+        entity_lfu_cache: mut cache,
+    } = block_state
+        .entity_cache
+        .as_modifications(ctx.inputs.store.as_ref())
+        .map_err(|e| {
+            CancelableError::from(format_err!(
+                "Error while processing block stream for a subgraph: {}",
+                e
+            ))
+        })?;
+    section.end();
+
+    let section = ctx
+        .host_metrics
+        .stopwatch
+        .start_section("entity_cache_evict");
+    cache.evict(*ENTITY_CACHE_SIZE);
+    section.end();
+
+    // Put the cache back in the ctx, asserting that the placeholder cache was not used.
+    assert!(ctx.state.entity_lfu_cache.is_empty());
+    ctx.state.entity_lfu_cache = cache;
+
+    if !mods.is_empty() {
+        info!(&logger, "Applying {} entity operation(s)", mods.len());
+    }
+
+    // Transact entity operations into the store and update the
+    // subgraph's block stream pointer
+    let _section = ctx.host_metrics.stopwatch.start_section("transact_block");
+    let subgraph_id = ctx.inputs.deployment_id.clone();
+    let stopwatch = ctx.host_metrics.stopwatch.clone();
+    let start = Instant::now();
+
+    match ctx
+        .inputs
+        .store
+        .transact_block_operations(subgraph_id, block_ptr_after, mods, stopwatch)
+    {
+        Ok(should_migrate) => {
+            let elapsed = start.elapsed().as_secs_f64();
+            metrics.block_ops_transaction_duration.observe(elapsed);
+            if should_migrate {
+                ctx.inputs.store.migrate_subgraph_deployment(
+                    &logger,
+                    &ctx.inputs.deployment_id,
+                    &block_ptr_after,
+                );
+            }
+            Ok((ctx, needs_restart))
         }
-
-        let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
-        let ModificationsAndCache {
-            modifications: mods,
-            entity_lfu_cache: mut cache,
-        } = block_state
-            .entity_cache
-            .as_modifications(ctx.inputs.store.as_ref())
-            .map_err(|e| {
-                CancelableError::from(format_err!(
-                    "Error while processing block stream for a subgraph: {}",
-                    e
-                ))
-            })?;
-        section.end();
-
-        let section = ctx
-            .host_metrics
-            .stopwatch
-            .start_section("entity_cache_evict");
-        cache.evict(*ENTITY_CACHE_SIZE);
-        section.end();
-
-        // Put the cache back in the ctx, asserting that the placeholder cache was not used.
-        assert!(ctx.state.entity_lfu_cache.is_empty());
-        ctx.state.entity_lfu_cache = cache;
-
-        if !mods.is_empty() {
-            info!(logger1, "Applying {} entity operation(s)", mods.len());
+        Err(e) => {
+            Err(format_err!("Error while processing block stream for a subgraph: {}", e).into())
         }
-
-        // Transact entity operations into the store and update the
-        // subgraph's block stream pointer
-        let _section = ctx.host_metrics.stopwatch.start_section("transact_block");
-        let subgraph_id = ctx.inputs.deployment_id.clone();
-        let stopwatch = ctx.host_metrics.stopwatch.clone();
-        let start = Instant::now();
-        ctx.inputs
-            .store
-            .transact_block_operations(subgraph_id, block_ptr_after, mods, stopwatch)
-            .map(|should_migrate| {
-                let elapsed = start.elapsed().as_secs_f64();
-                metrics.block_ops_transaction_duration.observe(elapsed);
-                if should_migrate {
-                    ctx.inputs.store.migrate_subgraph_deployment(
-                        &logger1,
-                        &ctx.inputs.deployment_id,
-                        &block_ptr_after,
-                    );
-                }
-                (ctx, needs_restart)
-            })
-            .map_err(|e| {
-                format_err!("Error while processing block stream for a subgraph: {}", e).into()
-            })
-    })
+    }
 }
 
-fn process_triggers<B, T: RuntimeHostBuilder, S>(
-    logger: Logger,
-    block_state: BlockState,
+async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send + Sync>(
+    logger: &Logger,
+    mut block_state: BlockState,
     ctx: IndexingContext<B, T, S>,
-    block: Arc<LightEthereumBlock>,
+    block: &Arc<LightEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
-) -> impl Future<Item = (IndexingContext<B, T, S>, BlockState), Error = CancelableError<Error>>
-where
-    B: BlockStreamBuilder,
-{
-    stream::iter_ok::<_, CancelableError<Error>>(triggers)
-        // Process events from the block stream
-        .fold((ctx, block_state), move |(ctx, block_state), trigger| {
-            let logger = logger.clone();
-            let block = block.clone();
-            let block_ptr = EthereumBlockPointer::from(block.as_ref());
-            let subgraph_metrics = ctx.subgraph_metrics.clone();
-            let trigger_type = match trigger {
-                EthereumTrigger::Log(_) => TriggerType::Event,
-                EthereumTrigger::Call(_) => TriggerType::Call,
-                EthereumTrigger::Block(..) => TriggerType::Block,
-            };
-            let transaction_id = match &trigger {
-                EthereumTrigger::Log(log) => log.transaction_hash,
-                EthereumTrigger::Call(call) => call.transaction_hash,
-                EthereumTrigger::Block(..) => None,
-            };
-            let start = Instant::now();
-            ctx.state
-                .instance
-                .process_trigger(&logger, block, trigger, block_state)
-                .map(move |block_state| {
-                    let elapsed = start.elapsed().as_secs_f64();
-                    subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);
-                    (ctx, block_state)
-                })
-                .map_err(move |e| match transaction_id {
-                    Some(tx_hash) => format_err!(
-                        "Failed to process trigger in block {}, transaction {:x}: {}",
-                        block_ptr,
-                        tx_hash,
-                        e
-                    ),
-                    None => format_err!("Failed to process trigger: {}", e),
-                })
-        })
+) -> Result<(IndexingContext<B, T, S>, BlockState), CancelableError<Error>> {
+    for trigger in triggers.into_iter() {
+        let block_ptr = EthereumBlockPointer::from(block.as_ref());
+        let subgraph_metrics = ctx.subgraph_metrics.clone();
+        let trigger_type = match trigger {
+            EthereumTrigger::Log(_) => TriggerType::Event,
+            EthereumTrigger::Call(_) => TriggerType::Call,
+            EthereumTrigger::Block(..) => TriggerType::Block,
+        };
+        let transaction_id = match &trigger {
+            EthereumTrigger::Log(log) => log.transaction_hash,
+            EthereumTrigger::Call(call) => call.transaction_hash,
+            EthereumTrigger::Block(..) => None,
+        };
+        let start = Instant::now();
+        block_state = ctx
+            .state
+            .instance
+            .process_trigger(&logger, &block, trigger, block_state)
+            .await
+            .map_err(move |e| match transaction_id {
+                Some(tx_hash) => format_err!(
+                    "Failed to process trigger in block {}, transaction {:x}: {}",
+                    block_ptr,
+                    tx_hash,
+                    e
+                ),
+                None => format_err!("Failed to process trigger: {}", e),
+            })?;
+        let elapsed = start.elapsed().as_secs_f64();
+        subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);
+    }
+    Ok((ctx, block_state))
 }
 
 fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
