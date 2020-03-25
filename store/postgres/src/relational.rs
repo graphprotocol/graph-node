@@ -714,6 +714,7 @@ pub struct Column {
     pub field_type: q::Type,
     pub column_type: ColumnType,
     pub fulltext_fields: Option<HashSet<String>>,
+    is_reference: bool,
 }
 
 impl Column {
@@ -726,12 +727,16 @@ impl Column {
         SqlName::check_valid_identifier(&*field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
+        let is_reference =
+            sql_name.as_str() != PRIMARY_KEY_COLUMN && is_object_type(&field.field_type, enums);
+
         Ok(Column {
             name: sql_name,
             field: field.name.clone(),
             column_type: ColumnType::from_field_type(&field.field_type, schema, enums, id_type)?,
             field_type: field.field_type.clone(),
             fulltext_fields: None,
+            is_reference,
         })
     }
 
@@ -745,6 +750,7 @@ impl Column {
             field_type: q::Type::NamedType(String::from("fulltext".to_string())),
             column_type: ColumnType::TSVector(def.config.clone()),
             fulltext_fields: Some(def.included_fields.clone()),
+            is_reference: false,
         })
     }
 
@@ -787,6 +793,14 @@ impl Column {
         named_type(&self.field_type) == "fulltext"
     }
 
+    pub fn is_reference(&self) -> bool {
+        self.is_reference
+    }
+
+    pub fn is_primary_key(&self) -> bool {
+        self.name.as_str() == PRIMARY_KEY_COLUMN
+    }
+
     /// Return `true` if this column stores user-supplied text. Such
     /// columns may contain very large values and need to be handled
     /// specially for indexing
@@ -805,7 +819,7 @@ impl Column {
         if self.is_list() {
             write!(out, "[]")?;
         }
-        if self.name.0 == PRIMARY_KEY_COLUMN || !self.is_nullable() {
+        if self.is_primary_key() || !self.is_nullable() {
             write!(out, " not null")?;
         }
         Ok(())
@@ -973,6 +987,13 @@ fn derived_column(field: &s::Field) -> bool {
         .directives
         .iter()
         .any(|dir| dir.name == s::Name::from("derivedFrom"))
+}
+
+fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
+    let name = named_type(field_type);
+
+    !enums.contains_key(&*name)
+        && ValueType::from_str(name).unwrap_or(ValueType::ID) == ValueType::ID
 }
 
 #[cfg(test)]
