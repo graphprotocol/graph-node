@@ -1321,7 +1321,7 @@ dependencies = [
  "graph-mock 0.17.1",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1335,7 +1335,7 @@ dependencies = [
  "graph-graphql 0.17.1",
  "graphql-parser 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1358,7 +1358,7 @@ dependencies = [
  "futures 0.1.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "graph 0.17.1",
  "http 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometheus 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1617,7 +1617,7 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1647,7 +1647,7 @@ dependencies = [
  "common-multipart-rfc7578 0.2.0-rc (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1668,7 +1668,7 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "native-tls 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-tls 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1779,7 +1779,7 @@ dependencies = [
  "failure 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper-multipart-rfc7578 0.4.0-rc (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper-tls 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "multiaddr 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2908,7 +2908,7 @@ dependencies = [
  "futures-util 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "http 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "http-body 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper-tls 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "js-sys 0.3.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4495,7 +4495,7 @@ dependencies = [
 "checksum humantime 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "df004cfca50ef23c36850aaaa59ad52cc70d0e90243c3c7737a4dd32dc7a3c4f"
 "checksum hyper 0.10.15 (registry+https://github.com/rust-lang/crates.io-index)" = "df0caae6b71d266b91b4a83111a61d2b94ed2e2bea024c532b933dcff867e58c"
 "checksum hyper 0.12.35 (registry+https://github.com/rust-lang/crates.io-index)" = "9dbe6ed1438e1f8ad955a4701e9a944938e9519f6888d12d8558b645e247d5f6"
-"checksum hyper 0.13.3 (registry+https://github.com/rust-lang/crates.io-index)" = "e7b15203263d1faa615f9337d79c1d37959439dc46c2b4faab33286fadc2a1c5"
+"checksum hyper 0.13.4 (registry+https://github.com/rust-lang/crates.io-index)" = "ed6081100e960d9d74734659ffc9cc91daf1c0fc7aceb8eaa94ee1a3f5046f2e"
 "checksum hyper-multipart-rfc7578 0.4.0-rc (registry+https://github.com/rust-lang/crates.io-index)" = "3a71feb0ce26d0e28969633c06521716b07607f58f55dff84f30214b6c6d256a"
 "checksum hyper-tls 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "3a800d6aa50af4b5850b2b0f659625ce9504df908e9733b635720483be26174f"
 "checksum hyper-tls 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3adcd308402b9553630734e9c36b77a7e48b3821251ca2493e8cd596763aafaa"
