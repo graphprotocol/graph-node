@@ -599,7 +599,7 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: type_name.as_str().to_camel_case(),
+            name: type_name.as_str().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
             arguments: vec![
                 InputValue {
                     position: Pos::default(),
@@ -617,7 +617,7 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: type_name.to_plural().to_camel_case(),
+            name: type_name.to_plural().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
             arguments: collection_arguments,
             field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
                 Box::new(Type::NamedType(type_name.to_owned())),

@@ -105,10 +105,7 @@ pub enum SchemaValidationError {
     FulltextIncludedEntityNotFound,
     #[fail(display = "Fulltext include field must have a 'name' attribute")]
     FulltextIncludedFieldMissingRequiredProperty,
-    #[fail(
-        display = "Fulltext included Entity field, {}, not found or not a string",
-        _0
-    )]
+    #[fail(display = "Fulltext entity field, {}, not found or not a string", _0)]
     FulltextIncludedFieldInvalid(String),
 }
 
@@ -855,8 +852,8 @@ impl Schema {
             .collect();
 
         // Validate that the fulltext field doesn't collide with any top-level Query fields
-        // generated for entity types. The name conversions should always align with those used
-        // to generate the field names in `graph::data::schema::api::query_fields_for_type()`.
+        // generated for entity types. The field name conversions should always align with those used
+        // to create the field names in `graphql::schema::api::query_fields_for_type()`.
         if local_types
             .iter()
             .find(|typ| {
