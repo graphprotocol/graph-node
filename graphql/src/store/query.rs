@@ -95,7 +95,7 @@ fn build_filter(
         Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
         Some(q::Value::Null) => Ok(None),
         None => match arguments.get(&"text".to_string()) {
-            Some(q::Value::Object(filter)) => build_fulltext_filter_from_object(entity, filter),
+            Some(q::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
         },
@@ -104,7 +104,6 @@ fn build_filter(
 }
 
 fn build_fulltext_filter_from_object(
-    _entity: ObjectOrInterface,
     object: &BTreeMap<q::Name, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     object.into_iter().next().map_or(
