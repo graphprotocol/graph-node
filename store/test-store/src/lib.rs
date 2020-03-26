@@ -82,8 +82,11 @@ lazy_static! {
     };
 }
 
-#[cfg(debug_assertions)]
-pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
+fn create_subgraph(
+    subgraph_id: &str,
+    schema: &str,
+    base: Option<(SubgraphDeploymentId, EthereumBlockPointer)>,
+) {
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
@@ -99,11 +102,28 @@ pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
     };
 
     let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, None)
+        .graft(base)
         .create_operations_replace(&subgraph_id)
         .into_iter()
         .map(|op| op.into())
         .collect();
     STORE.create_subgraph_deployment(&schema, ops).unwrap();
+}
+
+#[cfg(debug_assertions)]
+pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
+    create_subgraph(subgraph_id, schema, None)
+}
+
+#[cfg(debug_assertions)]
+pub fn create_grafted_subgraph(
+    subgraph_id: &str,
+    schema: &str,
+    base_id: &str,
+    base_block: EthereumBlockPointer,
+) {
+    let base = Some((SubgraphDeploymentId::new(base_id).unwrap(), base_block));
+    create_subgraph(subgraph_id, schema, base)
 }
 
 /// Convenience to transact EntityOperation instead of EntityModification

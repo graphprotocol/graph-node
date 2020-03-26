@@ -252,7 +252,7 @@ impl Layout {
         Ok(layout)
     }
 
-    fn copy_from(
+    pub fn copy_from(
         &self,
         conn: &PgConnection,
         base: &Layout,

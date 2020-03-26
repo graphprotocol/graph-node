@@ -50,6 +50,16 @@ const USER_GQL: &str = "
     }
 ";
 
+const GRAFT_GQL: &str = "
+    type User @entity {
+        id: ID!,
+        name: String,
+        email: String,
+        age: Int,
+        favorite_color: String
+    }
+";
+
 const USER: &str = "User";
 
 lazy_static! {
@@ -2206,4 +2216,42 @@ fn find_at_block() {
         shaqueeena_at_block(2, "teeko@email.com");
         shaqueeena_at_block(7000, "teeko@email.com");
     }
+}
+
+#[test]
+fn graft() {
+    run_test(move |store| -> Result<(), ()> {
+        const SUBGRAPH: &str = "grafted";
+        test_store::create_grafted_subgraph(
+            SUBGRAPH,
+            GRAFT_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            *TEST_BLOCK_1_PTR,
+        );
+
+        let query = EntityQuery::new(
+            SubgraphDeploymentId::new(SUBGRAPH).unwrap(),
+            BLOCK_NUMBER_MAX,
+            EntityCollection::All(vec![USER.to_owned()]),
+        )
+        .order_by("name", ValueType::String, EntityOrder::Descending);
+
+        let entities = store
+            .find(query)
+            .expect("store.find failed to execute query");
+
+        let ids = entities
+            .iter()
+            .map(|entity| entity.id().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(vec!["3", "1", "2"], ids);
+
+        // Make sure we caught Shqueena at block 1, before the change in
+        // email address
+        let shaq = entities.first().unwrap();
+        assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
+
+        Ok(())
+    })
 }
