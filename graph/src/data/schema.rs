@@ -79,7 +79,7 @@ pub enum SchemaValidationError {
     #[fail(display = "Fulltext directive name overlaps with type: {}", _0)]
     FulltextNameConflict(String),
     #[fail(
-        display = "Fulltext directive name overlaps with existing entity field: {}",
+        display = "Fulltext directive name overlaps with an existing entity field or a top-level query field: {}",
         _0
     )]
     FulltextNameCollision(String),
@@ -862,6 +862,7 @@ impl Schema {
                     .find(|field| {
                         name == &field.name.as_str().to_camel_case()
                             || name == &field.name.to_plural().to_camel_case()
+                            || field.name.eq(name)
                     })
                     .is_some()
             })
