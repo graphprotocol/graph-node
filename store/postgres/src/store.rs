@@ -18,15 +18,16 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
-    trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
-    ChainHeadUpdateStream, ChainStore, Entity, EntityKey, EntityModification, EntityOrder,
-    EntityQuery, EntityRange, Error, EthereumBlock, EthereumBlockPointer, EthereumCallCache,
-    EthereumNetworkIdentifier, EventProducer as _, Future, Future01CompatExt, LightEthereumBlock,
-    Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _,
-    StopwatchMetrics, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
-    SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
-    SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    bail, bigdecimal::ToPrimitive, debug, ethabi, format_err, futures03, info, o, serde_json,
+    stream, tiny_keccak, tokio, trace, warn, web3, AttributeIndexDefinition, BigDecimal, BigInt,
+    BlockNumber, ChainHeadUpdateListener as _, ChainHeadUpdateStream, ChainStore, Entity,
+    EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
+    EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, EventProducer as _, Future,
+    Future01CompatExt, LightEthereumBlock, Logger, MetadataOperation, MetricsRegistry,
+    QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
+    StoreEventStream, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError,
+    Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_chain_ethereum::BlockIngestorMetrics;
@@ -128,6 +129,9 @@ struct SubgraphInfo {
     api: Arc<Schema>,
     /// The name of the network from which the subgraph is syncing
     network: Option<String>,
+    /// The block number at which this subgraph was grafted onto
+    /// another one. We do not allow reverting past this block
+    graft_block: Option<BlockNumber>,
 }
 
 /// A Store based on Diesel and Postgres.
@@ -779,6 +783,20 @@ impl Store {
             (input_schema, network)
         };
 
+        use crate::metadata::subgraph_deployment as sd;
+        let conn = self.get_conn()?;
+        let graft_block = if subgraph_id.is_meta() {
+            // There is no SubgraphDeployment for the metadata subgraph
+            None
+        } else {
+            sd::table
+                .select(sd::graft_block_number)
+                .filter(sd::id.eq(subgraph_id.as_str()))
+                .first::<Option<BigDecimal>>(&conn)?
+                .map(|block| block.to_i32())
+                .flatten()
+        };
+
         // Parse the schema and add @subgraphId directives
         let input_schema = Schema::parse(&input_schema, subgraph_id.clone())?;
         let mut schema = input_schema.clone();
@@ -792,6 +810,7 @@ impl Store {
             input: Arc::new(input_schema),
             api: Arc::new(schema),
             network: network,
+            graft_block,
         };
 
         // Insert the schema into the cache.
@@ -1015,6 +1034,21 @@ impl StoreTrait for Store {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number + 1 {
             panic!("revert_block_operations must revert a single block only");
+        }
+        // Don't revert past a graft point
+        let info = self.subgraph_info(&subgraph_id)?;
+        if let Some(graft_block) = info.graft_block {
+            if graft_block as u64 > block_ptr_to.number {
+                return Err(format_err!(
+                    "Can not revert subgraph `{}` to block {} \
+                  as it was grafted at block {} and we do not allow reverting \
+                  past a graft point",
+                    subgraph_id,
+                    block_ptr_to.number,
+                    graft_block
+                )
+                .into());
+            }
         }
 
         let econn = self.get_entity_conn(&subgraph_id)?;

@@ -2222,6 +2222,7 @@ fn find_at_block() {
 fn graft() {
     run_test(move |store| -> Result<(), ()> {
         const SUBGRAPH: &str = "grafted";
+        let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
         test_store::create_grafted_subgraph(
             SUBGRAPH,
             GRAFT_GQL,
@@ -2230,7 +2231,7 @@ fn graft() {
         );
 
         let query = EntityQuery::new(
-            SubgraphDeploymentId::new(SUBGRAPH).unwrap(),
+            subgraph_id.clone(),
             BLOCK_NUMBER_MAX,
             EntityCollection::All(vec![USER.to_owned()]),
         )
@@ -2249,8 +2250,31 @@ fn graft() {
 
         // Make sure we caught Shqueena at block 1, before the change in
         // email address
-        let shaq = entities.first().unwrap();
+        let mut shaq = entities.first().unwrap().to_owned();
         assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
+
+        // Make our own entries for block 2
+        shaq.set("email", "shaq@gmail.com");
+        let op = EntityOperation::Set {
+            key: EntityKey {
+                subgraph_id: subgraph_id.clone(),
+                entity_type: USER.to_owned(),
+                entity_id: "3".to_owned(),
+            },
+            data: shaq,
+        };
+        transact_entity_operations(&store, subgraph_id.clone(), *TEST_BLOCK_2_PTR, vec![op])
+            .unwrap();
+
+        store
+            .revert_block_operations(subgraph_id.clone(), *TEST_BLOCK_2_PTR, *TEST_BLOCK_1_PTR)
+            .expect("We can revert a block we just created");
+
+        let err = store
+            .revert_block_operations(subgraph_id.clone(), *TEST_BLOCK_1_PTR, *GENESIS_PTR)
+            .expect_err("Reverting past graft point is not allowed");
+
+        assert!(err.to_string().contains("Can not revert subgraph"));
 
         Ok(())
     })
