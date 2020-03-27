@@ -9,7 +9,7 @@ futures = "0.1.21"
 hex = "0.4.2"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-wasmi = "0.5.1"
+wasmi = "0.6.2"
 pwasm-utils = "0.11"
 bs58 = "0.3.0"
 graph-runtime-derive = { path = "../derive" }

@@ -1207,7 +1207,7 @@ dependencies = [
  "mockall",
  "num-bigint",
  "num-traits",
- "parity-wasm",
+ "parity-wasm 0.40.3",
  "petgraph 0.5.0",
  "priority-queue",
  "prometheus",
@@ -1355,7 +1355,7 @@ dependencies = [
  "hex 0.4.2",
  "ipfs-api",
  "lazy_static",
- "parity-wasm",
+ "parity-wasm 0.40.3",
  "pwasm-utils",
  "semver",
  "strum",
@@ -1458,7 +1458,7 @@ dependencies = [
  "hex-literal",
  "lazy_static",
  "lru_time_cache",
- "parity-wasm",
+ "parity-wasm 0.40.3",
  "postgres",
  "serde",
  "test-store",
@@ -2423,6 +2423,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e39faaa292a687ea15120b1ac31899b13586446521df6c149e46f1584671e0f"
 
 [[package]]
+name = "parity-wasm"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
+
+[[package]]
 name = "parking_lot"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2757,7 +2763,7 @@ checksum = "1d473123ba135028544926f7aa6f34058d8bc6f120c4fcd3777f84af724280b3"
 dependencies = [
  "byteorder",
  "log 0.4.8",
- "parity-wasm",
+ "parity-wasm 0.40.3",
 ]
 
 [[package]]
@@ -4404,25 +4410,25 @@ checksum = "daf76fe7d25ac79748a37538b7daeed1c7a6867c92d3245c12c6222e4a20d639"
 
 [[package]]
 name = "wasmi"
-version = "0.5.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f31d26deb2d9a37e6cfed420edce3ed604eab49735ba89035e13c98f9a528313"
+checksum = "bf617d864d25af3587aa745529f7aaa541066c876d57e050c0d0c85c61c92aff"
 dependencies = [
  "libc",
  "memory_units",
  "num-rational",
  "num-traits",
- "parity-wasm",
+ "parity-wasm 0.41.0",
  "wasmi-validation",
 ]
 
 [[package]]
 name = "wasmi-validation"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bc0356e3df56e639fc7f7d8a99741915531e27ed735d911ed83d7e1339c8188"
+checksum = "ea78c597064ba73596099281e2f4cfc019075122a65cdda3205af94f0b264d93"
 dependencies = [
- "parity-wasm",
+ "parity-wasm 0.41.0",
 ]
 
 [[package]]
