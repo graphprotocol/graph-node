@@ -69,12 +69,7 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
     ) -> Result<Value, jsonrpc_core::Error> {
         info!(&self.logger, "Received subgraph_create request"; "params" => format!("{:?}", params));
 
-        match self
-            .registrar
-            .create_subgraph(params.name.clone())
-            .compat()
-            .await
-        {
+        match self.registrar.create_subgraph(params.name.clone()).await {
             Ok(result) => {
                 Ok(serde_json::to_value(result).expect("invalid subgraph creation result"))
             }
@@ -120,12 +115,7 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
     ) -> Result<Value, jsonrpc_core::Error> {
         info!(&self.logger, "Received subgraph_remove request"; "params" => format!("{:?}", params));
 
-        match self
-            .registrar
-            .remove_subgraph(params.name.clone())
-            .compat()
-            .await
-        {
+        match self.registrar.remove_subgraph(params.name.clone()).await {
             Ok(_) => Ok(Value::Null),
             Err(e) => Err(json_rpc_error(
                 &self.logger,
@@ -138,29 +128,28 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
     }
 
     /// Handler for the `subgraph_assign` endpoint.
-    fn reassign_handler(
+    async fn reassign_handler(
         &self,
         params: SubgraphReassignParams,
-    ) -> Box<dyn Future<Item = Value, Error = jsonrpc_core::Error> + Send> {
+    ) -> Result<Value, jsonrpc_core::Error> {
         let logger = self.logger.clone();
 
         info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
 
-        Box::new(
-            self.registrar
-                .reassign_subgraph(params.ipfs_hash.clone(), params.node_id.clone())
-                .map_err(move |e| {
-                    json_rpc_error(
-                        &logger,
-                        "subgraph_reassign",
-                        e,
-                        JSON_RPC_REASSIGN_ERROR,
-                        params,
-                    )
-                })
-                .map(|_| Ok(Value::Null))
-                .flatten(),
-        )
+        match self
+            .registrar
+            .reassign_subgraph(params.ipfs_hash.clone(), params.node_id.clone())
+            .await
+        {
+            Ok(_) => Ok(Value::Null),
+            Err(e) => Err(json_rpc_error(
+                &logger,
+                "subgraph_reassign",
+                e,
+                JSON_RPC_REASSIGN_ERROR,
+                params,
+            )),
+        }
     }
 }
 
@@ -278,11 +267,11 @@ where
             let me = me.clone();
             Box::pin(tokio02_spawn(
                 sender.clone(),
-                params
-                    .parse()
-                    .into_future()
-                    .and_then(move |params| me.reassign_handler(params))
-                    .compat(),
+                async move {
+                    let params = params.parse()?;
+                    me.reassign_handler(params).await
+                }
+                .boxed(),
             ))
             .compat()
         });

@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+
 use crate::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -16,28 +18,26 @@ impl SubgraphVersionSwitchingMode {
     }
 }
 
-/// Common trait for named subgraph providers.
+/// Common trait for subgraph registrars.
+#[async_trait]
 pub trait SubgraphRegistrar: Send + Sync + 'static {
-    fn create_subgraph(
+    async fn create_subgraph(
         &self,
         name: SubgraphName,
-    ) -> Box<dyn Future<Item = CreateSubgraphResult, Error = SubgraphRegistrarError> + Send + 'static>;
+    ) -> Result<CreateSubgraphResult, SubgraphRegistrarError>;
 
-    fn create_subgraph_version<'a>(
-        &'a self,
+    async fn create_subgraph_version(
+        &self,
         name: SubgraphName,
         hash: SubgraphDeploymentId,
         assignment_node_id: NodeId,
-    ) -> DynTryFuture<'a, (), SubgraphRegistrarError>;
+    ) -> Result<(), SubgraphRegistrarError>;
 
-    fn remove_subgraph(
-        &self,
-        name: SubgraphName,
-    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError>;
 
-    fn reassign_subgraph(
+    async fn reassign_subgraph(
         &self,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
-    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static>;
+    ) -> Result<(), SubgraphRegistrarError>;
 }

@@ -1,7 +1,18 @@
-use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, iter};
+
+use async_trait::async_trait;
+use lazy_static::lazy_static;
+
+use graph::data::subgraph::schema::{
+    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
+    SubgraphEntity, SubgraphVersionEntity, TypedEntity,
+};
+use graph::prelude::{
+    CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
+    SubgraphRegistrar as SubgraphRegistrarTrait, *,
+};
 
 lazy_static! {
     // The timeout for IPFS requests in seconds
@@ -12,15 +23,6 @@ lazy_static! {
             .expect("invalid IPFS subgraph loading timeout")
     );
 }
-
-use graph::data::subgraph::schema::{
-    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
-    SubgraphEntity, SubgraphVersionEntity, TypedEntity,
-};
-use graph::prelude::{
-    CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
-    SubgraphRegistrar as SubgraphRegistrarTrait, *,
-};
 
 pub struct SubgraphRegistrar<L, P, S, CS> {
     logger: Logger,
@@ -275,6 +277,7 @@ where
     }
 }
 
+#[async_trait]
 impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver,
@@ -282,95 +285,77 @@ where
     S: Store + SubgraphDeploymentStore,
     CS: ChainStore,
 {
-    fn create_subgraph(
+    async fn create_subgraph(
         &self,
         name: SubgraphName,
-    ) -> Box<dyn Future<Item = CreateSubgraphResult, Error = SubgraphRegistrarError> + Send + 'static>
-    {
-        Box::new(future::result(create_subgraph(
-            &self.logger,
-            self.store.clone(),
-            name,
-        )))
+    ) -> Result<CreateSubgraphResult, SubgraphRegistrarError> {
+        create_subgraph(&self.logger, self.store.clone(), name)
     }
 
-    fn create_subgraph_version<'a>(
-        &'a self,
+    async fn create_subgraph_version(
+        &self,
         name: SubgraphName,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
-    ) -> DynTryFuture<'a, (), SubgraphRegistrarError> {
+    ) -> Result<(), SubgraphRegistrarError> {
         let logger = self.logger_factory.subgraph_logger(&hash);
 
-        async move {
-            let unvalidated = UnvalidatedSubgraphManifest::resolve(
-                hash.to_ipfs_link(),
-                self.resolver.clone(),
-                &logger,
-            )
-            .map_err(SubgraphRegistrarError::ResolveError)
-            .await?;
+        let unvalidated = UnvalidatedSubgraphManifest::resolve(
+            hash.to_ipfs_link(),
+            self.resolver.clone(),
+            &logger,
+        )
+        .map_err(SubgraphRegistrarError::ResolveError)
+        .await?;
 
-            let (manifest, validation_warnings) = unvalidated
-                .validate(self.store.clone())
-                .map_err(SubgraphRegistrarError::ManifestValidationError)?;
+        let (manifest, validation_warnings) = unvalidated
+            .validate(self.store.clone())
+            .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
-            let network_name = manifest.network_name();
+        let network_name = manifest.network_name();
 
-            let chain_store = self.chain_stores.get(&network_name).ok_or(
-                SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-            )?;
-            let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or(
-                SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-            )?;
+        let chain_store = self.chain_stores.get(&network_name).ok_or(
+            SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
+        )?;
+        let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or(
+            SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
+        )?;
 
-            let manifest_id = manifest.id.clone();
-            create_subgraph_version(
-                &logger,
-                self.store.clone(),
-                chain_store.clone(),
-                ethereum_adapter.clone(),
-                name.clone(),
-                manifest,
-                node_id,
-                self.version_switching_mode,
-            )
-            .compat()
-            .await?;
-
-            debug!(
-                &logger,
-                "Wrote new subgraph version to store";
-                "subgraph_name" => name.to_string(),
-                "subgraph_hash" => manifest_id.to_string(),
-                "validation_warnings" => format!("{:?}", validation_warnings),
-            );
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn remove_subgraph(
-        &self,
-        name: SubgraphName,
-    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        Box::new(future::result(remove_subgraph(
-            &self.logger,
+        let manifest_id = manifest.id.clone();
+        create_subgraph_version(
+            &logger,
             self.store.clone(),
-            name,
-        )))
+            chain_store.clone(),
+            ethereum_adapter.clone(),
+            name.clone(),
+            manifest,
+            node_id,
+            self.version_switching_mode,
+        )
+        .compat()
+        .await?;
+
+        debug!(
+            &logger,
+            "Wrote new subgraph version to store";
+            "subgraph_name" => name.to_string(),
+            "subgraph_hash" => manifest_id.to_string(),
+            "validation_warnings" => format!("{:?}", validation_warnings),
+        );
+
+        Ok(())
     }
 
-    fn reassign_subgraph(
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError> {
+        remove_subgraph(&self.logger, self.store.clone(), name)
+    }
+
+    async fn reassign_subgraph(
         &self,
         hash: SubgraphDeploymentId,
         node_id: NodeId,
-    ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send + 'static> {
-        Box::new(future::result(reassign_subgraph(
-            self.store.clone(),
-            hash,
-            node_id,
-        )))
+    ) -> Result<(), SubgraphRegistrarError> {
+        reassign_subgraph(self.store.clone(), hash, node_id)
     }
 }
 

@@ -1256,6 +1256,7 @@ dependencies = [
 name = "graph-core"
 version = "0.17.1"
 dependencies = [
+ "async-trait",
  "bytes 0.5.4",
  "futures 0.1.29",
  "futures 0.3.4",

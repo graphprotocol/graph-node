@@ -693,10 +693,7 @@ async fn main() {
 
                 graph::spawn(
                     async move {
-                        subgraph_registrar
-                            .create_subgraph(name.clone())
-                            .compat()
-                            .await?;
+                        subgraph_registrar.create_subgraph(name.clone()).await?;
                         subgraph_registrar
                             .create_subgraph_version(name, subgraph_id, node_id)
                             .await
