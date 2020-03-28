@@ -1,12 +1,13 @@
-use failure;
-use futures03::prelude::Stream;
-use serde_json::Value;
-use slog::Logger;
 use std::pin::Pin;
 use std::time::Duration;
 
+use async_trait::async_trait;
+use failure::Error;
+use futures03::prelude::Stream;
+use serde_json::Value;
+use slog::Logger;
+
 use crate::data::subgraph::Link;
-use crate::prelude::DynTryFuture;
 
 /// The values that `json_stream` returns. The struct contains the deserialized
 /// JSON value from the input stream, together with the line number from which
@@ -17,9 +18,10 @@ pub struct JsonStreamValue {
 }
 
 pub type JsonValueStream =
-    Pin<Box<dyn Stream<Item = Result<JsonStreamValue, failure::Error>> + Send + 'static>>;
+    Pin<Box<dyn Stream<Item = Result<JsonStreamValue, Error>> + Send + 'static>>;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
+#[async_trait]
 pub trait LinkResolver: Send + Sync + 'static {
     /// Updates the timeout used by the resolver.
     fn with_timeout(self, timeout: Duration) -> Self
@@ -32,15 +34,11 @@ pub trait LinkResolver: Send + Sync + 'static {
         Self: Sized;
 
     /// Fetches the link contents as bytes.
-    fn cat<'a>(&'a self, logger: &'a Logger, link: &'a Link) -> DynTryFuture<'a, Vec<u8>>;
+    async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
 
     /// Read the contents of `link` and deserialize them into a stream of JSON
     /// values. The values must each be on a single line; newlines are significant
     /// as they are used to split the file contents and each line is deserialized
     /// separately.
-    fn json_stream<'a>(
-        &'a self,
-        logger: &'a Logger,
-        link: &'a Link,
-    ) -> DynTryFuture<'a, JsonValueStream>;
+    async fn json_stream(&self, logger: &Logger, link: &Link) -> Result<JsonValueStream, Error>;
 }
