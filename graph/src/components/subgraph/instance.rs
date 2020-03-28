@@ -1,6 +1,8 @@
+use async_trait::async_trait;
+use web3::types::Log;
+
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
-use web3::types::Log;
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo {
@@ -26,27 +28,28 @@ impl BlockState {
 }
 
 /// Represents a loaded instance of a subgraph.
+#[async_trait]
 pub trait SubgraphInstance<H: RuntimeHost> {
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
 
     /// Process and Ethereum trigger and return the resulting entity operations as a future.
-    fn process_trigger<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
+    async fn process_trigger(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState>;
+    ) -> Result<BlockState, Error>;
 
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
-    fn process_trigger_in_runtime_hosts<'a>(
-        logger: &'a Logger,
-        hosts: &'a [Arc<H>],
-        block: &'a Arc<LightEthereumBlock>,
+    async fn process_trigger_in_runtime_hosts(
+        logger: &Logger,
+        hosts: &[Arc<H>],
+        block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState>;
+    ) -> Result<BlockState, Error>;
 
     /// Adds dynamic data sources to the subgraph.
     fn add_dynamic_data_source(
