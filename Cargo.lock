@@ -1244,6 +1244,7 @@ dependencies = [
 name = "graph-chain-ethereum"
 version = "0.18.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "diesel",
  "failure",
