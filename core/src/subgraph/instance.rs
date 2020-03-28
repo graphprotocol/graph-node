@@ -1,5 +1,7 @@
+use async_trait::async_trait;
 use futures01::sync::mpsc::Sender;
 use lazy_static::lazy_static;
+
 use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
@@ -116,6 +118,7 @@ where
     }
 }
 
+#[async_trait]
 impl<T> SubgraphInstanceTrait<T::Host> for SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
@@ -125,71 +128,68 @@ where
         self.hosts.iter().any(|host| host.matches_log(log))
     }
 
-    fn process_trigger<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
+    async fn process_trigger(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState> {
-        Self::process_trigger_in_runtime_hosts(logger, &self.hosts, block, trigger, state)
+    ) -> Result<BlockState, Error> {
+        Self::process_trigger_in_runtime_hosts(logger, &self.hosts, block, trigger, state).await
     }
 
-    fn process_trigger_in_runtime_hosts<'a>(
-        logger: &'a Logger,
-        hosts: &'a [Arc<T::Host>],
-        block: &'a Arc<LightEthereumBlock>,
+    async fn process_trigger_in_runtime_hosts(
+        logger: &Logger,
+        hosts: &[Arc<T::Host>],
+        block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         mut state: BlockState,
-    ) -> DynTryFuture<'a, BlockState> {
-        async move {
-            match trigger {
-                EthereumTrigger::Log(log) => {
-                    let log = Arc::new(log);
+    ) -> Result<BlockState, Error> {
+        match trigger {
+            EthereumTrigger::Log(log) => {
+                let log = Arc::new(log);
 
-                    let transaction = block
-                        .transaction_for_log(&log)
-                        .map(Arc::new)
-                        .ok_or_else(|| format_err!("Found no transaction for event"))?;
-                    let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
-                    // Process the log in each host in the same order the corresponding data
-                    // sources appear in the subgraph manifest
-                    let transaction = Arc::new(transaction);
-                    for host in matching_hosts {
-                        state = host
-                            .process_log(logger, block, &transaction, &log, state)
-                            .await?;
-                    }
-                }
-                EthereumTrigger::Call(call) => {
-                    let call = Arc::new(call);
-
-                    let transaction = block
-                        .transaction_for_call(&call)
-                        .ok_or_else(|| format_err!("Found no transaction for call"))?;
-                    let transaction = Arc::new(transaction);
-                    let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
-
-                    for host in matching_hosts {
-                        state = host
-                            .process_call(logger, block, &transaction, &call, state)
-                            .await?;
-                    }
-                }
-                EthereumTrigger::Block(ptr, trigger_type) => {
-                    let matching_hosts = hosts
-                        .iter()
-                        .filter(|host| host.matches_block(&trigger_type, ptr.number));
-                    for host in matching_hosts {
-                        state = host
-                            .process_block(logger, block, &trigger_type, state)
-                            .await?;
-                    }
+                let transaction = block
+                    .transaction_for_log(&log)
+                    .map(Arc::new)
+                    .ok_or_else(|| format_err!("Found no transaction for event"))?;
+                let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
+                // Process the log in each host in the same order the corresponding data
+                // sources appear in the subgraph manifest
+                let transaction = Arc::new(transaction);
+                for host in matching_hosts {
+                    state = host
+                        .process_log(logger, block, &transaction, &log, state)
+                        .await?;
                 }
             }
-            Ok(state)
+            EthereumTrigger::Call(call) => {
+                let call = Arc::new(call);
+
+                let transaction = block
+                    .transaction_for_call(&call)
+                    .ok_or_else(|| format_err!("Found no transaction for call"))?;
+                let transaction = Arc::new(transaction);
+                let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
+
+                for host in matching_hosts {
+                    state = host
+                        .process_call(logger, block, &transaction, &call, state)
+                        .await?;
+                }
+            }
+            EthereumTrigger::Block(ptr, trigger_type) => {
+                let matching_hosts = hosts
+                    .iter()
+                    .filter(|host| host.matches_block(&trigger_type, ptr.number));
+                for host in matching_hosts {
+                    state = host
+                        .process_block(logger, block, &trigger_type, state)
+                        .await?;
+                }
+            }
         }
-        .boxed()
+        Ok(state)
     }
 
     fn add_dynamic_data_source(
