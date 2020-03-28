@@ -69,6 +69,8 @@ pub mod prelude {
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
+    pub use crate::components::networks::{NetworkInstance, NetworkInstanceId, NetworkRegistry};
+
     pub use crate::components::ethereum::{
         BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
         ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream, EthereumAdapter,
