@@ -376,18 +376,11 @@ async fn handle_assignment_event(
         AssignmentEvent::Remove {
             subgraph_id,
             node_id: _,
-        } => {
-            provider
-                .stop(subgraph_id)
-                .then(|result| match result {
-                    Ok(()) => Ok(()),
-                    Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
-                    Err(e) => Err(e),
-                })
-                .map_err(CancelableError::Error)
-                .compat()
-                .await
-        }
+        } => match provider.stop(subgraph_id).await {
+            Ok(()) => Ok(()),
+            Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
+            Err(e) => Err(CancelableError::Error(e)),
+        },
     }
 }
 
