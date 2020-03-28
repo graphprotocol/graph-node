@@ -4,6 +4,7 @@ version = "0.18.0"
 edition = "2018"
 
 [dependencies]
+async-trait = "0.1.25"
 chrono = "0.4"
 failure = "0.1.7"
 futures = "0.1.21"
