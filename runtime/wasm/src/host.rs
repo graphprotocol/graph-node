@@ -1,17 +1,16 @@
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
+use async_trait::async_trait;
+use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 use semver::{Version, VersionReq};
 use slog::{o, OwnedKV};
+use strum::AsStaticRef as _;
 use tiny_keccak::keccak256;
 
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::time::{Duration, Instant};
-use strum::AsStaticRef as _;
-
-use crate::host_exports::HostExports;
-use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
-use ethabi::{LogParam, RawLog};
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{Mapping, Source};
@@ -20,6 +19,9 @@ use graph::prelude::{
 };
 use graph::util;
 use web3::types::{Log, Transaction};
+
+use crate::host_exports::HostExports;
+use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
 
@@ -429,6 +431,7 @@ impl RuntimeHost {
     }
 }
 
+#[async_trait]
 impl RuntimeHostTrait for RuntimeHost {
     fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log)
@@ -451,251 +454,242 @@ impl RuntimeHostTrait for RuntimeHost {
             && self.data_source_contract.start_block <= block_number
     }
 
-    fn process_call<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
-        transaction: &'a Arc<Transaction>,
-        call: &'a Arc<EthereumCall>,
+    async fn process_call(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
+        transaction: &Arc<Transaction>,
+        call: &Arc<EthereumCall>,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState> {
-        async move {
-            // Identify the call handler for this call
-            let call_handler = self.handler_for_call(&call)?;
+    ) -> Result<BlockState, Error> {
+        // Identify the call handler for this call
+        let call_handler = self.handler_for_call(&call)?;
 
-            // Identify the function ABI in the contract
-            let function_abi = util::ethereum::contract_function_with_signature(
-                &self.data_source_contract_abi.contract,
-                call_handler.function.as_str(),
-            )
-            .ok_or_else(|| {
-                format_err!(
-                    "Function with the signature \"{}\" not found in \
+        // Identify the function ABI in the contract
+        let function_abi = util::ethereum::contract_function_with_signature(
+            &self.data_source_contract_abi.contract,
+            call_handler.function.as_str(),
+        )
+        .ok_or_else(|| {
+            format_err!(
+                "Function with the signature \"{}\" not found in \
                     contract \"{}\" of data source \"{}\"",
-                    call_handler.function,
-                    self.data_source_contract_abi.name,
-                    self.data_source_name
-                )
-            })?;
+                call_handler.function,
+                self.data_source_contract_abi.name,
+                self.data_source_name
+            )
+        })?;
 
-            // Parse the inputs
-            //
-            // Take the input for the call, chop off the first 4 bytes, then call
-            // `function.decode_output` to get a vector of `Token`s. Match the `Token`s
-            // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
-            let tokens = function_abi
-                .decode_input(&call.input.0[4..])
-                .map_err(|err| {
-                    format_err!(
-                        "Generating function inputs for an Ethereum call failed = {}",
-                        err,
-                    )
-                })?;
-
-            if tokens.len() != function_abi.inputs.len() {
-                return Err(format_err!(
-                    "Number of arguments in call does not match \
-                    number of inputs in function signature."
-                ));
-            }
-
-            let inputs = tokens
-                .into_iter()
-                .enumerate()
-                .map(|(i, token)| LogParam {
-                    name: function_abi.inputs[i].name.clone(),
-                    value: token,
-                })
-                .collect::<Vec<_>>();
-
-            // Parse the outputs
-            //
-            // Take the output for the call, then call `function.decode_output` to
-            // get a vector of `Token`s. Match the `Token`s with the `Param`s in
-            // `function.outputs` to create a `Vec<LogParam>`.
-            let tokens = function_abi.decode_output(&call.output.0).map_err(|err| {
+        // Parse the inputs
+        //
+        // Take the input for the call, chop off the first 4 bytes, then call
+        // `function.decode_output` to get a vector of `Token`s. Match the `Token`s
+        // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
+        let tokens = function_abi
+            .decode_input(&call.input.0[4..])
+            .map_err(|err| {
                 format_err!(
-                    "Generating function outputs for an Ethereum call failed = {}",
+                    "Generating function inputs for an Ethereum call failed = {}",
                     err,
                 )
             })?;
 
-            if tokens.len() != function_abi.outputs.len() {
-                return Err(format_err!(
-                    "Number of parameters in the call output does not match \
+        if tokens.len() != function_abi.inputs.len() {
+            return Err(format_err!(
+                "Number of arguments in call does not match \
+                    number of inputs in function signature."
+            ));
+        }
+
+        let inputs = tokens
+            .into_iter()
+            .enumerate()
+            .map(|(i, token)| LogParam {
+                name: function_abi.inputs[i].name.clone(),
+                value: token,
+            })
+            .collect::<Vec<_>>();
+
+        // Parse the outputs
+        //
+        // Take the output for the call, then call `function.decode_output` to
+        // get a vector of `Token`s. Match the `Token`s with the `Param`s in
+        // `function.outputs` to create a `Vec<LogParam>`.
+        let tokens = function_abi.decode_output(&call.output.0).map_err(|err| {
+            format_err!(
+                "Generating function outputs for an Ethereum call failed = {}",
+                err,
+            )
+        })?;
+
+        if tokens.len() != function_abi.outputs.len() {
+            return Err(format_err!(
+                "Number of parameters in the call output does not match \
                         number of outputs in the function signature."
-                ));
-            }
-
-            let outputs = tokens
-                .into_iter()
-                .enumerate()
-                .map(|(i, token)| LogParam {
-                    name: function_abi.outputs[i].name.clone(),
-                    value: token,
-                })
-                .collect::<Vec<_>>();
-
-            self.send_mapping_request(
-                logger,
-                o! {
-                    "function" => &call_handler.function,
-                    "to" => format!("{}", &call.to),
-                },
-                state,
-                &call_handler.handler,
-                MappingTrigger::Call {
-                    transaction: transaction.cheap_clone(),
-                    call: call.cheap_clone(),
-                    inputs,
-                    outputs,
-                    handler: call_handler.clone(),
-                },
-                block,
-            )
-            .await
+            ));
         }
-        .boxed()
+
+        let outputs = tokens
+            .into_iter()
+            .enumerate()
+            .map(|(i, token)| LogParam {
+                name: function_abi.outputs[i].name.clone(),
+                value: token,
+            })
+            .collect::<Vec<_>>();
+
+        self.send_mapping_request(
+            logger,
+            o! {
+                "function" => &call_handler.function,
+                "to" => format!("{}", &call.to),
+            },
+            state,
+            &call_handler.handler,
+            MappingTrigger::Call {
+                transaction: transaction.cheap_clone(),
+                call: call.cheap_clone(),
+                inputs,
+                outputs,
+                handler: call_handler.clone(),
+            },
+            block,
+        )
+        .await
     }
 
-    fn process_block<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
-        trigger_type: &'a EthereumBlockTriggerType,
+    async fn process_block(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
+        trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState> {
-        async move {
-            let block_handler = self.handler_for_block(trigger_type)?;
-            self.send_mapping_request(
-                logger,
-                o! {
-                    "hash" => block.hash.unwrap().to_string(),
-                    "number" => &block.number.unwrap().to_string(),
-                },
-                state,
-                &block_handler.handler,
-                MappingTrigger::Block {
-                    handler: block_handler.clone(),
-                },
-                block,
-            )
-            .await
-        }
-        .boxed()
+    ) -> Result<BlockState, Error> {
+        let block_handler = self.handler_for_block(trigger_type)?;
+        self.send_mapping_request(
+            logger,
+            o! {
+                "hash" => block.hash.unwrap().to_string(),
+                "number" => &block.number.unwrap().to_string(),
+            },
+            state,
+            &block_handler.handler,
+            MappingTrigger::Block {
+                handler: block_handler.clone(),
+            },
+            block,
+        )
+        .await
     }
 
-    fn process_log<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
-        transaction: &'a Arc<Transaction>,
-        log: &'a Arc<Log>,
+    async fn process_log(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
+        transaction: &Arc<Transaction>,
+        log: &Arc<Log>,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState> {
-        async move {
-            let data_source_name = &self.data_source_name;
-            let abi_name = &self.data_source_contract_abi.name;
-            let contract = &self.data_source_contract_abi.contract;
+    ) -> Result<BlockState, Error> {
+        let data_source_name = &self.data_source_name;
+        let abi_name = &self.data_source_contract_abi.name;
+        let contract = &self.data_source_contract_abi.contract;
 
-            // If there are no matching handlers, fail processing the event
-            let potential_handlers = self.handlers_for_log(&log)?;
+        // If there are no matching handlers, fail processing the event
+        let potential_handlers = self.handlers_for_log(&log)?;
 
-            // Map event handlers to (event handler, event ABI) pairs; fail if there are
-            // handlers that don't exist in the contract ABI
-            let valid_handlers = potential_handlers
-                .into_iter()
-                .map(|event_handler| {
-                    // Identify the event ABI in the contract
-                    let event_abi = util::ethereum::contract_event_with_signature(
-                        contract,
-                        event_handler.event.as_str(),
-                    )
-                    .ok_or_else(|| {
-                        format_err!(
-                            "Event with the signature \"{}\" not found in \
+        // Map event handlers to (event handler, event ABI) pairs; fail if there are
+        // handlers that don't exist in the contract ABI
+        let valid_handlers = potential_handlers
+            .into_iter()
+            .map(|event_handler| {
+                // Identify the event ABI in the contract
+                let event_abi = util::ethereum::contract_event_with_signature(
+                    contract,
+                    event_handler.event.as_str(),
+                )
+                .ok_or_else(|| {
+                    format_err!(
+                        "Event with the signature \"{}\" not found in \
                                 contract \"{}\" of data source \"{}\"",
-                            event_handler.event,
-                            abi_name,
-                            data_source_name,
-                        )
-                    })?;
-                    Ok((event_handler, event_abi))
-                })
-                .collect::<Result<Vec<_>, failure::Error>>()?;
+                        event_handler.event,
+                        abi_name,
+                        data_source_name,
+                    )
+                })?;
+                Ok((event_handler, event_abi))
+            })
+            .collect::<Result<Vec<_>, failure::Error>>()?;
 
-            // Filter out handlers whose corresponding event ABIs cannot decode the
-            // params (this is common for overloaded events that have the same topic0
-            // but have indexed vs. non-indexed params that are encoded differently).
-            //
-            // Map (handler, event ABI) pairs to (handler, decoded params) pairs.
-            let mut matching_handlers = valid_handlers
-                .into_iter()
-                .filter_map(|(event_handler, event_abi)| {
-                    event_abi
-                        .parse_log(RawLog {
-                            topics: log.topics.clone(),
-                            data: log.data.clone().0,
-                        })
-                        .map(|log| log.params)
-                        .map_err(|e| {
-                            info!(
-                                logger,
-                                "Skipping handler because the event parameters do not \
-                                match the event signature. This is typically the case \
-                                when parameters are indexed in the event but not in the \
-                                signature or the other way around";
-                                "handler" => &event_handler.handler,
-                                "event" => &event_handler.event,
-                                "error" => format!("{}", e),
-                            );
-                        })
-                        .ok()
-                        .map(|params| (event_handler, params))
-                })
-                .collect::<Vec<_>>();
+        // Filter out handlers whose corresponding event ABIs cannot decode the
+        // params (this is common for overloaded events that have the same topic0
+        // but have indexed vs. non-indexed params that are encoded differently).
+        //
+        // Map (handler, event ABI) pairs to (handler, decoded params) pairs.
+        let mut matching_handlers = valid_handlers
+            .into_iter()
+            .filter_map(|(event_handler, event_abi)| {
+                event_abi
+                    .parse_log(RawLog {
+                        topics: log.topics.clone(),
+                        data: log.data.clone().0,
+                    })
+                    .map(|log| log.params)
+                    .map_err(|e| {
+                        info!(
+                            logger,
+                            "Skipping handler because the event parameters do not \
+                            match the event signature. This is typically the case \
+                            when parameters are indexed in the event but not in the \
+                            signature or the other way around";
+                            "handler" => &event_handler.handler,
+                            "event" => &event_handler.event,
+                            "error" => format!("{}", e),
+                        );
+                    })
+                    .ok()
+                    .map(|params| (event_handler, params))
+            })
+            .collect::<Vec<_>>();
 
-            if matching_handlers.is_empty() {
-                warn!(
-                    logger,
-                    "No matching handlers found for event with topic0 `{}`",
-                    log.topics
-                    .iter()
-                    .next()
-                    .map_or(String::from("none"), |topic0| format!("{:x}", topic0));
-                    "data_source" => &data_source_name,
-                );
-                return Ok(state);
-            }
-
-            // Process the event with the matching handler
-            let (event_handler, params) = matching_handlers.pop().unwrap();
-
-            if !matching_handlers.is_empty() {
-                return Err(format_err!(
-                    "Multiple handlers defined for event `{}`, only one is supported",
-                    &event_handler.event
-                ));
-            }
-
-            self.send_mapping_request(
+        if matching_handlers.is_empty() {
+            warn!(
                 logger,
-                o! {
-                    "signature" => &event_handler.event,
-                    "address" => format!("{}", &log.address),
-                },
-                state,
-                &event_handler.handler,
-                MappingTrigger::Log {
-                    transaction: transaction.cheap_clone(),
-                    log: log.cheap_clone(),
-                    params,
-                    handler: event_handler.clone(),
-                },
-                block,
-            )
-            .await
+                "No matching handlers found for event with topic0 `{}`",
+                log.topics
+                .iter()
+                .next()
+                .map_or(String::from("none"), |topic0| format!("{:x}", topic0));
+                "data_source" => &data_source_name,
+            );
+            return Ok(state);
         }
-        .boxed()
+
+        // Process the event with the matching handler
+        let (event_handler, params) = matching_handlers.pop().unwrap();
+
+        if !matching_handlers.is_empty() {
+            return Err(format_err!(
+                "Multiple handlers defined for event `{}`, only one is supported",
+                &event_handler.event
+            ));
+        }
+
+        self.send_mapping_request(
+            logger,
+            o! {
+                "signature" => &event_handler.event,
+                "address" => format!("{}", &log.address),
+            },
+            state,
+            &event_handler.handler,
+            MappingTrigger::Log {
+                transaction: transaction.cheap_clone(),
+                log: log.cheap_clone(),
+                params,
+                handler: event_handler.clone(),
+            },
+            block,
+        )
+        .await
     }
 }
