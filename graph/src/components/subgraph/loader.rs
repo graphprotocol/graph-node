@@ -1,9 +1,12 @@
+use async_trait::async_trait;
+
 use crate::prelude::*;
 
+#[async_trait]
 pub trait DataSourceLoader {
-    fn load_dynamic_data_sources(
-        self: Arc<Self>,
-        id: &SubgraphDeploymentId,
+    async fn load_dynamic_data_sources(
+        &self,
+        id: SubgraphDeploymentId,
         logger: Logger,
-    ) -> Box<dyn Future<Item = Vec<DataSource>, Error = Error> + Send>;
+    ) -> Result<Vec<DataSource>, Error>;
 }

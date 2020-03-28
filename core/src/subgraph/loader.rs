@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::time::Instant;
 
+use async_trait::async_trait;
+
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::UnresolvedDataSource;
 use graph::prelude::{DataSourceLoader as DataSourceLoaderTrait, GraphQlRunner, *};
@@ -93,19 +95,19 @@ where
         })
     }
 
-    fn query_dynamic_data_sources(
+    async fn query_dynamic_data_sources(
         &self,
-        deployment_id: SubgraphDeploymentId,
+        deployment_id: &SubgraphDeploymentId,
         query: Query,
-    ) -> impl Future<Item = q::Value, Error = Error> + Send {
-        let deployment_id1 = deployment_id.clone();
-
+    ) -> Result<q::Value, Error> {
         self.graphql_runner
             .run_query_with_complexity(query, None, None, None)
+            .compat()
+            .await
             .map_err(move |e| {
                 format_err!(
                     "Failed to query subgraph deployment `{}`: {}",
-                    deployment_id1,
+                    deployment_id,
                     e
                 )
             })
@@ -126,7 +128,7 @@ where
 
     fn parse_data_sources(
         &self,
-        deployment_id: SubgraphDeploymentId,
+        deployment_id: &SubgraphDeploymentId,
         query_result: q::Value,
     ) -> Result<Vec<UnresolvedDataSource>, Error> {
         let data = match query_result {
@@ -183,89 +185,62 @@ where
     }
 
     async fn resolve_data_sources(
-        self: Arc<Self>,
+        &self,
         unresolved_data_sources: Vec<UnresolvedDataSource>,
-        logger: Logger,
+        logger: &Logger,
     ) -> Result<Vec<DataSource>, Error> {
         // Resolve the data sources and return them
         let mut result = Vec::new();
         for item in unresolved_data_sources.into_iter() {
-            let resolved = item.resolve(&*self.link_resolver, &logger).await?;
+            let resolved = item.resolve(&*self.link_resolver, logger).await?;
             result.push(resolved);
         }
         Ok(result)
     }
 }
 
+#[async_trait]
 impl<L, Q, S> DataSourceLoaderTrait for DataSourceLoader<L, Q, S>
 where
     L: LinkResolver,
     Q: GraphQlRunner,
     S: Store + SubgraphDeploymentStore,
 {
-    fn load_dynamic_data_sources(
-        self: Arc<Self>,
-        deployment_id: &SubgraphDeploymentId,
+    async fn load_dynamic_data_sources(
+        &self,
+        deployment_id: SubgraphDeploymentId,
         logger: Logger,
-    ) -> Box<dyn Future<Item = Vec<DataSource>, Error = Error> + Send> {
-        struct LoopState {
-            data_sources: Vec<DataSource>,
-            skip: i32,
+    ) -> Result<Vec<DataSource>, Error> {
+        let start_time = Instant::now();
+
+        let mut data_sources = vec![];
+        let mut finished = false;
+        let mut skip = 0;
+
+        while !finished {
+            let query = self.dynamic_data_sources_query(&deployment_id, skip)?;
+            let query_result = self
+                .query_dynamic_data_sources(&deployment_id, query)
+                .await?;
+            let unresolved_data_sources = self.parse_data_sources(&deployment_id, query_result)?;
+            let next_data_sources = self
+                .resolve_data_sources(unresolved_data_sources, &logger)
+                .await?;
+
+            if next_data_sources.is_empty() {
+                finished = true;
+            } else {
+                data_sources.extend(next_data_sources);
+                skip += data_sources.len() as i32;
+            }
         }
 
-        let start_time = Instant::now();
-        let initial_state = LoopState {
-            data_sources: vec![],
-            skip: 0,
-        };
+        trace!(
+            logger,
+            "Loaded dynamic data sources";
+            "ms" => start_time.elapsed().as_millis()
+        );
 
-        // Clones for async looping
-        let self1 = self.clone();
-        let deployment_id = deployment_id.clone();
-        let timing_logger = logger.clone();
-
-        Box::new(
-            future::loop_fn(initial_state, move |mut state| {
-                let logger = logger.clone();
-
-                let deployment_id1 = deployment_id.clone();
-                let deployment_id2 = deployment_id.clone();
-                let deployment_id3 = deployment_id.clone();
-
-                let self2 = self1.clone();
-                let self3 = self1.clone();
-                let self4 = self1.clone();
-                let self5 = self1.clone();
-
-                future::result(self2.dynamic_data_sources_query(&deployment_id1, state.skip))
-                    .and_then(move |query| self3.query_dynamic_data_sources(deployment_id2, query))
-                    .and_then(move |query_result| {
-                        self4.parse_data_sources(deployment_id3, query_result)
-                    })
-                    .and_then(move |unresolved_data_sources| {
-                        self5
-                            .resolve_data_sources(unresolved_data_sources, logger)
-                            .boxed()
-                            .compat()
-                    })
-                    .map(move |data_sources| {
-                        if data_sources.is_empty() {
-                            future::Loop::Break(state)
-                        } else {
-                            state.skip += data_sources.len() as i32;
-                            state.data_sources.extend(data_sources);
-                            future::Loop::Continue(state)
-                        }
-                    })
-            })
-            .map(move |state| {
-                trace!(
-                    timing_logger,
-                    "Loaded dynamic data sources";
-                    "ms" => start_time.elapsed().as_millis()
-                );
-                state.data_sources
-            }),
-        )
+        Ok(data_sources)
     }
 }
