@@ -1344,6 +1344,7 @@ dependencies = [
 name = "graph-runtime-wasm"
 version = "0.17.1"
 dependencies = [
+ "async-trait",
  "bs58",
  "ethabi 10.0.0",
  "futures 0.1.29",
