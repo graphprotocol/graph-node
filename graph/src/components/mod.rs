@@ -38,6 +38,9 @@ use futures::prelude::*;
 /// Components dealing with subgraphs.
 pub mod subgraph;
 
+/// Components related to network integrations.
+pub mod networks;
+
 /// Components dealing with Ethereum.
 pub mod ethereum;
 
