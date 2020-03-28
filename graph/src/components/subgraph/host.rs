@@ -1,14 +1,17 @@
-use failure::Error;
-use futures::sync::mpsc;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use failure::Error;
+use futures::sync::mpsc;
 
 use crate::components::metrics::HistogramVec;
 use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
 /// Common trait for runtime host implementations.
+#[async_trait]
 pub trait RuntimeHost: Send + Sync + Debug + 'static {
     /// Returns true if the RuntimeHost has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
@@ -20,33 +23,33 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     fn matches_block(&self, call: &EthereumBlockTriggerType, block_number: u64) -> bool;
 
     /// Process an Ethereum event and return a vector of entity operations.
-    fn process_log<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
-        transaction: &'a Arc<Transaction>,
-        log: &'a Arc<Log>,
+    async fn process_log(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
+        transaction: &Arc<Transaction>,
+        log: &Arc<Log>,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState>;
+    ) -> Result<BlockState, Error>;
 
     /// Process an Ethereum call and return a vector of entity operations
-    fn process_call<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
-        transaction: &'a Arc<Transaction>,
-        call: &'a Arc<EthereumCall>,
+    async fn process_call(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
+        transaction: &Arc<Transaction>,
+        call: &Arc<EthereumCall>,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState>;
+    ) -> Result<BlockState, Error>;
 
     /// Process an Ethereum block and return a vector of entity operations
-    fn process_block<'a>(
-        &'a self,
-        logger: &'a Logger,
-        block: &'a Arc<LightEthereumBlock>,
-        trigger_type: &'a EthereumBlockTriggerType,
+    async fn process_block(
+        &self,
+        logger: &Logger,
+        block: &Arc<LightEthereumBlock>,
+        trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
-    ) -> DynTryFuture<'a, BlockState>;
+    ) -> Result<BlockState, Error>;
 }
 
 pub struct HostMetrics {
