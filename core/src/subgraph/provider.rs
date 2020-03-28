@@ -112,8 +112,7 @@ where
             .await?;
 
             let data_sources = loader
-                .load_dynamic_data_sources(id, logger.clone())
-                .compat()
+                .load_dynamic_data_sources(id.clone(), logger.clone())
                 .map_err(SubgraphAssignmentProviderError::DynamicDataSourcesError)
                 .await?;
 
