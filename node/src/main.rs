@@ -16,8 +16,7 @@ use graph::util::security::SafeDisplay;
 use graph_chain_ethereum as ethereum;
 use graph_chain_ethereum::{network_indexer, BlockIngestor, BlockStreamBuilder};
 use graph_core::{
-    LinkResolver, MetricsRegistry, NetworkRegistry,
-    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
+    DeploymentController, LinkResolver, MetricsRegistry, NetworkRegistry, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
@@ -604,8 +603,8 @@ async fn main() {
                 metrics_registry.clone(),
             );
 
-            // Create IPFS-based subgraph provider
-            let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
+            // Create deployment manager
+            let mut deployment_manager = DeploymentController::new(
                 &logger_factory,
                 link_resolver.clone(),
                 generic_store.clone(),
@@ -614,7 +613,7 @@ async fn main() {
 
             // Forward subgraph events from the subgraph provider to the subgraph instance manager
             graph::spawn(
-                forward(&mut subgraph_provider, &subgraph_instance_manager)
+                forward(&mut deployment_manager, &subgraph_instance_manager)
                     .unwrap()
                     .compat(),
             );
@@ -631,7 +630,7 @@ async fn main() {
             let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
                 &logger_factory,
                 link_resolver,
-                Arc::new(subgraph_provider),
+                Arc::new(deployment_manager),
                 generic_store.clone(),
                 stores,
                 ethereum_adapters.clone(),

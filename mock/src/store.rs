@@ -48,7 +48,7 @@ mock! {
             &self,
             subgraph: &SubgraphDeploymentId,
             indexes: Vec<AttributeIndexDefinition>,
-        ) -> Result<(), SubgraphAssignmentProviderError>;
+        ) -> Result<(), DeploymentControllerError>;
 
         fn revert_block_operations(
             &self,

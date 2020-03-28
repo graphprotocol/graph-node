@@ -294,50 +294,6 @@ impl From<SubgraphManifestValidationError> for SubgraphRegistrarError {
 }
 
 #[derive(Fail, Debug)]
-pub enum SubgraphAssignmentProviderError {
-    #[fail(display = "Subgraph resolve error: {}", _0)]
-    ResolveError(SubgraphManifestResolveError),
-    #[fail(display = "Failed to load dynamic data sources: {}", _0)]
-    DynamicDataSourcesError(failure::Error),
-    /// Occurs when attempting to remove a subgraph that's not hosted.
-    #[fail(display = "Subgraph with ID {} already running", _0)]
-    AlreadyRunning(SubgraphDeploymentId),
-    #[fail(display = "Subgraph with ID {} is not running", _0)]
-    NotRunning(SubgraphDeploymentId),
-    /// Occurs when a subgraph's GraphQL schema is invalid.
-    #[fail(display = "GraphQL schema error: {}", _0)]
-    SchemaValidationError(failure::Error),
-    #[fail(
-        display = "Error building index for subgraph {}, entity {} and attribute {}",
-        _0, _1, _2
-    )]
-    BuildIndexesError(String, String, String),
-    #[fail(display = "Subgraph provider error: {}", _0)]
-    Unknown(failure::Error),
-}
-
-impl From<Error> for SubgraphAssignmentProviderError {
-    fn from(e: Error) -> Self {
-        SubgraphAssignmentProviderError::Unknown(e)
-    }
-}
-
-impl From<::diesel::result::Error> for SubgraphAssignmentProviderError {
-    fn from(e: ::diesel::result::Error) -> Self {
-        SubgraphAssignmentProviderError::Unknown(e.into())
-    }
-}
-
-/// Events emitted by [SubgraphAssignmentProvider](trait.SubgraphAssignmentProvider.html) implementations.
-#[derive(Debug, PartialEq)]
-pub enum SubgraphAssignmentProviderEvent {
-    /// A subgraph with the given manifest should start processing.
-    SubgraphStart(SubgraphManifest),
-    /// The subgraph with the given ID should stop processing.
-    SubgraphStop(SubgraphDeploymentId),
-}
-
-#[derive(Fail, Debug)]
 pub enum SubgraphManifestValidationWarning {
     #[fail(display = "schema validation produced warnings: {:?}", _0)]
     SchemaValidationWarning(SchemaImportError),

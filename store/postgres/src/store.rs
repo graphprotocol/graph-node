@@ -20,12 +20,12 @@ use graph::data::subgraph::schema::{
 use graph::prelude::{
     bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
     trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
-    ChainHeadUpdateStream, ChainStore, Entity, EntityKey, EntityModification, EntityOrder,
-    EntityQuery, EntityRange, Error, EthereumBlock, EthereumBlockPointer, EthereumCallCache,
-    EthereumNetworkIdentifier, EventProducer as _, Future, Future01CompatExt, LightEthereumBlock,
-    Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _,
-    StopwatchMetrics, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
-    SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
+    ChainHeadUpdateStream, ChainStore, DeploymentControllerError, Entity, EntityKey,
+    EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
+    EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, EventProducer as _, Future,
+    Future01CompatExt, LightEthereumBlock, Logger, MetadataOperation, MetricsRegistry,
+    QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
+    StoreEventStream, StoreEventStreamBox, Stream, SubgraphDeploymentId, SubgraphDeploymentStore,
     SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
 
@@ -640,12 +640,12 @@ impl Store {
         &self,
         conn: &e::Connection,
         index: AttributeIndexDefinition,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
+    ) -> Result<(), DeploymentControllerError> {
         conn.build_attribute_index(&index)
-            .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))
+            .map_err(|e| DeploymentControllerError::Unknown(e.into()))
             .and_then(move |row_count| match row_count {
                 1 => Ok(()),
-                _ => Err(SubgraphAssignmentProviderError::BuildIndexesError(
+                _ => Err(DeploymentControllerError::BuildIndexesError(
                     index.subgraph_id.to_string(),
                     index.entity_name.clone(),
                     index.attribute_name.clone(),
@@ -658,7 +658,7 @@ impl Store {
         &self,
         conn: &e::Connection,
         indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
+    ) -> Result<(), DeploymentControllerError> {
         for index in indexes.into_iter() {
             self.build_entity_attribute_index_with_conn(conn, index)?;
         }
@@ -1001,7 +1001,7 @@ impl StoreTrait for Store {
         &self,
         subgraph: &SubgraphDeploymentId,
         indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
+    ) -> Result<(), DeploymentControllerError> {
         let econn = self.get_entity_conn(subgraph)?;
         econn.transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
     }

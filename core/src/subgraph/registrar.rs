@@ -10,8 +10,7 @@ use graph::data::subgraph::schema::{
     SubgraphEntity, SubgraphVersionEntity, TypedEntity,
 };
 use graph::prelude::{
-    CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
-    SubgraphRegistrar as SubgraphRegistrarTrait, *,
+    CreateSubgraphResult, DeploymentController, SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
 lazy_static! {
@@ -24,11 +23,11 @@ lazy_static! {
     );
 }
 
-pub struct SubgraphRegistrar<L, P, S, CS> {
+pub struct SubgraphRegistrar<L, DM, S, CS> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
-    provider: Arc<P>,
+    provider: Arc<DM>,
     store: Arc<S>,
     chain_stores: HashMap<String, Arc<CS>>,
     ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
@@ -37,17 +36,17 @@ pub struct SubgraphRegistrar<L, P, S, CS> {
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
+impl<L, DM, S, CS> SubgraphRegistrar<L, DM, S, CS>
 where
     L: LinkResolver + Clone,
-    P: SubgraphAssignmentProviderTrait,
+    DM: DeploymentController,
     S: Store + SubgraphDeploymentStore,
     CS: ChainStore,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
         resolver: Arc<L>,
-        provider: Arc<P>,
+        provider: Arc<DM>,
         store: Arc<S>,
         chain_stores: HashMap<String, Arc<CS>>,
         ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
@@ -116,7 +115,7 @@ where
             // Blocking due to store interactions. Won't be blocking after #905.
             graph::spawn_blocking(
                 assignment_event_stream
-                    .map_err(SubgraphAssignmentProviderError::Unknown)
+                    .map_err(DeploymentControllerError::from)
                     .map_err(CancelableError::Error)
                     .cancelable(&assignment_event_stream_cancel_handle, || {
                         CancelableError::Cancel
@@ -278,10 +277,10 @@ where
 }
 
 #[async_trait]
-impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
+impl<L, DM, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, DM, S, CS>
 where
     L: LinkResolver,
-    P: SubgraphAssignmentProviderTrait,
+    DM: DeploymentController,
     S: Store + SubgraphDeploymentStore,
     CS: ChainStore,
 {
@@ -361,9 +360,9 @@ where
 
 async fn handle_assignment_event(
     event: AssignmentEvent,
-    provider: Arc<impl SubgraphAssignmentProviderTrait>,
+    provider: Arc<impl DeploymentController>,
     logger: Logger,
-) -> Result<(), CancelableError<SubgraphAssignmentProviderError>> {
+) -> Result<(), CancelableError<DeploymentControllerError>> {
     let logger = logger.to_owned();
 
     debug!(logger, "Received assignment event: {:?}", event);
@@ -376,17 +375,16 @@ async fn handle_assignment_event(
         AssignmentEvent::Remove {
             subgraph_id,
             node_id: _,
-        } => match provider.stop(subgraph_id).await {
-            Ok(()) => Ok(()),
-            Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
-            Err(e) => Err(CancelableError::Error(e)),
-        },
+        } => provider
+            .stop(&subgraph_id)
+            .await
+            .map_err(CancelableError::Error),
     }
 }
 
 async fn start_subgraph(
     subgraph_id: SubgraphDeploymentId,
-    provider: Arc<impl SubgraphAssignmentProviderTrait>,
+    provider: Arc<impl DeploymentController>,
     logger: Logger,
 ) {
     trace!(
@@ -405,18 +403,14 @@ async fn start_subgraph(
         "start_ms" => start_time.elapsed().as_millis()
     );
 
-    match result {
-        Ok(()) => (),
-        Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => (),
-        Err(e) => {
-            // Errors here are likely an issue with the subgraph.
-            error!(
-                logger,
-                "Subgraph instance failed to start";
-                "error" => e.to_string(),
-                "subgraph_id" => subgraph_id.to_string()
-            );
-        }
+    if let Err(e) = result {
+        // Errors here are likely an issue with the subgraph.
+        error!(
+            logger,
+            "Subgraph instance failed to start";
+            "error" => e.to_string(),
+            "subgraph_id" => subgraph_id.to_string()
+        );
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::components::EventConsumer;
 
-use crate::data::subgraph::SubgraphAssignmentProviderEvent;
+use crate::components::subgraph::DeploymentControllerEvent;
 
 /// A `SubgraphInstanceManager` loads and manages subgraph instances.
 ///
@@ -8,4 +8,4 @@ use crate::data::subgraph::SubgraphAssignmentProviderEvent;
 /// When a subgraph is added, the subgraph instance manager creates and starts
 /// a subgraph instances for the subgraph. When a subgraph is removed, the
 /// subgraph instance manager stops and removes the corresponding instance.
-pub trait SubgraphInstanceManager: EventConsumer<SubgraphAssignmentProviderEvent> {}
+pub trait SubgraphInstanceManager: EventConsumer<DeploymentControllerEvent> {}

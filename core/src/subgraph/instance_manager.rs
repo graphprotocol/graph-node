@@ -70,7 +70,7 @@ struct IndexingContext<B, T: RuntimeHostBuilder, S> {
 
 pub struct SubgraphInstanceManager {
     logger: Logger,
-    input: Sender<SubgraphAssignmentProviderEvent>,
+    input: Sender<DeploymentControllerEvent>,
 }
 
 struct SubgraphInstanceManagerMetrics {
@@ -217,7 +217,7 @@ impl SubgraphInstanceManager {
     /// Handle incoming events from subgraph providers.
     fn handle_subgraph_events<B, S, M>(
         logger_factory: LoggerFactory,
-        receiver: Receiver<SubgraphAssignmentProviderEvent>,
+        receiver: Receiver<DeploymentControllerEvent>,
         stores: HashMap<String, Arc<S>>,
         eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         host_builder: impl RuntimeHostBuilder,
@@ -237,10 +237,10 @@ impl SubgraphInstanceManager {
 
         // Blocking due to store interactions. Won't be blocking after #905.
         graph::spawn_blocking(receiver.compat().try_for_each(move |event| {
-            use self::SubgraphAssignmentProviderEvent::*;
+            use DeploymentControllerEvent::*;
 
             match event {
-                SubgraphStart(manifest) => {
+                Start(manifest) => {
                     let logger = logger_factory.subgraph_logger(&manifest.id);
                     info!(
                         logger,
@@ -284,7 +284,7 @@ impl SubgraphInstanceManager {
                     })
                     .ok();
                 }
-                SubgraphStop(id) => {
+                Stop(id) => {
                     let logger = logger_factory.subgraph_logger(&id);
                     info!(logger, "Stop subgraph");
 
@@ -424,11 +424,11 @@ impl SubgraphInstanceManager {
     }
 }
 
-impl EventConsumer<SubgraphAssignmentProviderEvent> for SubgraphInstanceManager {
+impl EventConsumer<DeploymentControllerEvent> for SubgraphInstanceManager {
     /// Get the wrapped event sink.
     fn event_sink(
         &self,
-    ) -> Box<dyn Sink<SinkItem = SubgraphAssignmentProviderEvent, SinkError = ()> + Send> {
+    ) -> Box<dyn Sink<SinkItem = DeploymentControllerEvent, SinkError = ()> + Send> {
         let logger = self.logger.clone();
         Box::new(self.input.clone().sink_map_err(move |e| {
             error!(logger, "Component was dropped: {}", e);

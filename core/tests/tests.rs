@@ -193,7 +193,7 @@ fn multiple_data_sources_per_subgraph() {
                 // Send the new subgraph to the manager.
                 manager
                     .event_sink()
-                    .send(SubgraphAssignmentProviderEvent::SubgraphStart(subgraph))
+                    .send(DeploymentControllerEvent::SubgraphStart(subgraph))
             })
             .and_then(move |_| {
                 // If we created a RuntimeHost for each data source,
@@ -227,12 +227,9 @@ fn multiple_data_sources_per_subgraph() {
         .unwrap();
 }
 
-fn added_subgraph_id_eq(
-    event: &SubgraphAssignmentProviderEvent,
-    id: &SubgraphDeploymentId,
-) -> bool {
+fn added_subgraph_id_eq(event: &DeploymentControllerEvent, id: &SubgraphDeploymentId) -> bool {
     match event {
-        SubgraphAssignmentProviderEvent::SubgraphStart(manifest) => &manifest.id == id,
+        DeploymentControllerEvent::SubgraphStart(manifest) => &manifest.id == id,
         _ => false,
     }
 }
@@ -388,13 +385,9 @@ async fn subgraph_provider_events() {
                         .iter()
                         .any(|event| added_subgraph_id_eq(event, &subgraph2_id_clone2)));
                     assert!(provider_events.iter().any(|event| event
-                        == &SubgraphAssignmentProviderEvent::SubgraphStop(
-                            subgraph1_id_clone2.clone()
-                        )));
+                        == &DeploymentControllerEvent::SubgraphStop(subgraph1_id_clone2.clone())));
                     assert!(provider_events.iter().any(|event| event
-                        == &SubgraphAssignmentProviderEvent::SubgraphStop(
-                            subgraph2_id_clone2.clone()
-                        )));
+                        == &DeploymentControllerEvent::SubgraphStop(subgraph2_id_clone2.clone())));
                     Ok(())
                 })
         })

@@ -855,7 +855,7 @@ pub trait Store: Send + Sync + 'static {
         &self,
         subgraph: &SubgraphDeploymentId,
         indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError>;
+    ) -> Result<(), DeploymentControllerError>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
