@@ -291,11 +291,15 @@ impl Bytes {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
+
+    pub fn as_hex_string(&self) -> String {
+        hex::encode(self.as_slice())
+    }
 }
 
 impl Display for Bytes {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        write!(f, "0x{}", hex::encode(&self.0))
+        write!(f, "0x{}", self.as_hex_string())
     }
 }
 
