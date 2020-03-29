@@ -1487,8 +1487,6 @@ impl EthereumCallCache for Store {
     }
 }
 
-impl BlockchainStore for Store {}
-
 /// The id is the hashed contract_address + encoded_call + block hash. This uniquely identifies the
 /// call. Use 128 bits of output to save some bytes in the DB.
 fn contract_call_id(
