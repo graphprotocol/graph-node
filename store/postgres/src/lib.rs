@@ -30,6 +30,7 @@ mod functions;
 mod history_event;
 mod jsonb;
 mod jsonb_queries;
+mod networks;
 mod notification_listener;
 pub mod relational;
 mod relational_queries;
@@ -51,4 +52,5 @@ pub mod layout_for_tests {
 }
 
 pub use self::chain_head_listener::ChainHeadUpdateListener;
+pub use self::networks::{NetworkStoreFactory, NetworkStoreFactoryOptions};
 pub use self::store::{Store, StoreConfig};
