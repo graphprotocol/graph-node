@@ -37,27 +37,27 @@ lazy_static! {
             // Set up Store
             let logger = &*LOGGER;
             let postgres_url = postgres_test_url();
-            let net_identifiers = EthereumNetworkIdentifier {
-                net_version: NETWORK_VERSION.to_owned(),
-                genesis_block_hash: GENESIS_PTR.hash,
-            };
             let conn_pool_size: u32 = 10;
             let postgres_conn_pool = create_connection_pool(
-                postgres_url.clone(),
+                postgres_url.as_str(),
                 conn_pool_size,
                 &logger,
                 Arc::new(MockMetricsRegistry::new()),
             );
-            Arc::new(Store::new(
+            let store = Store::new(
                 StoreConfig {
                     postgres_url,
                     network_name: NETWORK_NAME.to_owned(),
                 },
                 &logger,
-                net_identifiers,
                 postgres_conn_pool,
                 Arc::new(MockMetricsRegistry::new()),
-            ))
+            );
+            store.initialize_chain(
+                &NETWORK_VERSION.to_owned(),
+                &GENESIS_PTR.to_block_pointer()
+            ).expect("initialize chain store");
+            Arc::new(store)
         })
     };
 
