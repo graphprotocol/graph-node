@@ -59,13 +59,6 @@ async fn main() {
         .author("Graph Protocol, Inc.")
         .about("Scalable queries for a decentralized future")
         .arg(
-            Arg::with_name("subgraph")
-                .takes_value(true)
-                .long("subgraph")
-                .value_name("[NAME:]IPFS_HASH")
-                .help("name and IPFS hash of the subgraph manifest"),
-        )
-        .arg(
             Arg::with_name("postgres-url")
                 .takes_value(true)
                 .required(true)
@@ -233,9 +226,6 @@ async fn main() {
 
     let node_id = NodeId::new(matches.value_of("node-id").unwrap())
         .expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
-
-    // Obtain subgraph related command-line arguments
-    let subgraph = matches.value_of("subgraph").map(|s| s.to_owned());
 
     // Obtain Ethereum chains to connect to
     let ethereum_rpc = matches.values_of("ethereum-rpc");
@@ -630,31 +620,6 @@ async fn main() {
 
             // Let the server run forever.
             std::mem::forget(json_rpc_server);
-
-            // Add the CLI subgraph with a REST request to the admin server.
-            if let Some(subgraph) = subgraph {
-                let (name, hash) = if subgraph.contains(':') {
-                    let mut split = subgraph.split(':');
-                    (split.next().unwrap(), split.next().unwrap().to_owned())
-                } else {
-                    ("cli", subgraph)
-                };
-
-                let name = SubgraphName::new(name)
-                    .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
-                let subgraph_id = SubgraphDeploymentId::new(hash)
-                    .expect("Subgraph hash must be a valid IPFS hash");
-
-                graph::spawn(
-                    async move {
-                        subgraph_registrar.create_subgraph(name.clone()).await?;
-                        subgraph_registrar
-                            .create_subgraph_version(name, subgraph_id, node_id)
-                            .await
-                    }
-                    .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
-                );
-            }
 
             // Serve GraphQL queries over HTTP
             graph::spawn(
