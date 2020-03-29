@@ -171,7 +171,7 @@ async fn main() {
                 .long("node-id")
                 .value_name("NODE_ID")
                 .env("GRAPH_NODE_ID")
-                .help("a unique identifier for this node"),
+                .help("A unique identifier for this node"),
         )
         .arg(
             Arg::with_name("debug")
@@ -281,7 +281,7 @@ async fn main() {
             .value_of("ethereum-polling-interval")
             .unwrap()
             .parse()
-            .expect("Ethereum polling interval must be a nonnegative integer"),
+            .expect("Ethereum polling interval must be a non-negative integer"),
     );
 
     // Obtain ports to use for the GraphQL server(s)
