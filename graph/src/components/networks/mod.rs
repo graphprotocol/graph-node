@@ -7,7 +7,7 @@ use crate::prelude::EthereumAdapter;
 
 pub mod blockchains;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NetworkInstanceId {
   pub network: String,
   pub name: String,

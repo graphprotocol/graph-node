@@ -20,6 +20,8 @@ use crate::data::subgraph::schema::*;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 
+pub mod networks;
+
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
         env::var("SUBSCRIPTION_THROTTLE_INTERVAL")

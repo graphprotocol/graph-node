@@ -96,6 +96,7 @@ pub mod prelude {
     pub use crate::components::server::metrics::MetricsServer;
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
+    pub use crate::components::store::networks::NetworkStoreFactory;
     pub use crate::components::store::{
         AttributeIndexDefinition, BlockNumber, ChainStore, EntityCache, EntityChange,
         EntityChangeOperation, EntityCollection, EntityFilter, EntityKey, EntityLink,
