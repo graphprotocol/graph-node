@@ -64,6 +64,7 @@ pub mod prelude {
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
+    pub use crate::components::networks::blockchains::BlockPointer;
     pub use crate::components::networks::{NetworkInstance, NetworkInstanceId, NetworkRegistry};
 
     pub use crate::components::ethereum::{
@@ -90,6 +91,9 @@ pub mod prelude {
     pub use crate::components::server::metrics::MetricsServer;
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
+    pub use crate::components::store::networks::{
+        BlockchainStore, BlockchainStoreId, NetworkStoreFactory,
+    };
     pub use crate::components::store::{
         AttributeIndexDefinition, BlockNumber, ChainStore, EntityCache, EntityChange,
         EntityChangeOperation, EntityCollection, EntityFilter, EntityKey, EntityLink,

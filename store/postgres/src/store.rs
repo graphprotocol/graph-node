@@ -19,14 +19,14 @@ use graph::data::subgraph::schema::{
 };
 use graph::prelude::{
     bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
-    trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
-    ChainHeadUpdateStream, ChainStore, DeploymentControllerError, Entity, EntityKey,
-    EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
-    EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, EventProducer as _, Future,
-    Future01CompatExt, LightEthereumBlock, Logger, MetadataOperation, MetricsRegistry,
-    QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
-    StoreEventStream, StoreEventStreamBox, Stream, SubgraphDeploymentId, SubgraphDeploymentStore,
-    SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, BlockchainStore,
+    ChainHeadUpdateListener as _, ChainHeadUpdateStream, ChainStore, DeploymentControllerError,
+    Entity, EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
+    EthereumBlock, EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier,
+    EventProducer as _, Future, Future01CompatExt, LightEthereumBlock, Logger, MetadataOperation,
+    MetricsRegistry, QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError,
+    StoreEvent, StoreEventStream, StoreEventStreamBox, Stream, SubgraphDeploymentId,
+    SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_chain_ethereum::BlockIngestorMetrics;
@@ -1497,6 +1497,8 @@ impl EthereumCallCache for Store {
         })
     }
 }
+
+impl BlockchainStore for Store {}
 
 /// The id is the hashed contract_address + encoded_call + block hash. This uniquely identifies the
 /// call. Use 128 bits of output to save some bytes in the DB.

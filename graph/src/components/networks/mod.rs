@@ -3,9 +3,11 @@ use std::sync::Arc;
 
 use async_trait::*;
 
-use crate::prelude::EthereumAdapter;
+use crate::prelude::{BlockchainStore, EthereumAdapter};
 
-#[derive(Debug, PartialEq)]
+pub mod blockchains;
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct NetworkInstanceId {
   pub network: String,
   pub name: String,
@@ -21,6 +23,7 @@ pub trait NetworkInstance: Send + Sync {
   /// away Ethereum in the rest of the codebase.
 
   fn compat_ethereum_adapter(&self) -> Option<Arc<dyn EthereumAdapter>>;
+  fn compat_blockchain_store(&self) -> Option<Arc<Box<dyn BlockchainStore>>>;
 }
 
 #[async_trait]
