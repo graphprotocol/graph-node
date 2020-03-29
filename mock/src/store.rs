@@ -96,7 +96,7 @@ mock! {
 }
 
     trait ChainStore: Send + Sync + 'static {
-        fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
+        fn initialize_chain(&self, version: &String, genesis_block: &BlockPointer) -> Result<(), Error>;
 
         fn upsert_blocks<B, E>(&self, blocks: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
         where
