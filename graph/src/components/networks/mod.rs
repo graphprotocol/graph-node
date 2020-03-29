@@ -5,7 +5,9 @@ use async_trait::*;
 
 use crate::prelude::EthereumAdapter;
 
-#[derive(Debug, PartialEq)]
+pub mod blockchains;
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct NetworkInstanceId {
   pub network: String,
   pub name: String,
