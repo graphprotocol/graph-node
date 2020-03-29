@@ -1219,8 +1219,10 @@ pub trait SubgraphDeploymentStore: Send + Sync + 'static {
 /// Common trait for blockchain store implementations.
 #[automock]
 pub trait ChainStore: Send + Sync + 'static {
-    /// Get a pointer to this blockchain's genesis block.
-    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
+    /// Initializes the chain using the provided params. Fails if the chain
+    /// is already initialized and the parameters are incompatible.
+    fn initialize_chain(&self, version: &String, genesis_block: &BlockPointer)
+        -> Result<(), Error>;
 
     /// Insert blocks into the store (or update if they are already present).
     fn upsert_blocks<B, E>(
