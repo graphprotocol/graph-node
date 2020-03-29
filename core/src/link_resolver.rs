@@ -13,6 +13,7 @@ use lru_time_cache::LruCache;
 use serde_json::Value;
 
 use graph::prelude::{LinkResolver as LinkResolverTrait, *};
+use graph::util::security::SafeDisplay;
 
 /// Environment variable for limiting the `ipfs.map` file size limit.
 const MAX_IPFS_MAP_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
@@ -147,6 +148,51 @@ impl From<Vec<IpfsClient>> for LinkResolver {
             timeout: *IPFS_TIMEOUT,
             retry: false,
         }
+    }
+}
+
+impl LinkResolver {
+    pub async fn from_urls(logger: &Logger, urls: Vec<String>) -> LinkResolver {
+        let mut clients = vec![];
+
+        for url in urls.into_iter() {
+            info!(logger, "Connecting to IPFS node at"; "url" => SafeDisplay(&url));
+
+            let client = match IpfsClient::new_from_uri(&url) {
+                Ok(client) => client,
+                Err(e) => {
+                    error!(
+                        logger,
+                        "Failed to create IPFS client";
+                        "error" => format!("{}", e),
+                        "url" => SafeDisplay(&url),
+                    );
+                    panic!("Failed to connect to IPFS node");
+                }
+            };
+
+            match client.version().await {
+                Ok(_) => {
+                    info!(
+                        logger,
+                        "Successfully connected to IPFS node";
+                        "url" => SafeDisplay(&url),
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        logger,
+                        "Is there a node running at this URL?";
+                        "url" => SafeDisplay(&url),
+                    );
+                    panic!("Failed to connect to IPFS node: {}", e);
+                }
+            };
+
+            clients.push(client);
+        }
+
+        Self::from(clients)
     }
 }
 
