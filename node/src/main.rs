@@ -334,10 +334,16 @@ async fn main() {
 
     // Connect to Postgres
     let postgres_conn_pool = create_connection_pool(
-        postgres_url.clone(),
+        postgres_url.as_str(),
         store_conn_pool_size,
         &logger,
         metrics_registry.clone(),
+    );
+
+    info!(
+        logger,
+        "Connected to Postgres";
+        "url" => SafeDisplay(postgres_url.as_str())
     );
 
     // Create a factory for network stores

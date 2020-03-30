@@ -2,7 +2,6 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 
 use graph::prelude::*;
-use graph::util::security::SafeDisplay;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -25,13 +24,12 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
 }
 
 pub fn create_connection_pool(
-    postgres_url: String,
+    postgres_url: &str,
     pool_size: u32,
     logger: &Logger,
     registry: Arc<dyn MetricsRegistry>,
 ) -> Pool<ConnectionManager<PgConnection>> {
-    let logger_store = logger.new(o!("component" => "Store"));
-    let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
+    let logger = logger.new(o!("component" => "PostgresConnectionPool"));
     let error_counter = registry
         .new_counter(
             String::from("store_connection_error_count"),
@@ -39,10 +37,10 @@ pub fn create_connection_pool(
             HashMap::new(),
         )
         .expect("failed to create `store_connection_error_count` counter");
-    let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
+    let error_handler = Box::new(ErrorHandler(logger.clone(), error_counter));
 
     // Connect to Postgres
-    let conn_manager = ConnectionManager::new(postgres_url.clone());
+    let conn_manager = ConnectionManager::new(postgres_url);
     let pool = Pool::builder()
         .error_handler(error_handler)
         // Set the time we wait for a connection to 6h. The default is 30s
@@ -55,10 +53,5 @@ pub fn create_connection_pool(
         .max_size(pool_size)
         .build(conn_manager)
         .unwrap();
-    info!(
-        logger_store,
-        "Connected to Postgres";
-        "url" => SafeDisplay(postgres_url.as_str())
-    );
     pool
 }
