@@ -1,3 +1,9 @@
+use std::convert::TryFrom;
+use std::fmt;
+use std::ops::Deref;
+use std::str::FromStr;
+use std::sync::Arc;
+
 use ethabi::Contract;
 use failure;
 use failure::{Error, SyncFailure};
@@ -28,15 +34,9 @@ use crate::data::subgraph::schema::{
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
-use crate::prelude::{format_err, Deserialize, Fail, Serialize};
+use crate::prelude::{format_err, Deserialize, Fail, NetworkInstanceId, Serialize};
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
-
-use std::convert::TryFrom;
-use std::fmt;
-use std::ops::Deref;
-use std::str::FromStr;
-use std::sync::Arc;
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
@@ -1037,6 +1037,13 @@ impl SubgraphManifest {
             .filter_map(|d| d.network)
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")
+    }
+
+    pub fn network(&self) -> NetworkInstanceId {
+        NetworkInstanceId {
+            network: "ethereum".into(),
+            name: self.network_name(),
+        }
     }
 
     pub fn start_blocks(&self) -> Vec<u64> {
