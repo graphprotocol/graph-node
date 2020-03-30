@@ -312,6 +312,8 @@ pub enum SubgraphAssignmentProviderError {
         _0, _1, _2
     )]
     BuildIndexesError(String, String, String),
+    #[fail(display = "Unsupported network: {}", _0)]
+    UnsupportedNetwork(NetworkInstanceId),
     #[fail(display = "Subgraph provider error: {}", _0)]
     Unknown(failure::Error),
 }
