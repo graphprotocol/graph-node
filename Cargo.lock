@@ -1455,6 +1455,7 @@ name = "graph-store-postgres"
 version = "0.18.0"
 dependencies = [
  "Inflector",
+ "async-trait",
  "clap",
  "derive_more",
  "diesel",
