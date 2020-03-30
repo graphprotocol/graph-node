@@ -1243,6 +1243,7 @@ dependencies = [
  "graph",
  "graph-core",
  "graph-mock",
+ "graph-runtime-wasm",
  "graph-store-postgres",
  "hex-literal",
  "jsonrpc-core",

@@ -1,5 +1,5 @@
 use std::cmp;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::mem;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -97,7 +97,6 @@ struct BlockStreamContext<S, C> {
     subgraph_store: Arc<S>,
     chain_store: Arc<C>,
     eth_adapter: Arc<dyn EthereumAdapter>,
-    node_id: NodeId,
     subgraph_id: SubgraphDeploymentId,
     reorg_threshold: u64,
     log_filter: EthereumLogFilter,
@@ -117,7 +116,6 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
             subgraph_store: self.subgraph_store.clone(),
             chain_store: self.chain_store.clone(),
             eth_adapter: self.eth_adapter.clone(),
-            node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
             log_filter: self.log_filter.clone(),
@@ -156,7 +154,6 @@ where
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
         eth_adapter: Arc<dyn EthereumAdapter>,
-        node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
@@ -175,7 +172,6 @@ where
                 subgraph_store,
                 chain_store,
                 eth_adapter,
-                node_id,
                 subgraph_id,
                 reorg_threshold,
                 logger,
@@ -965,9 +961,8 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
 
 pub struct BlockStreamBuilder<S, C, M> {
     subgraph_store: Arc<S>,
-    chain_stores: HashMap<String, Arc<C>>,
-    eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
-    node_id: NodeId,
+    chain_store: Arc<C>,
+    ethereum_adapter: Arc<dyn EthereumAdapter>,
     reorg_threshold: u64,
     metrics_registry: Arc<M>,
 }
@@ -976,9 +971,8 @@ impl<S, C, M> Clone for BlockStreamBuilder<S, C, M> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
-            chain_stores: self.chain_stores.clone(),
-            eth_adapters: self.eth_adapters.clone(),
-            node_id: self.node_id.clone(),
+            chain_store: self.chain_store.clone(),
+            ethereum_adapter: self.ethereum_adapter.clone(),
             reorg_threshold: self.reorg_threshold,
             metrics_registry: self.metrics_registry.clone(),
         }
@@ -993,17 +987,15 @@ where
 {
     pub fn new(
         subgraph_store: Arc<S>,
-        chain_stores: HashMap<String, Arc<C>>,
-        eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
-        node_id: NodeId,
+        chain_store: Arc<C>,
+        ethereum_adapter: Arc<dyn EthereumAdapter>,
         reorg_threshold: u64,
         metrics_registry: Arc<M>,
     ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
-            chain_stores,
-            eth_adapters,
-            node_id,
+            chain_store,
+            ethereum_adapter,
             reorg_threshold,
             metrics_registry,
         }
@@ -1022,7 +1014,6 @@ where
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
-        network_name: String,
         start_blocks: Vec<u64>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
@@ -1034,29 +1025,11 @@ where
             "component" => "BlockStream",
         ));
 
-        let chain_store = self
-            .chain_stores
-            .get(&network_name)
-            .expect(&format!(
-                "no store that supports network: {}",
-                &network_name
-            ))
-            .clone();
-        let eth_adapter = self
-            .eth_adapters
-            .get(&network_name)
-            .expect(&format!(
-                "no eth adapter that supports network: {}",
-                &network_name
-            ))
-            .clone();
-
         // Create the actual subgraph-specific block stream
         BlockStream::new(
             self.subgraph_store.clone(),
-            chain_store,
-            eth_adapter,
-            self.node_id.clone(),
+            self.chain_store.clone(),
+            self.ethereum_adapter.clone(),
             deployment_id,
             log_filter,
             call_filter,

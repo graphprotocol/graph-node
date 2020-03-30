@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -36,9 +35,9 @@ struct RuntimeHostConfig {
 }
 
 pub struct RuntimeHostBuilder<S> {
-    ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+    ethereum_adapter: Arc<dyn EthereumAdapter>,
     link_resolver: Arc<dyn LinkResolver>,
-    stores: HashMap<String, Arc<S>>,
+    store: Arc<S>,
 }
 
 impl<S> Clone for RuntimeHostBuilder<S>
@@ -47,9 +46,9 @@ where
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapters: self.ethereum_adapters.clone(),
+            ethereum_adapter: self.ethereum_adapter.clone(),
             link_resolver: self.link_resolver.clone(),
-            stores: self.stores.clone(),
+            store: self.store.clone(),
         }
     }
 }
@@ -59,14 +58,14 @@ where
     S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
     pub fn new(
-        ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+        ethereum_adapter: Arc<dyn EthereumAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
-        stores: HashMap<String, Arc<S>>,
+        store: Arc<S>,
     ) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapters,
+            ethereum_adapter,
             link_resolver,
-            stores,
+            store,
         }
     }
 }
@@ -102,20 +101,6 @@ where
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
-        let store = self.stores.get(&network_name).ok_or_else(|| {
-            format_err!(
-                "No store found that matches subgraph network: \"{}\"",
-                &network_name
-            )
-        })?;
-
-        let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or_else(|| {
-            format_err!(
-                "No Ethereum adapter found that matches subgraph network: \"{}\"",
-                &network_name
-            )
-        })?;
-
         // Detect whether the subgraph uses templates in data sources, which are
         // deprecated, or the top-level templates field.
         let templates = match top_level_templates.is_empty() {
@@ -124,10 +109,10 @@ where
         };
 
         RuntimeHost::new(
-            ethereum_adapter.clone(),
+            self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
-            store.clone(),
-            store.clone(),
+            self.store.clone(),
+            self.store.clone(),
             RuntimeHostConfig {
                 subgraph_id,
                 mapping: data_source.mapping,
