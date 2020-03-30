@@ -1,14 +1,49 @@
+use std::env;
+use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
+use futures::prelude::*;
+use lazy_static;
 
+use futures03::future::AbortHandle;
 use graph::prelude::{
-    format_err, BlockPointer, ChainStore, CheapClone, Error,
-    EthereumAdapter as EthereumAdapterTrait, Future01CompatExt, Logger, MetricsRegistry,
-    NetworkInstance, NetworkInstanceId, ProviderEthRpcMetrics, Store,
+    format_err, futures03, info, o, ArweaveAdapter, BlockPointer, ChainStore, CheapClone, Error,
+    EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer, Future01CompatExt,
+    LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance, NetworkInstanceId,
+    ProviderEthRpcMetrics, Store, SubgraphDeploymentStore,
+    SubgraphInstanceManager as SubgraphInstanceManagerTrait, SubgraphManifest, ThreeBoxAdapter,
+};
+use graph_core::SubgraphInstanceManager;
+use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
+
+use crate::{
+    network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter, Transport,
 };
 
-use crate::{EthereumAdapter, Transport};
+lazy_static! {
+    // Default to an Ethereum reorg threshold to 50 blocks
+    static ref REORG_THRESHOLD: u64 = env::var("ETHEREUM_REORG_THRESHOLD")
+        .ok()
+        .map(|s| u64::from_str(&s)
+            .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_REORG_THRESHOLD")))
+        .unwrap_or(50);
+
+    // Default to an ancestor count of 50 blocks
+    static ref ANCESTOR_COUNT: u64 = env::var("ETHEREUM_ANCESTOR_COUNT")
+        .ok()
+        .map(|s| u64::from_str(&s)
+             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
+        .unwrap_or(50);
+
+    // Default to a block polling interval of 500ms
+    static ref POLLING_INTERVAL: Duration = env::var("ETHEREUM_POLLING_INTERVAL")
+        .ok()
+        .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_POLLING_INTERVAL")))
+        .map(|n| Duration::from_millis(n))
+        .unwrap_or(Duration::from_millis(500));
+}
 
 pub struct Descriptor {
     pub id: NetworkInstanceId,
@@ -27,13 +62,6 @@ pub struct Connection {
     pub version: String,
     pub genesis_block: BlockPointer,
     pub adapter: Arc<dyn EthereumAdapterTrait>,
-}
-
-pub struct ChainOptions<MR, S> {
-    pub conn: Connection,
-    pub logger: Logger,
-    pub store: Arc<S>,
-    pub metrics_registry: Arc<MR>,
 }
 
 pub fn parse_descriptor(descriptor: &str) -> Result<Descriptor, Error> {
@@ -109,21 +137,37 @@ where
     })
 }
 
+pub struct ChainOptions<'a, MR, S> {
+    pub conn: Connection,
+    pub logger_factory: &'a LoggerFactory,
+    pub store: Arc<S>,
+    pub link_resolver: Arc<dyn LinkResolver>,
+    pub arweave_adapter: Arc<dyn ArweaveAdapter>,
+    pub three_box_adapter: Arc<dyn ThreeBoxAdapter>,
+    pub metrics_registry: Arc<MR>,
+    pub block_ingestion: bool,
+    pub chain_indexing: bool,
+}
+
 pub struct Chain<S> {
     id: NetworkInstanceId,
     url: String,
-    version: String,
-    genesis_block: BlockPointer,
+    _version: String,
+    _genesis_block: BlockPointer,
+
+    logger: Logger,
     adapter: Arc<dyn EthereumAdapterTrait>,
     store: Arc<S>,
     metrics_registry: Arc<dyn MetricsRegistry>,
+
+    subgraph_instance_manager: Box<dyn SubgraphInstanceManagerTrait>,
 }
 
 impl<S> Chain<S>
 where
-    S: Store + ChainStore,
+    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
 {
-    pub async fn new<MR>(options: ChainOptions<MR, S>) -> Result<Self, Error>
+    pub async fn new<'a, MR>(options: ChainOptions<'a, MR, S>) -> Result<Self, Error>
     where
         MR: MetricsRegistry,
     {
@@ -131,22 +175,118 @@ where
             .store
             .initialize_chain(&options.conn.version, &options.conn.genesis_block)?;
 
-        Ok(Self {
+        let logger = options
+            .logger_factory
+            .component_logger("EthereumChain", None)
+            .new(o!(
+                "chain" => format!("{}", options.conn.id),
+            ));
+        let logger_factory = options.logger_factory.with_parent(logger.clone());
+
+        let block_stream_builder = BlockStreamBuilder::new(
+            options.store.clone(),
+            options.store.clone(),
+            options.conn.adapter.clone(),
+            *REORG_THRESHOLD,
+            options.metrics_registry.clone(),
+        );
+
+        let runtime_host_builder = WASMRuntimeHostBuilder::new(
+            options.conn.adapter.clone(),
+            options.link_resolver,
+            options.store.clone(),
+            options.arweave_adapter,
+            options.three_box_adapter,
+        );
+
+        let subgraph_instance_manager = Box::new(SubgraphInstanceManager::new(
+            &logger_factory,
+            options.store.clone(),
+            options.conn.adapter.clone(),
+            runtime_host_builder,
+            block_stream_builder,
+            options.metrics_registry.clone(),
+        ));
+
+        let this = Self {
+            // Properties
             id: options.conn.id,
             url: options.conn.url,
-            version: options.conn.version,
-            genesis_block: options.conn.genesis_block,
+            _version: options.conn.version,
+            _genesis_block: options.conn.genesis_block,
+
+            // Components
+            logger: logger,
             adapter: options.conn.adapter,
             store: options.store,
             metrics_registry: options.metrics_registry,
-        })
+
+            // Subgraph indexing components
+            subgraph_instance_manager,
+        };
+
+        if options.block_ingestion {
+            this.spawn_block_ingestor(options.logger_factory);
+        }
+
+        if options.chain_indexing {
+            this.spawn_chain_indexer();
+        }
+
+        Ok(this)
+    }
+
+    fn spawn_block_ingestor(&self, logger_factory: &LoggerFactory) {
+        // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
+        // otherwise BlockStream will not work properly.
+        // BlockStream expects the blocks after the reorg threshold to be present in the
+        // database.
+        assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
+
+        info!(self.logger, "Starting block ingestor for Ethereum chain");
+
+        let block_ingestor = BlockIngestor::new(
+            self.store.clone(),
+            self.adapter.clone(),
+            *ANCESTOR_COUNT,
+            self.id().name.to_string(),
+            logger_factory,
+            *POLLING_INTERVAL,
+        )
+        .expect("failed to create Ethereum block ingestor");
+
+        // Run the Ethereum block ingestor in the background
+        graph::spawn(block_ingestor.into_polling_stream().compat());
+    }
+
+    fn spawn_chain_indexer(&self) {
+        let mut indexer = NetworkIndexer::new(
+            &self.logger,
+            self.adapter.clone(),
+            self.store.clone(),
+            self.metrics_registry.clone(),
+            format!("network/{}", self.id()).into(),
+            None,
+        );
+
+        graph::spawn(
+            indexer
+                .take_event_stream()
+                .unwrap()
+                .for_each(|_| {
+                    // For now we simply ignore these events; we may later use them
+                    // to drive subgraph indexing
+                    Ok(())
+                })
+                .compat(),
+        );
     }
 }
 
 #[async_trait]
 impl<S> NetworkInstance for Chain<S>
 where
-    S: Store + ChainStore,
+    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
 {
     fn id(&self) -> &NetworkInstanceId {
         &self.id
@@ -154,6 +294,10 @@ where
 
     fn url(&self) -> &str {
         self.url.as_str()
+    }
+
+    async fn start_subgraph(&self, subgraph: SubgraphManifest) -> Result<AbortHandle, Error> {
+        self.subgraph_instance_manager.start(subgraph).await
     }
 
     fn compat_ethereum_adapter(&self) -> Option<Arc<dyn EthereumAdapterTrait>> {

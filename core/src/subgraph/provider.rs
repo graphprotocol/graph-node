@@ -1,27 +1,50 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::ops::Deref as _;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use futures01::sync::mpsc::{channel, Receiver, Sender};
 
+use futures03::future::AbortHandle;
 use graph::data::subgraph::schema::attribute_index_definitions;
 use graph::prelude::{
-    DataSourceLoader as _, GraphQlRunner,
-    SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *,
+    error, futures03, info, DataSourceLoader as _, Gauge, GraphQlRunner, Link, LinkResolver,
+    Logger, LoggerFactory, MetricsRegistry, NetworkRegistry, Store,
+    SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, SubgraphAssignmentProviderError,
+    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
+    TryFutureExt,
 };
 
 use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 use crate::DataSourceLoader;
 
+struct SubgraphAssignmentProviderMetrics {
+    pub subgraph_count: Box<Gauge>,
+}
+
+impl SubgraphAssignmentProviderMetrics {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
+        let subgraph_count = registry
+            .new_gauge(
+                String::from("subgraph_count"),
+                String::from(
+                    "Counts the number of subgraphs currently being indexed by the graph-node.",
+                ),
+                HashMap::new(),
+            )
+            .expect("failed to create `subgraph_count` gauge");
+        Self { subgraph_count }
+    }
+}
+
 pub struct SubgraphAssignmentProvider<L, Q, S> {
+    logger: Logger,
     logger_factory: LoggerFactory,
-    event_stream: Option<Receiver<SubgraphAssignmentProviderEvent>>,
-    event_sink: Sender<SubgraphAssignmentProviderEvent>,
     resolver: Arc<L>,
-    subgraphs_running: Arc<Mutex<HashSet<SubgraphDeploymentId>>>,
     store: Arc<S>,
     graphql_runner: Arc<Q>,
+    network_registry: Arc<dyn NetworkRegistry>,
+    subgraphs_running: Arc<Mutex<HashMap<SubgraphDeploymentId, AbortHandle>>>,
+    metrics: SubgraphAssignmentProviderMetrics,
 }
 
 impl<L, Q, S> SubgraphAssignmentProvider<L, Q, S>
@@ -33,19 +56,18 @@ where
     pub fn new(
         logger_factory: &LoggerFactory,
         resolver: Arc<L>,
+        network_registry: Arc<dyn NetworkRegistry>,
         store: Arc<S>,
         graphql_runner: Arc<Q>,
+        metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
-        let (event_sink, event_stream) = channel(100);
-
         let logger = logger_factory.component_logger("SubgraphAssignmentProvider", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
         // Create the subgraph provider
         SubgraphAssignmentProvider {
+            logger,
             logger_factory,
-            event_stream: Some(event_stream),
-            event_sink,
             resolver: Arc::new(
                 resolver
                     .as_ref()
@@ -53,22 +75,11 @@ where
                     .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT)
                     .with_retries(),
             ),
-            subgraphs_running: Arc::new(Mutex::new(HashSet::new())),
+            network_registry,
             store,
             graphql_runner,
-        }
-    }
-
-    /// Clones but forcing receivers to `None`.
-    fn clone_no_receivers(&self) -> Self {
-        SubgraphAssignmentProvider {
-            event_stream: None,
-            event_sink: self.event_sink.clone(),
-            resolver: self.resolver.clone(),
-            subgraphs_running: self.subgraphs_running.clone(),
-            store: self.store.clone(),
-            graphql_runner: self.graphql_runner.clone(),
-            logger_factory: self.logger_factory.clone(),
+            subgraphs_running: Default::default(),
+            metrics: SubgraphAssignmentProviderMetrics::new(metrics_registry),
         }
     }
 }
@@ -84,7 +95,8 @@ where
         &self,
         id: &SubgraphDeploymentId,
     ) -> Result<(), SubgraphAssignmentProviderError> {
-        let self_clone = self.clone_no_receivers();
+        info!(self.logger, "Start subgraph"; "subgraph_id" => format!("{}", id));
+
         let store = self.store.clone();
         let subgraph_id = id.clone();
 
@@ -97,49 +109,39 @@ where
         let link = format!("/ipfs/{}", id);
 
         let logger = self.logger_factory.subgraph_logger(id);
-        let logger_for_resolve = logger.clone();
         let logger_for_err = logger.clone();
 
         info!(logger, "Resolve subgraph files using IPFS");
 
         async move {
-            let mut subgraph = SubgraphManifest::resolve(
-                Link { link },
-                self.resolver.deref(),
-                &logger_for_resolve,
-            )
-            .map_err(SubgraphAssignmentProviderError::ResolveError)
-            .await?;
+            // Don't do anything if the subgraph is already running
+            if self.subgraphs_running.lock().unwrap().contains_key(id) {
+                info!(logger, "Subgraph deployment is already running");
+                return Err(SubgraphAssignmentProviderError::AlreadyRunning(id.clone()));
+            }
 
+            // Load subgraph files from IPFS
+            let mut subgraph =
+                SubgraphManifest::resolve(Link { link }, self.resolver.deref(), &logger)
+                    .map_err(SubgraphAssignmentProviderError::ResolveError)
+                    .await?;
+
+            // Load dynamic data sources
             let data_sources = loader
                 .load_dynamic_data_sources(id.clone(), logger.clone())
                 .map_err(SubgraphAssignmentProviderError::DynamicDataSourcesError)
                 .await?;
 
-            info!(logger, "Successfully resolved subgraph files using IPFS");
-
             // Add dynamic data sources to the subgraph
             subgraph.data_sources.extend(data_sources);
 
-            // If subgraph ID already in set
-            if !self_clone
-                .subgraphs_running
-                .lock()
-                .unwrap()
-                .insert(subgraph.id.clone())
-            {
-                info!(logger, "Subgraph deployment is already running");
-
-                return Err(SubgraphAssignmentProviderError::AlreadyRunning(subgraph.id));
-            }
-
-            info!(logger, "Create attribute indexes for subgraph entities");
+            info!(logger, "Successfully resolved subgraph files using IPFS");
 
             // Build indexes for each entity attribute in the Subgraph
+            info!(logger, "Create attribute indexes for subgraph entities");
             let index_definitions =
                 attribute_index_definitions(subgraph.id.clone(), subgraph.schema.document.clone());
-            self_clone
-                .store
+            self.store
                 .build_entity_attribute_indexes(&subgraph.id, index_definitions)
                 .map(|_| {
                     info!(
@@ -149,16 +151,28 @@ where
                 })
                 .ok();
 
-            // Send events to trigger subgraph processing
-            if let Err(e) = self_clone
-                .event_sink
-                .clone()
-                .send(SubgraphAssignmentProviderEvent::SubgraphStart(subgraph))
-                .compat()
+            // Identify network for subgraph
+            let network_instance_id = subgraph.network();
+            let network_instance = self
+                .network_registry
+                .instance(&network_instance_id)
+                .ok_or_else(|| {
+                    SubgraphAssignmentProviderError::UnsupportedNetwork(network_instance_id)
+                })?;
+
+            // Ask the network instance to index this subgraph
+            let abort_handle = network_instance
+                .start_subgraph(subgraph)
                 .await
-            {
-                panic!("failed to forward subgraph: {}", e);
-            }
+                .map_err(SubgraphAssignmentProviderError::Unknown)?;
+
+            // Remember the abort handle so we can later stop the subgraph again
+            let mut subgraphs_running = self.subgraphs_running.lock().unwrap();
+            subgraphs_running.insert(id.clone(), abort_handle);
+
+            // Increase the count of running subgraphs
+            self.metrics.subgraph_count.inc();
+
             Ok(())
         }
         .map_err(move |e| {
@@ -177,31 +191,19 @@ where
     }
 
     async fn stop(&self, id: SubgraphDeploymentId) -> Result<(), SubgraphAssignmentProviderError> {
-        // If subgraph ID was in set
-        if self.subgraphs_running.lock().unwrap().remove(&id) {
-            // Shut down subgraph processing
-            self.event_sink
-                .clone()
-                .send(SubgraphAssignmentProviderEvent::SubgraphStop(id))
-                .map_err(|e| panic!("failed to forward subgraph shut down event: {}", e))
-                .map(|_| ())
-                .compat()
-                .await
-        } else {
-            Err(SubgraphAssignmentProviderError::NotRunning(id))
-        }
-    }
-}
+        info!(self.logger, "Stop subgraph"; "subgraph_id" => format!("{}", id));
 
-impl<L, Q, S> EventProducer<SubgraphAssignmentProviderEvent>
-    for SubgraphAssignmentProvider<L, Q, S>
-{
-    fn take_event_stream(
-        &mut self,
-    ) -> Option<Box<dyn Stream<Item = SubgraphAssignmentProviderEvent, Error = ()> + Send>> {
-        self.event_stream.take().map(|s| {
-            Box::new(s)
-                as Box<dyn Stream<Item = SubgraphAssignmentProviderEvent, Error = ()> + Send>
-        })
+        // When starting (or resuming) to index the subgraph, the network instance
+        // returned an abort handle. By removing this abort handle from the running
+        // subgraphs map, we stop indexing the subgraph.
+        self.subgraphs_running
+            .lock()
+            .unwrap()
+            .remove(&id)
+            .map(|_| {
+                // Decrease the count of running subgraphs
+                self.metrics.subgraph_count.dec();
+            })
+            .ok_or_else(|| SubgraphAssignmentProviderError::NotRunning(id))
     }
 }

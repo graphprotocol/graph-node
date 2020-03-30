@@ -10,6 +10,8 @@ failure = "0.1.7"
 futures = "0.1.21"
 jsonrpc-core = "14.0.5"
 graph = { path = "../../graph" }
+graph-core = { path = "../../core" }
+graph-runtime-wasm = { path = "../../runtime/wasm" }
 mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
 hex-literal = "0.2"
