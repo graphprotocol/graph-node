@@ -72,6 +72,9 @@ pub mod prelude {
     pub use crate::components::networks::blockchains::BlockPointer;
     pub use crate::components::networks::{NetworkInstance, NetworkInstanceId, NetworkRegistry};
 
+    pub use crate::components::arweave::ArweaveAdapter;
+    pub use crate::components::three_box::ThreeBoxAdapter;
+
     pub use crate::components::ethereum::{
         BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
         ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream, EthereumAdapter,

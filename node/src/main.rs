@@ -1,14 +1,14 @@
-use clap::{App, Arg};
-use git_testament::{git_testament, render_testament};
-use lazy_static::lazy_static;
-use prometheus::Registry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use graph::components::forward;
+use clap::{App, Arg};
+use git_testament::{git_testament, render_testament};
+use lazy_static::lazy_static;
+use prometheus::Registry;
+
 use graph::log::logger;
 use graph::prelude::{
     GraphQLServer as _, IndexNodeServer as _, JsonRpcServer as _, NetworkRegistry as _,
@@ -16,16 +16,12 @@ use graph::prelude::{
 };
 use graph::util::security::SafeDisplay;
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_core::{
-    three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
 use graph_chain_ethereum as ethereum;
-use graph_chain_ethereum::{network_indexer, BlockIngestor, BlockStreamBuilder};
 use graph_core::{
-    LinkResolver, MetricsRegistry, NetworkRegistry,
-    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
+    three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry, NetworkRegistry,
+    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
-use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
@@ -163,14 +159,6 @@ async fn main() {
                 .help("Password to use for Elasticsearch logging"),
         )
         .arg(
-            Arg::with_name("ethereum-polling-interval")
-                .long("ethereum-polling-interval")
-                .value_name("MILLISECONDS")
-                .default_value("500")
-                .env("ETHEREUM_POLLING_INTERVAL")
-                .help("How often to poll the Ethereum node for new blocks"),
-        )
-        .arg(
             Arg::with_name("disable-block-ingestor")
                 .long("disable-block-ingestor")
                 .value_name("DISABLE_BLOCK_INGESTOR")
@@ -192,10 +180,10 @@ async fn main() {
                 .multiple(true)
                 .min_values(1)
                 .long("network-subgraphs")
-                .value_name("NETWORK_NAME")
+                .value_name("NETWORK_INSTANCE_NAME")
                 .help(
-                    "One or more network names to index using built-in subgraphs \
-                     (e.g. 'ethereum/mainnet').",
+                    "One or more network instance names to index using built-in subgraphs \
+                     (e.g. ethereum/mainnet).",
                 ),
         )
         .arg(
@@ -233,14 +221,6 @@ async fn main() {
     // Obtain Ethereum chains to connect to
     let ethereum_rpc = matches.values_of("ethereum-rpc");
 
-    let block_polling_interval = Duration::from_millis(
-        matches
-            .value_of("ethereum-polling-interval")
-            .unwrap()
-            .parse()
-            .expect("Ethereum polling interval must be a non-negative integer"),
-    );
-
     // Obtain ports to use for the GraphQL server(s)
     let http_port = matches
         .value_of("http-port")
@@ -274,7 +254,7 @@ async fn main() {
         .parse()
         .expect("invalid metrics port");
 
-    // Obtain DISABLE_BLOCK_INGESTOR setting
+    // Identify whether block ingestion should be enabled (default) or disabled
     let disable_block_ingestor: bool = matches
         .value_of("disable-block-ingestor")
         .unwrap()
@@ -370,6 +350,17 @@ async fn main() {
     // Connect to IPFS nodes
     let link_resolver = Arc::new(LinkResolver::from_urls(&logger, ipfs_urls).await);
 
+    // Parse network subgraphs into network instance IDs
+    let network_subgraphs: HashSet<NetworkInstanceId> = matches
+        .values_of("network-subgraphs")
+        .map_or(Default::default(), |values| {
+            values
+                .map(|s| {
+                    NetworkInstanceId::try_from(s).expect("Failed to parse --network-subgraphs")
+                })
+                .collect()
+        });
+
     // Establish registry with all networks that the node was configured to index
     let mut network_registry = NetworkRegistry::new();
 
@@ -408,11 +399,18 @@ async fn main() {
                 .await
                 .expect("failed to create store for Ethereum chain");
 
+            let chain_indexing = network_subgraphs.contains(&conn.id);
+
             let chain = ethereum::chain::Chain::new(ethereum::chain::ChainOptions {
                 conn,
-                logger: logger.clone(),
+                logger_factory: &logger_factory,
                 store,
                 metrics_registry: metrics_registry.clone(),
+                link_resolver: link_resolver.clone(),
+                arweave_adapter: arweave_adapter.clone(),
+                three_box_adapter: three_box_adapter.clone(),
+                block_ingestion: !disable_block_ingestor,
+                chain_indexing,
             })
             .await
             .expect("failed to connect to Ethereum chain");
@@ -421,6 +419,9 @@ async fn main() {
             network_registry.register_instance(Box::new(chain));
         }
     }
+
+    // Seal the network registry
+    let network_registry = Arc::new(network_registry);
 
     // Check tokio contention in the background
     monitor_tokio_contention(logger.clone());
@@ -473,80 +474,6 @@ async fn main() {
         node_id.clone(),
     );
 
-    // Spawn Ethereum network indexers for all networks that are to be indexed
-    if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
-        network_subgraphs
-            .into_iter()
-            .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
-            .for_each(|network_subgraph| {
-                let chain_name = network_subgraph.replace("ethereum/", "");
-                let chain = network_registry
-                    .instance(NetworkInstanceId {
-                        network: "ethereum".into(),
-                        name: chain_name.clone().into(),
-                    })
-                    .unwrap();
-
-                let mut indexer = network_indexer::NetworkIndexer::new(
-                    &logger,
-                    chain.compat_ethereum_adapter().unwrap(),
-                    stores.get(&chain_name).expect("store for network").clone(),
-                    metrics_registry.clone(),
-                    format!("network/{}", network_subgraph).into(),
-                    None,
-                );
-                graph::spawn(
-                    indexer
-                        .take_event_stream()
-                        .unwrap()
-                        .for_each(|_| {
-                            // For now we simply ignore these events; we may later use them
-                            // to drive subgraph indexing
-                            Ok(())
-                        })
-                        .compat(),
-                );
-            })
-    };
-
-    if !disable_block_ingestor {
-        // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
-        // otherwise BlockStream will not work properly.
-        // BlockStream expects the blocks after the reorg threshold to be present in the
-        // database.
-        assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
-
-        info!(logger, "Starting block ingestors");
-
-        // Create Ethereum block ingestors and spawn a thread to run each
-        network_registry
-            .instances("ethereum")
-            .iter()
-            .for_each(|chain| {
-                info!(
-                    logger,
-                    "Starting block ingestor for Ethereum chain";
-                    "name" => &chain.id().name,
-                );
-
-                let block_ingestor = BlockIngestor::new(
-                    stores
-                        .get(&chain.id().name)
-                        .expect("chain with name")
-                        .clone(),
-                    chain.compat_ethereum_adapter().unwrap(),
-                    *ANCESTOR_COUNT,
-                    chain.id().name.to_string(),
-                    &logger_factory,
-                    block_polling_interval,
-                )
-                .expect("failed to create Ethereum block ingestor");
-
-                // Run the Ethereum block ingestor in the background
-                graph::spawn(block_ingestor.into_polling_stream().compat());
-            });
-    }
-
     let ethereum_adapters = HashMap::from_iter(ethereum_chains.iter().map(|chain| {
         (
             chain.id().name.clone(),
@@ -554,44 +481,13 @@ async fn main() {
         )
     }));
 
-    let block_stream_builder = BlockStreamBuilder::new(
-        generic_store.clone(),
-        stores.clone(),
-        ethereum_adapters.clone(),
-        node_id.clone(),
-        *REORG_THRESHOLD,
-        metrics_registry.clone(),
-    );
-    let runtime_host_builder = WASMRuntimeHostBuilder::new(
-        ethereum_adapters.clone(),
-        link_resolver.clone(),
-        stores.clone(),
-        arweave_adapter,
-        three_box_adapter,
-    );
-
-    let subgraph_instance_manager = SubgraphInstanceManager::new(
-        &logger_factory,
-        stores.clone(),
-        ethereum_adapters.clone(),
-        runtime_host_builder,
-        block_stream_builder,
-        metrics_registry.clone(),
-    );
-
     // Create subgraph provider
-    let mut provider = IpfsSubgraphAssignmentProvider::new(
+    let provider = IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
         link_resolver.clone(),
+        network_registry.clone(),
         generic_store.clone(),
         graphql_runner.clone(),
-    );
-
-    // Forward subgraph events from the subgraph provider to the subgraph instance manager
-    graph::spawn(
-        forward(&mut provider, &subgraph_instance_manager)
-            .unwrap()
-            .compat(),
     );
 
     // Check version switching mode environment variable

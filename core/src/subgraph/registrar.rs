@@ -389,7 +389,7 @@ async fn start_subgraph(
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
     logger: Logger,
 ) {
-    trace!(
+    debug!(
         logger,
         "Start subgraph";
         "subgraph_id" => subgraph_id.to_string()

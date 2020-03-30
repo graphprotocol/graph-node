@@ -1,11 +1,10 @@
-use crate::components::EventConsumer;
+use async_trait::async_trait;
 
-use crate::data::subgraph::SubgraphAssignmentProviderEvent;
+use crate::prelude::{futures03, Error, SubgraphManifest};
+use futures03::future::AbortHandle;
 
-/// A `SubgraphInstanceManager` loads and manages subgraph instances.
-///
-/// It consumes subgraph added/removed events from a `SubgraphAssignmentProvider`.
-/// When a subgraph is added, the subgraph instance manager creates and starts
-/// a subgraph instances for the subgraph. When a subgraph is removed, the
-/// subgraph instance manager stops and removes the corresponding instance.
-pub trait SubgraphInstanceManager: EventConsumer<SubgraphAssignmentProviderEvent> {}
+/// A `SubgraphInstanceManager` loads and runs subgraph instances.
+#[async_trait]
+pub trait SubgraphInstanceManager: Send + Sync + 'static {
+  async fn start(&self, manifest: SubgraphManifest) -> Result<AbortHandle, Error>;
+}
