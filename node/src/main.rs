@@ -60,7 +60,7 @@ async fn main() {
 
     // Setup CLI using Clap, provide general info and capture postgres url
     let matches = App::new("graph-node")
-        .version("0.1.0")
+        .version(render_testament!(TESTAMENT).as_str())
         .author("Graph Protocol, Inc.")
         .about("Scalable queries for a decentralized future")
         .arg(
