@@ -98,6 +98,7 @@ fn create_subgraph(
         repository: None,
         schema: schema.clone(),
         data_sources: vec![],
+        graft: None,
         templates: vec![],
     };
 

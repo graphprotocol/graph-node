@@ -91,6 +91,7 @@ fn create_subgraph(
         schema: Schema::parse(include_str!("./ethereum.graphql"), subgraph_id.clone())
             .expect("valid Ethereum network subgraph schema"),
         data_sources: vec![],
+        graft: None,
         templates: vec![],
     };
 

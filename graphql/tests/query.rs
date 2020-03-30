@@ -81,6 +81,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         repository: None,
         schema: schema.clone(),
         data_sources: vec![],
+        graft: None,
         templates: vec![],
     };
 

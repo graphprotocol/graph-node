@@ -169,6 +169,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         repository: None,
         schema: TEST_SUBGRAPH_SCHEMA.clone(),
         data_sources: vec![],
+        graft: None,
         templates: vec![],
     };
 
@@ -1616,6 +1617,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             repository: None,
             schema: schema.clone(),
             data_sources: vec![],
+            graft: None,
             templates: vec![],
         };
 

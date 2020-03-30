@@ -28,7 +28,7 @@ use crate::data::subgraph::schema::{
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
-use crate::prelude::{format_err, Deserialize, Fail, Serialize};
+use crate::prelude::{format_err, BlockNumber, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
 
@@ -361,6 +361,8 @@ pub enum SubgraphManifestValidationError {
     SchemaImportError(Vec<SchemaImportError>),
     #[fail(display = "schema validation failed: {:?}", _0)]
     SchemaValidationError(Vec<SchemaValidationError>),
+    #[fail(display = "the graft base is invalid: {}", _0)]
+    GraftBaseInvalid(String),
 }
 
 #[derive(Fail, Debug)]
@@ -846,6 +848,42 @@ impl DataSourceTemplate {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Graft {
+    pub base: SubgraphDeploymentId,
+    pub block: BlockNumber,
+}
+
+impl Graft {
+    fn validate<S: Store + SubgraphDeploymentStore>(
+        &self,
+        store: Arc<S>,
+    ) -> Vec<SubgraphManifestValidationError> {
+        fn gbi(msg: String) -> Vec<SubgraphManifestValidationError> {
+            vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
+        }
+
+        match store.block_ptr(self.base.clone()) {
+            Err(e) => gbi(e.to_string()),
+            Ok(None) => gbi(format!(
+                "can not graft onto `{}` since it has not processed any blocks",
+                self.block
+            )),
+            Ok(Some(ptr)) => {
+                if ptr.number < self.block as u64 {
+                    gbi(format!(
+                        "can not graft onto `{}` at block {} since it has only processed block {}",
+                        self.base, self.block, ptr.number
+                    ))
+                } else {
+                    vec![]
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<S, D, T> {
     pub id: SubgraphDeploymentId,
     pub location: String,
@@ -854,6 +892,7 @@ pub struct BaseSubgraphManifest<S, D, T> {
     pub repository: Option<String>,
     pub schema: S,
     pub data_sources: Vec<D>,
+    pub graft: Option<Graft>,
     #[serde(default)]
     pub templates: Vec<T>,
 }
@@ -896,7 +935,7 @@ impl UnvalidatedSubgraphManifest {
         (SubgraphManifest, Vec<SubgraphManifestValidationWarning>),
         Vec<SubgraphManifestValidationError>,
     > {
-        let (schemas, import_errors) = self.0.schema.resolve_schema_references(store);
+        let (schemas, import_errors) = self.0.schema.resolve_schema_references(store.clone());
         let validation_warnings = import_errors
             .into_iter()
             .map(SubgraphManifestValidationWarning::SchemaValidationWarning)
@@ -973,6 +1012,10 @@ impl UnvalidatedSubgraphManifest {
                     schema_errors,
                 ));
             });
+
+        if let Some(graft) = &self.0.graft {
+            errors.extend(graft.validate(store));
+        }
 
         match errors.is_empty() {
             true => Ok((self.0, validation_warnings)),
@@ -1061,6 +1104,7 @@ impl UnresolvedSubgraphManifest {
             repository,
             schema,
             data_sources,
+            graft,
             templates,
         } = self;
 
@@ -1104,6 +1148,7 @@ impl UnresolvedSubgraphManifest {
             repository,
             schema,
             data_sources,
+            graft,
             templates,
         })
     }

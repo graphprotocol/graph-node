@@ -1225,6 +1225,7 @@ dependencies = [
  "slog-envlogger",
  "slog-term",
  "stable-hash",
+ "test-store",
  "tiny-keccak",
  "tokio 0.2.18",
  "tokio-retry",
