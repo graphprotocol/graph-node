@@ -1261,6 +1261,7 @@ dependencies = [
  "pretty_assertions",
  "state_machine_future",
  "test-store",
+ "uuid 0.8.1",
 ]
 
 [[package]]
@@ -1284,7 +1285,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "test-store",
- "uuid 0.8.1",
  "walkdir",
 ]
 

@@ -8,8 +8,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use graph::prelude::*;
-
 use super::block_writer::BlockWriter;
 use super::metrics::NetworkIndexerMetrics;
 use super::subgraph;

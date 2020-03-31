@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use futures01::sync::mpsc::Sender;
+use futures::sync::mpsc::Sender;
 use lazy_static::lazy_static;
 
 use std::collections::HashMap;
