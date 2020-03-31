@@ -15,11 +15,11 @@ use graph::prelude::{
     ProviderEthRpcMetrics, Store, SubgraphDeploymentStore,
     SubgraphInstanceManager as SubgraphInstanceManagerTrait, SubgraphManifest, ThreeBoxAdapter,
 };
-use graph_core::SubgraphInstanceManager;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
 use crate::{
-    network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter, Transport,
+    network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter,
+    SubgraphInstanceManager, Transport,
 };
 
 lazy_static! {
