@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use futures03::future::AbortHandle;
 use graph::data::subgraph::schema::attribute_index_definitions;
 use graph::prelude::{
-    error, futures03, info, DataSourceLoader as _, GraphQlRunner, Link, LinkResolver, Logger,
-    LoggerFactory, NetworkRegistry, Store,
+    error, futures03, info, DataSourceLoader as _, Gauge, GraphQlRunner, Link, LinkResolver,
+    Logger, LoggerFactory, MetricsRegistry, NetworkRegistry, Store,
     SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, SubgraphAssignmentProviderError,
     SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
     TryFutureExt,
@@ -16,6 +16,25 @@ use graph::prelude::{
 
 use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 use crate::DataSourceLoader;
+
+struct SubgraphAssignmentProviderMetrics {
+    pub subgraph_count: Box<Gauge>,
+}
+
+impl SubgraphAssignmentProviderMetrics {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
+        let subgraph_count = registry
+            .new_gauge(
+                String::from("subgraph_count"),
+                String::from(
+                    "Counts the number of subgraphs currently being indexed by the graph-node.",
+                ),
+                HashMap::new(),
+            )
+            .expect("failed to create `subgraph_count` gauge");
+        Self { subgraph_count }
+    }
+}
 
 pub struct SubgraphAssignmentProvider<L, Q, S> {
     logger: Logger,
@@ -25,6 +44,7 @@ pub struct SubgraphAssignmentProvider<L, Q, S> {
     graphql_runner: Arc<Q>,
     network_registry: Arc<dyn NetworkRegistry>,
     subgraphs_running: Arc<Mutex<HashMap<SubgraphDeploymentId, AbortHandle>>>,
+    metrics: SubgraphAssignmentProviderMetrics,
 }
 
 impl<L, Q, S> SubgraphAssignmentProvider<L, Q, S>
@@ -39,6 +59,7 @@ where
         network_registry: Arc<dyn NetworkRegistry>,
         store: Arc<S>,
         graphql_runner: Arc<Q>,
+        metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphAssignmentProvider", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -58,6 +79,7 @@ where
             store,
             graphql_runner,
             subgraphs_running: Default::default(),
+            metrics: SubgraphAssignmentProviderMetrics::new(metrics_registry),
         }
     }
 }
@@ -144,8 +166,12 @@ where
                 .await
                 .map_err(SubgraphAssignmentProviderError::Unknown)?;
 
+            // Remember the abort handle so we can later stop the subgraph again
             let mut subgraphs_running = self.subgraphs_running.lock().unwrap();
             subgraphs_running.insert(id.clone(), abort_handle);
+
+            // Increase the count of running subgraphs
+            self.metrics.subgraph_count.inc();
 
             Ok(())
         }
@@ -174,7 +200,10 @@ where
             .lock()
             .unwrap()
             .remove(&id)
-            .map(|_| ())
+            .map(|_| {
+                // Decrease the count of running subgraphs
+                self.metrics.subgraph_count.dec();
+            })
             .ok_or_else(|| SubgraphAssignmentProviderError::NotRunning(id))
     }
 }
