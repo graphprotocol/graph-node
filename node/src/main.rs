@@ -463,6 +463,7 @@ async fn main() {
         network_registry.clone(),
         generic_store.clone(),
         graphql_runner.clone(),
+        metrics_registry.clone(),
     );
 
     // Check version switching mode environment variable

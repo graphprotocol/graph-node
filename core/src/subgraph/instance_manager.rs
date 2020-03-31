@@ -79,26 +79,6 @@ pub struct SubgraphInstanceManager<BSB, MR, RHB, S> {
     metrics_registry: Arc<MR>,
 }
 
-// TODO: Move to SubgraphAssignmentProvider
-struct SubgraphInstanceManagerMetrics {
-    pub subgraph_count: Box<Gauge>,
-}
-
-impl SubgraphInstanceManagerMetrics {
-    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
-        let subgraph_count = registry
-            .new_gauge(
-                String::from("subgraph_count"),
-                String::from(
-                    "Counts the number of subgraphs currently being indexed by the graph-node.",
-                ),
-                HashMap::new(),
-            )
-            .expect("failed to create `subgraph_count` gauge");
-        Self { subgraph_count }
-    }
-}
-
 enum TriggerType {
     Event,
     Call,
