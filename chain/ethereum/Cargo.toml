@@ -7,7 +7,7 @@ edition = "2018"
 async-trait = "0.1.25"
 chrono = "0.4"
 failure = "0.1.7"
-futures = "0.1.21"
+futures = { package = "futures", version="0.1.29" }
 jsonrpc-core = "14.0.5"
 graph = { path = "../../graph" }
 graph-core = { path = "../../core" }
@@ -16,6 +16,7 @@ mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
 hex-literal = "0.2"
 state_machine_future = "0.2"
+uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
 diesel = { version = "1.4.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }
