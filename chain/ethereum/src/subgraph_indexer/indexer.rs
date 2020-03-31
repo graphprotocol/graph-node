@@ -13,12 +13,11 @@ use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity,
 };
 use graph::prelude::{
-    SubgraphInstance as SubgraphInstanceTrait,
-    SubgraphInstanceManager as SubgraphInstanceManagerTrait, *,
+    SubgraphIndexer as SubgraphIndexerTrait, SubgraphInstance as SubgraphInstanceTrait, *,
 };
 use graph::util::lfu_cache::LfuCache;
 
-use super::SubgraphInstance;
+use super::instance::SubgraphInstance;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -69,7 +68,7 @@ struct IndexingContext<B, T: RuntimeHostBuilder, S> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager<BSB, MR, RHB, S> {
+pub struct SubgraphIndexer<BSB, MR, RHB, S> {
     logger: Logger,
     logger_factory: LoggerFactory,
     store: Arc<S>,
@@ -163,7 +162,7 @@ impl SubgraphInstanceMetrics {
     }
 }
 
-impl<BSB, MR, RHB, S> SubgraphInstanceManager<BSB, MR, RHB, S>
+impl<BSB, MR, RHB, S> SubgraphIndexer<BSB, MR, RHB, S>
 where
     BSB: BlockStreamBuilder,
     MR: MetricsRegistry,
@@ -179,10 +178,10 @@ where
         block_stream_builder: BSB,
         metrics_registry: Arc<MR>,
     ) -> Self {
-        let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
+        let logger = logger_factory.component_logger("SubgraphIndexer", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
-        SubgraphInstanceManager {
+        SubgraphIndexer {
             logger,
             logger_factory,
             store,
@@ -195,7 +194,7 @@ where
 }
 
 #[async_trait]
-impl<BSB, MR, RHB, S> SubgraphInstanceManagerTrait for SubgraphInstanceManager<BSB, MR, RHB, S>
+impl<BSB, MR, RHB, S> SubgraphIndexerTrait for SubgraphIndexer<BSB, MR, RHB, S>
 where
     BSB: BlockStreamBuilder,
     MR: MetricsRegistry,
