@@ -12,14 +12,14 @@ use graph::prelude::{
     format_err, futures03, info, o, ArweaveAdapter, BlockPointer, ChainStore, CheapClone, Error,
     EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer, Future01CompatExt,
     LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance, NetworkInstanceId,
-    ProviderEthRpcMetrics, Store, SubgraphDeploymentStore,
-    SubgraphInstanceManager as SubgraphInstanceManagerTrait, SubgraphManifest, ThreeBoxAdapter,
+    ProviderEthRpcMetrics, Store, SubgraphDeploymentStore, SubgraphIndexer as SubgraphIndexerTrait,
+    SubgraphManifest, ThreeBoxAdapter,
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
 use crate::{
     network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter,
-    SubgraphInstanceManager, Transport,
+    SubgraphIndexer, Transport,
 };
 
 lazy_static! {
@@ -160,7 +160,7 @@ pub struct Chain<S> {
     store: Arc<S>,
     metrics_registry: Arc<dyn MetricsRegistry>,
 
-    subgraph_instance_manager: Box<dyn SubgraphInstanceManagerTrait>,
+    subgraph_instance_manager: Box<dyn SubgraphIndexerTrait>,
 }
 
 impl<S> Chain<S>
@@ -199,7 +199,7 @@ where
             options.three_box_adapter,
         );
 
-        let subgraph_instance_manager = Box::new(SubgraphInstanceManager::new(
+        let subgraph_instance_manager = Box::new(SubgraphIndexer::new(
             &logger_factory,
             options.store.clone(),
             options.conn.adapter.clone(),
