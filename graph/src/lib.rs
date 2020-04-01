@@ -28,6 +28,9 @@ pub use task_spawn::{
     block_on_allow_panic, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic,
 };
 
+pub use bytes;
+pub use url;
+
 /// A prelude that makes all system component traits and data types available.
 ///
 /// Add the following code to import all traits and data types listed below at once.
@@ -49,6 +52,7 @@ pub mod prelude {
     pub use futures03::sink::SinkExt as _;
     pub use futures03::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
+    pub use reqwest;
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;
     pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
@@ -57,6 +61,7 @@ pub mod prelude {
     pub use std::iter::FromIterator;
     pub use std::pin::Pin;
     pub use std::sync::Arc;
+    pub use std::time::Duration;
     pub use tiny_keccak;
     pub use tokio;
     pub use web3;

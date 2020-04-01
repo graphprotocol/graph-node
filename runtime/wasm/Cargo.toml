@@ -20,6 +20,7 @@ lazy_static = "1.4"
 uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.18.0"
 strum_macros = "0.18.0"
+bytes = "0.5"
 
 [dev-dependencies]
 graphql-parser = "0.2.3"
@@ -27,3 +28,4 @@ graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
 test-store = { path = "../../store/test-store" }
 ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
+graph-chain-arweave = { path = "../../chain/arweave" }

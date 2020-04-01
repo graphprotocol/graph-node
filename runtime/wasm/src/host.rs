@@ -11,8 +11,10 @@ use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
 use tiny_keccak::keccak256;
 
+use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
 use graph::components::store::Store;
+use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::subgraph::{Mapping, Source};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
@@ -39,6 +41,8 @@ pub struct RuntimeHostBuilder<S> {
     ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
     link_resolver: Arc<dyn LinkResolver>,
     stores: HashMap<String, Arc<S>>,
+    arweave_adapter: Arc<dyn ArweaveAdapter>,
+    three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
 impl<S> Clone for RuntimeHostBuilder<S>
@@ -50,6 +54,8 @@ where
             ethereum_adapters: self.ethereum_adapters.clone(),
             link_resolver: self.link_resolver.clone(),
             stores: self.stores.clone(),
+            arweave_adapter: self.arweave_adapter.cheap_clone(),
+            three_box_adapter: self.three_box_adapter.cheap_clone(),
         }
     }
 }
@@ -62,11 +68,15 @@ where
         ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
         link_resolver: Arc<dyn LinkResolver>,
         stores: HashMap<String, Arc<S>>,
+        arweave_adapter: Arc<dyn ArweaveAdapter>,
+        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         RuntimeHostBuilder {
             ethereum_adapters,
             link_resolver,
             stores,
+            arweave_adapter,
+            three_box_adapter,
         }
     }
 }
@@ -139,6 +149,8 @@ where
             },
             mapping_request_sender,
             metrics,
+            self.arweave_adapter.cheap_clone(),
+            self.three_box_adapter.cheap_clone(),
         )
     }
 }
@@ -165,6 +177,8 @@ impl RuntimeHost {
         config: RuntimeHostConfig,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
+        arweave_adapter: Arc<dyn ArweaveAdapter>,
+        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Result<Self, Error> {
         let api_version = Version::parse(&config.mapping.api_version)?;
         if !VersionReq::parse("<= 0.0.4").unwrap().matches(&api_version) {
@@ -190,6 +204,10 @@ impl RuntimeHost {
             .clone();
 
         let data_source_name = config.data_source_name;
+        let timeout = std::env::var(TIMEOUT_ENV_VAR)
+            .ok()
+            .and_then(|s| u64::from_str(&s).ok())
+            .map(Duration::from_secs);
 
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
@@ -206,10 +224,9 @@ impl RuntimeHost {
             link_resolver,
             store,
             call_cache,
-            std::env::var(TIMEOUT_ENV_VAR)
-                .ok()
-                .and_then(|s| u64::from_str(&s).ok())
-                .map(Duration::from_secs),
+            timeout,
+            arweave_adapter,
+            three_box_adapter,
         ));
 
         Ok(RuntimeHost {

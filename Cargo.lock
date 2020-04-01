@@ -1194,6 +1194,7 @@ dependencies = [
  "Inflector",
  "async-trait",
  "bigdecimal",
+ "bytes 0.5.4",
  "chrono",
  "diesel",
  "ethabi 10.0.0",
@@ -1230,6 +1231,13 @@ dependencies = [
  "twox-hash",
  "url 2.1.1",
  "web3",
+]
+
+[[package]]
+name = "graph-chain-arweave"
+version = "0.17.1"
+dependencies = [
+ "graph",
 ]
 
 [[package]]
@@ -1316,6 +1324,7 @@ dependencies = [
  "futures 0.3.4",
  "git-testament",
  "graph",
+ "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-core",
  "graph-mock",
@@ -1347,9 +1356,11 @@ version = "0.17.1"
 dependencies = [
  "async-trait",
  "bs58",
+ "bytes 0.5.4",
  "ethabi 10.0.0",
  "futures 0.1.29",
  "graph",
+ "graph-chain-arweave",
  "graph-core",
  "graph-graphql",
  "graph-mock",

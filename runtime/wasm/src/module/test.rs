@@ -12,7 +12,9 @@ use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::mock::MockEthereumAdapter;
 use graph::prelude::Error;
+use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_core;
+use graph_core::three_box::ThreeBoxAdapter;
 use graph_mock::MockMetricsRegistry;
 use test_store::STORE;
 
@@ -128,6 +130,9 @@ fn mock_host_exports(
     store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) -> HostExports {
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
+    let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
+    let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
+
     HostExports::new(
         subgraph_id,
         Version::parse(&data_source.mapping.api_version).unwrap(),
@@ -147,6 +152,8 @@ fn mock_host_exports(
             .ok()
             .and_then(|s| u64::from_str(&s).ok())
             .map(std::time::Duration::from_secs),
+        arweave_adapter,
+        three_box_adapter,
     )
 }
 
