@@ -39,9 +39,9 @@ struct IndexingInputs<B, S> {
     top_level_templates: Arc<Vec<DataSourceTemplate>>,
 }
 
-struct IndexingState<T: RuntimeHostBuilder> {
+struct IndexingState {
     logger: Logger,
-    instance: SubgraphInstance<T>,
+    instance: SubgraphInstance,
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
@@ -49,7 +49,7 @@ struct IndexingState<T: RuntimeHostBuilder> {
     entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
-struct IndexingContext<B, T: RuntimeHostBuilder, S> {
+struct IndexingContext<B, S> {
     /// Read only inputs that are needed while indexing a subgraph.
     pub inputs: IndexingInputs<B, S>,
 

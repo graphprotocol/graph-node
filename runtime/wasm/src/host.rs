@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use async_trait::async_trait;
 use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
@@ -9,20 +11,96 @@ use semver::{Version, VersionReq};
 use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
 use tiny_keccak::keccak256;
+use wasmi::{RuntimeArgs, RuntimeValue, Trap};
 
 use graph::components::ethereum::*;
 use graph::components::store::Store;
 use graph::data::subgraph::{Mapping, Source};
-use graph::prelude::{
-    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
-};
+use graph::prelude::*;
 use graph::util;
 use web3::types::{Log, Transaction};
 
 use crate::host_exports::HostExports;
 use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
+use crate::module::WasmiModule;
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
+
+pub struct HostFunction {
+    pub name: String,
+    pub full_name: String,
+    pub metrics_name: String,
+}
+
+pub trait HostModule: Send + Sync {
+    fn name(&self) -> &str;
+    fn functions(&self) -> &Vec<HostFunction>;
+    fn invoke(
+        &self,
+        heap: &mut WasmiModule,
+        full_name: &str,
+        args: RuntimeArgs,
+    ) -> Result<Option<RuntimeValue>, Trap>;
+}
+
+pub type HostModules = Vec<Arc<dyn HostModule>>;
+
+pub struct HostMetrics {
+    handler_execution_time: Box<HistogramVec>,
+    host_fn_execution_time: Box<HistogramVec>,
+    pub stopwatch: StopwatchMetrics,
+}
+
+impl fmt::Debug for HostMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO: `HistogramVec` does not implement fmt::Debug, what is the best way to deal with this?
+        write!(f, "HostMetrics {{ }}")
+    }
+}
+
+impl HostMetrics {
+    pub fn new(
+        registry: Arc<impl MetricsRegistry>,
+        subgraph_hash: String,
+        stopwatch: StopwatchMetrics,
+    ) -> Self {
+        let handler_execution_time = registry
+            .new_histogram_vec(
+                format!("subgraph_handler_execution_time_{}", subgraph_hash),
+                String::from("Measures the execution time for handlers"),
+                HashMap::new(),
+                vec![String::from("handler")],
+                vec![0.1, 0.5, 1.0, 10.0, 100.0],
+            )
+            .expect("failed to create `subgraph_handler_execution_time` histogram");
+        let host_fn_execution_time = registry
+            .new_histogram_vec(
+                format!("subgraph_host_fn_execution_time_{}", subgraph_hash),
+                String::from("Measures the execution time for host functions"),
+                HashMap::new(),
+                vec![String::from("host_fn_name")],
+                vec![0.025, 0.05, 0.2, 2.0, 8.0, 20.0],
+            )
+            .expect("failed to create `subgraph_host_fn_execution_time` histogram");
+        Self {
+            handler_execution_time,
+            host_fn_execution_time,
+            stopwatch,
+        }
+    }
+
+    pub fn observe_handler_execution_time(&self, duration: f64, handler: &str) {
+        self.handler_execution_time
+            .with_label_values(vec![handler].as_slice())
+            .observe(duration);
+    }
+
+    pub fn observe_host_fn_execution_time(&self, duration: f64, fn_name: &str) {
+        self.host_fn_execution_time
+            .with_label_values(vec![fn_name].as_slice())
+            .observe(duration);
+    }
+}
 
 struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
@@ -35,7 +113,6 @@ struct RuntimeHostConfig {
 }
 
 pub struct RuntimeHostBuilder<S> {
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
     link_resolver: Arc<dyn LinkResolver>,
     store: Arc<S>,
 }
@@ -46,7 +123,6 @@ where
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapter: self.ethereum_adapter.clone(),
             link_resolver: self.link_resolver.clone(),
             store: self.store.clone(),
         }
@@ -57,34 +133,23 @@ impl<S> RuntimeHostBuilder<S>
 where
     S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
-    pub fn new(
-        ethereum_adapter: Arc<dyn EthereumAdapter>,
-        link_resolver: Arc<dyn LinkResolver>,
-        store: Arc<S>,
-    ) -> Self {
+    pub fn new(link_resolver: Arc<dyn LinkResolver>, store: Arc<S>) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapter,
             link_resolver,
             store,
         }
     }
-}
 
-impl<S> RuntimeHostBuilderTrait for RuntimeHostBuilder<S>
-where
-    S: Send + Sync + 'static + Store + SubgraphDeploymentStore + EthereumCallCache,
-{
-    type Host = RuntimeHost;
-    type Req = MappingRequest;
-
-    fn spawn_mapping(
+    pub fn spawn_mapping(
         parsed_module: parity_wasm::elements::Module,
+        host_modules: Arc<HostModules>,
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Sender<Self::Req>, Error> {
+    ) -> Result<Sender<MappingRequest>, Error> {
         crate::mapping::spawn_module(
             parsed_module,
+            host_modules,
             logger,
             subgraph_id,
             metrics,
@@ -100,7 +165,7 @@ where
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Self::Host, Error> {
+    ) -> Result<RuntimeHost, Error> {
         // Detect whether the subgraph uses templates in data sources, which are
         // deprecated, or the top-level templates field.
         let templates = match top_level_templates.is_empty() {
@@ -109,7 +174,6 @@ where
         };
 
         RuntimeHost::new(
-            self.ethereum_adapter.clone(),
             self.link_resolver.clone(),
             self.store.clone(),
             self.store.clone(),
@@ -143,7 +207,6 @@ pub struct RuntimeHost {
 
 impl RuntimeHost {
     fn new(
-        ethereum_adapter: Arc<dyn EthereumAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
@@ -187,7 +250,6 @@ impl RuntimeHost {
             config.data_source_context,
             config.templates,
             config.mapping.abis,
-            ethereum_adapter,
             link_resolver,
             store,
             call_cache,
@@ -357,7 +419,7 @@ impl RuntimeHost {
         handler: &str,
         trigger: MappingTrigger,
         block: &Arc<LightEthereumBlock>,
-    ) -> Result<BlockState, failure::Error> {
+    ) -> Result<BlockState, Error> {
         let trigger_type = trigger.as_static();
         debug!(
             logger, "Start processing Ethereum trigger";
@@ -414,10 +476,7 @@ impl RuntimeHost {
 
         result
     }
-}
 
-#[async_trait]
-impl RuntimeHostTrait for RuntimeHost {
     fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log)
             && self.matches_log_signature(log)
@@ -603,7 +662,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 })?;
                 Ok((event_handler, event_abi))
             })
-            .collect::<Result<Vec<_>, failure::Error>>()?;
+            .collect::<Result<Vec<_>, Error>>()?;
 
         // Filter out handlers whose corresponding event ABIs cannot decode the
         // params (this is common for overloaded events that have the same topic0

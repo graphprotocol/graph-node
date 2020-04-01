@@ -45,7 +45,6 @@ pub(crate) struct HostExports {
     data_source_context: Option<DataSourceContext>,
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<MappingABI>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
     link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
     store: Arc<dyn crate::RuntimeStore>,
@@ -69,7 +68,6 @@ impl HostExports {
         data_source_context: Option<DataSourceContext>,
         templates: Arc<Vec<DataSourceTemplate>>,
         abis: Vec<MappingABI>,
-        ethereum_adapter: Arc<dyn EthereumAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
@@ -84,7 +82,6 @@ impl HostExports {
             data_source_context,
             templates,
             abis,
-            ethereum_adapter,
             link_resolver,
             call_cache,
             store,
@@ -203,101 +200,100 @@ impl HostExports {
         result
     }
 
-    /// Returns `Ok(None)` if the call was reverted.
-    pub(crate) fn ethereum_call(
-        &self,
-        logger: &Logger,
-        block: &LightEthereumBlock,
-        unresolved_call: UnresolvedContractCall,
-    ) -> Result<Option<Vec<Token>>, HostExportError<impl ExportError>> {
-        let start_time = Instant::now();
+    // /// Returns `Ok(None)` if the call was reverted.
+    // pub(crate) fn ethereum_call(
+    //     &self,
+    //     logger: &Logger,
+    //     block: &LightEthereumBlock,
+    //     unresolved_call: UnresolvedContractCall,
+    // ) -> Result<Option<Vec<Token>>, HostExportError<impl ExportError>> {
+    //     let start_time = Instant::now();
 
-        // Obtain the path to the contract ABI
-        let contract = self
-            .abis
-            .iter()
-            .find(|abi| abi.name == unresolved_call.contract_name)
-            .ok_or_else(|| {
-                HostExportError(format!(
-                    "Could not find ABI for contract \"{}\", try adding it to the 'abis' section \
-                     of the subgraph manifest",
-                    unresolved_call.contract_name
-                ))
-            })?
-            .contract
-            .clone();
+    //     // Obtain the path to the contract ABI
+    //     let contract = self
+    //         .abis
+    //         .iter()
+    //         .find(|abi| abi.name == unresolved_call.contract_name)
+    //         .ok_or_else(|| {
+    //             HostExportError(format!(
+    //                 "Could not find ABI for contract \"{}\", try adding it to the 'abis' section \
+    //                  of the subgraph manifest",
+    //                 unresolved_call.contract_name
+    //             ))
+    //         })?
+    //         .contract
+    //         .clone();
 
-        let function = match unresolved_call.function_signature {
-            // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
-            // functions this always picks the same overloaded variant, which is incorrect
-            // and may lead to encoding/decoding errors
-            None => contract
-                .function(unresolved_call.function_name.as_str())
-                .map_err(|e| {
-                    HostExportError(format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime: {}",
-                        unresolved_call.contract_name, unresolved_call.function_name, e
-                    ))
-                })?,
+    //     let function = match unresolved_call.function_signature {
+    //         // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
+    //         // functions this always picks the same overloaded variant, which is incorrect
+    //         // and may lead to encoding/decoding errors
+    //         None => contract
+    //             .function(unresolved_call.function_name.as_str())
+    //             .map_err(|e| {
+    //                 HostExportError(format!(
+    //                     "Unknown function \"{}::{}\" called from WASM runtime: {}",
+    //                     unresolved_call.contract_name, unresolved_call.function_name, e
+    //                 ))
+    //             })?,
 
-            // Behavior for apiVersion >= 0.0.04: look up function by signature of
-            // the form `functionName(uint256,string) returns (bytes32,string)`; this
-            // correctly picks the correct variant of an overloaded function
-            Some(ref function_signature) => contract
-                .functions_by_name(unresolved_call.function_name.as_str())
-                .map_err(|e| {
-                    HostExportError(format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime: {}",
-                        unresolved_call.contract_name, unresolved_call.function_name, e
-                    ))
-                })?
-                .iter()
-                .find(|f| function_signature == &f.signature())
-                .ok_or_else(|| {
-                    HostExportError(format!(
-                        "Unknown function \"{}::{}\" with signature `{}` \
-                         called from WASM runtime",
-                        unresolved_call.contract_name,
-                        unresolved_call.function_name,
-                        function_signature,
-                    ))
-                })?,
-        };
+    //         // Behavior for apiVersion >= 0.0.04: look up function by signature of
+    //         // the form `functionName(uint256,string) returns (bytes32,string)`; this
+    //         // correctly picks the correct variant of an overloaded function
+    //         Some(ref function_signature) => contract
+    //             .functions_by_name(unresolved_call.function_name.as_str())
+    //             .map_err(|e| {
+    //                 HostExportError(format!(
+    //                     "Unknown function \"{}::{}\" called from WASM runtime: {}",
+    //                     unresolved_call.contract_name, unresolved_call.function_name, e
+    //                 ))
+    //             })?
+    //             .iter()
+    //             .find(|f| function_signature == &f.signature())
+    //             .ok_or_else(|| {
+    //                 HostExportError(format!(
+    //                     "Unknown function \"{}::{}\" with signature `{}` \
+    //                      called from WASM runtime",
+    //                     unresolved_call.contract_name,
+    //                     unresolved_call.function_name,
+    //                     function_signature,
+    //                 ))
+    //             })?,
+    //     };
 
-        let call = EthereumContractCall {
-            address: unresolved_call.contract_address.clone(),
-            block_ptr: block.into(),
-            function: function.clone(),
-            args: unresolved_call.function_args.clone(),
-        };
+    //     let call = EthereumContractCall {
+    //         address: unresolved_call.contract_address.clone(),
+    //         block_ptr: block.into(),
+    //         function: function.clone(),
+    //         args: unresolved_call.function_args.clone(),
+    //     };
 
-        // Run Ethereum call in tokio runtime
-        let eth_adapter = self.ethereum_adapter.clone();
-        let logger1 = logger.clone();
-        let call_cache = self.call_cache.clone();
-        let result = match block_on(future::lazy(move || {
-            eth_adapter.contract_call(&logger1, call, call_cache)
-        })) {
-            Ok(tokens) => Ok(Some(tokens)),
-            Err(EthereumContractCallError::Revert(reason)) => {
-                info!(logger, "Contract call reverted"; "reason" => reason);
-                Ok(None)
-            }
-            Err(e) => Err(HostExportError(format!(
-                "Failed to call function \"{}\" of contract \"{}\": {}",
-                unresolved_call.function_name, unresolved_call.contract_name, e
-            ))),
-        };
+    //     // Run Ethereum call in tokio runtime
+    //     let logger1 = logger.clone();
+    //     let call_cache = self.call_cache.clone();
+    //     let result = match block_on(future::lazy(move || {
+    //         eth_adapter.contract_call(&logger1, call, call_cache)
+    //     })) {
+    //         Ok(tokens) => Ok(Some(tokens)),
+    //         Err(EthereumContractCallError::Revert(reason)) => {
+    //             info!(logger, "Contract call reverted"; "reason" => reason);
+    //             Ok(None)
+    //         }
+    //         Err(e) => Err(HostExportError(format!(
+    //             "Failed to call function \"{}\" of contract \"{}\": {}",
+    //             unresolved_call.function_name, unresolved_call.contract_name, e
+    //         ))),
+    //     };
 
-        debug!(logger, "Contract call finished";
-              "address" => &unresolved_call.contract_address.to_string(),
-              "contract" => &unresolved_call.contract_name,
-              "function" => &unresolved_call.function_name,
-              "function_signature" => &unresolved_call.function_signature,
-              "time" => format!("{}ms", start_time.elapsed().as_millis()));
+    //     debug!(logger, "Contract call finished";
+    //           "address" => &unresolved_call.contract_address.to_string(),
+    //           "contract" => &unresolved_call.contract_name,
+    //           "function" => &unresolved_call.function_name,
+    //           "function_signature" => &unresolved_call.function_signature,
+    //           "time" => format!("{}ms", start_time.elapsed().as_millis()));
 
-        result
-    }
+    //     result
+    // }
 
     /// Converts bytes to a hex string.
     /// References:
@@ -390,6 +386,7 @@ impl HostExports {
             return Err(HostExportError(format!("Flags must contain 'json'")));
         }
 
+        let host_modules = module.custom_host_modules.clone();
         let host_metrics = module.host_metrics.clone();
         let valid_module = module.valid_module.clone();
         let ctx = module.ctx.clone_with_empty_block_state();
@@ -412,8 +409,9 @@ impl HostExports {
             let mut v = Vec::new();
             while let Some(sv) = stream.next().await {
                 let sv = sv?;
-                let module = WasmiModule::from_valid_module_with_ctx(
+                let module: WasmiModule = WasmiModule::from_valid_module_with_ctx(
                     valid_module.clone(),
+                    host_modules.clone(),
                     ctx.clone_with_empty_block_state(),
                     host_metrics.clone(),
                 )?;

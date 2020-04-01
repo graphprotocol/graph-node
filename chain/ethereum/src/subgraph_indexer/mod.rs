@@ -1,3 +1,4 @@
+mod host_modules;
 mod indexer;
 mod instance;
 

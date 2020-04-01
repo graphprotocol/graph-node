@@ -17,6 +17,7 @@ lazy_static = "1.2.0"
 hex-literal = "0.2"
 state_machine_future = "0.2"
 uuid = { version = "0.8.1", features = ["v4"] }
+wasmi = "0.5.1"
 
 [dev-dependencies]
 diesel = { version = "1.4.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }

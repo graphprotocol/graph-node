@@ -4,85 +4,33 @@ use std::fmt;
 use std::ops::Deref;
 use std::time::Instant;
 
+use ethabi::LogParam;
 use semver::Version;
 use wasmi::{
     nan_preserving_float::F64, Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder,
     MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef, RuntimeArgs, RuntimeValue,
     Signature, Trap,
 };
+use web3::types::{Log, Transaction, U256};
 
-use crate::host_exports::{self, HostExportError};
-use crate::mapping::MappingContext;
-use ethabi::LogParam;
 use graph::components::ethereum::*;
 use graph::data::store;
 use graph::prelude::{Error as FailureError, *};
-use web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
 use crate::asc_abi::*;
+use crate::host_exports::{self, HostExportError};
+use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
+use crate::{HostMetrics, HostModules};
+
+mod host_modules;
+use host_modules::{CoreModule, EnvModule, IpfsModule, StoreModule};
 
 #[cfg(test)]
 mod test;
-
-// Indexes for exported host functions
-const ABORT_FUNC_INDEX: usize = 0;
-const STORE_SET_FUNC_INDEX: usize = 1;
-const STORE_REMOVE_FUNC_INDEX: usize = 2;
-const ETHEREUM_CALL_FUNC_INDEX: usize = 3;
-const TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX: usize = 4;
-const TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX: usize = 5;
-const TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX: usize = 6;
-const TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX: usize = 7;
-const TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX: usize = 8;
-const TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX: usize = 9;
-const TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX: usize = 10;
-const JSON_FROM_BYTES_FUNC_INDEX: usize = 11;
-const JSON_TO_I64_FUNC_INDEX: usize = 12;
-const JSON_TO_U64_FUNC_INDEX: usize = 13;
-const JSON_TO_F64_FUNC_INDEX: usize = 14;
-const JSON_TO_BIG_INT_FUNC_INDEX: usize = 15;
-const IPFS_CAT_FUNC_INDEX: usize = 16;
-const STORE_GET_FUNC_INDEX: usize = 17;
-const CRYPTO_KECCAK_256_INDEX: usize = 18;
-const BIG_INT_PLUS: usize = 19;
-const BIG_INT_MINUS: usize = 20;
-const BIG_INT_TIMES: usize = 21;
-const BIG_INT_DIVIDED_BY: usize = 22;
-const BIG_INT_MOD: usize = 23;
-const GAS_FUNC_INDEX: usize = 24;
-const TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX: usize = 25;
-const BIG_INT_DIVIDED_BY_DECIMAL: usize = 26;
-const BIG_DECIMAL_PLUS: usize = 27;
-const BIG_DECIMAL_MINUS: usize = 28;
-const BIG_DECIMAL_TIMES: usize = 29;
-const BIG_DECIMAL_DIVIDED_BY: usize = 30;
-const BIG_DECIMAL_EQUALS: usize = 31;
-const BIG_DECIMAL_TO_STRING: usize = 32;
-const BIG_DECIMAL_FROM_STRING: usize = 33;
-const IPFS_MAP_FUNC_INDEX: usize = 34;
-const DATA_SOURCE_CREATE_INDEX: usize = 35;
-const ENS_NAME_BY_HASH: usize = 36;
-const LOG_LOG: usize = 37;
-const BIG_INT_POW: usize = 38;
-const DATA_SOURCE_ADDRESS: usize = 39;
-const DATA_SOURCE_NETWORK: usize = 40;
-const DATA_SOURCE_CREATE_WITH_CONTEXT: usize = 41;
-const DATA_SOURCE_CONTEXT: usize = 42;
-
-/// Transform function index into the function name string
-fn fn_index_to_metrics_string(index: usize) -> Option<&'static str> {
-    match index {
-        STORE_GET_FUNC_INDEX => Some("store_get"),
-        ETHEREUM_CALL_FUNC_INDEX => Some("ethereum_call"),
-        IPFS_MAP_FUNC_INDEX => Some("ipfs_map"),
-        IPFS_CAT_FUNC_INDEX => Some("ipfs_cat"),
-        _ => None,
-    }
-}
 
 /// A common error is a trap in the host, so simplify the message in that case.
 fn format_wasmi_error(e: Error) -> String {
@@ -96,13 +44,15 @@ fn format_wasmi_error(e: Error) -> String {
 }
 
 /// A WASM module based on wasmi that powers a subgraph runtime.
-pub(crate) struct WasmiModule {
+pub struct WasmiModule {
     pub module: ModuleRef,
     memory: MemoryRef,
 
     pub ctx: MappingContext,
     pub(crate) valid_module: Arc<ValidModule>,
     pub(crate) host_metrics: Arc<HostMetrics>,
+    pub(crate) custom_host_modules: Arc<HostModules>,
+    pub(crate) builtin_host_modules: Arc<HostModules>,
 
     // Time when the current handler began processing.
     start_time: Instant,
@@ -125,18 +75,20 @@ impl WasmiModule {
     /// Creates a new wasmi module
     pub fn from_valid_module_with_ctx(
         valid_module: Arc<ValidModule>,
+        custom_host_modules: Arc<HostModules>,
         ctx: MappingContext,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, FailureError> {
+        let builtin_host_modules: Arc<HostModules> = Arc::new(vec![Arc::new(CoreModule::new())]);
+
         // Build import resolver
         let mut imports = ImportsBuilder::new();
-
+        let import_resolver = HostModulesImportResolver::new(
+            builtin_host_modules.clone(),
+            custom_host_modules.clone(),
+        );
         for host_module_name in valid_module.host_module_names.iter() {
-            if host_module_name.as_str() == "env" {
-                imports.push_resolver(host_module_name.clone(), &EnvModuleResolver);
-            } else {
-                imports.push_resolver(host_module_name.clone(), &ModuleResolver);
-            }
+            imports.push_resolver(host_module_name.clone(), &import_resolver);
         }
 
         // Instantiate the runtime module using hosted functions and import resolver
@@ -158,6 +110,8 @@ impl WasmiModule {
             ctx,
             valid_module: valid_module.clone(),
             host_metrics,
+            builtin_host_modules,
+            custom_host_modules,
             start_time: Instant::now(),
             running_start: true,
 
@@ -468,21 +422,6 @@ impl WasmiModule {
         }))
     }
 
-    /// function ethereum.call(call: SmartContractCall): Array<Token> | null
-    fn ethereum_call(
-        &mut self,
-        call: UnresolvedContractCall,
-    ) -> Result<Option<RuntimeValue>, Trap> {
-        let result =
-            self.ctx
-                .host_exports
-                .ethereum_call(&self.ctx.logger, &self.ctx.block, call)?;
-        Ok(Some(match result {
-            Some(tokens) => RuntimeValue::from(self.asc_new(tokens.as_slice())),
-            None => RuntimeValue::from(0),
-        }))
-    }
-
     /// function typeConversion.bytesToString(bytes: Bytes): string
     fn bytes_to_string(
         &mut self,
@@ -510,16 +449,6 @@ impl WasmiModule {
         let bytes: Vec<u8> = self.asc_get(big_int_ptr);
         let n = BigInt::from_signed_bytes_le(&*bytes);
         let result = self.ctx.host_exports.big_int_to_string(n);
-        Ok(Some(RuntimeValue::from(self.asc_new(&result))))
-    }
-
-    /// function typeConversion.bigIntToHex(n: Uint8Array): string
-    fn big_int_to_hex(
-        &mut self,
-        big_int_ptr: AscPtr<AscBigInt>,
-    ) -> Result<Option<RuntimeValue>, Trap> {
-        let n: BigInt = self.asc_get(big_int_ptr);
-        let result = self.ctx.host_exports.big_int_to_hex(n);
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -955,248 +884,310 @@ impl WasmiModule {
     }
 }
 
+struct HostModulesImportResolver {
+    builtin_host_modules: Arc<HostModules>,
+    custom_host_modules: Arc<HostModules>,
+}
+
+impl HostModulesImportResolver {
+    pub fn new(
+        builtin_host_modules: Arc<HostModules>,
+        custom_host_modules: Arc<HostModules>,
+    ) -> Self {
+        Self {
+            builtin_host_modules,
+            custom_host_modules,
+        }
+    }
+}
+
+impl ModuleImportResolver for HostModulesImportResolver {
+    fn resolve_func(&self, full_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
+        let mut index: usize = 0;
+
+        for host_module in self.builtin_host_modules.iter() {
+            for func in host_module.functions().iter() {
+                if full_name == func.full_name.as_str() {
+                    return Ok(FuncInstance::alloc_host(signature.clone(), index));
+                }
+                index += 1;
+            }
+        }
+
+        for host_module in self.custom_host_modules.iter() {
+            for func in host_module.functions().iter() {
+                if full_name == func.full_name.as_str() {
+                    return Ok(FuncInstance::alloc_host(signature.clone(), index));
+                }
+                index += 1;
+            }
+        }
+
+        Err(Error::Instantiation(format!(
+            "Export `{}` not found",
+            full_name
+        )))
+    }
+}
+
 impl Externals for WasmiModule {
     fn invoke_index(
         &mut self,
         index: usize,
         args: RuntimeArgs,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        // This function is hot, so avoid the cost of registering metrics.
-        if index == GAS_FUNC_INDEX {
-            return self.gas();
+        // Find the export in the built-in and custom host exports
+
+        let mut i: usize = 0;
+
+        for host_module in self.builtin_host_modules.clone().iter() {
+            for func in host_module.functions().iter() {
+                if i == index {
+                    return host_module.invoke(self, func.full_name.as_str(), args);
+                }
+                i += 1;
+            }
         }
 
-        // Start a catch-all section for exports that don't have their own section.
-        let stopwatch = self.host_metrics.stopwatch.clone();
-        let _section = stopwatch.start_section("host_export_other");
-        let start = Instant::now();
-        let res = match index {
-            ABORT_FUNC_INDEX => self.abort(
-                args.nth_checked(0)?,
-                args.nth_checked(1)?,
-                args.nth_checked(2)?,
-                args.nth_checked(3)?,
-            ),
-            STORE_SET_FUNC_INDEX => {
-                let _section = stopwatch.start_section("host_export_store_set");
-                self.store_set(
-                    args.nth_checked(0)?,
-                    args.nth_checked(1)?,
-                    args.nth_checked(2)?,
-                )
+        for host_module in self.custom_host_modules.clone().iter() {
+            for func in host_module.functions().iter() {
+                if i == index {
+                    return host_module.invoke(self, func.full_name.as_str(), args);
+                }
+                i += 1;
             }
-            STORE_GET_FUNC_INDEX => {
-                let _section = stopwatch.start_section("host_export_store_get");
-                self.store_get(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
-            STORE_REMOVE_FUNC_INDEX => {
-                self.store_remove(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
-            ETHEREUM_CALL_FUNC_INDEX => {
-                let _section = stopwatch.start_section("host_export_ethereum_call");
+        }
 
-                // For apiVersion >= 0.0.4 the call passed from the mapping includes the
-                // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
-                // the the signature along with the call.
-                let arg = if self.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
-                    self.asc_get::<_, AscUnresolvedContractCall_0_0_4>(args.nth_checked(0)?)
-                } else {
-                    self.asc_get::<_, AscUnresolvedContractCall>(args.nth_checked(0)?)
-                };
-
-                self.ethereum_call(arg)
-            }
-            TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
-                self.bytes_to_string(args.nth_checked(0)?)
-            }
-            TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX => self.bytes_to_hex(args.nth_checked(0)?),
-            TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX => {
-                self.big_int_to_string(args.nth_checked(0)?)
-            }
-            TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX => self.big_int_to_hex(args.nth_checked(0)?),
-            TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX => self.string_to_h160(args.nth_checked(0)?),
-            TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX => self.i32_to_big_int(args.nth_checked(0)?),
-            TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX => self.big_int_to_i32(args.nth_checked(0)?),
-            JSON_FROM_BYTES_FUNC_INDEX => self.json_from_bytes(args.nth_checked(0)?),
-            JSON_TO_I64_FUNC_INDEX => self.json_to_i64(args.nth_checked(0)?),
-            JSON_TO_U64_FUNC_INDEX => self.json_to_u64(args.nth_checked(0)?),
-            JSON_TO_F64_FUNC_INDEX => self.json_to_f64(args.nth_checked(0)?),
-            JSON_TO_BIG_INT_FUNC_INDEX => self.json_to_big_int(args.nth_checked(0)?),
-            IPFS_CAT_FUNC_INDEX => {
-                let _section = stopwatch.start_section("host_export_ipfs_cat");
-                self.ipfs_cat(args.nth_checked(0)?)
-            }
-            CRYPTO_KECCAK_256_INDEX => self.crypto_keccak_256(args.nth_checked(0)?),
-            BIG_INT_PLUS => self.big_int_plus(args.nth_checked(0)?, args.nth_checked(1)?),
-            BIG_INT_MINUS => self.big_int_minus(args.nth_checked(0)?, args.nth_checked(1)?),
-            BIG_INT_TIMES => self.big_int_times(args.nth_checked(0)?, args.nth_checked(1)?),
-            BIG_INT_DIVIDED_BY => {
-                self.big_int_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
-            BIG_INT_DIVIDED_BY_DECIMAL => {
-                self.big_int_divided_by_decimal(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
-            BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
-            BIG_INT_POW => self.big_int_pow(args.nth_checked(0)?, args.nth_checked(1)?),
-            TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX => self.bytes_to_base58(args.nth_checked(0)?),
-            BIG_DECIMAL_PLUS => self.big_decimal_plus(args.nth_checked(0)?, args.nth_checked(1)?),
-            BIG_DECIMAL_MINUS => self.big_decimal_minus(args.nth_checked(0)?, args.nth_checked(1)?),
-            BIG_DECIMAL_TIMES => self.big_decimal_times(args.nth_checked(0)?, args.nth_checked(1)?),
-            BIG_DECIMAL_DIVIDED_BY => {
-                self.big_decimal_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
-            BIG_DECIMAL_EQUALS => {
-                self.big_decimal_equals(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
-            BIG_DECIMAL_TO_STRING => self.big_decimal_to_string(args.nth_checked(0)?),
-            BIG_DECIMAL_FROM_STRING => self.big_decimal_from_string(args.nth_checked(0)?),
-            IPFS_MAP_FUNC_INDEX => {
-                let _section = stopwatch.start_section("host_export_ipfs_map");
-                self.ipfs_map(
-                    args.nth_checked(0)?,
-                    args.nth_checked(1)?,
-                    args.nth_checked(2)?,
-                    args.nth_checked(3)?,
-                )
-            }
-            DATA_SOURCE_CREATE_INDEX => {
-                self.data_source_create(args.nth_checked(0)?, args.nth_checked(1)?)
-            }
-            ENS_NAME_BY_HASH => self.ens_name_by_hash(args.nth_checked(0)?),
-            LOG_LOG => self.log_log(args.nth_checked(0)?, args.nth_checked(1)?),
-            DATA_SOURCE_ADDRESS => self.data_source_address(),
-            DATA_SOURCE_NETWORK => self.data_source_network(),
-            DATA_SOURCE_CREATE_WITH_CONTEXT => self.data_source_create_with_context(
-                args.nth_checked(0)?,
-                args.nth_checked(1)?,
-                args.nth_checked(2)?,
-            ),
-            DATA_SOURCE_CONTEXT => self.data_source_context(),
-            _ => panic!("Unimplemented function at {}", index),
-        };
-        // Record execution time
-        fn_index_to_metrics_string(index).map(|name| {
-            self.host_metrics
-                .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), name);
-        });
-        res
+        Err(HostExportError(format!("no function found at index {}", index)).into())
     }
 }
 
-/// Env module resolver
-pub struct EnvModuleResolver;
+//impl Externals for WasmiModule {
+// fn invoke_index(
+//     &mut self,
+//     index: usize,
+//     args: RuntimeArgs,
+// ) -> Result<Option<RuntimeValue>, Trap> {
+//     // This function is hot, so avoid the cost of registering metrics.
+//     if index == GAS_FUNC_INDEX {
+//         return self.gas();
+//     }
 
-impl ModuleImportResolver for EnvModuleResolver {
-    fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
-        Ok(match field_name {
-            "gas" => FuncInstance::alloc_host(signature.clone(), GAS_FUNC_INDEX),
-            "abort" => FuncInstance::alloc_host(signature.clone(), ABORT_FUNC_INDEX),
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )));
-            }
-        })
-    }
-}
+//     // Start a catch-all section for exports that don't have their own section.
+//     let stopwatch = self.host_metrics.stopwatch.clone();
+//     let _section = stopwatch.start_section("host_export_other");
+//     let start = Instant::now();
+//     let res = match index {
+//         ABORT_FUNC_INDEX => self.abort(
+//             args.nth_checked(0)?,
+//             args.nth_checked(1)?,
+//             args.nth_checked(2)?,
+//             args.nth_checked(3)?,
+//         ),
+//         STORE_SET_FUNC_INDEX => {
+//             let _section = stopwatch.start_section("host_export_store_set");
+//             self.store_set(
+//                 args.nth_checked(0)?,
+//                 args.nth_checked(1)?,
+//                 args.nth_checked(2)?,
+//             )
+//         }
+//         STORE_GET_FUNC_INDEX => {
+//             let _section = stopwatch.start_section("host_export_store_get");
+//             self.store_get(args.nth_checked(0)?, args.nth_checked(1)?)
+//         }
+//         STORE_REMOVE_FUNC_INDEX => {
+//             self.store_remove(args.nth_checked(0)?, args.nth_checked(1)?)
+//         }
 
-pub struct ModuleResolver;
+//         TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX => {
+//             self.bytes_to_string(args.nth_checked(0)?)
+//         }
+//         TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX => self.bytes_to_hex(args.nth_checked(0)?),
+//         TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX => {
+//             self.big_int_to_string(args.nth_checked(0)?)
+//         }
+//         TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX => self.big_int_to_hex(args.nth_checked(0)?),
+//         TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX => self.string_to_h160(args.nth_checked(0)?),
+//         TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX => self.i32_to_big_int(args.nth_checked(0)?),
+//         TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX => self.big_int_to_i32(args.nth_checked(0)?),
+//         JSON_FROM_BYTES_FUNC_INDEX => self.json_from_bytes(args.nth_checked(0)?),
+//         JSON_TO_I64_FUNC_INDEX => self.json_to_i64(args.nth_checked(0)?),
+//         JSON_TO_U64_FUNC_INDEX => self.json_to_u64(args.nth_checked(0)?),
+//         JSON_TO_F64_FUNC_INDEX => self.json_to_f64(args.nth_checked(0)?),
+//         JSON_TO_BIG_INT_FUNC_INDEX => self.json_to_big_int(args.nth_checked(0)?),
+//         IPFS_CAT_FUNC_INDEX => {
+//             let _section = stopwatch.start_section("host_export_ipfs_cat");
+//             self.ipfs_cat(args.nth_checked(0)?)
+//         }
+//         CRYPTO_KECCAK_256_INDEX => self.crypto_keccak_256(args.nth_checked(0)?),
+//         BIG_INT_PLUS => self.big_int_plus(args.nth_checked(0)?, args.nth_checked(1)?),
+//         BIG_INT_MINUS => self.big_int_minus(args.nth_checked(0)?, args.nth_checked(1)?),
+//         BIG_INT_TIMES => self.big_int_times(args.nth_checked(0)?, args.nth_checked(1)?),
+//         BIG_INT_DIVIDED_BY => {
+//             self.big_int_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
+//         }
+//         BIG_INT_DIVIDED_BY_DECIMAL => {
+//             self.big_int_divided_by_decimal(args.nth_checked(0)?, args.nth_checked(1)?)
+//         }
+//         BIG_INT_MOD => self.big_int_mod(args.nth_checked(0)?, args.nth_checked(1)?),
+//         BIG_INT_POW => self.big_int_pow(args.nth_checked(0)?, args.nth_checked(1)?),
+//         TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX => self.bytes_to_base58(args.nth_checked(0)?),
+//         BIG_DECIMAL_PLUS => self.big_decimal_plus(args.nth_checked(0)?, args.nth_checked(1)?),
+//         BIG_DECIMAL_MINUS => self.big_decimal_minus(args.nth_checked(0)?, args.nth_checked(1)?),
+//         BIG_DECIMAL_TIMES => self.big_decimal_times(args.nth_checked(0)?, args.nth_checked(1)?),
+//         BIG_DECIMAL_DIVIDED_BY => {
+//             self.big_decimal_divided_by(args.nth_checked(0)?, args.nth_checked(1)?)
+//         }
+//         BIG_DECIMAL_EQUALS => {
+//             self.big_decimal_equals(args.nth_checked(0)?, args.nth_checked(1)?)
+//         }
+//         BIG_DECIMAL_TO_STRING => self.big_decimal_to_string(args.nth_checked(0)?),
+//         BIG_DECIMAL_FROM_STRING => self.big_decimal_from_string(args.nth_checked(0)?),
+//         IPFS_MAP_FUNC_INDEX => {
+//             let _section = stopwatch.start_section("host_export_ipfs_map");
+//             self.ipfs_map(
+//                 args.nth_checked(0)?,
+//                 args.nth_checked(1)?,
+//                 args.nth_checked(2)?,
+//                 args.nth_checked(3)?,
+//             )
+//         }
+//         DATA_SOURCE_CREATE_INDEX => {
+//             self.data_source_create(args.nth_checked(0)?, args.nth_checked(1)?)
+//         }
+//         ENS_NAME_BY_HASH => self.ens_name_by_hash(args.nth_checked(0)?),
+//         LOG_LOG => self.log_log(args.nth_checked(0)?, args.nth_checked(1)?),
+//         DATA_SOURCE_ADDRESS => self.data_source_address(),
+//         DATA_SOURCE_NETWORK => self.data_source_network(),
+//         DATA_SOURCE_CREATE_WITH_CONTEXT => self.data_source_create_with_context(
+//             args.nth_checked(0)?,
+//             args.nth_checked(1)?,
+//             args.nth_checked(2)?,
+//         ),
+//         DATA_SOURCE_CONTEXT => self.data_source_context(),
+//         _ => panic!("Unimplemented function at {}", index),
+//     };
+//     // Record execution time
+//     fn_index_to_metrics_string(index).map(|name| {
+//         self.host_metrics
+//             .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), name);
+//     });
+//     res
+// }
+// }
 
-impl ModuleImportResolver for ModuleResolver {
-    fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
-        let signature = signature.clone();
-        Ok(match field_name {
-            // store
-            "store.set" => FuncInstance::alloc_host(signature, STORE_SET_FUNC_INDEX),
-            "store.remove" => FuncInstance::alloc_host(signature, STORE_REMOVE_FUNC_INDEX),
-            "store.get" => FuncInstance::alloc_host(signature, STORE_GET_FUNC_INDEX),
-
-            // ethereum
-            "ethereum.call" => FuncInstance::alloc_host(signature, ETHEREUM_CALL_FUNC_INDEX),
-
-            // typeConversion
-            "typeConversion.bytesToString" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX)
-            }
-            "typeConversion.bytesToHex" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX)
-            }
-            "typeConversion.bigIntToString" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX)
-            }
-            "typeConversion.bigIntToHex" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX)
-            }
-            "typeConversion.stringToH160" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX)
-            }
-            "typeConversion.i32ToBigInt" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX)
-            }
-            "typeConversion.bigIntToI32" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX)
-            }
-            "typeConversion.bytesToBase58" => {
-                FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX)
-            }
-
-            // json
-            "json.fromBytes" => FuncInstance::alloc_host(signature, JSON_FROM_BYTES_FUNC_INDEX),
-            "json.toI64" => FuncInstance::alloc_host(signature, JSON_TO_I64_FUNC_INDEX),
-            "json.toU64" => FuncInstance::alloc_host(signature, JSON_TO_U64_FUNC_INDEX),
-            "json.toF64" => FuncInstance::alloc_host(signature, JSON_TO_F64_FUNC_INDEX),
-            "json.toBigInt" => FuncInstance::alloc_host(signature, JSON_TO_BIG_INT_FUNC_INDEX),
-
-            // ipfs
-            "ipfs.cat" => FuncInstance::alloc_host(signature, IPFS_CAT_FUNC_INDEX),
-            "ipfs.map" => FuncInstance::alloc_host(signature, IPFS_MAP_FUNC_INDEX),
-
-            // crypto
-            "crypto.keccak256" => FuncInstance::alloc_host(signature, CRYPTO_KECCAK_256_INDEX),
-
-            // bigInt
-            "bigInt.plus" => FuncInstance::alloc_host(signature, BIG_INT_PLUS),
-            "bigInt.minus" => FuncInstance::alloc_host(signature, BIG_INT_MINUS),
-            "bigInt.times" => FuncInstance::alloc_host(signature, BIG_INT_TIMES),
-            "bigInt.dividedBy" => FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY),
-            "bigInt.dividedByDecimal" => {
-                FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY_DECIMAL)
-            }
-            "bigInt.mod" => FuncInstance::alloc_host(signature, BIG_INT_MOD),
-            "bigInt.pow" => FuncInstance::alloc_host(signature, BIG_INT_POW),
-
-            // bigDecimal
-            "bigDecimal.plus" => FuncInstance::alloc_host(signature, BIG_DECIMAL_PLUS),
-            "bigDecimal.minus" => FuncInstance::alloc_host(signature, BIG_DECIMAL_MINUS),
-            "bigDecimal.times" => FuncInstance::alloc_host(signature, BIG_DECIMAL_TIMES),
-            "bigDecimal.dividedBy" => FuncInstance::alloc_host(signature, BIG_DECIMAL_DIVIDED_BY),
-            "bigDecimal.equals" => FuncInstance::alloc_host(signature, BIG_DECIMAL_EQUALS),
-            "bigDecimal.toString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_TO_STRING),
-            "bigDecimal.fromString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_FROM_STRING),
-
-            // dataSource
-            "dataSource.create" => FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_INDEX),
-            "dataSource.address" => FuncInstance::alloc_host(signature, DATA_SOURCE_ADDRESS),
-            "dataSource.network" => FuncInstance::alloc_host(signature, DATA_SOURCE_NETWORK),
-            "dataSource.createWithContext" => {
-                FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_WITH_CONTEXT)
-            }
-            "dataSource.context" => FuncInstance::alloc_host(signature, DATA_SOURCE_CONTEXT),
-
-            // ens.nameByHash
-            "ens.nameByHash" => FuncInstance::alloc_host(signature, ENS_NAME_BY_HASH),
-
-            // log.log
-            "log.log" => FuncInstance::alloc_host(signature, LOG_LOG),
-
-            // Unknown export
-            _ => {
-                return Err(Error::Instantiation(format!(
-                    "Export '{}' not found",
-                    field_name
-                )));
-            }
-        })
-    }
-}
+// /// Env module resolver
+// pub struct EnvModuleResolver;
+//
+// impl ModuleImportResolver for EnvModuleResolver {
+//     fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
+//         Ok(match field_name {
+//             "gas" => FuncInstance::alloc_host(signature.clone(), GAS_FUNC_INDEX),
+//             "abort" => FuncInstance::alloc_host(signature.clone(), ABORT_FUNC_INDEX),
+//             _ => {
+//                 return Err(Error::Instantiation(format!(
+//                     "Export '{}' not found",
+//                     field_name
+//                 )));
+//             }
+//         })
+//     }
+// }
+//
+// pub struct ModuleResolver;
+//
+// impl ModuleImportResolver for ModuleResolver {
+//     fn resolve_func(&self, field_name: &str, signature: &Signature) -> Result<FuncRef, Error> {
+//         let signature = signature.clone();
+//         Ok(match field_name {
+//             // store
+//             "store.set" => FuncInstance::alloc_host(signature, STORE_SET_FUNC_INDEX),
+//             "store.remove" => FuncInstance::alloc_host(signature, STORE_REMOVE_FUNC_INDEX),
+//             "store.get" => FuncInstance::alloc_host(signature, STORE_GET_FUNC_INDEX),
+//
+//             // typeConversion
+//             "typeConversion.bytesToString" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_STRING_FUNC_INDEX)
+//             }
+//             "typeConversion.bytesToHex" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_HEX_FUNC_INDEX)
+//             }
+//             "typeConversion.bigIntToString" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_STRING_FUNC_INDEX)
+//             }
+//             "typeConversion.bigIntToHex" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX)
+//             }
+//             "typeConversion.stringToH160" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX)
+//             }
+//             "typeConversion.i32ToBigInt" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX)
+//             }
+//             "typeConversion.bigIntToI32" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX)
+//             }
+//             "typeConversion.bytesToBase58" => {
+//                 FuncInstance::alloc_host(signature, TYPE_CONVERSION_BYTES_TO_BASE_58_INDEX)
+//             }
+//
+//             // json
+//             "json.fromBytes" => FuncInstance::alloc_host(signature, JSON_FROM_BYTES_FUNC_INDEX),
+//             "json.toI64" => FuncInstance::alloc_host(signature, JSON_TO_I64_FUNC_INDEX),
+//             "json.toU64" => FuncInstance::alloc_host(signature, JSON_TO_U64_FUNC_INDEX),
+//             "json.toF64" => FuncInstance::alloc_host(signature, JSON_TO_F64_FUNC_INDEX),
+//             "json.toBigInt" => FuncInstance::alloc_host(signature, JSON_TO_BIG_INT_FUNC_INDEX),
+//
+//             // ipfs
+//             "ipfs.cat" => FuncInstance::alloc_host(signature, IPFS_CAT_FUNC_INDEX),
+//             "ipfs.map" => FuncInstance::alloc_host(signature, IPFS_MAP_FUNC_INDEX),
+//
+//             // crypto
+//             "crypto.keccak256" => FuncInstance::alloc_host(signature, CRYPTO_KECCAK_256_INDEX),
+//
+//             // bigInt
+//             "bigInt.plus" => FuncInstance::alloc_host(signature, BIG_INT_PLUS),
+//             "bigInt.minus" => FuncInstance::alloc_host(signature, BIG_INT_MINUS),
+//             "bigInt.times" => FuncInstance::alloc_host(signature, BIG_INT_TIMES),
+//             "bigInt.dividedBy" => FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY),
+//             "bigInt.dividedByDecimal" => {
+//                 FuncInstance::alloc_host(signature, BIG_INT_DIVIDED_BY_DECIMAL)
+//             }
+//             "bigInt.mod" => FuncInstance::alloc_host(signature, BIG_INT_MOD),
+//             "bigInt.pow" => FuncInstance::alloc_host(signature, BIG_INT_POW),
+//
+//             // bigDecimal
+//             "bigDecimal.plus" => FuncInstance::alloc_host(signature, BIG_DECIMAL_PLUS),
+//             "bigDecimal.minus" => FuncInstance::alloc_host(signature, BIG_DECIMAL_MINUS),
+//             "bigDecimal.times" => FuncInstance::alloc_host(signature, BIG_DECIMAL_TIMES),
+//             "bigDecimal.dividedBy" => FuncInstance::alloc_host(signature, BIG_DECIMAL_DIVIDED_BY),
+//             "bigDecimal.equals" => FuncInstance::alloc_host(signature, BIG_DECIMAL_EQUALS),
+//             "bigDecimal.toString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_TO_STRING),
+//             "bigDecimal.fromString" => FuncInstance::alloc_host(signature, BIG_DECIMAL_FROM_STRING),
+//
+//             // dataSource
+//             "dataSource.create" => FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_INDEX),
+//             "dataSource.address" => FuncInstance::alloc_host(signature, DATA_SOURCE_ADDRESS),
+//             "dataSource.network" => FuncInstance::alloc_host(signature, DATA_SOURCE_NETWORK),
+//             "dataSource.createWithContext" => {
+//                 FuncInstance::alloc_host(signature, DATA_SOURCE_CREATE_WITH_CONTEXT)
+//             }
+//             "dataSource.context" => FuncInstance::alloc_host(signature, DATA_SOURCE_CONTEXT),
+//
+//             // ens.nameByHash
+//             "ens.nameByHash" => FuncInstance::alloc_host(signature, ENS_NAME_BY_HASH),
+//
+//             // log.log
+//             "log.log" => FuncInstance::alloc_host(signature, LOG_LOG),
+//
+//             // Unknown export
+//             _ => {
+//                 return Err(Error::Instantiation(format!(
+//                     "Export '{}' not found",
+//                     field_name
+//                 )));
+//             }
+//         })
+//     }
+// }

@@ -9,6 +9,8 @@ use std::str::FromStr;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use web3::types::Log;
 
+use super::host_modules::Ethereum;
+
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
         .ok()
@@ -92,6 +94,8 @@ where
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
+        let host_modules: Arc<HostModules> = Arc::new(vec![Arc::new(Ethereum::new())]);
+
         let mapping_request_sender = {
             let module_bytes = data_source.mapping.runtime.as_ref().clone().to_bytes()?;
             if let Some(sender) = self.module_cache.get(&module_bytes) {
@@ -99,6 +103,7 @@ where
             } else {
                 let sender = T::spawn_mapping(
                     data_source.mapping.runtime.as_ref().clone(),
+                    host_modules,
                     logger,
                     self.subgraph_id.clone(),
                     host_metrics.clone(),

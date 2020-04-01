@@ -1,17 +1,22 @@
-use crate::module::WasmiModule;
+use std::thread;
+use std::time::Instant;
+
 use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
+use strum_macros::AsStaticStr;
+
 use graph::components::ethereum::*;
 use graph::prelude::*;
-use std::thread;
-use std::time::Instant;
-use strum_macros::AsStaticStr;
 use web3::types::{Log, Transaction};
+
+use crate::module::WasmiModule;
+use crate::{HostMetrics, HostModules};
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module(
     parsed_module: parity_wasm::elements::Module,
+    host_modules: Arc<HostModules>,
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
     host_metrics: Arc<HostMetrics>,
@@ -47,6 +52,7 @@ pub fn spawn_module(
                     let section = host_metrics.stopwatch.start_section("module_init");
                     let module = WasmiModule::from_valid_module_with_ctx(
                         valid_module.clone(),
+                        host_modules.clone(),
                         ctx,
                         host_metrics.clone(),
                     )?;
@@ -132,7 +138,7 @@ pub struct MappingRequest {
 }
 
 #[derive(Debug)]
-pub(crate) struct MappingContext {
+pub struct MappingContext {
     pub(crate) logger: Logger,
     pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
     pub(crate) block: Arc<LightEthereumBlock>,
@@ -151,7 +157,7 @@ impl MappingContext {
 }
 
 /// A pre-processed and valid WASM module, ready to be started as a WasmiModule.
-pub(crate) struct ValidModule {
+pub struct ValidModule {
     pub(super) module: wasmi::Module,
     pub(super) host_module_names: Vec<String>,
 }

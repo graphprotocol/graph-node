@@ -101,9 +101,8 @@ pub mod prelude {
         WindowAttribute, BLOCK_NUMBER_MAX, SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
-        BlockState, DataSourceLoader, DataSourceTemplateInfo, HostMetrics, RuntimeHost,
-        RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphIndexer, SubgraphInstance,
-        SubgraphRegistrar, SubgraphVersionSwitchingMode,
+        BlockState, DataSourceLoader, DataSourceTemplateInfo, SubgraphAssignmentProvider,
+        SubgraphIndexer, SubgraphInstance, SubgraphRegistrar, SubgraphVersionSwitchingMode,
     };
     pub use crate::components::{EventConsumer, EventProducer};
 
