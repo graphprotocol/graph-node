@@ -150,6 +150,16 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
     layout.insert(&conn, &key, entity, 0).expect(&errmsg);
 }
 
+fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
+    let key = EntityKey {
+        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+        entity_type: entity_type.to_owned(),
+        entity_id: entity.id().unwrap(),
+    };
+    let errmsg = format!("Failed to update entity {}[{}]", entity_type, key.entity_id);
+    layout.update(&conn, &key, entity, 1).expect(&errmsg);
+}
+
 fn insert_user_entity(
     conn: &PgConnection,
     layout: &Layout,
@@ -170,13 +180,6 @@ fn insert_user_entity(
     let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
     user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
     user.insert("email".to_owned(), Value::String(email.to_owned()));
-    user.insert(
-        "userSearch".to_owned(),
-        Value::List(vec![
-            Value::String(name.to_owned()),
-            Value::String(email.to_owned()),
-        ]),
-    );
     user.insert("age".to_owned(), Value::Int(age));
     user.insert(
         "seconds_age".to_owned(),
@@ -237,6 +240,46 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         None,
         Some(vec!["coffee", "tea"]),
     );
+}
+
+fn update_user_entity(
+    conn: &PgConnection,
+    layout: &Layout,
+    id: &str,
+    entity_type: &str,
+    name: &str,
+    email: &str,
+    age: i32,
+    weight: f64,
+    coffee: bool,
+    favorite_color: Option<&str>,
+    drinks: Option<Vec<&str>>,
+) {
+    let mut user = Entity::new();
+
+    user.insert("id".to_owned(), Value::String(id.to_owned()));
+    user.insert("name".to_owned(), Value::String(name.to_owned()));
+    let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
+    user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
+    user.insert("email".to_owned(), Value::String(email.to_owned()));
+    user.insert("age".to_owned(), Value::Int(age));
+    user.insert(
+        "seconds_age".to_owned(),
+        Value::BigInt(BigInt::from(age) * 31557600.into()),
+    );
+    user.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
+    user.insert("coffee".to_owned(), Value::Bool(coffee));
+    user.insert(
+        "favorite_color".to_owned(),
+        favorite_color
+            .map(|s| Value::String(s.to_owned()))
+            .unwrap_or(Value::Null),
+    );
+    if let Some(drinks) = drinks {
+        user.insert("drinks".to_owned(), drinks.into());
+    }
+
+    update_entity(conn, layout, entity_type, user);
 }
 
 fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str, name: &str) {
@@ -523,6 +566,19 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 
     run_test(move |conn, layout| -> Result<(), ()> {
         insert_users(conn, layout);
+        update_user_entity(
+            conn,
+            layout,
+            "1",
+            "User",
+            "Jono",
+            "achangedemail@email.com",
+            67 as i32,
+            184.4,
+            false,
+            Some("yellow"),
+            None,
+        );
         insert_pets(conn, layout);
 
         let order = match query.order_by {
@@ -611,18 +667,18 @@ fn find_string_contains() {
 #[test]
 fn find_fulltext_prefix() {
     test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::Equal("userSearch".into(), "Joh:*".into())),
+        vec!["3"],
+        user_query().filter(EntityFilter::Equal("userSearch".into(), "Shaq:*".into())),
     )
 }
 
 #[test]
 fn find_fulltext_and() {
     test_find(
-        vec!["3"],
+        vec!["1"],
         user_query().filter(EntityFilter::Equal(
             "userSearch".into(),
-            "Shaqueeena & teeko@email.com".into(),
+            "Jono & achangedemail@email.com".into(),
         )),
     )
 }
@@ -748,7 +804,7 @@ fn find_string_in() {
         user_query()
             .filter(EntityFilter::In(
                 "name".to_owned(),
-                vec!["Johnton".into(), "Nobody".into(), "Still nobody".into()],
+                vec!["Jono".into(), "Nobody".into(), "Still nobody".into()],
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending),
     )
@@ -1066,7 +1122,7 @@ fn find_bytes_equal() {
         user_query()
             .filter(EntityFilter::Equal(
                 "bin_name".to_owned(),
-                Value::Bytes("Johnton".as_bytes().into()),
+                Value::Bytes("Jono".as_bytes().into()),
             ))
             .order_by("name", ValueType::String, EntityOrder::Descending),
     )
