@@ -1258,7 +1258,7 @@ create index attr_2_2_habitat_dwellers
 type _Schema_ @fulltext(
     name: \"search\"
     language: en
-    algorithm: ranked
+    algorithm: rank
     include: [\
         {
             entity: \"Animal\",
