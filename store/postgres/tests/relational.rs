@@ -22,7 +22,7 @@ const THINGS_GQL: &str = r#"
     type _Schema_ @fulltext(
         name: "userSearch"
         language: en
-        algorithm: ranked
+        algorithm: rank
         include: [
             {
                 entity: "User",

@@ -182,16 +182,16 @@ impl FulltextLanguage {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FulltextAlgorithm {
-    Ranked,
-    ProximityRanked,
+    Rank,
+    ProximityRank,
 }
 
 impl TryFrom<&String> for FulltextAlgorithm {
     type Error = String;
     fn try_from(algorithm: &String) -> Result<Self, Self::Error> {
         match &algorithm[..] {
-            "ranked" => Ok(FulltextAlgorithm::Ranked),
-            "proximity_ranked" => Ok(FulltextAlgorithm::ProximityRanked),
+            "rank" => Ok(FulltextAlgorithm::Rank),
+            "proximity_rank" => Ok(FulltextAlgorithm::ProximityRank),
             invalid => Err(format!(
                 "Provided algorithm for fulltext search is invalid: {}",
                 invalid,
@@ -203,8 +203,8 @@ impl TryFrom<&String> for FulltextAlgorithm {
 impl FulltextAlgorithm {
     pub fn as_sql(&self) -> &'static str {
         match self {
-            Self::Ranked => "ts_rank(",
-            Self::ProximityRanked => "ts_rank_cd(",
+            Self::Rank => "ts_rank(",
+            Self::ProximityRank => "ts_rank_cd(",
         }
     }
 }
@@ -1602,7 +1602,7 @@ fn test_fulltext_directive_validation() {
 type _Schema_ @fulltext(
   name: "metadata"
   language: en
-  algorithm: ranked
+  algorithm: rank
   include: [
     {
       entity: "Gravatar",

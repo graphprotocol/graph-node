@@ -1071,7 +1071,7 @@ mod tests {
 type _Schema_ @fulltext(
   name: "metadata"
   language: en
-  algorithm: ranked
+  algorithm: rank
   include: [
     {
       entity: "Gravatar",
