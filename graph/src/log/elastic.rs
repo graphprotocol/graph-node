@@ -262,13 +262,16 @@ impl ElasticDrain {
                     let client = Client::new();
                     let logger_for_err = flush_logger.clone();
 
-                    client
-                        .post(batch_url)
-                        .header("Content-Type", "application/json")
-                        .basic_auth(
-                            config.general.username.clone().unwrap_or("".into()),
-                            config.general.password.clone(),
-                        )
+                    let header = match config.general.username {
+                        Some(username) => client
+                            .post(batch_url)
+                            .header("Content-Type", "application/json")
+                            .basic_auth(username, config.general.password.clone()),
+                        None => client
+                            .post(batch_url)
+                            .header("Content-Type", "application/json"),
+                    };
+                    header
                         .body(batch_body)
                         .send()
                         .and_then(|response| async { response.error_for_status() })
