@@ -74,3 +74,9 @@ fn data_source_context() {
     let _m = TEST_MUTEX.lock();
     run_test("data-source-context")
 }
+
+#[test]
+fn arweave_and_3box() {
+    let _m = TEST_MUTEX.lock();
+    run_test("arweave-and-3box")
+}

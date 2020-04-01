@@ -17,6 +17,7 @@ crossbeam-channel = "0.4.2"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
+graph-chain-arweave = { path = "../chain/arweave" }
 graph-mock = { path = "../mock" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }

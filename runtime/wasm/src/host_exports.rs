@@ -1,7 +1,10 @@
 use crate::UnresolvedContractCall;
+use bytes::Bytes;
 use ethabi::{Address, Token};
+use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
+use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
@@ -50,6 +53,8 @@ pub(crate) struct HostExports {
     call_cache: Arc<dyn EthereumCallCache>,
     store: Arc<dyn crate::RuntimeStore>,
     handler_timeout: Option<Duration>,
+    arweave_adapter: Arc<dyn ArweaveAdapter>,
+    three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
 // Not meant to be useful, only to allow deriving.
@@ -74,6 +79,8 @@ impl HostExports {
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
         handler_timeout: Option<Duration>,
+        arweave_adapter: Arc<dyn ArweaveAdapter>,
+        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         Self {
             subgraph_id,
@@ -89,6 +96,8 @@ impl HostExports {
             call_cache,
             store,
             handler_timeout,
+            arweave_adapter,
+            three_box_adapter,
         }
     }
 
@@ -644,6 +653,17 @@ impl HostExports {
 
     pub(crate) fn data_source_context(&self) -> Entity {
         self.data_source_context.clone().unwrap_or_default()
+    }
+
+    pub(crate) fn arweave_transaction_data(&self, tx_id: &str) -> Option<Bytes> {
+        block_on03(self.arweave_adapter.tx_data(tx_id)).ok()
+    }
+
+    pub(crate) fn box_get_profile(
+        &self,
+        address: &str,
+    ) -> Option<serde_json::Map<String, serde_json::Value>> {
+        block_on03(self.three_box_adapter.get_profile(address)).ok()
     }
 }
 

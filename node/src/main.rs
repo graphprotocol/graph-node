@@ -15,10 +15,12 @@ use graph::prelude::{
     EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
 };
 use graph::util::security::SafeDisplay;
+use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_chain_ethereum::{network_indexer, BlockIngestor, BlockStreamBuilder, Transport};
 use graph_core::{
-    LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
+    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
+    SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -235,6 +237,20 @@ async fn main() {
                      (e.g. 'ethereum/mainnet').",
                 ),
         )
+        .arg(
+            Arg::with_name("arweave-http")
+                .default_value("https://arweave.net/")
+                .long("arweave-http")
+                .value_name("URL")
+                .help("HTTP endpoint of an Arweave gateway"),
+        )
+        .arg(
+            Arg::with_name("3box-profile-http")
+                .default_value("https://ipfs.3box.io/")
+                .long("3box-profile-http")
+                .value_name("URL")
+                .help("HTTP endpoint for 3box profiles"),
+        )
         .get_matches();
 
     // Set up logger
@@ -320,6 +336,14 @@ async fn main() {
     if store_conn_pool_size <= 1 {
         panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
     }
+
+    let arweave_adapter = Arc::new(ArweaveAdapter::new(
+        matches.value_of("arweave-http").unwrap().to_string(),
+    ));
+
+    let three_box_adapter = Arc::new(ThreeBoxAdapter::new(
+        matches.value_of("3box-profile-http").unwrap().to_string(),
+    ));
 
     info!(logger, "Starting up");
 
@@ -611,6 +635,8 @@ async fn main() {
                 eth_adapters.clone(),
                 link_resolver.clone(),
                 stores.clone(),
+                arweave_adapter,
+                three_box_adapter,
             );
 
             let subgraph_instance_manager = SubgraphInstanceManager::new(

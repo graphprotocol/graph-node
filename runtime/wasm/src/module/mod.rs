@@ -73,6 +73,8 @@ const DATA_SOURCE_NETWORK: usize = 40;
 const DATA_SOURCE_CREATE_WITH_CONTEXT: usize = 41;
 const DATA_SOURCE_CONTEXT: usize = 42;
 const JSON_TRY_FROM_BYTES_FUNC_INDEX: usize = 43;
+const ARWEAVE_TRANSACTION_DATA: usize = 43;
+const BOX_PROFILE: usize = 45;
 
 /// Transform function index into the function name string
 fn fn_index_to_metrics_string(index: usize) -> Option<&'static str> {
@@ -979,6 +981,30 @@ impl WasmiModule {
         self.ctx.host_exports.log_log(&self.ctx.logger, level, msg);
         Ok(None)
     }
+
+    /// function transactionData(txId: string): Bytes | null
+    fn arweave_transaction_data(
+        &mut self,
+        tx_id: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let tx_id: String = self.asc_get(tx_id);
+        let data = self.ctx.host_exports.arweave_transaction_data(&tx_id);
+        Ok(data
+            .map(|data| RuntimeValue::from(self.asc_new(&*data)))
+            .or(Some(RuntimeValue::from(0))))
+    }
+
+    /// function getProfile(address: string): JSONValue | null
+    fn box_get_profile(
+        &mut self,
+        address: AscPtr<AscString>,
+    ) -> Result<Option<RuntimeValue>, Trap> {
+        let address: String = self.asc_get(address);
+        let profile = self.ctx.host_exports.box_get_profile(&address);
+        Ok(profile
+            .map(|profile| RuntimeValue::from(self.asc_new(&profile)))
+            .or(Some(RuntimeValue::from(0))))
+    }
 }
 
 impl Externals for WasmiModule {
@@ -1099,6 +1125,8 @@ impl Externals for WasmiModule {
             ),
             DATA_SOURCE_CONTEXT => self.data_source_context(),
             JSON_TRY_FROM_BYTES_FUNC_INDEX => self.json_try_from_bytes(args.nth_checked(0)?),
+            ARWEAVE_TRANSACTION_DATA => self.arweave_transaction_data(args.nth_checked(0)?),
+            BOX_PROFILE => self.box_get_profile(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         };
         // Record execution time
@@ -1219,6 +1247,11 @@ impl ModuleImportResolver for ModuleResolver {
 
             // log.log
             "log.log" => FuncInstance::alloc_host(signature, LOG_LOG),
+
+            "arweave.transactionData" => {
+                FuncInstance::alloc_host(signature, ARWEAVE_TRANSACTION_DATA)
+            }
+            "box.getProfile" => FuncInstance::alloc_host(signature, BOX_PROFILE),
 
             // Unknown export
             _ => {
