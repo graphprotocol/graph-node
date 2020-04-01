@@ -16,7 +16,7 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-use graph::data::store::scalar;
+use graph::data::{schema::FulltextAlgorithm, store::scalar};
 use graph::prelude::{
     format_err, serde_json, Attribute, BlockNumber, Entity, EntityCollection, EntityFilter,
     EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink, QueryExecutionError,
@@ -186,7 +186,9 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     out.push_sql(")");
                     Ok(())
                 }
-                _ => unreachable!("only string and enum columns have values of type string"),
+                _ => unreachable!(
+                    "only string, enum and tsvector columns have values of type string"
+                ),
             },
             Value::Int(i) => out.push_bind_param::<Integer, _>(i),
             Value::BigDecimal(d) => {
@@ -228,7 +230,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                                 out.push_sql(") || ");
                             }
                             out.push_sql("to_tsvector(");
-                            out.push_bind_param::<Text, _>(&config.language.as_sql().to_string())?;
+                            out.push_bind_param::<Text, _>(&config.language.as_str().to_string())?;
                             out.push_sql("::regconfig, ");
                             out.push_bind_param::<Text, _>(&value)?;
                         }
@@ -1532,7 +1534,11 @@ impl<'a> SortKey<'a> {
         if let Some(column) = self.column {
             match &column.column_type {
                 ColumnType::TSVector(config) => {
-                    out.push_sql(config.algorithm.as_sql());
+                    let algorithm = match config.algorithm {
+                        FulltextAlgorithm::Rank => "ts_rank(",
+                        FulltextAlgorithm::ProximityRank => "ts_rank_cd(",
+                    };
+                    out.push_sql(algorithm);
                     let name = column.name.as_str();
                     out.push_identifier(name)?;
                     out.push_sql(", to_tsquery(");
@@ -1609,7 +1615,9 @@ impl<'a> FilterQuery<'a> {
         // table, we are querying an interface, and the order is on an attribute
         // in that interface so that all tables have a column for that. It is
         // therefore enough to just look at the first table to get the name
-        let first_table = collection.first_table().unwrap();
+        let first_table = collection
+            .first_table()
+            .expect("an entity query always contains at least one entity type/table");
         let sort_key = match order {
             Some((ref attribute, _, direction)) => {
                 let column = first_table.column_for_field(&attribute)?;

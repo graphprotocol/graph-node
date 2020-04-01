@@ -158,7 +158,7 @@ impl TryFrom<&String> for FulltextLanguage {
 }
 
 impl FulltextLanguage {
-    pub fn as_sql(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Simple => "simple",
             Self::Danish => "danish",
@@ -191,20 +191,11 @@ impl TryFrom<&String> for FulltextAlgorithm {
     fn try_from(algorithm: &String) -> Result<Self, Self::Error> {
         match &algorithm[..] {
             "rank" => Ok(FulltextAlgorithm::Rank),
-            "proximity_rank" => Ok(FulltextAlgorithm::ProximityRank),
+            "proximityRank" => Ok(FulltextAlgorithm::ProximityRank),
             invalid => Err(format!(
-                "Provided algorithm for fulltext search is invalid: {}",
+                "The provided fulltext search algorithm {} is invalid. It must be one of: rank, proximityRank",
                 invalid,
             )),
-        }
-    }
-}
-
-impl FulltextAlgorithm {
-    pub fn as_sql(&self) -> &'static str {
-        match self {
-            Self::Rank => "ts_rank(",
-            Self::ProximityRank => "ts_rank_cd(",
         }
     }
 }
