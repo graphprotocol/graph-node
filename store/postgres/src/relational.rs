@@ -257,6 +257,7 @@ impl Layout {
         conn: &PgConnection,
         base: &Layout,
         block: EthereumBlockPointer,
+        metadata: &Layout,
     ) -> Result<(), StoreError> {
         // This can not be used to copy data to or from the metadata subgraph
         assert!(!self.subgraph.is_meta());
@@ -294,7 +295,11 @@ impl Layout {
         // 3. Rewind the subgraph. `revert_block` gets rid of everything
         // including the block passed to it. We want to preserve `block`
         // and therefore revert `block+1`
-        self.revert_block(conn, (block.number + 1).try_into().unwrap())?;
+        let revert_to: BlockNumber = (block.number + 1)
+            .try_into()
+            .expect("block numbers fit into an i32");
+        self.revert_block(conn, revert_to)?;
+        metadata.revert_metadata(conn, &self.subgraph, revert_to)?;
 
         Ok(())
     }
