@@ -40,7 +40,7 @@ const TYPE_CONVERSION_BIG_INT_TO_HEX_FUNC_INDEX: usize = 7;
 const TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX: usize = 8;
 const TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX: usize = 9;
 const TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX: usize = 10;
-const JSON_FROM_BYTES_FUNC_INDEX: usize = 11;
+const JSON_TRY_FROM_BYTES_FUNC_INDEX: usize = 11;
 const JSON_TO_I64_FUNC_INDEX: usize = 12;
 const JSON_TO_U64_FUNC_INDEX: usize = 13;
 const JSON_TO_F64_FUNC_INDEX: usize = 14;
@@ -544,15 +544,15 @@ impl WasmiModule {
         Ok(Some(RuntimeValue::from(i)))
     }
 
-    /// function json.fromBytes(bytes: Bytes): JSONValue
-    fn json_from_bytes(
+    /// function json.try_fromBytes(bytes: Bytes): Result<JSONValue, JSONError>
+    fn json_try_from_bytes(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let result = self
             .ctx
             .host_exports
-            .json_from_bytes(self.asc_get(bytes_ptr))?;
+            .json_from_bytes(self.asc_get(bytes_ptr));
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -1017,7 +1017,7 @@ impl Externals for WasmiModule {
             TYPE_CONVERSION_STRING_TO_H160_FUNC_INDEX => self.string_to_h160(args.nth_checked(0)?),
             TYPE_CONVERSION_I32_TO_BIG_INT_FUNC_INDEX => self.i32_to_big_int(args.nth_checked(0)?),
             TYPE_CONVERSION_BIG_INT_TO_I32_FUNC_INDEX => self.big_int_to_i32(args.nth_checked(0)?),
-            JSON_FROM_BYTES_FUNC_INDEX => self.json_from_bytes(args.nth_checked(0)?),
+            JSON_TRY_FROM_BYTES_FUNC_INDEX => self.json_try_from_bytes(args.nth_checked(0)?),
             JSON_TO_I64_FUNC_INDEX => self.json_to_i64(args.nth_checked(0)?),
             JSON_TO_U64_FUNC_INDEX => self.json_to_u64(args.nth_checked(0)?),
             JSON_TO_F64_FUNC_INDEX => self.json_to_f64(args.nth_checked(0)?),
@@ -1142,7 +1142,9 @@ impl ModuleImportResolver for ModuleResolver {
             }
 
             // json
-            "json.fromBytes" => FuncInstance::alloc_host(signature, JSON_FROM_BYTES_FUNC_INDEX),
+            "json.try_fromBytes" => {
+                FuncInstance::alloc_host(signature, JSON_TRY_FROM_BYTES_FUNC_INDEX)
+            }
             "json.toI64" => FuncInstance::alloc_host(signature, JSON_TO_I64_FUNC_INDEX),
             "json.toU64" => FuncInstance::alloc_host(signature, JSON_TO_U64_FUNC_INDEX),
             "json.toF64" => FuncInstance::alloc_host(signature, JSON_TO_F64_FUNC_INDEX),

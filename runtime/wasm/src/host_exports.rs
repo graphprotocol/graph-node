@@ -348,14 +348,8 @@ impl HostExports {
     pub(crate) fn json_from_bytes(
         &self,
         bytes: Vec<u8>,
-    ) -> Result<serde_json::Value, HostExportError<impl ExportError>> {
-        serde_json::from_reader(&*bytes).map_err(|e| {
-            HostExportError(format!(
-                "Failed to parse JSON from byte array. Bytes: `{bytes:?}`. Error: {error}",
-                bytes = bytes,
-                error = e,
-            ))
-        })
+    ) -> Result<serde_json::Value, serde_json::Error> {
+        serde_json::from_reader(&*bytes)
     }
 
     pub(crate) fn ipfs_cat(
