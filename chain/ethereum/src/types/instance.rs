@@ -2,30 +2,6 @@ use async_trait::async_trait;
 use web3::types::Log;
 
 use crate::prelude::*;
-use crate::util::lfu_cache::LfuCache;
-
-#[derive(Clone, Debug)]
-pub struct DataSourceTemplateInfo {
-    pub data_source: String,
-    pub template: DataSourceTemplate,
-    pub params: Vec<String>,
-    pub context: Option<DataSourceContext>,
-}
-
-#[derive(Debug, Default)]
-pub struct BlockState {
-    pub entity_cache: EntityCache,
-    pub created_data_sources: Vec<DataSourceTemplateInfo>,
-}
-
-impl BlockState {
-    pub fn with_cache(lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
-        BlockState {
-            entity_cache: EntityCache::with_current(lfu_cache),
-            created_data_sources: Vec::new(),
-        }
-    }
-}
 
 /// Represents a loaded instance of a subgraph.
 #[async_trait]

@@ -109,9 +109,8 @@ pub mod prelude {
         WindowAttribute, BLOCK_NUMBER_MAX, SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
-        BlockState, DataSourceLoader, DataSourceTemplateInfo, HostMetrics, RuntimeHost,
-        RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphIndexer, SubgraphInstance,
-        SubgraphRegistrar, SubgraphVersionSwitchingMode,
+        DataSourceLoader, SubgraphAssignmentProvider, SubgraphRegistrar,
+        SubgraphVersionSwitchingMode,
     };
     pub use crate::components::{EventConsumer, EventProducer};
 
@@ -129,12 +128,12 @@ pub mod prelude {
     };
     pub use crate::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
     pub use crate::data::subgraph::{
-        BlockHandlerFilter, CreateSubgraphResult, DataSource, DataSourceContext,
-        DataSourceTemplate, Link, MappingABI, MappingBlockHandler, MappingCallHandler,
-        MappingEventHandler, SubgraphAssignmentProviderError, SubgraphAssignmentProviderEvent,
-        SubgraphDeploymentId, SubgraphManifest, SubgraphManifestResolveError,
-        SubgraphManifestValidationError, SubgraphName, SubgraphRegistrarError,
-        UnvalidatedSubgraphManifest,
+        BlockHandlerFilter, BlockState, CreateSubgraphResult, DataSource, DataSourceContext,
+        DataSourceTemplate, DataSourceTemplateInfo, Link, MappingABI, MappingBlockHandler,
+        MappingCallHandler, MappingEventHandler, SubgraphAssignmentProviderError,
+        SubgraphAssignmentProviderEvent, SubgraphDeploymentId, SubgraphManifest,
+        SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphName,
+        SubgraphRegistrarError, UnvalidatedSubgraphManifest,
     };
     pub use crate::data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
