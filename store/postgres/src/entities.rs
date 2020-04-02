@@ -491,10 +491,8 @@ impl Connection {
         key: &EntityKey,
         entity: &Entity,
     ) -> Result<usize, StoreError> {
-        match &*self.metadata {
-            Storage::Json(_) => unreachable!("JSONB storage of subgraph metadata is not supported"),
-            Storage::Relational(layout) => layout.update_unversioned(&self.conn, key, entity),
-        }
+        self.metadata_layout()
+            .update_unversioned(&self.conn, key, entity)
     }
 
     pub(crate) fn find_metadata(
@@ -502,10 +500,8 @@ impl Connection {
         entity: &String,
         id: &String,
     ) -> Result<Option<Entity>, StoreError> {
-        match &*self.metadata {
-            Storage::Json(_) => unreachable!("JSONB storage of subgraph metadata is not supported"),
-            Storage::Relational(layout) => layout.find(&self.conn, entity, id, BLOCK_NUMBER_MAX),
-        }
+        self.metadata_layout()
+            .find(&self.conn, entity, id, BLOCK_NUMBER_MAX)
     }
 
     pub(crate) fn delete(
@@ -551,12 +547,9 @@ impl Connection {
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        let meta_event = match &*self.metadata {
-            Storage::Json(_) => unreachable!("JSONB storage of subgraph metadata is not supported"),
-            Storage::Relational(relational) => {
-                relational.revert_metadata(&self.conn, &self.storage.subgraph(), block)
-            }
-        }?;
+        let meta_event =
+            self.metadata_layout()
+                .revert_metadata(&self.conn, &self.storage.subgraph(), block)?;
         Ok((event.extend(meta_event), count))
     }
 
@@ -807,6 +800,13 @@ impl Connection {
         match &*self.storage {
             Storage::Json(_) => false,
             Storage::Relational(_) => true,
+        }
+    }
+
+    fn metadata_layout(&self) -> &Layout {
+        match &*self.metadata {
+            Storage::Json(_) => unreachable!("JSONB storage of subgraph metadata is not supported"),
+            Storage::Relational(layout) => layout,
         }
     }
 }
