@@ -347,9 +347,9 @@ impl HostExports {
 
     pub(crate) fn json_from_bytes(
         &self,
-        bytes: Vec<u8>,
+        bytes: &Vec<u8>,
     ) -> Result<serde_json::Value, serde_json::Error> {
-        serde_json::from_reader(&*bytes)
+        serde_json::from_reader(bytes.as_slice())
     }
 
     pub(crate) fn ipfs_cat(
