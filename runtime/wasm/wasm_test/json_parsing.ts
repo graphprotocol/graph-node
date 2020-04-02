@@ -1,9 +1,38 @@
 import "allocator/arena";
 export { memory };
 
+export class Wrapped<T> {
+  inner: T;
+
+  constructor(inner: T) {
+    this.inner = inner;
+  }
+}
+
 export class Result<V, E> {
-  public value: V | null;
-  public error: E | null;
+  _value: Wrapped<V> | null;
+  _error: Wrapped<E> | null;
+
+  get isOk(): boolean {
+    return this._value !== null;
+  }
+
+  get isError(): boolean {
+    return this._error !== null;
+  }
+
+  get value(): V {
+    assert(this._value != null, "Trying to get a value from an error result");
+    return (this._value as Wrapped<V>).inner;
+  }
+
+  get error(): E {
+    assert(
+      this._error != null,
+      "Trying to get an error from a successful result"
+    );
+    return (this._error as Wrapped<E>).inner;
+  }
 }
 
 /** Type hint for JSON values. */
@@ -27,33 +56,23 @@ export class JSONValue {
   kind: JSONValueKind;
   data: JSONValuePayload;
 
-  isNull(): boolean {
-    return this.kind == JSONValueKind.NULL;
-  }
-
   toString(): string {
     assert(this.kind == JSONValueKind.STRING, "JSON value is not a string.");
     return changetype<string>(this.data as u32);
   }
 }
 
-export class JSONError {
-  public line: u32;
-  public column: u32;
-  public message: string;
-}
+export class Bytes extends Uint8Array {}
 
 declare namespace json {
-  function try_fromBytes(data: Bytes): Result<JSONValue, JSONError>;
+  function try_fromBytes(data: Bytes): Result<JSONValue, boolean>;
 }
-
-export class Bytes extends Uint8Array {}
 
 export function handleJsonError(data: Bytes): string {
   let result = json.try_fromBytes(data);
-  if (result.error !== null) {
-    return "ERROR: " + result.error.message;
-  } else {
+  if (result.isOk) {
     return "OK: " + result.value.toString();
+  } else {
+    return "ERROR: " + (result.error ? "true" : "false");
   }
 }
