@@ -272,6 +272,52 @@ fn json_conversions() {
     );
 }
 
+#[test]
+fn json_parsing() {
+    let mut module = test_module(
+        "jsonParsing",
+        mock_data_source("wasm_test/json_parsing.wasm"),
+    );
+
+    // Parse invalid JSON and handle the error gracefully
+    let s = "foo"; // Invalid because there are no quotes around `foo`
+    let bytes: &[u8] = s.as_ref();
+    let bytes_ptr = module.asc_new(bytes);
+    let return_value: AscPtr<AscString> = module
+        .module
+        .clone()
+        .invoke_export(
+            "handleJsonError",
+            &[RuntimeValue::from(bytes_ptr)],
+            &mut module,
+        )
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return a string");
+    let output: String = module.asc_get(return_value);
+    assert_eq!(output, "ERROR: expected ident at line 1 column 2");
+
+    // Parse valid JSON and get it back
+    let s = "\"foo\""; // Valid because there are quotes around `foo`
+    let bytes: &[u8] = s.as_ref();
+    let bytes_ptr = module.asc_new(bytes);
+    let return_value: AscPtr<AscString> = module
+        .module
+        .clone()
+        .invoke_export(
+            "handleJsonError",
+            &[RuntimeValue::from(bytes_ptr)],
+            &mut module,
+        )
+        .expect("call failed")
+        .expect("call returned nothing")
+        .try_into()
+        .expect("call did not return a string");
+    let output: String = module.asc_get(return_value);
+    assert_eq!(output, "OK: foo");
+}
+
 #[tokio::test]
 async fn ipfs_cat() {
     graph::spawn_blocking(async {
