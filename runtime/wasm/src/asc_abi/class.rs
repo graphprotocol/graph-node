@@ -579,3 +579,10 @@ impl From<LogLevel> for slog::Level {
         }
     }
 }
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscResult<V, E> {
+    pub value: AscPtr<V>,
+    pub error: AscPtr<E>,
+}

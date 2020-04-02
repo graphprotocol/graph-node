@@ -420,3 +420,24 @@ impl From<i32> for LogLevel {
         }
     }
 }
+
+impl<V, E, VAsc, EAsc> ToAscObj<AscResult<VAsc, EAsc>> for Result<V, E>
+where
+    V: ToAscObj<VAsc>,
+    E: ToAscObj<EAsc>,
+    VAsc: AscType,
+    EAsc: AscType,
+{
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscResult<VAsc, EAsc> {
+        match self {
+            Ok(value) => AscResult {
+                value: heap.asc_new(value),
+                error: AscPtr::null(),
+            },
+            Err(e) => AscResult {
+                value: AscPtr::null(),
+                error: heap.asc_new(e),
+            },
+        }
+    }
+}
