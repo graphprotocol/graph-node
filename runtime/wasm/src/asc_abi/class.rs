@@ -583,14 +583,20 @@ impl From<LogLevel> for slog::Level {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscResult<V, E> {
-    pub value: AscPtr<V>,
-    pub error: AscPtr<E>,
+    pub value: AscPtr<AscWrapped<V>>,
+    pub error: AscPtr<AscWrapped<E>>,
 }
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscJsonError {
-    pub line: u32,
-    pub column: u32,
-    pub message: AscPtr<AscString>,
+pub(crate) struct AscWrapped<V> {
+    pub inner: AscPtr<V>,
+}
+
+impl<V> Copy for AscWrapped<V> {}
+
+impl<V> Clone for AscWrapped<V> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner }
+    }
 }

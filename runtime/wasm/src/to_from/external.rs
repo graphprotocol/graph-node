@@ -421,13 +421,15 @@ impl From<i32> for LogLevel {
     }
 }
 
-impl ToAscObj<AscJsonError> for serde_json::Error {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscJsonError {
-        AscJsonError {
-            line: self.line() as u32,
-            column: self.column() as u32,
-            message: heap.asc_new(format!("{}", self).as_str()),
-        }
+impl ToAscObj<bool> for bool {
+    fn to_asc_obj<H: AscHeap>(&self, _heap: &mut H) -> bool {
+        *self
+    }
+}
+
+impl<T: AscType> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
+    fn to_asc_obj<H: AscHeap>(&self, _heap: &mut H) -> AscWrapped<T> {
+        *self
     }
 }
 
@@ -441,12 +443,20 @@ where
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscResult<VAsc, EAsc> {
         match self {
             Ok(value) => AscResult {
-                value: heap.asc_new(value),
+                value: {
+                    let inner = heap.asc_new(value);
+                    let wrapped = AscWrapped { inner };
+                    heap.asc_new(&wrapped)
+                },
                 error: AscPtr::null(),
             },
             Err(e) => AscResult {
                 value: AscPtr::null(),
-                error: heap.asc_new(e),
+                error: {
+                    let inner = heap.asc_new(e);
+                    let wrapped = AscWrapped { inner };
+                    heap.asc_new(&wrapped)
+                },
             },
         }
     }
