@@ -421,6 +421,16 @@ impl From<i32> for LogLevel {
     }
 }
 
+impl ToAscObj<AscJsonError> for serde_json::Error {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscJsonError {
+        AscJsonError {
+            line: self.line() as u32,
+            column: self.column() as u32,
+            message: heap.asc_new(format!("{}", self).as_str()),
+        }
+    }
+}
+
 impl<V, E, VAsc, EAsc> ToAscObj<AscResult<VAsc, EAsc>> for Result<V, E>
 where
     V: ToAscObj<VAsc>,

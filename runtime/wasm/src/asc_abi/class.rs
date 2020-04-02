@@ -586,3 +586,11 @@ pub(crate) struct AscResult<V, E> {
     pub value: AscPtr<V>,
     pub error: AscPtr<E>,
 }
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscJsonError {
+    pub line: u32,
+    pub column: u32,
+    pub message: AscPtr<AscString>,
+}
