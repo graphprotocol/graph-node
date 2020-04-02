@@ -296,7 +296,7 @@ fn json_parsing() {
         .try_into()
         .expect("call did not return a string");
     let output: String = module.asc_get(return_value);
-    assert_eq!(output, "ERROR: expected ident at line 1 column 2");
+    assert_eq!(output, "ERROR: true");
 
     // Parse valid JSON and get it back
     let s = "\"foo\""; // Valid because there are quotes around `foo`

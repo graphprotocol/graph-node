@@ -561,13 +561,24 @@ impl WasmiModule {
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
-    /// function json.try_fromBytes(bytes: Bytes): Result<JSONValue, JSONError>
+    /// function json.try_fromBytes(bytes: Bytes): Result<JSONValue, boolean>
     fn json_try_from_bytes(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.asc_get(bytes_ptr);
-        let result = self.ctx.host_exports.json_from_bytes(&bytes);
+        let result = self.ctx.host_exports.json_from_bytes(&bytes).map_err(|e| {
+            warn!(
+                &self.ctx.logger,
+                "Failed to parse JSON from byte array";
+                "bytes" => format!("{:?}", bytes),
+                "error" => format!("{}", e)
+            );
+
+            // Map JSON errors to boolean to match the `Result<JSONValue, boolean>`
+            // result type expected by mappings
+            true
+        });
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
