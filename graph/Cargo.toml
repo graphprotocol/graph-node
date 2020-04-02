@@ -4,7 +4,7 @@ version = "0.17.1"
 edition = "2018"
 
 [dependencies]
-async-trait = "0.1.25"
+async-trait = "0.1.29"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 diesel = { version = "1.4.3", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 chrono = "0.4"
