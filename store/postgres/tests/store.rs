@@ -50,16 +50,6 @@ const USER_GQL: &str = "
     }
 ";
 
-const GRAFT_GQL: &str = "
-    type User @entity {
-        id: ID!,
-        name: String,
-        email: String,
-        age: Int,
-        favorite_color: String
-    }
-";
-
 const USER: &str = "User";
 
 lazy_static! {
@@ -2218,66 +2208,4 @@ fn find_at_block() {
         shaqueeena_at_block(2, "teeko@email.com");
         shaqueeena_at_block(7000, "teeko@email.com");
     }
-}
-
-#[test]
-fn graft() {
-    run_test(move |store| -> Result<(), ()> {
-        const SUBGRAPH: &str = "grafted";
-        let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
-        test_store::create_grafted_subgraph(
-            SUBGRAPH,
-            GRAFT_GQL,
-            TEST_SUBGRAPH_ID.as_str(),
-            *TEST_BLOCK_1_PTR,
-        );
-
-        let query = EntityQuery::new(
-            subgraph_id.clone(),
-            BLOCK_NUMBER_MAX,
-            EntityCollection::All(vec![USER.to_owned()]),
-        )
-        .order_by("name", ValueType::String, EntityOrder::Descending);
-
-        let entities = store
-            .find(query)
-            .expect("store.find failed to execute query");
-
-        let ids = entities
-            .iter()
-            .map(|entity| entity.id().unwrap())
-            .collect::<Vec<_>>();
-
-        assert_eq!(vec!["3", "1", "2"], ids);
-
-        // Make sure we caught Shqueena at block 1, before the change in
-        // email address
-        let mut shaq = entities.first().unwrap().to_owned();
-        assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
-
-        // Make our own entries for block 2
-        shaq.set("email", "shaq@gmail.com");
-        let op = EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: USER.to_owned(),
-                entity_id: "3".to_owned(),
-            },
-            data: shaq,
-        };
-        transact_entity_operations(&store, subgraph_id.clone(), *TEST_BLOCK_2_PTR, vec![op])
-            .unwrap();
-
-        store
-            .revert_block_operations(subgraph_id.clone(), *TEST_BLOCK_2_PTR, *TEST_BLOCK_1_PTR)
-            .expect("We can revert a block we just created");
-
-        let err = store
-            .revert_block_operations(subgraph_id.clone(), *TEST_BLOCK_1_PTR, *GENESIS_PTR)
-            .expect_err("Reverting past graft point is not allowed");
-
-        assert!(err.to_string().contains("Can not revert subgraph"));
-
-        Ok(())
-    })
 }
