@@ -70,6 +70,9 @@ pub trait TypedEntity {
     }
 }
 
+// See also: ed42d219c6704a4aab57ce1ea66698e7.
+// Note: The types here need to be in sync with the metadata GraphQL schema.
+
 #[derive(Debug)]
 pub struct SubgraphEntity {
     name: SubgraphName,

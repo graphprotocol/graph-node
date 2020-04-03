@@ -39,6 +39,9 @@ where
 
         // Construct a query for the subgraph deployment and all its
         // dynamic data sources
+        //
+        // See also: ed42d219c6704a4aab57ce1ea66698e7.
+        // Note: This query needs to be in sync with the metadata schema.
         Ok(Query {
             schema,
             document: parse_query(

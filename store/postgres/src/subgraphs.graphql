@@ -1,3 +1,7 @@
+# See also: ed42d219c6704a4aab57ce1ea66698e7.
+# Note: This schema needs to be in sync with the dynamic data sources query
+# and the metadata Rust types.
+
 type Subgraph @entity {
     id: ID!
     name: String!
