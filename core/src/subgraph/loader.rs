@@ -50,7 +50,7 @@ where
                       network
                       name
                       context
-                      source { address abi }
+                      source { address abi startBlock }
                       mapping {
                         kind
                         apiVersion
@@ -60,7 +60,7 @@ where
                         abis { name file }
                         blockHandlers { handler filter }
                         callHandlers {  function handler }
-                        eventHandlers { event handler }
+                        eventHandlers { event handler topic0 }
                       }
                       templates {
                         kind
@@ -74,9 +74,9 @@ where
                           file
                           entities
                           abis { name file }
-                          blockHandlers { handler filter}
-                          callHandlers { function handler}
-                          eventHandlers { event handler }
+                          blockHandlers { handler filter }
+                          callHandlers { function handler }
+                          eventHandlers { event handler topic0 }
                         }
                       }
                     }
