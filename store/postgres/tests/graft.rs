@@ -257,12 +257,20 @@ fn graft() {
     run_test(move |store| -> Result<(), ()> {
         const SUBGRAPH: &str = "grafted";
         let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
-        test_store::create_grafted_subgraph(
+        let res = test_store::create_grafted_subgraph(
             SUBGRAPH,
             GRAFT_GQL,
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1],
         );
+
+        if *USING_RELATIONAL_STORAGE {
+            assert!(res.is_ok())
+        } else {
+            // Grafting for JSONB storage just fails
+            assert!(res.is_err());
+            return Ok(());
+        }
 
         let query = EntityQuery::new(
             subgraph_id.clone(),

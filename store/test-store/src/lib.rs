@@ -82,11 +82,12 @@ lazy_static! {
     };
 }
 
+#[cfg(debug_assertions)]
 fn create_subgraph(
     subgraph_id: &str,
     schema: &str,
     base: Option<(SubgraphDeploymentId, EthereumBlockPointer)>,
-) {
+) -> Result<(), StoreError> {
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
@@ -108,12 +109,12 @@ fn create_subgraph(
         .into_iter()
         .map(|op| op.into())
         .collect();
-    STORE.create_subgraph_deployment(&schema, ops).unwrap();
+    STORE.create_subgraph_deployment(&schema, ops)
 }
 
 #[cfg(debug_assertions)]
 pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
-    create_subgraph(subgraph_id, schema, None)
+    create_subgraph(subgraph_id, schema, None).unwrap()
 }
 
 #[cfg(debug_assertions)]
@@ -122,7 +123,7 @@ pub fn create_grafted_subgraph(
     schema: &str,
     base_id: &str,
     base_block: EthereumBlockPointer,
-) {
+) -> Result<(), StoreError> {
     let base = Some((SubgraphDeploymentId::new(base_id).unwrap(), base_block));
     create_subgraph(subgraph_id, schema, base)
 }
