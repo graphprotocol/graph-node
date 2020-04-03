@@ -72,6 +72,14 @@ lazy_static! {
         )),
         1u64
     ).into();
+
+    /// True if we are using relational storage in our tests
+    pub static ref USING_RELATIONAL_STORAGE: bool = {
+        std::env::var("GRAPH_STORAGE_SCHEME")
+            .unwrap_or_else(|_| "relational".to_owned())
+            .as_str()
+        == "relational"
+    };
 }
 
 #[cfg(debug_assertions)]

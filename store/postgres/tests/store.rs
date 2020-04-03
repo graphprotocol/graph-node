@@ -2201,12 +2201,7 @@ fn find_at_block() {
     }
 
     // These tests only make sense with relational storage
-    let testing_relational_storage = std::env::var("GRAPH_STORAGE_SCHEME")
-        .unwrap_or_else(|_| "relational".to_owned())
-        .as_str()
-        == "relational";
-
-    if testing_relational_storage {
+    if *USING_RELATIONAL_STORAGE {
         shaqueeena_at_block(1, "queensha@email.com");
         shaqueeena_at_block(2, "teeko@email.com");
         shaqueeena_at_block(7000, "teeko@email.com");
