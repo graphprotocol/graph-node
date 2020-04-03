@@ -1338,7 +1338,7 @@ name = "graph-runtime-derive"
 version = "0.17.1"
 dependencies = [
  "quote 0.6.13",
- "syn 0.15.44",
+ "syn 1.0.17",
 ]
 
 [[package]]
