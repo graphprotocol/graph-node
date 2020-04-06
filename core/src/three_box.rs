@@ -25,7 +25,7 @@ impl ThreeBoxAdapter {
 #[async_trait]
 impl ThreeBoxAdapterTrait for ThreeBoxAdapter {
     // See https://github.com/3box/3box-js/blob/510137adbdf3ef4e240d9a7789946e967a19ff30/src/api.js#L160
-    async fn get_profile(
+    async fn profile(
         &self,
         address: &str,
     ) -> Result<serde_json::Map<String, serde_json::Value>, Error> {

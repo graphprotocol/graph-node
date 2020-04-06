@@ -994,13 +994,10 @@ impl WasmiModule {
             .or(Some(RuntimeValue::from(0))))
     }
 
-    /// function getProfile(address: string): JSONValue | null
-    fn box_get_profile(
-        &mut self,
-        address: AscPtr<AscString>,
-    ) -> Result<Option<RuntimeValue>, Trap> {
+    /// function profile(address: string): JSONValue | null
+    fn box_profile(&mut self, address: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let address: String = self.asc_get(address);
-        let profile = self.ctx.host_exports.box_get_profile(&address);
+        let profile = self.ctx.host_exports.box_profile(&address);
         Ok(profile
             .map(|profile| RuntimeValue::from(self.asc_new(&profile)))
             .or(Some(RuntimeValue::from(0))))
@@ -1126,7 +1123,7 @@ impl Externals for WasmiModule {
             DATA_SOURCE_CONTEXT => self.data_source_context(),
             JSON_TRY_FROM_BYTES_FUNC_INDEX => self.json_try_from_bytes(args.nth_checked(0)?),
             ARWEAVE_TRANSACTION_DATA => self.arweave_transaction_data(args.nth_checked(0)?),
-            BOX_PROFILE => self.box_get_profile(args.nth_checked(0)?),
+            BOX_PROFILE => self.box_profile(args.nth_checked(0)?),
             _ => panic!("Unimplemented function at {}", index),
         };
         // Record execution time
@@ -1251,7 +1248,7 @@ impl ModuleImportResolver for ModuleResolver {
             "arweave.transactionData" => {
                 FuncInstance::alloc_host(signature, ARWEAVE_TRANSACTION_DATA)
             }
-            "box.getProfile" => FuncInstance::alloc_host(signature, BOX_PROFILE),
+            "box.profile" => FuncInstance::alloc_host(signature, BOX_PROFILE),
 
             // Unknown export
             _ => {
