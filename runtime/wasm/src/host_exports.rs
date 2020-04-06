@@ -659,11 +659,11 @@ impl HostExports {
         block_on03(self.arweave_adapter.tx_data(tx_id)).ok()
     }
 
-    pub(crate) fn box_get_profile(
+    pub(crate) fn box_profile(
         &self,
         address: &str,
     ) -> Option<serde_json::Map<String, serde_json::Value>> {
-        block_on03(self.three_box_adapter.get_profile(address)).ok()
+        block_on03(self.three_box_adapter.profile(address)).ok()
     }
 }
 
