@@ -7,7 +7,7 @@ use std::fs;
 use std::process::exit;
 
 use graph::prelude::SubgraphDeploymentId;
-use graph_store_postgres::relational::{ColumnType, IdType, Layout};
+use graph_store_postgres::relational::{Column, ColumnType, IdType, Layout};
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);
@@ -195,6 +195,113 @@ select x.new_id, e.kind, e.name, e.network, {source}, {mapping}, {templates},
     );
 }
 
+fn print_diesel_tables(layout: &Layout) {
+    fn diesel_type(column: &Column) -> String {
+        let mut dsl_type = match column.column_type {
+            ColumnType::Boolean => "Bool",
+            ColumnType::BigDecimal | ColumnType::BigInt => "Numeric",
+            ColumnType::Bytes => "Binary",
+            ColumnType::Int => "Integer",
+            ColumnType::String | ColumnType::Enum(_) | ColumnType::TSVector(_) => "Text",
+        }
+        .to_owned();
+
+        if column.is_list() {
+            dsl_type = format!("Array<{}>", dsl_type);
+        }
+        if column.is_nullable() {
+            dsl_type = format!("Nullable<{}>", dsl_type);
+        }
+        dsl_type
+    }
+
+    fn rust_type(column: &Column) -> String {
+        let mut dsl_type = match column.column_type {
+            ColumnType::Boolean => "bool",
+            ColumnType::BigDecimal | ColumnType::BigInt => "BigDecimal",
+            ColumnType::Bytes => "Vec<u8>",
+            ColumnType::Int => "i32",
+            ColumnType::String | ColumnType::Enum(_) | ColumnType::TSVector(_) => "String",
+        }
+        .to_owned();
+
+        if column.is_list() {
+            dsl_type = format!("Vec<{}>", dsl_type);
+        }
+        if column.is_nullable() {
+            dsl_type = format!("Option<{}>", dsl_type);
+        }
+        dsl_type
+    }
+
+    let mut tables = layout.tables.values().collect::<Vec<_>>();
+    tables.sort_by_key(|table| table.name.as_str());
+
+    for table in &tables {
+        println!("    table! {{");
+        let name = table.qualified_name.as_str().replace("\"", "");
+        println!("        {} (vid) {{", name);
+        println!("            vid -> BigInt,");
+        for column in &table.as_ref().columns {
+            println!(
+                "            {} -> {},",
+                column.name.as_str(),
+                diesel_type(column)
+            );
+        }
+        println!("            block_range -> Range<Integer>,");
+        println!("        }}");
+        println!("    }}\n")
+    }
+
+    // Now generate Rust structs for all this
+    for table in &tables {
+        println!("    #[derive(Queryable, Clone, Debug)]");
+        println!("    pub struct {} {{", table.object);
+        println!("        pub vid: i64,");
+        for column in &table.as_ref().columns {
+            println!(
+                "        pub {}: {},",
+                column.name.as_str(),
+                rust_type(column)
+            );
+        }
+        println!("        pub block_range: (Bound<i32>, Bound<i32>),");
+        println!("    }}\n")
+    }
+}
+
+fn print_list_metadata(layout: &Layout) {
+    let mut tables = layout
+        .tables
+        .values()
+        .filter(|table| {
+            table.name.as_str() != "subgraph" && table.name.as_str() != "subgraph_version"
+        })
+        .collect::<Vec<_>>();
+    tables.sort_by_key(|table| table.name.as_str());
+
+    println!("with dds as (");
+    println!("  select *");
+    println!("    from subgraphs.dynamic_ethereum_contract_data_source");
+    println!("   where deployment = $1)");
+    for (i, table) in tables.iter().enumerate() {
+        if i > 0 {
+            println!(" union all");
+        }
+        println!("select '{}' as entity, id", &table.object);
+        let name = table.qualified_name.as_str().replace("\"", "");
+        println!("  from {} e", name);
+        if table.object == "DynamicEthereumContractDataSource" {
+            println!(" where e.deployment = $1");
+        } else {
+            println!(" where left(e.id, 46) = $1");
+            println!("    or left(e.id, 40) in (select id from dds)");
+        }
+    }
+    println!(" order by entity, id");
+}
+
 pub fn main() {
     let args = App::new("layout")
     .version("1.0")
@@ -228,6 +335,8 @@ pub fn main() {
         "ddl" => print_ddl(&layout),
         "views" => print_views(&layout),
         "drop-views" => print_drop_views(&layout),
+        "diesel" => print_diesel_tables(&layout),
+        "list-metadata" => print_list_metadata(&layout),
         "copy-dds" => print_copy_dds(&layout),
         _ => {
             usage(&format!("illegal value {} for --generate", kind));
