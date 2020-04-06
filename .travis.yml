@@ -61,6 +61,8 @@ env:
   global:
   - PGPORT=5433
   - THEGRAPH_STORE_POSTGRES_DIESEL_URL=postgresql://travis:travis@localhost:5433/graph_node_test
+  # Added because https://nodejs.org/dist/ had issues
+  - NVM_NODEJS_ORG_MIRROR=https://cnpmjs.org/mirrors/node/
 
 # Test pipeline
 before_script:
