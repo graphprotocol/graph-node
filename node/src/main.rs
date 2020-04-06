@@ -238,9 +238,9 @@ async fn main() {
                 ),
         )
         .arg(
-            Arg::with_name("arweave-http")
+            Arg::with_name("arweave-api")
                 .default_value("https://arweave.net/")
-                .long("arweave-http")
+                .long("arweave-api")
                 .value_name("URL")
                 .help("HTTP endpoint of an Arweave gateway"),
         )
@@ -338,7 +338,7 @@ async fn main() {
     }
 
     let arweave_adapter = Arc::new(ArweaveAdapter::new(
-        matches.value_of("arweave-http").unwrap().to_string(),
+        matches.value_of("arweave-api").unwrap().to_string(),
     ));
 
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new(

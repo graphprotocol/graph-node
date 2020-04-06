@@ -16,7 +16,7 @@ impl ThreeBoxAdapter {
         }
 
         ThreeBoxAdapter {
-            profile_endpoint: Url::parse(&profile_endpoint).unwrap(),
+            profile_endpoint: Url::parse(&profile_endpoint).expect("Invalid 3box profile URL"),
             http_client: reqwest::Client::new(),
         }
     }
