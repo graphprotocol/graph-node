@@ -140,26 +140,28 @@ mod public {
         Relational,
     }
 
-    /// Migrating a subgraph is broken into two steps: in the first step, the
-    /// schema for the new storage scheme is put into place; in the second
-    /// step data is moved from the old storage scheme to the new one. These
-    /// two steps happen in separate database transactions, since the first
-    /// step takes fairly strong locks, that can block other database work.
-    /// The second step, moving data, only requires relatively weak locks
-    /// that do not block write activity in other subgraphs.
+    /// A deployment has an internal lifecycle that is controlled by this
+    /// enum. A subgraph that is ready to be used for indexing is in state
+    /// `Ready`. The state `Init` is used to indicate that the subgraph has
+    /// remaining initialization work to do, in particular, that it needs to
+    /// copy data if it is grafted onto another subgraph. The `Tables` state
+    /// is used during schema migrations as described below. Both of these
+    /// states move the subgraph to `Ready` upon successful completion of the
+    /// work associated with them.
     ///
-    /// The `Ready` state indicates that the subgraph is ready to use the
-    /// storage scheme indicated by `deployment_schemas.version`. After the
-    /// first step of the migration has been done, the `version` field remains
-    /// unchanged, but we indicate that we have put the new schema in place by
-    /// setting the state to `Tables`. At the end of the second migration
-    /// step, we change the `version` to the new version, and set the state to
-    /// `Ready` to indicate that the subgraph can now be used with the new
-    /// storage scheme.
+    /// When a subgraph is migrated, the migration is broken into two steps:
+    /// in the first step, the schema changes that the migration needs are
+    /// put into place; in the second step data is moved from the old storage
+    /// scheme to the new one. These two steps happen in separate database
+    /// transactions, since the first step if fast but takes fairly strong
+    /// locks that can block other database work. The second step, moving data,
+    /// only requires relatively weak locks that do not block write activity
+    /// in other subgraphs.
     #[derive(DbEnum, Debug, Clone)]
     pub enum DeploymentSchemaState {
         Ready,
         Tables,
+        Init,
     }
 
     table! {
@@ -175,7 +177,7 @@ mod public {
             /// are being migrated at any given time. The details of handling
             /// this lock are in `Connection::should_migrate`
             migrating -> Bool,
-            /// Track which step of a subgraph migration has been done
+            /// See comment on DeploymentSchemaState
             state -> crate::entities::public::DeploymentSchemaStateMapping,
         }
     }
@@ -342,6 +344,49 @@ impl Connection {
     /// Do any cleanup to bring the subgraph into a known good state
     pub(crate) fn start_subgraph(&self) -> Result<(), StoreError> {
         use public::deployment_schemas as dsl;
+        use public::DeploymentSchemaState as State;
+
+        let state = dsl::table
+            .select(dsl::state)
+            .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
+            .first::<State>(&self.conn)?;
+
+        match state {
+            State::Init => {
+                let graft = metadata::deployment_graft(&self.conn, &self.storage.subgraph())?;
+                match &*self.storage {
+                    Storage::Relational(layout) => {
+                        let graft =
+                            metadata::deployment_graft(&self.conn, &self.storage.subgraph())?;
+                        if let Some((base, block)) = graft {
+                            let base = match Storage::new(&self.conn, &base)? {
+                                Storage::Relational(base) => base,
+                                Storage::Json(_) => unreachable!(
+                                    "A JSONB subgraph is never used as the base for a graft"
+                                ),
+                            };
+                            layout.copy_from(&self.conn, &base, block, self.metadata_layout())?;
+                        }
+                        diesel::update(dsl::table)
+                            .set(dsl::state.eq(State::Ready))
+                            .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
+                            .execute(&self.conn)?;
+                    }
+                    Storage::Json(_) => {
+                        if graft.is_some() {
+                            unreachable!("A JSONB subgraph is never grafted onto another subgraph");
+                        }
+                        diesel::update(dsl::table)
+                            .set(dsl::state.eq(State::Ready))
+                            .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
+                            .execute(&self.conn)?;
+                    }
+                }
+            }
+            State::Tables => unimplemented!("continue the migration"),
+            State::Ready => { // Nothing to do
+            }
+        }
 
         // Clear the `migrating` lock on the subgraph; this flag must be
         // visible to other db users before the migration starts and is
@@ -751,6 +796,7 @@ impl Connection {
     /// `subgraph_id`. Note that `self` must be a connection for the subgraph
     /// of subgraphs
     pub(crate) fn create_schema(&self, schema: &SubgraphSchema) -> Result<(), StoreError> {
+        use self::public::DeploymentSchemaState as s;
         use self::public::DeploymentSchemaVersion as v;
 
         assert_eq!(
@@ -774,6 +820,7 @@ impl Connection {
             .values((
                 deployment_schemas::subgraph.eq(schema.id.to_string()),
                 deployment_schemas::version.eq(*GRAPH_STORAGE_SCHEME),
+                deployment_schemas::state.eq(s::Init),
             ))
             .returning(deployment_schemas::name)
             .get_results(&self.conn)?;
