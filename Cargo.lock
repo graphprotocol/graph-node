@@ -829,7 +829,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "tiny-keccak",
+ "tiny-keccak 1.5.0",
 ]
 
 [[package]]
@@ -841,7 +841,7 @@ dependencies = [
  "rustc-hex",
  "serde",
  "serde_json",
- "tiny-keccak",
+ "tiny-keccak 1.5.0",
  "uint",
 ]
 
@@ -855,7 +855,7 @@ dependencies = [
  "fixed-hash",
  "impl-rlp",
  "impl-serde 0.2.3",
- "tiny-keccak",
+ "tiny-keccak 1.5.0",
 ]
 
 [[package]]
@@ -869,7 +869,7 @@ dependencies = [
  "log 0.4.8",
  "rlp",
  "serde",
- "tiny-keccak",
+ "tiny-keccak 1.5.0",
 ]
 
 [[package]]
@@ -1224,7 +1224,7 @@ dependencies = [
  "slog-envlogger",
  "slog-term",
  "stable-hash",
- "tiny-keccak",
+ "tiny-keccak 2.0.2",
  "tokio 0.2.13",
  "tokio-retry",
  "twox-hash",
@@ -2370,7 +2370,7 @@ dependencies = [
  "scrypt",
  "sha2 0.8.1",
  "subtle 2.2.2",
- "tiny-keccak",
+ "tiny-keccak 1.5.0",
  "zeroize 0.9.3",
 ]
 
@@ -3732,6 +3732,15 @@ name = "tiny-keccak"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d8a021c69bb74a44ccedb824a046447e2c84a01df9e5c20779750acb38e11b2"
+dependencies = [
+ "crunchy",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
 dependencies = [
  "crunchy",
 ]
