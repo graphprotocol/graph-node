@@ -982,7 +982,7 @@ impl WasmiModule {
         Ok(None)
     }
 
-    /// function transactionData(txId: string): Bytes | null
+    /// function arweave.transactionData(txId: string): Bytes | null
     fn arweave_transaction_data(
         &mut self,
         tx_id: AscPtr<AscString>,
@@ -994,7 +994,7 @@ impl WasmiModule {
             .or(Some(RuntimeValue::from(0))))
     }
 
-    /// function profile(address: string): JSONValue | null
+    /// function box.profile(address: string): JSONValue | null
     fn box_profile(&mut self, address: AscPtr<AscString>) -> Result<Option<RuntimeValue>, Trap> {
         let address: String = self.asc_get(address);
         let profile = self.ctx.host_exports.box_profile(&address);

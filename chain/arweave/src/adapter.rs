@@ -18,7 +18,7 @@ impl ArweaveAdapter {
         }
 
         ArweaveAdapter {
-            endpoint: Url::parse(&endpoint).unwrap(),
+            endpoint: Url::parse(&endpoint).expect("Invalid Arweave URL"),
             http_client: reqwest::Client::new(),
         }
     }

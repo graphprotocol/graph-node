@@ -10,10 +10,6 @@ const srcDir = path.join(__dirname, "..");
 const fetchSubgraphs = createApolloFetch({
   uri: "http://localhost:18030/graphql"
 });
-const fetchSubgraph = createApolloFetch({
-  uri:
-    "http://localhost:18000/subgraphs/name/test/overloaded-contract-functions"
-});
 
 const exec = cmd => {
   try {
