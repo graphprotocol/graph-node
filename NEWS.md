@@ -9,22 +9,134 @@ any subgraph that uses JSONB storage when that subgraph starts syncing. Please
 check your logs for this warning. You can remove the warning by redeploying
 the subgraph.**
 
+### Feature: Fulltext Search (#1521)
+
+A frequently requested feature has been support for more advanced text-based
+search, e.g. to power search fields in dApps. This release introduces a
+`@fulltext` directive on a new, reserved `_Schema_` type to define fulltext
+search APIs that can then be used in queries. The example below shows how
+such an API can be defined in the subgraph schema:
+
+```graphql
+type _Schema_
+  @fulltext(
+    name: "artistSearch"
+    language: en
+    algorithm: rank
+    include: [
+      {
+        entity: "Artist"
+        fields: [
+          { name: "name" }
+          { name: "bio" }
+          { name: "genre" }
+          { name: "promoCopy" }
+        ]
+      }
+    ]
+  )
+```
+
+This will add a special database column for `Artist` entities that can be
+used for fulltext search queries across all included entity fields, based on
+the `tsvector` and `tsquery` features provided by Postgres.
+
+The `@fulltext` directive will also add an `artistSearch` field on the root
+query object to the generated subgraph GraphQL API, which can be used as
+follows:
+
+```graphql
+{
+  artistSearch(text: "breaks & electro & detroit") {
+    id
+    name
+    bio
+  }
+}
+```
+
+For more information about the supported operators (like the `&` in the above
+query), please refer to the [Postgres
+documentation](https://www.postgresql.org/docs/10/textsearch.html).
+
 ### Feature: Data Source Context (#1404 via #1537)
 
-TODO: Document
+Data source contexts allow passing extra configuration when creating a data
+source from a template. As an example, let's say a subgraph tracks exchanges
+that are associated with a particular trading pair, which is included in the
+`NewExchange` event. That information can be passed into the dynamically
+created data source, like so:
+
+```ts
+import { DataSourceContext } from '@graphprotocol/graph-ts'
+import { Exchange } from '../generated/templates'
+
+export function handleNewExchange(event: NewExchange): void {
+  let context = new DataSourceContext()
+  context.setString('tradingPair', event.params.tradingPair)
+  Exchange.createWithContext(event.params.exchange, context)
+}
+```
+
+Inside a mapping of the Exchange template, the context can then be accessed
+as follows:
+
+```ts
+import { dataSource } from '@graphprotocol/graph-ts'
+
+...
+
+let context = dataSource.context()
+let tradingPair = context.getString('tradingPair')
+```
+
+There are setters and getters like `setString` and `getString` for all value
+types to make working with data source contexts convenient.
+
+### Feature: Error Handling for JSON Parsing (#1588 via #1578)
+
+With contracts anchoring JSON data on IPFS on chain, there is no guarantee
+that this data is actually valid JSON. Until now, failure to parse JSON in
+subgraph mappings would fail the subgraph. This release adds a new
+`json.try_fromBytes` host export that allows subgraph to gracefully handle
+JSON parsing errors.
+
+```ts
+import { json } from '@graphprotocol/graph-ts'
+
+export function handleSomeEvent(event: SomeEvent): void {
+  // JSON data as bytes, e.g. retrieved from IPFS
+  let data = ...
+
+  // This returns a `Result<JSONValue, boolean>`, meaning that the error type is
+  // just a boolean (true if there was an error, false if parsing succeeded).
+  // The actual error message is logged automatically.
+  let result = json.try_fromBytes(data)
+
+  if (result.error) {
+    // Handle the error
+  } else {
+    // Do something with the JSON value
+    let value = result.value
+    ...
+  }
+}
+```
 
 ### Ethereum
 
 - Add support for calling overloaded contract functions (#48 via #1440).
 - Add integration test for calling overloaded contract functions (#1441).
-- Avoid `eth_getLogs` requests with block ranges too large for Ethereum nodes to
-  handle (#1536).
-- Simplify `eth_getLogs` fetching logic to reduce the risk of being rate limited
-  by Ethereum nodes and the risk of overloading them (#1540).
+- Avoid `eth_getLogs` requests with block ranges too large for Ethereum nodes
+  to handle (#1536).
+- Simplify `eth_getLogs` fetching logic to reduce the risk of being rate
+  limited by Ethereum nodes and the risk of overloading them (#1540).
 - Retry JSON-RPC responses with a `-32000` error (Alchemy uses this for
   timeouts) (#1539).
 - Reduce block range size for `trace_filter` requests to prevent request
   timeouts out (#1547).
+- Fix loading dynamically created data sources with `topic0` event handlers
+  from the database (#1580).
 
 ### IPFS
 
@@ -65,6 +177,10 @@ TODO: Document
 
 ### Misc
 
+- Support Elasticsearch endpoints without HTTP basic auth (#1576).
+- Fix `--version` not reporting the current version (#967 via #1567).
+- Convert more code to async/await and simplify async logic (#1558, #1560,
+  #1571).
 - Use lossy, more tolerant UTF-8 conversion when converting strings to bytes
   (#1541).
 - Detect when a node is unresponsive and kill it (#1507).
