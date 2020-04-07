@@ -3,9 +3,15 @@
 ## Unreleased
 
 ### Misc
+
+- Fix loading more than 200 dynamic data sources (#1596).
+- Log warnings after 10 successive failed `eth_call` requests. This makes
+  it more visible when graph-node is not operating against an Ethereum
+  archive node (#1606).
 - Log all GraphQL and SQL queries performed by a node, controlled through
   the `GRAPH_LOG_QUERY_TIMING` [environment
-  variable](docs/environment-variables.md).
+  variable](docs/environment-variables.md) (#1595).
+- Add integration test for handling Ganache reverts (#1590).
 
 ## 0.18.0
 
