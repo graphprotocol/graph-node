@@ -466,7 +466,8 @@ fn create_subgraph(
     Ok(CreateSubgraphResult { id: entity_id })
 }
 
-/// Resolves the chain head block and the subgraph's earliest block
+/// Resolves the chain head block, the subgraph's earliest block, and
+/// the manifest's graft base block
 fn resolve_subgraph_chain_blocks(
     manifest: SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
@@ -474,10 +475,17 @@ fn resolve_subgraph_chain_blocks(
     logger: &Logger,
 ) -> Box<
     dyn Future<
-            Item = (Option<EthereumBlockPointer>, Option<EthereumBlockPointer>),
+            Item = (
+                Option<EthereumBlockPointer>,
+                Option<EthereumBlockPointer>,
+                Option<(SubgraphDeploymentId, EthereumBlockPointer)>,
+            ),
             Error = SubgraphRegistrarError,
         > + Send,
 > {
+    let logger1 = logger.clone();
+    let chain_store1 = chain_store.clone();
+
     Box::new(
         // If the minimum start block is 0 (i.e. the genesis block),
         // return `None` to start indexing from the genesis block. Otherwise
@@ -507,6 +515,32 @@ fn resolve_subgraph_chain_blocks(
                 .chain_head_ptr()
                 .map(|chain_head_block_ptr| (chain_head_block_ptr, start_block_ptr))
                 .map_err(SubgraphRegistrarError::Unknown)
+        })
+        .and_then(move |(chain_head_block_ptr, start_block_ptr)| {
+            match manifest.graft {
+                None => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
+                Some(base) => {
+                    let base_block = base.block;
+                    Box::new(
+                        ethereum_adapter
+                            .block_pointer_from_number(
+                                &logger1,
+                                chain_store1.clone(),
+                                base.block as u64,
+                            )
+                            .map(|ptr| Some((base.base, ptr)))
+                            .map_err(move |_| {
+                                SubgraphRegistrarError::ManifestValidationError(vec![
+                                    SubgraphManifestValidationError::BlockNotFound(format!(
+                                        "graft base block {} not found",
+                                        base_block
+                                    )),
+                                ])
+                            }),
+                    ) as Box<dyn Future<Item = _, Error = _> + Send>
+                }
+            }
+            .map(move |base_ptr| (chain_head_block_ptr, start_block_ptr, base_ptr))
         }),
     )
 }
@@ -829,12 +863,19 @@ fn create_subgraph_version(
                 ethereum_adapter.clone(),
                 &logger.clone(),
             )
-            .and_then(move |(chain_head_block, start_block)| {
+            .and_then(move |(chain_head_block, start_block, base_block)| {
                 info!(
                     logger,
                     "Set subgraph start block";
                     "block_number" => format!("{:?}", start_block.map(|block| block.number)),
                     "block_hash" => format!("{:?}", start_block.map(|block| block.hash)),
+                );
+
+                info!(
+                    logger,
+                    "Graft base";
+                    "base" => format!("{:?}", base_block.as_ref().map(|(subgraph,_)| subgraph.to_string())),
+                    "block" => format!("{:?}", base_block.as_ref().map(|(_,ptr)| ptr.number))
                 );
 
                 // Apply the subgraph versioning and deployment operations,
@@ -844,14 +885,15 @@ fn create_subgraph_version(
                         .apply_metadata_operations(ops)
                         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
                 } else {
+                    let deployment = SubgraphDeploymentEntity::new(
+                        &manifest,
+                        false,
+                        false,
+                        start_block,
+                        chain_head_block,
+                    ).graft(base_block);
                     ops.extend(
-                        SubgraphDeploymentEntity::new(
-                            &manifest,
-                            false,
-                            false,
-                            start_block,
-                            chain_head_block,
-                        )
+                        deployment
                         .create_operations(&manifest.id),
                     );
                     deployment_store
