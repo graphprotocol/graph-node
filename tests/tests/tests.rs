@@ -80,3 +80,9 @@ fn arweave_and_3box() {
     let _m = TEST_MUTEX.lock();
     run_test("arweave-and-3box")
 }
+
+#[test]
+fn ganache_reverts() {
+    let _m = TEST_MUTEX.lock();
+    run_test("ganache-reverts")
+}
