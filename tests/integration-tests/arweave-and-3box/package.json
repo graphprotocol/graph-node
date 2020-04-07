@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#leo/arweave-and-3box",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
     "solc": "^0.6.1"
   },
   "dependencies": {
