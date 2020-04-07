@@ -1410,7 +1410,6 @@ dependencies = [
  "graphql-parser",
  "http 0.2.1",
  "hyper 0.13.5",
- "lazy_static",
  "serde",
 ]
 
