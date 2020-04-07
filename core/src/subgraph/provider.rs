@@ -196,6 +196,8 @@ where
         // When starting (or resuming) to index the subgraph, the network instance
         // returned an abort handle. By removing this abort handle from the running
         // subgraphs map, we stop indexing the subgraph.
+        //
+        // FIXME: Dropping the abort handle is not enough, you have to call abort() on it!
         self.subgraphs_running
             .lock()
             .unwrap()
