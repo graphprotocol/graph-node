@@ -25,7 +25,7 @@ graphql-parser = "0.2.3"
 ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
 parity-wasm = "0.40"
 failure = "0.1.7"
-lazy_static = "1.2.0"
+lazy_static = "1.4.0"
 mockall = "0.7"
 num-bigint = { version = "^0.2.6", features = ["serde"] }
 num-traits = "0.2"

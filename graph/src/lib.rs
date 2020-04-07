@@ -67,6 +67,7 @@ pub mod prelude {
     pub use tiny_keccak;
     pub use tokio;
     pub use web3;
+    pub use lazy_static::lazy_static;
 
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
