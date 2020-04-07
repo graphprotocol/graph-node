@@ -492,7 +492,9 @@ where
                                 // Check for Ganache revert.
                                 Err(web3::Error::Rpc(ref rpc_error))
                                     if rpc_error.code.code() == GANACHE_VM_EXECUTION_ERROR
-                                        && rpc_error.message == GANACHE_REVERT_MESSAGE =>
+                                        && rpc_error
+                                            .message
+                                            .starts_with(GANACHE_REVERT_MESSAGE) =>
                                 {
                                     Err(EthereumContractCallError::Revert(
                                         rpc_error.message.clone(),
