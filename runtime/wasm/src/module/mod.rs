@@ -73,7 +73,7 @@ const DATA_SOURCE_NETWORK: usize = 40;
 const DATA_SOURCE_CREATE_WITH_CONTEXT: usize = 41;
 const DATA_SOURCE_CONTEXT: usize = 42;
 const JSON_TRY_FROM_BYTES_FUNC_INDEX: usize = 43;
-const ARWEAVE_TRANSACTION_DATA: usize = 43;
+const ARWEAVE_TRANSACTION_DATA: usize = 44;
 const BOX_PROFILE: usize = 45;
 
 /// Transform function index into the function name string
