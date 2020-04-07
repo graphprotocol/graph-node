@@ -18,16 +18,15 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bail, bigdecimal::ToPrimitive, debug, ethabi, format_err, futures03, info, o, serde_json,
-    stream, tiny_keccak, tokio, trace, warn, web3, AttributeIndexDefinition, BigDecimal, BigInt,
-    BlockNumber, ChainHeadUpdateListener as _, ChainHeadUpdateStream, ChainStore, Entity,
-    EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
-    EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, EventProducer as _, Future,
-    Future01CompatExt, LightEthereumBlock, Logger, MetadataOperation, MetricsRegistry,
-    QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
-    StoreEventStream, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
-    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError,
-    Value, BLOCK_NUMBER_MAX,
+    bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
+    trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
+    ChainHeadUpdateStream, ChainStore, Entity, EntityKey, EntityModification, EntityOrder,
+    EntityQuery, EntityRange, Error, EthereumBlock, EthereumBlockPointer, EthereumCallCache,
+    EthereumNetworkIdentifier, EventProducer as _, Future, Future01CompatExt, LightEthereumBlock,
+    Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _,
+    StopwatchMetrics, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
+    SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
+    SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_chain_ethereum::BlockIngestorMetrics;
@@ -38,6 +37,7 @@ use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::history_event::HistoryEvent;
+use crate::metadata::deployment_graft;
 use crate::store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
@@ -783,19 +783,8 @@ impl Store {
             (input_schema, network)
         };
 
-        use crate::metadata::subgraph_deployment as sd;
         let conn = self.get_conn()?;
-        let graft_block = if subgraph_id.is_meta() {
-            // There is no SubgraphDeployment for the metadata subgraph
-            None
-        } else {
-            sd::table
-                .select(sd::graft_block_number)
-                .filter(sd::id.eq(subgraph_id.as_str()))
-                .first::<Option<BigDecimal>>(&conn)?
-                .map(|block| block.to_i32())
-                .flatten()
-        };
+        let graft_block = deployment_graft(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
 
         // Parse the schema and add @subgraphId directives
         let input_schema = Schema::parse(&input_schema, subgraph_id.clone())?;
