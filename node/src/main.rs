@@ -245,9 +245,9 @@ async fn main() {
                 .help("HTTP endpoint of an Arweave gateway"),
         )
         .arg(
-            Arg::with_name("3box-profile-http")
+            Arg::with_name("3box-api")
                 .default_value("https://ipfs.3box.io/")
-                .long("3box-profile-http")
+                .long("3box-api")
                 .value_name("URL")
                 .help("HTTP endpoint for 3box profiles"),
         )
@@ -342,7 +342,7 @@ async fn main() {
     ));
 
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new(
-        matches.value_of("3box-profile-http").unwrap().to_string(),
+        matches.value_of("3box-api").unwrap().to_string(),
     ));
 
     info!(logger, "Starting up");
