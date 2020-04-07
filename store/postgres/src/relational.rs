@@ -11,7 +11,7 @@ use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::From;
 use std::fmt::{self, Write};
 use std::str::FromStr;
@@ -126,7 +126,7 @@ pub enum IdType {
     Bytes,
 }
 
-type EnumMap = BTreeMap<String, Vec<String>>;
+type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
 #[derive(Debug, Clone)]
 pub struct Layout {
@@ -187,14 +187,12 @@ impl Layout {
                 TypeDefinition(Interface(_)) => { /* we do not care about interfaces */ }
                 TypeDefinition(Enum(enum_type)) => {
                     SqlName::check_valid_identifier(&enum_type.name, "enum")?;
-                    enums.insert(
-                        enum_type.name.clone(),
-                        enum_type
-                            .values
-                            .iter()
-                            .map(|value| value.name.to_owned())
-                            .collect(),
-                    );
+                    let values: BTreeSet<_> = enum_type
+                        .values
+                        .iter()
+                        .map(|value| value.name.to_owned())
+                        .collect();
+                    enums.insert(enum_type.name.clone(), Arc::new(values));
                 }
                 other => {
                     return Err(StoreError::Unknown(format_err!(
@@ -269,7 +267,7 @@ impl Layout {
                 self.schema,
                 name.quoted()
             )?;
-            for value in values {
+            for value in values.iter() {
                 write!(out, "{}'{}'", sep, value)?;
                 sep = ", "
             }
@@ -630,6 +628,15 @@ impl Layout {
     }
 }
 
+/// A user-defined enum
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnumType {
+    /// The name of the Postgres enum we created, fully qualified with the schema
+    pub name: SqlName,
+    /// The possible values the enum can take
+    values: Arc<BTreeSet<String>>,
+}
+
 /// This is almost the same as graph::data::store::ValueType, but without
 /// ID and List; with this type, we only care about scalar types that directly
 /// correspond to Postgres scalar types
@@ -642,9 +649,7 @@ pub enum ColumnType {
     Int,
     String,
     TSVector(FulltextConfig),
-    /// A user-defined enum. The string contains the name of the Postgres
-    /// enum we created for it, fully qualified with the schema
-    Enum(SqlName),
+    Enum(EnumType),
 }
 
 impl From<IdType> for ColumnType {
@@ -667,13 +672,14 @@ impl ColumnType {
 
         // Check if it's an enum, and if it is, return an appropriate
         // ColumnType::Enum
-        if enums.contains_key(&*name) {
+        if let Some(values) = enums.get(&*name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
-            return Ok(ColumnType::Enum(SqlName::qualified_name(
-                schema,
-                &SqlName::from(name),
-            )));
+            let name = SqlName::qualified_name(schema, &SqlName::from(name));
+            return Ok(ColumnType::Enum(EnumType {
+                name,
+                values: values.clone(),
+            }));
         }
 
         // It is not an enum, and therefore one of our builtin primitive types
@@ -702,7 +708,7 @@ impl ColumnType {
             ColumnType::Int => "integer",
             ColumnType::String => "text",
             ColumnType::TSVector(_) => "tsvector",
-            ColumnType::Enum(name) => name.as_str(),
+            ColumnType::Enum(enum_type) => enum_type.name.as_str(),
         }
     }
 }
@@ -1076,9 +1082,9 @@ mod tests {
         }";
 
     const THING_DDL: &str = "create type rel.\"color\"
-    as enum ('yellow', 'red', 'BLUE');
+    as enum ('BLUE', 'red', 'yellow');
 create type rel.\"size\"
-    as enum (\'small\', \'medium\', \'large\');
+    as enum (\'large\', \'medium\', \'small\');
 create table rel.\"thing\" (
         \"id\"                 text not null,
         \"big_thing\"          text not null,

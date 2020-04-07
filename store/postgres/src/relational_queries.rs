@@ -174,10 +174,10 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
         match self.0 {
             Value::String(s) => match &column_type {
                 ColumnType::String => out.push_bind_param::<Text, _>(s),
-                ColumnType::Enum(name) => {
+                ColumnType::Enum(enum_type) => {
                     out.push_bind_param::<Text, _>(s)?;
                     out.push_sql("::");
-                    out.push_sql(name.as_str());
+                    out.push_sql(enum_type.name.as_str());
                     Ok(())
                 }
                 ColumnType::TSVector(_) => {
@@ -215,10 +215,10 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&values),
                     ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values),
                     ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values),
-                    ColumnType::Enum(name) => {
+                    ColumnType::Enum(enum_type) => {
                         out.push_bind_param::<Array<Text>, _>(&values)?;
                         out.push_sql("::");
-                        out.push_sql(name.as_str());
+                        out.push_sql(enum_type.name.as_str());
                         out.push_sql("[]");
                         Ok(())
                     }
