@@ -2,14 +2,18 @@
 use diesel::pg::PgConnection;
 use diesel::prelude::{ExpressionMethods, QueryDsl, RunQueryDsl};
 
+use graph::data::subgraph::schema::SubgraphManifestEntity;
 use graph::prelude::{
     bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, EthereumBlockPointer,
-    StoreError, SubgraphDeploymentId,
+    Schema, StoreError, SubgraphDeploymentId,
 };
 
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
-// Changes to the GraphQL schema might require changes to these tables
+// Changes to the GraphQL schema might require changes to these tables.
+// The definitions of the tables can be generated with
+//    cargo run -p graph-store-postgres --example layout -- \
+//      -g diesel store/postgres/src/subgraphs.graphql subgraphs
 table! {
     subgraphs.subgraph_deployment (vid) {
         vid -> BigInt,
@@ -49,6 +53,34 @@ table! {
     }
 }
 
+table! {
+    subgraphs.subgraph_manifest (vid) {
+        vid -> BigInt,
+        id -> Text,
+        spec_version -> Text,
+        description -> Nullable<Text>,
+        repository -> Nullable<Text>,
+        schema -> Text,
+        data_sources -> Array<Text>,
+        templates -> Nullable<Array<Text>>,
+        block_range -> Range<Integer>,
+    }
+}
+
+table! {
+    subgraphs.ethereum_contract_data_source (vid) {
+        vid -> BigInt,
+        id -> Text,
+        kind -> Text,
+        name -> Text,
+        network -> Nullable<Text>,
+        source -> Text,
+        mapping -> Text,
+        templates -> Nullable<Array<Text>>,
+        block_range -> Range<Integer>,
+    }
+}
+
 /// Look up the graft point for the given subgraph in the database and
 /// return it
 pub fn deployment_graft(
@@ -83,4 +115,52 @@ pub fn deployment_graft(
             ),
         }
     }
+}
+
+pub fn subgraph_schema(
+    conn: &PgConnection,
+    id: SubgraphDeploymentId,
+) -> Result<Schema, StoreError> {
+    // The subgraph of subgraphs schema is built-in and doesn't have a
+    // SubgraphManifest in the database
+    const SUBGRAPHS_SCHEMA: &str = include_str!("subgraphs.graphql");
+    let res = if id.is_meta() {
+        Schema::parse(SUBGRAPHS_SCHEMA, id)
+    } else {
+        use subgraph_manifest as sm;
+        let manifest_id = SubgraphManifestEntity::id(&id);
+        let s: String = sm::table
+            .select(sm::schema)
+            .filter(sm::id.eq(manifest_id.as_str()))
+            .first(conn)?;
+        Schema::parse(s.as_str(), id)
+    };
+    res.map_err(|e| StoreError::Unknown(e))
+}
+
+pub fn subgraph_network(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+) -> Result<Option<String>, StoreError> {
+    use ethereum_contract_data_source as ds;
+    use subgraph_manifest as sm;
+
+    let manifest_id = SubgraphManifestEntity::id(&id);
+    sm::table
+        .select(sm::data_sources)
+        .filter(sm::id.eq(manifest_id.as_str()))
+        .first::<Vec<String>>(conn)?
+        // The NetworkIndexer creates a manifest with an empty
+        // array of data sources and we therefore accept 'None'
+        // here
+        .first()
+        .map(|ds_id| {
+            ds::table
+                .select(ds::network)
+                .filter(ds::id.eq(&ds_id))
+                .first::<Option<String>>(conn)
+        })
+        .transpose()
+        .map(|x| x.flatten())
+        .map_err(|e| e.into())
 }

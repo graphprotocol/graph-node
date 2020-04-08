@@ -13,10 +13,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use graph::components::store::Store as StoreTrait;
-use graph::data::subgraph::schema::EthereumContractDataSourceEntity;
-use graph::data::subgraph::schema::{
-    SubgraphDeploymentEntity, SubgraphManifestEntity, TypedEntity as _, SUBGRAPHS_ID,
-};
+use graph::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity as _, SUBGRAPHS_ID};
 use graph::prelude::{
     bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
     trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
@@ -26,7 +23,7 @@ use graph::prelude::{
     Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, Sink as _,
     StopwatchMetrics, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, Stream,
     SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
-    SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    SubgraphEntityPair, TransactionAbortError, BLOCK_NUMBER_MAX,
 };
 
 use graph_chain_ethereum::BlockIngestorMetrics;
@@ -37,7 +34,7 @@ use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::history_event::HistoryEvent;
-use crate::metadata::deployment_graft;
+use crate::metadata;
 use crate::store_events::StoreEventListener;
 
 embed_migrations!("./migrations");
@@ -722,76 +719,22 @@ impl Store {
         }
         trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
-        let (input_schema, network) = if *subgraph_id == *SUBGRAPHS_ID {
+        let conn = self.get_conn()?;
+        let input_schema = metadata::subgraph_schema(&conn, subgraph_id.to_owned())?;
+        let network = if subgraph_id.is_meta() {
             // The subgraph of subgraphs schema is built-in. Use an impossible
             // network name so that we will never find blocks for this subgraph
-            (
-                include_str!("subgraphs.graphql").to_owned(),
-                Some("subgraphs".to_owned()),
-            )
+            Some(subgraph_id.as_str().to_owned())
         } else {
-            let manifest_entity = self
-                .get(EntityKey {
-                    subgraph_id: SUBGRAPHS_ID.clone(),
-                    entity_type: SubgraphManifestEntity::TYPENAME.to_owned(),
-                    entity_id: SubgraphManifestEntity::id(&subgraph_id),
-                })?
-                .ok_or_else(|| format_err!("Subgraph entity not found {}", subgraph_id))?;
-
-            let input_schema = match manifest_entity.get("schema") {
-                Some(Value::String(raw)) => raw.clone(),
-                _ => {
-                    return Err(format_err!(
-                        "Schema not present or has wrong type, subgraph: {}",
-                        subgraph_id
-                    ));
-                }
-            };
-
-            fn bad_data_source(code: i32, subgraph_id: &SubgraphDeploymentId) -> Error {
-                return format_err!(
-                    "Data source for subgraph is malformed, code: {}, subgraph: {}",
-                    code,
-                    subgraph_id
-                );
-            }
-
-            let network = match manifest_entity.get("dataSources") {
-                Some(Value::List(dss)) => match dss.first() {
-                    Some(Value::String(dsid)) => {
-                        let data_source = self
-                            .get(EntityKey {
-                                subgraph_id: SUBGRAPHS_ID.clone(),
-                                entity_type: EthereumContractDataSourceEntity::TYPENAME.to_owned(),
-                                entity_id: dsid.to_owned(),
-                            })?
-                            .ok_or_else(|| bad_data_source(1, subgraph_id))?;
-                        match data_source.get("network") {
-                            Some(Value::String(network)) => Ok(Some(network.to_owned())),
-                            None => Ok(None),
-                            _ => Err(bad_data_source(2, subgraph_id)),
-                        }
-                    }
-                    // The NetworkIndexer puts us here as it does not create
-                    // data sources for the subgraphs it creates, and the
-                    // manifest contains an empty list of data sources
-                    None => Ok(None),
-                    _ => Err(bad_data_source(3, subgraph_id)),
-                },
-                _ => Err(bad_data_source(4, subgraph_id)),
-            }?;
-            (input_schema, network)
+            metadata::subgraph_network(&conn, &subgraph_id)?
         };
 
-        let conn = self.get_conn()?;
-        let graft_block = deployment_graft(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
-
-        // Parse the schema and add @subgraphId directives
-        let input_schema = Schema::parse(&input_schema, subgraph_id.clone())?;
-        let mut schema = input_schema.clone();
+        let graft_block =
+            metadata::deployment_graft(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
+        let mut schema = input_schema.clone();
         schema.document = api_schema(&schema.document)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
