@@ -703,7 +703,7 @@ impl Store {
             return Ok(storage.clone());
         }
 
-        let storage = Arc::new(e::Storage::new(conn, subgraph, self)?);
+        let storage = Arc::new(e::Storage::new(conn, subgraph)?);
         if storage.is_cacheable() {
             self.storage_cache
                 .lock()

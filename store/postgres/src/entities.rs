@@ -45,13 +45,13 @@ use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, BlockNumber, Entity,
     EntityChange, EntityChangeOperation, EntityCollection, EntityFilter, EntityKey,
     EntityModification, EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, SubgraphDeploymentStore,
-    ValueType, BLOCK_NUMBER_MAX,
+    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::block_number;
 use crate::history_event::HistoryEvent;
 use crate::jsonb_queries::FilterQuery;
+use crate::metadata;
 use crate::notification_listener::JsonNotification;
 use crate::relational::{IdType, Layout};
 use crate::store::Store;
@@ -1257,7 +1257,6 @@ impl Storage {
     pub(crate) fn new(
         conn: &PgConnection,
         subgraph: &SubgraphDeploymentId,
-        store: &Store,
     ) -> Result<Self, StoreError> {
         use public::DeploymentSchemaVersion as V;
 
@@ -1285,7 +1284,7 @@ impl Storage {
                 })
             }
             V::Relational => {
-                let subgraph_schema = store.input_schema(subgraph)?;
+                let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
                 let layout = Layout::new(
                     &subgraph_schema.document,
                     IdType::String,
