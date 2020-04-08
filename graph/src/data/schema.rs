@@ -978,7 +978,7 @@ impl Schema {
                                 match BuiltInScalarType::try_from(
                                     field.field_type.get_base_type().as_ref(),
                                 ) {
-                                    Ok(BuiltInScalarType::String) if !field.name.eq(field_name) => {
+                                    Ok(BuiltInScalarType::String) if field.name.eq(field_name) => {
                                         true
                                     }
                                     _ => false,
