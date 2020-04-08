@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+tbd
+
+## 0.18.0
+
 **NOTE: JSONB storage is deprecated and will be removed in the next release.
 This only affects subgraphs that were deployed with a graph-node version
 before 0.16. Starting with this version, graph-node will print a warning for
