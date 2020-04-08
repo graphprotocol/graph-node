@@ -254,6 +254,7 @@ impl Layout {
 
     pub fn copy_from(
         &self,
+        logger: &Logger,
         conn: &PgConnection,
         base: &Layout,
         block: EthereumBlockPointer,
@@ -263,6 +264,10 @@ impl Layout {
         assert!(!self.subgraph.is_meta());
         assert!(!base.subgraph.is_meta());
 
+        info!(
+            logger,
+            "Initializing graft by copying data from {} to {}", base.subgraph, self.subgraph
+        );
         // 1. Copy subgraph data
         // We allow both not copying tables at all from the source, as well
         // as adding new tables in `self`; we only need to check that tables
@@ -273,12 +278,16 @@ impl Layout {
             .values()
             .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
         {
-            rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
+            let start = Instant::now();
+            let count = rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
+            info!(logger, "Copied {} {} entities", count, src.object;
+                  "time_ms" => start.elapsed().as_millis());
         }
 
         // 2. Copy dynamic data sources and adjust their ID
         use crate::metadata::dynamic_ethereum_contract_data_source as decds;
         // Find existing dynamic data sources
+        let start = Instant::now();
         let dds = decds::table
             .select(decds::id)
             .filter(decds::deployment.eq(base.subgraph.as_str()))
@@ -291,16 +300,19 @@ impl Layout {
         // ids into new ids in the process and attaching them to `self.subgraph`
         rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, self.subgraph.as_str())
             .execute(conn)?;
-
+        info!(logger, "Copied {} dynamic data sources", dds.len();
+              "time_ms" => start.elapsed().as_millis());
         // 3. Rewind the subgraph. `revert_block` gets rid of everything
         // including the block passed to it. We want to preserve `block`
         // and therefore revert `block+1`
+        let start = Instant::now();
         let revert_to: BlockNumber = (block.number + 1)
             .try_into()
             .expect("block numbers fit into an i32");
         self.revert_block(conn, revert_to)?;
         metadata.revert_metadata(conn, &self.subgraph, revert_to)?;
-
+        info!(logger, "Rewound subgraph to block {}", block.number;
+              "time_ms" => start.elapsed().as_millis());
         Ok(())
     }
 

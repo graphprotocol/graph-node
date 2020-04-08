@@ -342,7 +342,7 @@ impl Connection {
     }
 
     /// Do any cleanup to bring the subgraph into a known good state
-    pub(crate) fn start_subgraph(&self) -> Result<(), StoreError> {
+    pub(crate) fn start_subgraph(&self, logger: &Logger) -> Result<(), StoreError> {
         use public::deployment_schemas as dsl;
         use public::DeploymentSchemaState as State;
 
@@ -356,6 +356,7 @@ impl Connection {
                 let graft = metadata::deployment_graft(&self.conn, &self.storage.subgraph())?;
                 match &*self.storage {
                     Storage::Relational(layout) => {
+                        let start = Instant::now();
                         let graft =
                             metadata::deployment_graft(&self.conn, &self.storage.subgraph())?;
                         if let Some((base, block)) = graft {
@@ -365,12 +366,20 @@ impl Connection {
                                     "A JSONB subgraph is never used as the base for a graft"
                                 ),
                             };
-                            layout.copy_from(&self.conn, &base, block, self.metadata_layout())?;
+                            layout.copy_from(
+                                logger,
+                                &self.conn,
+                                &base,
+                                block,
+                                self.metadata_layout(),
+                            )?;
                         }
                         diesel::update(dsl::table)
                             .set(dsl::state.eq(State::Ready))
                             .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
                             .execute(&self.conn)?;
+                        info!(logger, "Subgraph successfully initialized";
+                              "time_ms" => start.elapsed().as_millis());
                     }
                     Storage::Json(_) => {
                         if graft.is_some() {

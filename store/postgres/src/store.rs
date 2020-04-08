@@ -1046,21 +1046,24 @@ impl StoreTrait for Store {
 
     fn start_subgraph_deployment(
         &self,
+        logger: &Logger,
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(subgraph_id)?;
 
         if !econn.uses_relational_schema() {
-            warn!(&self.logger, "This subgraph uses JSONB storage, which is \
+            warn!(
+                logger,
+                "This subgraph uses JSONB storage, which is \
               deprecated and support for it will be removed in a future release. \
-              Please redeploy the subgraph to address this warning";
-              "subgraph" => subgraph_id.to_string());
+              Please redeploy the subgraph to address this warning"
+            );
         }
 
         econn.transaction(|| {
             let event = self.apply_metadata_operations_with_conn(&econn, ops)?;
-            econn.start_subgraph()?;
+            econn.start_subgraph(logger)?;
             econn.send_store_event(&event)
         })
     }

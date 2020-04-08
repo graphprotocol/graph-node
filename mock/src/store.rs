@@ -67,6 +67,7 @@ mock! {
 
         fn start_subgraph_deployment(
             &self,
+            logger: &Logger,
             subgraph_id: &SubgraphDeploymentId,
             ops: Vec<MetadataOperation>,
         ) -> Result<(), StoreError>;

@@ -316,7 +316,7 @@ impl SubgraphInstanceManager {
         // If we can't even clear the 'failed' flag, don't try to start
         // the subgraph.
         let status_ops = SubgraphDeploymentEntity::update_failed_operations(&manifest.id, false);
-        store.start_subgraph_deployment(&manifest.id, status_ops)?;
+        store.start_subgraph_deployment(&logger, &manifest.id, status_ops)?;
 
         let mut templates: Vec<DataSourceTemplate> = vec![];
         for data_source in manifest.data_sources.iter() {

@@ -110,7 +110,7 @@ fn create_subgraph(
         .map(|op| op.into())
         .collect();
     STORE.create_subgraph_deployment(&schema, ops)?;
-    STORE.start_subgraph_deployment(&subgraph_id, vec![])
+    STORE.start_subgraph_deployment(&*LOGGER, &subgraph_id, vec![])
 }
 
 #[cfg(debug_assertions)]

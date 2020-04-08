@@ -1167,6 +1167,7 @@ pub trait Store: Send + Sync + 'static {
     /// subgraph
     fn start_subgraph_deployment(
         &self,
+        logger: &Logger,
         subgraph_id: &SubgraphDeploymentId,
         ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError>;
