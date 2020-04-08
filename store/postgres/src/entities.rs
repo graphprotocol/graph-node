@@ -832,14 +832,50 @@ impl Connection {
         self.conn.batch_execute(&*query)?;
 
         match *GRAPH_STORAGE_SCHEME {
-            v::Relational => Layout::create_relational_schema(
-                &self.conn,
-                &schema_name,
-                schema.id.clone(),
-                &schema.document,
-            )
-            .map(|_| ()),
-            v::Split => create_split_schema(&self.conn, &schema_name),
+            v::Relational => {
+                let layout = Layout::create_relational_schema(
+                    &self.conn,
+                    &schema_name,
+                    schema.id.clone(),
+                    &schema.document,
+                )?;
+                // See if we are grafting and check that the graft is permissible
+                if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
+                    match Storage::new(&self.conn, &base)? {
+                        Storage::Relational(base) => {
+                            let errors = layout.can_copy_from(&base);
+                            if !errors.is_empty() {
+                                return Err(StoreError::Unknown(format_err!(
+                                    "The subgraph `{}` can not be used as the graft base \
+                                        for `{}` because the schemas are incompatible:\n    - {}",
+                                    &base.subgraph,
+                                    &layout.subgraph,
+                                    errors.join("\n    - ")
+                                )));
+                            }
+                        }
+                        Storage::Json(json) => {
+                            return Err(StoreError::Unknown(format_err!(
+                                "The subgraph `{}` can not be used as the graft base \
+                                    for `{}` since it uses JSONB storage. Redeploy \
+                                    `{}` to fix this",
+                                &json.subgraph,
+                                &schema.id,
+                                &json.subgraph
+                            )));
+                        }
+                    }
+                }
+                Ok(())
+            }
+            v::Split => {
+                if metadata::deployment_graft(&self.conn, &schema.id)?.is_some() {
+                    return Err(StoreError::Unknown(format_err!(
+                        "JSONB storage does not support grafting onto another subgraph",
+                    )));
+                }
+                create_split_schema(&self.conn, &schema_name)
+            }
         }
     }
 
