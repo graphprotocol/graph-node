@@ -1361,6 +1361,7 @@ dependencies = [
  "bytes 0.5.4",
  "ethabi 10.0.0",
  "futures 0.1.29",
+ "futures 0.3.4",
  "graph",
  "graph-chain-arweave",
  "graph-core",
@@ -1377,6 +1378,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "test-store",
+ "tiny-keccak",
  "uuid 0.8.1",
  "wasmi",
 ]

@@ -1,8 +1,10 @@
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use async_trait::async_trait;
 use ethabi::{LogParam, RawLog};
+use futures::future::Future;
+use futures::sink::Sink;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 use semver::{Version, VersionReq};
@@ -16,72 +18,19 @@ use graph::components::store::Store;
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::subgraph::{Mapping, Source};
 use graph::prelude::{
-    RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
+    debug, failure, format_err, info, slog, tokio, warn, web3, BlockHandlerFilter, BlockState,
+    CheapClone, DataSource, DataSourceContext, DataSourceTemplate, Error, EthereumCallCache,
+    Future01CompatExt, HostMetrics, LinkResolver, Logger, MappingABI, MappingBlockHandler,
+    MappingCallHandler, MappingEventHandler, SubgraphDeploymentId,
 };
 use graph::util;
 use web3::types::{Log, Transaction};
 
 use crate::host_exports::HostExports;
 use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
+use crate::SubgraphDeploymentStore;
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
-
-pub struct HostMetrics {
-    handler_execution_time: Box<HistogramVec>,
-    host_fn_execution_time: Box<HistogramVec>,
-    pub stopwatch: StopwatchMetrics,
-}
-
-impl fmt::Debug for HostMetrics {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO: `HistogramVec` does not implement fmt::Debug, what is the best way to deal with this?
-        write!(f, "HostMetrics {{ }}")
-    }
-}
-
-impl HostMetrics {
-    pub fn new(
-        registry: Arc<impl MetricsRegistry>,
-        subgraph_hash: String,
-        stopwatch: StopwatchMetrics,
-    ) -> Self {
-        let handler_execution_time = registry
-            .new_histogram_vec(
-                format!("subgraph_handler_execution_time_{}", subgraph_hash),
-                String::from("Measures the execution time for handlers"),
-                HashMap::new(),
-                vec![String::from("handler")],
-                vec![0.1, 0.5, 1.0, 10.0, 100.0],
-            )
-            .expect("failed to create `subgraph_handler_execution_time` histogram");
-        let host_fn_execution_time = registry
-            .new_histogram_vec(
-                format!("subgraph_host_fn_execution_time_{}", subgraph_hash),
-                String::from("Measures the execution time for host functions"),
-                HashMap::new(),
-                vec![String::from("host_fn_name")],
-                vec![0.025, 0.05, 0.2, 2.0, 8.0, 20.0],
-            )
-            .expect("failed to create `subgraph_host_fn_execution_time` histogram");
-        Self {
-            handler_execution_time,
-            host_fn_execution_time,
-            stopwatch,
-        }
-    }
-
-    pub fn observe_handler_execution_time(&self, duration: f64, handler: &str) {
-        self.handler_execution_time
-            .with_label_values(vec![handler].as_slice())
-            .observe(duration);
-    }
-
-    pub fn observe_host_fn_execution_time(&self, duration: f64, fn_name: &str) {
-        self.host_fn_execution_time
-            .with_label_values(vec![fn_name].as_slice())
-            .observe(duration);
-    }
-}
 
 struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
@@ -135,21 +84,13 @@ where
             three_box_adapter,
         }
     }
-}
-
-impl<S> RuntimeHostBuilderTrait for RuntimeHostBuilder<S>
-where
-    S: Send + Sync + 'static + Store + SubgraphDeploymentStore + EthereumCallCache,
-{
-    type Host = RuntimeHost;
-    type Req = MappingRequest;
 
     fn spawn_mapping(
         parsed_module: parity_wasm::elements::Module,
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Sender<Self::Req>, Error> {
+    ) -> Result<Sender<MappingRequest>, Error> {
         crate::mapping::spawn_module(
             parsed_module,
             logger,
@@ -167,7 +108,7 @@ where
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Self::Host, Error> {
+    ) -> Result<RuntimeHost, Error> {
         // Detect whether the subgraph uses templates in data sources, which are
         // deprecated, or the top-level templates field.
         let templates = match top_level_templates.is_empty() {
@@ -488,10 +429,7 @@ impl RuntimeHost {
 
         result
     }
-}
 
-#[async_trait]
-impl RuntimeHostTrait for RuntimeHost {
     fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log)
             && self.matches_log_signature(log)
