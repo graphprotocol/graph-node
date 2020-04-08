@@ -59,6 +59,46 @@ For more information about the supported operators (like the `&` in the above
 query), please refer to the [Postgres
 documentation](https://www.postgresql.org/docs/10/textsearch.html).
 
+### Feature: 3Box Profiles (#1574)
+
+[3Box](https://3box.io) has become a popular solution for integrating user
+profiles into dApps. Starting with this release, it is possible to fetch profile
+data for Ethereum addresses and DIDs. Example usage:
+
+```ts
+import { box } from '@graphprotocol/graph-ts'
+
+let profile = box.profile("0xc8d807011058fcc0FB717dcd549b9ced09b53404")
+if (profile !== null) {
+  let name = profile.get("name")
+  ...
+}
+
+let profileFromDid = box.profile(
+  "id:3:bafyreia7db37k7epoc4qaifound6hk7swpwfkhudvdug4bgccjw6dh77ue"
+)
+...
+```
+
+### Feature: Arweave Transaction Data (#1574)
+
+This release enables accessing [Arweave](https://arweave.org) transaction data
+using Arweave transaction IDs:
+
+```ts
+import { arweave, json } from '@graphprotocol/graph-ts'
+
+let data = arweave.transactionData(
+  "W2czhcswOAe4TgL4Q8kHHqoZ1jbFBntUCrtamYX_rOU"
+)
+
+if (data !== null) {
+  let data = json.fromBytes(data)
+  ...
+}
+
+```
+
 ### Feature: Data Source Context (#1404 via #1537)
 
 Data source contexts allow passing extra configuration when creating a data
@@ -137,6 +177,7 @@ export function handleSomeEvent(event: SomeEvent): void {
   timeouts out (#1547).
 - Fix loading dynamically created data sources with `topic0` event handlers
   from the database (#1580).
+- Fix handling contract call reverts in newer versions of Ganache (#1591).
 
 ### IPFS
 
@@ -177,6 +218,7 @@ export function handleSomeEvent(event: SomeEvent): void {
 
 ### Misc
 
+- Default to IPFS 0.4.23 in the Docker Compose setup (#1592).
 - Support Elasticsearch endpoints without HTTP basic auth (#1576).
 - Fix `--version` not reporting the current version (#967 via #1567).
 - Convert more code to async/await and simplify async logic (#1558, #1560,
@@ -188,6 +230,7 @@ export function handleSomeEvent(event: SomeEvent): void {
 - Update to futures 0.3 and tokio 0.2, enabling `async`/`await` (#1448).
 - Log block and full transaction hash when handlers fail (#1496).
 - Speed up network indexer tests (#1453).
+- Fix Travis to always install Node.js 11.x. (#1588).
 - Dependency updates: bytes, chrono, crossbeam-channel, ethabi, failure,
   futures, hex, hyper, indexmap, jsonrpc-http-server, num-bigint,
   priority-queue, reqwest, rust-web3, serde, serde_json, slog-async, slog-term,
