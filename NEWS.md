@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-tbd
+### Misc
+- Log all GraphQL and SQL queries performed by a node, controlled through
+  the `GRAPH_LOG_QUERY_TIMING` [environment
+  variable](docs/environment-variables.md).
 
 ## 0.18.0
 

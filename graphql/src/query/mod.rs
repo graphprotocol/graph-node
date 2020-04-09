@@ -107,13 +107,15 @@ where
                     ),
                     (Ok(_), _) => execute_root_selection_set(&ctx, selection_set),
                 };
-            info!(
-                query_logger,
-                "Query timing (GraphQL)";
-                "query" => query.document.format(&Style::default().indent(0)).replace('\n', " "),
-                "variables" => serde_json::to_string(&query.variables).unwrap_or_default(),
-                "query_time_ms" => start.elapsed().as_millis(),
-            );
+            if *graph::log::LOG_GQL_TIMING {
+                info!(
+                    query_logger,
+                    "Query timing (GraphQL)";
+                    "query" => query.document.format(&Style::default().indent(0)).replace('\n', " "),
+                    "variables" => serde_json::to_string(&query.variables).unwrap_or_default(),
+                    "query_time_ms" => start.elapsed().as_millis(),
+                );
+            }
             result
         }
         // Everything else (e.g. mutations) is unsupported

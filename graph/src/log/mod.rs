@@ -1,4 +1,5 @@
 use isatty;
+use lazy_static::lazy_static;
 use slog::*;
 use slog_async;
 use slog_envlogger;
@@ -353,4 +354,16 @@ impl ser::Serializer for KeyValueSerializer {
     fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
         s!(self, key, val)
     }
+}
+
+fn log_query_timing(kind: &str) -> bool {
+    env::var("GRAPH_LOG_QUERY_TIMING")
+        .unwrap_or("".into())
+        .split(",")
+        .any(|v| v == kind)
+}
+
+lazy_static! {
+    pub static ref LOG_SQL_TIMING: bool = { log_query_timing("sql") };
+    pub static ref LOG_GQL_TIMING: bool = { log_query_timing("gql") };
 }

@@ -25,7 +25,7 @@ use crate::relational_queries::{
 };
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::prelude::{
-    format_err, trace, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
+    format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
     StoreEvent, SubgraphDeploymentId, Value, ValueType,
 };
@@ -400,6 +400,11 @@ impl Layout {
         ) {
             // 20kB
             const MAXLEN: usize = 20_480;
+
+            if !*graph::log::LOG_SQL_TIMING {
+                return;
+            }
+
             let mut text = debug_query(&query).to_string().replace("\n", " ");
             // If the query + bind variables is more than MAXLEN, truncate it;
             // this will happen when queries have very large bind variables
@@ -408,7 +413,7 @@ impl Layout {
                 text.truncate(MAXLEN);
                 text.push_str(" ...");
             }
-            trace!(
+            info!(
                 logger,
                 "Query timing (SQL)";
                 "query" => text,
