@@ -6,15 +6,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use lazy_static::lazy_static;
-
-use graph::prelude::{
-    format_err, web3, BlockState, DataSource, DataSourceTemplate, Error, EthereumTrigger,
-    HostMetrics, LightEthereumBlock, Logger, SubgraphDeploymentId, SubgraphManifest,
-};
-use graph_runtime_wasm::{MappingRequest, RuntimeHost, RuntimeHostBuilder};
 use web3::types::Log;
 
-use super::types::SubgraphInstance as SubgraphInstanceTrait;
+use graph::prelude::{
+    format_err, web3, BlockState, CheapClone, DataSource, DataSourceTemplate, Error,
+    EthereumCallCache, EthereumTrigger, HostMetrics, LightEthereumBlock, LightEthereumBlockExt,
+    Logger, Store, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
+};
+use graph_runtime_wasm::{MappingRequest, RuntimeHost, RuntimeHostBuilder};
+
+use crate::types::SubgraphInstance as SubgraphInstanceTrait;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -23,10 +24,10 @@ lazy_static! {
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_SUBGRAPH_MAX_DATA_SOURCES")));
 }
 
-pub struct SubgraphInstance {
+pub struct SubgraphInstance<S> {
     subgraph_id: SubgraphDeploymentId,
     network: String,
-    host_builder: RuntimeHostBuilder,
+    host_builder: RuntimeHostBuilder<S>,
 
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -39,11 +40,14 @@ pub struct SubgraphInstance {
     module_cache: HashMap<Vec<u8>, Sender<MappingRequest>>,
 }
 
-impl SubgraphInstance {
+impl<S> SubgraphInstance<S>
+where
+    S: Store + SubgraphDeploymentStore + EthereumCallCache,
+{
     pub(crate) fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest,
-        host_builder: RuntimeHostBuilder,
+        host_builder: RuntimeHostBuilder<S>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
@@ -101,7 +105,7 @@ impl SubgraphInstance {
             if let Some(sender) = self.module_cache.get(&module_bytes) {
                 sender.clone()
             } else {
-                let sender = RuntimeHost::spawn_mapping(
+                let sender = RuntimeHostBuilder::<S>::spawn_mapping(
                     data_source.mapping.runtime.as_ref().clone(),
                     logger,
                     self.subgraph_id.clone(),
@@ -123,7 +127,10 @@ impl SubgraphInstance {
 }
 
 #[async_trait]
-impl SubgraphInstanceTrait for SubgraphInstance {
+impl<S> SubgraphInstanceTrait for SubgraphInstance<S>
+where
+    S: Store + SubgraphDeploymentStore + EthereumCallCache,
+{
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool {
         self.hosts.iter().any(|host| host.matches_log(log))
@@ -216,7 +223,7 @@ impl SubgraphInstanceTrait for SubgraphInstance {
             top_level_templates,
             metrics.clone(),
         )?);
-        self.hosts.push(host.clone());
+        self.hosts.push(host.cheap_clone());
         Ok(host)
     }
 }

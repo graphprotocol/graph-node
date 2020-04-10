@@ -85,7 +85,7 @@ where
         }
     }
 
-    fn spawn_mapping(
+    pub fn spawn_mapping(
         parsed_module: parity_wasm::elements::Module,
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
@@ -100,7 +100,7 @@ where
         )
     }
 
-    fn build(
+    pub fn build(
         &self,
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
@@ -225,7 +225,7 @@ impl RuntimeHost {
         })
     }
 
-    fn matches_call_address(&self, call: &EthereumCall) -> bool {
+    pub fn matches_call_address(&self, call: &EthereumCall) -> bool {
         // The runtime host matches the contract address of the `EthereumCall`
         // if the data source contains the same contract address or
         // if the data source doesn't have a contract address at all
@@ -234,7 +234,7 @@ impl RuntimeHost {
             .map_or(true, |addr| addr == call.to)
     }
 
-    fn matches_call_function(&self, call: &EthereumCall) -> bool {
+    pub fn matches_call_function(&self, call: &EthereumCall) -> bool {
         let target_method_id = &call.input.0[..4];
         self.data_source_call_handlers.iter().any(|handler| {
             let fhash = keccak256(handler.function.as_bytes());
@@ -243,7 +243,7 @@ impl RuntimeHost {
         })
     }
 
-    fn matches_log_address(&self, log: &Log) -> bool {
+    pub fn matches_log_address(&self, log: &Log) -> bool {
         // The runtime host matches the contract address of the `Log`
         // if the data source contains the same contract address or
         // if the data source doesn't have a contract address at all
@@ -252,7 +252,7 @@ impl RuntimeHost {
             .map_or(true, |addr| addr == log.address)
     }
 
-    fn matches_log_signature(&self, log: &Log) -> bool {
+    pub fn matches_log_signature(&self, log: &Log) -> bool {
         let topic0 = match log.topics.iter().next() {
             Some(topic0) => topic0,
             None => return false,
@@ -263,7 +263,7 @@ impl RuntimeHost {
             .any(|handler| *topic0 == handler.topic0())
     }
 
-    fn matches_block_trigger(&self, block_trigger_type: &EthereumBlockTriggerType) -> bool {
+    pub fn matches_block_trigger(&self, block_trigger_type: &EthereumBlockTriggerType) -> bool {
         let source_address_matches = match block_trigger_type {
             EthereumBlockTriggerType::WithCallTo(address) => {
                 self.data_source_contract
@@ -276,7 +276,7 @@ impl RuntimeHost {
         source_address_matches && self.handler_for_block(block_trigger_type).is_ok()
     }
 
-    fn handlers_for_log(&self, log: &Arc<Log>) -> Result<Vec<MappingEventHandler>, Error> {
+    pub fn handlers_for_log(&self, log: &Arc<Log>) -> Result<Vec<MappingEventHandler>, Error> {
         // Get signature from the log
         let topic0 = match log.topics.iter().next() {
             Some(topic0) => topic0,
@@ -300,7 +300,7 @@ impl RuntimeHost {
         }
     }
 
-    fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, Error> {
+    pub fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, Error> {
         // First four bytes of the input for the call are the first four
         // bytes of hash of the function signature
         if call.input.0.len() < 4 {
@@ -327,7 +327,7 @@ impl RuntimeHost {
             })
     }
 
-    fn handler_for_block(
+    pub fn handler_for_block(
         &self,
         trigger_type: &EthereumBlockTriggerType,
     ) -> Result<MappingBlockHandler, Error> {
@@ -364,7 +364,7 @@ impl RuntimeHost {
 
     /// Sends a MappingRequest to the thread which owns the host,
     /// and awaits the result.
-    async fn send_mapping_request<T: slog::SendSyncRefUnwindSafeKV>(
+    pub(crate) async fn send_mapping_request<T: slog::SendSyncRefUnwindSafeKV>(
         &self,
         logger: &Logger,
         extra: OwnedKV<T>,
@@ -430,19 +430,19 @@ impl RuntimeHost {
         result
     }
 
-    fn matches_log(&self, log: &Log) -> bool {
+    pub fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log)
             && self.matches_log_signature(log)
             && self.data_source_contract.start_block <= log.block_number.unwrap().as_u64()
     }
 
-    fn matches_call(&self, call: &EthereumCall) -> bool {
+    pub fn matches_call(&self, call: &EthereumCall) -> bool {
         self.matches_call_address(call)
             && self.matches_call_function(call)
             && self.data_source_contract.start_block <= call.block_number
     }
 
-    fn matches_block(
+    pub fn matches_block(
         &self,
         block_trigger_type: &EthereumBlockTriggerType,
         block_number: u64,
@@ -451,7 +451,7 @@ impl RuntimeHost {
             && self.data_source_contract.start_block <= block_number
     }
 
-    async fn process_call(
+    pub async fn process_call(
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
@@ -555,7 +555,7 @@ impl RuntimeHost {
         .await
     }
 
-    async fn process_block(
+    pub async fn process_block(
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
@@ -579,7 +579,7 @@ impl RuntimeHost {
         .await
     }
 
-    async fn process_log(
+    pub async fn process_log(
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,

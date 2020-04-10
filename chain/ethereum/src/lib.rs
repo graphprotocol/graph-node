@@ -8,7 +8,7 @@ mod ethereum_adapter;
 mod network_indexer;
 mod subgraph_indexer;
 mod transport;
-mod types;
+pub(crate) mod types;
 
 pub use self::block_ingestor::{BlockIngestor, BlockIngestorMetrics};
 pub use self::block_stream::{BlockStream, BlockStreamBuilder};
