@@ -27,7 +27,6 @@ use graph::util::lfu_cache::LfuCache;
 use graph_runtime_wasm::{RuntimeHost, RuntimeHostBuilder};
 
 use super::instance::SubgraphInstance;
-use crate::types::SubgraphInstance as SubgraphInstanceTrait;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -49,9 +48,9 @@ struct IndexingInputs<B, S> {
     top_level_templates: Arc<Vec<DataSourceTemplate>>,
 }
 
-struct IndexingState<SI> {
+struct IndexingState<S> {
     logger: Logger,
-    instance: Box<SI>,
+    instance: SubgraphInstance<S>,
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
@@ -59,12 +58,12 @@ struct IndexingState<SI> {
     entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
-struct IndexingContext<B, S, SI> {
+struct IndexingContext<B, S> {
     /// Read only inputs that are needed while indexing a subgraph.
     pub inputs: IndexingInputs<B, S>,
 
     /// Mutable state that may be modified while indexing a subgraph.
-    pub state: IndexingState<SI>,
+    pub state: IndexingState<S>,
 
     /// Sensors to measure the execution of the subgraph instance
     pub subgraph_metrics: Arc<SubgraphInstanceMetrics>,
@@ -295,7 +294,7 @@ where
                 },
                 state: IndexingState {
                     logger: self.logger.clone(),
-                    instance: Box::new(instance),
+                    instance,
                     log_filter,
                     call_filter,
                     block_filter,
@@ -338,11 +337,10 @@ where
     }
 }
 
-async fn run_subgraph<B, S, SI>(mut ctx: IndexingContext<B, S, SI>) -> Result<(), ()>
+async fn run_subgraph<B, S>(mut ctx: IndexingContext<B, S>) -> Result<(), ()>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
-    SI: SubgraphInstanceTrait,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -461,16 +459,15 @@ where
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-async fn process_block<B, S, SI>(
+async fn process_block<B, S>(
     logger: &Logger,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
-    mut ctx: IndexingContext<B, S, SI>,
+    mut ctx: IndexingContext<B, S>,
     block: EthereumBlockWithTriggers,
-) -> Result<(IndexingContext<B, S, SI>, bool), Error>
+) -> Result<(IndexingContext<B, S>, bool), Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
-    SI: SubgraphInstanceTrait,
 {
     let triggers = block.triggers;
     let block = block.ethereum_block;
@@ -640,13 +637,17 @@ where
     }
 }
 
-async fn process_triggers<B: BlockStreamBuilder, S: Send + Sync, SI: SubgraphInstanceTrait>(
+async fn process_triggers<B, S>(
     logger: &Logger,
     mut block_state: BlockState,
-    ctx: IndexingContext<B, S, SI>,
+    ctx: IndexingContext<B, S>,
     block: &Arc<LightEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
-) -> Result<(IndexingContext<B, S, SI>, BlockState), Error> {
+) -> Result<(IndexingContext<B, S>, BlockState), Error>
+where
+    B: BlockStreamBuilder,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache,
+{
     for trigger in triggers.into_iter() {
         let block_ptr = EthereumBlockPointer::from(block.as_ref());
         let subgraph_metrics = ctx.subgraph_metrics.clone();
@@ -681,16 +682,15 @@ async fn process_triggers<B: BlockStreamBuilder, S: Send + Sync, SI: SubgraphIns
     Ok((ctx, block_state))
 }
 
-fn create_dynamic_data_sources<B, S, SI>(
+fn create_dynamic_data_sources<B, S>(
     logger: Logger,
-    ctx: &mut IndexingContext<B, S, SI>,
+    ctx: &mut IndexingContext<B, S>,
     host_metrics: Arc<HostMetrics>,
     created_data_sources: impl Iterator<Item = DataSourceTemplateInfo>,
 ) -> Result<(Vec<DataSource>, Vec<Arc<RuntimeHost>>), Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store + SubgraphDeploymentStore + EthereumCallCache,
-    SI: SubgraphInstanceTrait,
 {
     let mut data_sources = vec![];
     let mut runtime_hosts = vec![];
@@ -714,16 +714,15 @@ where
     Ok((data_sources, runtime_hosts))
 }
 
-fn persist_dynamic_data_sources<B, S, SI>(
+fn persist_dynamic_data_sources<B, S>(
     logger: Logger,
-    ctx: &mut IndexingContext<B, S, SI>,
+    ctx: &mut IndexingContext<B, S>,
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
     block_ptr: EthereumBlockPointer,
 ) where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
-    SI: SubgraphInstanceTrait,
 {
     if !data_sources.is_empty() {
         debug!(

@@ -3,19 +3,15 @@ use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use lazy_static::lazy_static;
-use web3::types::Log;
 
 use graph::prelude::{
-    format_err, web3, BlockState, CheapClone, DataSource, DataSourceTemplate, Error,
-    EthereumCallCache, EthereumTrigger, HostMetrics, LightEthereumBlock, LightEthereumBlockExt,
-    Logger, Store, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
+    format_err, BlockState, CheapClone, DataSource, DataSourceTemplate, Error, EthereumCallCache,
+    EthereumTrigger, HostMetrics, LightEthereumBlock, LightEthereumBlockExt, Logger, Store,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
 };
 use graph_runtime_wasm::{MappingRequest, RuntimeHost, RuntimeHostBuilder};
-
-use crate::types::SubgraphInstance as SubgraphInstanceTrait;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -124,19 +120,8 @@ where
             host_metrics,
         )
     }
-}
 
-#[async_trait]
-impl<S> SubgraphInstanceTrait for SubgraphInstance<S>
-where
-    S: Store + SubgraphDeploymentStore + EthereumCallCache,
-{
-    /// Returns true if the subgraph has a handler for an Ethereum event.
-    fn matches_log(&self, log: &Log) -> bool {
-        self.hosts.iter().any(|host| host.matches_log(log))
-    }
-
-    async fn process_trigger(
+    pub async fn process_trigger(
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
@@ -146,7 +131,7 @@ where
         Self::process_trigger_in_runtime_hosts(logger, &self.hosts, block, trigger, state).await
     }
 
-    async fn process_trigger_in_runtime_hosts(
+    pub async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: &[Arc<RuntimeHost>],
         block: &Arc<LightEthereumBlock>,
@@ -200,7 +185,7 @@ where
         Ok(state)
     }
 
-    fn add_dynamic_data_source(
+    pub fn add_dynamic_data_source(
         &mut self,
         logger: &Logger,
         data_source: DataSource,
