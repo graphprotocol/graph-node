@@ -160,7 +160,7 @@ pub struct Chain<MR, S> {
     store: Arc<S>,
     metrics_registry: Arc<dyn MetricsRegistry>,
 
-    subgraph_instance_manager: Box<SubgraphIndexer<BlockStreamBuilder<S, S, MR>, MR, S>>,
+    subgraph_instance_manager: Box<SubgraphIndexer<MR, S>>,
 }
 
 impl<MR, S> Chain<MR, S>

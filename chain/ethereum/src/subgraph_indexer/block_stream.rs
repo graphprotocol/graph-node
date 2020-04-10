@@ -1,15 +1,25 @@
 use std::cmp;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::iter::FromIterator;
 use std::mem;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use futures::future;
+use futures::prelude::{Async, Future, Poll, Stream};
+
+use futures03::{FutureExt, TryFutureExt};
 use graph::components::ethereum::{blocks_with_triggers, triggers_in_block};
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
 };
 use graph::prelude::{
-    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
+    debug, format_err, futures03, info, o, tokio, trace, BlockFinality, ChainHeadUpdateStream,
+    ChainStore, Entity, EntityFilter, Error, EthereumAdapter, EthereumBlockFilter,
+    EthereumBlockPointer, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCallFilter,
+    EthereumLogFilter, Gauge, LightEthereumBlockExt, Logger, MetadataOperation, MetricsRegistry,
+    StopwatchMetrics, Store, SubgraphDeploymentId, SubgraphEthRpcMetrics, TypedEntity, Value,
 };
 
 lazy_static! {
@@ -24,6 +34,53 @@ lazy_static! {
         .unwrap_or("100".into())
         .parse::<u64>()
         .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
+}
+
+#[derive(Clone)]
+pub struct BlockStreamMetrics {
+    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+    pub blocks_behind: Box<Gauge>,
+    pub reverted_blocks: Box<Gauge>,
+    pub stopwatch: StopwatchMetrics,
+}
+
+impl BlockStreamMetrics {
+    pub fn new(
+        registry: Arc<impl MetricsRegistry>,
+        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+        deployment_id: SubgraphDeploymentId,
+        stopwatch: StopwatchMetrics,
+    ) -> Self {
+        let blocks_behind = registry
+            .new_gauge(
+                format!("subgraph_blocks_behind_{}", deployment_id.to_string()),
+                String::from(
+                    "Track the number of blocks a subgraph deployment is behind the HEAD block",
+                ),
+                HashMap::new(),
+            )
+            .expect("failed to create `subgraph_blocks_behind` gauge");
+        let reverted_blocks = registry
+            .new_gauge(
+                format!("subgraph_reverted_blocks_{}", deployment_id.to_string()),
+                String::from("Track the last reverted block for a subgraph deployment"),
+                HashMap::new(),
+            )
+            .expect("Failed to create `subgraph_reverted_blocks` gauge");
+        Self {
+            ethrpc_metrics,
+            blocks_behind,
+            reverted_blocks,
+            stopwatch,
+        }
+    }
+}
+
+pub enum BlockStreamEvent {
+    Block(EthereumBlockWithTriggers),
+
+    /// Signals that a revert happened and was processed.
+    Revert,
 }
 
 enum BlockStreamState {
@@ -794,8 +851,6 @@ where
     }
 }
 
-impl<S: Store, C: ChainStore> BlockStreamTrait for BlockStream<S, C> {}
-
 impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
     type Item = BlockStreamEvent;
     type Error = Error;
@@ -1000,17 +1055,8 @@ where
             metrics_registry,
         }
     }
-}
 
-impl<S, C, M> BlockStreamBuilderTrait for BlockStreamBuilder<S, C, M>
-where
-    S: Store,
-    C: ChainStore,
-    M: MetricsRegistry,
-{
-    type Stream = BlockStream<S, C>;
-
-    fn build(
+    pub fn build(
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
@@ -1020,7 +1066,7 @@ where
         block_filter: EthereumBlockFilter,
         templates_use_calls: bool,
         metrics: Arc<BlockStreamMetrics>,
-    ) -> Self::Stream {
+    ) -> BlockStream<S, C> {
         let logger = logger.new(o!(
             "component" => "BlockStream",
         ));

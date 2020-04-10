@@ -8,7 +8,7 @@ mod subgraph_indexer;
 mod transport;
 
 // Internal components
-pub(crate) use self::subgraph_indexer::BlockStreamBuilder;
+pub(crate) use self::subgraph_indexer::{BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics};
 
 // Public components
 pub use self::ethereum_adapter::EthereumAdapter;

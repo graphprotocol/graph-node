@@ -567,46 +567,6 @@ impl SubgraphEthRpcMetrics {
     }
 }
 
-#[derive(Clone)]
-pub struct BlockStreamMetrics {
-    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-    pub blocks_behind: Box<Gauge>,
-    pub reverted_blocks: Box<Gauge>,
-    pub stopwatch: StopwatchMetrics,
-}
-
-impl BlockStreamMetrics {
-    pub fn new(
-        registry: Arc<impl MetricsRegistry>,
-        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-        deployment_id: SubgraphDeploymentId,
-        stopwatch: StopwatchMetrics,
-    ) -> Self {
-        let blocks_behind = registry
-            .new_gauge(
-                format!("subgraph_blocks_behind_{}", deployment_id.to_string()),
-                String::from(
-                    "Track the number of blocks a subgraph deployment is behind the HEAD block",
-                ),
-                HashMap::new(),
-            )
-            .expect("failed to create `subgraph_blocks_behind` gauge");
-        let reverted_blocks = registry
-            .new_gauge(
-                format!("subgraph_reverted_blocks_{}", deployment_id.to_string()),
-                String::from("Track the last reverted block for a subgraph deployment"),
-                HashMap::new(),
-            )
-            .expect("Failed to create `subgraph_reverted_blocks` gauge");
-        Self {
-            ethrpc_metrics,
-            blocks_behind,
-            reverted_blocks,
-            stopwatch,
-        }
-    }
-}
-
 /// Common trait for components that watch and manage access to Ethereum.
 ///
 /// Implementations may be implemented against an in-process Ethereum node
