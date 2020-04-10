@@ -9,11 +9,11 @@ use lazy_static;
 
 use futures03::future::AbortHandle;
 use graph::prelude::{
-    format_err, futures03, info, o, ArweaveAdapter, BlockPointer, ChainStore, CheapClone, Error,
-    EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer, Future01CompatExt,
-    LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance, NetworkInstanceId,
-    ProviderEthRpcMetrics, Store, SubgraphDeploymentStore, SubgraphIndexer as SubgraphIndexerTrait,
-    SubgraphManifest, ThreeBoxAdapter,
+    format_err, futures03, info, o, ArweaveAdapter, BlockPointer, Blockchain, ChainStore,
+    ChainStore, CheapClone, Error, EthereumAdapter as EthereumAdapterTrait, EthereumCallCache,
+    EventProducer, Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
+    NetworkInstance, NetworkInstanceId, ProviderEthRpcMetrics, Store, SubgraphDeploymentStore,
+    SubgraphIndexer as SubgraphIndexerTrait, SubgraphManifest, ThreeBoxAdapter,
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
@@ -21,6 +21,8 @@ use crate::{
     network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter,
     SubgraphIndexer, Transport,
 };
+
+mod blockchain;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -160,7 +162,7 @@ pub struct Chain<MR, S> {
     store: Arc<S>,
     metrics_registry: Arc<dyn MetricsRegistry>,
 
-    subgraph_instance_manager: Box<SubgraphIndexer<MR, S>>,
+    subgraph_indexer: Box<SubgraphIndexer<MR, S>>,
 }
 
 impl<MR, S> Chain<MR, S>
@@ -197,7 +199,7 @@ where
             options.three_box_adapter,
         );
 
-        let subgraph_instance_manager = Box::new(SubgraphIndexer::new(
+        let subgraph_indexer = Box::new(SubgraphIndexer::new(
             &logger_factory,
             options.store.clone(),
             options.conn.adapter.clone(),
@@ -220,7 +222,7 @@ where
             metrics_registry: options.metrics_registry,
 
             // Subgraph indexing components
-            subgraph_instance_manager,
+            subgraph_indexer,
         };
 
         if options.block_ingestion {
@@ -296,7 +298,11 @@ where
     }
 
     async fn start_subgraph(&self, subgraph: SubgraphManifest) -> Result<AbortHandle, Error> {
-        self.subgraph_instance_manager.start(subgraph).await
+        self.subgraph_indexer.start(subgraph).await
+    }
+
+    async fn to_blockchain(&self) -> Option<Arc<dyn Blockchain>> {
+        Some(Arc::new(blockchain::Blockchain::new()))
     }
 
     fn compat_ethereum_adapter(&self) -> Option<Arc<dyn EthereumAdapterTrait>> {

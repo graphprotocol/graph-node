@@ -8,7 +8,7 @@ use crate::prelude::{
 
 /// Common trait for a component that can provide network stores.
 #[async_trait]
-pub trait NetworkStoreFactory {
+pub trait NetworkStoreFactory: Send + Sync + 'static {
   type BlockchainStore: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache + Sized;
 
   async fn blockchain_store(

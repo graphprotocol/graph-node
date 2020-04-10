@@ -8,6 +8,7 @@ use crate::prelude::{format_err, Error, EthereumAdapter, SubgraphManifest};
 use futures03::future::AbortHandle;
 
 pub mod blockchains;
+use blockchains::Blockchain;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NetworkInstanceId {
@@ -59,7 +60,7 @@ impl TryFrom<&str> for NetworkInstanceId {
 }
 
 #[async_trait]
-pub trait NetworkInstance: Send + Sync + 'static {
+pub trait NetworkInstance: Blockchain + Send + Sync + 'static {
   fn id(&self) -> &NetworkInstanceId;
   fn url(&self) -> &str;
 
@@ -69,13 +70,12 @@ pub trait NetworkInstance: Send + Sync + 'static {
   /// FIXME: The following methods are only necessary for
   /// backwards-compatibility. They will be removed as soon as we have abstracted
   /// away Ethereum in the rest of the codebase.
-
   fn compat_ethereum_adapter(&self) -> Option<Arc<dyn EthereumAdapter>>;
 }
 
 #[async_trait]
 pub trait NetworkRegistry: Send + Sync + 'static {
-  fn register_instance(&mut self, chain: Box<dyn NetworkInstance>);
-  fn instances(&self, network: &str) -> Vec<&Box<dyn NetworkInstance>>;
-  fn instance(&self, id: &NetworkInstanceId) -> Option<&Box<dyn NetworkInstance>>;
+  fn register_instance(&mut self, chain: Arc<dyn NetworkInstance>);
+  fn instances(&self, network: &str) -> Vec<Arc<dyn NetworkInstance>>;
+  fn instance(&self, id: &NetworkInstanceId) -> Option<Arc<dyn NetworkInstance>>;
 }

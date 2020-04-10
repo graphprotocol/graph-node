@@ -1,13 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
 
 use clap::{App, Arg};
+use futures03::lock::Mutex;
 use git_testament::{git_testament, render_testament};
 use lazy_static::lazy_static;
 use prometheus::Registry;
+use tokio::sync::mpsc;
 
 use graph::log::logger;
 use graph::prelude::{
@@ -416,7 +418,7 @@ async fn main() {
             .expect("failed to connect to Ethereum chain");
 
             // Add the chain to the registry
-            network_registry.register_instance(Box::new(chain));
+            network_registry.register_instance(Arc::new(chain));
         }
     }
 
@@ -429,17 +431,17 @@ async fn main() {
     // Obtain selected Ethereum chains
     let ethereum_chains = network_registry.instances("ethereum");
 
-    // Obtain stores for these chains
-    let mut stores = HashMap::new();
-    for chain in ethereum_chains.iter() {
-        stores.insert(
-            chain.id().name.clone(),
-            store_factory
-                .blockchain_store(chain.id())
-                .await
-                .expect("failed to get store for Ethereum chain"),
-        );
-    }
+    // // Obtain stores for these chains
+    // let mut stores = HashMap::new();
+    // for chain in ethereum_chains.iter() {
+    //     stores.insert(
+    //         chain.id().name.clone(),
+    //         store_factory
+    //             .blockchain_store(chain.id())
+    //             .await
+    //             .expect("failed to get store for Ethereum chain"),
+    //     );
+    // }
 
     // Use one of the stores (doesn't matter which one) for GraphQL
     // queries, subscriptions etc.
@@ -474,12 +476,12 @@ async fn main() {
         node_id.clone(),
     );
 
-    let ethereum_adapters = HashMap::from_iter(ethereum_chains.iter().map(|chain| {
-        (
-            chain.id().name.clone(),
-            chain.compat_ethereum_adapter().unwrap(),
-        )
-    }));
+    // let ethereum_adapters = HashMap::from_iter(ethereum_chains.iter().map(|chain| {
+    //     (
+    //         chain.id().name.clone(),
+    //         chain.compat_ethereum_adapter().unwrap(),
+    //     )
+    // }));
 
     // Create subgraph provider
     let provider = IpfsSubgraphAssignmentProvider::new(
@@ -505,8 +507,8 @@ async fn main() {
         link_resolver,
         Arc::new(provider),
         generic_store.clone(),
-        stores,
-        ethereum_adapters.clone(),
+        network_registry.clone(),
+        Arc::new(Mutex::new(store_factory)),
         node_id.clone(),
         version_switching_mode,
     ));
