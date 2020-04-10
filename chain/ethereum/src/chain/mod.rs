@@ -17,7 +17,6 @@ use graph::prelude::{
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
-use crate::types::SubgraphIndexer as SubgraphIndexerTrait;
 use crate::{
     network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter,
     SubgraphIndexer, Transport,
@@ -150,7 +149,7 @@ pub struct ChainOptions<'a, MR, S> {
     pub chain_indexing: bool,
 }
 
-pub struct Chain<S> {
+pub struct Chain<MR, S> {
     id: NetworkInstanceId,
     url: String,
     _version: String,
@@ -161,17 +160,15 @@ pub struct Chain<S> {
     store: Arc<S>,
     metrics_registry: Arc<dyn MetricsRegistry>,
 
-    subgraph_instance_manager: Box<dyn SubgraphIndexerTrait>,
+    subgraph_instance_manager: Box<SubgraphIndexer<BlockStreamBuilder<S, S, MR>, MR, S>>,
 }
 
-impl<S> Chain<S>
+impl<MR, S> Chain<MR, S>
 where
+    MR: MetricsRegistry,
     S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
 {
-    pub async fn new<'a, MR>(options: ChainOptions<'a, MR, S>) -> Result<Self, Error>
-    where
-        MR: MetricsRegistry,
-    {
+    pub async fn new<'a>(options: ChainOptions<'a, MR, S>) -> Result<Self, Error> {
         options
             .store
             .initialize_chain(&options.conn.version, &options.conn.genesis_block)?;
@@ -285,8 +282,9 @@ where
 }
 
 #[async_trait]
-impl<S> NetworkInstance for Chain<S>
+impl<MR, S> NetworkInstance for Chain<MR, S>
 where
+    MR: MetricsRegistry,
     S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
 {
     fn id(&self) -> &NetworkInstanceId {

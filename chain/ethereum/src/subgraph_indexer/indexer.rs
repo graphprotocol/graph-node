@@ -3,7 +3,6 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::Instant;
 
-use async_trait::async_trait;
 use futures03::future::{abortable, AbortHandle};
 use futures03::StreamExt;
 use lazy_static::lazy_static;
@@ -28,9 +27,7 @@ use graph::util::lfu_cache::LfuCache;
 use graph_runtime_wasm::{RuntimeHost, RuntimeHostBuilder};
 
 use super::instance::SubgraphInstance;
-use crate::types::{
-    SubgraphIndexer as SubgraphIndexerTrait, SubgraphInstance as SubgraphInstanceTrait,
-};
+use crate::types::SubgraphInstance as SubgraphInstanceTrait;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -203,16 +200,8 @@ where
             metrics_registry,
         }
     }
-}
 
-#[async_trait]
-impl<BSB, MR, S> SubgraphIndexerTrait for SubgraphIndexer<BSB, MR, S>
-where
-    BSB: BlockStreamBuilder,
-    MR: MetricsRegistry,
-    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
-{
-    async fn start(&self, manifest: SubgraphManifest) -> Result<AbortHandle, Error> {
+    pub async fn start(&self, manifest: SubgraphManifest) -> Result<AbortHandle, Error> {
         let logger = self.logger_factory.subgraph_logger(&manifest.id);
 
         info!(
