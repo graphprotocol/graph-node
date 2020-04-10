@@ -157,11 +157,13 @@ export function handleSomeEvent(event: SomeEvent): void {
   // The actual error message is logged automatically.
   let result = json.try_fromBytes(data)
 
-  if (result.error) {
-    // Handle the error
-  } else {
+  if (result.isOk) { // or !result.isError
     // Do something with the JSON value
     let value = result.value
+    ...
+  } else {
+    // Handle the error
+    let error = result.error
     ...
   }
 }
