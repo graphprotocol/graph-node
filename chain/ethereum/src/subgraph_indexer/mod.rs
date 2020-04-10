@@ -4,5 +4,7 @@ mod indexer;
 mod instance;
 
 pub use self::block_ingestor::{BlockIngestor, BlockIngestorMetrics};
-pub use self::block_stream::{BlockStream, BlockStreamBuilder};
+pub use self::block_stream::{
+  BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
+};
 pub use self::indexer::SubgraphIndexer;
