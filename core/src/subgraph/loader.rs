@@ -217,10 +217,9 @@ where
         let start_time = Instant::now();
 
         let mut data_sources = vec![];
-        let mut finished = false;
-        let mut skip = 0;
 
-        while !finished {
+        loop {
+            let skip = data_sources.len() as i32;
             let query = self.dynamic_data_sources_query(&deployment_id, skip)?;
             let query_result = self
                 .query_dynamic_data_sources(&deployment_id, query)
@@ -231,11 +230,10 @@ where
                 .await?;
 
             if next_data_sources.is_empty() {
-                finished = true;
-            } else {
-                data_sources.extend(next_data_sources);
-                skip += data_sources.len() as i32;
+                break;
             }
+
+            data_sources.extend(next_data_sources);
         }
 
         trace!(
