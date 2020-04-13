@@ -17,6 +17,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | **schema**   | [*Schema*](#14-schema) | The GraphQL schema of this subgraph.|
 | **description**   | *String* | An optional description of the subgraph's purpose. |
 | **repository**   | *String* | An optional link to where the subgraph lives. |
+| **graft** | optional [*Graft Base*](#18-graft-base) | An optional base to graft onto. |
 | **dataSources**| [*Data Source Spec*](#15-data-source)| Each data source spec defines the data that will be ingested as well as the transformation logic to derive the state of the subgraph's entities based on the source data.|
 | **templates** | [*Data Source Templates Spec*](#17-data-source-templates) | Each data source template defines a data source that can be created dynamically from the mappings. |
 
@@ -63,7 +64,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 | **blockHandlers** | optional *BlockHandler* | Defines block filters and handlers to process matching blocks. |
 | **file** | [*Path*](#16-path) | The path of the mapping script. |
 
-> **Note:** Each mapping is required to supply one or more handler type, available types: `EventHandler`, `CallHandler`, or `BlockHandler`. 
+> **Note:** Each mapping is required to supply one or more handler type, available types: `EventHandler`, `CallHandler`, or `BlockHandler`.
 
 #### 1.5.2.2 EventHandler
 
@@ -121,3 +122,11 @@ templates:
         - event: TokenPurchase(address,uint256,uint256)
           handler: handleTokenPurchase
 ```
+
+## 1.8 Graft Base
+A subgraph can be _grafted_ on top of another subgraph, meaning that, rather than starting to index the subgraph from the genesis block, the subgraph is initialized with a copy of the given base subgraph, and indexing resumes from the given block.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| **base** | *String* | The subgraph ID of the base subgraph |
+| **block** | *BigInt* | The block number up to which to use data from the base subgraph |
