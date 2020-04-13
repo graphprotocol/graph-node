@@ -187,12 +187,10 @@ impl HostExports {
 
     pub(crate) fn store_get(
         &self,
-        logger: &Logger,
         state: &mut BlockState,
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
-        let start_time = Instant::now();
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: entity_type.clone(),
@@ -205,10 +203,6 @@ impl HostExports {
             .map_err(HostExportError)
             .map(|ok| ok.to_owned());
 
-        debug!(logger, "Store get finished";
-               "type" => &entity_type,
-               "id" => &entity_id,
-               "time" => format!("{}ms", start_time.elapsed().as_millis()));
         result
     }
 

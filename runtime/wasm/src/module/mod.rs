@@ -452,12 +452,10 @@ impl WasmiModule {
     ) -> Result<Option<RuntimeValue>, Trap> {
         let entity_ptr = self.asc_get(entity_ptr);
         let id_ptr = self.asc_get(id_ptr);
-        let entity_option = self.ctx.host_exports.store_get(
-            &self.ctx.logger,
-            &mut self.ctx.state,
-            entity_ptr,
-            id_ptr,
-        )?;
+        let entity_option =
+            self.ctx
+                .host_exports
+                .store_get(&mut self.ctx.state, entity_ptr, id_ptr)?;
 
         Ok(Some(match entity_option {
             Some(entity) => {
