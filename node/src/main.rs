@@ -645,6 +645,7 @@ async fn main() {
                 runtime_host_builder,
                 block_stream_builder,
                 metrics_registry.clone(),
+                graphql_runner.cheap_clone(),
             );
 
             // Create IPFS-based subgraph provider

@@ -888,7 +888,6 @@ fn create_subgraph_version(
                     let deployment = SubgraphDeploymentEntity::new(
                         &manifest,
                         false,
-                        false,
                         start_block,
                         chain_head_block,
                     ).graft(base_block);

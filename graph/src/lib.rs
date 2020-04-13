@@ -54,6 +54,7 @@ pub mod prelude {
     pub use futures03::sink::SinkExt as _;
     pub use futures03::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
+    pub use lazy_static::lazy_static;
     pub use reqwest;
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;
@@ -67,7 +68,6 @@ pub mod prelude {
     pub use tiny_keccak;
     pub use tokio;
     pub use web3;
-    pub use lazy_static::lazy_static;
 
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;

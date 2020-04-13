@@ -107,7 +107,7 @@ fn create_subgraph(
         templates: vec![],
     };
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, None)
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, None, None)
         .graft(base)
         .create_operations_replace(&subgraph_id)
         .into_iter()

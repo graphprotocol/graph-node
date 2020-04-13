@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 
-use graph::data::subgraph::schema::attribute_index_definitions;
+use graph::data::subgraph::schema::{attribute_index_definitions, SubgraphError};
 use graph::prelude::{
     DataSourceLoader as _, GraphQlRunner,
     SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *,
@@ -168,8 +168,14 @@ where
                 "error" => format!("{}", e)
             );
 
+            let error = SubgraphError {
+                message: e.to_string(),
+                block_ptr: None,
+                handler: None,
+            };
+
             let _ignore_error = store.apply_metadata_operations(
-                SubgraphDeploymentEntity::update_failed_operations(&subgraph_id, true),
+                SubgraphDeploymentEntity::fail_operations(&subgraph_id, error),
             );
             e
         })

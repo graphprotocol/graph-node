@@ -101,7 +101,7 @@ fn create_subgraph(
         Err(e) => return future::err(e.into()),
     };
     ops.extend(
-        SubgraphDeploymentEntity::new(&manifest, false, false, start_block, chain_head_block)
+        SubgraphDeploymentEntity::new(&manifest, false, start_block, chain_head_block)
             .create_operations(&manifest.id),
     );
 

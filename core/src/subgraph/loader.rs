@@ -97,37 +97,6 @@ where
         Ok(Query::new(schema, document, variables))
     }
 
-    async fn query_dynamic_data_sources(
-        &self,
-        deployment_id: &SubgraphDeploymentId,
-        query: Query,
-    ) -> Result<q::Value, Error> {
-        self.graphql_runner
-            .run_query_with_complexity(query, None, None, None)
-            .compat()
-            .await
-            .map_err(move |e| {
-                format_err!(
-                    "Failed to query subgraph deployment `{}`: {}",
-                    deployment_id,
-                    e
-                )
-            })
-            .and_then(move |result| {
-                if result.errors.is_some() {
-                    Err(format_err!(
-                        "Failed to query subgraph deployment `{}`: {:?}",
-                        deployment_id,
-                        result.errors
-                    ))
-                } else {
-                    result.data.ok_or_else(|| {
-                        format_err!("No data found for subgraph deployment `{}`", deployment_id)
-                    })
-                }
-            })
-    }
-
     fn parse_data_sources(
         &self,
         deployment_id: &SubgraphDeploymentId,
@@ -220,9 +189,7 @@ where
         loop {
             let skip = data_sources.len() as i32;
             let query = self.dynamic_data_sources_query(&deployment_id, skip)?;
-            let query_result = self
-                .query_dynamic_data_sources(&deployment_id, query)
-                .await?;
+            let query_result = self.graphql_runner.query_metadata(query).await?;
             let unresolved_data_sources = self.parse_data_sources(&deployment_id, query_result)?;
             let next_data_sources = self
                 .resolve_data_sources(unresolved_data_sources, &logger)
