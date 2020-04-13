@@ -9,11 +9,20 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use tiny_keccak::keccak256;
-use web3::types::*;
+use web3::types::{Block as EthBlock, *};
 
 use super::types::*;
 use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
 use crate::prelude::*;
+
+impl<T> ToBlockPointer for EthBlock<T> {
+    fn to_block_pointer(&self) -> BlockPointer {
+        BlockPointer {
+            number: self.number.unwrap().as_u64(),
+            hash: self.hash.unwrap().as_bytes().into(),
+        }
+    }
+}
 
 pub type EventSignature = H256;
 
@@ -664,7 +673,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block: &LightEthereumBlock,
-    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send>;
+    ) -> Box<dyn Future<Item = Vec<Option<EthBlock<H256>>>, Error = Error> + Send>;
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
     /// node.

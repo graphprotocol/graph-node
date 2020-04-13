@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::data::store::scalar::Bytes;
 use crate::prelude::{Error, Logger};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BlockPointer {
     pub number: u64,
     pub hash: Bytes,
@@ -17,25 +17,59 @@ impl fmt::Display for BlockPointer {
     }
 }
 
-trait Block {
+pub trait Block {
     fn number(&self) -> u64;
     fn hash(&self) -> Bytes;
     fn pointer(&self) -> BlockPointer;
     fn parent_pointer(&self) -> Option<BlockPointer>;
 }
 
+impl Into<u64> for BlockPointer {
+    fn into(self) -> u64 {
+        self.number
+    }
+}
+
+impl Into<Bytes> for BlockPointer {
+    fn into(self) -> Bytes {
+        self.hash
+    }
+}
+
+pub trait ToBlockPointer: Sized {
+    fn to_block_pointer(&self) -> BlockPointer;
+    fn into_block_pointer(self) -> BlockPointer {
+        self.to_block_pointer()
+    }
+}
+
+impl<T: Block> ToBlockPointer for T {
+    fn to_block_pointer(&self) -> BlockPointer {
+        self.pointer()
+    }
+}
+
+impl ToBlockPointer for BlockPointer {
+    fn to_block_pointer(&self) -> BlockPointer {
+        self.clone()
+    }
+}
+
 #[async_trait]
 pub trait Blockchain: Send + Sync + 'static {
     async fn latest_block_pointer(&self, logger: &Logger) -> Result<BlockPointer, Error>;
 
-    async fn block_pointer_by_number(&self, logger: &Logger, n: u64)
-        -> Result<BlockPointer, Error>;
+    async fn block_pointer_by_number(
+        &self,
+        logger: &Logger,
+        n: u64,
+    ) -> Result<Option<BlockPointer>, Error>;
 
     async fn block_pointer_by_hash(
         &self,
         logger: &Logger,
         hash: Bytes,
-    ) -> Result<BlockPointer, Error>;
+    ) -> Result<Option<BlockPointer>, Error>;
 
     async fn parent_block_pointer(
         &self,

@@ -431,17 +431,17 @@ async fn main() {
     // Obtain selected Ethereum chains
     let ethereum_chains = network_registry.instances("ethereum");
 
-    // // Obtain stores for these chains
-    // let mut stores = HashMap::new();
-    // for chain in ethereum_chains.iter() {
-    //     stores.insert(
-    //         chain.id().name.clone(),
-    //         store_factory
-    //             .blockchain_store(chain.id())
-    //             .await
-    //             .expect("failed to get store for Ethereum chain"),
-    //     );
-    // }
+    // Obtain stores for these chains
+    let mut stores = HashMap::new();
+    for chain in ethereum_chains.iter() {
+        stores.insert(
+            chain.id().name.clone(),
+            store_factory
+                .blockchain_store(chain.id())
+                .await
+                .expect("failed to get store for Ethereum chain"),
+        );
+    }
 
     // Use one of the stores (doesn't matter which one) for GraphQL
     // queries, subscriptions etc.

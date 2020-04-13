@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::*;
 
-use crate::prelude::{format_err, Error, EthereumAdapter, SubgraphManifest};
+use crate::prelude::{format_err, Error, SubgraphManifest};
 use futures03::future::AbortHandle;
 
 pub mod blockchains;
@@ -66,11 +66,6 @@ pub trait NetworkInstance: Blockchain + Send + Sync + 'static {
 
   /// Indexes a subgraph, returning a guard that allows to cancel it later.
   async fn start_subgraph(&self, subgraph: SubgraphManifest) -> Result<AbortHandle, Error>;
-
-  /// FIXME: The following methods are only necessary for
-  /// backwards-compatibility. They will be removed as soon as we have abstracted
-  /// away Ethereum in the rest of the codebase.
-  fn compat_ethereum_adapter(&self) -> Option<Arc<dyn EthereumAdapter>>;
 }
 
 #[async_trait]

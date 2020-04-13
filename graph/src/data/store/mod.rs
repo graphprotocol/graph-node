@@ -415,6 +415,12 @@ impl From<scalar::BigInt> for Value {
     }
 }
 
+impl From<scalar::Bytes> for Value {
+    fn from(value: scalar::Bytes) -> Value {
+        Value::Bytes(value)
+    }
+}
+
 impl From<u64> for Value {
     fn from(value: u64) -> Value {
         Value::BigInt(value.into())

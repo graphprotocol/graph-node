@@ -3,17 +3,15 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use futures::prelude::*;
 use lazy_static;
 
-use futures03::future::AbortHandle;
 use graph::prelude::{
     format_err, futures03, info, o, ArweaveAdapter, BlockPointer, Blockchain, ChainStore,
-    ChainStore, CheapClone, Error, EthereumAdapter as EthereumAdapterTrait, EthereumCallCache,
-    EventProducer, Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
-    NetworkInstance, NetworkInstanceId, ProviderEthRpcMetrics, Store, SubgraphDeploymentStore,
-    SubgraphIndexer as SubgraphIndexerTrait, SubgraphManifest, ThreeBoxAdapter,
+    CheapClone, Error, EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer,
+    Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance,
+    NetworkInstanceId, ProviderEthRpcMetrics, Store, SubgraphDeploymentStore, SubgraphManifest,
+    ThreeBoxAdapter,
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
@@ -23,6 +21,7 @@ use crate::{
 };
 
 mod blockchain;
+mod network_instance;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -280,32 +279,5 @@ where
                 })
                 .compat(),
         );
-    }
-}
-
-#[async_trait]
-impl<MR, S> NetworkInstance for Chain<MR, S>
-where
-    MR: MetricsRegistry,
-    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
-{
-    fn id(&self) -> &NetworkInstanceId {
-        &self.id
-    }
-
-    fn url(&self) -> &str {
-        self.url.as_str()
-    }
-
-    async fn start_subgraph(&self, subgraph: SubgraphManifest) -> Result<AbortHandle, Error> {
-        self.subgraph_indexer.start(subgraph).await
-    }
-
-    async fn to_blockchain(&self) -> Option<Arc<dyn Blockchain>> {
-        Some(Arc::new(blockchain::Blockchain::new()))
-    }
-
-    fn compat_ethereum_adapter(&self) -> Option<Arc<dyn EthereumAdapterTrait>> {
-        Some(self.adapter.cheap_clone())
     }
 }

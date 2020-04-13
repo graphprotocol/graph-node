@@ -337,9 +337,8 @@ where
 
         create_subgraph_version(
             &logger,
-            self.store.clone(),
-            network,
             store,
+            network,
             name.clone(),
             manifest,
             node_id,
@@ -506,12 +505,19 @@ async fn resolve_subgraph_chain_blocks(
                     ])
                 })?;
 
-            let parent_ptr = network
-                .parent_block_pointer(&logger, &block_ptr)
-                .await
-                .map_err(SubgraphRegistrarError::Unknown)?;
-
-            parent_ptr
+            match block_ptr {
+                Some(ptr) => network
+                    .parent_block_pointer(&logger, &ptr)
+                    .await
+                    .map_err(SubgraphRegistrarError::Unknown)?,
+                None => {
+                    warn!(
+                        logger,
+                        "Start block not found on chain, starting from genesis"
+                    );
+                    None
+                }
+            }
         }
     };
 
@@ -713,7 +719,6 @@ async fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl Store>,
     network: Arc<dyn NetworkInstance>,
-    chain_store: Arc<dyn Store>,
     name: SubgraphName,
     manifest: SubgraphManifest,
     node_id: NodeId,
@@ -722,7 +727,7 @@ async fn create_subgraph_version(
     // Get pending and current version data
     let subgraph_version_data = get_version_ids_and_summaries(
         logger.clone(),
-        store.clone(),
+        store.cheap_clone(),
         name.to_string(),
         manifest.id.clone(),
         version_switching_mode,
@@ -833,37 +838,29 @@ async fn create_subgraph_version(
     let (chain_head_block, start_block) =
         resolve_subgraph_chain_blocks(manifest.clone(), network, &logger.clone()).await?;
 
-    info!(
-        logger,
-        "Set subgraph start block";
-        "block" => format!("{:?}", &start_block),
-    );
+    if let Some(ref block_ptr) = start_block {
+        info!(
+            logger,
+            "Set subgraph start block";
+            "block" => format!("{}", block_ptr),
+        );
+    }
 
-    todo!();
-
-    //         // Apply the subgraph versioning and deployment operations,
-    //         // creating a new subgraph deployment if one doesn't exist.
-    //         if deployment_exists {
-    //             deployment_store
-    //                 .apply_metadata_operations(ops)
-    //                 .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
-    //         } else {
-    //             ops.extend(
-    //                 SubgraphDeploymentEntity::new(
-    //                     &manifest,
-    //                     false,
-    //                     false,
-    //                     start_block,
-    //                     chain_head_block,
-    //                 )
-    //                 .create_operations(&manifest.id),
-    //             );
-    //             deployment_store
-    //                 .create_subgraph_deployment(&manifest.schema, ops)
-    //                 .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
-    //         }
-    //     })
-    // }),
+    // Apply the subgraph versioning and deployment operations,
+    // creating a new subgraph deployment if one doesn't exist.
+    if deployment_exists {
+        store
+            .apply_metadata_operations(ops)
+            .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
+    } else {
+        ops.extend(
+            SubgraphDeploymentEntity::new(&manifest, false, false, start_block, chain_head_block)
+                .create_operations(&manifest.id),
+        );
+        store
+            .create_subgraph_deployment(&manifest.schema, ops)
+            .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
+    }
 }
 
 fn get_subgraph_version_deployment_id(

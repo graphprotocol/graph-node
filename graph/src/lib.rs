@@ -69,7 +69,9 @@ pub mod prelude {
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
-    pub use crate::components::networks::blockchains::{BlockPointer, Blockchain};
+    pub use crate::components::networks::blockchains::{
+        Block, BlockPointer, Blockchain, ToBlockPointer,
+    };
     pub use crate::components::networks::{NetworkInstance, NetworkInstanceId, NetworkRegistry};
 
     pub use crate::components::arweave::ArweaveAdapter;
