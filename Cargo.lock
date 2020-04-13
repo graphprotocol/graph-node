@@ -835,7 +835,7 @@ dependencies = [
 [[package]]
 name = "ethabi"
 version = "10.0.0"
-source = "git+https://github.com/graphprotocol/ethabi.git#4bf75f19f178157936e7c76e5ad601f58b1992df"
+source = "git+https://github.com/graphprotocol/ethabi.git#361b81f708896e89ca6d7691a5b9f99d560e8f79"
 dependencies = [
  "ethereum-types",
  "rustc-hex",
@@ -4127,7 +4127,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bfd5b7557925ce778ff9b9ef90e3ade34c524b5ff10e239c69a42d546d2af56"
 dependencies = [
- "rand 0.7.3",
+ "rand 0.3.23",
 ]
 
 [[package]]
