@@ -8,7 +8,8 @@ use graph::components::ethereum::triggers_in_block;
 use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{ProofOfIndexing, ProofOfIndexingDigest};
 use graph::data::subgraph::schema::{
-    DynamicEthereumContractDataSourceEntity, SubgraphDeploymentEntity, POI_OBJECT,
+    queries::LazyMetadata, DynamicEthereumContractDataSourceEntity, SubgraphError, SubgraphHealth,
+    POI_OBJECT,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -185,6 +186,7 @@ impl SubgraphInstanceManager {
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
+        graphql_runner: Arc<impl GraphQlRunner>,
     ) -> Self
     where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
@@ -206,6 +208,7 @@ impl SubgraphInstanceManager {
             host_builder,
             block_stream_builder,
             metrics_registry.clone(),
+            graphql_runner,
         );
 
         SubgraphInstanceManager {
@@ -223,6 +226,7 @@ impl SubgraphInstanceManager {
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
+        graphql_runner: Arc<impl GraphQlRunner>,
     ) where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         B: BlockStreamBuilder,
@@ -236,68 +240,69 @@ impl SubgraphInstanceManager {
         let instances: SharedInstanceKeepAliveMap = Default::default();
 
         // Blocking due to store interactions. Won't be blocking after #905.
-        graph::spawn_blocking(receiver.compat().try_for_each(move |event| {
-            use self::SubgraphAssignmentProviderEvent::*;
+        graph::spawn_blocking(async move {
+            let mut assignment_stream = receiver.compat();
 
-            match event {
-                SubgraphStart(manifest) => {
-                    let logger = logger_factory.subgraph_logger(&manifest.id);
-                    info!(
-                        logger,
-                        "Start subgraph";
-                        "data_sources" => manifest.data_sources.len()
-                    );
-                    let network = manifest.network_name();
-                    Self::start_subgraph(
-                        logger.clone(),
-                        instances.clone(),
-                        host_builder.clone(),
-                        block_stream_builder.clone(),
-                        stores
-                            .get(&network)
-                            .expect(&format!(
-                                "expected store that matches subgraph network: {}",
-                                &network
-                            ))
-                            .clone(),
-                        eth_adapters
-                            .get(&network)
-                            .expect(&format!(
-                                "expected eth adapter that matches subgraph network: {}",
-                                &network
-                            ))
-                            .clone(),
-                        manifest,
-                        metrics_registry_for_subgraph.clone(),
-                    )
-                    .map_err(|err| {
-                        error!(
+            // The channel will always be open so it never errors.
+            for event in assignment_stream.next().await.unwrap() {
+                use self::SubgraphAssignmentProviderEvent::*;
+
+                match event {
+                    SubgraphStart(manifest) => {
+                        let logger = logger_factory.subgraph_logger(&manifest.id);
+                        info!(
                             logger,
-                            "Failed to start subgraph";
-                            "error" => format!("{}", err),
-                            "code" => LogCode::SubgraphStartFailure
+                            "Start subgraph";
+                            "data_sources" => manifest.data_sources.len()
+                        );
+                        let network = manifest.network_name();
+                        match Self::start_subgraph(
+                            logger.clone(),
+                            instances.clone(),
+                            host_builder.clone(),
+                            block_stream_builder.clone(),
+                            stores
+                                .get(&network)
+                                .expect(&format!(
+                                    "expected store that matches subgraph network: {}",
+                                    &network
+                                ))
+                                .clone(),
+                            eth_adapters
+                                .get(&network)
+                                .expect(&format!(
+                                    "expected eth adapter that matches subgraph network: {}",
+                                    &network
+                                ))
+                                .clone(),
+                            manifest,
+                            metrics_registry_for_subgraph.clone(),
+                            graphql_runner.clone(),
                         )
-                    })
-                    .and_then(|_| {
-                        manager_metrics.subgraph_count.inc();
-                        Ok(())
-                    })
-                    .ok();
-                }
-                SubgraphStop(id) => {
-                    let logger = logger_factory.subgraph_logger(&id);
-                    info!(logger, "Stop subgraph");
+                        .await
+                        {
+                            Ok(()) => manager_metrics.subgraph_count.inc(),
+                            Err(err) => error!(
+                                logger,
+                                "Failed to start subgraph";
+                                "error" => format!("{}", err),
+                                "code" => LogCode::SubgraphStartFailure
+                            ),
+                        }
+                    }
+                    SubgraphStop(id) => {
+                        let logger = logger_factory.subgraph_logger(&id);
+                        info!(logger, "Stop subgraph");
 
-                    Self::stop_subgraph(instances.clone(), id);
-                    manager_metrics.subgraph_count.dec();
-                }
-            };
-
-            futures03::future::ok(())
-        }));
+                        Self::stop_subgraph(instances.clone(), id);
+                        manager_metrics.subgraph_count.dec();
+                    }
+                };
+            }
+        });
     }
 
-    fn start_subgraph<B, S, M>(
+    async fn start_subgraph<B, S, M>(
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
@@ -306,17 +311,32 @@ impl SubgraphInstanceManager {
         eth_adapter: Arc<dyn EthereumAdapter>,
         manifest: SubgraphManifest,
         registry: Arc<M>,
+        graphql_runner: Arc<impl GraphQlRunner>,
     ) -> Result<(), Error>
     where
         B: BlockStreamBuilder,
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         M: MetricsRegistry,
     {
-        // Clear the 'failed' state of the subgraph. We were told explicitly
-        // to start, which implies we assume the subgraph has not failed (yet)
-        // If we can't even clear the 'failed' flag, don't try to start
-        // the subgraph.
-        let status_ops = SubgraphDeploymentEntity::update_failed_operations(&manifest.id, false);
+        // If a subgraph had a fatal error the last time we tried to run it, we can reset it to the
+        // previous health status in hopes that it doesn't fail again.
+        let status_ops = {
+            let metadata = LazyMetadata {
+                store: store.cheap_clone(),
+                graphql_runner,
+                id: manifest.id.clone(),
+            };
+            match metadata.health().await? {
+                SubgraphHealth::Failed => {
+                    let prev_health = match metadata.has_non_fatal_errors().await? {
+                        false => SubgraphHealth::Healthy,
+                        true => SubgraphHealth::Unhealthy,
+                    };
+                    SubgraphDeploymentEntity::unfail_operations(&manifest.id, prev_health)
+                }
+                SubgraphHealth::Healthy | SubgraphHealth::Unhealthy => vec![],
+            }
+        };
         store.start_subgraph_deployment(&logger, &manifest.id, status_ops)?;
 
         let mut templates: Vec<DataSourceTemplate> = vec![];
@@ -503,6 +523,8 @@ where
                 None => unreachable!("The block stream stopped producing blocks"),
             };
 
+            let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
+
             if block.triggers.len() > 0 {
                 subgraph_metrics
                     .block_trigger_count
@@ -558,9 +580,14 @@ where
                         "code" => LogCode::SubgraphSyncingFailure
                     );
 
+                    let error = SubgraphError {
+                        message: e.to_string(),
+                        block_ptr: Some(block_ptr),
+                        handler: None,
+                    };
+
                     // Set subgraph status to Failed
-                    let status_ops =
-                        SubgraphDeploymentEntity::update_failed_operations(&id_for_err, true);
+                    let status_ops = SubgraphDeploymentEntity::fail_operations(&id_for_err, error);
                     if let Err(e) = store_for_err.apply_metadata_operations(status_ops) {
                         error!(
                             &logger,

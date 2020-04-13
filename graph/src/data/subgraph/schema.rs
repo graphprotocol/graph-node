@@ -11,6 +11,9 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
+/// Convenient graphql queries for the metadata.
+pub mod queries;
+
 use graphql_parser::query as q;
 use graphql_parser::schema::{Definition, Document, Field, Name, Type, TypeDefinition};
 use hex;
@@ -218,11 +221,61 @@ impl SubgraphVersionEntity {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum SubgraphHealth {
+    /// Syncing without errors.
+    Healthy,
+
+    /// Syncing but has errors.
+    Unhealthy,
+
+    /// No longer syncing due to fatal error.
+    Failed,
+}
+
+impl FromStr for SubgraphHealth {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<SubgraphHealth, Error> {
+        match s {
+            "healthy" => Ok(SubgraphHealth::Healthy),
+            "unhealthy" => Ok(SubgraphHealth::Unhealthy),
+            "failed" => Ok(SubgraphHealth::Failed),
+            _ => Err(format_err!("failed to parse `{}` as SubgraphHealth", s)),
+        }
+    }
+}
+
+impl From<SubgraphHealth> for Value {
+    fn from(health: SubgraphHealth) -> Value {
+        match health {
+            SubgraphHealth::Healthy => "healthy".into(),
+            SubgraphHealth::Unhealthy => "unhealthy".into(),
+            SubgraphHealth::Failed => "failed".into(),
+        }
+    }
+}
+
+impl TryFromValue for SubgraphHealth {
+    fn try_from_value(value: &q::Value) -> Result<SubgraphHealth, Error> {
+        match value {
+            q::Value::Enum(health) => SubgraphHealth::from_str(health),
+            _ => Err(format_err!(
+                "cannot parse value as SubgraphHealth: `{:?}`",
+                value
+            )),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SubgraphDeploymentEntity {
     manifest: SubgraphManifestEntity,
     failed: bool,
+    health: SubgraphHealth,
     synced: bool,
+    fatal_error: Option<SubgraphError>,
+    non_fatal_errors: Vec<SubgraphError>,
     earliest_ethereum_block_hash: Option<H256>,
     earliest_ethereum_block_number: Option<u64>,
     latest_ethereum_block_hash: Option<H256>,
@@ -243,15 +296,17 @@ impl TypedEntity for SubgraphDeploymentEntity {
 impl SubgraphDeploymentEntity {
     pub fn new(
         source_manifest: &SubgraphManifest,
-        failed: bool,
         synced: bool,
         earliest_ethereum_block: Option<EthereumBlockPointer>,
         chain_head_block: Option<EthereumBlockPointer>,
     ) -> Self {
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
-            failed,
+            failed: false,
+            health: SubgraphHealth::Healthy,
             synced,
+            fatal_error: None,
+            non_fatal_errors: vec![],
             earliest_ethereum_block_hash: earliest_ethereum_block.map(Into::into),
             earliest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
             latest_ethereum_block_hash: earliest_ethereum_block.map(Into::into),
@@ -298,26 +353,53 @@ impl SubgraphDeploymentEntity {
 
     fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
         let mut ops = vec![];
+        let mut entity = Entity::new();
+        entity.set("id", id.to_string());
+
+        let SubgraphDeploymentEntity {
+            manifest,
+            failed,
+            health,
+            synced,
+            fatal_error,
+            non_fatal_errors,
+            earliest_ethereum_block_hash,
+            earliest_ethereum_block_number,
+            latest_ethereum_block_hash,
+            latest_ethereum_block_number,
+            ethereum_head_block_hash,
+            ethereum_head_block_number,
+            total_ethereum_blocks_count,
+            graft_base,
+            graft_block_hash,
+            graft_block_number,
+        } = self;
+
+        // A fresh subgraph will not have any errors.
+        assert!(fatal_error.is_none());
+        assert!(non_fatal_errors.is_empty());
+        entity.set("nonFatalErrors", Vec::<Value>::new());
 
         let manifest_id = SubgraphManifestEntity::id(&id);
-        ops.extend(self.manifest.write_operations(&manifest_id));
+        ops.extend(manifest.write_operations(&manifest_id));
 
         let entity = entity! {
             id: id.to_string(),
             manifest: manifest_id,
-            failed: self.failed,
-            synced: self.synced,
-            earliestEthereumBlockHash: self.earliest_ethereum_block_hash,
-            earliestEthereumBlockNumber: self.earliest_ethereum_block_number,
-            latestEthereumBlockHash: self.latest_ethereum_block_hash,
-            latestEthereumBlockNumber: self.latest_ethereum_block_number,
-            ethereumHeadBlockHash: self.ethereum_head_block_hash,
-            ethereumHeadBlockNumber: self.ethereum_head_block_number,
-            totalEthereumBlocksCount: self.total_ethereum_blocks_count,
+            failed: failed,
+            health: health,
+            synced: synced,
+            earliestEthereumBlockHash: earliest_ethereum_block_hash,
+            earliestEthereumBlockNumber: earliest_ethereum_block_number,
+            latestEthereumBlockHash: latest_ethereum_block_hash,
+            latestEthereumBlockNumber: latest_ethereum_block_number,
+            ethereumHeadBlockHash: ethereum_head_block_hash,
+            ethereumHeadBlockNumber: ethereum_head_block_number,
+            totalEthereumBlocksCount: total_ethereum_blocks_count,
             entityCount: 0 as u64,
-            graftBase: self.graft_base.map(|sid| sid.to_string()),
-            graftBlockHash: self.graft_block_hash,
-            graftBlockNumber: self.graft_block_number,
+            graftBase: graft_base.map(|sid| sid.to_string()),
+            graftBlockHash: graft_block_hash,
+            graftBlockNumber: graft_block_number,
         };
 
         ops.push(set_metadata_operation(
@@ -362,12 +444,15 @@ impl SubgraphDeploymentEntity {
         )]
     }
 
-    pub fn update_failed_operations(
+    /// When starting the subgraph, we try to "unfail" it.
+    pub fn unfail_operations(
         id: &SubgraphDeploymentId,
-        failed: bool,
+        new_health: SubgraphHealth,
     ) -> Vec<MetadataOperation> {
         let entity = entity! {
-            failed: failed
+            failed: false,
+            health: new_health,
+            fatalError: Value::Null,
         };
 
         vec![update_metadata_operation(
@@ -375,6 +460,23 @@ impl SubgraphDeploymentEntity {
             id.as_str(),
             entity,
         )]
+    }
+
+    pub fn fail_operations(
+        id: &SubgraphDeploymentId,
+        error: SubgraphError,
+    ) -> Vec<MetadataOperation> {
+        let error_id = uuid::Uuid::new_v4().to_string();
+
+        let mut entity = Entity::new();
+        entity.set("failed", true);
+        entity.set("health", SubgraphHealth::Failed);
+        entity.set("error", error_id.clone());
+
+        vec![
+            error.create_operation(error_id),
+            update_metadata_operation(Self::TYPENAME, id.as_str(), entity),
+        ]
     }
 
     pub fn update_synced_operations(
@@ -1248,6 +1350,37 @@ fn update_metadata_operation(
         entity: entity_type_name.into(),
         id: entity_id.into(),
         data: data.into(),
+    }
+}
+
+#[derive(Debug)]
+pub struct SubgraphError {
+    pub message: String,
+    pub block_ptr: Option<EthereumBlockPointer>,
+    pub handler: Option<String>,
+}
+
+impl TypedEntity for SubgraphError {
+    const TYPENAME: &'static str = "Error";
+    type IdType = String;
+}
+
+impl SubgraphError {
+    fn create_operation(self, id: String) -> MetadataOperation {
+        let SubgraphError {
+            message,
+            block_ptr,
+            handler,
+        } = self;
+
+        let mut entity = Entity::new();
+        entity.set("id", id.clone());
+        entity.set("message", message);
+        entity.set("blockNumber", block_ptr.map(|x| x.number));
+        entity.set("blockHash", block_ptr.map(|x| x.hash));
+        entity.set("handler", handler);
+
+        set_metadata_operation(Self::TYPENAME, id, entity)
     }
 }
 
