@@ -46,7 +46,6 @@ impl<'a> FilterQuery<'a> {
                 ValueType::BigInt | ValueType::BigDecimal => "::numeric",
                 ValueType::Boolean => "::boolean",
                 ValueType::Bytes => "",
-                ValueType::ID => "",
                 ValueType::Int => "::bigint",
                 ValueType::String => "",
                 ValueType::List => {

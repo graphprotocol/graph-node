@@ -438,9 +438,7 @@ fn scalar_value_type(schema: &Document, field_type: &Type) -> ValueType {
     match field_type {
         Type::NamedType(name) => {
             ValueType::from_str(&name).unwrap_or_else(|_| match get_named_type(schema, name) {
-                Some(t::Object(_)) => ValueType::ID,
-                Some(t::Interface(_)) => ValueType::ID,
-                Some(t::Enum(_)) => ValueType::String,
+                Some(t::Object(_)) | Some(t::Interface(_)) | Some(t::Enum(_)) => ValueType::String,
                 Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
                 Some(t::Union(_)) => unreachable!("unions are not used"),
                 Some(t::InputObject(_)) => unreachable!("inputObjects are not used"),
@@ -463,7 +461,6 @@ fn is_list(field_type: &Type) -> bool {
 fn is_assignable(value: &store::Value, scalar_type: &ValueType, is_list: bool) -> bool {
     match (value, scalar_type) {
         (store::Value::String(_), ValueType::String)
-        | (store::Value::String(_), ValueType::ID)
         | (store::Value::BigDecimal(_), ValueType::BigDecimal)
         | (store::Value::BigInt(_), ValueType::BigInt)
         | (store::Value::Bool(_), ValueType::Boolean)

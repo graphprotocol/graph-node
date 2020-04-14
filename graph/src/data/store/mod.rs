@@ -109,7 +109,6 @@ pub enum ValueType {
     BigInt,
     Bytes,
     BigDecimal,
-    ID,
     Int,
     String,
     List,
@@ -124,9 +123,8 @@ impl FromStr for ValueType {
             "BigInt" => Ok(ValueType::BigInt),
             "Bytes" => Ok(ValueType::Bytes),
             "BigDecimal" => Ok(ValueType::BigDecimal),
-            "ID" => Ok(ValueType::ID),
             "Int" => Ok(ValueType::Int),
-            "String" => Ok(ValueType::String),
+            "String" | "ID" => Ok(ValueType::String),
             "List" => Ok(ValueType::List),
             s => Err(format_err!("Type not available in this context: {}", s)),
         }
@@ -143,7 +141,6 @@ impl ValueType {
                 | ValueType::BigDecimal
                 | ValueType::BigInt
                 | ValueType::Bytes
-                | ValueType::ID
                 | ValueType::Int
                 | ValueType::String => true,
             })

@@ -149,7 +149,7 @@ impl TryFrom<&s::Type> for IdType {
         let name = named_type(field_type);
 
         match ValueType::from_str(name)? {
-            ValueType::String | ValueType::ID => Ok(IdType::String),
+            ValueType::String => Ok(IdType::String),
             ValueType::Bytes => Ok(IdType::Bytes),
             _ => Err(format_err!(
                 "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
@@ -911,7 +911,7 @@ impl ColumnType {
             ValueType::BigInt => Ok(ColumnType::BigInt),
             ValueType::Bytes => Ok(ColumnType::Bytes),
             ValueType::Int => Ok(ColumnType::Int),
-            ValueType::String | ValueType::ID => Ok(ColumnType::String),
+            ValueType::String => Ok(ColumnType::String),
             ValueType::List => Err(StoreError::Unknown(format_err!(
                 "can not convert ValueType::List to ColumnType"
             ))),
@@ -1290,8 +1290,7 @@ fn derived_column(field: &s::Field) -> bool {
 fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
     let name = named_type(field_type);
 
-    !enums.contains_key(&*name)
-        && ValueType::from_str(name).unwrap_or(ValueType::ID) == ValueType::ID
+    !enums.contains_key(&*name) && !ValueType::is_scalar(name)
 }
 
 #[cfg(test)]

@@ -1350,8 +1350,9 @@ fn inner_type_name(field_type: &Type, definitions: &[Definition]) -> Result<Valu
     match field_type {
         Type::NamedType(ref name) => ValueType::from_str(&name).or_else(|e| {
             if is_entity(name, definitions) {
-                // The field is a reference to another type and therefore of type ID
-                Ok(ValueType::ID)
+                // The field is a reference to another type and therefore
+                // of type `String`
+                Ok(ValueType::String)
             } else {
                 Err(e)
             }

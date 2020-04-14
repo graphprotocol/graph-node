@@ -1051,11 +1051,11 @@ fn find_order_by_float() {
 fn find_order_by_id() {
     test_find(
         vec!["1", "2", "3"],
-        user_query().order_by("id", ValueType::ID, EntityOrder::Ascending),
+        user_query().order_by("id", ValueType::String, EntityOrder::Ascending),
     );
     test_find(
         vec!["3", "2", "1"],
-        user_query().order_by("id", ValueType::ID, EntityOrder::Descending),
+        user_query().order_by("id", ValueType::String, EntityOrder::Descending),
     );
 }
 
