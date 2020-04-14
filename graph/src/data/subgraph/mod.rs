@@ -865,13 +865,13 @@ impl Graft {
         match store.block_ptr(self.base.clone()) {
             Err(e) => gbi(e.to_string()),
             Ok(None) => gbi(format!(
-                "can not graft onto `{}` since it has not processed any blocks",
-                self.block
+                "failed to graft onto `{}` since it has not processed any blocks",
+                self.base
             )),
             Ok(Some(ptr)) => {
                 if ptr.number < self.block as u64 {
                     gbi(format!(
-                        "can not graft onto `{}` at block {} since it has only processed block {}",
+                        "failed to graft onto `{}` at block {} since it has only processed block {}",
                         self.base, self.block, ptr.number
                     ))
                 } else {

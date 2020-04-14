@@ -268,6 +268,7 @@ impl Layout {
             logger,
             "Initializing graft by copying data from {} to {}", base.subgraph, self.subgraph
         );
+
         // 1. Copy subgraph data
         // We allow both not copying tables at all from the source, as well
         // as adding new tables in `self`; we only need to check that tables
@@ -302,6 +303,7 @@ impl Layout {
             .execute(conn)?;
         info!(logger, "Copied {} dynamic data sources", dds.len();
               "time_ms" => start.elapsed().as_millis());
+
         // 3. Rewind the subgraph. `revert_block` gets rid of everything
         // including the block passed to it. We want to preserve `block`
         // and therefore revert `block+1`

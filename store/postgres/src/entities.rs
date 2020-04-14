@@ -855,7 +855,7 @@ impl Connection {
                             let errors = layout.can_copy_from(&base);
                             if !errors.is_empty() {
                                 return Err(StoreError::Unknown(format_err!(
-                                    "The subgraph `{}` can not be used as the graft base \
+                                    "The subgraph `{}` cannot be used as the graft base \
                                         for `{}` because the schemas are incompatible:\n    - {}",
                                     &base.subgraph,
                                     &layout.subgraph,
@@ -865,7 +865,7 @@ impl Connection {
                         }
                         Storage::Json(json) => {
                             return Err(StoreError::Unknown(format_err!(
-                                "The subgraph `{}` can not be used as the graft base \
+                                "The subgraph `{}` cannot be used as the graft base \
                                     for `{}` since it uses JSONB storage. Redeploy \
                                     `{}` to fix this",
                                 &json.subgraph,

@@ -147,7 +147,7 @@ specVersion: 0.0.1
             .expect("There must be a GraftBaseInvalid error")
             .to_string();
         assert_eq!(
-            "the graft base is invalid: can not graft onto `1` since \
+            "the graft base is invalid: failed to graft onto `Qmbase` since \
             it has not processed any blocks",
             msg
         );
@@ -166,7 +166,7 @@ specVersion: 0.0.1
             .expect("There must be a GraftBaseInvalid error")
             .to_string();
         assert_eq!(
-            "the graft base is invalid: can not graft onto `Qmbase` \
+            "the graft base is invalid: failed to graft onto `Qmbase` \
             at block 1 since it has only processed block 0",
             msg
         );

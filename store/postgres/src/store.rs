@@ -972,9 +972,9 @@ impl StoreTrait for Store {
         if let Some(graft_block) = info.graft_block {
             if graft_block as u64 > block_ptr_to.number {
                 return Err(format_err!(
-                    "Can not revert subgraph `{}` to block {} \
-                  as it was grafted at block {} and we do not allow reverting \
-                  past a graft point",
+                    "Can not revert subgraph `{}` to block {} as it was \
+                    grafted at block {} and reverting past a graft point \
+                    is not possible",
                     subgraph_id,
                     block_ptr_to.number,
                     graft_block
