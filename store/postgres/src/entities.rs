@@ -55,7 +55,7 @@ use crate::history_event::HistoryEvent;
 use crate::jsonb_queries::FilterQuery;
 use crate::metadata;
 use crate::notification_listener::JsonNotification;
-use crate::relational::{IdType, Layout};
+use crate::relational::Layout;
 
 lazy_static! {
     // We allow overriding the default storage scheme with the environment
@@ -1410,7 +1410,6 @@ impl Storage {
                 let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
                 let layout = Layout::new(
                     &subgraph_schema.document,
-                    IdType::String,
                     subgraph.clone(),
                     schema.name,
                     has_poi,

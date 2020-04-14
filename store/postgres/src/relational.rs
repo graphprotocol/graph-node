@@ -125,9 +125,8 @@ impl fmt::Display for SqlName {
 /// The SQL type to use for GraphQL ID properties. We support
 /// strings and byte arrays
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum IdType {
+pub(crate) enum IdType {
     String,
-    #[allow(dead_code)]
     Bytes,
 }
 
@@ -135,8 +134,6 @@ type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
 #[derive(Debug, Clone)]
 pub struct Layout {
-    /// The SQL type for columns with GraphQL type `ID`
-    id_type: IdType,
     /// Maps the GraphQL name of a type to the relational table
     pub tables: HashMap<String, Arc<Table>>,
     /// The subgraph id
@@ -158,7 +155,6 @@ impl Layout {
     /// is in `schema`.
     pub fn new(
         document: &s::Document,
-        id_type: IdType,
         subgraph: SubgraphDeploymentId,
         schema: impl Into<String>,
         create_proof_of_indexing: bool,
@@ -220,7 +216,6 @@ impl Layout {
                         &schema,
                         Schema::entity_fulltext_definitions(&obj_type.name, document),
                         &enums,
-                        id_type,
                         tables.len() as u32,
                     )?);
                 }
@@ -265,7 +260,6 @@ impl Layout {
             });
 
         Ok(Layout {
-            id_type,
             subgraph,
             schema,
             tables,
@@ -280,8 +274,7 @@ impl Layout {
         subgraph: SubgraphDeploymentId,
         document: &s::Document,
     ) -> Result<Layout, StoreError> {
-        let layout =
-            crate::relational::Layout::new(document, IdType::String, subgraph, schema_name, true)?;
+        let layout = Self::new(document, subgraph, schema_name, true)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
@@ -802,7 +795,6 @@ impl ColumnType {
         field_type: &q::Type,
         schema: &str,
         enums: &EnumMap,
-        id_type: IdType,
     ) -> Result<ColumnType, StoreError> {
         let name = named_type(field_type);
 
@@ -827,8 +819,7 @@ impl ColumnType {
             ValueType::BigInt => Ok(ColumnType::BigInt),
             ValueType::Bytes => Ok(ColumnType::Bytes),
             ValueType::Int => Ok(ColumnType::Int),
-            ValueType::String => Ok(ColumnType::String),
-            ValueType::ID => Ok(ColumnType::from(id_type)),
+            ValueType::String | ValueType::ID => Ok(ColumnType::String),
             ValueType::List => Err(StoreError::Unknown(format_err!(
                 "can not convert ValueType::List to ColumnType"
             ))),
@@ -860,12 +851,7 @@ pub struct Column {
 }
 
 impl Column {
-    fn new(
-        field: &s::Field,
-        schema: &str,
-        enums: &EnumMap,
-        id_type: IdType,
-    ) -> Result<Column, StoreError> {
+    fn new(field: &s::Field, schema: &str, enums: &EnumMap) -> Result<Column, StoreError> {
         SqlName::check_valid_identifier(&*field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
@@ -875,7 +861,7 @@ impl Column {
         Ok(Column {
             name: sql_name,
             field: field.name.clone(),
-            column_type: ColumnType::from_field_type(&field.field_type, schema, enums, id_type)?,
+            column_type: ColumnType::from_field_type(&field.field_type, schema, enums)?,
             field_type: field.field_type.clone(),
             fulltext_fields: None,
             is_reference,
@@ -1028,7 +1014,6 @@ impl Table {
         schema: &str,
         fulltexts: Vec<FulltextDefinition>,
         enums: &EnumMap,
-        id_type: IdType,
         position: u32,
     ) -> Result<Table, StoreError> {
         SqlName::check_valid_identifier(&*defn.name, "object")?;
@@ -1038,7 +1023,7 @@ impl Table {
             .fields
             .iter()
             .filter(|field| !derived_column(field))
-            .map(|field| Column::new(field, schema, enums, id_type))
+            .map(|field| Column::new(field, schema, enums))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
@@ -1195,8 +1180,7 @@ mod tests {
     fn test_layout(gql: &str) -> Layout {
         let schema = parse_schema(gql).expect("Test schema invalid");
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
-        Layout::new(&schema, IdType::String, subgraph, "rel", false)
-            .expect("Failed to construct Layout")
+        Layout::new(&schema, subgraph, "rel", false).expect("Failed to construct Layout")
     }
 
     #[test]

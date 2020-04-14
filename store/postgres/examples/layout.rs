@@ -7,7 +7,7 @@ use std::fs;
 use std::process::exit;
 
 use graph::prelude::SubgraphDeploymentId;
-use graph_store_postgres::relational::{Column, ColumnType, IdType, Layout};
+use graph_store_postgres::relational::{Column, ColumnType, Layout};
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);
@@ -321,7 +321,7 @@ pub fn main() {
     let schema = ensure(parse_schema(&schema), "Failed to parse schema");
     let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
     let layout = ensure(
-        Layout::new(&schema, IdType::String, subgraph, db_schema, false),
+        Layout::new(&schema, subgraph, db_schema, false),
         "Failed to construct Mapping",
     );
     match kind {
