@@ -1,7 +1,7 @@
 use crate::ext::futures::FutureExtension;
 use failure::Fail;
 use futures::prelude::*;
-use slog::{debug, trace, Logger};
+use slog::{debug, trace, warn, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -51,6 +51,7 @@ pub fn retry<I, E>(operation_name: impl ToString, logger: &Logger) -> RetryConfi
         logger: logger.to_owned(),
         condition: RetryIf::Error,
         log_after: 1,
+        warn_after: 10,
         limit: RetryConfigProperty::Unknown,
         phantom_item: PhantomData,
         phantom_error: PhantomData,
@@ -62,6 +63,7 @@ pub struct RetryConfig<I, E> {
     logger: Logger,
     condition: RetryIf<I, E>,
     log_after: u64,
+    warn_after: u64,
     limit: RetryConfigProperty<usize>,
     phantom_item: PhantomData<I>,
     phantom_error: PhantomData<E>,
@@ -90,10 +92,16 @@ where
         self
     }
 
+    pub fn warn_after(mut self, min_attempts: u64) -> Self {
+        self.warn_after = min_attempts;
+        self
+    }
+
     /// Never log failed attempts.
     /// May still log at `trace` logging level.
     pub fn no_logging(mut self) -> Self {
         self.log_after = u64::max_value();
+        self.warn_after = u64::max_value();
         self
     }
 
@@ -157,6 +165,7 @@ where
         let logger = self.inner.logger.clone();
         let condition = self.inner.condition;
         let log_after = self.inner.log_after;
+        let warn_after = self.inner.warn_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
         let timeout = self.timeout;
 
@@ -167,6 +176,7 @@ where
             logger,
             condition,
             log_after,
+            warn_after,
             limit_opt,
             move || {
                 try_it()
@@ -196,6 +206,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
         let logger = self.inner.logger.clone();
         let condition = self.inner.condition;
         let log_after = self.inner.log_after;
+        let warn_after = self.inner.warn_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
 
         trace!(logger, "Run with retry: {}", operation_name);
@@ -205,6 +216,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
             logger,
             condition,
             log_after,
+            warn_after,
             limit_opt,
             // No timeout, so all errors are inner errors
             move || try_it().map_err(TimeoutError::Inner),
@@ -245,6 +257,7 @@ fn run_retry<I, E, F, R>(
     logger: Logger,
     condition: RetryIf<I, E>,
     log_after: u64,
+    warn_after: u64,
     limit_opt: Option<usize>,
     mut try_it_with_timeout: F,
 ) -> impl Future<Item = I, Error = TimeoutError<E>> + Send
@@ -291,7 +304,19 @@ where
 
                 // If needs retry
                 if condition.check(&result) {
-                    if attempt_count >= log_after {
+                    if attempt_count >= warn_after {
+                        // This looks like it would be nice to de-duplicate, but if we try
+                        // to use log! slog complains about requiring a const for the log level
+                        // See also b05e1594-e408-4047-aefb-71fc60d70e8f
+                        warn!(
+                            logger,
+                            "Trying again after {} failed (attempt #{}) with result {:?}",
+                            &operation_name,
+                            attempt_count,
+                            result
+                        );
+                    } else if attempt_count >= log_after {
+                        // See also b05e1594-e408-4047-aefb-71fc60d70e8f
                         debug!(
                             logger,
                             "Trying again after {} failed (attempt #{}) with result {:?}",
