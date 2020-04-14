@@ -1,3 +1,4 @@
+use std::fmt;
 use std::thread;
 use std::time::Instant;
 
@@ -11,12 +12,14 @@ use graph::components::ethereum::*;
 use graph::prelude::*;
 
 use crate::module::WasmiModule;
+use crate::HostModules;
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module(
     parsed_module: parity_wasm::elements::Module,
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
+    custom_host_modules: Arc<HostModules>,
     host_metrics: Arc<HostMetrics>,
     runtime: tokio::runtime::Handle,
 ) -> Result<mpsc::Sender<MappingRequest>, Error> {
@@ -51,6 +54,7 @@ pub fn spawn_module(
                     let module = WasmiModule::from_valid_module_with_ctx(
                         valid_module.clone(),
                         ctx,
+                        custom_host_modules.clone(),
                         host_metrics.clone(),
                     )?;
                     section.end();
@@ -134,27 +138,36 @@ pub struct MappingRequest {
     pub(crate) result_sender: Sender<MappingResponse>,
 }
 
-#[derive(Debug)]
-pub(crate) struct MappingContext {
+pub struct MappingContext {
     pub(crate) logger: Logger,
+    pub(crate) subgraph_id: SubgraphDeploymentId,
     pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
     pub(crate) block: Arc<LightEthereumBlock>,
     pub(crate) state: BlockState,
+    pub(crate) store: Arc<dyn crate::RuntimeStore>,
 }
 
 impl MappingContext {
     pub fn clone_with_empty_block_state(&self) -> Self {
         MappingContext {
-            logger: self.logger.clone(),
-            host_exports: self.host_exports.clone(),
-            block: self.block.clone(),
+            logger: self.logger.cheap_clone(),
+            subgraph_id: self.subgraph_id.clone(),
+            host_exports: self.host_exports.cheap_clone(),
+            block: self.block.cheap_clone(),
             state: BlockState::default(),
+            store: self.store.cheap_clone(),
         }
     }
 }
 
+impl fmt::Debug for MappingContext {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "MappingContext {{}}")
+    }
+}
+
 /// A pre-processed and valid WASM module, ready to be started as a WasmiModule.
-pub(crate) struct ValidModule {
+pub struct ValidModule {
     pub(super) module: wasmi::Module,
     pub(super) host_module_names: Vec<String>,
 }

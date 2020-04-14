@@ -105,6 +105,7 @@ where
                     data_source.mapping.runtime.as_ref().clone(),
                     logger,
                     self.subgraph_id.clone(),
+                    Arc::new(vec![]),
                     host_metrics.clone(),
                 )?;
                 self.module_cache.insert(module_bytes, sender.clone());

@@ -373,70 +373,70 @@ impl HostExports {
         )
     }
 
-    // Read the IPFS file `link`, split it into JSON objects, and invoke the
-    // exported function `callback` on each JSON object. The successful return
-    // value contains the block state produced by each callback invocation. Each
-    // invocation of `callback` happens in its own instance of a WASM module,
-    // which is identical to `module` when it was first started. The signature
-    // of the callback must be `callback(JSONValue, Value)`, and the `userData`
-    // parameter is passed to the callback without any changes
-    pub(crate) fn ipfs_map(
-        &self,
-        module: &WasmiModule,
-        link: String,
-        callback: &str,
-        user_data: store::Value,
-        flags: Vec<String>,
-    ) -> Result<Vec<BlockState>, HostExportError<impl ExportError>> {
-        const JSON_FLAG: &str = "json";
-        if !flags.contains(&JSON_FLAG.to_string()) {
-            return Err(HostExportError(format!("Flags must contain 'json'")));
-        }
+    // // Read the IPFS file `link`, split it into JSON objects, and invoke the
+    // // exported function `callback` on each JSON object. The successful return
+    // // value contains the block state produced by each callback invocation. Each
+    // // invocation of `callback` happens in its own instance of a WASM module,
+    // // which is identical to `module` when it was first started. The signature
+    // // of the callback must be `callback(JSONValue, Value)`, and the `userData`
+    // // parameter is passed to the callback without any changes
+    // pub(crate) fn ipfs_map(
+    //     &self,
+    //     module: &WasmiModule,
+    //     link: String,
+    //     callback: &str,
+    //     user_data: store::Value,
+    //     flags: Vec<String>,
+    // ) -> Result<Vec<BlockState>, HostExportError<impl ExportError>> {
+    //     const JSON_FLAG: &str = "json";
+    //     if !flags.contains(&JSON_FLAG.to_string()) {
+    //         return Err(HostExportError(format!("Flags must contain 'json'")));
+    //     }
 
-        let host_metrics = module.host_metrics.clone();
-        let valid_module = module.valid_module.clone();
-        let ctx = module.ctx.clone_with_empty_block_state();
-        let callback = callback.to_owned();
-        // Create a base error message to avoid borrowing headaches
-        let errmsg = format!(
-            "ipfs_map: callback '{}' failed when processing file '{}'",
-            &*callback, &link
-        );
+    //     let host_metrics = module.host_metrics.clone();
+    //     let valid_module = module.valid_module.clone();
+    //     let ctx = module.ctx.clone_with_empty_block_state();
+    //     let callback = callback.to_owned();
+    //     // Create a base error message to avoid borrowing headaches
+    //     let errmsg = format!(
+    //         "ipfs_map: callback '{}' failed when processing file '{}'",
+    //         &*callback, &link
+    //     );
 
-        let start = Instant::now();
-        let mut last_log = start;
-        let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
+    //     let start = Instant::now();
+    //     let mut last_log = start;
+    //     let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
-        let result = block_on03(async move {
-            let mut stream: JsonValueStream = self
-                .link_resolver
-                .json_stream(&logger, &Link { link })
-                .await?;
-            let mut v = Vec::new();
-            while let Some(sv) = stream.next().await {
-                let sv = sv?;
-                let module = WasmiModule::from_valid_module_with_ctx(
-                    valid_module.clone(),
-                    ctx.clone_with_empty_block_state(),
-                    host_metrics.clone(),
-                )?;
-                let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
-                // Log progress every 15s
-                if last_log.elapsed() > Duration::from_secs(15) {
-                    debug!(
-                        logger,
-                        "Processed {} lines in {}s so far",
-                        sv.line,
-                        start.elapsed().as_secs()
-                    );
-                    last_log = Instant::now();
-                }
-                v.push(result)
-            }
-            Ok(v)
-        });
-        result.map_err(move |e: Error| HostExportError(format!("{}: {}", errmsg, e.to_string())))
-    }
+    //     let result = block_on03(async move {
+    //         let mut stream: JsonValueStream = self
+    //             .link_resolver
+    //             .json_stream(&logger, &Link { link })
+    //             .await?;
+    //         let mut v = Vec::new();
+    //         while let Some(sv) = stream.next().await {
+    //             let sv = sv?;
+    //             let module = WasmiModule::from_valid_module_with_ctx(
+    //                 valid_module.clone(),
+    //                 ctx.clone_with_empty_block_state(),
+    //                 host_metrics.clone(),
+    //             )?;
+    //             let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
+    //             // Log progress every 15s
+    //             if last_log.elapsed() > Duration::from_secs(15) {
+    //                 debug!(
+    //                     logger,
+    //                     "Processed {} lines in {}s so far",
+    //                     sv.line,
+    //                     start.elapsed().as_secs()
+    //                 );
+    //                 last_log = Instant::now();
+    //             }
+    //             v.push(result)
+    //         }
+    //         Ok(v)
+    //     });
+    //     result.map_err(move |e: Error| HostExportError(format!("{}: {}", errmsg, e.to_string())))
+    // }
 
     /// Expects a decimal string.
     pub(crate) fn json_to_i64(

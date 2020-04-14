@@ -1,13 +1,9 @@
 mod asc_abi;
-mod to_from;
-
-/// Public interface of the crate, receives triggers to be processed.
 mod host;
-pub use host::{RuntimeHost, RuntimeHostBuilder};
+mod to_from;
 
 /// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.
 mod mapping;
-pub use mapping::MappingRequest;
 
 /// Deals with wasmi.
 mod module;
@@ -27,5 +23,12 @@ pub(crate) struct UnresolvedContractCall {
     pub function_args: Vec<ethabi::Token>,
 }
 
-trait RuntimeStore: Store + SubgraphDeploymentStore {}
+// Public interface of the crate, receives triggers to be processed.
+
+pub trait RuntimeStore: Store + SubgraphDeploymentStore {}
 impl<S: Store + SubgraphDeploymentStore> RuntimeStore for S {}
+
+pub use host::{
+    HostFunction, HostModule, HostModuleError, HostModules, RuntimeHost, RuntimeHostBuilder,
+};
+pub use mapping::MappingRequest;

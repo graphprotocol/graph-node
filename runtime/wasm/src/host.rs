@@ -1,3 +1,4 @@
+use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,6 +12,8 @@ use semver::{Version, VersionReq};
 use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
 use tiny_keccak::keccak256;
+use wasmi::{HostError, RuntimeArgs, RuntimeValue, Trap};
+use web3::types::{Log, Transaction};
 
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
@@ -24,13 +27,49 @@ use graph::prelude::{
     MappingCallHandler, MappingEventHandler, SubgraphDeploymentId,
 };
 use graph::util;
-use web3::types::{Log, Transaction};
 
 use crate::host_exports::HostExports;
 use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
+use crate::module::WasmiModule;
 use crate::SubgraphDeploymentStore;
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
+
+#[derive(Debug)]
+pub struct HostModuleError(pub Error);
+
+impl HostError for HostModuleError {}
+
+impl fmt::Display for HostModuleError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl<T: Into<Error>> From<T> for HostModuleError {
+    fn from(e: T) -> Self {
+        Self(e.into())
+    }
+}
+
+pub struct HostFunction {
+    pub name: String,
+    pub full_name: String,
+    pub metrics_name: String,
+}
+
+pub trait HostModule: Send + Sync {
+    fn name(&self) -> &str;
+    fn functions(&self) -> &Vec<HostFunction>;
+    fn invoke(
+        &self,
+        module: &mut WasmiModule,
+        full_name: &str,
+        args: RuntimeArgs,
+    ) -> Result<Option<RuntimeValue>, HostModuleError>;
+}
+
+pub type HostModules = Vec<Arc<dyn HostModule>>;
 
 struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
@@ -89,12 +128,14 @@ where
         parsed_module: parity_wasm::elements::Module,
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
+        host_modules: Arc<HostModules>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<MappingRequest>, Error> {
         crate::mapping::spawn_module(
             parsed_module,
             logger,
             subgraph_id,
+            host_modules,
             metrics,
             tokio::runtime::Handle::current(),
         )
@@ -138,8 +179,8 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct RuntimeHost {
+    subgraph_id: SubgraphDeploymentId,
     data_source_name: String,
     data_source_contract: Source,
     data_source_contract_abi: MappingABI,
@@ -149,6 +190,7 @@ pub struct RuntimeHost {
     mapping_request_sender: Sender<MappingRequest>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
+    store: Arc<dyn crate::RuntimeStore>,
 }
 
 impl RuntimeHost {
@@ -205,7 +247,7 @@ impl RuntimeHost {
             config.mapping.abis,
             ethereum_adapter,
             link_resolver,
-            store,
+            store.clone(),
             call_cache,
             timeout,
             arweave_adapter,
@@ -213,6 +255,7 @@ impl RuntimeHost {
         ));
 
         Ok(RuntimeHost {
+            subgraph_id: config.subgraph_id,
             data_source_name,
             data_source_contract: config.contract,
             data_source_contract_abi,
@@ -222,6 +265,7 @@ impl RuntimeHost {
             mapping_request_sender,
             host_exports,
             metrics,
+            store,
         })
     }
 
@@ -391,9 +435,11 @@ impl RuntimeHost {
             .send(MappingRequest {
                 ctx: MappingContext {
                     logger: logger.cheap_clone(),
+                    subgraph_id: self.subgraph_id.clone(),
                     state,
                     host_exports: self.host_exports.cheap_clone(),
                     block: block.cheap_clone(),
+                    store: self.store.cheap_clone(),
                 },
                 trigger,
                 result_sender,
@@ -688,5 +734,11 @@ impl RuntimeHost {
             block,
         )
         .await
+    }
+}
+
+impl fmt::Debug for RuntimeHost {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RuntimeHost {{}}")
     }
 }

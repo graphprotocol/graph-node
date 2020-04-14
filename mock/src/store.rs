@@ -11,7 +11,7 @@ use web3::types::H256;
 mock! {
     pub Store {}
 
-    trait Store: Send + Sync + 'static  {
+    trait Store: Send + Sync + 'static {
         fn block_ptr(
             &self,
             subgraph_id: SubgraphDeploymentId,
