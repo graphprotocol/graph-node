@@ -82,15 +82,8 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", SCHEMA_NAME);
     conn.batch_execute(&*query).unwrap();
 
-    let layout = Layout::create_relational_schema(
-        &conn,
-        SCHEMA_NAME,
-        THINGS_SUBGRAPH_ID.clone(),
-        &schema.document,
-    )
-    .expect("Failed to create relational schema");
-
-    layout
+    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME)
+        .expect("Failed to create relational schema")
 }
 
 fn scrub(entity: &Entity) -> Entity {
@@ -181,7 +174,7 @@ fn bad_id() {
         let res = layout.find(conn, "Thing", "\\xbadd", BLOCK_NUMBER_MAX);
         assert!(res.is_err());
         assert_eq!(
-            "store error: Invalid character \'\\\' at position 0",
+            "store error: Invalid character \'\\\\\' at position 0",
             res.err().unwrap().to_string()
         );
 

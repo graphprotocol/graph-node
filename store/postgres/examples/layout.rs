@@ -2,11 +2,10 @@ extern crate clap;
 extern crate graph_store_postgres;
 
 use clap::App;
-use graphql_parser::parse_schema;
 use std::fs;
 use std::process::exit;
 
-use graph::prelude::SubgraphDeploymentId;
+use graph::prelude::{Schema, SubgraphDeploymentId};
 use graph_store_postgres::relational::{Column, ColumnType, Layout};
 
 pub fn usage(msg: &str) -> ! {
@@ -317,11 +316,12 @@ pub fn main() {
     let db_schema = args.value_of("db_schema").unwrap_or("rel");
     let kind = args.value_of("generate").unwrap_or("ddl");
 
-    let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
-    let schema = ensure(parse_schema(&schema), "Failed to parse schema");
     let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
+    let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
+    let schema = ensure(Schema::parse(&schema, subgraph), "Failed to parse schema");
+
     let layout = ensure(
-        Layout::new(&schema, subgraph, db_schema, false),
+        Layout::new(&schema, db_schema, false),
         "Failed to construct Mapping",
     );
     match kind {

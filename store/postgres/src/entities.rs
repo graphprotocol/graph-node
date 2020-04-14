@@ -843,12 +843,7 @@ impl Connection<'_> {
 
         match *GRAPH_STORAGE_SCHEME {
             v::Relational => {
-                let layout = Layout::create_relational_schema(
-                    &self.conn,
-                    &schema_name,
-                    schema.id.clone(),
-                    &schema.document,
-                )?;
+                let layout = Layout::create_relational_schema(&self.conn, schema, schema_name)?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
                     match Storage::new(&self.conn, &base)? {
@@ -1408,12 +1403,7 @@ impl Storage {
             V::Relational => {
                 let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
                 let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
-                let layout = Layout::new(
-                    &subgraph_schema.document,
-                    subgraph.clone(),
-                    schema.name,
-                    has_poi,
-                )?;
+                let layout = Layout::new(&subgraph_schema, &schema.name, has_poi)?;
                 Storage::Relational(layout)
             }
         };

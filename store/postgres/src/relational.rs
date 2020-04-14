@@ -14,7 +14,7 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::convert::{From, TryInto};
+use std::convert::{From, TryFrom, TryInto};
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -25,6 +25,7 @@ use crate::relational_queries::{
     DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
     FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
+use graph::data::graphql::ext::ObjectTypeExt;
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
@@ -124,11 +125,42 @@ impl fmt::Display for SqlName {
 
 /// The SQL type to use for GraphQL ID properties. We support
 /// strings and byte arrays
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) enum IdType {
     String,
     Bytes,
 }
+
+impl TryFrom<&s::ObjectType> for IdType {
+    type Error = StoreError;
+
+    fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
+        let pk = obj_type
+            .field(&PRIMARY_KEY_COLUMN.to_owned())
+            .expect("Each ObjectType has an `id` field");
+        Self::try_from(&pk.field_type)
+    }
+}
+
+impl TryFrom<&s::Type> for IdType {
+    type Error = StoreError;
+
+    fn try_from(field_type: &s::Type) -> Result<Self, Self::Error> {
+        let name = named_type(field_type);
+
+        match ValueType::from_str(name)? {
+            ValueType::String | ValueType::ID => Ok(IdType::String),
+            ValueType::Bytes => Ok(IdType::Bytes),
+            _ => Err(format_err!(
+                "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
+                &name
+            )
+            .into()),
+        }
+    }
+}
+
+type IdTypeMap = HashMap<String, IdType>;
 
 type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
@@ -149,93 +181,111 @@ pub struct Layout {
 
 impl Layout {
     /// Generate a layout for a relational schema for entities in the
-    /// GraphQL schema `document`. Attributes of type `ID` will use the
-    /// SQL type `id_type`. The subgraph ID is passed in `subgraph`, and
-    /// the name of the database schema in which the subgraph's tables live
-    /// is in `schema`.
+    /// GraphQL schema `schema`. The name of the database schema in which
+    /// the subgraph's tables live is in `schema`.
     pub fn new(
-        document: &s::Document,
-        subgraph: SubgraphDeploymentId,
-        schema: impl Into<String>,
+        schema: &Schema,
+        schema_name: &str,
         create_proof_of_indexing: bool,
-    ) -> Result<Layout, StoreError> {
+    ) -> Result<Self, StoreError> {
         use s::Definition::*;
         use s::TypeDefinition::*;
 
-        let schema = schema.into();
-        SqlName::check_valid_identifier(&schema, "database schema")?;
+        SqlName::check_valid_identifier(schema_name, "database schema")?;
 
-        // Extract interfaces and tables
-        let mut tables = Vec::new();
-        let mut enums = EnumMap::new();
-
-        let table_name = SqlName::verbatim(POI_TABLE.to_owned());
-
-        if create_proof_of_indexing {
-            let poi_table = Table {
-                object: POI_OBJECT.to_owned(),
-                qualified_name: SqlName::qualified_name(&schema, &table_name),
-                name: table_name,
-                columns: vec![
-                    Column {
-                        name: SqlName::from("digest"),
-                        field: "digest".to_owned(),
-                        field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
-                            "String".to_owned(),
-                        ))),
-                        column_type: ColumnType::String,
-                        fulltext_fields: None,
-                        is_reference: false,
-                    },
-                    Column {
-                        name: SqlName::from(PRIMARY_KEY_COLUMN),
-                        field: PRIMARY_KEY_COLUMN.to_owned(),
-                        field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
-                            "String".to_owned(),
-                        ))),
-                        column_type: ColumnType::String,
-                        fulltext_fields: None,
-                        is_reference: false,
-                    },
-                ],
-                /// The position of this table in all the tables for this layout; this
-                /// is really only needed for the tests to make the names of indexes
-                /// predictable
-                position: tables.len() as u32,
-            };
-            tables.push(poi_table);
-        }
-
-        for definition in &document.definitions {
-            match definition {
-                // Do not create a table for the _Schema_ type
-                TypeDefinition(Object(obj_type)) if obj_type.name.eq(SCHEMA_TYPE_NAME) => {}
-                TypeDefinition(Object(obj_type)) => {
-                    tables.push(Table::new(
-                        obj_type,
-                        &schema,
-                        Schema::entity_fulltext_definitions(&obj_type.name, document),
-                        &enums,
-                        tables.len() as u32,
-                    )?);
+        // Extract enum types
+        let enums: EnumMap = schema
+            .document
+            .definitions
+            .iter()
+            .filter_map(|defn| {
+                if let TypeDefinition(Enum(enum_type)) = defn {
+                    Some(enum_type)
+                } else {
+                    None
                 }
-                TypeDefinition(Interface(_)) => { /* we do not care about interfaces */ }
-                TypeDefinition(Enum(enum_type)) => {
+            })
+            .map(
+                |enum_type| -> Result<(String, Arc<BTreeSet<String>>), StoreError> {
                     SqlName::check_valid_identifier(&enum_type.name, "enum")?;
-                    let values: BTreeSet<_> = enum_type
-                        .values
-                        .iter()
-                        .map(|value| value.name.to_owned())
-                        .collect();
-                    enums.insert(enum_type.name.clone(), Arc::new(values));
+                    Ok((
+                        enum_type.name.clone(),
+                        Arc::new(
+                            enum_type
+                                .values
+                                .iter()
+                                .map(|value| value.name.to_owned())
+                                .collect::<BTreeSet<_>>(),
+                        ),
+                    ))
+                },
+            )
+            .collect::<Result<_, _>>()?;
+
+        // List of all object types that are not __SCHEMA__
+        let object_types = schema
+            .document
+            .definitions
+            .iter()
+            .filter_map(|defn| {
+                if let TypeDefinition(Object(obj_type)) = defn {
+                    Some(obj_type)
+                } else {
+                    None
                 }
-                other => {
-                    return Err(StoreError::Unknown(format_err!(
-                        "can not handle {:?}",
-                        other
-                    )))
-                }
-            }
+            })
+            .filter(|obj_type| obj_type.name != SCHEMA_TYPE_NAME)
+            .collect::<Vec<_>>();
+
+        // For interfaces, check that all implementors use the same IdType
+        // and build a list of name/IdType pairs
+        let id_types_for_interface = schema.types_for_interface.iter().map(|(interface, types)| {
+            types
+                .iter()
+                .map(|obj_type| IdType::try_from(obj_type))
+                .collect::<Result<HashSet<_>, _>>()
+                .and_then(move |types| {
+                    if types.len() > 1 {
+                        Err(format_err!(
+                            "The implementations of interface \
+                            {} use different types for the `id` field",
+                            interface
+                        )
+                        .into())
+                    } else {
+                        // For interfaces that are not implemented at all, pretend
+                        // they have a String `id` field
+                        let id_type = types.iter().next().cloned().unwrap_or(IdType::String);
+                        Ok((interface.to_owned(), id_type))
+                    }
+                })
+        });
+
+        // Map of type name to the type of the ID column for the object_types
+        // and interfaces in the schema
+        let id_types = object_types
+            .iter()
+            .map(|obj_type| IdType::try_from(*obj_type).map(|t| (obj_type.name.to_owned(), t)))
+            .chain(id_types_for_interface)
+            .collect::<Result<IdTypeMap, _>>()?;
+
+        // Construct a Table struct for each ObjectType
+        let mut tables = object_types
+            .iter()
+            .enumerate()
+            .map(|(i, obj_type)| {
+                Table::new(
+                    obj_type,
+                    &schema_name,
+                    Schema::entity_fulltext_definitions(&obj_type.name, &schema.document),
+                    &enums,
+                    &id_types,
+                    i as u32,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if create_proof_of_indexing {
+            tables.push(Self::make_poi_table(&schema_name, tables.len()))
         }
 
         let tables: Vec<_> = tables.into_iter().map(|table| Arc::new(table)).collect();
@@ -245,7 +295,7 @@ impl Layout {
             .map(|table| {
                 format!(
                     "select count(*) from \"{}\".\"{}\" where upper_inf(block_range)",
-                    schema, table.name
+                    schema_name, table.name
                 )
             })
             .collect::<Vec<_>>()
@@ -260,21 +310,55 @@ impl Layout {
             });
 
         Ok(Layout {
-            subgraph,
-            schema,
+            subgraph: schema.id.clone(),
+            schema: schema_name.to_owned(),
             tables,
             enums,
             count_query,
         })
     }
 
+    fn make_poi_table(schema_name: &str, position: usize) -> Table {
+        let table_name = SqlName::verbatim(POI_TABLE.to_owned());
+        Table {
+            object: POI_OBJECT.to_owned(),
+            qualified_name: SqlName::qualified_name(schema_name, &table_name),
+            name: table_name,
+            columns: vec![
+                Column {
+                    name: SqlName::from("digest"),
+                    field: "digest".to_owned(),
+                    field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
+                        "String".to_owned(),
+                    ))),
+                    column_type: ColumnType::String,
+                    fulltext_fields: None,
+                    is_reference: false,
+                },
+                Column {
+                    name: SqlName::from(PRIMARY_KEY_COLUMN),
+                    field: PRIMARY_KEY_COLUMN.to_owned(),
+                    field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
+                        "String".to_owned(),
+                    ))),
+                    column_type: ColumnType::String,
+                    fulltext_fields: None,
+                    is_reference: false,
+                },
+            ],
+            /// The position of this table in all the tables for this layout; this
+            /// is really only needed for the tests to make the names of indexes
+            /// predictable
+            position: position as u32,
+        }
+    }
+
     pub fn create_relational_schema(
         conn: &PgConnection,
+        schema: &Schema,
         schema_name: &str,
-        subgraph: SubgraphDeploymentId,
-        document: &s::Document,
     ) -> Result<Layout, StoreError> {
-        let layout = Self::new(document, subgraph, schema_name, true)?;
+        let layout = Self::new(schema, schema_name, true)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
@@ -798,8 +882,14 @@ impl ColumnType {
         field_type: &q::Type,
         schema: &str,
         enums: &EnumMap,
+        id_types: &IdTypeMap,
     ) -> Result<ColumnType, StoreError> {
         let name = named_type(field_type);
+
+        // See if its an object type defined in the schema
+        if let Some(id_type) = id_types.get(name) {
+            return Ok(id_type.clone().into());
+        }
 
         // Check if it's an enum, and if it is, return an appropriate
         // ColumnType::Enum
@@ -813,10 +903,9 @@ impl ColumnType {
             }));
         }
 
-        // It is not an enum, and therefore one of our builtin primitive types
-        // or a reference to another type. For the latter, we use `ValueType::ID`
-        // as the underlying type
-        match ValueType::from_str(name).unwrap_or(ValueType::ID) {
+        // It is not an object type or an enum, and therefore one of our
+        // builtin primitive types
+        match ValueType::from_str(name)? {
             ValueType::Boolean => Ok(ColumnType::Boolean),
             ValueType::BigDecimal => Ok(ColumnType::BigDecimal),
             ValueType::BigInt => Ok(ColumnType::BigInt),
@@ -849,7 +938,10 @@ impl ColumnType {
         match self {
             ColumnType::String => IdType::String,
             ColumnType::BytesId => IdType::Bytes,
-            _ => unreachable!("only String and Bytes are allowed as primary keys"),
+            _ => unreachable!(
+                "only String and BytesId are allowed as primary keys but not {:?}",
+                self
+            ),
         }
     }
 }
@@ -865,17 +957,27 @@ pub struct Column {
 }
 
 impl Column {
-    fn new(field: &s::Field, schema: &str, enums: &EnumMap) -> Result<Column, StoreError> {
+    fn new(
+        field: &s::Field,
+        schema: &str,
+        enums: &EnumMap,
+        id_types: &IdTypeMap,
+    ) -> Result<Column, StoreError> {
         SqlName::check_valid_identifier(&*field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
         let is_reference =
             sql_name.as_str() != PRIMARY_KEY_COLUMN && is_object_type(&field.field_type, enums);
 
+        let column_type = if sql_name.as_str() == PRIMARY_KEY_COLUMN {
+            IdType::try_from(&field.field_type)?.into()
+        } else {
+            ColumnType::from_field_type(&field.field_type, schema, enums, id_types)?
+        };
         Ok(Column {
             name: sql_name,
             field: field.name.clone(),
-            column_type: ColumnType::from_field_type(&field.field_type, schema, enums)?,
+            column_type,
             field_type: field.field_type.clone(),
             fulltext_fields: None,
             is_reference,
@@ -1028,6 +1130,7 @@ impl Table {
         schema: &str,
         fulltexts: Vec<FulltextDefinition>,
         enums: &EnumMap,
+        id_types: &IdTypeMap,
         position: u32,
     ) -> Result<Table, StoreError> {
         SqlName::check_valid_identifier(&*defn.name, "object")?;
@@ -1037,7 +1140,7 @@ impl Table {
             .fields
             .iter()
             .filter(|field| !derived_column(field))
-            .map(|field| Column::new(field, schema, enums))
+            .map(|field| Column::new(field, schema, enums, id_types))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
@@ -1194,14 +1297,13 @@ fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use graphql_parser::parse_schema;
 
     const ID_TYPE: ColumnType = ColumnType::String;
 
     fn test_layout(gql: &str) -> Layout {
-        let schema = parse_schema(gql).expect("Test schema invalid");
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
-        Layout::new(&schema, subgraph, "rel", false).expect("Failed to construct Layout")
+        let schema = Schema::parse(gql, subgraph).expect("Test schema invalid");
+        Layout::new(&schema, "rel", false).expect("Failed to construct Layout")
     }
 
     #[test]
