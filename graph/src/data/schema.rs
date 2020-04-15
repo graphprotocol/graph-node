@@ -321,11 +321,10 @@ impl SchemaReference {
     pub fn resolve<S: Store + SubgraphDeploymentStore>(
         &self,
         store: Arc<S>,
-    ) -> Result<(Arc<Schema>, SubgraphDeploymentId), SchemaImportError> {
+    ) -> Result<Arc<Schema>, SchemaImportError> {
         store
             .input_schema(&self.subgraph)
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
-            .map(|schema| (schema, self.subgraph.clone()))
     }
 }
 
@@ -378,12 +377,12 @@ impl Schema {
         self.imported_schemas()
             .into_iter()
             .fold(vec![], |mut errors, schema_ref| {
-                match schema_ref.clone().resolve(store.clone()) {
-                    Ok((schema, subgraph_id)) => {
+                match schema_ref.resolve(store.clone()) {
+                    Ok(schema) => {
                         schemas.insert(schema_ref, schema.clone());
                         // If this node in the graph has already been visited stop traversing
-                        if !visit_log.contains(&subgraph_id) {
-                            visit_log.insert(subgraph_id);
+                        if !visit_log.contains(&schema.id) {
+                            visit_log.insert(schema.id.clone());
                             errors.extend(schema.resolve_import_graph(
                                 store.clone(),
                                 schemas,
