@@ -298,7 +298,6 @@ impl fmt::Display for ImportedType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SchemaReference {
-    ByName(SubgraphName),
     ById(SubgraphDeploymentId),
 }
 
@@ -306,7 +305,6 @@ impl Hash for SchemaReference {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Self::ById(id) => id.hash(state),
-            Self::ByName(name) => name.hash(state),
         };
     }
 }
@@ -314,7 +312,6 @@ impl Hash for SchemaReference {
 impl fmt::Display for SchemaReference {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            SchemaReference::ByName(name) => write!(f, "{}", name),
             SchemaReference::ById(id) => write!(f, "{}", id),
         }
     }
@@ -326,12 +323,6 @@ impl SchemaReference {
         store: Arc<S>,
     ) -> Result<(Arc<Schema>, SubgraphDeploymentId), SchemaImportError> {
         let subgraph_id = match self {
-            SchemaReference::ByName(name) => store
-                .resolve_subgraph_name_to_id(name.clone())
-                .map_err(|_| SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-                .and_then(|subgraph_id_opt| {
-                    subgraph_id_opt.ok_or(SchemaImportError::ImportedSubgraphNotFound(self.clone()))
-                })?,
             SchemaReference::ById(id) => id.clone(),
         };
 
@@ -570,23 +561,13 @@ impl Schema {
             return None;
         }
         match value {
-            Value::Object(map) => {
-                let id = match map.get("id") {
-                    Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
-                        Ok(id) => Some(SchemaReference::ById(id)),
-                        _ => None,
-                    },
+            Value::Object(map) => match map.get("id") {
+                Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
+                    Ok(id) => Some(SchemaReference::ById(id)),
                     _ => None,
-                };
-                let name = match map.get("name") {
-                    Some(Value::String(name)) => match SubgraphName::new(name) {
-                        Ok(name) => Some(SchemaReference::ByName(name)),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                id.or(name)
-            }
+                },
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -1036,7 +1017,6 @@ impl Schema {
                         // recursively check the schema
                         let schema_handle = match schema_ref {
                             SchemaReference::ById(id) => id.to_string(),
-                            SchemaReference::ByName(name) => name.to_string(),
                         };
                         let name = match imported_type {
                             ImportedType::Name(name) => name,
@@ -1509,9 +1489,9 @@ type A @entity {
 #[test]
 fn test_recursively_imported_type_validates() {
     const ROOT_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T"], from: { name: "child1/subgraph" })"#;
+type _Schema_ @import(types: ["T"], from: { id: "c1id" })"#;
     const CHILD_1_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T"], from: { name: "child2/subgraph" })"#;
+type _Schema_ @import(types: ["T"], from: { id: "c2id" })"#;
     const CHILD_2_SCHEMA: &str = r#"
 type T @entity { id: ID! }
 "#;
@@ -1523,19 +1503,15 @@ type T @entity { id: ID! }
     let child_2_document =
         graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
 
+    let c1id = SubgraphDeploymentId::new("c1id").unwrap();
+    let c2id = SubgraphDeploymentId::new("c2id").unwrap();
     let root_schema = Schema::new(SubgraphDeploymentId::new("rid").unwrap(), root_document);
-    let child_1_schema = Schema::new(SubgraphDeploymentId::new("c1id").unwrap(), child_1_document);
-    let child_2_schema = Schema::new(SubgraphDeploymentId::new("c2id").unwrap(), child_2_document);
+    let child_1_schema = Schema::new(c1id.clone(), child_1_document);
+    let child_2_schema = Schema::new(c2id.clone(), child_2_document);
 
     let mut schemas = HashMap::new();
-    schemas.insert(
-        SchemaReference::ByName(SubgraphName::new("childone/subgraph").unwrap()),
-        Arc::new(child_1_schema),
-    );
-    schemas.insert(
-        SchemaReference::ByName(SubgraphName::new("childtwo/subgraph").unwrap()),
-        Arc::new(child_2_schema),
-    );
+    schemas.insert(SchemaReference::ById(c1id), Arc::new(child_1_schema));
+    schemas.insert(SchemaReference::ById(c2id), Arc::new(child_2_schema));
 
     match root_schema.validate_imported_types(&schemas).is_empty() {
         false => panic!(
@@ -1549,9 +1525,9 @@ type T @entity { id: ID! }
 #[test]
 fn test_recursively_imported_type_which_dne_fails_validation() {
     const ROOT_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T"], from: { name:"childone/subgraph"})"#;
+type _Schema_ @import(types: ["T"], from: { id:"c1id"})"#;
     const CHILD_1_SCHEMA: &str = r#"
-type _Schema_ @import(types: [{name: "T", as: "A"}], from: { name:"childtwo/subgraph"})"#;
+type _Schema_ @import(types: [{name: "T", as: "A"}], from: { id:"c2id"})"#;
     const CHILD_2_SCHEMA: &str = r#"
 type T @entity { id: ID! }
 "#;
@@ -1562,19 +1538,15 @@ type T @entity { id: ID! }
     let child_2_document =
         graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
 
+    let c1id = SubgraphDeploymentId::new("c1id").unwrap();
+    let c2id = SubgraphDeploymentId::new("c2id").unwrap();
     let root_schema = Schema::new(SubgraphDeploymentId::new("rid").unwrap(), root_document);
-    let child_1_schema = Schema::new(SubgraphDeploymentId::new("c1id").unwrap(), child_1_document);
-    let child_2_schema = Schema::new(SubgraphDeploymentId::new("c2id").unwrap(), child_2_document);
+    let child_1_schema = Schema::new(c1id.clone(), child_1_document);
+    let child_2_schema = Schema::new(c2id.clone(), child_2_document);
 
     let mut schemas = HashMap::new();
-    schemas.insert(
-        SchemaReference::ByName(SubgraphName::new("childone/subgraph").unwrap()),
-        Arc::new(child_1_schema),
-    );
-    schemas.insert(
-        SchemaReference::ByName(SubgraphName::new("childtwo/subgraph").unwrap()),
-        Arc::new(child_2_schema),
-    );
+    schemas.insert(SchemaReference::ById(c1id), Arc::new(child_1_schema));
+    schemas.insert(SchemaReference::ById(c2id), Arc::new(child_2_schema));
 
     match root_schema.validate_imported_types(&schemas).into_iter().find(|err| match err {
         SchemaValidationError::ImportedTypeUndefined(_, _) => true,
