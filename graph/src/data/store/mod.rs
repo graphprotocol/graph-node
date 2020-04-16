@@ -137,7 +137,16 @@ impl ValueType {
     /// Return `true` if `s` is the name of a builtin scalar type
     pub fn is_scalar(s: &str) -> bool {
         Self::from_str(s)
-            .map(|vt| vt != ValueType::List)
+            .map(|vt| match vt {
+                ValueType::List => false,
+                ValueType::Boolean
+                | ValueType::BigDecimal
+                | ValueType::BigInt
+                | ValueType::Bytes
+                | ValueType::ID
+                | ValueType::Int
+                | ValueType::String => true,
+            })
             .unwrap_or(false)
     }
 }
