@@ -354,11 +354,7 @@ impl SchemaReference {
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
     }
 
-    fn parse(from: &(Name, Value)) -> Option<Self> {
-        let (name, value) = from;
-        if !name.eq("from") {
-            return None;
-        }
+    fn parse(value: &Value) -> Option<Self> {
         match value {
             Value::Object(map) => match map.get("id") {
                 Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
@@ -514,10 +510,8 @@ impl Schema {
     fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
         fn parse_types(import: &Directive) -> Vec<ImportedType> {
             import
-                .arguments
-                .iter()
-                .find(|(name, _)| name.eq("types"))
-                .map_or(vec![], |(_, value)| match value {
+                .argument("types")
+                .map_or(vec![], |value| match value {
                     Value::List(types) => types.iter().filter_map(ImportedType::parse).collect(),
                     _ => vec![],
                 })
@@ -529,19 +523,15 @@ impl Schema {
                     .directives
                     .iter()
                     .filter(|directive| directive.name.eq("import"))
-                    .map(|imports| {
-                        imports
-                            .arguments
-                            .iter()
-                            .find(|(name, _)| name.eq("from"))
-                            .map_or(vec![], |from| {
-                                SchemaReference::parse(from).map_or(vec![], |schema_ref| {
-                                    parse_types(imports)
-                                        .into_iter()
-                                        .map(|imported_type| (imported_type, schema_ref.clone()))
-                                        .collect()
-                                })
+                    .map(|import| {
+                        import.argument("from").map_or(vec![], |from| {
+                            SchemaReference::parse(from).map_or(vec![], |schema_ref| {
+                                parse_types(import)
+                                    .into_iter()
+                                    .map(|imported_type| (imported_type, schema_ref.clone()))
+                                    .collect()
                             })
+                        })
                     })
                     .flatten()
                     .collect::<HashMap<ImportedType, SchemaReference>>()
@@ -554,9 +544,7 @@ impl Schema {
                 .directives
                 .iter()
                 .filter(|directive| directive.name.eq("import"))
-                .filter_map(|directive| {
-                    directive.arguments.iter().find(|(name, _)| name.eq("from"))
-                })
+                .filter_map(|directive| directive.argument("from"))
                 .filter_map(SchemaReference::parse)
                 .collect()
         })
@@ -564,11 +552,8 @@ impl Schema {
 
     pub fn name_argument_value_from_directive(directive: &Directive) -> Value {
         directive
-            .arguments
-            .iter()
-            .find(|(name, _value)| name == "name")
+            .argument("name")
             .expect("fulltext directive must have name argument")
-            .1
             .clone()
     }
 
@@ -731,20 +716,12 @@ impl Schema {
     }
 
     fn validate_import_directive_arguments(directive: &Directive) -> Option<SchemaValidationError> {
-        let from_is_valid = directive
-            .arguments
-            .iter()
-            .find(|(name, _)| name.eq("from"))
-            .map_or(false, |(_, from)| {
-                Self::is_import_directive_argument_from_valid(from)
-            });
-        let types_are_valid = directive
-            .arguments
-            .iter()
-            .find(|(name, _)| name.eq("types"))
-            .map_or(false, |(_, types)| {
-                Self::is_import_directive_argument_types_valid(types)
-            });
+        let from_is_valid = directive.argument("from").map_or(false, |from| {
+            Self::is_import_directive_argument_from_valid(from)
+        });
+        let types_are_valid = directive.argument("types").map_or(false, |types| {
+            Self::is_import_directive_argument_types_valid(types)
+        });
         if from_is_valid && types_are_valid {
             None
         } else {
@@ -755,34 +732,30 @@ impl Schema {
     fn validate_import_directive_schema_reference_parses(
         directive: &Directive,
     ) -> Option<SchemaValidationError> {
-        directive
-            .arguments
-            .iter()
-            .find(|(name, _)| name.eq("from"))
-            .and_then(|(_, from)| match from {
-                Value::Object(from) => {
-                    let id_parse_error = match from.get("id") {
-                        Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
-                            Err(_) => {
-                                Some(SchemaValidationError::ImportedSubgraphIdInvalid(id.clone()))
-                            }
-                            _ => None,
-                        },
+        directive.argument("from").and_then(|from| match from {
+            Value::Object(from) => {
+                let id_parse_error = match from.get("id") {
+                    Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
+                        Err(_) => {
+                            Some(SchemaValidationError::ImportedSubgraphIdInvalid(id.clone()))
+                        }
                         _ => None,
-                    };
-                    let name_parse_error = match from.get("name") {
-                        Some(Value::String(name)) => match SubgraphName::new(name) {
-                            Err(_) => Some(SchemaValidationError::ImportedSubgraphNameInvalid(
-                                name.clone(),
-                            )),
-                            _ => None,
-                        },
+                    },
+                    _ => None,
+                };
+                let name_parse_error = match from.get("name") {
+                    Some(Value::String(name)) => match SubgraphName::new(name) {
+                        Err(_) => Some(SchemaValidationError::ImportedSubgraphNameInvalid(
+                            name.clone(),
+                        )),
                         _ => None,
-                    };
-                    id_parse_error.or(name_parse_error)
-                }
-                _ => None,
-            })
+                    },
+                    _ => None,
+                };
+                id_parse_error.or(name_parse_error)
+            }
+            _ => None,
+        })
     }
 
     fn validate_fulltext_directives(&self) -> Vec<SchemaValidationError> {
@@ -1148,11 +1121,7 @@ impl Schema {
                                 })
                                 .collect::<Vec<_>>(),
                             field,
-                            directive
-                                .arguments
-                                .iter()
-                                .find(|(name, _)| name.eq("field"))
-                                .map(|(_, value)| value),
+                            directive.argument("field"),
                         )
                     })
             })
