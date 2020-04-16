@@ -2,11 +2,42 @@ use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap};
 
 use graph::data::graphql::{TryFromValue, ValueList, ValueMap};
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth, SUBGRAPHS_ID};
 use graph::prelude::*;
 use graph_graphql::prelude::{object, ExecutionContext, IntoValue, ObjectOrInterface, Resolver};
 use std::convert::TryInto;
 use web3::types::H256;
+
+static DEPLOYMENT_STATUS_FRAGMENT: &str = r#"
+    fragment deploymentStatus on SubgraphDeployment {
+        id
+        synced
+        health
+        fatalError {
+            message
+            blockNumber
+            blockHash
+            handler
+        }
+        nonFatalErrors(first: 1000, orderBy: blockNumber) {
+            message
+            blockNumber
+            blockHash
+            handler
+        }
+        ethereumHeadBlockNumber
+        ethereumHeadBlockHash
+        earliestEthereumBlockHash
+        earliestEthereumBlockNumber
+        latestEthereumBlockHash
+        latestEthereumBlockNumber
+        manifest {
+            dataSources(first: 1) {
+                network
+            }
+        }
+    }
+  "#;
 
 /// Resolver for the index node GraphQL API.
 pub struct IndexNodeResolver<R, S> {
@@ -89,12 +120,13 @@ impl From<ChainIndexingStatus> for q::Value {
 struct IndexingStatusWithoutNode {
     /// The subgraph ID.
     subgraph: String,
+
     /// Whether or not the subgraph has synced all the way to the current chain head.
     synced: bool,
-    /// Whether or not the subgraph has failed syncing.
-    failed: bool,
-    /// If it has failed, an optional error.
-    error: Option<String>,
+    health: SubgraphHealth,
+    fatal_error: Option<SubgraphError>,
+    non_fatal_errors: Vec<SubgraphError>,
+
     /// Indexing status on different chains involved in the subgraph's data sources.
     chains: Vec<ChainIndexingStatus>,
 }
@@ -102,14 +134,16 @@ struct IndexingStatusWithoutNode {
 struct IndexingStatus {
     /// The subgraph ID.
     subgraph: String,
+
     /// Whether or not the subgraph has synced all the way to the current chain head.
     synced: bool,
-    /// Whether or not the subgraph has failed syncing.
-    failed: bool,
-    /// If it has failed, an optional error.
-    error: Option<String>,
+    health: SubgraphHealth,
+    fatal_error: Option<SubgraphError>,
+    non_fatal_errors: Vec<SubgraphError>,
+
     /// Indexing status on different chains involved in the subgraph's data sources.
     chains: Vec<ChainIndexingStatus>,
+
     /// ID of the Graph Node that the subgraph is indexed by.
     node: String,
 }
@@ -120,8 +154,9 @@ impl IndexingStatusWithoutNode {
         IndexingStatus {
             subgraph: self.subgraph,
             synced: self.synced,
-            failed: self.failed,
-            error: self.error,
+            health: self.health,
+            fatal_error: self.fatal_error,
+            non_fatal_errors: self.non_fatal_errors,
             chains: self.chains,
             node,
         }
@@ -156,8 +191,9 @@ impl TryFromValue for IndexingStatusWithoutNode {
         Ok(Self {
             subgraph: value.get_required("id")?,
             synced: value.get_required("synced")?,
-            failed: value.get_required("failed")?,
-            error: None,
+            health: value.get_required("health")?,
+            fatal_error: value.get_optional("fatalError")?,
+            non_fatal_errors: value.get_required("nonFatalErrors")?,
             chains: vec![ChainIndexingStatus::Ethereum(EthereumIndexingStatus {
                 network: value
                     .get_required::<q::Value>("manifest")?
@@ -174,14 +210,28 @@ impl TryFromValue for IndexingStatusWithoutNode {
 
 impl From<IndexingStatus> for q::Value {
     fn from(status: IndexingStatus) -> Self {
+        let IndexingStatus {
+            subgraph,
+            chains,
+            fatal_error,
+            health,
+            node,
+            non_fatal_errors,
+            synced,
+        } = status;
+
+        let non_fatal_errors: Vec<q::Value> =
+            non_fatal_errors.into_iter().map(Into::into).collect();
+
         object! {
             __typename: "SubgraphIndexingStatus",
-            subgraph: status.subgraph,
-            synced: status.synced,
-            failed: status.failed,
-            error: status.error,
-            chains: status.chains.into_iter().map(q::Value::from).collect::<Vec<_>>(),
-            node: status.node,
+            subgraph: subgraph,
+            synced: synced,
+            health: q::Value::from(health),
+            fatalError: fatal_error.map(q::Value::from),
+            nonFatalErorrs: non_fatal_errors,
+            chains: chains.into_iter().map(q::Value::from).collect::<Vec<_>>(),
+            node: node,
         }
     }
 }
@@ -271,7 +321,19 @@ where
                   subgraphDeployments(where: $whereDeployments, first: 1000000) {
                     id
                     synced
-                    failed
+                    health
+                    fatalError {
+                        message
+                        blockNumber
+                        blockHash
+                        handler
+                    }
+                    nonFatalErrors(first: 1000, orderBy: blockNumber) {
+                        message
+                        blockNumber
+                        blockHash
+                        handler
+                    }
                     ethereumHeadBlockNumber
                     ethereumHeadBlockHash
                     earliestEthereumBlockHash
@@ -361,7 +423,19 @@ where
                       deployment {
                         id
                         synced
-                        failed
+                        health
+                        fatalError {
+                            message
+                            blockNumber
+                            blockHash
+                            handler
+                        }
+                        nonFatalErrors(first: 1000, orderBy: blockNumber) {
+                            message
+                            blockNumber
+                            blockHash
+                            handler
+                        }
                         ethereumHeadBlockNumber
                         ethereumHeadBlockHash
                         earliestEthereumBlockHash
@@ -487,6 +561,132 @@ where
 
         Ok(poi)
     }
+
+    fn resolve_indexing_statuses_for_version(
+        &self,
+        arguments: &HashMap<&q::Name, q::Value>,
+
+        // If `true` return the current version, if `false` return the pending version.
+        current_version: bool,
+    ) -> Result<q::Value, QueryExecutionError> {
+        // We can safely unwrap because the argument is non-nullable and has been validated.
+        let subgraph_name = arguments.get_required::<String>("subgraphName").unwrap();
+
+        debug!(
+            self.logger,
+            "Resolve indexing statuses for subgraph name";
+            "name" => &subgraph_name
+        );
+
+        // Build a `where` filter that the subgraph has to match
+        let where_filter = object!(name: subgraph_name.clone());
+
+        let query = Query::new(
+            self.store
+                .api_schema(&SUBGRAPHS_ID)
+                .map_err(QueryExecutionError::StoreError)?,
+            q::parse_query(&format!(
+                "{}{}",
+                DEPLOYMENT_STATUS_FRAGMENT,
+                r#"
+                query subgraphs($where: Subgraph_filter!, $currentVersion: Boolean!) {
+                  subgraphs(where: $where, first: 1) {
+                    currentVersion @include(if: $currentVersion) {
+                        deployment {
+                            ...deploymentStatus
+                        }
+                    }
+
+                    pendingVersion @skip(if: $currentVersion) {
+                        deployment {
+                            ...deploymentStatus
+                        }
+                    }
+                  }
+
+                  subgraphDeploymentAssignments(first: 1000000) {
+                    id
+                    nodeId
+                  }
+                }
+                "#,
+            ))
+            .unwrap(),
+            Some(QueryVariables::new(HashMap::from_iter(
+                vec![
+                    ("where".into(), where_filter),
+                    ("currentVersion".into(), q::Value::Boolean(current_version)),
+                ]
+                .into_iter(),
+            ))),
+        );
+
+        // Execute the query
+        let result = self
+            .graphql_runner
+            .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
+            .wait()
+            .expect("error querying subgraph deployments");
+
+        let data = match result.data {
+            Some(data) => data,
+            None => {
+                error!(
+                    self.logger,
+                    "Failed to query subgraph deployments";
+                    "subgraph" => subgraph_name,
+                    "errors" => format!("{:?}", result.errors)
+                );
+                return Ok(q::Value::List(vec![]));
+            }
+        };
+
+        let subgraphs = match data
+            .get_optional::<q::Value>("subgraphs")
+            .expect("invalid subgraphs")
+        {
+            Some(subgraphs) => subgraphs,
+            None => return Ok(q::Value::List(vec![])),
+        };
+
+        let subgraphs = subgraphs
+            .get_values::<q::Value>()
+            .expect("invalid subgraph values");
+
+        let subgraph = match subgraphs.into_iter().next() {
+            Some(subgraph) => subgraph,
+            None => return Ok(q::Value::List(vec![])),
+        };
+
+        let field_name = match current_version {
+            true => "currentVersion",
+            false => "pendingVersion",
+        };
+
+        let deployments = subgraph
+            .get_optional::<q::Value>(field_name)
+            .unwrap()
+            .map(|version| {
+                q::Value::List(vec![version
+                    .get_required::<q::Value>("deployment")
+                    .expect("missing deployment")])
+            })
+            .unwrap_or(q::Value::List(vec![]));
+
+        let transformed_data = object!(
+            subgraphDeployments: deployments,
+            subgraphDeploymentAssignments:
+                data.get_required::<q::Value>("subgraphDeploymentAssignments")
+                    .expect("missing deployment assignments"),
+        );
+
+        Ok(IndexingStatuses::from(transformed_data)
+            .0
+            .into_iter()
+            .next()
+            .map(Into::into)
+            .unwrap_or(q::Value::Null))
+    }
 }
 
 impl<R, S> Clone for IndexNodeResolver<R, S>
@@ -557,31 +757,20 @@ where
                 self.resolve_indexing_statuses(arguments)
             }
 
-            // The `chains` field of `ChainIndexingStatus` values
-            (Some(status), "ChainIndexingStatus", "chains") => match status {
-                q::Value::Object(map) => Ok(map
-                    .get("chains")
-                    .expect("subgraph indexing status without `chains`")
-                    .clone()),
-                _ => unreachable!(),
-            },
+            // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
+            (Some(q::Value::Object(map)), _, field) => {
+                Ok(map.get(field).cloned().unwrap_or(q::Value::Null))
+            }
 
             // The top-level `indexingStatusesForSubgraphName` field
             (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
                 self.resolve_indexing_statuses_for_subgraph_name(arguments)
             }
 
-            // Unknown fields on the `Query` type
-            (None, _, name) => Err(QueryExecutionError::UnknownField(
+            // Something we don't know how to resolve.
+            (_, _, name) => Err(QueryExecutionError::UnknownField(
                 field_definition.position.clone(),
                 "Query".into(),
-                name.into(),
-            )),
-
-            // Unknown fields on any other types
-            (_, type_name, name) => Err(QueryExecutionError::UnknownField(
-                field_definition.position.clone(),
-                type_name.into(),
                 name.into(),
             )),
         }
@@ -593,27 +782,29 @@ where
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
-        match (parent, object_type.name(), field.name.as_str()) {
-            (Some(status), "EthereumBlock", "chainHeadBlock") => Ok(status
-                .get_optional("chainHeadBlock")
-                .map_err(|e| QueryExecutionError::StoreError(e))?
-                .unwrap_or(q::Value::Null)),
-            (Some(status), "EthereumBlock", "earliestBlock") => Ok(status
-                .get_optional("earliestBlock")
-                .map_err(|e| QueryExecutionError::StoreError(e))?
-                .unwrap_or(q::Value::Null)),
-            (Some(status), "EthereumBlock", "latestBlock") => Ok(status
-                .get_optional("latestBlock")
-                .map_err(|e| QueryExecutionError::StoreError(e))?
-                .unwrap_or(q::Value::Null)),
+        match (parent, field.name.as_str()) {
+            // The top-level `indexingStatusForCurrentVersion` field
+            (None, "indexingStatusForCurrentVersion") => {
+                self.resolve_indexing_statuses_for_version(arguments, true)
+            }
 
-            // Unknown fields on other types
-            (_, type_name, name) => Err(QueryExecutionError::UnknownField(
+            // The top-level `indexingStatusForPendingVersion` field
+            (None, "indexingStatusForPendingVersion") => {
+                self.resolve_indexing_statuses_for_version(arguments, false)
+            }
+
+            // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
+            (Some(q::Value::Object(map)), field) => {
+                Ok(map.get(field).cloned().unwrap_or(q::Value::Null))
+            }
+
+            // Something we don't know how to resolve.
+            (_, name) => Err(QueryExecutionError::UnknownField(
                 field_definition.position.clone(),
-                type_name.into(),
+                object_type.name().into(),
                 name.into(),
             )),
         }

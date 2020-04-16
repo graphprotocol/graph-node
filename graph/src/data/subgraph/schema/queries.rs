@@ -1,7 +1,7 @@
 use super::SubgraphHealth;
 use crate::components::graphql::GraphQlRunner;
 use crate::components::store::SubgraphDeploymentStore;
-use crate::data::graphql::TryFromValue;
+use crate::data::graphql::ValueMap;
 use crate::data::query::{Query, QueryVariables};
 use crate::data::subgraph::schema::SUBGRAPHS_ID;
 use crate::data::subgraph::SubgraphDeploymentId;
@@ -49,7 +49,7 @@ impl<S: SubgraphDeploymentStore, Q: GraphQlRunner> LazyMetadata<S, Q> {
             _ => unreachable!(),
         };
 
-        SubgraphHealth::try_from_value(&deployment["health"])
+        deployment.get_required("health")
     }
 
     pub async fn has_non_fatal_errors(&self) -> Result<bool, Error> {

@@ -27,12 +27,12 @@ const waitForSubgraphToBeSynced = async () =>
     const checkSubgraphSynced = async () => {
       try {
         let result = await fetchSubgraphs({
-          query: `{ indexingStatuses { synced, failed } }`
+          query: `{ indexingStatuses { synced, health } }`
         });
 
         if (result.data.indexingStatuses[0].synced) {
           resolve();
-        } else if (result.data.indexingStatuses[0].failed) {
+        } else if (result.data.indexingStatuses[0].health != "healthy") {
           reject(new Error("Subgraph failed"));
         } else {
           throw new Error("reject or retry");
