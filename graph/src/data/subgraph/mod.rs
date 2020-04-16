@@ -1,6 +1,6 @@
 use ethabi::Contract;
 use failure;
-use failure::{Error, SyncFailure};
+use failure::{err_msg, Error, SyncFailure};
 use futures03::{
     future::{try_join, try_join3},
     stream::FuturesOrdered,
@@ -127,6 +127,12 @@ impl<'de> de::Deserialize<'de> for SubgraphDeploymentId {
         let s: String = de::Deserialize::deserialize(deserializer)?;
         SubgraphDeploymentId::new(s.clone())
             .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
+    }
+}
+
+impl TryFromValue for SubgraphDeploymentId {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        Self::new(String::try_from_value(value)?).map_err(|()| err_msg("Invalid subgraph id"))
     }
 }
 
