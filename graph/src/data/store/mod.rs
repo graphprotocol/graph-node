@@ -568,9 +568,9 @@ impl Into<BTreeMap<String, query::Value>> for Entity {
     }
 }
 
-impl Into<query::Value> for Entity {
-    fn into(self) -> query::Value {
-        query::Value::Object(self.into())
+impl From<Entity> for query::Value {
+    fn from(entity: Entity) -> query::Value {
+        query::Value::Object(entity.into())
     }
 }
 

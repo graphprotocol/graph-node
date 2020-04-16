@@ -5,7 +5,11 @@ scalar ID
 scalar String
 
 type Query {
-  indexingStatusesForSubgraphName(subgraphName: String!): [SubgraphIndexingStatus!]!
+  indexingStatusForCurrentVersion(subgraphName: String!): SubgraphIndexingStatus
+  indexingStatusForPendingVersion(subgraphName: String!): SubgraphIndexingStatus
+  indexingStatusesForSubgraphName(
+    subgraphName: String!
+  ): [SubgraphIndexingStatus!]!
   indexingStatuses(subgraphs: [String!]): [SubgraphIndexingStatus!]!
   proofOfIndexing(subgraph: String!, blockNumber: BigInt!): Bytes
 }
@@ -13,24 +17,57 @@ type Query {
 type SubgraphIndexingStatus {
   subgraph: String!
   synced: Boolean!
-  failed: Boolean!
-  error: String
+
+  # Note that the health can be implied from fatalError and nonFatalErrors:
+  # - If fatalError is non-null, then health is 'failed'.
+  # - Else if nonFatalErrors is non-empty, then health is 'unhealthy'.
+  # - Else health is 'healthy'.
+  health: Health!
+
+  "If the subgraph has failed, this is the error caused it"
+  fatalError: SubgraphError
+
+  "Sorted from first to last, limited to first 1000"
+  nonFatalErrors: [SubgraphError!]!
   chains: [ChainIndexingStatus!]!
   node: String!
 }
 
 interface ChainIndexingStatus {
   network: String!
+  chainHeadBlock: Block
+  earliestBlock: Block
+  latestBlock: Block
+  lastHealthyBlock: Block
 }
 
 type EthereumIndexingStatus implements ChainIndexingStatus {
   network: String!
-  chainHeadBlock: EthereumBlock
-  earliestBlock: EthereumBlock
-  latestBlock: EthereumBlock
+  chainHeadBlock: Block
+  earliestBlock: Block
+  latestBlock: Block
+  lastHealthyBlock: Block
 }
 
-type EthereumBlock {
+type Block {
   hash: Bytes!
   number: BigInt!
+}
+
+type SubgraphError {
+  message: String!
+
+  # Context for the error.
+  network: String!
+  block: Block
+  handler: String
+}
+
+enum Health {
+  "Subgraph syncing normally"
+  healthy
+  "Subgraph syncing but with errors"
+  unhealthy
+  "Subgraph halted due to errors"
+  failed
 }

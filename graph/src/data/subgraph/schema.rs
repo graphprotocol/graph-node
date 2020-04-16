@@ -246,13 +246,25 @@ impl FromStr for SubgraphHealth {
     }
 }
 
-impl From<SubgraphHealth> for Value {
-    fn from(health: SubgraphHealth) -> Value {
+impl From<SubgraphHealth> for String {
+    fn from(health: SubgraphHealth) -> String {
         match health {
             SubgraphHealth::Healthy => "healthy".into(),
             SubgraphHealth::Unhealthy => "unhealthy".into(),
             SubgraphHealth::Failed => "failed".into(),
         }
+    }
+}
+
+impl From<SubgraphHealth> for Value {
+    fn from(health: SubgraphHealth) -> Value {
+        String::from(health).into()
+    }
+}
+
+impl From<SubgraphHealth> for q::Value {
+    fn from(health: SubgraphHealth) -> q::Value {
+        q::Value::Enum(health.into())
     }
 }
 
@@ -1367,20 +1379,52 @@ impl TypedEntity for SubgraphError {
 
 impl SubgraphError {
     fn create_operation(self, id: String) -> MetadataOperation {
+        let mut entity = Entity::from(self);
+        entity.set("id", id.clone());
+        set_metadata_operation(Self::TYPENAME, id, entity)
+    }
+}
+
+impl From<SubgraphError> for Entity {
+    fn from(subgraph_error: SubgraphError) -> Entity {
         let SubgraphError {
             message,
             block_ptr,
             handler,
-        } = self;
+        } = subgraph_error;
 
         let mut entity = Entity::new();
-        entity.set("id", id.clone());
         entity.set("message", message);
         entity.set("blockNumber", block_ptr.map(|x| x.number));
         entity.set("blockHash", block_ptr.map(|x| x.hash));
         entity.set("handler", handler);
+        entity
+    }
+}
 
-        set_metadata_operation(Self::TYPENAME, id, entity)
+impl TryFromValue for SubgraphError {
+    fn try_from_value(value: &q::Value) -> Result<SubgraphError, Error> {
+        let block_number = value.get_optional("blockNumber")?;
+        let block_hash = value.get_optional("blockHash")?;
+
+        let block_ptr = match (block_number, block_hash) {
+            (Some(number), Some(hash)) => Some(EthereumBlockPointer { number, hash }),
+            _ => None,
+        };
+
+        Ok(SubgraphError {
+            message: value.get_required("message")?,
+            block_ptr,
+            handler: value.get_optional("handler")?,
+        })
+    }
+}
+
+impl From<SubgraphError> for q::Value {
+    fn from(subgraph_error: SubgraphError) -> q::Value {
+        let mut entity = Entity::from(subgraph_error);
+        entity.set("__typename", "SubgraphError");
+        q::Value::from(entity)
     }
 }
 
