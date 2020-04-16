@@ -45,6 +45,8 @@ impl TryFromValue for u64 {
                 .as_i64()
                 .map(|n| n as u64)
                 .ok_or_else(|| format_err!("Cannot parse value into an integer/u64: {:?}", n)),
+            // `BigInt`s are represented as `String`s.
+            Value::String(s) => u64::from_str(s).map_err(Into::into),
             _ => Err(format_err!(
                 "Cannot parse value into an integer/u64: {:?}",
                 value

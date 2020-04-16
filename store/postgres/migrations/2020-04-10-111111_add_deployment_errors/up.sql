@@ -1,6 +1,7 @@
 -- create subgraph_error
 create table subgraphs."subgraph_error" (
         "id"                 text not null,
+        "subgraph_id"        text not null,
         "message"            text not null,
         "block_number"       numeric,
         "block_hash"         bytea,
@@ -13,9 +14,11 @@ create table subgraphs."subgraph_error" (
 
 create index attr_16_0_subgraph_error_id
     on subgraphs."subgraph_error" using btree("id");
-create index attr_16_2_subgraph_error_block_number
+create index attr_16_1_subgraph_error_subgraph_id
+    on subgraphs."subgraph_error" using btree(left("subgraph_id", 256));
+create index attr_16_3_subgraph_error_block_number
     on subgraphs."subgraph_error" using btree("block_number");
-
+    
 -- add fatal_error column to subgraph_deployment
 alter table
     subgraphs.subgraph_deployment

@@ -581,6 +581,7 @@ where
                     );
 
                     let error = SubgraphError {
+                        subgraph_id: id_for_err.clone(),
                         message: e.to_string(),
                         block_ptr: Some(block_ptr),
                         handler: None,

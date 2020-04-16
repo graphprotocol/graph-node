@@ -483,7 +483,7 @@ impl SubgraphDeploymentEntity {
         let mut entity = Entity::new();
         entity.set("failed", true);
         entity.set("health", SubgraphHealth::Failed);
-        entity.set("error", error_id.clone());
+        entity.set("fatalError", error_id.clone());
 
         vec![
             error.create_operation(error_id),
@@ -1367,13 +1367,14 @@ fn update_metadata_operation(
 
 #[derive(Debug)]
 pub struct SubgraphError {
+    pub subgraph_id: SubgraphDeploymentId,
     pub message: String,
     pub block_ptr: Option<EthereumBlockPointer>,
     pub handler: Option<String>,
 }
 
 impl TypedEntity for SubgraphError {
-    const TYPENAME: &'static str = "Error";
+    const TYPENAME: &'static str = "SubgraphError";
     type IdType = String;
 }
 
@@ -1388,12 +1389,14 @@ impl SubgraphError {
 impl From<SubgraphError> for Entity {
     fn from(subgraph_error: SubgraphError) -> Entity {
         let SubgraphError {
+            subgraph_id,
             message,
             block_ptr,
             handler,
         } = subgraph_error;
 
         let mut entity = Entity::new();
+        entity.set("subgraphId", subgraph_id.to_string());
         entity.set("message", message);
         entity.set("blockNumber", block_ptr.map(|x| x.number));
         entity.set("blockHash", block_ptr.map(|x| x.hash));
@@ -1413,6 +1416,7 @@ impl TryFromValue for SubgraphError {
         };
 
         Ok(SubgraphError {
+            subgraph_id: value.get_required("subgraphId")?,
             message: value.get_required("message")?,
             block_ptr,
             handler: value.get_optional("handler")?,

@@ -14,12 +14,14 @@ static DEPLOYMENT_STATUS_FRAGMENT: &str = r#"
         synced
         health
         fatalError {
+            subgraphId
             message
             blockNumber
             blockHash
             handler
         }
         nonFatalErrors(first: 1000, orderBy: blockNumber) {
+            subgraphId
             message
             blockNumber
             blockHash

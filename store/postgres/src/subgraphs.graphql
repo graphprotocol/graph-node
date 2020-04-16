@@ -153,6 +153,8 @@ type EthereumContractDataSourceTemplateSource @entity {
 
 type SubgraphError {
   id: ID!
+
+  subgraphId: String
   message: String!
 
   # Context for the error.

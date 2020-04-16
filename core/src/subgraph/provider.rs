@@ -169,6 +169,7 @@ where
             );
 
             let error = SubgraphError {
+                subgraph_id: subgraph_id.clone(),
                 message: e.to_string(),
                 block_ptr: None,
                 handler: None,

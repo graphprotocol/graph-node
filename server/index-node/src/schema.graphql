@@ -58,7 +58,6 @@ type SubgraphError {
   message: String!
 
   # Context for the error.
-  network: String!
   block: Block
   handler: String
 }
