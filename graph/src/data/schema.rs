@@ -268,30 +268,57 @@ pub enum SchemaImportError {
     ImportedSubgraphNotFound(SchemaReference),
 }
 
+/// The representation of a single type from an import statement. This
+/// corresponds either to a string `"Thing"` or an object
+/// `{name: "Thing", as: "Stuff"}`. The first form is equivalent to
+/// `{name: "Thing", as: "Thing"}`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ImportedType {
-    Name(String),
-    NameAs(String, String),
+pub struct ImportedType {
+    /// The 'name'
+    name: String,
+    /// The 'as' alias or a copy of `name` if the user did not specify an alias
+    alias: String,
+    /// Whether the alias was explicitly given or is just a copy of the name
+    explicit: bool,
 }
 
 impl Hash for ImportedType {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Self::Name(name) => name.hash(state),
-            Self::NameAs(name, az) => {
-                name.hash(state);
-                String::from(" as ").hash(state);
-                az.hash(state);
-            }
-        };
+        self.name.hash(state);
+        self.alias.hash(state);
+        self.explicit.hash(state);
     }
 }
 
 impl fmt::Display for ImportedType {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            Self::Name(name) => write!(f, "{}", name),
-            Self::NameAs(name, az) => write!(f, "name: {}, as: {}", name, az),
+        if self.explicit {
+            write!(f, "name: {}, as: {}", self.name, self.alias)
+        } else {
+            write!(f, "{}", self.name)
+        }
+    }
+}
+
+impl ImportedType {
+    fn parse(type_import: &Value) -> Option<Self> {
+        match type_import {
+            Value::String(type_name) => Some(ImportedType {
+                name: type_name.to_string(),
+                alias: type_name.to_string(),
+                explicit: false,
+            }),
+            Value::Object(type_name_as) => {
+                match (type_name_as.get("name"), type_name_as.get("as")) {
+                    (Some(name), Some(az)) => Some(ImportedType {
+                        name: name.to_string(),
+                        alias: az.to_string(),
+                        explicit: true,
+                    }),
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 }
@@ -520,18 +547,7 @@ impl Schema {
             .map_or(vec![], |(_, value)| match value {
                 Value::List(types) => types
                     .iter()
-                    .filter_map(|type_import| match type_import {
-                        Value::String(type_name) => Some(ImportedType::Name(type_name.to_string())),
-                        Value::Object(type_name_as) => {
-                            match (type_name_as.get("name"), type_name_as.get("as")) {
-                                (Some(name), Some(az)) => {
-                                    Some(ImportedType::NameAs(name.to_string(), az.to_string()))
-                                }
-                                _ => None,
-                            }
-                        }
-                        _ => None,
-                    })
+                    .filter_map(|type_import| ImportedType::parse(type_import))
                     .collect(),
                 _ => vec![],
             })
@@ -1011,16 +1027,12 @@ impl Schema {
                         // If the imported type is itself imported, do not
                         // recursively check the schema
                         let schema_handle = schema_ref.subgraph.to_string();
-                        let name = match imported_type {
-                            ImportedType::Name(name) => name,
-                            ImportedType::NameAs(name, _) => name,
-                        };
+                        let name = imported_type.name.as_str();
 
-                        let is_local = local_types.iter().any(|object| object.name.eq(name));
-                        let is_imported = imported_types.iter().any(|(import, _)| match import {
-                            ImportedType::Name(n) => name.eq(n),
-                            ImportedType::NameAs(_, az) => name.eq(az),
-                        });
+                        let is_local = local_types.iter().any(|object| object.name == name);
+                        let is_imported = imported_types
+                            .iter()
+                            .any(|(import, _)| name == import.alias);
                         if !is_local && !is_imported {
                             Some(SchemaValidationError::ImportedTypeUndefined(
                                 name.to_string(),
@@ -1058,11 +1070,7 @@ impl Schema {
                     }
                     if imported_types
                         .iter()
-                        .any(|(imported_type, _)| match imported_type {
-                            ImportedType::Name(name) if name.eq(base) => true,
-                            ImportedType::NameAs(_, az) if az.eq(base) => true,
-                            _ => false,
-                        })
+                        .any(|(imported_type, _)| &imported_type.alias == base)
                     {
                         return errors;
                     }
