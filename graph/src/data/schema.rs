@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -273,7 +273,7 @@ pub enum SchemaImportError {
 /// corresponds either to a string `"Thing"` or an object
 /// `{name: "Thing", as: "Stuff"}`. The first form is equivalent to
 /// `{name: "Thing", as: "Thing"}`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImportedType {
     /// The 'name'
     name: String,
@@ -281,14 +281,6 @@ pub struct ImportedType {
     alias: String,
     /// Whether the alias was explicitly given or is just a copy of the name
     explicit: bool,
-}
-
-impl Hash for ImportedType {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.alias.hash(state);
-        self.explicit.hash(state);
-    }
 }
 
 impl fmt::Display for ImportedType {
@@ -324,15 +316,9 @@ impl ImportedType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SchemaReference {
     subgraph: SubgraphDeploymentId,
-}
-
-impl Hash for SchemaReference {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.subgraph.hash(state);
-    }
 }
 
 impl fmt::Display for SchemaReference {
