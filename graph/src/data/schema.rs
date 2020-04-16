@@ -511,7 +511,7 @@ impl Schema {
         Ok(schema)
     }
 
-    pub fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
+    fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
         fn parse_types(import: &Directive) -> Vec<ImportedType> {
             import
                 .arguments
