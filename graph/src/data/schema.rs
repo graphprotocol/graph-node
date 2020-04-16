@@ -675,54 +675,50 @@ impl Schema {
         }
     }
 
-    fn validate_import_type(typ: &Value) -> Result<(), ()> {
-        match typ {
-            Value::String(_) => Ok(()),
-            Value::Object(typ) => match (typ.get("name"), typ.get("as")) {
-                (Some(Value::String(_)), Some(Value::String(_))) => Ok(()),
+    /// Check the syntax of a single `@import` directive
+    fn validate_import_directive_arguments(import: &Directive) -> Option<SchemaValidationError> {
+        fn validate_import_type(typ: &Value) -> Result<(), ()> {
+            match typ {
+                Value::String(_) => Ok(()),
+                Value::Object(typ) => match (typ.get("name"), typ.get("as")) {
+                    (Some(Value::String(_)), Some(Value::String(_))) => Ok(()),
+                    _ => Err(()),
+                },
                 _ => Err(()),
-            },
-            _ => Err(()),
+            }
         }
-    }
 
-    fn is_import_directive_argument_types_valid(types: &Value) -> bool {
-        // All of the elements in the `types` field are valid: either a string or an object with keys `name` and `as` which are strings'
-        if let Value::List(types) = types {
-            types
-                .iter()
-                .try_for_each(Self::validate_import_type)
-                .err()
-                .is_none()
-        } else {
-            false
+        fn types_are_valid(types: Option<&Value>) -> bool {
+            // All of the elements in the `types` field are valid: either
+            // a string or an object with keys `name` and `as` which are strings
+            if let Some(Value::List(types)) = types {
+                types
+                    .iter()
+                    .try_for_each(validate_import_type)
+                    .err()
+                    .is_none()
+            } else {
+                false
+            }
         }
-    }
 
-    fn is_import_directive_argument_from_valid(from: &Value) -> bool {
-        if let Value::Object(from) = from {
-            let has_id = match from.get("id") {
-                Some(Value::String(_)) => true,
-                _ => false,
-            };
-            let has_name = match from.get("name") {
-                Some(Value::String(_)) => true,
-                _ => false,
-            };
-            has_id ^ has_name
-        } else {
-            false
+        fn from_is_valid(from: Option<&Value>) -> bool {
+            if let Some(Value::Object(from)) = from {
+                let has_id = match from.get("id") {
+                    Some(Value::String(_)) => true,
+                    _ => false,
+                };
+                let has_name = match from.get("name") {
+                    Some(Value::String(_)) => true,
+                    _ => false,
+                };
+                has_id ^ has_name
+            } else {
+                false
+            }
         }
-    }
 
-    fn validate_import_directive_arguments(directive: &Directive) -> Option<SchemaValidationError> {
-        let from_is_valid = directive.argument("from").map_or(false, |from| {
-            Self::is_import_directive_argument_from_valid(from)
-        });
-        let types_are_valid = directive.argument("types").map_or(false, |types| {
-            Self::is_import_directive_argument_types_valid(types)
-        });
-        if from_is_valid && types_are_valid {
+        if from_is_valid(import.argument("from")) && types_are_valid(import.argument("types")) {
             None
         } else {
             Some(SchemaValidationError::ImportDirectiveInvalid)
