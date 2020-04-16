@@ -133,6 +133,15 @@ impl FromStr for ValueType {
     }
 }
 
+impl ValueType {
+    /// Return `true` if `s` is the name of a builtin scalar type
+    pub fn is_scalar(s: &str) -> bool {
+        Self::from_str(s)
+            .map(|vt| vt != ValueType::List)
+            .unwrap_or(false)
+    }
+}
+
 // Note: Do not modify fields without also making a backward compatible change to the StableHash impl (below)
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

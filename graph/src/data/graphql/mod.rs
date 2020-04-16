@@ -1,8 +1,5 @@
 mod serialization;
 
-/// Types to represent built in scalar values in GraphQL documents
-pub mod scalar;
-
 /// Traits to navigate the GraphQL AST
 pub mod ext;
 

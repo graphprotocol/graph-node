@@ -1,6 +1,6 @@
 use crate::components::store::{Store, SubgraphDeploymentStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
-use crate::data::graphql::scalar::BuiltInScalarType;
+use crate::data::store::ValueType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
 
@@ -19,6 +19,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
@@ -925,12 +926,9 @@ impl Schema {
                             .fields
                             .iter()
                             .find(|field| {
-                                match BuiltInScalarType::try_from(
-                                    field.field_type.get_base_type().as_ref(),
-                                ) {
-                                    Ok(BuiltInScalarType::String) if field.name.eq(field_name) => {
-                                        true
-                                    }
+                                match ValueType::from_str(field.field_type.get_base_type().as_ref())
+                                {
+                                    Ok(ValueType::String) if field.name.eq(field_name) => true,
                                     _ => false,
                                 }
                             })
@@ -1020,7 +1018,7 @@ impl Schema {
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
                     let base = field.field_type.get_base_type();
-                    if let Ok(_) = BuiltInScalarType::try_from(base.as_ref()) {
+                    if ValueType::is_scalar(base.as_ref()) {
                         return errors;
                     }
                     if local_types.contains_key(base) {
