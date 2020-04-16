@@ -341,7 +341,7 @@ impl fmt::Display for SchemaReference {
 }
 
 impl SchemaReference {
-    pub fn new(subgraph: SubgraphDeploymentId) -> Self {
+    fn new(subgraph: SubgraphDeploymentId) -> Self {
         SchemaReference { subgraph }
     }
 
@@ -352,6 +352,23 @@ impl SchemaReference {
         store
             .input_schema(&self.subgraph)
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
+    }
+
+    fn parse(from: &(Name, Value)) -> Option<Self> {
+        let (name, value) = from;
+        if !name.eq("from") {
+            return None;
+        }
+        match value {
+            Value::Object(map) => match map.get("id") {
+                Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
+                    Ok(id) => Some(SchemaReference::new(id)),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        }
     }
 }
 
@@ -495,6 +512,17 @@ impl Schema {
     }
 
     pub fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
+        fn parse_types(import: &Directive) -> Vec<ImportedType> {
+            import
+                .arguments
+                .iter()
+                .find(|(name, _)| name.eq("types"))
+                .map_or(vec![], |(_, value)| match value {
+                    Value::List(types) => types.iter().filter_map(ImportedType::parse).collect(),
+                    _ => vec![],
+                })
+        }
+
         self.subgraph_schema_object_type()
             .map_or(HashMap::new(), |object| {
                 object
@@ -507,17 +535,12 @@ impl Schema {
                             .iter()
                             .find(|(name, _)| name.eq("from"))
                             .map_or(vec![], |from| {
-                                self.schema_reference_from_directive_argument(from).map_or(
-                                    vec![],
-                                    |schema_ref| {
-                                        self.imported_types_from_import_directive(imports)
-                                            .iter()
-                                            .map(|imported_type| {
-                                                (imported_type.clone(), schema_ref.clone())
-                                            })
-                                            .collect()
-                                    },
-                                )
+                                SchemaReference::parse(from).map_or(vec![], |schema_ref| {
+                                    parse_types(imports)
+                                        .into_iter()
+                                        .map(|imported_type| (imported_type, schema_ref.clone()))
+                                        .collect()
+                                })
                             })
                     })
                     .flatten()
@@ -534,23 +557,9 @@ impl Schema {
                 .filter_map(|directive| {
                     directive.arguments.iter().find(|(name, _)| name.eq("from"))
                 })
-                .filter_map(|from| self.schema_reference_from_directive_argument(from))
+                .filter_map(SchemaReference::parse)
                 .collect()
         })
-    }
-
-    fn imported_types_from_import_directive(&self, import: &Directive) -> Vec<ImportedType> {
-        import
-            .arguments
-            .iter()
-            .find(|(name, _)| name.eq("types"))
-            .map_or(vec![], |(_, value)| match value {
-                Value::List(types) => types
-                    .iter()
-                    .filter_map(|type_import| ImportedType::parse(type_import))
-                    .collect(),
-                _ => vec![],
-            })
     }
 
     pub fn name_argument_value_from_directive(directive: &Directive) -> Value {
@@ -561,26 +570,6 @@ impl Schema {
             .expect("fulltext directive must have name argument")
             .1
             .clone()
-    }
-
-    fn schema_reference_from_directive_argument(
-        &self,
-        from: &(Name, Value),
-    ) -> Option<SchemaReference> {
-        let (name, value) = from;
-        if !name.eq("from") {
-            return None;
-        }
-        match value {
-            Value::Object(map) => match map.get("id") {
-                Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
-                    Ok(id) => Some(SchemaReference::new(id)),
-                    _ => None,
-                },
-                _ => None,
-            },
-            _ => None,
-        }
     }
 
     /// Returned map has one an entry for each interface in the schema.
