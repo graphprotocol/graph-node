@@ -52,4 +52,3 @@ alter column
     health
 set
     not null;
-    
