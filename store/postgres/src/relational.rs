@@ -308,11 +308,11 @@ impl Layout {
         // including the block passed to it. We want to preserve `block`
         // and therefore revert `block+1`
         let start = Instant::now();
-        let revert_to: BlockNumber = (block.number + 1)
+        let block_to_revert: BlockNumber = (block.number + 1)
             .try_into()
             .expect("block numbers fit into an i32");
-        self.revert_block(conn, revert_to)?;
-        metadata.revert_metadata(conn, &self.subgraph, revert_to)?;
+        self.revert_block(conn, block_to_revert)?;
+        metadata.revert_metadata(conn, &self.subgraph, block_to_revert)?;
         info!(logger, "Rewound subgraph to block {}", block.number;
               "time_ms" => start.elapsed().as_millis());
         Ok(())

@@ -357,8 +357,6 @@ impl Connection {
                 match &*self.storage {
                     Storage::Relational(layout) => {
                         let start = Instant::now();
-                        let graft =
-                            metadata::deployment_graft(&self.conn, &self.storage.subgraph())?;
                         if let Some((base, block)) = graft {
                             let base = match Storage::new(&self.conn, &base)? {
                                 Storage::Relational(base) => base,
