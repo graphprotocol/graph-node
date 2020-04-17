@@ -231,7 +231,7 @@ impl Layout {
                     if types.len() > 1 {
                         Err(format_err!(
                             "The implementations of interface \
-                            {} use different types for the `id` field",
+                            `{}` use different types for the `id` field",
                             interface
                         )
                         .into())
