@@ -25,7 +25,7 @@ use crate::relational_queries::{
     DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
     FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
-use graph::data::graphql::ext::ObjectTypeExt;
+use graph::data::graphql::ext::{DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
@@ -188,23 +188,13 @@ impl Layout {
         schema_name: &str,
         create_proof_of_indexing: bool,
     ) -> Result<Self, StoreError> {
-        use s::Definition::*;
-        use s::TypeDefinition::*;
-
         SqlName::check_valid_identifier(schema_name, "database schema")?;
 
         // Extract enum types
         let enums: EnumMap = schema
             .document
-            .definitions
+            .get_enum_definitions()
             .iter()
-            .filter_map(|defn| {
-                if let TypeDefinition(Enum(enum_type)) = defn {
-                    Some(enum_type)
-                } else {
-                    None
-                }
-            })
             .map(
                 |enum_type| -> Result<(String, Arc<BTreeSet<String>>), StoreError> {
                     SqlName::check_valid_identifier(&enum_type.name, "enum")?;
@@ -225,15 +215,8 @@ impl Layout {
         // List of all object types that are not __SCHEMA__
         let object_types = schema
             .document
-            .definitions
-            .iter()
-            .filter_map(|defn| {
-                if let TypeDefinition(Object(obj_type)) = defn {
-                    Some(obj_type)
-                } else {
-                    None
-                }
-            })
+            .get_object_type_definitions()
+            .into_iter()
             .filter(|obj_type| obj_type.name != SCHEMA_TYPE_NAME)
             .collect::<Vec<_>>();
 
