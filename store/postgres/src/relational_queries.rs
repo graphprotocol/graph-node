@@ -2041,7 +2041,7 @@ pub struct RevertEntityData {
 impl RevertEntityData {
     /// Convert primary key ids from Postgres' internal form to the format we
     /// use by stripping `\\x` off the front of bytes strings
-    fn convert(table: &Table, mut data: Vec<RevertEntityData>) -> Vec<RevertEntityData> {
+    fn bytes_as_str(table: &Table, mut data: Vec<RevertEntityData>) -> Vec<RevertEntityData> {
         match table.primary_key().column_type.id_type() {
             IdType::String => data,
             IdType::Bytes => {
@@ -2092,7 +2092,7 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
 impl<'a> LoadQuery<PgConnection, RevertEntityData> for RevertRemoveQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| RevertEntityData::convert(&self.table, data))
+            .map(|data| RevertEntityData::bytes_as_str(&self.table, data))
     }
 }
 
@@ -2144,7 +2144,7 @@ impl<'a> QueryId for RevertClampQuery<'a> {
 impl<'a> LoadQuery<PgConnection, RevertEntityData> for RevertClampQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| RevertEntityData::convert(&self.table, data))
+            .map(|data| RevertEntityData::bytes_as_str(&self.table, data))
     }
 }
 
@@ -2236,7 +2236,7 @@ impl<'a> QueryId for DeleteByPrefixQuery<'a> {
 impl<'a> LoadQuery<PgConnection, RevertEntityData> for DeleteByPrefixQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| RevertEntityData::convert(&self.table, data))
+            .map(|data| RevertEntityData::bytes_as_str(&self.table, data))
     }
 }
 
