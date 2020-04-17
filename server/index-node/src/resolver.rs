@@ -222,15 +222,47 @@ impl From<IndexingStatus> for q::Value {
             synced,
         } = status;
 
-        let non_fatal_errors: Vec<q::Value> =
-            non_fatal_errors.into_iter().map(Into::into).collect();
+        fn subgraph_error_to_value(subgraph_error: SubgraphError) -> q::Value {
+            let SubgraphError {
+                subgraph_id,
+                message,
+                block_ptr,
+                handler,
+            } = subgraph_error;
+            let block_value = {
+                let mut block_entity = Entity::new();
+                block_entity.set("__typename".to_string(), "Block".to_string());
+                block_entity.set("number".to_string(), block_ptr.map(|x| x.number));
+                block_entity.set("hash".to_string(), block_ptr.map(|x| x.hash));
+                q::Value::from(block_entity)
+            };
+
+            let mut error_object = {
+                let mut error_entity = Entity::new();
+                error_entity.set("__typename".to_string(), "SubgraphError".to_string());
+                error_entity.set("subgraphId".to_string(), subgraph_id.to_string());
+                error_entity.set("message".to_string(), message);
+                error_entity.set("handler".to_string(), handler);
+                BTreeMap::from(error_entity)
+            };
+
+            error_object.insert("block".to_string(), block_value.into());
+
+            q::Value::Object(error_object)
+        }
+
+        let non_fatal_errors: Vec<q::Value> = non_fatal_errors
+            .into_iter()
+            .map(subgraph_error_to_value)
+            .collect();
+        let fatal_error_val = fatal_error.map_or(q::Value::Null, subgraph_error_to_value);
 
         object! {
             __typename: "SubgraphIndexingStatus",
             subgraph: subgraph,
             synced: synced,
             health: q::Value::from(health),
-            fatalError: fatal_error.map(q::Value::from),
+            fatalError: fatal_error_val,
             nonFatalErorrs: non_fatal_errors,
             chains: chains.into_iter().map(q::Value::from).collect::<Vec<_>>(),
             node: node,

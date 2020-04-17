@@ -1424,14 +1424,6 @@ impl TryFromValue for SubgraphError {
     }
 }
 
-impl From<SubgraphError> for q::Value {
-    fn from(subgraph_error: SubgraphError) -> q::Value {
-        let mut entity = Entity::from(subgraph_error);
-        entity.set("__typename", "SubgraphError");
-        q::Value::from(entity)
-    }
-}
-
 pub fn generate_entity_id() -> String {
     // Fast crypto RNG from operating system
     let mut rng = OsRng::new().unwrap();

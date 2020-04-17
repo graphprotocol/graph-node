@@ -558,10 +558,10 @@ impl DerefMut for Entity {
     }
 }
 
-impl Into<BTreeMap<String, query::Value>> for Entity {
-    fn into(self) -> BTreeMap<String, query::Value> {
+impl From<Entity> for BTreeMap<String, query::Value> {
+    fn from(entity: Entity) -> BTreeMap<String, query::Value> {
         let mut fields = BTreeMap::new();
-        for (attr, value) in self.iter() {
+        for (attr, value) in entity.iter() {
             fields.insert(attr.to_string(), value.clone().into());
         }
         fields

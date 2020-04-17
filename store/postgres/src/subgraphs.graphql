@@ -25,7 +25,7 @@ type SubgraphDeployment @entity {
     health: Health!
     synced: Boolean!
 
-    "If the subgraph has failed, this is the error caused it"  
+    "If the subgraph has failed, this is the error caused it"
     fatalError: SubgraphError
 
     "Sorted by block number, limited to 1000"
