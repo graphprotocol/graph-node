@@ -31,7 +31,7 @@ alter table
 add
     column non_fatal_errors text[] default '{}';
 
--- add health column to subgraph_deployment 
+-- add health column to subgraph_deployment
 alter table
     subgraphs.subgraph_deployment
 add
@@ -52,3 +52,4 @@ alter column
     health
 set
     not null;
+    
