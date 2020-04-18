@@ -10,8 +10,9 @@ use std::fmt::Debug;
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
-    bigdecimal::One, web3::types::H256, Entity, EntityKey, Future01CompatExt, Schema,
-    SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    bigdecimal::One, web3::types::H256, Entity, EntityCollection, EntityKey, EntityLink,
+    EntityRange, EntityWindow, Future01CompatExt, ParentLink, Schema, SubgraphDeploymentId, Value,
+    WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::Layout;
 
@@ -21,6 +22,9 @@ const THINGS_GQL: &str = "
     type Thing @entity {
         id: Bytes!
         name: String!
+        # We use these only in the EntityQuery tests
+        parent: Thing
+        children: [Thing!]
     }
 ";
 
@@ -150,6 +154,10 @@ where
     R::Error: Send + Debug,
     R::Future: Send,
 {
+    // We don't need a full STORE, but we need to initialize it because
+    // we depend on stored procedures that schema initialization loads
+    let _store = STORE.clone();
+
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
 
@@ -314,6 +322,114 @@ fn delete() {
         key.entity_id = TWO_ID.to_owned();
         let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(1, count);
+        Ok(())
+    });
+}
+
+//
+// Test Layout::query to check that query generation is syntactically sound
+//
+const ROOT: &str = "dead00";
+const CHILD1: &str = "babe01";
+const CHILD2: &str = "babe02";
+
+fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
+    let root = entity! {
+        id: ROOT,
+        name: "root",
+        children: vec!["babe01", "babe02"]
+    };
+    let child1 = entity! {
+        id: CHILD1,
+        name: "child1",
+        parent: "dead00"
+    };
+    let child2 = entity! {
+        id: CHILD2,
+        name: "child2",
+        parent: "dead00"
+    };
+    insert_entity(conn, layout, "Thing", root.clone());
+    insert_entity(conn, layout, "Thing", child1.clone());
+    insert_entity(conn, layout, "Thing", child2.clone());
+    (root, child1, child2)
+}
+
+#[test]
+fn query() {
+    fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
+        layout
+            .query(
+                &*LOGGER,
+                conn,
+                coll,
+                None,
+                None,
+                EntityRange::first(10),
+                BLOCK_NUMBER_MAX,
+            )
+            .expect("the query succeeds")
+            .into_iter()
+            .map(|e| e.id().expect("entities have an id"))
+            .collect::<Vec<_>>()
+    }
+
+    run_test(|conn, layout| -> Result<(), ()> {
+        make_thing_tree(conn, layout);
+
+        // See https://graphprotocol.github.io/rfcs/engineering-plans/0001-graphql-query-prefetching.html#handling-parentchild-relationships
+        // for a discussion of the various types of relationships and queries
+
+        // EntityCollection::All
+        let coll = EntityCollection::All(vec!["Thing".to_owned()]);
+        let things = fetch(conn, layout, coll);
+        assert_eq!(vec![CHILD1, CHILD2, ROOT], things);
+
+        // EntityCollection::Window, type A
+        //   things(where: { children_contains: [CHILD1] }) { id }
+        let coll = EntityCollection::Window(vec![EntityWindow {
+            child_type: "Thing".to_owned(),
+            ids: vec![CHILD1.to_owned()],
+            link: EntityLink::Direct(WindowAttribute::List("children".to_string())),
+        }]);
+        let things = fetch(conn, layout, coll);
+        assert_eq!(vec![ROOT], things);
+
+        // EntityCollection::Window, type B
+        //   things(where: { parent: [ROOT] }) { id }
+        let coll = EntityCollection::Window(vec![EntityWindow {
+            child_type: "Thing".to_owned(),
+            ids: vec![ROOT.to_owned()],
+            link: EntityLink::Direct(WindowAttribute::Scalar("parent".to_string())),
+        }]);
+        let things = fetch(conn, layout, coll);
+        assert_eq!(vec![CHILD1, CHILD2], things);
+
+        // EntityCollection::Window, type C
+        //   things { children { id } }
+        // This is the inner 'children' query
+        let coll = EntityCollection::Window(vec![EntityWindow {
+            child_type: "Thing".to_owned(),
+            ids: vec![ROOT.to_owned()],
+            link: EntityLink::Parent(ParentLink::List(vec![vec![
+                CHILD1.to_owned(),
+                CHILD2.to_owned(),
+            ]])),
+        }]);
+        let things = fetch(conn, layout, coll);
+        assert_eq!(vec![CHILD1, CHILD2], things);
+
+        // EntityCollection::Window, type D
+        //   things { parent { id } }
+        // This is the inner 'parent' query
+        let coll = EntityCollection::Window(vec![EntityWindow {
+            child_type: "Thing".to_owned(),
+            ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
+            link: EntityLink::Parent(ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()])),
+        }]);
+        let things = fetch(conn, layout, coll);
+        assert_eq!(vec![ROOT, ROOT], things);
+
         Ok(())
     });
 }

@@ -41,40 +41,133 @@ fn bytes_as_str(id: &str) -> String {
     id.trim_start_matches("\\x").to_owned()
 }
 
-/// Conveniences for handling primary keys depending on whether we are using
+/// Conveniences for handling foreign keys depending on whether we are using
 /// `IdType::Bytes` or `IdType::String` as the primary key
-struct PrimaryKey {}
+///
+/// This trait adds some capabilities to `Column` that are very specific to
+/// how we generate SQL queries. Using a method like `bind_ids` from this
+/// trait on a given column means "send these values to the database in a form
+/// that can later be used for comparisons with that column"
+trait ForeignKeyClauses {
+    /// The type of the column
+    fn column_type(&self) -> &ColumnType;
 
-impl PrimaryKey {
-    fn eq(table: &Table, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        let pk = table.primary_key();
+    /// The name of the column
+    fn name(&self) -> &str;
 
-        out.push_sql(pk.name.as_str());
-        out.push_sql(" = ");
-        match pk.column_type.id_type() {
-            IdType::String => out.push_bind_param::<Text, _>(&id),
-            IdType::Bytes => out.push_bind_param::<Binary, _>(&str_as_bytes(&id)?.as_slice()),
+    /// Add `id` as a bind variable to `out`, using the right SQL type
+    fn bind_id(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match self.column_type().id_type() {
+            IdType::String => out.push_bind_param::<Text, _>(&id)?,
+            IdType::Bytes => out.push_bind_param::<Binary, _>(&str_as_bytes(&id)?.as_slice())?,
         }
+        // Generate '::text' or '::bytea'
+        out.push_sql("::");
+        out.push_sql(self.column_type().sql_type());
+        Ok(())
     }
 
-    fn is_in(table: &Table, ids: &Vec<&str>, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        let pk = table.primary_key();
-
-        out.push_sql(pk.name.as_str());
-        out.push_sql(" = any(");
-        match pk.column_type.id_type() {
-            IdType::String => out.push_bind_param::<Array<Text>, _>(ids)?,
+    /// Add `ids`  as a bind variable to `out`, using the right SQL type
+    fn bind_ids<S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>>(
+        &self,
+        ids: &[S],
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        match self.column_type().id_type() {
+            IdType::String => out.push_bind_param::<Array<Text>, _>(&ids)?,
             IdType::Bytes => {
                 let ids = ids
                     .into_iter()
-                    .map(|id| str_as_bytes(id))
+                    .map(|id| str_as_bytes(id.as_ref()))
                     .collect::<Result<Vec<scalar::Bytes>, _>>()?;
                 let id_slices = ids.iter().map(|id| id.as_slice()).collect::<Vec<_>>();
                 out.push_bind_param::<Array<Binary>, _>(&id_slices)?;
             }
         }
+        // Generate '::text[]' or '::bytea[]'
+        out.push_sql("::");
+        out.push_sql(self.column_type().sql_type());
+        out.push_sql("[]");
+        Ok(())
+    }
+
+    /// Generate a clause `{name()} = $id` using the right types to bind `$id`
+    /// into `out`
+    fn eq(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql(self.name());
+        out.push_sql(" = ");
+        self.bind_id(id, out)
+    }
+
+    /// Generate a clause `id = any($ids)` using the right types to bind `$ids`
+    /// into `out`
+    fn is_in(&self, ids: &Vec<&str>, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql(self.name());
+        out.push_sql(" = any(");
+        self.bind_ids(ids, out)?;
         out.push_sql(")");
         Ok(())
+    }
+
+    /// Generate an array of arrays as literal SQL. The `ids` must form a
+    /// valid matrix, i.e. the same numbe of entries in each row. This can
+    /// be achieved by padding them with `None` values. Diesel does not support
+    /// arrays of arrays as bind variables, nor arrays containing nulls, so
+    /// we have to manually serialize the `ids` as literal SQL.
+    fn push_matrix(
+        &self,
+        matrix: &Vec<Vec<Option<SafeString>>>,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        out.push_sql("array[");
+        if matrix.is_empty() {
+            // If there are no ids, make sure we are producing an
+            // empty array of arrays
+            out.push_sql("array[null]");
+        } else {
+            for (i, ids) in matrix.iter().enumerate() {
+                if i > 0 {
+                    out.push_sql(", ");
+                }
+                out.push_sql("array[");
+                for (j, id) in ids.iter().enumerate() {
+                    if j > 0 {
+                        out.push_sql(", ");
+                    }
+                    match id {
+                        None => out.push_sql("null"),
+                        Some(id) => match self.column_type().id_type() {
+                            IdType::String => {
+                                out.push_sql("'");
+                                out.push_sql(&id.0);
+                                out.push_sql("'");
+                            }
+                            IdType::Bytes => {
+                                out.push_sql("'\\x");
+                                out.push_sql(&id.0.trim_start_matches("0x"));
+                                out.push_sql("'");
+                            }
+                        },
+                    }
+                }
+                out.push_sql("]");
+            }
+        }
+        // Generate '::text[][]' or '::bytea[][]'
+        out.push_sql("]::");
+        out.push_sql(self.column_type().sql_type());
+        out.push_sql("[][]");
+        Ok(())
+    }
+}
+
+impl ForeignKeyClauses for Column {
+    fn column_type(&self) -> &ColumnType {
+        &self.column_type
+    }
+
+    fn name(&self) -> &str {
+        self.name.as_str()
     }
 }
 
@@ -864,7 +957,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        PrimaryKey::eq(&self.table, &self.id, &mut out)?;
+        self.table.primary_key().eq(&self.id, &mut out)?;
         out.push_sql(" and ");
         BlockRangeContainsClause::new("e.", self.block).walk_ast(out)
     }
@@ -916,7 +1009,9 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
-            PrimaryKey::is_in(table, &self.ids_for_type[table.object.as_str()], &mut out)?;
+            table
+                .primary_key()
+                .is_in(&self.ids_for_type[table.object.as_str()], &mut out)?;
             out.push_sql(" and ");
             BlockRangeContainsClause::new("e.", self.block).walk_ast(out.reborrow())?;
         }
@@ -1100,7 +1195,7 @@ impl<'a> QueryFragment<Pg> for UpdateQuery<'a> {
             QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
         }
         out.push_sql("\n where ");
-        PrimaryKey::eq(&self.table, &self.key.entity_id, &mut out)?;
+        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
         Ok(())
     }
 }
@@ -1130,7 +1225,7 @@ impl<'a> QueryFragment<Pg> for DeleteQuery<'a> {
         out.push_sql("delete from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql("\n where ");
-        PrimaryKey::eq(&self.table, &self.key.entity_id, &mut out)
+        self.table.primary_key().eq(&self.key.entity_id, &mut out)
     }
 }
 
@@ -1211,12 +1306,22 @@ impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQue
 
 impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 
+/// A string where we have checked that it is safe to embed it literally
+/// in a string in a SQL query. In particular, we have escaped any use
+/// of the string delimiter `'`.
+///
+/// This is only needed for `ParentIds::List` since we can't send those to
+/// the database as a bind variable, and therefore need to embed them in
+/// the query literally
+#[derive(Debug, Clone)]
+struct SafeString(String);
+
 /// A `ParentLink` where we've made sure for the `List` variant that each
 /// `Vec<Option<String>>` has the same length
 /// Use the provided constructors to make sure this invariant holds
 #[derive(Debug, Clone)]
 enum ParentIds {
-    List(Vec<Vec<Option<String>>>),
+    List(Vec<Vec<Option<SafeString>>>),
     Scalar(Vec<String>),
 }
 
@@ -1232,7 +1337,17 @@ impl ParentIds {
                 let child_ids = child_ids
                     .into_iter()
                     .map(|ids| {
-                        let mut ids: Vec<_> = ids.into_iter().map(Some).collect();
+                        let mut ids: Vec<_> = ids
+                            .into_iter()
+                            .map(|s| {
+                                if s.contains('\'') {
+                                    SafeString(s.replace('\'', "'"))
+                                } else {
+                                    SafeString(s)
+                                }
+                            })
+                            .map(Some)
+                            .collect();
                         ids.resize_with(maxlen, || None);
                         ids
                     })
@@ -1302,7 +1417,11 @@ pub struct FilterWindow<'a> {
     table: &'a Table,
     /// The overall filter for the entire query
     query_filter: Option<QueryFilter<'a>>,
-    /// The parent ids we are interested in
+    /// The parent ids we are interested in. The type in the database
+    /// for these is determined by the `IdType` of the parent table. Since
+    /// we always compare these ids with a column in `table`, and that
+    /// column must have the same type as the primary key of the parent
+    /// table, we can deduce the correct `IdType` that way
     ids: Vec<String>,
     /// How to filter by a set of parents
     link: TableLink<'a>,
@@ -1334,62 +1453,35 @@ impl<'a> FilterWindow<'a> {
 
     fn expand_parents(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match &self.link {
-            TableLink::Direct(_) => {
+            TableLink::Direct(column) => {
                 // Type A and B
                 // unnest($parent_ids) as p(id)
                 out.push_sql("unnest(");
-                out.push_bind_param::<Array<Text>, _>(&self.ids)?;
-                out.push_sql("::text[]) as p(id)");
+                column.bind_ids(&self.ids, out)?;
+                out.push_sql(") as p(id)");
             }
+            // For types C and D we always treat the parent ids as strings,
+            // regardless of the actual IdType of the parent since we never
+            // compare them to anything, and solely copy them through to the
+            // result so that they can be matched up with the parent object
+            // by the GraphQL query execution
             TableLink::Parent(ParentIds::List(child_ids)) => {
                 // Type C
                 // unnest($parent_ids, $child_id_matrix) as p(id, child_ids)
                 out.push_sql("rows from (unnest(");
                 out.push_bind_param::<Array<Text>, _>(&self.ids)?;
-                out.push_sql("::text[]), reduce_dim(array[");
-                if child_ids.is_empty() {
-                    // If there are no child_ids, make sure we are producing an
-                    // empty array of arrays
-                    out.push_sql("array[null]");
-                } else {
-                    // Diesel does not support arrays of arrays as bind variables, nor
-                    // arrays containing nulls, so we have to manually serialize
-                    // the child_ids
-                    for (i, ids) in child_ids.iter().enumerate() {
-                        if i > 0 {
-                            out.push_sql(", ");
-                        }
-                        out.push_sql("array[");
-                        for (j, id) in ids.iter().enumerate() {
-                            if j > 0 {
-                                out.push_sql(", ");
-                            }
-                            match id {
-                                None => out.push_sql("null"),
-                                Some(id) => {
-                                    out.push_sql("'");
-                                    if id.contains('\'') {
-                                        out.push_sql(&id.replace('\'', "''"));
-                                    } else {
-                                        out.push_sql(&id);
-                                    }
-                                    out.push_sql("'");
-                                }
-                            }
-                        }
-                        out.push_sql("]");
-                    }
-                }
-                out.push_sql("]::text[][])) as p(id, child_ids)");
+                out.push_sql("), reduce_dim(");
+                self.table.primary_key().push_matrix(&child_ids, out)?;
+                out.push_sql(")) as p(id, child_ids)");
             }
             TableLink::Parent(ParentIds::Scalar(child_ids)) => {
                 // Type D
                 // unnest($parent_ids, $child_ids) as p(id, child_id)
                 out.push_sql("unnest(");
                 out.push_bind_param::<Array<Text>, _>(&self.ids)?;
-                out.push_sql("::text[],");
-                out.push_bind_param::<Array<Text>, _>(&child_ids)?;
-                out.push_sql("::text[]) as p(id, child_id)");
+                out.push_sql(",");
+                self.table.primary_key().bind_ids(&child_ids, out)?;
+                out.push_sql(") as p(id, child_id)");
             }
         }
         Ok(())
@@ -1458,7 +1550,7 @@ impl<'a> FilterWindow<'a> {
     ) -> QueryResult<()> {
         out.push_sql("select '");
         out.push_sql(self.table.object.as_str());
-        out.push_sql("' as entity, c.id, c.vid, p.id as g$parent_id");
+        out.push_sql("' as entity, c.id, c.vid, p.id::text as g$parent_id");
         sort_key.select(&mut out)?;
         self.children(ParentLimit::Outer, block, out)
     }
@@ -1778,7 +1870,7 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         Self::select_entity_and_data(&window.table, &mut out);
         out.push_sql(" from (\n");
-        out.push_sql("select c.*, p.id as g$parent_id");
+        out.push_sql("select c.*, p.id::text as g$parent_id");
         window.children(
             ParentLimit::Ranked(&self.sort_key, &self.range),
             self.block,
@@ -2014,7 +2106,7 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         out.push_sql("), ");
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql(")\n where ");
-        PrimaryKey::eq(&self.table, &self.key.entity_id, &mut out)?;
+        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
         out.push_sql(" and (");
         out.push_sql(BLOCK_RANGE_CURRENT);
         out.push_sql(")");
