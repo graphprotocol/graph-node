@@ -26,6 +26,21 @@ const THINGS_GQL: &str = "
 
 const SCHEMA_NAME: &str = "layout";
 
+macro_rules! entity {
+    ($($name:ident: $value:expr,)*) => {
+        {
+            let mut result = ::graph::prelude::Entity::new();
+            $(
+                result.insert(stringify!($name).to_string(), Value::from($value));
+            )*
+            result
+        }
+    };
+    ($($name:ident: $value:expr),*) => {
+        entity! {$($name: $value,)*}
+    };
+}
+
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new("things").unwrap();
@@ -41,12 +56,10 @@ lazy_static! {
     static ref BYTES_VALUE3: H256 = H256::from(hex!(
         "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
     ));
-    static ref BEEF_ENTITY: Entity = {
-        let mut entity = Entity::new();
-        entity.set("id", "deadbeef");
-        entity.set("name", "Beef");
-        entity.set("__typename", "Thing");
-        entity
+    static ref BEEF_ENTITY: Entity = entity! {
+        id: "deadbeef",
+        name: "Beef",
+        __typename: "Thing"
     };
 }
 
@@ -68,12 +81,15 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
 }
 
 fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
-    let mut thing = Entity::new();
-
-    thing.insert("id".to_owned(), Value::String(id.to_owned()));
-    thing.insert("name".to_owned(), Value::String(name.to_owned()));
-
-    insert_entity(conn, layout, "Thing", thing);
+    insert_entity(
+        conn,
+        layout,
+        "Thing",
+        entity! {
+            id: id,
+            name: name
+        },
+    );
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
