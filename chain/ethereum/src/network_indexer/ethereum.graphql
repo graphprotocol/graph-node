@@ -62,18 +62,18 @@ type Block @entity {
   """The number of ommers (AKA uncles) associated with this block."""
   ommerCount: Int!
 
-  # """
-  # A list of ommer (AKA uncle) blocks associated with this block.
-  # """
+  """
+  A list of ommer (AKA uncle) blocks associated with this block.
+  """
   ommers: [Block]!
 
   """The keccak256 hash of all the ommers (AKA uncles) associated with this block."""
   ommerHash: Bytes!
 
-  # """
-  # A list of transactions associated with this block.
-  # """
-  # transactions: [Transaction!]
+  """
+  A list of transactions associated with this block.
+  """
+  transactions: [Transaction!]
 
   # """The logs emitted in this block."""
   # logs: [Log!]!
@@ -83,4 +83,73 @@ type Block @entity {
 
   """Seal fields."""
   sealFields: [Bytes!]!
+}
+
+""" An Ethereum transaction. """
+type Transaction @entity {
+  id: ID!
+
+  """ The hash of this transaction. """
+  hash: Bytes!
+
+  """ The nonce of the account this transaction was generated with. """
+  nonce: BigInt!
+
+  """
+  The index of this transaction in the parent block.
+  This will be null if the transaction has not yet been mined.
+  """
+  index: BigInt
+
+  """ The account that sent this transaction - this will always be an externally owned account. """
+  from: Bytes!
+
+  """ The account the transaction was sent to. This is null for contract-creating transactions. """
+  to: Bytes
+
+  """ The value, in wei, sent along with this transaction. """
+  value: BigInt!
+
+  """ The price offered to miners for gas, in wei per unit. """
+  gasPrice: BigInt!
+
+  """ The maximum amount of gas this transaction can consume. """
+  gas: BigInt!
+
+  """ The data supplied to the target of the transaction. """
+  inputData: Bytes!
+
+  """ The block this transaction was mined in. This will be null if the transaction has not yet been mined. """
+  block: Block
+
+  #  """
+  #  Logs is a list of log entries emitted by this transaction.
+  #  If the transaction has not yet been mined, this field will be null.
+  #  """
+  #  logs: [Log!]
+
+  #  """
+  #  Status is the return status of the transaction.
+  #  This will be 1 if the transaction succeeded,
+  #  or 0 if it failed (due to a revert, or due to running out of gas).
+  #  If the transaction has not yet been mined, this field will be null.
+  #  """
+  # status: BigInt # From transaction receipt
+
+  #  """
+  #  GasUsed is the amount of gas that was used processing this transaction.
+  #  If the transaction has not yet been mined, this field will be null.
+  #  """
+  # gasUsed: BigInt # From transaction receipt
+
+  #  """
+  #  CumulativeGasUsed is the total gas used in the block up to and including this transaction.
+  #  If the transaction has not yet been mined, this field will be null.
+  #  """
+  # cumulativeGasUsed: BigInt # From transaction receipt
+
+  #  """ CreatedContract is the account that was created by a contract creation transaction.
+  #  If the transaction was not a contract creation transaction, or it has not yet been mined, this field will be null.
+  #  """
+  # createdContract: Account # From transaction receipt
 }

@@ -1,7 +1,7 @@
 use graph::prelude::*;
 use std::fmt;
 use std::ops::Deref;
-use web3::types::{Block, H256};
+use web3::types::{Block, Transaction as Web3Transaction, H256};
 
 mod block_writer;
 mod convert;
@@ -80,6 +80,24 @@ impl BlockWithOmmers {
 impl fmt::Display for BlockWithOmmers {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.inner().format())
+    }
+}
+
+// Helper type to represent transactions.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Transaction(Web3Transaction);
+
+impl From<Web3Transaction> for Transaction {
+    fn from(transaction: Web3Transaction) -> Self {
+        Self(transaction)
+    }
+}
+
+impl Deref for Transaction {
+    type Target = Web3Transaction;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

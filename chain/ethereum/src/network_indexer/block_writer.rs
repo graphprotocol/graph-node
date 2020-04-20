@@ -128,6 +128,7 @@ impl WriteContext {
         let block = Arc::new(block);
         let block_for_ommers = block.clone();
         let block_for_store = block.clone();
+        let block_for_transactions = block.block.clone();
 
         Box::new(
             // Add the block entity
@@ -136,6 +137,18 @@ impl WriteContext {
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(block_for_ommers.ommers.clone())
                         .fold(context, move |context, ommer| context.set_entity(ommer))
+                })
+                // Add block transactions
+                .and_then(move |context| {
+                    futures::stream::iter_ok::<_, Error>(
+                        block_for_transactions.block.transactions.clone(),
+                    )
+                    .fold(
+                        context,
+                        move |context, transaction: Web3Transaction| {
+                            context.set_entity(&Transaction::from(transaction))
+                        },
+                    )
                 })
                 // Transact everything into the store
                 .and_then(move |context| {

@@ -34,6 +34,22 @@ impl ToEntityKey for &BlockWithOmmers {
     }
 }
 
+impl ToEntityId for Transaction {
+    fn to_entity_id(&self) -> String {
+        format!("{:x}", self.0.hash)
+    }
+}
+
+impl ToEntityKey for &Transaction {
+    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
+        EntityKey {
+            subgraph_id,
+            entity_type: "Transaction".into(),
+            entity_id: format!("{:x}", self.0.hash),
+        }
+    }
+}
+
 impl TryIntoEntity for Ommer {
     fn try_into_entity(self) -> Result<Entity, Error> {
         let inner = &self.0;
@@ -59,8 +75,8 @@ impl TryIntoEntity for Ommer {
             ("mixHash", inner.mix_hash.into()),
             ("difficulty", inner.difficulty.into()),
             ("totalDifficulty", inner.total_difficulty.into()),
+            ("isOmmer", true.into()),
             ("ommerCount", (inner.uncles.len() as i32).into()),
-            ("ommerHash", inner.uncles_hash.into()),
             (
                 "ommers",
                 inner
@@ -70,9 +86,18 @@ impl TryIntoEntity for Ommer {
                     .collect::<Vec<_>>()
                     .into(),
             ),
+            ("ommerHash", inner.uncles_hash.into()),
+            (
+                "transactions",
+                (inner
+                    .transactions
+                    .iter()
+                    .map(move |transaction| transaction.hash.to_entity_id())
+                    .collect::<Vec<_>>()
+                    .into()),
+            ),
             ("size", inner.size.into()),
             ("sealFields", inner.seal_fields.clone().into()),
-            ("isOmmer", true.into()),
         ] as Vec<(_, Value)>))
     }
 }
@@ -92,6 +117,15 @@ impl TryIntoEntity for &BlockWithOmmers {
             ),
             ("transactionsRoot", inner.transactions_root.into()),
             ("transactionCount", (inner.transactions.len() as i32).into()),
+            (
+                "transactions",
+                (inner
+                    .transactions
+                    .iter()
+                    .map(move |transaction| transaction.hash.to_entity_id())
+                    .collect::<Vec<_>>()
+                    .into()),
+            ),
             ("stateRoot", inner.state_root.into()),
             ("receiptsRoot", inner.receipts_root.into()),
             ("extraData", inner.extra_data.clone().into()),
@@ -102,8 +136,8 @@ impl TryIntoEntity for &BlockWithOmmers {
             ("mixHash", inner.mix_hash.into()),
             ("difficulty", inner.difficulty.into()),
             ("totalDifficulty", inner.total_difficulty.into()),
+            ("isOmmer", false.into()),
             ("ommerCount", (self.ommers.len() as i32).into()),
-            ("ommerHash", inner.uncles_hash.into()),
             (
                 "ommers",
                 self.inner()
@@ -113,9 +147,38 @@ impl TryIntoEntity for &BlockWithOmmers {
                     .collect::<Vec<_>>()
                     .into(),
             ),
+            ("ommerHash", inner.uncles_hash.into()),
+            (
+                "transactions",
+                (inner
+                    .transactions
+                    .iter()
+                    .map(move |transaction| transaction.hash.to_entity_id())
+                    .collect::<Vec<_>>()
+                    .into()),
+            ),
             ("size", inner.size.into()),
             ("sealFields", inner.seal_fields.clone().into()),
-            ("isOmmer", false.into()),
+        ] as Vec<(_, Value)>))
+    }
+}
+
+impl TryIntoEntity for &Transaction {
+    fn try_into_entity(self) -> Result<Entity, Error> {
+        let inner = &self.0;
+
+        Ok(Entity::from(vec![
+            ("id", inner.hash.to_entity_id().into()),
+            ("hash", inner.hash.into()),
+            ("nonce", inner.nonce.into()),
+            ("index", inner.transaction_index.unwrap().into()),
+            ("from", inner.from.into()),
+            ("to", inner.to.map_or(Value::Null, |to| to.into())),
+            ("value", inner.value.into()),
+            ("gasPrice", inner.gas_price.into()),
+            ("gas", inner.gas.into()),
+            ("inputData", inner.input.clone().into()),
+            ("block", format!("{:x}", inner.block_hash.unwrap()).into()),
         ] as Vec<(_, Value)>))
     }
 }
