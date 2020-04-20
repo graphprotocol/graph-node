@@ -1,7 +1,7 @@
 use graph::prelude::*;
 use std::fmt;
 use std::ops::Deref;
-use web3::types::{Block, Transaction as Web3Transaction, H256};
+use web3::types::{Block, Log as Web3Log, Transaction as Web3Transaction, H256};
 
 mod block_writer;
 mod convert;
@@ -95,6 +95,24 @@ impl From<Web3Transaction> for Transaction {
 
 impl Deref for Transaction {
     type Target = Web3Transaction;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// Helper type to represent logs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Log(Web3Log);
+
+impl From<Web3Log> for Log {
+    fn from(log: Web3Log) -> Self {
+        Self(log)
+    }
+}
+
+impl Deref for Log {
+    type Target = Web3Log;
 
     fn deref(&self) -> &Self::Target {
         &self.0

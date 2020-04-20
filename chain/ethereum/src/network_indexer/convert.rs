@@ -50,6 +50,30 @@ impl ToEntityKey for &Transaction {
     }
 }
 
+impl ToEntityId for Log {
+    fn to_entity_id(&self) -> String {
+        format!(
+            "{:x}-{}",
+            self.0.block_hash.unwrap(),
+            self.0.log_index.unwrap()
+        )
+    }
+}
+
+impl ToEntityKey for &Log {
+    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
+        EntityKey {
+            subgraph_id,
+            entity_type: "Log".into(),
+            entity_id: format!(
+                "{:x}-{}",
+                self.0.block_hash.unwrap(),
+                self.0.log_index.unwrap()
+            ),
+        }
+    }
+}
+
 impl TryIntoEntity for Ommer {
     fn try_into_entity(self) -> Result<Entity, Error> {
         let inner = &self.0;
@@ -92,7 +116,7 @@ impl TryIntoEntity for Ommer {
                 (inner
                     .transactions
                     .iter()
-                    .map(move |transaction| transaction.hash.to_entity_id())
+                    .map(move |transaction| transaction.to_entity_id())
                     .collect::<Vec<_>>()
                     .into()),
             ),
@@ -105,6 +129,7 @@ impl TryIntoEntity for Ommer {
 impl TryIntoEntity for &BlockWithOmmers {
     fn try_into_entity(self) -> Result<Entity, Error> {
         let inner = self.inner();
+        let receipts = &self.block.transaction_receipts;
 
         Ok(Entity::from(vec![
             ("id", format!("{:x}", inner.hash.unwrap()).into()),
@@ -117,15 +142,6 @@ impl TryIntoEntity for &BlockWithOmmers {
             ),
             ("transactionsRoot", inner.transactions_root.into()),
             ("transactionCount", (inner.transactions.len() as i32).into()),
-            (
-                "transactions",
-                (inner
-                    .transactions
-                    .iter()
-                    .map(move |transaction| transaction.hash.to_entity_id())
-                    .collect::<Vec<_>>()
-                    .into()),
-            ),
             ("stateRoot", inner.state_root.into()),
             ("receiptsRoot", inner.receipts_root.into()),
             ("extraData", inner.extra_data.clone().into()),
@@ -157,6 +173,15 @@ impl TryIntoEntity for &BlockWithOmmers {
                     .collect::<Vec<_>>()
                     .into()),
             ),
+            (
+                "logs",
+                (receipts
+                    .iter()
+                    .flat_map(|receipt| receipt.logs.iter())
+                    .map(|log| format!("{:x}-{}", log.block_hash.unwrap(), log.log_index.unwrap()))
+                    .collect::<Vec<_>>()
+                    .into()),
+            ),
             ("size", inner.size.into()),
             ("sealFields", inner.seal_fields.clone().into()),
         ] as Vec<(_, Value)>))
@@ -179,6 +204,43 @@ impl TryIntoEntity for &Transaction {
             ("gas", inner.gas.into()),
             ("inputData", inner.input.clone().into()),
             ("block", format!("{:x}", inner.block_hash.unwrap()).into()),
+        ] as Vec<(_, Value)>))
+    }
+}
+
+impl TryIntoEntity for &Log {
+    fn try_into_entity(self) -> Result<Entity, Error> {
+        let inner = &self.0;
+
+        Ok(Entity::from(vec![
+            (
+                "id",
+                format!(
+                    "{:x}-{}",
+                    inner.block_hash.unwrap(),
+                    inner.log_index.unwrap()
+                )
+                .into(),
+            ),
+            ("index", inner.log_index.unwrap().into()),
+            ("account", inner.address.into()),
+            (
+                "topics",
+                inner
+                    .topics
+                    .iter()
+                    .cloned()
+                    .map(move |topic| topic)
+                    .collect::<Vec<_>>()
+                    .into(),
+            ),
+            ("data", inner.data.clone().into()),
+            (
+                "transaction",
+                inner
+                    .transaction_hash
+                    .map_or(Value::Null, |index| index.to_entity_id().into()),
+            ),
         ] as Vec<(_, Value)>))
     }
 }

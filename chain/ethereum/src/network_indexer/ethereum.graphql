@@ -75,8 +75,8 @@ type Block @entity {
   """
   transactions: [Transaction!]
 
-  # """The logs emitted in this block."""
-  # logs: [Log!]!
+  """The logs emitted in this block."""
+  logs: [Log!]
 
   """Size of the block in bytes."""
   size: BigInt
@@ -152,4 +152,23 @@ type Transaction @entity {
   #  If the transaction was not a contract creation transaction, or it has not yet been mined, this field will be null.
   #  """
   # createdContract: Account # From transaction receipt
+}
+
+""" An Ethereum event log. """
+type Log @entity {
+  id: ID!
+  """ The index of this log in the block. """
+  index: Int!
+
+  """ The account which generated this log. """
+  account: Bytes!
+
+  """ A list of 0-4 indexed topics for the log. """
+  topics: [Bytes!]!
+
+  """ Unindexed data for this log. """
+  data: Bytes!
+
+  """ The transaction that generated this log entry. """
+  transaction: Transaction
 }
