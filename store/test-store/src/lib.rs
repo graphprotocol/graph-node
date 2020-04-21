@@ -90,7 +90,7 @@ pub fn create_test_subgraph(subgraph_id: &str, schema: &str) {
         templates: vec![],
     };
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, false, None, None)
+    let ops = SubgraphDeploymentEntity::new::<BlockPointer>(&manifest, false, false, None, None)
         .create_operations_replace(&subgraph_id)
         .into_iter()
         .map(|op| op.into())
