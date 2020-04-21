@@ -3507,7 +3507,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stable-hash"
 version = "0.1.0"
-source = "git+https://github.com/graphprotocol/stable-hash#f3d4be4fe57bff479e249d4e126c3f6c699fc732"
+source = "git+https://github.com/graphprotocol/stable-hash#75d7ed4f5d2adce4d194b7aac6d78ec315298690"
 dependencies = [
  "num-traits",
 ]
