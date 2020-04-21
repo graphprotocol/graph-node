@@ -7,11 +7,10 @@ use futures::prelude::*;
 use lazy_static;
 
 use graph::prelude::{
-    format_err, futures03, info, o, ArweaveAdapter, BlockPointer, Blockchain, ChainStore,
-    CheapClone, Error, EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer,
-    Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance,
-    NetworkInstanceId, ProviderEthRpcMetrics, Store, SubgraphDeploymentStore, SubgraphManifest,
-    ThreeBoxAdapter,
+    format_err, info, o, ArweaveAdapter, BlockPointer, ChainStore, Error,
+    EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer, Future01CompatExt,
+    LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance, NetworkInstanceId,
+    ProviderEthRpcMetrics, Store, SubgraphDeploymentStore, ThreeBoxAdapter,
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
