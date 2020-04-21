@@ -1,13 +1,21 @@
-use async_trait::async_trait;
-use futures::sync::mpsc::Sender;
-use lazy_static::lazy_static;
-
 use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
+use std::sync::Arc;
 
-use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
+use async_trait::async_trait;
+use futures::sync::mpsc::Sender;
+use lazy_static::lazy_static;
 use web3::types::Log;
+
+use graph::prelude::{
+    format_err, web3, BlockState, CheapClone, DataSource, DataSourceTemplate, Error,
+    EthereumCallCache, EthereumTrigger, HostMetrics, LightEthereumBlock, LightEthereumBlockExt,
+    Logger, Store, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
+};
+use graph_runtime_wasm::{MappingRequest, RuntimeHost, RuntimeHostBuilder};
+
+use crate::types::SubgraphInstance as SubgraphInstanceTrait;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -16,30 +24,30 @@ lazy_static! {
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_SUBGRAPH_MAX_DATA_SOURCES")));
 }
 
-pub struct SubgraphInstance<T: RuntimeHostBuilder> {
+pub struct SubgraphInstance<S> {
     subgraph_id: SubgraphDeploymentId,
     network: String,
-    host_builder: T,
+    host_builder: RuntimeHostBuilder<S>,
 
     /// Runtime hosts, one for each data source mapping.
     ///
     /// The runtime hosts are created and added in the same order the
     /// data sources appear in the subgraph manifest. Incoming block
     /// stream events are processed by the mappings in this same order.
-    hosts: Vec<Arc<T::Host>>,
+    hosts: Vec<Arc<RuntimeHost>>,
 
     /// Maps a serialized module to a channel to the thread in which the module is instantiated.
-    module_cache: HashMap<Vec<u8>, Sender<T::Req>>,
+    module_cache: HashMap<Vec<u8>, Sender<MappingRequest>>,
 }
 
-impl<T> SubgraphInstance<T>
+impl<S> SubgraphInstance<S>
 where
-    T: RuntimeHostBuilder,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
     pub(crate) fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest,
-        host_builder: T,
+        host_builder: RuntimeHostBuilder<S>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
@@ -91,13 +99,13 @@ where
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
-    ) -> Result<T::Host, Error> {
+    ) -> Result<RuntimeHost, Error> {
         let mapping_request_sender = {
             let module_bytes = data_source.mapping.runtime.as_ref().clone().to_bytes()?;
             if let Some(sender) = self.module_cache.get(&module_bytes) {
                 sender.clone()
             } else {
-                let sender = T::spawn_mapping(
+                let sender = RuntimeHostBuilder::<S>::spawn_mapping(
                     data_source.mapping.runtime.as_ref().clone(),
                     logger,
                     self.subgraph_id.clone(),
@@ -119,9 +127,9 @@ where
 }
 
 #[async_trait]
-impl<T> SubgraphInstanceTrait<T::Host> for SubgraphInstance<T>
+impl<S> SubgraphInstanceTrait for SubgraphInstance<S>
 where
-    T: RuntimeHostBuilder,
+    S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool {
@@ -140,7 +148,7 @@ where
 
     async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
-        hosts: &[Arc<T::Host>],
+        hosts: &[Arc<RuntimeHost>],
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         mut state: BlockState,
@@ -198,7 +206,7 @@ where
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Arc<T::Host>, Error> {
+    ) -> Result<Arc<RuntimeHost>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = *MAX_DATA_SOURCES {
             if self.hosts.len() >= max_data_sources {
@@ -215,7 +223,7 @@ where
             top_level_templates,
             metrics.clone(),
         )?);
-        self.hosts.push(host.clone());
+        self.hosts.push(host.cheap_clone());
         Ok(host)
     }
 }

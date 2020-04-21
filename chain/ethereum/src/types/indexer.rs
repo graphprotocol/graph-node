@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
-use crate::prelude::{futures03, Error, SubgraphManifest};
 use futures03::future::AbortHandle;
+use graph::prelude::{futures03, Error, SubgraphManifest};
 
 /// A component that loads and indexes subgraph instances.
 #[async_trait]

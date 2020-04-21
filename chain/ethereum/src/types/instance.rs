@@ -1,11 +1,17 @@
-use async_trait::async_trait;
-use web3::types::Log;
+use std::sync::Arc;
 
-use crate::prelude::*;
+use async_trait::async_trait;
+
+use graph::prelude::{
+    web3, BlockState, DataSource, DataSourceTemplate, Error, EthereumTrigger, HostMetrics,
+    LightEthereumBlock, Logger,
+};
+use graph_runtime_wasm::RuntimeHost;
+use web3::types::Log;
 
 /// Represents a loaded instance of a subgraph.
 #[async_trait]
-pub trait SubgraphInstance<H: RuntimeHost> {
+pub trait SubgraphInstance {
     /// Returns true if the subgraph has a handler for an Ethereum event.
     fn matches_log(&self, log: &Log) -> bool;
 
@@ -21,7 +27,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
     async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
-        hosts: &[Arc<H>],
+        hosts: &[Arc<RuntimeHost>],
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
@@ -34,5 +40,5 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Arc<H>, Error>;
+    ) -> Result<Arc<RuntimeHost>, Error>;
 }

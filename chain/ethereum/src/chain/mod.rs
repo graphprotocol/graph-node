@@ -17,6 +17,7 @@ use graph::prelude::{
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
+use crate::types::SubgraphIndexer as SubgraphIndexerTrait;
 use crate::{
     network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter,
     SubgraphIndexer, Transport,
