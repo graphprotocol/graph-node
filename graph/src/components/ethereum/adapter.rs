@@ -15,6 +15,15 @@ use super::types::*;
 use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
 use crate::prelude::*;
 
+impl<T> ToBlockPointer for Block<T> {
+    fn to_block_pointer(&self) -> BlockPointer {
+        BlockPointer {
+            number: self.number.unwrap().as_u64(),
+            hash: self.hash.unwrap().as_bytes().into(),
+        }
+    }
+}
+
 pub type EventSignature = H256;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.

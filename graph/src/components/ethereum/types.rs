@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use web3::types::*;
 
-use crate::prelude::{EntityKey, SubgraphDeploymentId, ToEntityKey};
+use crate::prelude::{BlockPointer, EntityKey, SubgraphDeploymentId, ToBlockPointer, ToEntityKey};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
@@ -521,6 +521,15 @@ impl ToEntityKey for EthereumBlockPointer {
             subgraph_id: subgraph,
             entity_type: "Block".into(),
             entity_id: format!("{:x}", self.hash),
+        }
+    }
+}
+
+impl ToBlockPointer for EthereumBlockPointer {
+    fn to_block_pointer(&self) -> BlockPointer {
+        BlockPointer {
+            number: self.number,
+            hash: self.hash.as_bytes().into(),
         }
     }
 }
