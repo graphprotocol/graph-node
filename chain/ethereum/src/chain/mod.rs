@@ -3,17 +3,15 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use futures::prelude::*;
 use lazy_static;
 
-use futures03::future::AbortHandle;
 use graph::prelude::{
-    format_err, futures03, info, o, ArweaveAdapter, BlockPointer, ChainStore, CheapClone, Error,
-    EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer, Future01CompatExt,
-    LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance, NetworkInstanceId,
-    ProviderEthRpcMetrics, Store, SubgraphDeploymentStore, SubgraphIndexer as SubgraphIndexerTrait,
-    SubgraphManifest, ThreeBoxAdapter,
+    format_err, futures03, info, o, ArweaveAdapter, BlockPointer, Blockchain, ChainStore,
+    CheapClone, Error, EthereumAdapter as EthereumAdapterTrait, EthereumCallCache, EventProducer,
+    Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry, NetworkInstance,
+    NetworkInstanceId, ProviderEthRpcMetrics, Store, SubgraphDeploymentStore, SubgraphManifest,
+    ThreeBoxAdapter,
 };
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 
@@ -21,6 +19,9 @@ use crate::{
     network_indexer::NetworkIndexer, BlockIngestor, BlockStreamBuilder, EthereumAdapter,
     SubgraphIndexer, Transport,
 };
+
+mod blockchain;
+mod network_instance;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -160,7 +161,7 @@ pub struct Chain<MR, S> {
     store: Arc<S>,
     metrics_registry: Arc<dyn MetricsRegistry>,
 
-    subgraph_instance_manager: Box<SubgraphIndexer<MR, S>>,
+    subgraph_indexer: Box<SubgraphIndexer<MR, S>>,
 }
 
 impl<MR, S> Chain<MR, S>
@@ -197,7 +198,7 @@ where
             options.three_box_adapter,
         );
 
-        let subgraph_instance_manager = Box::new(SubgraphIndexer::new(
+        let subgraph_indexer = Box::new(SubgraphIndexer::new(
             &logger_factory,
             options.store.clone(),
             options.conn.adapter.clone(),
@@ -220,7 +221,7 @@ where
             metrics_registry: options.metrics_registry,
 
             // Subgraph indexing components
-            subgraph_instance_manager,
+            subgraph_indexer,
         };
 
         if options.block_ingestion {
@@ -278,28 +279,5 @@ where
                 })
                 .compat(),
         );
-    }
-}
-
-#[async_trait]
-impl<MR, S> NetworkInstance for Chain<MR, S>
-where
-    MR: MetricsRegistry,
-    S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
-{
-    fn id(&self) -> &NetworkInstanceId {
-        &self.id
-    }
-
-    fn url(&self) -> &str {
-        self.url.as_str()
-    }
-
-    async fn start_subgraph(&self, subgraph: SubgraphManifest) -> Result<AbortHandle, Error> {
-        self.subgraph_instance_manager.start(subgraph).await
-    }
-
-    fn compat_ethereum_adapter(&self) -> Option<Arc<dyn EthereumAdapterTrait>> {
-        Some(self.adapter.cheap_clone())
     }
 }
