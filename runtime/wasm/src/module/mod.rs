@@ -4,24 +4,24 @@ use std::fmt;
 use std::ops::Deref;
 use std::time::Instant;
 
+use ethabi::LogParam;
 use semver::Version;
 use wasmi::{
     nan_preserving_float::F64, Error, Externals, FuncInstance, FuncRef, HostError, ImportsBuilder,
     MemoryRef, ModuleImportResolver, ModuleInstance, ModuleRef, RuntimeArgs, RuntimeValue,
     Signature, Trap,
 };
+use web3::types::{Log, Transaction, U256};
 
-use crate::host_exports::{self, HostExportError};
-use crate::mapping::MappingContext;
-use ethabi::LogParam;
 use graph::components::ethereum::*;
 use graph::data::store;
 use graph::prelude::{Error as FailureError, *};
-use web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
 use crate::asc_abi::*;
+use crate::host_exports::{self, HostExportError};
+use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
 

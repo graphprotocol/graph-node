@@ -1,13 +1,16 @@
-use crate::module::WasmiModule;
+use std::thread;
+use std::time::Instant;
+
 use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::components::ethereum::*;
-use graph::prelude::*;
-use std::thread;
-use std::time::Instant;
 use strum_macros::AsStaticStr;
 use web3::types::{Log, Transaction};
+
+use graph::components::ethereum::*;
+use graph::prelude::*;
+
+use crate::module::WasmiModule;
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module(

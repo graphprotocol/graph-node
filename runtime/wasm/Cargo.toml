@@ -7,6 +7,7 @@ edition = "2018"
 async-trait = "0.1.29"
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 futures = "0.1.21"
+futures03 = { package = "futures", version = "0.3", features = ["compat"] }
 hex = "0.4.2"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
@@ -17,10 +18,11 @@ graph-runtime-derive = { path = "../derive" }
 semver = "0.9.0"
 parity-wasm = "0.40"
 lazy_static = "1.4"
-uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.18.0"
 strum_macros = "0.18.0"
 bytes = "0.5"
+tiny-keccak = "1.5.0"
+uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
 graphql-parser = "0.2.3"
