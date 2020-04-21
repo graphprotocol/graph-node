@@ -126,18 +126,16 @@ impl WriteContext {
         debug!(self.logger, "Write block");
 
         let block = Arc::new(block);
-        let block_for_ommers = block.clone();
-        let block_for_store = block.clone();
+        let ommers = block.ommers.clone();
         let block_for_transactions = block.block.clone();
-        let block_for_logs = block.clone();
-        let receipts = block_for_logs.block.transaction_receipts.clone();
+        let receipts = block.block.transaction_receipts.clone();
 
         Box::new(
             // Add the block entity
             self.set_entity(block.as_ref())
                 // Add uncle block entities
                 .and_then(move |context| {
-                    futures::stream::iter_ok::<_, Error>(block_for_ommers.ommers.clone())
+                    futures::stream::iter_ok::<_, Error>(ommers)
                         .fold(context, move |context, ommer| context.set_entity(ommer))
                 })
                 // Add block transactions
@@ -168,8 +166,7 @@ impl WriteContext {
                     futures::stream::iter_ok::<_, Error>(
                         receipts
                             .into_iter()
-                            .flat_map(move |receipt| receipt.logs.into_iter())
-                            .clone(),
+                            .flat_map(move |receipt| receipt.logs.into_iter()),
                     )
                     .fold(
                         context,
@@ -194,7 +191,7 @@ impl WriteContext {
                     }
                     .modifications;
 
-                    let block_ptr = EthereumBlockPointer::from(&block_for_store.block);
+                    let block_ptr = EthereumBlockPointer::from(&block.block);
 
                     // Transact entity modifications into the store
                     let started = Instant::now();
