@@ -1168,8 +1168,7 @@ where
                 if output.is_empty() {
                     // We got a `0x` response. For Geth, this can mean a revert. It can also be
                     // that the contract actually returned an empty response. A view call is meant
-                    // to return something, so we treat empty responses the same as reverts. See
-                    // support/#85 for a use case.
+                    // to return something, so we treat empty responses the same as reverts.
                     Err(EthereumContractCallError::Revert("empty response".into()))
                 } else {
                     // Decode failures are reverts. The reasoning is that if Solidity fails to
