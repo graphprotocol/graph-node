@@ -1,16 +1,18 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, iter};
 
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
+use futures03::lock::Mutex;
 use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
     SubgraphEntity, SubgraphVersionEntity, TypedEntity,
 };
 use graph::prelude::{
-    CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
+    futures03, CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
@@ -24,33 +26,34 @@ lazy_static! {
     );
 }
 
-pub struct SubgraphRegistrar<L, P, S, CS> {
+pub struct SubgraphRegistrar<L, P, S, NR, NSF> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
-    chain_stores: HashMap<String, Arc<CS>>,
-    ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+    network_registry: Arc<NR>,
+    network_store_factory: Arc<Mutex<NSF>>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
+impl<L, P, S, NR, NSF> SubgraphRegistrar<L, P, S, NR, NSF>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: Store + SubgraphDeploymentStore,
-    CS: ChainStore,
+    NR: NetworkRegistry,
+    NSF: NetworkStoreFactory,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
         resolver: Arc<L>,
         provider: Arc<P>,
         store: Arc<S>,
-        chain_stores: HashMap<String, Arc<CS>>,
-        ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+        network_registry: Arc<NR>,
+        network_store_factory: Arc<Mutex<NSF>>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
@@ -69,8 +72,8 @@ where
             ),
             provider,
             store,
-            chain_stores,
-            ethereum_adapters,
+            network_registry,
+            network_store_factory,
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
@@ -278,12 +281,13 @@ where
 }
 
 #[async_trait]
-impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
+impl<L, P, S, NR, NSF> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, NR, NSF>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: Store + SubgraphDeploymentStore,
-    CS: ChainStore,
+    NR: NetworkRegistry,
+    NSF: NetworkStoreFactory,
 {
     async fn create_subgraph(
         &self,
@@ -312,27 +316,34 @@ where
             .validate(self.store.clone())
             .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
+        // Look up the network instance for this subgraph
         let network_name = manifest.network_name();
+        let network_id =
+            NetworkInstanceId::try_from(format!("ethereum/{}", &network_name).as_str())
+                .map_err(|_| SubgraphRegistrarError::NetworkNotSupported(network_name.clone()))?;
+        let network = self.network_registry.instance(&network_id).ok_or(
+            SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
+        )?;
 
-        let chain_store = self.chain_stores.get(&network_name).ok_or(
-            SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-        )?;
-        let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or(
-            SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-        )?;
+        // Obtain the blockchain store for the network instance
+        let network_store_factory = self.network_store_factory.clone();
+        let mut store_factory = network_store_factory.lock().await;
+        let store = store_factory
+            .blockchain_store(&network_id)
+            .await
+            .map_err(|_| SubgraphRegistrarError::NetworkNotSupported(network_name.clone()))?;
 
         let manifest_id = manifest.id.clone();
+
         create_subgraph_version(
             &logger,
-            self.store.clone(),
-            chain_store.clone(),
-            ethereum_adapter.clone(),
+            store,
+            network,
             name.clone(),
             manifest,
             node_id,
             self.version_switching_mode,
         )
-        .compat()
         .await?;
 
         debug!(
@@ -466,49 +477,57 @@ fn create_subgraph(
     Ok(CreateSubgraphResult { id: entity_id })
 }
 
-/// Resolves the chain head block and the subgraph's earliest block
-fn resolve_subgraph_chain_blocks(
+/// Resolves the network head block and a start block for the subgraph
+async fn resolve_subgraph_chain_blocks(
     manifest: SubgraphManifest,
-    chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    network: Arc<dyn NetworkInstance>,
     logger: &Logger,
-) -> Box<
-    dyn Future<
-            Item = (Option<EthereumBlockPointer>, Option<EthereumBlockPointer>),
-            Error = SubgraphRegistrarError,
-        > + Send,
-> {
-    Box::new(
-        // If the minimum start block is 0 (i.e. the genesis block),
-        // return `None` to start indexing from the genesis block. Otherwise
-        // return a block pointer for the block with number `min_start_block - 1`.
-        match manifest
-            .start_blocks()
-            .into_iter()
-            .min()
-            .expect("cannot identify minimum start block because there are no data sources")
-        {
-            0 => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
-            min_start_block => Box::new(
-                ethereum_adapter
-                    .block_pointer_from_number(logger, chain_store.clone(), min_start_block - 1)
-                    .map(Some)
-                    .map_err(move |_| {
-                        SubgraphRegistrarError::ManifestValidationError(vec![
-                            SubgraphManifestValidationError::BlockNotFound(
-                                min_start_block.to_string(),
-                            ),
-                        ])
-                    }),
-            ) as Box<dyn Future<Item = _, Error = _> + Send>,
+) -> Result<(Option<BlockPointer>, Option<BlockPointer>), SubgraphRegistrarError> {
+    // Identify the minimum start block across all data sources in the subgraph
+    let min_start_block = manifest
+        .start_blocks()
+        .into_iter()
+        .min()
+        .expect("cannot identify minimum start block because there are no data sources");
+
+    // If the minimum start block is 0 (i.e. the genesis block),
+    // return `None` to start indexing from the genesis block. Otherwise
+    // return a block pointer for the block with number `min_start_block - 1`.
+    let start_block = match min_start_block {
+        0 => None,
+        min_start_block => {
+            let block_ptr = network
+                .block_pointer_by_number(&logger, min_start_block)
+                .await
+                .map_err(|_| {
+                    SubgraphRegistrarError::ManifestValidationError(vec![
+                        SubgraphManifestValidationError::BlockNotFound(min_start_block.to_string()),
+                    ])
+                })?;
+
+            match block_ptr {
+                Some(ptr) => network
+                    .parent_block_pointer(&logger, &ptr)
+                    .await
+                    .map_err(SubgraphRegistrarError::Unknown)?,
+                None => {
+                    warn!(
+                        logger,
+                        "Start block not found on chain, starting from genesis"
+                    );
+                    None
+                }
+            }
         }
-        .and_then(move |start_block_ptr| {
-            chain_store
-                .chain_head_ptr()
-                .map(|chain_head_block_ptr| (chain_head_block_ptr, start_block_ptr))
-                .map_err(SubgraphRegistrarError::Unknown)
-        }),
-    )
+    };
+
+    // Get the latest block from the chain
+    let chain_head = network
+        .latest_block_pointer(&logger)
+        .await
+        .map_err(SubgraphRegistrarError::Unknown)?;
+
+    Ok((Some(chain_head), start_block))
 }
 
 struct SubraphVersionUpdatingMetadata {
@@ -696,171 +715,152 @@ fn get_version_ids_and_summaries(
     })
 }
 
-fn create_subgraph_version(
+async fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl Store>,
-    chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    network: Arc<dyn NetworkInstance>,
     name: SubgraphName,
     manifest: SubgraphManifest,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
-) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
-    let logger = logger.clone();
-    let manifest = manifest.clone();
-    let manifest_id = manifest.id.clone();
-    let store = store.clone();
-    let deployment_store = store.clone();
+) -> Result<(), SubgraphRegistrarError> {
+    // Get pending and current version data
+    let subgraph_version_data = get_version_ids_and_summaries(
+        logger.clone(),
+        store.cheap_clone(),
+        name.to_string(),
+        manifest.id.clone(),
+        version_switching_mode,
+    )?;
 
-    Box::new(
-        future::result(get_version_ids_and_summaries(
-            logger.clone(),
-            store.clone(),
-            name.to_string(),
-            manifest_id.clone(),
-            version_switching_mode,
-        ))
-        .and_then(move |subgraph_version_data| {
-            let mut ops = vec![];
-            ops.push(MetadataOperation::AbortUnless {
-                description:
-                    "Subgraph entity must still exist, have same name/currentVersion/pendingVersion"
-                        .to_owned(),
-                query: SubgraphEntity::query().filter(EntityFilter::And(vec![
-                    EntityFilter::new_equal("name", name.to_string()),
-                    EntityFilter::new_equal(
-                        "currentVersion",
-                        subgraph_version_data.current_version_id_opt.clone(),
-                    ),
-                    EntityFilter::new_equal(
-                        "pendingVersion",
-                        subgraph_version_data.pending_version_id_opt.clone(),
-                    ),
-                ])),
-                entity_ids: vec![subgraph_version_data.subgraph_entity_id.clone()],
-            });
+    // Create database operations to create the new subgraph version
+    let mut ops = vec![];
 
-            // Create the subgraph version entity
-            let created_at = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-            ops.extend(subgraph_version_data.read_summaries_ops);
-            ops.extend(
-                SubgraphVersionEntity::new(
-                    subgraph_version_data.subgraph_entity_id.clone(),
-                    manifest_id.clone(),
-                    created_at,
-                )
-                .write_operations(&subgraph_version_data.version_entity_id)
-                .into_iter()
-                .map(|op| op.into()),
-            );
+    // Update the subgraph entity
+    ops.push(MetadataOperation::AbortUnless {
+        description:
+            "Subgraph entity must still exist, have same name/currentVersion/pendingVersion"
+                .to_owned(),
+        query: SubgraphEntity::query().filter(EntityFilter::And(vec![
+            EntityFilter::new_equal("name", name.to_string()),
+            EntityFilter::new_equal(
+                "currentVersion",
+                subgraph_version_data.current_version_id_opt.clone(),
+            ),
+            EntityFilter::new_equal(
+                "pendingVersion",
+                subgraph_version_data.pending_version_id_opt.clone(),
+            ),
+        ])),
+        entity_ids: vec![subgraph_version_data.subgraph_entity_id.clone()],
+    });
 
-            // Possibly add assignment for new deployment hash, and possibly remove
-            // assignments for old current/pending
-            ops.extend(
-                store
-                    .reconcile_assignments(
-                        &logger.clone(),
-                        subgraph_version_data.version_summaries_before,
-                        subgraph_version_data.version_summaries_after,
-                        Some(node_id),
-                    )
-                    .into_iter()
-                    .map(|op| op.into()),
-            );
+    // Create the subgraph version entity
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    ops.extend(subgraph_version_data.read_summaries_ops);
+    ops.extend(
+        SubgraphVersionEntity::new(
+            subgraph_version_data.subgraph_entity_id.clone(),
+            manifest.id.clone(),
+            created_at,
+        )
+        .write_operations(&subgraph_version_data.version_entity_id)
+        .into_iter()
+        .map(|op| op.into()),
+    );
 
-            // Update current/pending versions in Subgraph entity
-            match version_switching_mode {
-                SubgraphVersionSwitchingMode::Instant => {
-                    ops.extend(SubgraphEntity::update_pending_version_operations(
-                        &subgraph_version_data.subgraph_entity_id,
-                        None,
-                    ));
-                    ops.extend(SubgraphEntity::update_current_version_operations(
-                        &subgraph_version_data.subgraph_entity_id,
-                        Some(subgraph_version_data.version_entity_id),
-                    ));
-                }
-                SubgraphVersionSwitchingMode::Synced => {
-                    // Set the new version as pending, unless there is no fully synced
-                    // current versions
-                    if subgraph_version_data.current_is_synced {
-                        ops.extend(SubgraphEntity::update_pending_version_operations(
-                            &subgraph_version_data.subgraph_entity_id,
-                            Some(subgraph_version_data.version_entity_id),
-                        ));
-                    } else {
-                        ops.extend(SubgraphEntity::update_pending_version_operations(
-                            &subgraph_version_data.subgraph_entity_id,
-                            None,
-                        ));
-                        ops.extend(SubgraphEntity::update_current_version_operations(
-                            &subgraph_version_data.subgraph_entity_id,
-                            Some(subgraph_version_data.version_entity_id),
-                        ));
-                    }
-                }
-            }
-
-            // Check if deployment exists
-            store
-                .get(SubgraphDeploymentEntity::key(manifest_id.clone()))
-                .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))
-                .map(|a| (logger, ops, a.is_some()))
-        })
-        .and_then(move |(logger, mut ops, deployment_exists)| {
-            ops.push(MetadataOperation::AbortUnless {
-                description: "Subgraph deployment entity must continue to exist/not exist"
-                    .to_owned(),
-                query: SubgraphDeploymentEntity::query()
-                    .filter(EntityFilter::new_equal("id", manifest.id.to_string())),
-                entity_ids: if deployment_exists {
-                    vec![manifest.id.to_string()]
-                } else {
-                    vec![]
-                },
-            });
-
-            resolve_subgraph_chain_blocks(
-                manifest.clone(),
-                chain_store.clone(),
-                ethereum_adapter.clone(),
+    // Possibly add assignment for new deployment hash, and possibly remove
+    // assignments for old current/pending
+    ops.extend(
+        store
+            .reconcile_assignments(
                 &logger.clone(),
+                subgraph_version_data.version_summaries_before,
+                subgraph_version_data.version_summaries_after,
+                Some(node_id),
             )
-            .and_then(move |(chain_head_block, start_block)| {
-                info!(
-                    logger,
-                    "Set subgraph start block";
-                    "block_number" => format!("{:?}", start_block.map(|block| block.number)),
-                    "block_hash" => format!("{:?}", start_block.map(|block| block.hash)),
-                );
+            .into_iter()
+            .map(|op| op.into()),
+    );
 
-                // Apply the subgraph versioning and deployment operations,
-                // creating a new subgraph deployment if one doesn't exist.
-                if deployment_exists {
-                    deployment_store
-                        .apply_metadata_operations(ops)
-                        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
-                } else {
-                    ops.extend(
-                        SubgraphDeploymentEntity::new(
-                            &manifest,
-                            false,
-                            false,
-                            start_block,
-                            chain_head_block,
-                        )
-                        .create_operations(&manifest.id),
-                    );
-                    deployment_store
-                        .create_subgraph_deployment(&manifest.schema, ops)
-                        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
-                }
-            })
-        }),
-    )
+    // Update current/pending versions in Subgraph entity
+    match version_switching_mode {
+        SubgraphVersionSwitchingMode::Instant => {
+            ops.extend(SubgraphEntity::update_pending_version_operations(
+                &subgraph_version_data.subgraph_entity_id,
+                None,
+            ));
+            ops.extend(SubgraphEntity::update_current_version_operations(
+                &subgraph_version_data.subgraph_entity_id,
+                Some(subgraph_version_data.version_entity_id),
+            ));
+        }
+        SubgraphVersionSwitchingMode::Synced => {
+            // Set the new version as pending, unless there is no fully synced
+            // current versions
+            if subgraph_version_data.current_is_synced {
+                ops.extend(SubgraphEntity::update_pending_version_operations(
+                    &subgraph_version_data.subgraph_entity_id,
+                    Some(subgraph_version_data.version_entity_id),
+                ));
+            } else {
+                ops.extend(SubgraphEntity::update_pending_version_operations(
+                    &subgraph_version_data.subgraph_entity_id,
+                    None,
+                ));
+                ops.extend(SubgraphEntity::update_current_version_operations(
+                    &subgraph_version_data.subgraph_entity_id,
+                    Some(subgraph_version_data.version_entity_id),
+                ));
+            }
+        }
+    }
+
+    // Check if deployment exists
+    let deployment_exists = store
+        .get(SubgraphDeploymentEntity::key(manifest.id.clone()))
+        .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))?
+        .is_some();
+    ops.push(MetadataOperation::AbortUnless {
+        description: "Subgraph deployment entity must continue to exist/not exist".to_owned(),
+        query: SubgraphDeploymentEntity::query()
+            .filter(EntityFilter::new_equal("id", manifest.id.to_string())),
+        entity_ids: if deployment_exists {
+            vec![manifest.id.to_string()]
+        } else {
+            vec![]
+        },
+    });
+
+    let (chain_head_block, start_block) =
+        resolve_subgraph_chain_blocks(manifest.clone(), network, &logger.clone()).await?;
+
+    if let Some(ref block_ptr) = start_block {
+        info!(
+            logger,
+            "Set subgraph start block";
+            "block" => format!("{}", block_ptr),
+        );
+    }
+
+    // Apply the subgraph versioning and deployment operations,
+    // creating a new subgraph deployment if one doesn't exist.
+    if deployment_exists {
+        store
+            .apply_metadata_operations(ops)
+            .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
+    } else {
+        ops.extend(
+            SubgraphDeploymentEntity::new(&manifest, false, false, start_block, chain_head_block)
+                .create_operations(&manifest.id),
+        );
+        store
+            .create_subgraph_deployment(&manifest.schema, ops)
+            .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
+    }
 }
 
 fn get_subgraph_version_deployment_id(
