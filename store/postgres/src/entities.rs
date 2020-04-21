@@ -54,7 +54,6 @@ use crate::jsonb_queries::FilterQuery;
 use crate::metadata;
 use crate::notification_listener::JsonNotification;
 use crate::relational::{IdType, Layout};
-use crate::store::Store;
 
 lazy_static! {
     // We allow overriding the default storage scheme with the environment
@@ -1446,7 +1445,7 @@ impl Storage {
 /// it very hard to export items just for testing
 #[cfg(debug_assertions)]
 pub fn delete_all_entities_for_test_use_only(
-    store: &Store,
+    store: &crate::store::Store,
     conn: &PgConnection,
 ) -> Result<(), StoreError> {
     // Delete public entities and related data
