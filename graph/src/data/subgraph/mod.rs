@@ -22,8 +22,9 @@ use stable_hash::prelude::*;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
-use crate::components::store::{Store, StoreError, SubgraphDeploymentStore};
-use crate::components::subgraph::DataSourceTemplateInfo;
+use crate::components::store::{
+    EntityCache, EntityKey, Store, StoreError, SubgraphDeploymentStore,
+};
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
@@ -36,6 +37,7 @@ use crate::data::subgraph::schema::{
 };
 use crate::prelude::{format_err, Deserialize, Fail, NetworkInstanceId, Serialize};
 use crate::util::ethereum::string_to_h256;
+use crate::util::lfu_cache::LfuCache;
 use graphql_parser::query as q;
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
@@ -1115,5 +1117,28 @@ impl UnresolvedSubgraphManifest {
             data_sources,
             templates,
         })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DataSourceTemplateInfo {
+    pub data_source: String,
+    pub template: DataSourceTemplate,
+    pub params: Vec<String>,
+    pub context: Option<DataSourceContext>,
+}
+
+#[derive(Debug, Default)]
+pub struct BlockState {
+    pub entity_cache: EntityCache,
+    pub created_data_sources: Vec<DataSourceTemplateInfo>,
+}
+
+impl BlockState {
+    pub fn with_cache(lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
+        BlockState {
+            entity_cache: EntityCache::with_current(lfu_cache),
+            created_data_sources: Vec::new(),
+        }
     }
 }
