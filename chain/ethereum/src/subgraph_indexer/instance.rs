@@ -11,7 +11,9 @@ use graph::prelude::{
     EthereumTrigger, HostMetrics, LightEthereumBlock, LightEthereumBlockExt, Logger, Store,
     SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
 };
-use graph_runtime_wasm::{MappingRequest, RuntimeHost, RuntimeHostBuilder};
+use graph_runtime_wasm::{HostModules, MappingRequest, RuntimeHost, RuntimeHostBuilder};
+
+use super::host_module::EthereumModule;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -24,6 +26,8 @@ pub struct SubgraphInstance<S> {
     subgraph_id: SubgraphDeploymentId,
     network: String,
     host_builder: RuntimeHostBuilder<S>,
+
+    host_modules: Arc<HostModules>,
 
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -55,6 +59,7 @@ where
             subgraph_id,
             network,
             hosts: Vec::new(),
+            host_modules: Arc::new(vec![Arc::new(EthereumModule::new())]),
             module_cache: HashMap::new(),
         };
 
@@ -105,7 +110,7 @@ where
                     data_source.mapping.runtime.as_ref().clone(),
                     logger,
                     self.subgraph_id.clone(),
-                    Arc::new(vec![]),
+                    self.host_modules.cheap_clone(),
                     host_metrics.clone(),
                 )?;
                 self.module_cache.insert(module_bytes, sender.clone());

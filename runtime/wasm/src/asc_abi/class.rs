@@ -209,7 +209,7 @@ impl AscType for AscString {
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct Array<T> {
+pub struct Array<T> {
     buffer: AscPtr<ArrayBuffer<T>>,
     length: u32,
 }
@@ -231,7 +231,7 @@ impl<T: AscValue> Array<T> {
 /// Represents any `AscValue` since they all fit in 64 bits.
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub(crate) struct EnumPayload(pub u64);
+pub struct EnumPayload(pub u64);
 
 impl AscType for EnumPayload {
     fn to_asc_bytes(&self) -> Vec<u8> {
@@ -292,53 +292,13 @@ impl From<i64> for EnumPayload {
 /// payload.
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEnum<D: AscValue> {
+pub struct AscEnum<D: AscValue> {
     pub kind: D,
     pub _padding: u32, // Make padding explicit.
     pub payload: EnumPayload,
 }
 
-pub(crate) type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
-
-#[repr(u32)]
-#[derive(AscType, Copy, Clone)]
-pub(crate) enum EthereumValueKind {
-    Address,
-    FixedBytes,
-    Bytes,
-    Int,
-    Uint,
-    Bool,
-    String,
-    FixedArray,
-    Array,
-    Tuple,
-}
-
-impl EthereumValueKind {
-    pub(crate) fn get_kind(token: &ethabi::Token) -> Self {
-        match token {
-            ethabi::Token::Address(_) => EthereumValueKind::Address,
-            ethabi::Token::FixedBytes(_) => EthereumValueKind::FixedBytes,
-            ethabi::Token::Bytes(_) => EthereumValueKind::Bytes,
-            ethabi::Token::Int(_) => EthereumValueKind::Int,
-            ethabi::Token::Uint(_) => EthereumValueKind::Uint,
-            ethabi::Token::Bool(_) => EthereumValueKind::Bool,
-            ethabi::Token::String(_) => EthereumValueKind::String,
-            ethabi::Token::FixedArray(_) => EthereumValueKind::FixedArray,
-            ethabi::Token::Array(_) => EthereumValueKind::Array,
-            ethabi::Token::Tuple(_) => EthereumValueKind::Tuple,
-        }
-    }
-}
-
-impl Default for EthereumValueKind {
-    fn default() -> Self {
-        EthereumValueKind::Address
-    }
-}
-
-impl AscValue for EthereumValueKind {}
+pub type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
@@ -378,13 +338,6 @@ impl Default for StoreValueKind {
 
 impl AscValue for StoreValueKind {}
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscLogParam {
-    pub name: AscPtr<AscString>,
-    pub value: AscPtr<AscEnum<EthereumValueKind>>,
-}
-
 pub(crate) type Bytes = Uint8Array;
 
 /// Big ints are represented using signed number representation. Note: This differs
@@ -396,88 +349,6 @@ pub(crate) type AscBigInt = Uint8Array;
 pub(crate) type AscAddress = Uint8Array;
 pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;
-
-pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumBlock {
-    pub hash: AscPtr<AscH256>,
-    pub parent_hash: AscPtr<AscH256>,
-    pub uncles_hash: AscPtr<AscH256>,
-    pub author: AscPtr<AscH160>,
-    pub state_root: AscPtr<AscH256>,
-    pub transactions_root: AscPtr<AscH256>,
-    pub receipts_root: AscPtr<AscH256>,
-    pub number: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
-    pub gas_limit: AscPtr<AscBigInt>,
-    pub timestamp: AscPtr<AscBigInt>,
-    pub difficulty: AscPtr<AscBigInt>,
-    pub total_difficulty: AscPtr<AscBigInt>,
-    pub size: AscPtr<AscBigInt>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumTransaction {
-    pub hash: AscPtr<AscH256>,
-    pub index: AscPtr<AscBigInt>,
-    pub from: AscPtr<AscH160>,
-    pub to: AscPtr<AscH160>,
-    pub value: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
-    pub gas_price: AscPtr<AscBigInt>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumTransaction_0_0_2 {
-    pub hash: AscPtr<AscH256>,
-    pub index: AscPtr<AscBigInt>,
-    pub from: AscPtr<AscH160>,
-    pub to: AscPtr<AscH160>,
-    pub value: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
-    pub gas_price: AscPtr<AscBigInt>,
-    pub input: AscPtr<Bytes>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumEvent<T>
-where
-    T: AscType,
-{
-    pub address: AscPtr<AscAddress>,
-    pub log_index: AscPtr<AscBigInt>,
-    pub transaction_log_index: AscPtr<AscBigInt>,
-    pub log_type: AscPtr<AscString>,
-    pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<T>,
-    pub params: AscPtr<AscLogParamArray>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumCall {
-    pub address: AscPtr<AscAddress>,
-    pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<AscEthereumTransaction>,
-    pub inputs: AscPtr<AscLogParamArray>,
-    pub outputs: AscPtr<AscLogParamArray>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumCall_0_0_3 {
-    pub to: AscPtr<AscAddress>,
-    pub from: AscPtr<AscAddress>,
-    pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<AscEthereumTransaction>,
-    pub inputs: AscPtr<AscLogParamArray>,
-    pub outputs: AscPtr<AscLogParamArray>,
-}
 
 #[repr(C)]
 #[derive(AscType)]
@@ -496,25 +367,6 @@ pub(crate) struct AscTypedMap<K, V> {
 
 pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall {
-    pub contract_name: AscPtr<AscString>,
-    pub contract_address: AscPtr<AscAddress>,
-    pub function_name: AscPtr<AscString>,
-    pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall_0_0_4 {
-    pub contract_name: AscPtr<AscString>,
-    pub contract_address: AscPtr<AscAddress>,
-    pub function_name: AscPtr<AscString>,
-    pub function_signature: AscPtr<AscString>,
-    pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
-}
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]

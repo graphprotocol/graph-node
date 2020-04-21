@@ -1,6 +1,5 @@
 mod adapter;
 mod listener;
-mod types;
 
 pub use self::adapter::{
     blocks_with_triggers, triggers_in_block, EthGetLogsFilter, EthereumAdapter,
@@ -10,9 +9,3 @@ pub use self::adapter::{
     MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
-pub use self::types::{
-    BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockPointer,
-    EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
-    EthereumCallData, EthereumEventData, EthereumTransactionData, EthereumTrigger,
-    LightEthereumBlock, LightEthereumBlockExt,
-};

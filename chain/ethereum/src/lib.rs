@@ -1,6 +1,14 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod types;
+pub use self::types::{
+  BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockPointer, EthereumBlockTriggerType,
+  EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall, EthereumCallData,
+  EthereumEventData, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
+  LightEthereumBlockExt,
+};
+
 pub mod chain;
 mod ethereum_adapter;
 mod network_indexer;

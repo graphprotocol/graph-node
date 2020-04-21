@@ -103,111 +103,111 @@ fn abi_bytes_and_fixed_bytes() {
 
 /// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
 /// and assert the final token is the same as the starting one.
-#[test]
-fn abi_ethabi_token_identity() {
-    let mut module = test_module(
-        "abiEthabiTokenIdentity",
-        mock_data_source("wasm_test/abi_token.wasm"),
-    );
+// #[test]
+// fn abi_ethabi_token_identity() {
+//     let mut module = test_module(
+//         "abiEthabiTokenIdentity",
+//         mock_data_source("wasm_test/abi_token.wasm"),
+//     );
 
-    // Token::Address
-    let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
-    let token_address = Token::Address(address);
+//     // Token::Address
+//     let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+//     let token_address = Token::Address(address);
 
-    let token_address_ptr = module.asc_new(&token_address);
-    let new_address_obj: AscPtr<ArrayBuffer<u8>> =
-        module.takes_ptr_returns_ptr("token_to_address", token_address_ptr);
+//     let token_address_ptr = module.asc_new(&token_address);
+//     let new_address_obj: AscPtr<ArrayBuffer<u8>> =
+//         module.takes_ptr_returns_ptr("token_to_address", token_address_ptr);
 
-    let new_token_ptr = module.takes_ptr_returns_ptr("token_from_address", new_address_obj);
-    let new_token = module.asc_get(new_token_ptr);
+//     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_address", new_address_obj);
+//     let new_token = module.asc_get(new_token_ptr);
 
-    assert_eq!(token_address, new_token);
+//     assert_eq!(token_address, new_token);
 
-    // Token::Bytes
-    let token_bytes = Token::Bytes(vec![42, 45, 7, 245, 45]);
+//     // Token::Bytes
+//     let token_bytes = Token::Bytes(vec![42, 45, 7, 245, 45]);
 
-    let token_bytes_ptr = module.asc_new(&token_bytes);
-    let new_bytes_obj: AscPtr<ArrayBuffer<u8>> =
-        module.takes_ptr_returns_ptr("token_to_bytes", token_bytes_ptr);
+//     let token_bytes_ptr = module.asc_new(&token_bytes);
+//     let new_bytes_obj: AscPtr<ArrayBuffer<u8>> =
+//         module.takes_ptr_returns_ptr("token_to_bytes", token_bytes_ptr);
 
-    let new_token_ptr = module.takes_ptr_returns_ptr("token_from_bytes", new_bytes_obj);
-    let new_token = module.asc_get(new_token_ptr);
+//     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_bytes", new_bytes_obj);
+//     let new_token = module.asc_get(new_token_ptr);
 
-    assert_eq!(token_bytes, new_token);
+//     assert_eq!(token_bytes, new_token);
 
-    // Token::Int
-    let int_token = Token::Int(U256([256, 453452345, 0, 42]));
+//     // Token::Int
+//     let int_token = Token::Int(U256([256, 453452345, 0, 42]));
 
-    let int_token_ptr = module.asc_new(&int_token);
-    let new_int_obj: AscPtr<ArrayBuffer<u8>> =
-        module.takes_ptr_returns_ptr("token_to_int", int_token_ptr);
+//     let int_token_ptr = module.asc_new(&int_token);
+//     let new_int_obj: AscPtr<ArrayBuffer<u8>> =
+//         module.takes_ptr_returns_ptr("token_to_int", int_token_ptr);
 
-    let new_token_ptr = module.takes_ptr_returns_ptr("token_from_int", new_int_obj);
-    let new_token = module.asc_get(new_token_ptr);
+//     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_int", new_int_obj);
+//     let new_token = module.asc_get(new_token_ptr);
 
-    assert_eq!(int_token, new_token);
+//     assert_eq!(int_token, new_token);
 
-    // Token::Uint
-    let uint_token = Token::Uint(U256([256, 453452345, 0, 42]));
+//     // Token::Uint
+//     let uint_token = Token::Uint(U256([256, 453452345, 0, 42]));
 
-    let uint_token_ptr = module.asc_new(&uint_token);
-    let new_uint_obj: AscPtr<ArrayBuffer<u8>> =
-        module.takes_ptr_returns_ptr("token_to_uint", uint_token_ptr);
+//     let uint_token_ptr = module.asc_new(&uint_token);
+//     let new_uint_obj: AscPtr<ArrayBuffer<u8>> =
+//         module.takes_ptr_returns_ptr("token_to_uint", uint_token_ptr);
 
-    let new_token_ptr = module.takes_ptr_returns_ptr("token_from_uint", new_uint_obj);
-    let new_token = module.asc_get(new_token_ptr);
+//     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_uint", new_uint_obj);
+//     let new_token = module.asc_get(new_token_ptr);
 
-    assert_eq!(uint_token, new_token);
-    assert_ne!(uint_token, int_token);
+//     assert_eq!(uint_token, new_token);
+//     assert_ne!(uint_token, int_token);
 
-    // Token::Bool
-    let token_bool = Token::Bool(true);
+//     // Token::Bool
+//     let token_bool = Token::Bool(true);
 
-    let token_bool_ptr = module.asc_new(&token_bool);
-    let boolean: bool = module
-        .module
-        .clone()
-        .invoke_export(
-            "token_to_bool",
-            &[RuntimeValue::from(token_bool_ptr)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into::<bool>()
-        .expect("call did not return bool");
+//     let token_bool_ptr = module.asc_new(&token_bool);
+//     let boolean: bool = module
+//         .module
+//         .clone()
+//         .invoke_export(
+//             "token_to_bool",
+//             &[RuntimeValue::from(token_bool_ptr)],
+//             &mut module,
+//         )
+//         .expect("call failed")
+//         .expect("call returned nothing")
+//         .try_into::<bool>()
+//         .expect("call did not return bool");
 
-    let new_token_ptr =
-        module.takes_val_returns_ptr("token_from_bool", RuntimeValue::from(boolean as u32));
-    let new_token = module.asc_get(new_token_ptr);
+//     let new_token_ptr =
+//         module.takes_val_returns_ptr("token_from_bool", RuntimeValue::from(boolean as u32));
+//     let new_token = module.asc_get(new_token_ptr);
 
-    assert_eq!(token_bool, new_token);
+//     assert_eq!(token_bool, new_token);
 
-    // Token::String
-    let token_string = Token::String("漢字Go🇧🇷".into());
+//     // Token::String
+//     let token_string = Token::String("漢字Go🇧🇷".into());
 
-    let token_string_ptr = module.asc_new(&token_string);
-    let new_string_obj: AscPtr<AscString> =
-        module.takes_ptr_returns_ptr("token_to_string", token_string_ptr);
+//     let token_string_ptr = module.asc_new(&token_string);
+//     let new_string_obj: AscPtr<AscString> =
+//         module.takes_ptr_returns_ptr("token_to_string", token_string_ptr);
 
-    let new_token_ptr = module.takes_ptr_returns_ptr("token_from_string", new_string_obj);
-    let new_token = module.asc_get(new_token_ptr);
+//     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_string", new_string_obj);
+//     let new_token = module.asc_get(new_token_ptr);
 
-    assert_eq!(token_string, new_token);
+//     assert_eq!(token_string, new_token);
 
-    // Token::Array
-    let token_array = Token::Array(vec![token_address, token_bytes, token_bool]);
-    let token_array_nested = Token::Array(vec![token_string, token_array]);
+//     // Token::Array
+//     let token_array = Token::Array(vec![token_address, token_bytes, token_bool]);
+//     let token_array_nested = Token::Array(vec![token_string, token_array]);
 
-    let new_array_ptr = module.asc_new(&token_array_nested);
-    let new_array_obj: AscEnumArray<EthereumValueKind> =
-        module.takes_ptr_returns_ptr("token_to_array", new_array_ptr);
+//     let new_array_ptr = module.asc_new(&token_array_nested);
+//     let new_array_obj: AscEnumArray<EthereumValueKind> =
+//         module.takes_ptr_returns_ptr("token_to_array", new_array_ptr);
 
-    let new_token_ptr = module.takes_ptr_returns_ptr("token_from_array", new_array_obj);
-    let new_token: Token = module.asc_get(new_token_ptr);
+//     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_array", new_array_obj);
+//     let new_token: Token = module.asc_get(new_token_ptr);
 
-    assert_eq!(new_token, token_array_nested);
-}
+//     assert_eq!(new_token, token_array_nested);
+// }
 
 #[test]
 fn abi_store_value() {

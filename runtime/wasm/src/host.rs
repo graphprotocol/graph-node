@@ -28,8 +28,7 @@ use graph::prelude::{
 };
 use graph::util;
 
-use crate::host_exports::HostExports;
-use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
+use crate::mapping::{MappingConfig, MappingContext, MappingRequest, MappingTrigger};
 use crate::module::WasmiModule;
 use crate::SubgraphDeploymentStore;
 
@@ -56,6 +55,18 @@ pub struct HostFunction {
     pub name: String,
     pub full_name: String,
     pub metrics_name: String,
+}
+
+impl From<String> for HostFunction {
+    fn from(s: String) -> Self {
+        Self {
+            name: s
+                .rfind(".")
+                .map_or(s.clone(), |index| s.clone().split_off(index)),
+            full_name: s.clone(),
+            metrics_name: s.replace(".", "_"),
+        }
+    }
 }
 
 pub trait HostModule: Send + Sync {
@@ -188,7 +199,7 @@ pub struct RuntimeHost {
     data_source_call_handlers: Vec<MappingCallHandler>,
     data_source_block_handlers: Vec<MappingBlockHandler>,
     mapping_request_sender: Sender<MappingRequest>,
-    host_exports: Arc<HostExports>,
+    mapping_config: Arc<MappingConfig>,
     metrics: Arc<HostMetrics>,
     store: Arc<dyn crate::RuntimeStore>,
 }
@@ -228,31 +239,19 @@ impl RuntimeHost {
             })?
             .clone();
 
-        let data_source_name = config.data_source_name;
+        let data_source_name = config.data_source_name.clone();
         let timeout = std::env::var(TIMEOUT_ENV_VAR)
             .ok()
             .and_then(|s| u64::from_str(&s).ok())
             .map(Duration::from_secs);
 
-        // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
-        // implementing `Clone` for `HostExports`.
-        let host_exports = Arc::new(HostExports::new(
-            config.subgraph_id.clone(),
+        let mapping_config = Arc::new(MappingConfig {
             api_version,
-            data_source_name.clone(),
-            config.contract.address.clone(),
-            config.data_source_network,
-            config.data_source_context,
-            config.templates,
-            config.mapping.abis,
-            ethereum_adapter,
-            link_resolver,
-            store.clone(),
-            call_cache,
-            timeout,
-            arweave_adapter,
-            three_box_adapter,
-        ));
+            handler_timeout: std::env::var(TIMEOUT_ENV_VAR)
+                .ok()
+                .and_then(|s| u64::from_str(&s).ok())
+                .map(Duration::from_secs),
+        });
 
         Ok(RuntimeHost {
             subgraph_id: config.subgraph_id,
@@ -263,7 +262,7 @@ impl RuntimeHost {
             data_source_call_handlers: config.mapping.call_handlers,
             data_source_block_handlers: config.mapping.block_handlers,
             mapping_request_sender,
-            host_exports,
+            mapping_config,
             metrics,
             store,
         })
@@ -437,9 +436,9 @@ impl RuntimeHost {
                     logger: logger.cheap_clone(),
                     subgraph_id: self.subgraph_id.clone(),
                     state,
-                    host_exports: self.host_exports.cheap_clone(),
                     block: block.cheap_clone(),
                     store: self.store.cheap_clone(),
+                    config: self.mapping_config.clone(),
                 },
                 trigger,
                 result_sender,

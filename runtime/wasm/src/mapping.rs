@@ -5,6 +5,7 @@ use std::time::Instant;
 use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
+use semver::Version;
 use strum_macros::AsStaticStr;
 use web3::types::{Log, Transaction};
 
@@ -138,13 +139,19 @@ pub struct MappingRequest {
     pub(crate) result_sender: Sender<MappingResponse>,
 }
 
+#[derive(Debug)]
+pub struct MappingConfig {
+    pub(crate) api_version: Version,
+    pub(crate) handler_timeout: Option<Duration>,
+}
+
 pub struct MappingContext {
     pub(crate) logger: Logger,
     pub(crate) subgraph_id: SubgraphDeploymentId,
-    pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
     pub(crate) block: Arc<LightEthereumBlock>,
     pub(crate) state: BlockState,
     pub(crate) store: Arc<dyn crate::RuntimeStore>,
+    pub(crate) config: Arc<MappingConfig>,
 }
 
 impl MappingContext {
@@ -152,10 +159,10 @@ impl MappingContext {
         MappingContext {
             logger: self.logger.cheap_clone(),
             subgraph_id: self.subgraph_id.clone(),
-            host_exports: self.host_exports.cheap_clone(),
             block: self.block.cheap_clone(),
             state: BlockState::default(),
             store: self.store.cheap_clone(),
+            config: self.config.cheap_clone(),
         }
     }
 }

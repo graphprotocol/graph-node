@@ -12,8 +12,6 @@ use graph::prelude::{BigDecimal, BigInt};
 use crate::asc_abi::class::*;
 use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj};
 
-use crate::UnresolvedContractCall;
-
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Uint8Array {
         self.0.to_asc_obj(heap)
@@ -76,87 +74,6 @@ impl FromAscObj<AscBigDecimal> for BigDecimal {
     fn from_asc_obj<H: AscHeap>(big_decimal: AscBigDecimal, heap: &H) -> Self {
         heap.asc_get::<BigInt, _>(big_decimal.digits)
             .to_big_decimal(heap.asc_get(big_decimal.exp))
-    }
-}
-
-impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEnum<EthereumValueKind> {
-        use ethabi::Token::*;
-
-        let kind = EthereumValueKind::get_kind(self);
-        let payload = match self {
-            Address(address) => heap.asc_new::<AscAddress, _>(address).to_payload(),
-            FixedBytes(bytes) | Bytes(bytes) => {
-                heap.asc_new::<Uint8Array, _>(&**bytes).to_payload()
-            }
-            Int(uint) => {
-                let n = BigInt::from_signed_u256(&uint);
-                heap.asc_new(&n).to_payload()
-            }
-            Uint(uint) => {
-                let n = BigInt::from_unsigned_u256(&uint);
-                heap.asc_new(&n).to_payload()
-            }
-            Bool(b) => *b as u64,
-            String(string) => heap.asc_new(&**string).to_payload(),
-            FixedArray(tokens) | Array(tokens) => heap.asc_new(&**tokens).to_payload(),
-            Tuple(tokens) => heap.asc_new(&**tokens).to_payload(),
-        };
-
-        AscEnum {
-            kind,
-            _padding: 0,
-            payload: EnumPayload(payload),
-        }
-    }
-}
-
-impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
-    fn from_asc_obj<H: AscHeap>(asc_enum: AscEnum<EthereumValueKind>, heap: &H) -> Self {
-        use ethabi::Token;
-
-        let payload = asc_enum.payload;
-        match asc_enum.kind {
-            EthereumValueKind::Bool => Token::Bool(bool::from(payload)),
-            EthereumValueKind::Address => {
-                let ptr: AscPtr<AscAddress> = AscPtr::from(payload);
-                Token::Address(heap.asc_get(ptr))
-            }
-            EthereumValueKind::FixedBytes => {
-                let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::FixedBytes(heap.asc_get(ptr))
-            }
-            EthereumValueKind::Bytes => {
-                let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::Bytes(heap.asc_get(ptr))
-            }
-            EthereumValueKind::Int => {
-                let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let n: BigInt = heap.asc_get(ptr);
-                Token::Int(n.to_signed_u256())
-            }
-            EthereumValueKind::Uint => {
-                let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let n: BigInt = heap.asc_get(ptr);
-                Token::Uint(n.to_unsigned_u256())
-            }
-            EthereumValueKind::String => {
-                let ptr: AscPtr<AscString> = AscPtr::from(payload);
-                Token::String(heap.asc_get(ptr))
-            }
-            EthereumValueKind::FixedArray => {
-                let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::FixedArray(heap.asc_get(ptr))
-            }
-            EthereumValueKind::Array => {
-                let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Array(heap.asc_get(ptr))
-            }
-            EthereumValueKind::Tuple => {
-                let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Tuple(heap.asc_get(ptr))
-            }
-        }
     }
 }
 
@@ -224,15 +141,6 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
     }
 }
 
-impl ToAscObj<AscLogParam> for ethabi::LogParam {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscLogParam {
-        AscLogParam {
-            name: heap.asc_new(self.name.as_str()),
-            value: heap.asc_new(&self.value),
-        }
-    }
-}
-
 impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscJson {
         AscTypedMap {
@@ -274,136 +182,6 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
             kind: JsonValueKind::get_kind(self),
             _padding: 0,
             payload,
-        }
-    }
-}
-
-impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumBlock {
-        AscEthereumBlock {
-            hash: heap.asc_new(&self.hash),
-            parent_hash: heap.asc_new(&self.parent_hash),
-            uncles_hash: heap.asc_new(&self.uncles_hash),
-            author: heap.asc_new(&self.author),
-            state_root: heap.asc_new(&self.state_root),
-            transactions_root: heap.asc_new(&self.transactions_root),
-            receipts_root: heap.asc_new(&self.receipts_root),
-            number: heap.asc_new(&BigInt::from(self.number)),
-            gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
-            gas_limit: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_limit)),
-            timestamp: heap.asc_new(&BigInt::from_unsigned_u256(&self.timestamp)),
-            difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.difficulty)),
-            total_difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.total_difficulty)),
-            size: self
-                .size
-                .map(|size| heap.asc_new(&BigInt::from_unsigned_u256(&size)))
-                .unwrap_or_else(|| AscPtr::null()),
-        }
-    }
-}
-
-impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransaction {
-        AscEthereumTransaction {
-            hash: heap.asc_new(&self.hash),
-            index: heap.asc_new(&BigInt::from(self.index)),
-            from: heap.asc_new(&self.from),
-            to: self
-                .to
-                .map(|to| heap.asc_new(&to))
-                .unwrap_or_else(|| AscPtr::null()),
-            value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
-            gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
-            gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
-        }
-    }
-}
-
-impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransaction_0_0_2 {
-        AscEthereumTransaction_0_0_2 {
-            hash: heap.asc_new(&self.hash),
-            index: heap.asc_new(&BigInt::from(self.index)),
-            from: heap.asc_new(&self.from),
-            to: self
-                .to
-                .map(|to| heap.asc_new(&to))
-                .unwrap_or_else(|| AscPtr::null()),
-            value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
-            gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
-            gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
-            input: heap.asc_new(&*self.input.0),
-        }
-    }
-}
-
-impl<T: AscType> ToAscObj<AscEthereumEvent<T>> for EthereumEventData
-where
-    EthereumTransactionData: ToAscObj<T>,
-{
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumEvent<T> {
-        AscEthereumEvent {
-            address: heap.asc_new(&self.address),
-            log_index: heap.asc_new(&BigInt::from_unsigned_u256(&self.log_index)),
-            transaction_log_index: heap
-                .asc_new(&BigInt::from_unsigned_u256(&self.transaction_log_index)),
-            log_type: self
-                .log_type
-                .clone()
-                .map(|log_type| heap.asc_new(&log_type))
-                .unwrap_or_else(|| AscPtr::null()),
-            block: heap.asc_new(&self.block),
-            transaction: heap.asc_new::<T, EthereumTransactionData>(&self.transaction),
-            params: heap.asc_new(self.params.as_slice()),
-        }
-    }
-}
-
-impl ToAscObj<AscEthereumCall> for EthereumCallData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumCall {
-        AscEthereumCall {
-            address: heap.asc_new(&self.to),
-            block: heap.asc_new(&self.block),
-            transaction: heap.asc_new(&self.transaction),
-            inputs: heap.asc_new(self.inputs.as_slice()),
-            outputs: heap.asc_new(self.outputs.as_slice()),
-        }
-    }
-}
-
-impl ToAscObj<AscEthereumCall_0_0_3> for EthereumCallData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumCall_0_0_3 {
-        AscEthereumCall_0_0_3 {
-            to: heap.asc_new(&self.to),
-            from: heap.asc_new(&self.from),
-            block: heap.asc_new(&self.block),
-            transaction: heap.asc_new(&self.transaction),
-            inputs: heap.asc_new(self.inputs.as_slice()),
-            outputs: heap.asc_new(self.outputs.as_slice()),
-        }
-    }
-}
-
-impl FromAscObj<AscUnresolvedContractCall> for UnresolvedContractCall {
-    fn from_asc_obj<H: AscHeap>(asc_call: AscUnresolvedContractCall, heap: &H) -> Self {
-        UnresolvedContractCall {
-            contract_name: heap.asc_get(asc_call.contract_name),
-            contract_address: heap.asc_get(asc_call.contract_address),
-            function_name: heap.asc_get(asc_call.function_name),
-            function_signature: None,
-            function_args: heap.asc_get(asc_call.function_args),
-        }
-    }
-}
-
-impl FromAscObj<AscUnresolvedContractCall_0_0_4> for UnresolvedContractCall {
-    fn from_asc_obj<H: AscHeap>(asc_call: AscUnresolvedContractCall_0_0_4, heap: &H) -> Self {
-        UnresolvedContractCall {
-            contract_name: heap.asc_get(asc_call.contract_name),
-            contract_address: heap.asc_get(asc_call.contract_address),
-            function_name: heap.asc_get(asc_call.function_name),
-            function_signature: Some(heap.asc_get(asc_call.function_signature)),
-            function_args: heap.asc_get(asc_call.function_args),
         }
     }
 }

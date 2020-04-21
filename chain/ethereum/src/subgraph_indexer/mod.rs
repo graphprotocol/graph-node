@@ -1,5 +1,6 @@
 mod block_ingestor;
 mod block_stream;
+mod host_module;
 mod indexer;
 mod instance;
 

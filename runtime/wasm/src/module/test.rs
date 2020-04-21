@@ -486,31 +486,31 @@ fn crypto_keccak256() {
     );
 }
 
-#[test]
-fn token_numeric_conversion() {
-    let mut module = test_module(
-        "TestNumericConversion",
-        mock_data_source("wasm_test/token_to_numeric.wasm"),
-    );
+// #[test]
+// fn token_numeric_conversion() {
+//     let mut module = test_module(
+//         "TestNumericConversion",
+//         mock_data_source("wasm_test/token_to_numeric.wasm"),
+//     );
 
-    // Convert numeric to token and back.
-    let num = i32::min_value();
-    let token_ptr: AscPtr<AscEnum<EthereumValueKind>> =
-        module.takes_val_returns_ptr("token_from_i32", RuntimeValue::from(num));
-    let num_return = module
-        .module
-        .clone()
-        .invoke_export(
-            "token_to_i32",
-            &[RuntimeValue::from(token_ptr)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into::<i32>()
-        .expect("call did not return i32");
-    assert_eq!(num, num_return);
-}
+//     // Convert numeric to token and back.
+//     let num = i32::min_value();
+//     let token_ptr: AscPtr<AscEnum<EthereumValueKind>> =
+//         module.takes_val_returns_ptr("token_from_i32", RuntimeValue::from(num));
+//     let num_return = module
+//         .module
+//         .clone()
+//         .invoke_export(
+//             "token_to_i32",
+//             &[RuntimeValue::from(token_ptr)],
+//             &mut module,
+//         )
+//         .expect("call failed")
+//         .expect("call returned nothing")
+//         .try_into::<i32>()
+//         .expect("call did not return i32");
+//     assert_eq!(num, num_return);
+// }
 
 #[test]
 fn big_int_to_from_i32() {
