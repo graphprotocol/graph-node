@@ -69,20 +69,12 @@ where
     // Obtain the only operation of the subscription (fail if there is none or more than one)
     let operation = query.get_operation()?;
 
-    // Parse variable values
-    let coerced_variable_values =
-        match coerce_variable_values(&query.schema, operation, &query.variables) {
-            Ok(values) => values,
-            Err(errors) => return Err(SubscriptionError::from(errors)),
-        };
-
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,
         resolver: Arc::new(options.resolver),
         query: query.clone(),
         fields: vec![],
-        variable_values: Arc::new(coerced_variable_values),
         deadline: None,
         max_first: options.max_first,
         block: BLOCK_NUMBER_MAX,
@@ -177,7 +169,6 @@ fn map_source_to_response_stream(
     let resolver = ctx.resolver.clone();
     let query = ctx.query.cheap_clone();
     let selection_set = selection_set.to_owned();
-    let variable_values = ctx.variable_values.clone();
     let max_first = ctx.max_first;
 
     // Create a stream with a single empty event. By chaining this in front
@@ -202,7 +193,6 @@ fn map_source_to_response_stream(
                     resolver.clone(),
                     query.clone(),
                     selection_set.clone(),
-                    variable_values.clone(),
                     event,
                     timeout.clone(),
                     max_first,
@@ -217,7 +207,6 @@ async fn execute_subscription_event(
     resolver: Arc<impl Resolver + 'static>,
     query: Arc<crate::execution::Query>,
     selection_set: q::SelectionSet,
-    variable_values: Arc<HashMap<q::Name, q::Value>>,
     event: StoreEvent,
     timeout: Option<Duration>,
     max_first: u32,
@@ -230,7 +219,6 @@ async fn execute_subscription_event(
         resolver,
         query,
         fields: vec![],
-        variable_values,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
         block: BLOCK_NUMBER_MAX,

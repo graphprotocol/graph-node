@@ -1,5 +1,6 @@
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::data::graphql::ext::TypeExt;
@@ -22,15 +23,17 @@ pub enum ComplexityError {
 pub struct Query {
     pub schema: Arc<Schema>,
     document: q::Document,
-    pub variables: Option<QueryVariables>,
+    pub variables: HashMap<q::Name, q::Value>,
 }
 
 impl Query {
-    pub fn new(query: GraphDataQuery) -> Result<Arc<Self>, QueryExecutionError> {
+    pub fn new(query: GraphDataQuery) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
+        let operation = qast::get_operation(&query.document, None)?;
+        let variables = coerce_variables(&query.schema, operation, &query.variables)?;
         Ok(Arc::new(Self {
             schema: query.schema,
             document: query.document,
-            variables: query.variables,
+            variables,
         }))
     }
 
@@ -257,4 +260,77 @@ impl Query {
                 .and_then(|complexity| total_complexity.checked_add(complexity).ok_or(Overflow))
             })
     }
+}
+
+/// Coerces variable values for an operation.
+pub fn coerce_variables(
+    schema: &Schema,
+    operation: &q::OperationDefinition,
+    variables: &Option<QueryVariables>,
+) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
+    let mut coerced_values = HashMap::new();
+    let mut errors = vec![];
+
+    for variable_def in qast::get_variable_definitions(operation)
+        .into_iter()
+        .flatten()
+    {
+        // Skip variable if it has an invalid type
+        if !sast::is_input_type(&schema.document, &variable_def.var_type) {
+            errors.push(QueryExecutionError::InvalidVariableTypeError(
+                variable_def.position,
+                variable_def.name.to_owned(),
+            ));
+            continue;
+        }
+
+        let value = variables
+            .as_ref()
+            .and_then(|vars| vars.get(&variable_def.name));
+
+        let value = match value.or(variable_def.default_value.as_ref()) {
+            // No variable value provided and no default for non-null type, fail
+            None => {
+                if sast::is_non_null_type(&variable_def.var_type) {
+                    errors.push(QueryExecutionError::MissingVariableError(
+                        variable_def.position,
+                        variable_def.name.to_owned(),
+                    ));
+                };
+                continue;
+            }
+            Some(value) => value,
+        };
+
+        // We have a variable value, attempt to coerce it to the value type
+        // of the variable definition
+        coerced_values.insert(
+            variable_def.name.to_owned(),
+            coerce_variable(schema, variable_def, &value)?,
+        );
+    }
+
+    if errors.is_empty() {
+        Ok(coerced_values)
+    } else {
+        Err(errors)
+    }
+}
+
+fn coerce_variable(
+    schema: &Schema,
+    variable_def: &q::VariableDefinition,
+    value: &q::Value,
+) -> Result<q::Value, Vec<QueryExecutionError>> {
+    use crate::values::coercion::coerce_value;
+
+    let resolver = |name: &q::Name| sast::get_named_type(&schema.document, name);
+
+    coerce_value(&value, &variable_def.var_type, &resolver, &HashMap::new()).ok_or_else(|| {
+        vec![QueryExecutionError::InvalidArgumentError(
+            variable_def.position,
+            variable_def.name.to_owned(),
+            value.clone(),
+        )]
+    })
 }

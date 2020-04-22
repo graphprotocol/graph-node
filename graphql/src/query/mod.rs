@@ -46,13 +46,16 @@ where
         "query_id" => query_id
     ));
 
-    let query_text = if *graph::log::LOG_GQL_TIMING {
-        query
-            .document
-            .format(&Style::default().indent(0))
-            .replace('\n', " ")
+    let (query_text, variables_text) = if *graph::log::LOG_GQL_TIMING {
+        (
+            query
+                .document
+                .format(&Style::default().indent(0))
+                .replace('\n', " "),
+            serde_json::to_string(&query.variables).unwrap_or_default(),
+        )
     } else {
-        "".to_owned()
+        ("".to_owned(), "".to_owned())
     };
 
     let query = match crate::execution::Query::new(query) {
@@ -65,13 +68,6 @@ where
         Ok(op) => op,
         Err(e) => return QueryResult::from(e),
     };
-
-    // Parse variable values
-    let coerced_variable_values =
-        match coerce_variable_values(&query.schema, operation, &query.variables) {
-            Ok(values) => values,
-            Err(errors) => return QueryResult::from(errors),
-        };
 
     let mode = if let q::OperationDefinition::Query(query) = operation {
         if query.directives.iter().any(|dir| dir.name == "verify") {
@@ -89,7 +85,6 @@ where
         resolver: Arc::new(options.resolver),
         query: query.clone(),
         fields: vec![],
-        variable_values: Arc::new(coerced_variable_values),
         deadline: options.deadline,
         max_first: options.max_first,
         block: BLOCK_NUMBER_MAX,
@@ -121,7 +116,7 @@ where
                     query_logger,
                     "Query timing (GraphQL)";
                     "query" => query_text,
-                    "variables" => serde_json::to_string(&query.variables).unwrap_or_default(),
+                    "variables" => variables_text,
                     "query_time_ms" => start.elapsed().as_millis(),
                 );
             }

@@ -660,8 +660,8 @@ fn collect_fields<'a>(
     let selections: Vec<_> = selection_set
         .items
         .iter()
-        .filter(|selection| !qast::skip_selection(selection, ctx.variable_values.deref()))
-        .filter(|selection| qast::include_selection(selection, ctx.variable_values.deref()))
+        .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
+        .filter(|selection| qast::include_selection(selection, &ctx.query.variables))
         .collect();
 
     fn is_reference_field(
@@ -706,8 +706,9 @@ fn collect_fields<'a>(
                 if !visited_fragments.contains(&spread.fragment_name) {
                     visited_fragments.insert(&spread.fragment_name);
 
-                    ctx.query.get_fragment(&spread.fragment_name).map(
-                        |fragment| {
+                    ctx.query
+                        .get_fragment(&spread.fragment_name)
+                        .map(|fragment| {
                             let fragment_grouped_field_set = collect_fields(
                                 ctx,
                                 object_type,
@@ -731,8 +732,7 @@ fn collect_fields<'a>(
                                     }
                                 }
                             }
-                        },
-                    );
+                        });
                 }
             }
 
@@ -740,7 +740,8 @@ fn collect_fields<'a>(
                 let fragment_cond = TypeCondition::from(fragment.type_condition.clone());
                 // Fields for this fragment need to be looked up in the type
                 // mentioned in the condition
-                let fragment_type = fragment_cond.matching_type(&ctx.query.schema.document, object_type);
+                let fragment_type =
+                    fragment_cond.matching_type(&ctx.query.schema.document, object_type);
 
                 // The `None` case here indicates an error where the type condition
                 // mentions a nonexistent type; the overall query execution logic will catch
@@ -790,7 +791,8 @@ fn execute_field(
         ObjectOrInterface::Interface(interface_type) => {
             // This assumes that all implementations of the interface accept
             // the same arguments for this field
-            match ctx.query
+            match ctx
+                .query
                 .schema
                 .types_for_interface
                 .get(&interface_type.name)

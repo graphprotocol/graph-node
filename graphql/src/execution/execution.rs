@@ -4,7 +4,6 @@ use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::ops::Deref;
 use std::time::Instant;
 
 use graph::prelude::*;
@@ -45,9 +44,6 @@ where
 
     /// The current field stack (e.g. allUsers > friends > name).
     pub fields: Vec<q::Field>,
-
-    /// Variable values.
-    pub variable_values: Arc<HashMap<q::Name, q::Value>>,
 
     /// Time at which the query times out.
     pub deadline: Option<Instant>,
@@ -109,7 +105,6 @@ where
             resolver: Arc::new(introspection_resolver),
             query: self.query.as_introspection_query(),
             fields: vec![],
-            variable_values: self.variable_values.clone(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
             block: self.block,
@@ -282,8 +277,8 @@ pub fn collect_fields<'a>(
     let selections: Vec<_> = selection_set
         .items
         .iter()
-        .filter(|selection| !qast::skip_selection(selection, ctx.variable_values.deref()))
-        .filter(|selection| qast::include_selection(selection, ctx.variable_values.deref()))
+        .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
+        .filter(|selection| qast::include_selection(selection, &ctx.query.variables))
         .collect();
 
     for selection in selections {
@@ -824,7 +819,7 @@ pub fn coerce_argument_values<'a>(
         .flatten()
     {
         let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
-        match coercion::coerce_input_value(value, &argument_def, &resolver, &ctx.variable_values) {
+        match coercion::coerce_input_value(value, &argument_def, &resolver, &ctx.query.variables) {
             Ok(Some(value)) => {
                 if argument_def.name == "text".to_string() {
                     coerced_values.insert(
@@ -845,77 +840,4 @@ pub fn coerce_argument_values<'a>(
     } else {
         Err(errors)
     }
-}
-
-/// Coerces variable values for an operation.
-pub fn coerce_variable_values(
-    schema: &Schema,
-    operation: &q::OperationDefinition,
-    variables: &Option<QueryVariables>,
-) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
-    let mut coerced_values = HashMap::new();
-    let mut errors = vec![];
-
-    for variable_def in qast::get_variable_definitions(operation)
-        .into_iter()
-        .flatten()
-    {
-        // Skip variable if it has an invalid type
-        if !sast::is_input_type(&schema.document, &variable_def.var_type) {
-            errors.push(QueryExecutionError::InvalidVariableTypeError(
-                variable_def.position,
-                variable_def.name.to_owned(),
-            ));
-            continue;
-        }
-
-        let value = variables
-            .as_ref()
-            .and_then(|vars| vars.get(&variable_def.name));
-
-        let value = match value.or(variable_def.default_value.as_ref()) {
-            // No variable value provided and no default for non-null type, fail
-            None => {
-                if sast::is_non_null_type(&variable_def.var_type) {
-                    errors.push(QueryExecutionError::MissingVariableError(
-                        variable_def.position,
-                        variable_def.name.to_owned(),
-                    ));
-                };
-                continue;
-            }
-            Some(value) => value,
-        };
-
-        // We have a variable value, attempt to coerce it to the value type
-        // of the variable definition
-        coerced_values.insert(
-            variable_def.name.to_owned(),
-            coerce_variable_value(schema, variable_def, &value)?,
-        );
-    }
-
-    if errors.is_empty() {
-        Ok(coerced_values)
-    } else {
-        Err(errors)
-    }
-}
-
-fn coerce_variable_value(
-    schema: &Schema,
-    variable_def: &q::VariableDefinition,
-    value: &q::Value,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
-    use crate::values::coercion::coerce_value;
-
-    let resolver = |name: &Name| sast::get_named_type(&schema.document, name);
-
-    coerce_value(&value, &variable_def.var_type, &resolver, &HashMap::new()).ok_or_else(|| {
-        vec![QueryExecutionError::InvalidArgumentError(
-            variable_def.position,
-            variable_def.name.to_owned(),
-            value.clone(),
-        )]
-    })
 }
