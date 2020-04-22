@@ -1,4 +1,4 @@
-use graph::prelude::*;
+use graph::prelude::{Query as GraphDataQuery, *};
 use graphql_parser::{query as q, Style};
 use std::time::Instant;
 use uuid::Uuid;
@@ -38,7 +38,7 @@ where
 }
 
 /// Executes a query and returns a result.
-pub fn execute_query<R>(query: Query, options: QueryExecutionOptions<R>) -> QueryResult
+pub fn execute_query<R>(query: GraphDataQuery, options: QueryExecutionOptions<R>) -> QueryResult
 where
     R: Resolver,
 {
@@ -47,6 +47,8 @@ where
         "subgraph_id" => (*query.schema.id).clone(),
         "query_id" => query_id
     ));
+
+    let query = crate::execution::Query::new(query);
 
     // Obtain the only operation of the query (fail if there is none or more than one)
     let operation = match qast::get_operation(&query.document, None) {
@@ -96,7 +98,7 @@ where
                 return QueryResult::from(validation_errors);
             }
 
-            let complexity = ctx.root_query_complexity(root_type, selection_set, options.max_depth);
+            let complexity = query.complexity(selection_set, options.max_depth);
 
             let start = Instant::now();
             let result =

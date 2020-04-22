@@ -92,7 +92,7 @@ where
 
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
         let result = execute_subscription(
-            &subscription,
+            subscription,
             SubscriptionExecutionOptions {
                 logger: self.logger.clone(),
                 resolver: StoreResolver::new(&self.logger, self.store.clone()),

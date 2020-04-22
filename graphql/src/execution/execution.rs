@@ -64,15 +64,8 @@ where
     pub mode: ExecutionMode,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum ComplexityError {
-    TooDeep,
-    Overflow,
-    Invalid,
-}
-
 // Helpers to look for types and fields on both the introspection and regular schemas.
-fn get_named_type(schema: &s::Document, name: &Name) -> Option<s::TypeDefinition> {
+pub(crate) fn get_named_type(schema: &s::Document, name: &Name) -> Option<s::TypeDefinition> {
     if name.starts_with("__") {
         sast::get_named_type(&INTROSPECTION_DOCUMENT, name).cloned()
     } else {
@@ -80,7 +73,10 @@ fn get_named_type(schema: &s::Document, name: &Name) -> Option<s::TypeDefinition
     }
 }
 
-fn get_field<'a>(object_type: impl Into<ObjectOrInterface<'a>>, name: &Name) -> Option<s::Field> {
+pub(crate) fn get_field<'a>(
+    object_type: impl Into<ObjectOrInterface<'a>>,
+    name: &Name,
+) -> Option<s::Field> {
     if name == "__schema" || name == "__type" {
         let object_type = sast::get_root_query_type(&INTROSPECTION_DOCUMENT).unwrap();
         sast::get_field(object_type, name).cloned()
@@ -124,113 +120,6 @@ where
             block: self.block,
             mode: ExecutionMode::Prefetch,
         }
-    }
-
-    /// See https://developer.github.com/v4/guides/resource-limitations/.
-    ///
-    /// If the query is invalid, returns `Ok(0)` so that execution proceeds and
-    /// gives a proper error.
-    pub(crate) fn root_query_complexity(
-        &self,
-        root_type: &s::TypeDefinition,
-        root_selection_set: &q::SelectionSet,
-        max_depth: u8,
-    ) -> Result<u64, QueryExecutionError> {
-        match self.query_complexity(root_type, root_selection_set, max_depth, 0) {
-            Ok(complexity) => Ok(complexity),
-            Err(ComplexityError::Invalid) => Ok(0),
-            Err(ComplexityError::TooDeep) => Err(QueryExecutionError::TooDeep(max_depth)),
-            Err(ComplexityError::Overflow) => {
-                Err(QueryExecutionError::TooComplex(u64::max_value(), 0))
-            }
-        }
-    }
-
-    fn query_complexity(
-        &self,
-        ty: &s::TypeDefinition,
-        selection_set: &q::SelectionSet,
-        max_depth: u8,
-        depth: u8,
-    ) -> Result<u64, ComplexityError> {
-        use ComplexityError::*;
-
-        if depth >= max_depth {
-            return Err(TooDeep);
-        }
-
-        selection_set
-            .items
-            .iter()
-            .try_fold(0, |total_complexity, selection| {
-                let schema = &self.schema.document;
-                match selection {
-                    q::Selection::Field(field) => {
-                        // Empty selection sets are the base case.
-                        if field.selection_set.items.is_empty() {
-                            return Ok(total_complexity);
-                        }
-
-                        // Get field type to determine if this is a collection query.
-                        let s_field = match ty {
-                            s::TypeDefinition::Object(t) => get_field(t, &field.name),
-                            s::TypeDefinition::Interface(t) => get_field(t, &field.name),
-
-                            // `Scalar` and `Enum` cannot have selection sets.
-                            // `InputObject` can't appear in a selection.
-                            // `Union` is not yet supported.
-                            s::TypeDefinition::Scalar(_)
-                            | s::TypeDefinition::Enum(_)
-                            | s::TypeDefinition::InputObject(_)
-                            | s::TypeDefinition::Union(_) => None,
-                        }
-                        .ok_or(Invalid)?;
-
-                        let field_complexity = self.query_complexity(
-                            &get_named_type(schema, s_field.field_type.get_base_type())
-                                .ok_or(Invalid)?,
-                            &field.selection_set,
-                            max_depth,
-                            depth + 1,
-                        )?;
-
-                        // Non-collection queries pass through.
-                        if !sast::is_list_or_non_null_list_field(&s_field) {
-                            return Ok(total_complexity + field_complexity);
-                        }
-
-                        // For collection queries, check the `first` argument.
-                        let max_entities = qast::get_argument_value(&field.arguments, "first")
-                            .and_then(|arg| match arg {
-                                q::Value::Int(n) => Some(n.as_i64()? as u64),
-                                _ => None,
-                            })
-                            .unwrap_or(100);
-                        max_entities
-                            .checked_add(
-                                max_entities.checked_mul(field_complexity).ok_or(Overflow)?,
-                            )
-                            .ok_or(Overflow)
-                    }
-                    q::Selection::FragmentSpread(fragment) => {
-                        let def = qast::get_fragment(&self.document, &fragment.fragment_name)
-                            .ok_or(Invalid)?;
-                        let q::TypeCondition::On(type_name) = &def.type_condition;
-                        let ty = get_named_type(schema, &type_name).ok_or(Invalid)?;
-                        self.query_complexity(&ty, &def.selection_set, max_depth, depth + 1)
-                    }
-                    q::Selection::InlineFragment(fragment) => {
-                        let ty = match &fragment.type_condition {
-                            Some(q::TypeCondition::On(type_name)) => {
-                                get_named_type(schema, &type_name).ok_or(Invalid)?
-                            }
-                            _ => ty.clone(),
-                        };
-                        self.query_complexity(&ty, &fragment.selection_set, max_depth, depth + 1)
-                    }
-                }
-                .and_then(|complexity| total_complexity.checked_add(complexity).ok_or(Overflow))
-            })
     }
 
     // Checks for invalid selections.

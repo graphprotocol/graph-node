@@ -53,31 +53,30 @@ where
 }
 
 pub fn execute_subscription<R>(
-    subscription: &Subscription,
+    subscription: Subscription,
     options: SubscriptionExecutionOptions<R>,
 ) -> Result<SubscriptionResult, SubscriptionError>
 where
     R: Resolver + 'static,
 {
+    let query = crate::execution::Query::new(subscription.query);
+
     // Obtain the only operation of the subscription (fail if there is none or more than one)
-    let operation = qast::get_operation(&subscription.query.document, None)?;
+    let operation = qast::get_operation(&query.document, None)?;
 
     // Parse variable values
-    let coerced_variable_values = match coerce_variable_values(
-        &subscription.query.schema,
-        operation,
-        &subscription.query.variables,
-    ) {
-        Ok(values) => values,
-        Err(errors) => return Err(SubscriptionError::from(errors)),
-    };
+    let coerced_variable_values =
+        match coerce_variable_values(&query.schema, operation, &query.variables) {
+            Ok(values) => values,
+            Err(errors) => return Err(SubscriptionError::from(errors)),
+        };
 
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,
         resolver: Arc::new(options.resolver),
-        schema: subscription.query.schema.clone(),
-        document: subscription.query.document.clone(),
+        schema: query.schema.clone(),
+        document: query.document.clone(),
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
         deadline: None,
@@ -96,8 +95,8 @@ where
                 return Err(SubscriptionError::from(validation_errors));
             }
 
-            let complexity = ctx
-                .root_query_complexity(root_type, selection_set, options.max_depth)
+            let complexity = query
+                .complexity(selection_set, options.max_depth)
                 .map_err(|e| vec![e])?;
 
             info!(
