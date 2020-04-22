@@ -59,7 +59,7 @@ pub fn execute_subscription<R>(
 where
     R: Resolver + 'static,
 {
-    let query = crate::execution::Query::new(subscription.query);
+    let query = crate::execution::Query::new(subscription.query)?;
 
     // Obtain the only operation of the subscription (fail if there is none or more than one)
     let operation = qast::get_operation(&query.document, None)?;

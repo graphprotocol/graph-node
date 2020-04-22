@@ -47,7 +47,10 @@ where
         "query_id" => query_id
     ));
 
-    let query = crate::execution::Query::new(query);
+    let query = match crate::execution::Query::new(query) {
+        Ok(query) => query,
+        Err(e) => return QueryResult::from(e),
+    };
 
     // Obtain the only operation of the query (fail if there is none or more than one)
     let operation = match qast::get_operation(&query.document, None) {

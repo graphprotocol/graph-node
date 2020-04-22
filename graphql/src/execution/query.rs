@@ -28,8 +28,8 @@ impl Deref for Query {
 }
 
 impl Query {
-    pub fn new(query: GraphDataQuery) -> Self {
-        Self(query)
+    pub fn new(query: GraphDataQuery) -> Result<Self, QueryExecutionError> {
+        Ok(Self(query))
     }
 
     /// See https://developer.github.com/v4/guides/resource-limitations/.
