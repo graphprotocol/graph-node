@@ -120,14 +120,10 @@ impl Query {
     ///
     /// If the query is invalid, returns `Ok(0)` so that execution proceeds and
     /// gives a proper error.
-    pub fn complexity(
-        &self,
-        selection_set: &q::SelectionSet,
-        max_depth: u8,
-    ) -> Result<u64, QueryExecutionError> {
+    pub fn complexity(&self, max_depth: u8) -> Result<u64, QueryExecutionError> {
         let root_type = sast::get_root_query_type_def(&self.schema.document).unwrap();
 
-        match self.complexity_inner(root_type, selection_set, max_depth, 0) {
+        match self.complexity_inner(root_type, &self.selection_set, max_depth, 0) {
             Ok(complexity) => Ok(complexity),
             Err(ComplexityError::Invalid) => Ok(0),
             Err(ComplexityError::TooDeep) => Err(QueryExecutionError::TooDeep(max_depth)),
@@ -137,10 +133,10 @@ impl Query {
         }
     }
 
-    pub fn validate_fields(&self, selection_set: &q::SelectionSet) -> Vec<QueryExecutionError> {
+    pub fn validate_fields(&self) -> Vec<QueryExecutionError> {
         let root_type = sast::get_root_query_type_def(&self.schema.document).unwrap();
 
-        self.validate_fields_inner(&"Query".to_owned(), root_type, selection_set)
+        self.validate_fields_inner(&"Query".to_owned(), root_type, &self.selection_set)
     }
 
     // Checks for invalid selections.

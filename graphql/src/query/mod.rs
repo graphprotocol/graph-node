@@ -88,12 +88,12 @@ where
     }
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
-    let validation_errors = query.validate_fields(&query.selection_set);
+    let validation_errors = query.validate_fields();
     if !validation_errors.is_empty() {
         return QueryResult::from(validation_errors);
     }
 
-    let complexity = query.complexity(&query.selection_set, options.max_depth);
+    let complexity = query.complexity(options.max_depth);
 
     let start = Instant::now();
     let result = match (complexity, options.max_complexity) {

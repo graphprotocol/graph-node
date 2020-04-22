@@ -84,14 +84,12 @@ where
         )));
     }
 
-    let validation_errors = query.validate_fields(&query.selection_set);
+    let validation_errors = query.validate_fields();
     if !validation_errors.is_empty() {
         return Err(SubscriptionError::from(validation_errors));
     }
 
-    let complexity = query
-        .complexity(&query.selection_set, options.max_depth)
-        .map_err(|e| vec![e])?;
+    let complexity = query.complexity(options.max_depth).map_err(|e| vec![e])?;
 
     info!(
         ctx.logger,
