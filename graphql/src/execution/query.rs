@@ -1,9 +1,10 @@
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
-use std::ops::Deref;
+use std::sync::Arc;
 
 use graph::data::graphql::ext::TypeExt;
-use graph::data::query::Query as GraphDataQuery;
+use graph::data::query::{Query as GraphDataQuery, QueryVariables};
+use graph::data::schema::Schema;
 use graph::prelude::QueryExecutionError;
 
 use crate::execution::{get_field, get_named_type};
@@ -17,19 +18,19 @@ pub enum ComplexityError {
     Invalid,
 }
 
-pub struct Query(GraphDataQuery);
-
-impl Deref for Query {
-    type Target = graph::data::query::Query;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+pub struct Query {
+    pub schema: Arc<Schema>,
+    pub document: q::Document,
+    pub variables: Option<QueryVariables>,
 }
 
 impl Query {
     pub fn new(query: GraphDataQuery) -> Result<Self, QueryExecutionError> {
-        Ok(Self(query))
+        Ok(Self {
+            schema: query.schema,
+            document: query.document,
+            variables: query.variables,
+        })
     }
 
     /// See https://developer.github.com/v4/guides/resource-limitations/.
