@@ -27,12 +27,21 @@ enum Kind {
     Either,
 }
 
+/// A GraphQL query that has been preprocessed and checked and is ready
+/// for execution. Checking includes validating all query fields and, if
+/// desired, checking the query's complexity
 pub struct Query {
+    /// The schema against which to execute the query
     pub schema: Arc<Schema>,
+    /// The variables for the query, coerced into proper values
     pub variables: HashMap<q::Name, q::Value>,
+    /// The root selection set of the query
     pub selection_set: q::SelectionSet,
     fragments: HashMap<String, q::FragmentDefinition>,
     kind: Kind,
+    /// This is `true` if the query should run in both prefetch and slow
+    /// execution modes, and the results of the two executions should be
+    /// checked against each other
     pub verify: bool,
 }
 
@@ -98,6 +107,7 @@ impl Query {
         Ok(query)
     }
 
+    /// Return this query, but use the introspection schema as its schema
     pub fn as_introspection_query(&self) -> Arc<Self> {
         let introspection_schema = introspection_schema(self.schema.id.clone());
 
@@ -115,6 +125,8 @@ impl Query {
         self.fragments.get(name)
     }
 
+    /// Return `true` if this is a query, and not a subscription or
+    /// mutation
     pub fn is_query(&self) -> bool {
         match self.kind {
             Kind::Query | Kind::Either => true,
@@ -122,6 +134,7 @@ impl Query {
         }
     }
 
+    /// Return `true` if this is a subscription, not a query or a mutation
     pub fn is_subscription(&self) -> bool {
         match self.kind {
             Kind::Subscription => true,
