@@ -24,7 +24,6 @@ pub enum ComplexityError {
 enum Kind {
     Query,
     Subscription,
-    Either,
 }
 
 /// A GraphQL query that has been preprocessed and checked and is ready
@@ -81,7 +80,8 @@ impl Query {
             q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
                 (Kind::Query, selection_set)
             }
-            q::OperationDefinition::SelectionSet(selection_set) => (Kind::Either, selection_set),
+            // Queries can be run by just sending a selction set
+            q::OperationDefinition::SelectionSet(selection_set) => (Kind::Query, selection_set),
             q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
                 (Kind::Subscription, selection_set)
             }
@@ -129,7 +129,7 @@ impl Query {
     /// mutation
     pub fn is_query(&self) -> bool {
         match self.kind {
-            Kind::Query | Kind::Either => true,
+            Kind::Query => true,
             Kind::Subscription => false,
         }
     }
@@ -138,7 +138,7 @@ impl Query {
     pub fn is_subscription(&self) -> bool {
         match self.kind {
             Kind::Subscription => true,
-            Kind::Query | Kind::Either => false,
+            Kind::Query => false,
         }
     }
 
