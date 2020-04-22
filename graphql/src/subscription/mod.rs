@@ -66,9 +66,6 @@ where
 
     let query = crate::execution::Query::new(subscription.query)?;
 
-    // Obtain the only operation of the subscription (fail if there is none or more than one)
-    let operation = query.get_operation()?;
-
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,
@@ -81,46 +78,42 @@ where
         mode: ExecutionMode::Prefetch,
     };
 
-    match operation {
-        // Execute top-level `subscription { ... }` expressions
-        q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
-            let validation_errors = query.validate_fields(selection_set);
-            if !validation_errors.is_empty() {
-                return Err(SubscriptionError::from(validation_errors));
-            }
-
-            let complexity = query
-                .complexity(selection_set, options.max_depth)
-                .map_err(|e| vec![e])?;
-
-            info!(
-                ctx.logger,
-                "Execute subscription";
-                "query" => query_text,
-                "complexity" => complexity,
-            );
-
-            match options.max_complexity {
-                Some(max_complexity) if complexity > max_complexity => {
-                    Err(vec![QueryExecutionError::TooComplex(complexity, max_complexity)].into())
-                }
-                _ => {
-                    let source_stream = create_source_event_stream(&ctx, selection_set)?;
-                    let response_stream = map_source_to_response_stream(
-                        &ctx,
-                        selection_set,
-                        source_stream,
-                        options.timeout,
-                    );
-                    Ok(response_stream)
-                }
-            }
-        }
-
-        // Everything else (queries, mutations) is unsupported
-        _ => Err(SubscriptionError::from(QueryExecutionError::NotSupported(
+    if !query.is_subscription() {
+        return Err(SubscriptionError::from(QueryExecutionError::NotSupported(
             "Only subscriptions are supported".to_string(),
-        ))),
+        )));
+    }
+
+    let validation_errors = query.validate_fields(&query.selection_set);
+    if !validation_errors.is_empty() {
+        return Err(SubscriptionError::from(validation_errors));
+    }
+
+    let complexity = query
+        .complexity(&query.selection_set, options.max_depth)
+        .map_err(|e| vec![e])?;
+
+    info!(
+        ctx.logger,
+        "Execute subscription";
+        "query" => query_text,
+        "complexity" => complexity,
+    );
+
+    match options.max_complexity {
+        Some(max_complexity) if complexity > max_complexity => {
+            Err(vec![QueryExecutionError::TooComplex(complexity, max_complexity)].into())
+        }
+        _ => {
+            let source_stream = create_source_event_stream(&ctx, &query.selection_set)?;
+            let response_stream = map_source_to_response_stream(
+                &ctx,
+                &query.selection_set,
+                source_stream,
+                options.timeout,
+            );
+            Ok(response_stream)
+        }
     }
 }
 

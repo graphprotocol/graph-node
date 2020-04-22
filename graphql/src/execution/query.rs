@@ -20,20 +20,68 @@ pub enum ComplexityError {
     Invalid,
 }
 
+#[derive(Copy, Clone)]
+enum Kind {
+    Query,
+    Subscription,
+    Either,
+}
+
 pub struct Query {
     pub schema: Arc<Schema>,
-    document: q::Document,
     pub variables: HashMap<q::Name, q::Value>,
+    pub selection_set: q::SelectionSet,
+    fragments: HashMap<String, q::FragmentDefinition>,
+    kind: Kind,
+    pub verify: bool,
 }
 
 impl Query {
     pub fn new(query: GraphDataQuery) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        let operation = qast::get_operation(&query.document, None)?;
-        let variables = coerce_variables(&query.schema, operation, &query.variables)?;
+        let mut operation = None;
+        let mut fragments = HashMap::new();
+        for defn in query.document.definitions.into_iter() {
+            match defn {
+                q::Definition::Operation(op) => match operation {
+                    None => operation = Some(op),
+                    Some(_) => return Err(vec![QueryExecutionError::OperationNameRequired]),
+                },
+                q::Definition::Fragment(frag) => {
+                    fragments.insert(frag.name.clone(), frag);
+                }
+            }
+        }
+        let operation = operation.ok_or(QueryExecutionError::OperationNameRequired)?;
+
+        let verify = if let q::OperationDefinition::Query(query) = &operation {
+            query.directives.iter().any(|dir| dir.name == "verify")
+        } else {
+            false
+        };
+
+        let variables = coerce_variables(&query.schema, &operation, &query.variables)?;
+        let (kind, selection_set) = match operation {
+            q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
+                (Kind::Query, selection_set)
+            }
+            q::OperationDefinition::SelectionSet(selection_set) => (Kind::Either, selection_set),
+            q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
+                (Kind::Subscription, selection_set)
+            }
+            q::OperationDefinition::Mutation(_) => {
+                return Err(vec![QueryExecutionError::NotSupported(
+                    "Mutations are not supported".to_owned(),
+                )])
+            }
+        };
+
         Ok(Arc::new(Self {
             schema: query.schema,
-            document: query.document,
             variables,
+            fragments,
+            selection_set,
+            kind,
+            verify,
         }))
     }
 
@@ -42,17 +90,30 @@ impl Query {
 
         Arc::new(Self {
             schema: Arc::new(introspection_schema),
-            document: self.document.clone(),
             variables: self.variables.clone(),
+            fragments: self.fragments.clone(),
+            selection_set: self.selection_set.clone(),
+            kind: self.kind,
+            verify: self.verify,
         })
     }
 
     pub fn get_fragment(&self, name: &q::Name) -> Option<&q::FragmentDefinition> {
-        qast::get_fragment(&self.document, name)
+        self.fragments.get(name)
     }
 
-    pub fn get_operation(&self) -> Result<&q::OperationDefinition, QueryExecutionError> {
-        qast::get_operation(&self.document, None)
+    pub fn is_query(&self) -> bool {
+        match self.kind {
+            Kind::Query | Kind::Either => true,
+            Kind::Subscription => false,
+        }
+    }
+
+    pub fn is_subscription(&self) -> bool {
+        match self.kind {
+            Kind::Subscription => true,
+            Kind::Query | Kind::Either => false,
+        }
     }
 
     /// See https://developer.github.com/v4/guides/resource-limitations/.
@@ -132,7 +193,7 @@ impl Query {
                         }
                     }
                     q::Selection::FragmentSpread(fragment) => {
-                        match qast::get_fragment(&self.document, &fragment.fragment_name) {
+                        match self.get_fragment(&fragment.fragment_name) {
                             Some(frag) => {
                                 let q::TypeCondition::On(type_name) = &frag.type_condition;
                                 match get_named_type(schema, type_name) {
@@ -241,8 +302,7 @@ impl Query {
                             .ok_or(Overflow)
                     }
                     q::Selection::FragmentSpread(fragment) => {
-                        let def = qast::get_fragment(&self.document, &fragment.fragment_name)
-                            .ok_or(Invalid)?;
+                        let def = self.get_fragment(&fragment.fragment_name).ok_or(Invalid)?;
                         let q::TypeCondition::On(type_name) = &def.type_condition;
                         let ty = get_named_type(schema, &type_name).ok_or(Invalid)?;
                         self.complexity_inner(&ty, &def.selection_set, max_depth, depth + 1)

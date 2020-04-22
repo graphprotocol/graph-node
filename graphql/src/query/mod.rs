@@ -1,5 +1,5 @@
 use graph::prelude::{Query as GraphDataQuery, *};
-use graphql_parser::{query as q, Style};
+use graphql_parser::Style;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -63,18 +63,8 @@ where
         Err(e) => return QueryResult::from(e),
     };
 
-    // Obtain the only operation of the query (fail if there is none or more than one)
-    let operation = match query.get_operation() {
-        Ok(op) => op,
-        Err(e) => return QueryResult::from(e),
-    };
-
-    let mode = if let q::OperationDefinition::Query(query) = operation {
-        if query.directives.iter().any(|dir| dir.name == "verify") {
-            ExecutionMode::Verify
-        } else {
-            ExecutionMode::Prefetch
-        }
+    let mode = if query.verify {
+        ExecutionMode::Verify
     } else {
         ExecutionMode::Prefetch
     };
@@ -91,42 +81,40 @@ where
         mode,
     };
 
-    let result = match operation {
-        // Execute top-level `query { ... }` and `{ ... }` expressions.
-        q::OperationDefinition::Query(q::Query { selection_set, .. })
-        | q::OperationDefinition::SelectionSet(selection_set) => {
-            let validation_errors = query.validate_fields(selection_set);
-            if !validation_errors.is_empty() {
-                return QueryResult::from(validation_errors);
-            }
-
-            let complexity = query.complexity(selection_set, options.max_depth);
-
-            let start = Instant::now();
-            let result =
-                match (complexity, options.max_complexity) {
-                    (Err(e), _) => Err(vec![e]),
-                    (Ok(complexity), Some(max_complexity)) if complexity > max_complexity => Err(
-                        vec![QueryExecutionError::TooComplex(complexity, max_complexity)],
-                    ),
-                    (Ok(_), _) => execute_root_selection_set(&ctx, selection_set),
-                };
-            if *graph::log::LOG_GQL_TIMING {
-                info!(
-                    query_logger,
-                    "Query timing (GraphQL)";
-                    "query" => query_text,
-                    "variables" => variables_text,
-                    "query_time_ms" => start.elapsed().as_millis(),
-                );
-            }
-            result
-        }
-        // Everything else (e.g. mutations) is unsupported
-        _ => Err(vec![QueryExecutionError::NotSupported(
+    if !query.is_query() {
+        return QueryResult::from(vec![QueryExecutionError::NotSupported(
             "Only queries are supported".to_string(),
-        )]),
+        )]);
+    }
+
+    // Execute top-level `query { ... }` and `{ ... }` expressions.
+    let validation_errors = query.validate_fields(&query.selection_set);
+    if !validation_errors.is_empty() {
+        return QueryResult::from(validation_errors);
+    }
+
+    let complexity = query.complexity(&query.selection_set, options.max_depth);
+
+    let start = Instant::now();
+    let result = match (complexity, options.max_complexity) {
+        (Err(e), _) => Err(vec![e]),
+        (Ok(complexity), Some(max_complexity)) if complexity > max_complexity => {
+            Err(vec![QueryExecutionError::TooComplex(
+                complexity,
+                max_complexity,
+            )])
+        }
+        (Ok(_), _) => execute_root_selection_set(&ctx, &query.selection_set),
     };
+    if *graph::log::LOG_GQL_TIMING {
+        info!(
+            query_logger,
+            "Query timing (GraphQL)";
+            "query" => query_text,
+            "variables" => variables_text,
+            "query_time_ms" => start.elapsed().as_millis(),
+        );
+    }
 
     match result {
         Ok(value) => QueryResult::new(Some(value)),
