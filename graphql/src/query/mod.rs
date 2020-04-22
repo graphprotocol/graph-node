@@ -99,7 +99,6 @@ where
     }
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
-    query.validate_fields()?;
 
     let complexity = query.complexity(options.max_depth);
 

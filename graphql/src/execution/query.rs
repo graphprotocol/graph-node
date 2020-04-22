@@ -37,6 +37,8 @@ pub struct Query {
 }
 
 impl Query {
+    /// Process the raw GraphQL query `query` and prepare for executing it.
+    /// The returned `Query` has already been validated
     pub fn new(query: GraphDataQuery) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
         let mut operation = None;
         let mut fragments = HashMap::new();
@@ -75,14 +77,17 @@ impl Query {
             }
         };
 
-        Ok(Arc::new(Self {
+        let query = Arc::new(Self {
             schema: query.schema,
             variables,
             fragments,
             selection_set,
             kind,
             verify,
-        }))
+        });
+
+        query.validate_fields()?;
+        Ok(query)
     }
 
     pub fn as_introspection_query(&self) -> Arc<Self> {
@@ -133,7 +138,7 @@ impl Query {
         }
     }
 
-    pub fn validate_fields(&self) -> Result<(), Vec<QueryExecutionError>> {
+    fn validate_fields(&self) -> Result<(), Vec<QueryExecutionError>> {
         let root_type = sast::get_root_query_type_def(&self.schema.document).unwrap();
 
         let errors =
