@@ -113,7 +113,7 @@ where
             logger: self.logger.clone(),
             resolver: Arc::new(introspection_resolver),
             schema: Arc::new(introspection_schema),
-            query: self.query.clone(),
+            query: self.query.as_introspection_query(),
             fields: vec![],
             variable_values: self.variable_values.clone(),
             deadline: self.deadline,

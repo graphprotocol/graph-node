@@ -8,6 +8,7 @@ use graph::data::schema::Schema;
 use graph::prelude::QueryExecutionError;
 
 use crate::execution::{get_field, get_named_type};
+use crate::introspection::introspection_schema;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 
@@ -31,6 +32,16 @@ impl Query {
             document: query.document,
             variables: query.variables,
         }))
+    }
+
+    pub fn as_introspection_query(&self) -> Arc<Self> {
+        let introspection_schema = introspection_schema(self.schema.id.clone());
+
+        Arc::new(Self {
+            schema: Arc::new(introspection_schema),
+            document: self.document.clone(),
+            variables: self.variables.clone(),
+        })
     }
 
     /// See https://developer.github.com/v4/guides/resource-limitations/.
