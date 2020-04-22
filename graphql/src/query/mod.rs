@@ -4,7 +4,6 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::execution::*;
-use crate::query::ast as qast;
 
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
@@ -47,13 +46,22 @@ where
         "query_id" => query_id
     ));
 
+    let query_text = if *graph::log::LOG_GQL_TIMING {
+        query
+            .document
+            .format(&Style::default().indent(0))
+            .replace('\n', " ")
+    } else {
+        "".to_owned()
+    };
+
     let query = match crate::execution::Query::new(query) {
         Ok(query) => query,
         Err(e) => return QueryResult::from(e),
     };
 
     // Obtain the only operation of the query (fail if there is none or more than one)
-    let operation = match qast::get_operation(&query.document, None) {
+    let operation = match query.get_operation() {
         Ok(op) => op,
         Err(e) => return QueryResult::from(e),
     };
@@ -112,7 +120,7 @@ where
                 info!(
                     query_logger,
                     "Query timing (GraphQL)";
-                    "query" => query.document.format(&Style::default().indent(0)).replace('\n', " "),
+                    "query" => query_text,
                     "variables" => serde_json::to_string(&query.variables).unwrap_or_default(),
                     "query_time_ms" => start.elapsed().as_millis(),
                 );

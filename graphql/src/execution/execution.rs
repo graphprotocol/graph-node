@@ -306,7 +306,8 @@ pub fn collect_fields<'a>(
 
                     // Resolve the fragment using its name and, if it applies, collect
                     // fields for the fragment and group them
-                    qast::get_fragment(&ctx.query.document, &spread.fragment_name)
+                    ctx.query
+                        .get_fragment(&spread.fragment_name)
                         .and_then(|fragment| {
                             // We have a fragment, only pass it on if it applies to the
                             // current object type

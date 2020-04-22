@@ -7,7 +7,6 @@ use tokio::sync::Semaphore;
 use graph::prelude::*;
 
 use crate::execution::*;
-use crate::query::ast as qast;
 use crate::schema::ast as sast;
 
 use lazy_static::lazy_static;
@@ -59,10 +58,16 @@ pub fn execute_subscription<R>(
 where
     R: Resolver + 'static,
 {
+    let query_text = subscription
+        .query
+        .document
+        .format(&Style::default().indent(0))
+        .replace('\n', " ");
+
     let query = crate::execution::Query::new(subscription.query)?;
 
     // Obtain the only operation of the subscription (fail if there is none or more than one)
-    let operation = qast::get_operation(&query.document, None)?;
+    let operation = query.get_operation()?;
 
     // Parse variable values
     let coerced_variable_values =
@@ -99,7 +104,7 @@ where
             info!(
                 ctx.logger,
                 "Execute subscription";
-                "query" => ctx.query.document.format(&Style::default().indent(0)).replace('\n', " "),
+                "query" => query_text,
                 "complexity" => complexity,
             );
 

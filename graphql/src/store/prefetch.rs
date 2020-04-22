@@ -706,7 +706,7 @@ fn collect_fields<'a>(
                 if !visited_fragments.contains(&spread.fragment_name) {
                     visited_fragments.insert(&spread.fragment_name);
 
-                    qast::get_fragment(&ctx.query.document, &spread.fragment_name).map(
+                    ctx.query.get_fragment(&spread.fragment_name).map(
                         |fragment| {
                             let fragment_grouped_field_set = collect_fields(
                                 ctx,

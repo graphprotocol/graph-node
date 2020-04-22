@@ -21,7 +21,7 @@ pub enum ComplexityError {
 
 pub struct Query {
     pub schema: Arc<Schema>,
-    pub document: q::Document,
+    document: q::Document,
     pub variables: Option<QueryVariables>,
 }
 
@@ -42,6 +42,14 @@ impl Query {
             document: self.document.clone(),
             variables: self.variables.clone(),
         })
+    }
+
+    pub fn get_fragment(&self, name: &q::Name) -> Option<&q::FragmentDefinition> {
+        qast::get_fragment(&self.document, name)
+    }
+
+    pub fn get_operation(&self) -> Result<&q::OperationDefinition, QueryExecutionError> {
+        qast::get_operation(&self.document, None)
     }
 
     /// See https://developer.github.com/v4/guides/resource-limitations/.
