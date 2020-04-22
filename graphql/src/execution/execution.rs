@@ -9,7 +9,9 @@ use std::time::Instant;
 
 use graph::prelude::*;
 
-use crate::introspection::INTROSPECTION_DOCUMENT;
+use crate::introspection::{
+    is_introspection_field, INTROSPECTION_DOCUMENT, INTROSPECTION_QUERY_TYPE,
+};
 use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::query::ext::FieldExt as _;
@@ -144,15 +146,13 @@ pub fn execute_root_selection_set(
         items: Vec::new(),
     };
 
-    let ictx = ctx.as_introspection_context();
-    let introspection_query_type = sast::get_root_query_type(&ictx.schema.document).unwrap();
     for (_, fields) in collect_fields(ctx, query_type, selection_set, None) {
         let name = fields[0].name.clone();
         let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
         // See if this is an introspection or data field. We don't worry about
         // nonexistant fields; those will cause an error later when we execute
         // the data_set SelectionSet
-        if sast::get_field(introspection_query_type, &name).is_some() {
+        if is_introspection_field(&name) {
             intro_set.items.extend(selections)
         } else {
             data_set.items.extend(selections)
@@ -185,10 +185,12 @@ pub fn execute_root_selection_set(
 
     // Resolve introspection fields, if there are any
     if !intro_set.items.is_empty() {
+        let ictx = ctx.as_introspection_context();
+
         values.extend(execute_selection_set_to_map(
             &ictx,
             &intro_set,
-            introspection_query_type,
+            &*INTROSPECTION_QUERY_TYPE,
             &None,
         )?);
     }

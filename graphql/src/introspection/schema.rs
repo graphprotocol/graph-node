@@ -1,8 +1,12 @@
-use graphql_parser::{self, schema::Document};
+use graphql_parser::{self, schema::Document, schema::Name, schema::ObjectType};
 
+use graph::data::graphql::ext::ObjectTypeExt;
 use graph::data::schema::Schema;
 use graph::data::subgraph::SubgraphDeploymentId;
+
 use lazy_static::lazy_static;
+
+use crate::schema::ast as sast;
 
 const INTROSPECTION_SCHEMA: &str = "
 scalar Boolean
@@ -113,8 +117,14 @@ enum __DirectiveLocation {
 lazy_static! {
     pub static ref INTROSPECTION_DOCUMENT: Document =
         graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap();
+    pub static ref INTROSPECTION_QUERY_TYPE: &'static ObjectType =
+        sast::get_root_query_type(&*INTROSPECTION_DOCUMENT).unwrap();
 }
 
 pub fn introspection_schema(id: SubgraphDeploymentId) -> Schema {
     Schema::new(id, INTROSPECTION_DOCUMENT.clone())
+}
+
+pub fn is_introspection_field(name: &Name) -> bool {
+    INTROSPECTION_QUERY_TYPE.field(name).is_some()
 }
