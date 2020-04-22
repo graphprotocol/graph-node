@@ -549,11 +549,11 @@ fn expected_mock_schema_introspection() -> q::Value {
 /// Execute an introspection query.
 fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
-    let query = Query {
-        schema: Arc::new(schema),
-        document: graphql_parser::parse_query(query).unwrap(),
-        variables: None,
-    };
+    let query = Query::new(
+        Arc::new(schema),
+        graphql_parser::parse_query(query).unwrap(),
+        None,
+    );
 
     // Execute it
     execute_query(

@@ -109,4 +109,20 @@ pub struct Query {
     pub schema: Arc<Schema>,
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
+    _force_use_of_new: (),
+}
+
+impl Query {
+    pub fn new(
+        schema: Arc<Schema>,
+        document: q::Document,
+        variables: Option<QueryVariables>,
+    ) -> Self {
+        Query {
+            schema,
+            document,
+            variables,
+            _force_use_of_new: (),
+        }
+    }
 }

@@ -292,11 +292,7 @@ where
 
                     // Construct a subscription
                     let subscription = Subscription {
-                        query: Query {
-                            schema: schema.clone(),
-                            document: query,
-                            variables,
-                        },
+                        query: Query::new(schema.clone(), query, variables),
                     };
 
                     debug!(logger, "Start operation";

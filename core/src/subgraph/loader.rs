@@ -42,60 +42,59 @@ where
         //
         // See also: ed42d219c6704a4aab57ce1ea66698e7.
         // Note: This query needs to be in sync with the metadata schema.
-        Ok(Query {
-            schema,
-            document: parse_query(
-                r#"
-                query deployment($id: ID!, $skip: Int!) {
-                  subgraphDeployment(id: $id) {
-                    dynamicDataSources(orderBy: id, skip: $skip) {
+        let document = parse_query(
+            r#"
+            query deployment($id: ID!, $skip: Int!) {
+              subgraphDeployment(id: $id) {
+                dynamicDataSources(orderBy: id, skip: $skip) {
+                  kind
+                  network
+                  name
+                  context
+                  source { address abi }
+                  mapping {
+                    kind
+                    apiVersion
+                    language
+                    file
+                    entities
+                    abis { name file }
+                    blockHandlers { handler filter }
+                    callHandlers {  function handler }
+                    eventHandlers { event handler topic0 }
+                  }
+                  templates {
+                    kind
+                    network
+                    name
+                    source { abi }
+                    mapping {
                       kind
-                      network
-                      name
-                      context
-                      source { address abi }
-                      mapping {
-                        kind
-                        apiVersion
-                        language
-                        file
-                        entities
-                        abis { name file }
-                        blockHandlers { handler filter }
-                        callHandlers {  function handler }
-                        eventHandlers { event handler topic0 }
-                      }
-                      templates {
-                        kind
-                        network
-                        name
-                        source { abi }
-                        mapping {
-                          kind
-                          apiVersion
-                          language
-                          file
-                          entities
-                          abis { name file }
-                          blockHandlers { handler filter }
-                          callHandlers { function handler }
-                          eventHandlers { event handler topic0 }
-                        }
-                      }
+                      apiVersion
+                      language
+                      file
+                      entities
+                      abis { name file }
+                      blockHandlers { handler filter }
+                      callHandlers { function handler }
+                      eventHandlers { event handler topic0 }
                     }
                   }
                 }
-                "#,
-            )
-            .expect("invalid query for dynamic data sources"),
-            variables: Some(QueryVariables::new(HashMap::from_iter(
-                vec![
-                    (String::from("id"), q::Value::String(deployment.to_string())),
-                    (String::from("skip"), q::Value::Int(skip.into())),
-                ]
-                .into_iter(),
-            ))),
-        })
+              }
+            }
+            "#,
+        )
+        .expect("invalid query for dynamic data sources");
+        let variables = Some(QueryVariables::new(HashMap::from_iter(
+            vec![
+                (String::from("id"), q::Value::String(deployment.to_string())),
+                (String::from("skip"), q::Value::Int(skip.into())),
+            ]
+            .into_iter(),
+        )));
+
+        Ok(Query::new(schema, document, variables))
     }
 
     async fn query_dynamic_data_sources(

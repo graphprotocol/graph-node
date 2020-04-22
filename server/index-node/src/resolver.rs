@@ -258,15 +258,13 @@ where
         };
 
         // Build a query for matching subgraph deployments
-        let query = Query {
+        let query = Query::new(
             // The query is against the subgraph of subgraphs
-            schema: self
-                .store
+            self.store
                 .api_schema(&SUBGRAPHS_ID)
                 .map_err(QueryExecutionError::StoreError)?,
-
             // We're querying all deployments that match the provided filter
-            document: q::parse_query(
+            q::parse_query(
                 r#"
                 query deployments(
                   $whereDeployments: SubgraphDeployment_filter!,
@@ -296,17 +294,16 @@ where
                 "#,
             )
             .unwrap(),
-
             // If the `subgraphs` argument was provided, build a suitable `where`
             // filter to match the IDs; otherwise leave the `where` filter empty
-            variables: Some(QueryVariables::new(HashMap::from_iter(
+            Some(QueryVariables::new(HashMap::from_iter(
                 vec![
                     ("whereDeployments".into(), where_filter.clone()),
                     ("whereAssignments".into(), where_filter),
                 ]
                 .into_iter(),
             ))),
-        };
+        );
 
         // Execute the query
         let result = self
@@ -352,15 +349,13 @@ where
         let where_filter = object! { name: subgraph_name.clone() };
 
         // Build a query for matching subgraph deployments
-        let query = Query {
+        let query = Query::new(
             // The query is against the subgraph of subgraphs
-            schema: self
-                .store
+            self.store
                 .api_schema(&SUBGRAPHS_ID)
                 .map_err(QueryExecutionError::StoreError)?,
-
             // We're querying all deployments that match the provided filter
-            document: q::parse_query(
+            q::parse_query(
                 r#"
                 query subgraphs($where: Subgraph_filter!) {
                   subgraphs(where: $where, first: 1000000) {
@@ -391,13 +386,12 @@ where
                 "#,
             )
             .unwrap(),
-
             // If the `subgraphs` argument was provided, build a suitable `where`
             // filter to match the IDs; otherwise leave the `where` filter empty
-            variables: Some(QueryVariables::new(HashMap::from_iter(
+            Some(QueryVariables::new(HashMap::from_iter(
                 vec![("where".into(), where_filter)].into_iter(),
             ))),
-        };
+        );
 
         // Execute the query
         let result = self

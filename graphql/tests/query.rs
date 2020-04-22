@@ -219,11 +219,7 @@ fn execute_query_document_with_variables(
     query: q::Document,
     variables: Option<QueryVariables>,
 ) -> QueryResult {
-    let query = Query {
-        schema: Arc::new(api_test_schema()),
-        document: query,
-        variables,
-    };
+    let query = Query::new(Arc::new(api_test_schema()), query, variables);
 
     let logger = Logger::root(slog::Discard, o!());
     let store_resolver = StoreResolver::new(&logger, STORE.clone());
@@ -703,9 +699,9 @@ fn query_complexity() {
     let logger = Logger::root(slog::Discard, o!());
     let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
-    let query = Query {
-        schema: Arc::new(api_test_schema()),
-        document: graphql_parser::parse_query(
+    let query = Query::new(
+        Arc::new(api_test_schema()),
+        graphql_parser::parse_query(
             "query {
                 musicians(orderBy: id) {
                     name
@@ -719,8 +715,8 @@ fn query_complexity() {
             }",
         )
         .unwrap(),
-        variables: None,
-    };
+        None,
+    );
     let max_complexity = Some(1_010_100);
     let options = QueryExecutionOptions {
         logger: logger.clone(),
@@ -735,9 +731,9 @@ fn query_complexity() {
     let result = execute_query(query, options);
     assert!(result.errors.is_none());
 
-    let query = Query {
-        schema: Arc::new(api_test_schema()),
-        document: graphql_parser::parse_query(
+    let query = Query::new(
+        Arc::new(api_test_schema()),
+        graphql_parser::parse_query(
             "query {
                 musicians(orderBy: id) {
                     name
@@ -756,8 +752,8 @@ fn query_complexity() {
             }",
         )
         .unwrap(),
-        variables: None,
-    };
+        None,
+    );
 
     let options = QueryExecutionOptions {
         logger,
@@ -781,9 +777,9 @@ async fn query_complexity_subscriptions() {
     let logger = Logger::root(slog::Discard, o!());
     let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
-    let query = Query {
-        schema: Arc::new(api_test_schema()),
-        document: graphql_parser::parse_query(
+    let query = Query::new(
+        Arc::new(api_test_schema()),
+        graphql_parser::parse_query(
             "subscription {
                 musicians(orderBy: id) {
                     name
@@ -797,8 +793,8 @@ async fn query_complexity_subscriptions() {
             }",
         )
         .unwrap(),
-        variables: None,
-    };
+        None,
+    );
     let max_complexity = Some(1_010_100);
     let options = SubscriptionExecutionOptions {
         logger: logger.clone(),
@@ -813,9 +809,9 @@ async fn query_complexity_subscriptions() {
     // FIXME: Not collecting the stream because that will hang the test.
     let _ignore_stream = execute_subscription(&Subscription { query }, options).unwrap();
 
-    let query = Query {
-        schema: Arc::new(api_test_schema()),
-        document: graphql_parser::parse_query(
+    let query = Query::new(
+        Arc::new(api_test_schema()),
+        graphql_parser::parse_query(
             "subscription {
                 musicians(orderBy: id) {
                     name
@@ -834,8 +830,8 @@ async fn query_complexity_subscriptions() {
             }",
         )
         .unwrap(),
-        variables: None,
-    };
+        None,
+    );
 
     let options = SubscriptionExecutionOptions {
         logger,
@@ -859,11 +855,11 @@ async fn query_complexity_subscriptions() {
 
 #[test]
 fn instant_timeout() {
-    let query = Query {
-        schema: Arc::new(api_test_schema()),
-        document: graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
-        variables: None,
-    };
+    let query = Query::new(
+        Arc::new(api_test_schema()),
+        graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
+        None,
+    );
     let logger = Logger::root(slog::Discard, o!());
     let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
@@ -1159,9 +1155,9 @@ async fn subscription_gets_result_even_without_events() {
     let logger = Logger::root(slog::Discard, o!());
     let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
-    let query = Query {
-        schema: Arc::new(api_test_schema()),
-        document: graphql_parser::parse_query(
+    let query = Query::new(
+        Arc::new(api_test_schema()),
+        graphql_parser::parse_query(
             "subscription {
               musicians(orderBy: id, first: 2) {
                 name
@@ -1169,8 +1165,8 @@ async fn subscription_gets_result_even_without_events() {
             }",
         )
         .unwrap(),
-        variables: None,
-    };
+        None,
+    );
 
     let options = SubscriptionExecutionOptions {
         logger: logger.clone(),

@@ -44,11 +44,7 @@ fn insert_and_query(
         max_first: std::u32::MAX,
     };
     let document = graphql_parser::parse_query(query).unwrap();
-    let query = Query {
-        schema: STORE.api_schema(&subgraph_id).unwrap(),
-        document,
-        variables: None,
-    };
+    let query = Query::new(STORE.api_schema(&subgraph_id).unwrap(), document, None);
     Ok(execute_query(query, options))
 }
 

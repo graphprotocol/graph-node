@@ -64,11 +64,7 @@ impl Future for GraphQLRequest {
             )),
         }?;
 
-        Ok(Async::Ready(Query {
-            document,
-            variables,
-            schema,
-        }))
+        Ok(Async::Ready(Query::new(schema, document, variables)))
     }
 }
 
