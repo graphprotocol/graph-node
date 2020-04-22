@@ -88,9 +88,7 @@ where
     match operation {
         // Execute top-level `subscription { ... }` expressions
         q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
-            let root_type = sast::get_root_query_type_def(&ctx.schema.document).unwrap();
-            let validation_errors =
-                ctx.validate_fields(&"Query".to_owned(), root_type, selection_set);
+            let validation_errors = query.validate_fields(selection_set);
             if !validation_errors.is_empty() {
                 return Err(SubscriptionError::from(validation_errors));
             }

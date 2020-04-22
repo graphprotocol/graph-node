@@ -7,7 +7,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Deref;
 use std::time::Instant;
 
-use graph::data::graphql::ext::TypeExt;
 use graph::prelude::*;
 
 use crate::introspection::INTROSPECTION_DOCUMENT;
@@ -120,98 +119,6 @@ where
             block: self.block,
             mode: ExecutionMode::Prefetch,
         }
-    }
-
-    // Checks for invalid selections.
-    pub(crate) fn validate_fields(
-        &self,
-        type_name: &Name,
-        ty: &s::TypeDefinition,
-        selection_set: &q::SelectionSet,
-    ) -> Vec<QueryExecutionError> {
-        let schema = &self.schema.document;
-        selection_set
-            .items
-            .iter()
-            .fold(vec![], |mut errors, selection| {
-                match selection {
-                    q::Selection::Field(field) => {
-                        // Get field type to determine if this is a collection query.
-                        let s_field = match ty {
-                            s::TypeDefinition::Object(t) => get_field(t, &field.name),
-                            s::TypeDefinition::Interface(t) => get_field(t, &field.name),
-
-                            // `Scalar` and `Enum` cannot have selection sets.
-                            // `InputObject` can't appear in a selection.
-                            // `Union` is not yet supported.
-                            s::TypeDefinition::Scalar(_)
-                            | s::TypeDefinition::Enum(_)
-                            | s::TypeDefinition::InputObject(_)
-                            | s::TypeDefinition::Union(_) => None,
-                        };
-
-                        match s_field {
-                            Some(s_field) => {
-                                let base_type = s_field.field_type.get_base_type();
-                                match get_named_type(schema, base_type) {
-                                    Some(ty) => errors.extend(self.validate_fields(
-                                        base_type,
-                                        &ty,
-                                        &field.selection_set,
-                                    )),
-                                    None => errors.push(QueryExecutionError::NamedTypeError(
-                                        base_type.clone(),
-                                    )),
-                                }
-                            }
-                            None => errors.push(QueryExecutionError::UnknownField(
-                                field.position,
-                                type_name.clone(),
-                                field.name.clone(),
-                            )),
-                        }
-                    }
-                    q::Selection::FragmentSpread(fragment) => {
-                        match qast::get_fragment(&self.document, &fragment.fragment_name) {
-                            Some(frag) => {
-                                let q::TypeCondition::On(type_name) = &frag.type_condition;
-                                match get_named_type(schema, type_name) {
-                                    Some(ty) => errors.extend(self.validate_fields(
-                                        type_name,
-                                        &ty,
-                                        &frag.selection_set,
-                                    )),
-                                    None => errors.push(QueryExecutionError::NamedTypeError(
-                                        type_name.clone(),
-                                    )),
-                                }
-                            }
-                            None => errors.push(QueryExecutionError::UndefinedFragment(
-                                fragment.fragment_name.clone(),
-                            )),
-                        }
-                    }
-                    q::Selection::InlineFragment(fragment) => match &fragment.type_condition {
-                        Some(q::TypeCondition::On(type_name)) => {
-                            match get_named_type(schema, type_name) {
-                                Some(ty) => errors.extend(self.validate_fields(
-                                    type_name,
-                                    &ty,
-                                    &fragment.selection_set,
-                                )),
-                                None => errors
-                                    .push(QueryExecutionError::NamedTypeError(type_name.clone())),
-                            }
-                        }
-                        _ => errors.extend(self.validate_fields(
-                            type_name,
-                            ty,
-                            &fragment.selection_set,
-                        )),
-                    },
-                }
-                errors
-            })
     }
 }
 

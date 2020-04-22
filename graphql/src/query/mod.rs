@@ -5,7 +5,6 @@ use uuid::Uuid;
 
 use crate::execution::*;
 use crate::query::ast as qast;
-use crate::schema::ast as sast;
 
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
@@ -91,9 +90,7 @@ where
         // Execute top-level `query { ... }` and `{ ... }` expressions.
         q::OperationDefinition::Query(q::Query { selection_set, .. })
         | q::OperationDefinition::SelectionSet(selection_set) => {
-            let root_type = sast::get_root_query_type_def(&ctx.schema.document).unwrap();
-            let validation_errors =
-                ctx.validate_fields(&"Query".to_owned(), root_type, selection_set);
+            let validation_errors = query.validate_fields(selection_set);
             if !validation_errors.is_empty() {
                 return QueryResult::from(validation_errors);
             }
