@@ -75,7 +75,6 @@ where
     let ctx = ExecutionContext {
         logger: options.logger,
         resolver: Arc::new(options.resolver),
-        schema: query.schema.clone(),
         query: query.clone(),
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
@@ -132,7 +131,7 @@ fn create_source_event_stream(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
-    let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
+    let subscription_type = sast::get_root_subscription_type(&ctx.query.schema.document)
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
     let grouped_field_set = collect_fields(ctx, &subscription_type, &selection_set, None);
@@ -159,7 +158,7 @@ fn resolve_field_stream(
     _argument_values: HashMap<&q::Name, q::Value>,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
     ctx.resolver
-        .resolve_field_stream(&ctx.schema.document, object_type, field)
+        .resolve_field_stream(&ctx.query.schema.document, object_type, field)
         .map_err(SubscriptionError::from)
 }
 
@@ -171,7 +170,6 @@ fn map_source_to_response_stream(
 ) -> QueryResultStream {
     let logger = ctx.logger.clone();
     let resolver = ctx.resolver.clone();
-    let schema = ctx.schema.clone();
     let query = ctx.query.cheap_clone();
     let selection_set = selection_set.to_owned();
     let variable_values = ctx.variable_values.clone();
@@ -197,7 +195,6 @@ fn map_source_to_response_stream(
                 Ok(event) => execute_subscription_event(
                     logger.clone(),
                     resolver.clone(),
-                    schema.clone(),
                     query.clone(),
                     selection_set.clone(),
                     variable_values.clone(),
@@ -213,7 +210,6 @@ fn map_source_to_response_stream(
 async fn execute_subscription_event(
     logger: Logger,
     resolver: Arc<impl Resolver + 'static>,
-    schema: Arc<Schema>,
     query: Arc<crate::execution::Query>,
     selection_set: q::SelectionSet,
     variable_values: Arc<HashMap<q::Name, q::Value>>,
@@ -227,7 +223,6 @@ async fn execute_subscription_event(
     let ctx = ExecutionContext {
         logger,
         resolver,
-        schema,
         query,
         fields: vec![],
         variable_values,
@@ -238,7 +233,7 @@ async fn execute_subscription_event(
     };
 
     // We have established that this exists earlier in the subscription execution
-    let subscription_type = sast::get_root_subscription_type(&ctx.schema.document)
+    let subscription_type = sast::get_root_subscription_type(&ctx.query.schema.document)
         .unwrap()
         .clone();
 

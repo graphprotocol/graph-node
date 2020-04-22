@@ -482,7 +482,7 @@ fn execute_root_selection_set(
     selection_set: &q::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
-    let query_type = match sast::get_root_query_type(&ctx.schema.document) {
+    let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
         Some(t) => t,
         None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
     };
@@ -566,18 +566,20 @@ fn execute_selection_set(
             }
 
             let concrete_type = type_cond
-                .matching_type(&ctx.schema.document, object_type)
+                .matching_type(&ctx.query.schema.document, object_type)
                 .expect("collect_fields does not create type conditions for nonexistent types");
 
             if let Some(ref field) = concrete_type.field(&fields[0].name) {
                 match ctx.for_field(&fields[0], concrete_type.clone()) {
                     Ok(ctx) => {
-                        let child_type =
-                            object_or_interface_from_type(&ctx.schema.document, &field.field_type)
-                                .expect("we only collect fields that are objects or interfaces");
+                        let child_type = object_or_interface_from_type(
+                            &ctx.query.schema.document,
+                            &field.field_type,
+                        )
+                        .expect("we only collect fields that are objects or interfaces");
 
                         let join = Join::new(
-                            ctx.schema.as_ref(),
+                            ctx.query.schema.as_ref(),
                             &concrete_type,
                             &child_type,
                             &field.name,
@@ -596,7 +598,7 @@ fn execute_selection_set(
                                 let child_selection_set =
                                     crate::execution::merge_selection_sets(fields);
                                 let child_object_type = object_or_interface_from_type(
-                                    &ctx.schema.document,
+                                    &ctx.query.schema.document,
                                     &field.field_type,
                                 )
                                 .expect("type of child field is object or interface");
@@ -683,7 +685,7 @@ fn collect_fields<'a>(
             q::Selection::Field(ref field) => {
                 // Only consider fields that point to objects or interfaces, and
                 // ignore nonexistent fields
-                if is_reference_field(&ctx.schema.document, object_type, field) {
+                if is_reference_field(&ctx.query.schema.document, object_type, field) {
                     let response_key = qast::get_response_key(field);
 
                     // Create a field group for this response key and add the field
@@ -738,7 +740,7 @@ fn collect_fields<'a>(
                 let fragment_cond = TypeCondition::from(fragment.type_condition.clone());
                 // Fields for this fragment need to be looked up in the type
                 // mentioned in the condition
-                let fragment_type = fragment_cond.matching_type(&ctx.schema.document, object_type);
+                let fragment_type = fragment_cond.matching_type(&ctx.query.schema.document, object_type);
 
                 // The `None` case here indicates an error where the type condition
                 // mentions a nonexistent type; the overall query execution logic will catch
@@ -788,7 +790,7 @@ fn execute_field(
         ObjectOrInterface::Interface(interface_type) => {
             // This assumes that all implementations of the interface accept
             // the same arguments for this field
-            match ctx
+            match ctx.query
                 .schema
                 .types_for_interface
                 .get(&interface_type.name)
@@ -829,7 +831,7 @@ fn execute_field(
         &parents,
         &join,
         &argument_values,
-        ctx.schema.types_for_interface(),
+        ctx.query.schema.types_for_interface(),
         ctx.block,
         ctx.max_first,
     )

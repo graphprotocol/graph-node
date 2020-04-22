@@ -37,9 +37,6 @@ where
     /// The logger to use.
     pub logger: Logger,
 
-    /// The schema to execute the query against.
-    pub schema: Arc<Schema>,
-
     /// The query to execute.
     pub query: Arc<crate::execution::Query>,
 
@@ -105,14 +102,11 @@ where
     }
 
     pub fn as_introspection_context(&self) -> ExecutionContext<IntrospectionResolver> {
-        // Create an introspection type store and resolver
-        let introspection_schema = introspection_schema(self.schema.id.clone());
-        let introspection_resolver = IntrospectionResolver::new(&self.logger, &self.schema);
+        let introspection_resolver = IntrospectionResolver::new(&self.logger, &self.query.schema);
 
         ExecutionContext {
             logger: self.logger.clone(),
             resolver: Arc::new(introspection_resolver),
-            schema: Arc::new(introspection_schema),
             query: self.query.as_introspection_query(),
             fields: vec![],
             variable_values: self.variable_values.clone(),
@@ -130,7 +124,7 @@ pub fn execute_root_selection_set(
     selection_set: &q::SelectionSet,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
-    let query_type = match sast::get_root_query_type(&ctx.schema.document) {
+    let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
         Some(t) => t,
         None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
     };
@@ -386,7 +380,7 @@ fn does_fragment_type_apply(
     let q::TypeCondition::On(ref name) = fragment_type;
 
     // Resolve the type the fragment applies to based on its name
-    let named_type = sast::get_named_type(&ctx.schema.document, name);
+    let named_type = sast::get_named_type(&ctx.query.schema.document, name);
 
     match named_type {
         // The fragment applies to the object type if its type is the same object type
@@ -485,7 +479,7 @@ fn resolve_field_value_for_named_type(
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
-    let named_type = sast::get_named_type(&ctx.schema.document, type_name)
+    let named_type = sast::get_named_type(&ctx.query.schema.document, type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
     match named_type {
         // Let the resolver decide how the field (with the given object type)
@@ -496,7 +490,7 @@ fn resolve_field_value_for_named_type(
             field_definition,
             t.into(),
             argument_values,
-            ctx.schema.types_for_interface(),
+            ctx.query.schema.types_for_interface(),
             ctx.block,
         ),
 
@@ -538,7 +532,7 @@ fn resolve_field_value_for_named_type(
             field_definition,
             i.into(),
             argument_values,
-            ctx.schema.types_for_interface(),
+            ctx.query.schema.types_for_interface(),
             ctx.block,
         ),
 
@@ -571,7 +565,7 @@ fn resolve_field_value_for_list_type(
         ),
 
         s::Type::NamedType(ref type_name) => {
-            let named_type = sast::get_named_type(&ctx.schema.document, type_name)
+            let named_type = sast::get_named_type(&ctx.query.schema.document, type_name)
                 .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
             match named_type {
@@ -585,7 +579,7 @@ fn resolve_field_value_for_list_type(
                         field_definition,
                         t.into(),
                         argument_values,
-                        ctx.schema.types_for_interface(),
+                        ctx.query.schema.types_for_interface(),
                         ctx.block,
                         ctx.max_first,
                     )
@@ -619,7 +613,7 @@ fn resolve_field_value_for_list_type(
                         field_definition,
                         t.into(),
                         argument_values,
-                        ctx.schema.types_for_interface(),
+                        ctx.query.schema.types_for_interface(),
                         ctx.block,
                         ctx.max_first,
                     )
@@ -696,7 +690,7 @@ fn complete_value(
         }
 
         s::Type::NamedType(name) => {
-            let named_type = sast::get_named_type(&ctx.schema.document, name).unwrap();
+            let named_type = sast::get_named_type(&ctx.query.schema.document, name).unwrap();
 
             match named_type {
                 // Complete scalar values
@@ -777,7 +771,7 @@ fn resolve_abstract_type<'a>(
     // Let the resolver handle the type resolution, return an error if the resolution
     // yields nothing
     ctx.resolver
-        .resolve_abstract_type(&ctx.schema.document, abstract_type, object_value)
+        .resolve_abstract_type(&ctx.query.schema.document, abstract_type, object_value)
         .ok_or_else(|| {
             vec![QueryExecutionError::AbstractTypeError(
                 sast::get_type_name(abstract_type).to_string(),
@@ -822,7 +816,7 @@ pub fn coerce_argument_values<'a>(
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &Name| sast::get_named_type(&ctx.schema.document, name);
+    let resolver = |name: &Name| sast::get_named_type(&ctx.query.schema.document, name);
 
     for argument_def in sast::get_argument_definitions(object_type, &field.name)
         .into_iter()

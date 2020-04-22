@@ -79,7 +79,6 @@ where
     let ctx = ExecutionContext {
         logger: query_logger.clone(),
         resolver: Arc::new(options.resolver),
-        schema: query.schema.clone(),
         query: query.clone(),
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
