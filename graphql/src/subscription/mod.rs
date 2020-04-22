@@ -84,10 +84,7 @@ where
         )));
     }
 
-    let validation_errors = query.validate_fields();
-    if !validation_errors.is_empty() {
-        return Err(SubscriptionError::from(validation_errors));
-    }
+    query.validate_fields()?;
 
     let complexity = query.complexity(options.max_depth).map_err(|e| vec![e])?;
 

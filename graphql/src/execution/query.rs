@@ -133,10 +133,16 @@ impl Query {
         }
     }
 
-    pub fn validate_fields(&self) -> Vec<QueryExecutionError> {
+    pub fn validate_fields(&self) -> Result<(), Vec<QueryExecutionError>> {
         let root_type = sast::get_root_query_type_def(&self.schema.document).unwrap();
 
-        self.validate_fields_inner(&"Query".to_owned(), root_type, &self.selection_set)
+        let errors =
+            self.validate_fields_inner(&"Query".to_owned(), root_type, &self.selection_set);
+        if errors.len() == 0 {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 
     // Checks for invalid selections.

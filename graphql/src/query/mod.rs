@@ -1,5 +1,5 @@
 use graph::prelude::{Query as GraphDataQuery, *};
-use graphql_parser::Style;
+use graphql_parser::{query as q, Style};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -40,6 +40,20 @@ pub fn execute_query<R>(query: GraphDataQuery, options: QueryExecutionOptions<R>
 where
     R: Resolver,
 {
+    match execute_query_inner(query, options) {
+        Ok(v) => QueryResult::new(Some(v)),
+        Err(errors) => QueryResult::from(errors),
+    }
+}
+
+/// Executes a query and returns a result.
+fn execute_query_inner<R>(
+    query: GraphDataQuery,
+    options: QueryExecutionOptions<R>,
+) -> Result<q::Value, Vec<QueryExecutionError>>
+where
+    R: Resolver,
+{
     let query_id = Uuid::new_v4().to_string();
     let query_logger = options.logger.new(o!(
         "subgraph_id" => (*query.schema.id).clone(),
@@ -58,10 +72,7 @@ where
         ("".to_owned(), "".to_owned())
     };
 
-    let query = match crate::execution::Query::new(query) {
-        Ok(query) => query,
-        Err(e) => return QueryResult::from(e),
-    };
+    let query = crate::execution::Query::new(query)?;
 
     let mode = if query.verify {
         ExecutionMode::Verify
@@ -82,16 +93,13 @@ where
     };
 
     if !query.is_query() {
-        return QueryResult::from(vec![QueryExecutionError::NotSupported(
+        return Err(vec![QueryExecutionError::NotSupported(
             "Only queries are supported".to_string(),
         )]);
     }
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
-    let validation_errors = query.validate_fields();
-    if !validation_errors.is_empty() {
-        return QueryResult::from(validation_errors);
-    }
+    query.validate_fields()?;
 
     let complexity = query.complexity(options.max_depth);
 
@@ -115,9 +123,5 @@ where
             "query_time_ms" => start.elapsed().as_millis(),
         );
     }
-
-    match result {
-        Ok(value) => QueryResult::new(Some(value)),
-        Err(e) => QueryResult::from(e),
-    }
+    result
 }
