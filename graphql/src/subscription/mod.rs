@@ -94,20 +94,18 @@ where
         "query" => query_text,
     );
 
-    let source_stream = create_source_event_stream(&ctx, &query.selection_set)?;
-    let response_stream =
-        map_source_to_response_stream(&ctx, &query.selection_set, source_stream, options.timeout);
+    let source_stream = create_source_event_stream(&ctx)?;
+    let response_stream = map_source_to_response_stream(&ctx, source_stream, options.timeout);
     Ok(response_stream)
 }
 
 fn create_source_event_stream(
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
     let subscription_type = sast::get_root_subscription_type(&ctx.query.schema.document)
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
-    let grouped_field_set = collect_fields(ctx, &subscription_type, &selection_set, None);
+    let grouped_field_set = collect_fields(ctx, &subscription_type, &ctx.query.selection_set, None);
 
     if grouped_field_set.is_empty() {
         return Err(SubscriptionError::from(QueryExecutionError::EmptyQuery));
@@ -137,14 +135,12 @@ fn resolve_field_stream(
 
 fn map_source_to_response_stream(
     ctx: &ExecutionContext<impl Resolver + 'static>,
-    selection_set: &q::SelectionSet,
     source_stream: StoreEventStreamBox,
     timeout: Option<Duration>,
 ) -> QueryResultStream {
     let logger = ctx.logger.clone();
     let resolver = ctx.resolver.clone();
     let query = ctx.query.cheap_clone();
-    let selection_set = selection_set.to_owned();
     let max_first = ctx.max_first;
 
     // Create a stream with a single empty event. By chaining this in front
@@ -168,7 +164,6 @@ fn map_source_to_response_stream(
                     logger.clone(),
                     resolver.clone(),
                     query.clone(),
-                    selection_set.clone(),
                     event,
                     timeout.clone(),
                     max_first,
@@ -182,7 +177,6 @@ async fn execute_subscription_event(
     logger: Logger,
     resolver: Arc<impl Resolver + 'static>,
     query: Arc<crate::execution::Query>,
-    selection_set: q::SelectionSet,
     event: StoreEvent,
     timeout: Option<Duration>,
     max_first: u32,
@@ -210,7 +204,7 @@ async fn execute_subscription_event(
     // once, from flooding the blocking thread pool and the DB connection pool.
     let _permit = SUBSCRIPTION_QUERY_SEMAPHORE.acquire();
     let result = graph::spawn_blocking_allow_panic(async move {
-        execute_selection_set(&ctx, &selection_set, &subscription_type, &None)
+        execute_selection_set(&ctx, &ctx.query.selection_set, &subscription_type, &None)
     })
     .await
     .map_err(|e| vec![QueryExecutionError::Panic(e.to_string())])
