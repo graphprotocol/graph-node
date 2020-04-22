@@ -84,31 +84,18 @@ where
         )));
     }
 
-
-    let complexity = query.complexity(options.max_depth).map_err(|e| vec![e])?;
+    query.check_complexity(options.max_complexity, options.max_depth)?;
 
     info!(
         ctx.logger,
         "Execute subscription";
         "query" => query_text,
-        "complexity" => complexity,
     );
 
-    match options.max_complexity {
-        Some(max_complexity) if complexity > max_complexity => {
-            Err(vec![QueryExecutionError::TooComplex(complexity, max_complexity)].into())
-        }
-        _ => {
-            let source_stream = create_source_event_stream(&ctx, &query.selection_set)?;
-            let response_stream = map_source_to_response_stream(
-                &ctx,
-                &query.selection_set,
-                source_stream,
-                options.timeout,
-            );
-            Ok(response_stream)
-        }
-    }
+    let source_stream = create_source_event_stream(&ctx, &query.selection_set)?;
+    let response_stream =
+        map_source_to_response_stream(&ctx, &query.selection_set, source_stream, options.timeout);
+    Ok(response_stream)
 }
 
 fn create_source_event_stream(

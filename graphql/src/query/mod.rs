@@ -99,20 +99,10 @@ where
     }
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
-
-    let complexity = query.complexity(options.max_depth);
+    query.check_complexity(options.max_complexity, options.max_depth)?;
 
     let start = Instant::now();
-    let result = match (complexity, options.max_complexity) {
-        (Err(e), _) => Err(vec![e]),
-        (Ok(complexity), Some(max_complexity)) if complexity > max_complexity => {
-            Err(vec![QueryExecutionError::TooComplex(
-                complexity,
-                max_complexity,
-            )])
-        }
-        (Ok(_), _) => execute_root_selection_set(&ctx, &query.selection_set),
-    };
+    let result = execute_root_selection_set(&ctx, &query.selection_set);
     if *graph::log::LOG_GQL_TIMING {
         info!(
             query_logger,

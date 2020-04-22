@@ -121,11 +121,28 @@ impl Query {
         }
     }
 
+    pub fn check_complexity(
+        &self,
+        max_complexity: Option<u64>,
+        max_depth: u8,
+    ) -> Result<(), Vec<QueryExecutionError>> {
+        if let Some(max_complexity) = max_complexity {
+            let complexity = self.complexity(max_depth).map_err(|e| vec![e])?;
+            if complexity > max_complexity {
+                return Err(vec![QueryExecutionError::TooComplex(
+                    complexity,
+                    max_complexity,
+                )]);
+            }
+        }
+        Ok(())
+    }
+
     /// See https://developer.github.com/v4/guides/resource-limitations/.
     ///
     /// If the query is invalid, returns `Ok(0)` so that execution proceeds and
     /// gives a proper error.
-    pub fn complexity(&self, max_depth: u8) -> Result<u64, QueryExecutionError> {
+    fn complexity(&self, max_depth: u8) -> Result<u64, QueryExecutionError> {
         let root_type = sast::get_root_query_type_def(&self.schema.document).unwrap();
 
         match self.complexity_inner(root_type, &self.selection_set, max_depth, 0) {
