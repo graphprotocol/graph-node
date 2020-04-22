@@ -80,7 +80,7 @@ where
         logger: query_logger.clone(),
         resolver: Arc::new(options.resolver),
         schema: query.schema.clone(),
-        document: query.document.clone(),
+        query: query.clone(),
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
         deadline: options.deadline,

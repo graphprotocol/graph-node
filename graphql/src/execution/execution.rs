@@ -39,7 +39,7 @@ where
     pub schema: Arc<Schema>,
 
     /// The query to execute.
-    pub document: q::Document,
+    pub query: Arc<crate::execution::Query>,
 
     /// The resolver to use.
     pub resolver: Arc<R>,
@@ -111,7 +111,7 @@ where
             logger: self.logger.clone(),
             resolver: Arc::new(introspection_resolver),
             schema: Arc::new(introspection_schema),
-            document: self.document.clone(),
+            query: self.query.clone(),
             fields: vec![],
             variable_values: self.variable_values.clone(),
             deadline: self.deadline,
@@ -310,7 +310,7 @@ pub fn collect_fields<'a>(
 
                     // Resolve the fragment using its name and, if it applies, collect
                     // fields for the fragment and group them
-                    qast::get_fragment(&ctx.document, &spread.fragment_name)
+                    qast::get_fragment(&ctx.query.document, &spread.fragment_name)
                         .and_then(|fragment| {
                             // We have a fragment, only pass it on if it applies to the
                             // current object type

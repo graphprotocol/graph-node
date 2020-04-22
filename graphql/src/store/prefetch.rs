@@ -704,31 +704,33 @@ fn collect_fields<'a>(
                 if !visited_fragments.contains(&spread.fragment_name) {
                     visited_fragments.insert(&spread.fragment_name);
 
-                    qast::get_fragment(&ctx.document, &spread.fragment_name).map(|fragment| {
-                        let fragment_grouped_field_set = collect_fields(
-                            ctx,
-                            object_type,
-                            &fragment.selection_set,
-                            Some(visited_fragments.clone()),
-                        );
+                    qast::get_fragment(&ctx.query.document, &spread.fragment_name).map(
+                        |fragment| {
+                            let fragment_grouped_field_set = collect_fields(
+                                ctx,
+                                object_type,
+                                &fragment.selection_set,
+                                Some(visited_fragments.clone()),
+                            );
 
-                        // Add all items from each fragments group to the field group
-                        // with the corresponding response key
-                        let fragment_cond =
-                            TypeCondition::from(Some(fragment.type_condition.clone()));
-                        for (response_key, type_fields) in fragment_grouped_field_set {
-                            for (type_cond, mut group) in type_fields {
-                                if let Some(cond) = fragment_cond.and(&type_cond) {
-                                    grouped_fields
-                                        .entry(response_key)
-                                        .or_default()
-                                        .entry(cond)
-                                        .or_default()
-                                        .append(&mut group);
+                            // Add all items from each fragments group to the field group
+                            // with the corresponding response key
+                            let fragment_cond =
+                                TypeCondition::from(Some(fragment.type_condition.clone()));
+                            for (response_key, type_fields) in fragment_grouped_field_set {
+                                for (type_cond, mut group) in type_fields {
+                                    if let Some(cond) = fragment_cond.and(&type_cond) {
+                                        grouped_fields
+                                            .entry(response_key)
+                                            .or_default()
+                                            .entry(cond)
+                                            .or_default()
+                                            .append(&mut group);
+                                    }
                                 }
                             }
-                        }
-                    });
+                        },
+                    );
                 }
             }
 

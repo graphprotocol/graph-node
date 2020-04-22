@@ -76,7 +76,7 @@ where
         logger: options.logger,
         resolver: Arc::new(options.resolver),
         schema: query.schema.clone(),
-        document: query.document.clone(),
+        query: query.clone(),
         fields: vec![],
         variable_values: Arc::new(coerced_variable_values),
         deadline: None,
@@ -100,7 +100,7 @@ where
             info!(
                 ctx.logger,
                 "Execute subscription";
-                "query" => ctx.document.format(&Style::default().indent(0)).replace('\n', " "),
+                "query" => ctx.query.document.format(&Style::default().indent(0)).replace('\n', " "),
                 "complexity" => complexity,
             );
 
@@ -172,7 +172,7 @@ fn map_source_to_response_stream(
     let logger = ctx.logger.clone();
     let resolver = ctx.resolver.clone();
     let schema = ctx.schema.clone();
-    let document = ctx.document.clone();
+    let query = ctx.query.cheap_clone();
     let selection_set = selection_set.to_owned();
     let variable_values = ctx.variable_values.clone();
     let max_first = ctx.max_first;
@@ -198,7 +198,7 @@ fn map_source_to_response_stream(
                     logger.clone(),
                     resolver.clone(),
                     schema.clone(),
-                    document.clone(),
+                    query.clone(),
                     selection_set.clone(),
                     variable_values.clone(),
                     event,
@@ -214,7 +214,7 @@ async fn execute_subscription_event(
     logger: Logger,
     resolver: Arc<impl Resolver + 'static>,
     schema: Arc<Schema>,
-    document: q::Document,
+    query: Arc<crate::execution::Query>,
     selection_set: q::SelectionSet,
     variable_values: Arc<HashMap<q::Name, q::Value>>,
     event: StoreEvent,
@@ -228,7 +228,7 @@ async fn execute_subscription_event(
         logger,
         resolver,
         schema,
-        document,
+        query,
         fields: vec![],
         variable_values,
         deadline: timeout.map(|t| Instant::now() + t),

@@ -25,12 +25,12 @@ pub struct Query {
 }
 
 impl Query {
-    pub fn new(query: GraphDataQuery) -> Result<Self, QueryExecutionError> {
-        Ok(Self {
+    pub fn new(query: GraphDataQuery) -> Result<Arc<Self>, QueryExecutionError> {
+        Ok(Arc::new(Self {
             schema: query.schema,
             document: query.document,
             variables: query.variables,
-        })
+        }))
     }
 
     /// See https://developer.github.com/v4/guides/resource-limitations/.
