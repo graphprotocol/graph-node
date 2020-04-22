@@ -1393,7 +1393,7 @@ dependencies = [
  "graph-mock",
  "graphql-parser",
  "http 0.2.1",
- "hyper 0.13.4",
+ "hyper 0.13.5",
  "serde",
 ]
 
@@ -1407,7 +1407,7 @@ dependencies = [
  "graph-graphql",
  "graphql-parser",
  "http 0.2.1",
- "hyper 0.13.4",
+ "hyper 0.13.5",
  "lazy_static",
  "serde",
 ]
@@ -1430,7 +1430,7 @@ dependencies = [
  "futures 0.1.29",
  "graph",
  "http 0.2.1",
- "hyper 0.13.4",
+ "hyper 0.13.5",
  "lazy_static",
  "prometheus",
  "serde",
@@ -1720,9 +1720,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.13.4"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed6081100e960d9d74734659ffc9cc91daf1c0fc7aceb8eaa94ee1a3f5046f2e"
+checksum = "96816e1d921eca64d208a85aab4f7798455a8e34229ee5a88c935bdee1b78b14"
 dependencies = [
  "bytes 0.5.4",
  "futures-channel",
@@ -1752,7 +1752,7 @@ dependencies = [
  "common-multipart-rfc7578",
  "futures 0.3.4",
  "http 0.2.1",
- "hyper 0.13.4",
+ "hyper 0.13.5",
 ]
 
 [[package]]
@@ -1775,7 +1775,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3adcd308402b9553630734e9c36b77a7e48b3821251ca2493e8cd596763aafaa"
 dependencies = [
  "bytes 0.5.4",
- "hyper 0.13.4",
+ "hyper 0.13.5",
  "native-tls",
  "tokio 0.2.18",
  "tokio-tls 0.3.0",
@@ -1893,7 +1893,7 @@ dependencies = [
  "failure",
  "futures 0.3.4",
  "http 0.2.1",
- "hyper 0.13.4",
+ "hyper 0.13.5",
  "hyper-multipart-rfc7578",
  "hyper-tls 0.4.1",
  "parity-multiaddr",
@@ -3083,7 +3083,7 @@ dependencies = [
  "futures-util",
  "http 0.2.1",
  "http-body 0.3.1",
- "hyper 0.13.4",
+ "hyper 0.13.5",
  "hyper-tls 0.4.1",
  "js-sys",
  "lazy_static",
@@ -4139,7 +4139,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bfd5b7557925ce778ff9b9ef90e3ade34c524b5ff10e239c69a42d546d2af56"
 dependencies = [
- "rand 0.3.23",
+ "rand 0.7.3",
 ]
 
 [[package]]
