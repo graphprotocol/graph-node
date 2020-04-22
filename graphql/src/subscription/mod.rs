@@ -64,7 +64,11 @@ where
         .format(&Style::default().indent(0))
         .replace('\n', " ");
 
-    let query = crate::execution::Query::new(subscription.query)?;
+    let query = crate::execution::Query::new(
+        subscription.query,
+        options.max_complexity,
+        options.max_depth,
+    )?;
 
     // Create a fresh execution context
     let ctx = ExecutionContext {
@@ -83,8 +87,6 @@ where
             "Only subscriptions are supported".to_string(),
         )));
     }
-
-    query.check_complexity(options.max_complexity, options.max_depth)?;
 
     info!(
         ctx.logger,

@@ -38,8 +38,14 @@ pub struct Query {
 
 impl Query {
     /// Process the raw GraphQL query `query` and prepare for executing it.
-    /// The returned `Query` has already been validated
-    pub fn new(query: GraphDataQuery) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
+    /// The returned `Query` has already been validated and, if `max_complexity`
+    /// is given, also checked whether it is too complex. If validation fails,
+    /// or the query is too complex, errors are returned
+    pub fn new(
+        query: GraphDataQuery,
+        max_complexity: Option<u64>,
+        max_depth: u8,
+    ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
         let mut operation = None;
         let mut fragments = HashMap::new();
         for defn in query.document.definitions.into_iter() {
@@ -87,6 +93,8 @@ impl Query {
         });
 
         query.validate_fields()?;
+        query.check_complexity(max_complexity, max_depth)?;
+
         Ok(query)
     }
 
@@ -121,7 +129,7 @@ impl Query {
         }
     }
 
-    pub fn check_complexity(
+    fn check_complexity(
         &self,
         max_complexity: Option<u64>,
         max_depth: u8,

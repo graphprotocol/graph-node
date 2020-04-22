@@ -72,7 +72,7 @@ where
         ("".to_owned(), "".to_owned())
     };
 
-    let query = crate::execution::Query::new(query)?;
+    let query = crate::execution::Query::new(query, options.max_complexity, options.max_depth)?;
 
     let mode = if query.verify {
         ExecutionMode::Verify
@@ -99,8 +99,6 @@ where
     }
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
-    query.check_complexity(options.max_complexity, options.max_depth)?;
-
     let start = Instant::now();
     let result = execute_root_selection_set(&ctx, &query.selection_set);
     if *graph::log::LOG_GQL_TIMING {
