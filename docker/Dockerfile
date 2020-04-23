@@ -2,7 +2,7 @@ FROM rust:latest
 
 # Replace this with the graph-node branch you want to build the image from;
 # Note: Docker Hub substitutes this automatically using our hooks/post_checkout script.
-ENV SOURCE_BRANCH "master"
+ENV SOURCE_BRANCH "jannis/break-store-get-deliberately"
 
 # Install clang (required for dependencies)
 RUN apt-get update \
