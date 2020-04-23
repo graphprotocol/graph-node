@@ -143,12 +143,23 @@ impl WriteContext {
                 // Add block transactions
                 .and_then(move |context| {
                     futures::stream::iter_ok::<_, Error>(
-                        block_for_transactions.block.transactions.clone(),
+                        block_for_transactions
+                            .block
+                            .transactions
+                            .into_iter()
+                            .zip(block_for_transactions.transaction_receipts.into_iter())
+                            .map(|transaction_and_receipt| {
+                                assert_eq!(
+                                    transaction_and_receipt.0.hash,
+                                    transaction_and_receipt.1.transaction_hash
+                                );
+                                LoadedTransaction::from(transaction_and_receipt)
+                            }),
                     )
                     .fold(
                         context,
-                        move |context, transaction: Web3Transaction| {
-                            context.set_entity(&Transaction::from(transaction))
+                        move |context, transaction: LoadedTransaction| {
+                            context.set_entity(&transaction)
                         },
                     )
                 })

@@ -34,18 +34,18 @@ impl ToEntityKey for &BlockWithOmmers {
     }
 }
 
-impl ToEntityId for Transaction {
+impl ToEntityId for LoadedTransaction {
     fn to_entity_id(&self) -> String {
-        format!("{:x}", self.0.hash)
+        format!("{:x}", self.transaction.hash)
     }
 }
 
-impl ToEntityKey for &Transaction {
+impl ToEntityKey for &LoadedTransaction {
     fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
         EntityKey {
             subgraph_id,
             entity_type: "Transaction".into(),
-            entity_id: format!("{:x}", self.0.hash),
+            entity_id: format!("{:x}", self.transaction.hash),
         }
     }
 }
@@ -188,22 +188,45 @@ impl TryIntoEntity for &BlockWithOmmers {
     }
 }
 
-impl TryIntoEntity for &Transaction {
+impl TryIntoEntity for &LoadedTransaction {
     fn try_into_entity(self) -> Result<Entity, Error> {
-        let inner = &self.0;
+        let transaction = &self.transaction;
+        let receipt = &self.receipt;
 
         Ok(Entity::from(vec![
-            ("id", inner.hash.to_entity_id().into()),
-            ("hash", inner.hash.into()),
-            ("nonce", inner.nonce.into()),
-            ("index", inner.transaction_index.unwrap().into()),
-            ("from", inner.from.into()),
-            ("to", inner.to.map_or(Value::Null, |to| to.into())),
-            ("value", inner.value.into()),
-            ("gasPrice", inner.gas_price.into()),
-            ("gas", inner.gas.into()),
-            ("inputData", inner.input.clone().into()),
-            ("block", format!("{:x}", inner.block_hash.unwrap()).into()),
+            ("id", transaction.hash.to_entity_id().into()),
+            ("hash", transaction.hash.into()),
+            ("nonce", transaction.nonce.into()),
+            ("index", transaction.transaction_index.unwrap().into()),
+            ("from", transaction.from.into()),
+            ("to", transaction.to.map_or(Value::Null, |to| to.into())),
+            ("value", transaction.value.into()),
+            ("gasPrice", transaction.gas_price.into()),
+            ("gas", transaction.gas.into()),
+            ("inputData", transaction.input.clone().into()),
+            (
+                "block",
+                format!("{:x}", transaction.block_hash.unwrap()).into(),
+            ),
+            (
+                "logs",
+                receipt
+                    .logs
+                    .iter()
+                    .cloned()
+                    .map(|log| Log::from(log).to_entity_id())
+                    .collect::<Vec<_>>()
+                    .into(),
+            ),
+            ("status", receipt.status.into()),
+            ("gasUsed", receipt.gas_used.into()),
+            ("cumulativeGasUsed", receipt.cumulative_gas_used.into()),
+            (
+                "createdContract",
+                receipt
+                    .contract_address
+                    .map_or(Value::Null, |address| address.into()),
+            ),
         ] as Vec<(_, Value)>))
     }
 }

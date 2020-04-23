@@ -1,7 +1,9 @@
 use graph::prelude::*;
 use std::fmt;
 use std::ops::Deref;
-use web3::types::{Block, Log as Web3Log, Transaction as Web3Transaction, H256};
+use web3::types::{
+    Block, Log as Web3Log, Transaction as Web3Transaction, TransactionReceipt, H256,
+};
 
 mod block_writer;
 mod convert;
@@ -85,19 +87,17 @@ impl fmt::Display for BlockWithOmmers {
 
 // Helper type to represent transactions.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Transaction(Web3Transaction);
-
-impl From<Web3Transaction> for Transaction {
-    fn from(transaction: Web3Transaction) -> Self {
-        Self(transaction)
-    }
+pub struct LoadedTransaction {
+    pub transaction: Web3Transaction,
+    pub receipt: TransactionReceipt,
 }
 
-impl Deref for Transaction {
-    type Target = Web3Transaction;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl From<(Web3Transaction, TransactionReceipt)> for LoadedTransaction {
+    fn from(transaction_and_receipt: (Web3Transaction, TransactionReceipt)) -> Self {
+        Self {
+            transaction: transaction_and_receipt.0,
+            receipt: transaction_and_receipt.1,
+        }
     }
 }
 
