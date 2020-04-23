@@ -35,11 +35,13 @@ impl ValueExt for q::Value {
     }
 }
 
+#[derive(PartialEq, Eq, Hash)]
 pub enum BlockLocator {
     Hash(H256),
     Number(BlockNumber),
 }
 
+#[derive(PartialEq, Eq, Hash)]
 pub struct BlockConstraint {
     pub subgraph: SubgraphDeploymentId,
     pub block: BlockLocator,

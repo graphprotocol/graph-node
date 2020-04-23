@@ -570,7 +570,7 @@ fn execute_selection_set(
                 .expect("collect_fields does not create type conditions for nonexistent types");
 
             if let Some(ref field) = concrete_type.field(&fields[0].name) {
-                match ctx.for_field(&fields[0], concrete_type.clone()) {
+                match ctx.for_field(&fields[0]) {
                     Ok(ctx) => {
                         let child_type = object_or_interface_from_type(
                             &ctx.query.schema.document,

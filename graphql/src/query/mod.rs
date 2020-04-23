@@ -80,6 +80,12 @@ where
         ExecutionMode::Prefetch
     };
 
+    let block = query
+        .block_constraint()?
+        .map(|bc| options.resolver.locate_block(&bc))
+        .transpose()?
+        .unwrap_or(BLOCK_NUMBER_MAX);
+
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: query_logger.clone(),
@@ -88,7 +94,7 @@ where
         fields: vec![],
         deadline: options.deadline,
         max_first: options.max_first,
-        block: BLOCK_NUMBER_MAX,
+        block,
         mode,
     };
 

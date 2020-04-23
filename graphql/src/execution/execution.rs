@@ -13,7 +13,6 @@ use crate::introspection::{
 };
 use crate::prelude::*;
 use crate::query::ast as qast;
-use crate::query::ext::FieldExt as _;
 use crate::schema::ast as sast;
 use crate::values::coercion;
 
@@ -84,16 +83,9 @@ where
     R: Resolver,
 {
     /// Creates a derived context for a new field (added to the top of the field stack).
-    pub fn for_field<'a>(
-        &self,
-        field: &q::Field,
-        object_type: impl Into<ObjectOrInterface<'a>>,
-    ) -> Result<Self, QueryExecutionError> {
+    pub fn for_field<'a>(&self, field: &q::Field) -> Result<Self, QueryExecutionError> {
         let mut ctx = self.clone();
         ctx.fields.push(field.clone());
-        if let Some(bc) = field.block_constraint(object_type)? {
-            ctx.block = self.resolver.locate_block(&bc)?;
-        }
         Ok(ctx)
     }
 
@@ -235,7 +227,7 @@ fn execute_selection_set_to_map(
         // If the field exists on the object, execute it and add its result to the result map
         if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
             // Push the new field onto the context's field stack
-            match ctx.for_field(&fields[0], object_type) {
+            match ctx.for_field(&fields[0]) {
                 Ok(ctx) => {
                     match execute_field(&ctx, object_type, object_value, &fields[0], field, fields)
                     {

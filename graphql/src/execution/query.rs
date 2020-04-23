@@ -1,6 +1,6 @@
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use graph::data::graphql::ext::TypeExt;
@@ -10,7 +10,7 @@ use graph::prelude::QueryExecutionError;
 
 use crate::execution::{get_field, get_named_type};
 use crate::introspection::introspection_schema;
-use crate::query::ast as qast;
+use crate::query::{ast as qast, ext::BlockConstraint, ext::FieldExt};
 use crate::schema::ast as sast;
 
 #[derive(Copy, Clone, Debug)]
@@ -105,6 +105,36 @@ impl Query {
         query.check_complexity(max_complexity, max_depth)?;
 
         Ok(query)
+    }
+
+    /// Return the block constraint for the toplevel query field(s) Since,
+    /// syntactically, each toplevel field can have its own block constraint,
+    /// we check that they are all identical and report an error otherwise
+    pub fn block_constraint(&self) -> Result<Option<BlockConstraint>, Vec<QueryExecutionError>> {
+        let root_type = sast::get_root_query_type(&self.schema.document).unwrap();
+
+        let mut bcs = HashSet::new();
+        let mut errors = Vec::new();
+
+        for field in self.selection_set.items.iter().filter_map(|sel| match sel {
+            q::Selection::Field(f) => Some(f),
+            _ => None,
+        }) {
+            match field.block_constraint(root_type) {
+                Ok(bc) => {
+                    bcs.insert(bc);
+                }
+                Err(e) => errors.push(e),
+            }
+        }
+        if bcs.len() > 1 {
+            errors.push(QueryExecutionError::InconsistentBlockConstraints)
+        }
+        if !errors.is_empty() {
+            Err(errors)
+        } else {
+            Ok(bcs.into_iter().next().flatten())
+        }
     }
 
     /// Return this query, but use the introspection schema as its schema
