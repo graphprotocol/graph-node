@@ -86,3 +86,9 @@ fn ganache_reverts() {
     let _m = TEST_MUTEX.lock();
     run_test("ganache-reverts")
 }
+
+#[test]
+fn remove_then_update() {
+    let _m = TEST_MUTEX.lock();
+    run_test("remove-then-update");
+}
