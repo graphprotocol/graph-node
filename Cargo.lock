@@ -1294,6 +1294,7 @@ name = "graph-graphql"
 version = "0.18.0"
 dependencies = [
  "Inflector",
+ "futures 0.1.29",
  "graph",
  "graphql-parser",
  "indexmap",
@@ -1330,6 +1331,7 @@ dependencies = [
  "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-core",
+ "graph-graphql",
  "graph-mock",
  "graph-runtime-wasm",
  "graph-server-http",

@@ -23,6 +23,9 @@ mod values;
 /// Utilities for querying `Store` components.
 mod store;
 
+/// The external interface for actually running queries
+mod runner;
+
 /// Prelude that exports the most important traits and types.
 pub mod prelude {
     pub use super::execution::{ExecutionContext, ObjectOrInterface, Resolver};
@@ -34,5 +37,7 @@ pub mod prelude {
     pub use super::values::{object_value, IntoValue, MaybeCoercible};
 
     pub use super::graphql_parser::{query::Name, schema::ObjectType};
+    pub use super::runner::GraphQlRunner;
+
     pub use crate::object;
 }

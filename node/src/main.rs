@@ -22,6 +22,7 @@ use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
+use graph_graphql::prelude::GraphQlRunner;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
@@ -533,10 +534,7 @@ async fn main() {
         .and_then(move |stores| {
             let generic_store = stores.values().next().expect("error creating stores");
 
-            let graphql_runner = Arc::new(graph_core::GraphQlRunner::new(
-                &logger,
-                generic_store.clone(),
-            ));
+            let graphql_runner = Arc::new(GraphQlRunner::new(&logger, generic_store.clone()));
             let mut graphql_server = GraphQLQueryServer::new(
                 &logger_factory,
                 graphql_metrics_registry,
