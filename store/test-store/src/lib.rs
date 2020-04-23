@@ -41,7 +41,7 @@ lazy_static! {
                 net_version: NETWORK_VERSION.to_owned(),
                 genesis_block_hash: GENESIS_PTR.hash,
             };
-            let conn_pool_size: u32 = 10;
+            let conn_pool_size: u32 = 20;
             let postgres_conn_pool = create_connection_pool(
                 postgres_url.clone(),
                 conn_pool_size,
