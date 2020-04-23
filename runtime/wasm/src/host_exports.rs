@@ -215,7 +215,7 @@ impl HostExports {
         state: &mut BlockState,
         entity_type: String,
         entity_id: String,
-    ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
+    ) -> Result<Option<Entity>, HostExportError<Error>> {
         Ok(None)
         // let store_key = EntityKey {
         //     subgraph_id: self.subgraph_id.clone(),
