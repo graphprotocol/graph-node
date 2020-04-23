@@ -111,8 +111,6 @@ impl Query {
     /// syntactically, each toplevel field can have its own block constraint,
     /// we check that they are all identical and report an error otherwise
     pub fn block_constraint(&self) -> Result<Option<BlockConstraint>, Vec<QueryExecutionError>> {
-        let root_type = sast::get_root_query_type(&self.schema.document).unwrap();
-
         let mut bcs = HashSet::new();
         let mut errors = Vec::new();
 
@@ -120,7 +118,7 @@ impl Query {
             q::Selection::Field(f) => Some(f),
             _ => None,
         }) {
-            match field.block_constraint(root_type) {
+            match field.block_constraint() {
                 Ok(bc) => {
                     bcs.insert(bc);
                 }

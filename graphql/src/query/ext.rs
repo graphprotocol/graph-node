@@ -7,12 +7,8 @@ use std::convert::TryFrom;
 
 use graph::data::graphql::TryFromValue;
 use graph::data::query::QueryExecutionError;
-use graph::data::subgraph::SubgraphDeploymentId;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
-
-use crate::execution::ObjectOrInterface;
-use crate::store::parse_subgraph_id;
 
 pub trait ValueExt {
     fn as_object(&self) -> &BTreeMap<q::Name, q::Value>;
@@ -36,29 +32,17 @@ impl ValueExt for q::Value {
 }
 
 #[derive(PartialEq, Eq, Hash)]
-pub enum BlockLocator {
+pub enum BlockConstraint {
     Hash(H256),
     Number(BlockNumber),
 }
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct BlockConstraint {
-    pub subgraph: SubgraphDeploymentId,
-    pub block: BlockLocator,
-}
-
 pub trait FieldExt {
-    fn block_constraint<'a>(
-        &self,
-        object_type: impl Into<ObjectOrInterface<'a>>,
-    ) -> Result<Option<BlockConstraint>, QueryExecutionError>;
+    fn block_constraint<'a>(&self) -> Result<Option<BlockConstraint>, QueryExecutionError>;
 }
 
 impl FieldExt for q::Field {
-    fn block_constraint<'a>(
-        &self,
-        object_type: impl Into<ObjectOrInterface<'a>>,
-    ) -> Result<Option<BlockConstraint>, QueryExecutionError> {
+    fn block_constraint<'a>(&self) -> Result<Option<BlockConstraint>, QueryExecutionError> {
         fn invalid_argument(arg: &str, field: &q::Field, value: &q::Value) -> QueryExecutionError {
             QueryExecutionError::InvalidArgumentError(
                 field.position.clone(),
@@ -84,28 +68,17 @@ impl FieldExt for q::Field {
                 if map.len() != 1 || (hash.is_none() && number.is_none()) {
                     return Err(invalid_argument("block", self, value));
                 }
-                let subgraph = parse_subgraph_id(object_type)?;
                 match (hash, number) {
                     (Some(hash), _) => TryFromValue::try_from_value(hash)
                         .map_err(|_| invalid_argument("block.hash", self, value))
-                        .map(|hash| {
-                            Some(BlockConstraint {
-                                subgraph,
-                                block: BlockLocator::Hash(hash),
-                            })
-                        }),
+                        .map(|hash| Some(BlockConstraint::Hash(hash))),
                     (_, Some(number_value)) => TryFromValue::try_from_value(number_value)
                         .map_err(|_| invalid_argument("block.number", self, number_value))
                         .and_then(|number: u64| {
                             TryFrom::try_from(number)
                                 .map_err(|_| invalid_argument("block.number", self, number_value))
                         })
-                        .map(|number| {
-                            Some(BlockConstraint {
-                                subgraph,
-                                block: BlockLocator::Number(number),
-                            })
-                        }),
+                        .map(|number| Some(BlockConstraint::Number(number))),
                     _ => unreachable!("We already checked that there is a hash or number entry"),
                 }
             } else {

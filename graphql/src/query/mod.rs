@@ -82,7 +82,7 @@ where
 
     let block = query
         .block_constraint()?
-        .map(|bc| options.resolver.locate_block(&bc))
+        .map(|bc| options.resolver.locate_block(bc, &query.schema.id))
         .transpose()?
         .unwrap_or(BLOCK_NUMBER_MAX);
 

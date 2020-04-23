@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, HashMap};
 use crate::prelude::*;
 use crate::query::ext::BlockConstraint;
 use crate::schema::ast::get_named_type;
-use graph::prelude::{BlockNumber, QueryExecutionError, Schema, StoreEventStreamBox};
+use graph::prelude::{
+    BlockNumber, QueryExecutionError, Schema, StoreEventStreamBox, SubgraphDeploymentId,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -75,7 +77,8 @@ pub trait Resolver: Clone + Send + Sync {
     /// `resolve_objects`
     fn locate_block(
         &self,
-        block_constraint: &BlockConstraint,
+        block_constraint: BlockConstraint,
+        subgraph: &SubgraphDeploymentId,
     ) -> Result<BlockNumber, QueryExecutionError>;
 
     /// Resolves entities referenced by a parent object.

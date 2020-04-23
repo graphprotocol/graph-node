@@ -367,7 +367,11 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         Ok(None)
     }
 
-    fn locate_block(&self, _: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
+    fn locate_block(
+        &self,
+        _: BlockConstraint,
+        _: &SubgraphDeploymentId,
+    ) -> Result<BlockNumber, QueryExecutionError> {
         Ok(BLOCK_NUMBER_MAX)
     }
 

@@ -247,11 +247,15 @@ where
         super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))
     }
 
-    fn locate_block(&self, bc: &BlockConstraint) -> Result<BlockNumber, QueryExecutionError> {
-        match bc.block {
-            BlockLocator::Number(number) => self
+    fn locate_block(
+        &self,
+        bc: BlockConstraint,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<BlockNumber, QueryExecutionError> {
+        match bc {
+            BlockConstraint::Number(number) => self
                 .store
-                .block_ptr(bc.subgraph.clone())
+                .block_ptr(subgraph.clone())
                 .map_err(|e| StoreError::from(e).into())
                 .and_then(|ptr| {
                     let ptr = ptr.expect("we should have already checked that the subgraph exists");
@@ -261,16 +265,16 @@ where
                             format!(
                                 "subgraph {} has only indexed up to block number {} \
                                  and data for block number {} is therefore not yet available",
-                                &bc.subgraph, ptr.number, number
+                                subgraph, ptr.number, number
                             ),
                         ))
                     } else {
                         Ok(number)
                     }
                 }),
-            BlockLocator::Hash(hash) => self
+            BlockConstraint::Hash(hash) => self
                 .store
-                .block_number(&bc.subgraph, hash)
+                .block_number(subgraph, hash)
                 .map_err(|e| e.into())
                 .and_then(|number| {
                     number.ok_or_else(|| {
