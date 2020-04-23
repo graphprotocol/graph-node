@@ -7,6 +7,9 @@
 **/*.idea
 **/*.DS_STORE
 
+# IDE files
+.vscode/
+
 # Ignore data files created by running the Docker Compose setup locally
 /docker/data/
 /docker/parity/chains/

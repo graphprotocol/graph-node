@@ -6,7 +6,7 @@ use mockall::predicate::*;
 use mockall::*;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::env;
 use std::fmt;
 use std::str::FromStr;
@@ -1505,9 +1505,13 @@ pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
     current: LfuCache<EntityKey, Option<Entity>>,
-    /// The accumulated changes to an entity. An entry of `None`
-    /// means that the entity should be deleted
-    updates: HashMap<EntityKey, Option<Entity>>,
+
+    /// The accumulated changes to an entity.
+    updates: BTreeMap<EntityKey, Entity>,
+
+    /// When an entity is removed, it is added here and removed from `updates`.
+    /// If the entity has `Some` on `updates`, it was created again after removal.
+    removed: BTreeSet<EntityKey>,
 }
 
 pub struct ModificationsAndCache {
@@ -1523,7 +1527,8 @@ impl EntityCache {
     pub fn with_current(current: LfuCache<EntityKey, Option<Entity>>) -> EntityCache {
         EntityCache {
             current,
-            updates: HashMap::new(),
+            updates: BTreeMap::new(),
+            removed: BTreeSet::new(),
         }
     }
 
@@ -1532,6 +1537,14 @@ impl EntityCache {
         store: &(impl Store + ?Sized),
         key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
+        let updates = self.updates.get(&key).cloned();
+
+        // Entity was removed then possibly recreated.
+        // Either way we don't need to go to the store.
+        if self.removed.contains(&key) {
+            return Ok(updates);
+        }
+
         let current = match self.current.get(&key) {
             None => {
                 let entity = store.get(key.clone())?;
@@ -1540,16 +1553,15 @@ impl EntityCache {
             }
             Some(data) => data.to_owned(),
         };
-        match (current, self.updates.get(&key).cloned()) {
+        match (current, updates) {
             // Entity is unchanged
             (current, None) => Ok(current),
-            // Entity was deleted
-            (_, Some(None)) => Ok(None),
+
             // Entity created
-            (None, Some(updates)) => Ok(updates),
+            (None, Some(updates)) => Ok(Some(updates)),
+
             // Entity updated
-            (Some(current), Some(Some(updates))) => {
-                let mut current = current;
+            (Some(mut current), Some(updates)) => {
                 current.merge(updates);
                 Ok(Some(current))
             }
@@ -1557,20 +1569,21 @@ impl EntityCache {
     }
 
     pub fn remove(&mut self, key: EntityKey) {
-        self.updates.insert(key, None);
+        self.updates.remove(&key);
+        self.removed.insert(key);
     }
 
     pub fn set(&mut self, key: EntityKey, entity: Entity) {
-        let update = self.updates.entry(key).or_insert(None);
+        use std::collections::btree_map::Entry;
 
-        match update {
-            Some(update) => {
+        match self.updates.entry(key) {
+            Entry::Occupied(mut update) => {
                 // Previously changed
-                update.merge(entity);
+                update.get_mut().merge(entity);
             }
-            None => {
+            Entry::Vacant(vacant) => {
                 // Previously removed or never changed
-                *update = Some(entity);
+                vacant.insert(entity);
             }
         }
     }
@@ -1590,11 +1603,11 @@ impl EntityCache {
 
     pub fn extend(&mut self, other: EntityCache) {
         self.current.extend(other.current);
+        for removed in other.removed {
+            self.remove(removed);
+        }
         for (key, update) in other.updates {
-            match update {
-                Some(update) => self.set(key, update),
-                None => self.remove(key),
-            }
+            self.set(key, update);
         }
     }
 
@@ -1607,11 +1620,13 @@ impl EntityCache {
         mut self,
         store: &(impl Store + ?Sized),
     ) -> Result<ModificationsAndCache, QueryExecutionError> {
+        let removed_keys = self.removed.iter();
+        let changed_keys: BTreeSet<_> = self.updates.keys().chain(removed_keys).cloned().collect();
+
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
-        let missing = self
-            .updates
-            .keys()
+        let missing = changed_keys
+            .iter()
             .filter(|key| !self.current.contains_key(key));
 
         let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&str, Vec<&str>>> = BTreeMap::new();
@@ -1638,20 +1653,23 @@ impl EntityCache {
         }
 
         let mut mods = Vec::new();
-        for (key, update) in self.updates {
+        for key in changed_keys {
             use EntityModification::*;
             let current = self.current.remove(&key).and_then(|entity| entity);
-            let modification = match (current, update) {
+            let update = self.updates.get(&key).cloned();
+            let was_removed = self.removed.contains(&key);
+            let modification = match (current, update, was_removed) {
                 // Entity was created
-                (None, Some(updates)) => {
+                (None, Some(updates), _) => {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
                     data.merge_remove_null_fields(updates);
                     self.current.insert(key.clone(), Some(data.clone()));
                     Some(Insert { key, data })
                 }
-                // Entity may have been changed
-                (Some(current), Some(updates)) => {
+
+                // Entity may have been changed and should be merged.
+                (Some(current), Some(updates), false) => {
                     let mut data = current.clone();
                     data.merge_remove_null_fields(updates);
                     self.current.insert(key.clone(), Some(data.clone()));
@@ -1661,13 +1679,28 @@ impl EntityCache {
                         None
                     }
                 }
+
+                // Entity changed after being removed, don't merge.
+                (Some(current), Some(updates), true) => {
+                    self.current.insert(key.clone(), Some(updates.clone()));
+                    if current != updates {
+                        Some(Overwrite { key, data: updates })
+                    } else {
+                        None
+                    }
+                }
+
                 // Existing entity was deleted
-                (Some(_), None) => {
+                (Some(_), None, true) => {
                     self.current.insert(key.clone(), None);
                     Some(Remove { key })
                 }
+
                 // Entity was deleted, but it doesn't exist in the store
-                (None, None) => None,
+                (None, None, true) => None,
+
+                // If nothing changed, the key isn't in `changed_keys`.
+                (_, None, false) => unreachable!(),
             };
             if let Some(modification) = modification {
                 mods.push(modification)
