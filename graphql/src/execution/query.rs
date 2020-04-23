@@ -110,7 +110,7 @@ impl Query {
     /// Return the block constraint for the toplevel query field(s) Since,
     /// syntactically, each toplevel field can have its own block constraint,
     /// we check that they are all identical and report an error otherwise
-    pub fn block_constraint(&self) -> Result<Option<BlockConstraint>, Vec<QueryExecutionError>> {
+    pub fn block_constraint(&self) -> Result<BlockConstraint, Vec<QueryExecutionError>> {
         let mut bcs = HashSet::new();
         let mut errors = Vec::new();
 
@@ -131,7 +131,10 @@ impl Query {
         if !errors.is_empty() {
             Err(errors)
         } else {
-            Ok(bcs.into_iter().next().flatten())
+            Ok(bcs
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| BlockConstraint::default()))
         }
     }
 

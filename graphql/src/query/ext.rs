@@ -31,18 +31,25 @@ impl ValueExt for q::Value {
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub enum BlockConstraint {
     Hash(H256),
     Number(BlockNumber),
+    Latest,
+}
+
+impl Default for BlockConstraint {
+    fn default() -> Self {
+        BlockConstraint::Latest
+    }
 }
 
 pub trait FieldExt {
-    fn block_constraint<'a>(&self) -> Result<Option<BlockConstraint>, QueryExecutionError>;
+    fn block_constraint<'a>(&self) -> Result<BlockConstraint, QueryExecutionError>;
 }
 
 impl FieldExt for q::Field {
-    fn block_constraint<'a>(&self) -> Result<Option<BlockConstraint>, QueryExecutionError> {
+    fn block_constraint<'a>(&self) -> Result<BlockConstraint, QueryExecutionError> {
         fn invalid_argument(arg: &str, field: &q::Field, value: &q::Value) -> QueryExecutionError {
             QueryExecutionError::InvalidArgumentError(
                 field.position.clone(),
@@ -71,21 +78,21 @@ impl FieldExt for q::Field {
                 match (hash, number) {
                     (Some(hash), _) => TryFromValue::try_from_value(hash)
                         .map_err(|_| invalid_argument("block.hash", self, value))
-                        .map(|hash| Some(BlockConstraint::Hash(hash))),
+                        .map(|hash| BlockConstraint::Hash(hash)),
                     (_, Some(number_value)) => TryFromValue::try_from_value(number_value)
                         .map_err(|_| invalid_argument("block.number", self, number_value))
                         .and_then(|number: u64| {
                             TryFrom::try_from(number)
                                 .map_err(|_| invalid_argument("block.number", self, number_value))
                         })
-                        .map(|number| Some(BlockConstraint::Number(number))),
+                        .map(|number| BlockConstraint::Number(number)),
                     _ => unreachable!("We already checked that there is a hash or number entry"),
                 }
             } else {
                 Err(invalid_argument("block", self, value))
             }
         } else {
-            Ok(None)
+            Ok(BlockConstraint::Latest)
         }
     }
 }

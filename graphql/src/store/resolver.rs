@@ -284,6 +284,14 @@ where
                         )
                     })
                 }),
+            BlockConstraint::Latest => self
+                .store
+                .block_ptr(subgraph.clone())
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| {
+                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
+                    Ok(ptr.number as i32)
+                }),
         }
     }
 

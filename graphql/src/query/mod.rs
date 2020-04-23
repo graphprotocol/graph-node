@@ -80,11 +80,8 @@ where
         ExecutionMode::Prefetch
     };
 
-    let block = query
-        .block_constraint()?
-        .map(|bc| options.resolver.locate_block(bc, &query.schema.id))
-        .transpose()?
-        .unwrap_or(BLOCK_NUMBER_MAX);
+    let bc = query.block_constraint()?;
+    let block = options.resolver.locate_block(bc, &query.schema.id)?;
 
     // Create a fresh execution context
     let ctx = ExecutionContext {
