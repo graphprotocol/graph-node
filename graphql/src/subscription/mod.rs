@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, schema as s, Style};
+use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::result::Result;
 use std::time::{Duration, Instant};
@@ -58,12 +58,6 @@ pub fn execute_subscription<R>(
 where
     R: Resolver + 'static,
 {
-    let query_text = subscription
-        .query
-        .document
-        .format(&Style::default().indent(0))
-        .replace('\n', " ");
-
     let query = crate::execution::Query::new(
         subscription.query,
         options.max_complexity,
@@ -91,7 +85,7 @@ where
     info!(
         ctx.logger,
         "Execute subscription";
-        "query" => query_text,
+        "query" => &query.query_text,
     );
 
     let source_stream = create_source_event_stream(&ctx)?;

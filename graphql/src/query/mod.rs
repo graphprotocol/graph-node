@@ -1,5 +1,5 @@
 use graph::prelude::{Query as GraphDataQuery, *};
-use graphql_parser::{query as q, Style};
+use graphql_parser::query as q;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -60,18 +60,6 @@ where
         "query_id" => query_id
     ));
 
-    let (query_text, variables_text) = if *graph::log::LOG_GQL_TIMING {
-        (
-            query
-                .document
-                .format(&Style::default().indent(0))
-                .replace('\n', " "),
-            serde_json::to_string(&query.variables).unwrap_or_default(),
-        )
-    } else {
-        ("".to_owned(), "".to_owned())
-    };
-
     let query = crate::execution::Query::new(query, options.max_complexity, options.max_depth)?;
 
     let mode = if query.verify {
@@ -108,8 +96,8 @@ where
         info!(
             query_logger,
             "Query timing (GraphQL)";
-            "query" => query_text,
-            "variables" => variables_text,
+            "query" => &query.query_text,
+            "variables" => &query.variables_text,
             "query_time_ms" => start.elapsed().as_millis(),
         );
     }
