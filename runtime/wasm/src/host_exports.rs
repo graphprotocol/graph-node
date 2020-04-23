@@ -216,19 +216,20 @@ impl HostExports {
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
-        let store_key = EntityKey {
-            subgraph_id: self.subgraph_id.clone(),
-            entity_type: entity_type.clone(),
-            entity_id: entity_id.clone(),
-        };
+        Ok(None)
+        // let store_key = EntityKey {
+        //     subgraph_id: self.subgraph_id.clone(),
+        //     entity_type: entity_type.clone(),
+        //     entity_id: entity_id.clone(),
+        // };
 
-        let result = state
-            .entity_cache
-            .get(self.store.as_ref(), &store_key)
-            .map_err(HostExportError)
-            .map(|ok| ok.to_owned());
+        // let result = state
+        //     .entity_cache
+        //     .get(self.store.as_ref(), &store_key)
+        //     .map_err(HostExportError)
+        //     .map(|ok| ok.to_owned());
 
-        result
+        // result
     }
 
     /// Returns `Ok(None)` if the call was reverted.
