@@ -1,9 +1,12 @@
 use futures01::future;
+use graphql_parser::query as q;
 use std::env;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use crate::prelude::*;
+use crate::query::execute_prepared_query;
+use crate::subscription::execute_prepared_subscription;
 use graph::prelude::{GraphQlRunner as GraphQlRunnerTrait, *};
 
 use lazy_static::lazy_static;
@@ -48,6 +51,28 @@ where
             store,
         }
     }
+
+    fn execute(
+        &self,
+        query: Query,
+        max_complexity: Option<u64>,
+        max_depth: Option<u8>,
+        max_first: Option<u32>,
+    ) -> Result<q::Value, Vec<QueryExecutionError>> {
+        let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
+        let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
+        execute_prepared_query(
+            query,
+            QueryExecutionOptions {
+                logger: self.logger.clone(),
+                resolver: StoreResolver::new(&self.logger, self.store.clone()),
+                deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
+                max_complexity: max_complexity,
+                max_depth: max_depth,
+                max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
+            },
+        )
+    }
 }
 
 impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
@@ -55,18 +80,12 @@ where
     S: Store,
 {
     fn run_query(&self, query: Query) -> QueryResultFuture {
-        let result = execute_query(
+        self.run_query_with_complexity(
             query,
-            QueryExecutionOptions {
-                logger: self.logger.clone(),
-                resolver: StoreResolver::new(&self.logger, self.store.clone()),
-                deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
-                max_complexity: *GRAPHQL_MAX_COMPLEXITY,
-                max_depth: *GRAPHQL_MAX_DEPTH,
-                max_first: *GRAPHQL_MAX_FIRST,
-            },
-        );
-        Box::new(future::ok(result))
+            *GRAPHQL_MAX_COMPLEXITY,
+            Some(*GRAPHQL_MAX_DEPTH),
+            Some(*GRAPHQL_MAX_FIRST),
+        )
     }
 
     fn run_query_with_complexity(
@@ -76,23 +95,22 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> QueryResultFuture {
-        let result = execute_query(
-            query,
-            QueryExecutionOptions {
-                logger: self.logger.clone(),
-                resolver: StoreResolver::new(&self.logger, self.store.clone()),
-                deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
-                max_complexity: max_complexity,
-                max_depth: max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH),
-                max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
-            },
-        );
+        let result = QueryResult::from(self.execute(query, max_complexity, max_depth, max_first));
         Box::new(future::ok(result))
     }
 
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
-        let result = execute_subscription(
-            subscription,
+        let query = match crate::execution::Query::new(
+            subscription.query,
+            *GRAPHQL_MAX_COMPLEXITY,
+            *GRAPHQL_MAX_DEPTH,
+        ) {
+            Ok(query) => query,
+            Err(e) => return Box::new(future::err(e.into())),
+        };
+
+        let result = execute_prepared_subscription(
+            query,
             SubscriptionExecutionOptions {
                 logger: self.logger.clone(),
                 resolver: StoreResolver::new(&self.logger, self.store.clone()),

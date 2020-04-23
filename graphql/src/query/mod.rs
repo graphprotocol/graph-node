@@ -1,5 +1,6 @@
-use graph::prelude::{Query as GraphDataQuery, *};
+use graph::prelude::{info, o, Logger, Query as GraphDataQuery, QueryExecutionError, QueryResult};
 use graphql_parser::query as q;
+use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -40,15 +41,17 @@ pub fn execute_query<R>(query: GraphDataQuery, options: QueryExecutionOptions<R>
 where
     R: Resolver,
 {
-    match execute_query_inner(query, options) {
-        Ok(v) => QueryResult::new(Some(v)),
-        Err(errors) => QueryResult::from(errors),
-    }
+    let query = match Query::new(query, options.max_complexity, options.max_depth) {
+        Ok(query) => query,
+        Err(e) => return QueryResult::from(e),
+    };
+
+    QueryResult::from(execute_prepared_query(query, options))
 }
 
 /// Executes a query and returns a result.
-fn execute_query_inner<R>(
-    query: GraphDataQuery,
+pub(crate) fn execute_prepared_query<R>(
+    query: Arc<Query>,
     options: QueryExecutionOptions<R>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
 where
@@ -59,8 +62,6 @@ where
         "subgraph_id" => (*query.schema.id).clone(),
         "query_id" => query_id
     ));
-
-    let query = crate::execution::Query::new(query, options.max_complexity, options.max_depth)?;
 
     let mode = if query.verify {
         ExecutionMode::Verify

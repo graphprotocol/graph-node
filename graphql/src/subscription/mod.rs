@@ -1,10 +1,11 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::result::Result;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Semaphore;
 
 use graph::prelude::*;
+use tokio::sync::Semaphore;
 
 use crate::execution::*;
 use crate::schema::ast as sast;
@@ -63,7 +64,16 @@ where
         options.max_complexity,
         options.max_depth,
     )?;
+    execute_prepared_subscription(query, options)
+}
 
+pub(crate) fn execute_prepared_subscription<R>(
+    query: Arc<crate::execution::Query>,
+    options: SubscriptionExecutionOptions<R>,
+) -> Result<SubscriptionResult, SubscriptionError>
+where
+    R: Resolver + 'static,
+{
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,

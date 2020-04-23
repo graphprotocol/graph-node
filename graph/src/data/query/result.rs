@@ -45,3 +45,12 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
         }
     }
 }
+
+impl From<Result<q::Value, Vec<QueryExecutionError>>> for QueryResult {
+    fn from(result: Result<q::Value, Vec<QueryExecutionError>>) -> Self {
+        match result {
+            Ok(v) => QueryResult::new(Some(v)),
+            Err(errors) => QueryResult::from(errors),
+        }
+    }
+}
