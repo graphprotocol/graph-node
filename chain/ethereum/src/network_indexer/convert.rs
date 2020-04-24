@@ -120,6 +120,7 @@ impl TryIntoEntity for Ommer {
                     .collect::<Vec<_>>()
                     .into()),
             ),
+            ("logCount", (0 as i32).into()),
             ("size", inner.size.into()),
             ("sealFields", inner.seal_fields.clone().into()),
         ] as Vec<(_, Value)>))
@@ -130,6 +131,11 @@ impl TryIntoEntity for &BlockWithOmmers {
     fn try_into_entity(self) -> Result<Entity, Error> {
         let inner = self.inner();
         let receipts = &self.block.transaction_receipts;
+        let logs = receipts
+            .iter()
+            .flat_map(|receipt| receipt.logs.iter())
+            .map(|log| format!("{:x}-{}", log.block_hash.unwrap(), log.log_index.unwrap()))
+            .collect::<Vec<_>>();
 
         Ok(Entity::from(vec![
             ("id", format!("{:x}", inner.hash.unwrap()).into()),
@@ -173,15 +179,8 @@ impl TryIntoEntity for &BlockWithOmmers {
                     .collect::<Vec<_>>()
                     .into()),
             ),
-            (
-                "logs",
-                (receipts
-                    .iter()
-                    .flat_map(|receipt| receipt.logs.iter())
-                    .map(|log| format!("{:x}-{}", log.block_hash.unwrap(), log.log_index.unwrap()))
-                    .collect::<Vec<_>>()
-                    .into()),
-            ),
+            ("logCount", (logs.len() as i32).into()),
+            ("logs", logs.into()),
             ("size", inner.size.into()),
             ("sealFields", inner.seal_fields.clone().into()),
         ] as Vec<(_, Value)>))
@@ -208,6 +207,8 @@ impl TryIntoEntity for &LoadedTransaction {
                 "block",
                 format!("{:x}", transaction.block_hash.unwrap()).into(),
             ),
+            ("blockNumber", transaction.block_number.unwrap().into()),
+            ("logCount", (receipt.logs.len() as i32).into()),
             (
                 "logs",
                 receipt

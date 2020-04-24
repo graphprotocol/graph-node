@@ -75,6 +75,9 @@ type Block @entity {
   """
   transactions: [Transaction!]
 
+  """The number of logs emitted in this block."""
+  logCount: Int!
+
   """The logs emitted in this block."""
   logs: [Log!]
 
@@ -124,6 +127,12 @@ type Transaction @entity {
   This will be null if the transaction has not yet been mined.
   """
   block: Block
+
+  """ The number of the block this transaction was mined in. """
+  blockNumber: Int!
+
+  """The number of logs emitted in this transaction."""
+  logCount: Int!
 
   """
   A list of log entries emitted by this transaction.
