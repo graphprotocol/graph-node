@@ -17,6 +17,7 @@ use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 pub struct StoreResolver<S> {
     logger: Logger,
     store: Arc<S>,
+    block: BlockNumber,
 }
 
 impl<S> Clone for StoreResolver<S>
@@ -27,6 +28,7 @@ where
         StoreResolver {
             logger: self.logger.clone(),
             store: self.store.clone(),
+            block: self.block.clone(),
         }
     }
 }
@@ -35,11 +37,35 @@ impl<S> StoreResolver<S>
 where
     S: Store,
 {
+    /// Create a resolver that looks up entities at whatever block is the
+    /// latest when the query is run. That means that multiple calls to find
+    /// entities into this resolver might return entities from different
+    /// blocks
     pub fn new(logger: &Logger, store: Arc<S>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
+            block: BLOCK_NUMBER_MAX,
         }
+    }
+
+    /// Create a resolver that looks up entities at the block specified
+    /// by `bc`. Any calls to find objects will always return entities as
+    /// of that block. Note that if `bc` is `BlockConstraint::Latest` we use
+    /// whatever the latest block for the subgraph was when the resolver was
+    /// created
+    pub fn at_block(
+        logger: &Logger,
+        store: Arc<S>,
+        bc: BlockConstraint,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<Self, QueryExecutionError> {
+        let block = Self::locate_block(store.as_ref(), bc, subgraph)?;
+        Ok(StoreResolver {
+            logger: logger.new(o!("component" => "StoreResolver")),
+            store,
+            block,
+        })
     }
 
     /// Adds a filter for matching entities that correspond to a derived field.
@@ -233,6 +259,51 @@ where
             )));
         }
     }
+
+    fn locate_block(
+        store: &S,
+        bc: BlockConstraint,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<BlockNumber, QueryExecutionError> {
+        match bc {
+            BlockConstraint::Number(number) => store
+                .block_ptr(subgraph.clone())
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| {
+                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
+                    if ptr.number < number as u64 {
+                        Err(QueryExecutionError::ValueParseError(
+                            "block.number".to_owned(),
+                            format!(
+                                "subgraph {} has only indexed up to block number {} \
+                                 and data for block number {} is therefore not yet available",
+                                subgraph, ptr.number, number
+                            ),
+                        ))
+                    } else {
+                        Ok(number)
+                    }
+                }),
+            BlockConstraint::Hash(hash) => store
+                .block_number(subgraph, hash)
+                .map_err(|e| e.into())
+                .and_then(|number| {
+                    number.ok_or_else(|| {
+                        QueryExecutionError::ValueParseError(
+                            "block.hash".to_owned(),
+                            "no block with that hash found".to_owned(),
+                        )
+                    })
+                }),
+            BlockConstraint::Latest => store
+                .block_ptr(subgraph.clone())
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| {
+                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
+                    Ok(ptr.number as i32)
+                }),
+        }
+    }
 }
 
 impl<S> Resolver for StoreResolver<S>
@@ -303,7 +374,7 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        block: BlockNumber,
+        _block: BlockNumber,
         max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         if Self::was_prefetched(parent) {
@@ -313,7 +384,7 @@ where
         let object_type = object_type.into();
         let mut query = build_query(
             object_type,
-            block,
+            self.block,
             arguments,
             types_for_interface,
             max_first,
@@ -356,7 +427,7 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        block: BlockNumber,
+        _block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         if Self::was_prefetched(parent) {
             return self.resolve_object_prefetch(parent, field, field_definition, object_type);
@@ -384,7 +455,7 @@ where
                     EntityCollection::All(entity_types)
                 }
             };
-            let query = EntityQuery::new(subgraph_id_for_resolve_object, block, collection)
+            let query = EntityQuery::new(subgraph_id_for_resolve_object, self.block, collection)
                 .filter(EntityFilter::Equal(String::from("id"), Value::from(id)))
                 .first(1);
             Ok(self.store.find(query)?.into_iter().next())
@@ -409,7 +480,7 @@ where
                 let skip_arg_name = q::Name::from("skip");
                 arguments.insert(&skip_arg_name, q::Value::Int(q::Number::from(0)));
                 let mut query =
-                    build_query(object_type, block, &arguments, types_for_interface, 2)?;
+                    build_query(object_type, self.block, &arguments, types_for_interface, 2)?;
                 Self::add_filter_for_derived_field(&mut query, parent, derived_from_field);
 
                 // Find the entity or entities that reference the parent entity

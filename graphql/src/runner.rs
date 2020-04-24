@@ -61,11 +61,14 @@ where
     ) -> Result<q::Value, Vec<QueryExecutionError>> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
+        let bc = query.block_constraint()?;
+        let resolver =
+            StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
         execute_prepared_query(
             query,
             QueryExecutionOptions {
                 logger: self.logger.clone(),
-                resolver: StoreResolver::new(&self.logger, self.store.clone()),
+                resolver,
                 deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
                 max_complexity: max_complexity,
                 max_depth: max_depth,
