@@ -58,12 +58,23 @@ where
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
-    ) -> Result<q::Value, Vec<QueryExecutionError>> {
+    ) -> Result<QueryResult, Vec<QueryExecutionError>> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
         let bc = query.block_constraint()?;
         let (resolver, block_ptr) =
             StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
+        let exts = object! {
+            subgraph: object! {
+                id: query.schema.id.to_string(),
+                blocks: vec![
+                    object! {
+                        hash: format!("{:x}", block_ptr.hash),
+                        number: q::Number::from(block_ptr.number as i32)
+                    }
+                ]
+            }
+        };
         execute_prepared_query(
             query,
             QueryExecutionOptions {
@@ -75,6 +86,7 @@ where
                 max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
             },
         )
+        .map(|values| QueryResult::new(Some(values)).with_extensions(exts))
     }
 }
 
@@ -98,7 +110,10 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> QueryResultFuture {
-        let result = QueryResult::from(self.execute(query, max_complexity, max_depth, max_first));
+        let result = match self.execute(query, max_complexity, max_depth, max_first) {
+            Ok(result) => result,
+            Err(e) => QueryResult::from(e),
+        };
         Box::new(future::ok(result))
     }
 

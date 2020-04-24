@@ -21,11 +21,24 @@ pub struct QueryResult {
     pub data: Option<q::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<QueryError>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_data"
+    )]
+    pub extensions: Option<q::Value>,
 }
 
 impl QueryResult {
     pub fn new(data: Option<q::Value>) -> Self {
-        QueryResult { data, errors: None }
+        QueryResult {
+            data,
+            errors: None,
+            extensions: None,
+        }
+    }
+    pub fn with_extensions(mut self, extensions: q::Value) -> Self {
+        self.extensions = Some(extensions);
+        self
     }
 }
 
@@ -42,6 +55,7 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
         QueryResult {
             data: None,
             errors: Some(e.into_iter().map(QueryError::from).collect()),
+            extensions: None,
         }
     }
 }
