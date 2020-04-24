@@ -635,7 +635,8 @@ impl WasmiModule {
                         self.ctx
                             .state
                             .entity_cache
-                            .extend(output_state.entity_cache);
+                            .extend(output_state.entity_cache)
+                            .map_err(|e| HostExportError(e.to_string()))?;
                         self.ctx
                             .state
                             .created_data_sources

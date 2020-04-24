@@ -619,7 +619,10 @@ where
     // collected previously to every new event being processed
     let (mut ctx, mut block_state) = process_triggers(
         &logger,
-        BlockState::with_cache(std::mem::take(&mut ctx.state.entity_lfu_cache)),
+        BlockState::new(
+            ctx.inputs.store.clone(),
+            std::mem::take(&mut ctx.state.entity_lfu_cache),
+        ),
         ctx,
         &light_block,
         triggers,
@@ -684,7 +687,7 @@ where
             &mut block_state.entity_cache,
             data_sources,
             block_ptr_for_new_data_sources,
-        );
+        )?;
 
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
@@ -810,13 +813,14 @@ async fn update_proof_of_indexing(
         };
 
         // Grab the current digest attribute on this entity
-        let prev_poi = entity_cache
-            .get(store, &entity_key)
-            .map_err(Error::from)?
-            .map(|entity| match entity.get("digest") {
-                Some(Value::String(s)) => ProofOfIndexingDigest(s.clone()),
-                _ => panic!("Expected POI entity to have a digest and for it to be a string"),
-            });
+        let prev_poi =
+            entity_cache
+                .get(&entity_key)
+                .map_err(Error::from)?
+                .map(|entity| match entity.get("digest") {
+                    Some(Value::String(s)) => ProofOfIndexingDigest(s.clone()),
+                    _ => panic!("Expected POI entity to have a digest and for it to be a string"),
+                });
 
         // Finish the POI stream, getting the new POI value.
         let ProofOfIndexingDigest(updated_proof_of_indexing) = stream.finish(&prev_poi);
@@ -828,7 +832,7 @@ async fn update_proof_of_indexing(
             digest: updated_proof_of_indexing,
         };
 
-        entity_cache.set(entity_key, new_poi_entity);
+        entity_cache.set(entity_key, new_poi_entity)?;
     }
 
     Ok(())
@@ -913,7 +917,8 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
     block_ptr: EthereumBlockPointer,
-) where
+) -> Result<(), Error>
+where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
 {
@@ -935,7 +940,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
         ));
         let id = DynamicEthereumContractDataSourceEntity::make_id();
         let operations = entity.write_entity_operations(id.as_ref());
-        entity_cache.append(operations);
+        entity_cache.append(operations)?;
     }
 
     // Merge log filters from data sources into the block stream builder
@@ -952,4 +957,6 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     ctx.state
         .block_filter
         .extend(EthereumBlockFilter::from_data_sources(&data_sources));
+
+    Ok(())
 }

@@ -13,7 +13,7 @@ pub struct DataSourceTemplateInfo {
     pub context: Option<DataSourceContext>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BlockState {
     pub entity_cache: EntityCache,
     pub created_data_sources: Vec<DataSourceTemplateInfo>,
@@ -21,9 +21,9 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    pub fn with_cache(lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
+    pub fn new(store: Arc<dyn Store>, lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
         BlockState {
-            entity_cache: EntityCache::with_current(lfu_cache),
+            entity_cache: EntityCache::with_current(store, lfu_cache),
             created_data_sources: Vec::new(),
             proof_of_indexing: Default::default(),
         }
