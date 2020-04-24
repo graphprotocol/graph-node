@@ -202,7 +202,6 @@ impl TryIntoEntity for &LoadedTransaction {
             ("value", transaction.value.into()),
             ("gasPrice", transaction.gas_price.into()),
             ("gas", transaction.gas.into()),
-            ("inputData", transaction.input.clone().into()),
             (
                 "block",
                 format!("{:x}", transaction.block_hash.unwrap()).into(),

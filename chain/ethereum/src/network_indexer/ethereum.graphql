@@ -119,8 +119,8 @@ type Transaction @entity {
   """ The maximum amount of gas this transaction can consume. """
   gas: BigInt!
 
-  """ The data supplied to the target of the transaction. """
-  inputData: Bytes!
+  #  """ The data supplied to the target of the transaction. """
+  #  inputData: Bytes!
 
   """
   The block this transaction was mined in.
