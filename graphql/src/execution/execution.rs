@@ -50,10 +50,6 @@ where
     /// Max value for `first`.
     pub max_first: u32,
 
-    /// The block at which we should execute the query. Initialize this
-    /// with `BLOCK_NUMBER_MAX` to get the latest data
-    pub block: BlockNumber,
-
     pub mode: ExecutionMode,
 }
 
@@ -99,7 +95,6 @@ where
             fields: vec![],
             deadline: self.deadline,
             max_first: std::u32::MAX,
-            block: self.block,
             mode: ExecutionMode::Prefetch,
         }
     }

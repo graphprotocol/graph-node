@@ -69,8 +69,6 @@ where
         ExecutionMode::Prefetch
     };
 
-    let block = 0;
-
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: query_logger.clone(),
@@ -79,7 +77,6 @@ where
         fields: vec![],
         deadline: options.deadline,
         max_first: options.max_first,
-        block,
         mode,
     };
 

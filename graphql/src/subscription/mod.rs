@@ -82,7 +82,6 @@ where
         fields: vec![],
         deadline: None,
         max_first: options.max_first,
-        block: BLOCK_NUMBER_MAX,
         mode: ExecutionMode::Prefetch,
     };
 
@@ -195,7 +194,6 @@ async fn execute_subscription_event(
         fields: vec![],
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
-        block: BLOCK_NUMBER_MAX,
         mode: ExecutionMode::Prefetch,
     };
 
