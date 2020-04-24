@@ -4,9 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use graph::data::graphql::{TryFromValue, ValueList, ValueMap};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::*;
-use graph_graphql::prelude::{
-    object, BlockConstraint, ExecutionContext, IntoValue, ObjectOrInterface, Resolver,
-};
+use graph_graphql::prelude::{object, ExecutionContext, IntoValue, ObjectOrInterface, Resolver};
 use std::convert::TryInto;
 use web3::types::H256;
 
@@ -518,14 +516,6 @@ where
         Ok(None)
     }
 
-    fn locate_block(
-        &self,
-        _: BlockConstraint,
-        _: &SubgraphDeploymentId,
-    ) -> Result<BlockNumber, QueryExecutionError> {
-        Ok(BLOCK_NUMBER_MAX)
-    }
-
     /// Resolves a scalar value for a given scalar type.
     fn resolve_scalar_value(
         &self,
@@ -559,7 +549,6 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _block: BlockNumber,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         match (parent, object_type.name(), field.name.as_str()) {
@@ -606,7 +595,6 @@ where
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         match (parent, object_type.name(), field.name.as_str()) {
             (Some(status), "EthereumBlock", "chainHeadBlock") => Ok(status

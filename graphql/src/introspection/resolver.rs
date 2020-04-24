@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, HashMap};
 use graph::prelude::*;
 
 use crate::prelude::*;
-use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
 
 type TypeObjectsMap = BTreeMap<String, q::Value>;
@@ -367,14 +366,6 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         Ok(None)
     }
 
-    fn locate_block(
-        &self,
-        _: BlockConstraint,
-        _: &SubgraphDeploymentId,
-    ) -> Result<BlockNumber, QueryExecutionError> {
-        Ok(BLOCK_NUMBER_MAX)
-    }
-
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
@@ -383,7 +374,6 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _block: BlockNumber,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.name.as_str() {
@@ -423,7 +413,6 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         _: &BTreeMap<Name, Vec<ObjectType>>,
-        _: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),

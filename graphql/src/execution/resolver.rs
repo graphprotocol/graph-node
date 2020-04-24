@@ -2,11 +2,8 @@ use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeMap, HashMap};
 
 use crate::prelude::*;
-use crate::query::ext::BlockConstraint;
 use crate::schema::ast::get_named_type;
-use graph::prelude::{
-    BlockNumber, QueryExecutionError, Schema, StoreEventStreamBox, SubgraphDeploymentId,
-};
+use graph::prelude::{QueryExecutionError, Schema, StoreEventStreamBox};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -72,15 +69,6 @@ pub trait Resolver: Clone + Send + Sync {
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>>;
 
-    /// Locate the block for the given constraint and return its block number.
-    /// That number will later be passed into `resolve_object` and
-    /// `resolve_objects`
-    fn locate_block(
-        &self,
-        block_constraint: BlockConstraint,
-        subgraph: &SubgraphDeploymentId,
-    ) -> Result<BlockNumber, QueryExecutionError>;
-
     /// Resolves entities referenced by a parent object.
     fn resolve_objects(
         &self,
@@ -90,7 +78,6 @@ pub trait Resolver: Clone + Send + Sync {
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        block: BlockNumber,
         max_first: u32,
     ) -> Result<q::Value, QueryExecutionError>;
 
@@ -103,7 +90,6 @@ pub trait Resolver: Clone + Send + Sync {
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.

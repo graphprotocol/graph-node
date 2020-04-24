@@ -20,14 +20,6 @@ impl Resolver for MockResolver {
         Ok(None)
     }
 
-    fn locate_block(
-        &self,
-        _: BlockConstraint,
-        _: &SubgraphDeploymentId,
-    ) -> Result<BlockNumber, QueryExecutionError> {
-        Ok(BLOCK_NUMBER_MAX)
-    }
-
     fn resolve_objects<'a>(
         &self,
         _parent: &Option<q::Value>,
@@ -36,7 +28,6 @@ impl Resolver for MockResolver {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _block: BlockNumber,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
@@ -50,7 +41,6 @@ impl Resolver for MockResolver {
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
         _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

@@ -486,7 +486,6 @@ fn resolve_field_value_for_named_type(
             t.into(),
             argument_values,
             ctx.query.schema.types_for_interface(),
-            ctx.block,
         ),
 
         // Let the resolver decide how values in the resolved object value
@@ -528,7 +527,6 @@ fn resolve_field_value_for_named_type(
             i.into(),
             argument_values,
             ctx.query.schema.types_for_interface(),
-            ctx.block,
         ),
 
         s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),
@@ -575,7 +573,6 @@ fn resolve_field_value_for_list_type(
                         t.into(),
                         argument_values,
                         ctx.query.schema.types_for_interface(),
-                        ctx.block,
                         ctx.max_first,
                     )
                     .map_err(|e| vec![e]),
@@ -609,7 +606,6 @@ fn resolve_field_value_for_list_type(
                         t.into(),
                         argument_values,
                         ctx.query.schema.types_for_interface(),
-                        ctx.block,
                         ctx.max_first,
                     )
                     .map_err(|e| vec![e]),

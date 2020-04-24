@@ -318,54 +318,6 @@ where
         super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))
     }
 
-    fn locate_block(
-        &self,
-        bc: BlockConstraint,
-        subgraph: &SubgraphDeploymentId,
-    ) -> Result<BlockNumber, QueryExecutionError> {
-        match bc {
-            BlockConstraint::Number(number) => self
-                .store
-                .block_ptr(subgraph.clone())
-                .map_err(|e| StoreError::from(e).into())
-                .and_then(|ptr| {
-                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    if ptr.number < number as u64 {
-                        Err(QueryExecutionError::ValueParseError(
-                            "block.number".to_owned(),
-                            format!(
-                                "subgraph {} has only indexed up to block number {} \
-                                 and data for block number {} is therefore not yet available",
-                                subgraph, ptr.number, number
-                            ),
-                        ))
-                    } else {
-                        Ok(number)
-                    }
-                }),
-            BlockConstraint::Hash(hash) => self
-                .store
-                .block_number(subgraph, hash)
-                .map_err(|e| e.into())
-                .and_then(|number| {
-                    number.ok_or_else(|| {
-                        QueryExecutionError::ValueParseError(
-                            "block.hash".to_owned(),
-                            "no block with that hash found".to_owned(),
-                        )
-                    })
-                }),
-            BlockConstraint::Latest => self
-                .store
-                .block_ptr(subgraph.clone())
-                .map_err(|e| StoreError::from(e).into())
-                .and_then(|ptr| {
-                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    Ok(ptr.number as i32)
-                }),
-        }
-    }
-
     fn resolve_objects(
         &self,
         parent: &Option<q::Value>,
@@ -374,7 +326,6 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _block: BlockNumber,
         max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         if Self::was_prefetched(parent) {
@@ -427,7 +378,6 @@ where
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
         types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _block: BlockNumber,
     ) -> Result<q::Value, QueryExecutionError> {
         if Self::was_prefetched(parent) {
             return self.resolve_object_prefetch(parent, field, field_definition, object_type);

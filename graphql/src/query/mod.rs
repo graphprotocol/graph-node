@@ -69,8 +69,7 @@ where
         ExecutionMode::Prefetch
     };
 
-    let bc = query.block_constraint()?;
-    let block = options.resolver.locate_block(bc, &query.schema.id)?;
+    let block = 0;
 
     // Create a fresh execution context
     let ctx = ExecutionContext {
