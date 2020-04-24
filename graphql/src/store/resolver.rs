@@ -59,13 +59,14 @@ where
         store: Arc<S>,
         bc: BlockConstraint,
         subgraph: &SubgraphDeploymentId,
-    ) -> Result<Self, QueryExecutionError> {
-        let block = Self::locate_block(store.as_ref(), bc, subgraph)?;
-        Ok(StoreResolver {
+    ) -> Result<(Self, EthereumBlockPointer), QueryExecutionError> {
+        let block_ptr = Self::locate_block(store.as_ref(), bc, subgraph)?;
+        let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
-            block,
-        })
+            block: block_ptr.number as i32,
+        };
+        Ok((resolver, block_ptr))
     }
 
     /// Adds a filter for matching entities that correspond to a derived field.
@@ -264,7 +265,7 @@ where
         store: &S,
         bc: BlockConstraint,
         subgraph: &SubgraphDeploymentId,
-    ) -> Result<BlockNumber, QueryExecutionError> {
+    ) -> Result<EthereumBlockPointer, QueryExecutionError> {
         match bc {
             BlockConstraint::Number(number) => store
                 .block_ptr(subgraph.clone())
@@ -281,26 +282,36 @@ where
                             ),
                         ))
                     } else {
-                        Ok(number)
+                        // We don't have a way here to look the block hash up from
+                        // the database, and even if we did, there is no guarantee
+                        // that we have the block in our cache. We therefore
+                        // always return an all zeroes hash when users specify
+                        // a block number
+                        Ok(EthereumBlockPointer::from((
+                            web3::types::H256::zero(),
+                            number as u64,
+                        )))
                     }
                 }),
             BlockConstraint::Hash(hash) => store
                 .block_number(subgraph, hash)
                 .map_err(|e| e.into())
                 .and_then(|number| {
-                    number.ok_or_else(|| {
-                        QueryExecutionError::ValueParseError(
-                            "block.hash".to_owned(),
-                            "no block with that hash found".to_owned(),
-                        )
-                    })
+                    number
+                        .ok_or_else(|| {
+                            QueryExecutionError::ValueParseError(
+                                "block.hash".to_owned(),
+                                "no block with that hash found".to_owned(),
+                            )
+                        })
+                        .map(|number| EthereumBlockPointer::from((hash, number as u64)))
                 }),
             BlockConstraint::Latest => store
                 .block_ptr(subgraph.clone())
                 .map_err(|e| StoreError::from(e).into())
                 .and_then(|ptr| {
                     let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    Ok(ptr.number as i32)
+                    Ok(ptr)
                 }),
         }
     }
