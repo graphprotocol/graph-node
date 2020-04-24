@@ -145,7 +145,7 @@ impl MappingContext {
             logger: self.logger.clone(),
             host_exports: self.host_exports.clone(),
             block: self.block.clone(),
-            state: BlockState::default(),
+            state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
         }
     }
 }

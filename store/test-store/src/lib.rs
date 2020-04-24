@@ -136,8 +136,8 @@ pub fn transact_entity_operations(
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
 ) -> Result<bool, StoreError> {
-    let mut entity_cache = EntityCache::new();
-    entity_cache.append(ops);
+    let mut entity_cache = EntityCache::new(store.clone());
+    entity_cache.append(ops)?;
     let mods = entity_cache
         .as_modifications(store.as_ref())
         .expect("failed to convert to modifications")

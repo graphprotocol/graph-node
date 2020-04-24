@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use graph::mock::MockStore;
 use graph::prelude::{
@@ -25,9 +26,9 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[test]
 fn empty_cache_modifications() {
-    let store = MockStore::new();
-    let cache = EntityCache::new();
-    let result = cache.as_modifications(&store);
+    let store = Arc::new(MockStore::new());
+    let cache = EntityCache::new(store.clone());
+    let result = cache.as_modifications(&*store);
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
@@ -41,21 +42,24 @@ fn insert_modifications() {
         .expect_get_many_mock()
         .returning(|_, _| Ok(BTreeMap::new()));
 
-    let mut cache = EntityCache::new();
+    let store = Arc::new(store);
+    let mut cache = EntityCache::new(store.clone());
 
     let (mogwai_key, mogwai_data) = make_band(
         "mogwai",
         vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone());
+    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
         vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
     );
-    cache.set(sigurros_key.clone(), sigurros_data.clone());
+    cache
+        .set(sigurros_key.clone(), sigurros_data.clone())
+        .unwrap();
 
-    let result = cache.as_modifications(&store);
+    let result = cache.as_modifications(&*store);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -99,7 +103,8 @@ fn overwrite_modifications() {
         Ok(map)
     });
 
-    let mut cache = EntityCache::new();
+    let store = Arc::new(store);
+    let mut cache = EntityCache::new(store.clone());
 
     let (mogwai_key, mogwai_data) = make_band(
         "mogwai",
@@ -109,7 +114,7 @@ fn overwrite_modifications() {
             ("founded", 1995.into()),
         ],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone());
+    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
@@ -119,9 +124,11 @@ fn overwrite_modifications() {
             ("founded", 1994.into()),
         ],
     );
-    cache.set(sigurros_key.clone(), sigurros_data.clone());
+    cache
+        .set(sigurros_key.clone(), sigurros_data.clone())
+        .unwrap();
 
-    let result = cache.as_modifications(&store);
+    let result = cache.as_modifications(&*store);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -164,7 +171,8 @@ fn consecutive_modifications() {
         Ok(map)
     });
 
-    let mut cache = EntityCache::new();
+    let store = Arc::new(store);
+    let mut cache = EntityCache::new(store.clone());
 
     // First, add "founded" and change the "label".
     let (update_key, update_data) = make_band(
@@ -175,18 +183,18 @@ fn consecutive_modifications() {
             ("label", "Rock Action Records".into()),
         ],
     );
-    cache.set(update_key.clone(), update_data.clone());
+    cache.set(update_key.clone(), update_data.clone()).unwrap();
 
     // Then, just reset the "label".
     let (update_key, update_data) = make_band(
         "mogwai",
         vec![("id", "mogwai".into()), ("label", Value::Null)],
     );
-    cache.set(update_key.clone(), update_data.clone());
+    cache.set(update_key.clone(), update_data.clone()).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
-    let result = cache.as_modifications(&store);
+    let result = cache.as_modifications(&*store);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::Overwrite {

@@ -85,7 +85,7 @@ impl BlockWriter {
             logger,
             subgraph_id: self.subgraph_id.clone(),
             store: self.store.clone(),
-            cache: EntityCache::new(),
+            cache: EntityCache::new(self.store.clone()),
             metrics: self.metrics.clone(),
         };
         context.write(block)
@@ -108,13 +108,16 @@ type WriteContextResult = Box<dyn Future<Item = WriteContext, Error = Error> + S
 impl WriteContext {
     /// Updates an entity to a new value (potentially merging it with existing data).
     fn set_entity(mut self, value: impl TryIntoEntity + ToEntityKey) -> WriteContextResult {
-        self.cache.set(
-            value.to_entity_key(self.subgraph_id.clone()),
-            match value.try_into_entity() {
-                Ok(entity) => entity,
-                Err(e) => return Box::new(future::err(e.into())),
-            },
-        );
+        self.cache
+            .set(
+                value.to_entity_key(self.subgraph_id.clone()),
+                match value.try_into_entity() {
+                    Ok(entity) => entity,
+                    Err(e) => return Box::new(future::err(e.into())),
+                },
+            )
+            // An error here is only possible if entities ever get removed, which is not the case.
+            .unwrap();
         Box::new(future::ok(self))
     }
 

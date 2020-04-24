@@ -165,8 +165,8 @@ fn mock_context(
     MappingContext {
         logger: test_store::LOGGER.clone(),
         block: Default::default(),
-        host_exports: Arc::new(mock_host_exports(subgraph_id, data_source, store)),
-        state: BlockState::default(),
+        host_exports: Arc::new(mock_host_exports(subgraph_id, data_source, store.clone())),
+        state: BlockState::new(store, Default::default()),
     }
 }
 
@@ -908,7 +908,7 @@ fn entity_store() {
     }
 
     // Load, set, save cycle for a new entity with fulltext API
-    module.ctx.state.entity_cache = EntityCache::new();
+    module.ctx.state.entity_cache = EntityCache::new(store.clone());
     load_and_set_user_name(&mut module, "herobrine", "Brine-O");
     let mut fulltext_entities = BTreeMap::new();
     let mut fulltext_fields = BTreeMap::new();
