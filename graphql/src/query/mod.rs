@@ -1,4 +1,4 @@
-use graph::prelude::{info, o, Logger, Query as GraphDataQuery, QueryExecutionError, QueryResult};
+use graph::prelude::{info, o, Logger, QueryExecutionError};
 use graphql_parser::query as q;
 use std::sync::Arc;
 use std::time::Instant;
@@ -37,20 +37,7 @@ where
 }
 
 /// Executes a query and returns a result.
-pub fn execute_query<R>(query: GraphDataQuery, options: QueryExecutionOptions<R>) -> QueryResult
-where
-    R: Resolver,
-{
-    let query = match Query::new(query, options.max_complexity, options.max_depth) {
-        Ok(query) => query,
-        Err(e) => return QueryResult::from(e),
-    };
-
-    QueryResult::from(execute_prepared_query(query, options))
-}
-
-/// Executes a query and returns a result.
-pub(crate) fn execute_prepared_query<R>(
+pub fn execute_prepared_query<R>(
     query: Arc<Query>,
     options: QueryExecutionOptions<R>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>

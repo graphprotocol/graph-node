@@ -1,7 +1,6 @@
 // Tests for graphql interfaces.
 
 use graph::prelude::*;
-use graph_graphql::prelude::{execute_query, QueryExecutionOptions, StoreResolver};
 use test_store::*;
 
 // `entities` is `(entity, type)`.
@@ -32,20 +31,9 @@ fn insert_and_query(
         insert_ops.collect::<Vec<_>>(),
     )?;
 
-    let logger = Logger::root(slog::Discard, o!());
-    let resolver = StoreResolver::new(&logger, STORE.clone());
-
-    let options = QueryExecutionOptions {
-        logger,
-        resolver,
-        deadline: None,
-        max_complexity: None,
-        max_depth: 100,
-        max_first: std::u32::MAX,
-    };
     let document = graphql_parser::parse_query(query).unwrap();
     let query = Query::new(STORE.api_schema(&subgraph_id).unwrap(), document, None);
-    Ok(execute_query(query, options))
+    Ok(execute_subgraph_query(query))
 }
 
 #[test]

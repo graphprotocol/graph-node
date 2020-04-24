@@ -6,6 +6,7 @@ edition = "2018"
 description = "Provides static store instance for tests."
 
 [dependencies]
+graph-graphql = { path = "../../graphql" }
 graph-mock = { path = "../../mock" }
 graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }

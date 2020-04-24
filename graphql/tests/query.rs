@@ -16,7 +16,11 @@ use graph::prelude::{
     Subscription, SubscriptionError, Value,
 };
 use graph_graphql::prelude::*;
-use test_store::{transact_entity_operations, BLOCK_ONE, GENESIS_PTR, STORE};
+use test_store::{
+    execute_subgraph_query, execute_subgraph_query_with_complexity,
+    execute_subgraph_query_with_deadline, transact_entity_operations, BLOCK_ONE, GENESIS_PTR,
+    STORE,
+};
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId = {
@@ -229,19 +233,7 @@ fn execute_query_document_with_variables(
 ) -> QueryResult {
     let query = Query::new(Arc::new(api_test_schema()), query, variables);
 
-    let logger = Logger::root(slog::Discard, o!());
-    let store_resolver = StoreResolver::new(&logger, STORE.clone());
-
-    let options = QueryExecutionOptions {
-        logger: logger,
-        resolver: store_resolver,
-        deadline: None,
-        max_complexity: None,
-        max_depth: 100,
-        max_first: std::u32::MAX,
-    };
-
-    execute_query(query, options)
+    execute_subgraph_query(query)
 }
 
 #[test]
@@ -704,9 +696,6 @@ fn include_directive_works_with_query_variables() {
 
 #[test]
 fn query_complexity() {
-    let logger = Logger::root(slog::Discard, o!());
-    let store_resolver = StoreResolver::new(&logger, STORE.clone());
-
     let query = Query::new(
         Arc::new(api_test_schema()),
         graphql_parser::parse_query(
@@ -726,17 +715,9 @@ fn query_complexity() {
         None,
     );
     let max_complexity = Some(1_010_100);
-    let options = QueryExecutionOptions {
-        logger: logger.clone(),
-        resolver: store_resolver.clone(),
-        deadline: None,
-        max_complexity,
-        max_depth: 100,
-        max_first: std::u32::MAX,
-    };
 
     // This query is exactly at the maximum complexity.
-    let result = execute_query(query, options);
+    let result = execute_subgraph_query_with_complexity(query, max_complexity);
     assert!(result.errors.is_none());
 
     let query = Query::new(
@@ -763,17 +744,8 @@ fn query_complexity() {
         None,
     );
 
-    let options = QueryExecutionOptions {
-        logger,
-        resolver: store_resolver,
-        deadline: None,
-        max_complexity,
-        max_depth: 100,
-        max_first: std::u32::MAX,
-    };
-
     // The extra introspection causes the complexity to go over.
-    let result = execute_query(query, options);
+    let result = execute_subgraph_query_with_complexity(query, max_complexity);
     match result.errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
         _ => panic!("did not catch complexity"),
@@ -868,19 +840,11 @@ fn instant_timeout() {
         graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
         None,
     );
-    let logger = Logger::root(slog::Discard, o!());
-    let store_resolver = StoreResolver::new(&logger, STORE.clone());
 
-    let options = QueryExecutionOptions {
-        logger: logger,
-        resolver: store_resolver,
-        deadline: Some(Instant::now()),
-        max_complexity: None,
-        max_depth: 100,
-        max_first: std::u32::MAX,
-    };
-
-    match execute_query(query, options).errors.unwrap()[0] {
+    match execute_subgraph_query_with_deadline(query, Some(Instant::now()))
+        .errors
+        .unwrap()[0]
+    {
         QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
         _ => panic!("did not time out"),
     };

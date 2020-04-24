@@ -4,6 +4,9 @@ extern crate diesel;
 use crate::tokio::runtime::{Builder, Runtime};
 use graph::log;
 use graph::prelude::{Store as _, *};
+use graph_graphql::prelude::{
+    execute_prepared_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
+};
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{Store, StoreConfig};
@@ -11,6 +14,7 @@ use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
 use std::sync::Mutex;
+use std::time::Instant;
 use web3::types::H256;
 
 pub fn postgres_test_url() -> String {
@@ -323,4 +327,60 @@ pub mod block_store {
             block.insert(&conn);
         }
     }
+}
+
+/// Run a GraphQL query against the `STORE`
+pub fn execute_subgraph_query(query: Query) -> QueryResult {
+    execute_subgraph_query_with_complexity(query, None)
+}
+
+pub fn execute_subgraph_query_with_complexity(
+    query: Query,
+    max_complexity: Option<u64>,
+) -> QueryResult {
+    execute_subgraph_query_internal(query, max_complexity, None)
+}
+
+pub fn execute_subgraph_query_with_deadline(
+    query: Query,
+    deadline: Option<Instant>,
+) -> QueryResult {
+    execute_subgraph_query_internal(query, None, deadline)
+}
+
+/// Like `try!`, but we return the contents of an `Err`, not the
+/// whole `Result`
+macro_rules! return_err {
+    ( $ expr : expr ) => {
+        match $expr {
+            Ok(v) => v,
+            Err(e) => return e.into(),
+        }
+    };
+}
+
+fn execute_subgraph_query_internal(
+    query: Query,
+    max_complexity: Option<u64>,
+    deadline: Option<Instant>,
+) -> QueryResult {
+    let logger = Logger::root(slog::Discard, o!());
+    let query = return_err!(PreparedQuery::new(query, max_complexity, 100));
+    let bc = return_err!(query.block_constraint());
+    let (resolver, _block_ptr) = return_err!(StoreResolver::at_block(
+        &logger,
+        STORE.clone(),
+        bc,
+        &query.schema.id
+    ));
+
+    let options = QueryExecutionOptions {
+        logger,
+        resolver,
+        deadline,
+        max_complexity,
+        max_depth: 100,
+        max_first: std::u32::MAX,
+    };
+    QueryResult::from(execute_prepared_query(query, options))
 }

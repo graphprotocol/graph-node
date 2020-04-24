@@ -9,8 +9,8 @@ use graph::prelude::{
     o, slog, Logger, Query, QueryExecutionError, QueryResult, Schema, SubgraphDeploymentId,
 };
 use graph_graphql::prelude::{
-    api_schema, execute_query, object, object_value, ExecutionContext, ObjectOrInterface,
-    QueryExecutionOptions, Resolver,
+    api_schema, execute_prepared_query, object, object_value, ExecutionContext, ObjectOrInterface,
+    Query as PreparedQuery, QueryExecutionOptions, Resolver,
 };
 
 /// Mock resolver used in tests that don't need a resolver.
@@ -556,17 +556,18 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     );
 
     // Execute it
-    execute_query(
-        query,
-        QueryExecutionOptions {
-            logger: Logger::root(slog::Discard, o!()),
-            resolver: MockResolver,
-            deadline: None,
-            max_complexity: None,
-            max_depth: 100,
-            max_first: std::u32::MAX,
-        },
-    )
+    let options = QueryExecutionOptions {
+        logger: Logger::root(slog::Discard, o!()),
+        resolver: MockResolver,
+        deadline: None,
+        max_complexity: None,
+        max_depth: 100,
+        max_first: std::u32::MAX,
+    };
+
+    let result = PreparedQuery::new(query, None, 100)
+        .and_then(|query| execute_prepared_query(query, options));
+    QueryResult::from(result)
 }
 
 #[test]

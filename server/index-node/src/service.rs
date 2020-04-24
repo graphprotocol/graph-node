@@ -7,7 +7,9 @@ use std::time::Instant;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
-use graph_graphql::prelude::{execute_query, QueryExecutionOptions};
+use graph_graphql::prelude::{
+    execute_prepared_query, Query as PreparedQuery, QueryExecutionOptions,
+};
 
 use crate::request::IndexNodeRequest;
 use crate::resolver::IndexNodeResolver;
@@ -112,17 +114,19 @@ where
 
                 // Run the query using the index node resolver
                 tokio::task::block_in_place(|| {
-                    futures03::future::ok(execute_query(
-                        query,
-                        QueryExecutionOptions {
-                            logger: logger.clone(),
-                            resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
-                            deadline: None,
-                            max_complexity: None,
-                            max_depth: 100,
-                            max_first: std::u32::MAX,
-                        },
-                    ))
+                    let options = QueryExecutionOptions {
+                        logger: logger.clone(),
+                        resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
+                        deadline: None,
+                        max_complexity: None,
+                        max_depth: 100,
+                        max_first: std::u32::MAX,
+                    };
+                    let result =
+                        PreparedQuery::new(query, options.max_complexity, options.max_depth)
+                            .and_then(|query| execute_prepared_query(query, options));
+
+                    futures03::future::ok(QueryResult::from(result))
                 })
             })
             .then(move |result| {

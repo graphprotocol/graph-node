@@ -3718,6 +3718,7 @@ version = "0.18.0"
 dependencies = [
  "diesel",
  "graph",
+ "graph-graphql",
  "graph-mock",
  "graph-store-postgres",
  "hex-literal",
