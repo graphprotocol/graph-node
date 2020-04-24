@@ -16,8 +16,8 @@ use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 /// A resolver that fetches entities from a `Store`.
 pub struct StoreResolver<S> {
     logger: Logger,
-    store: Arc<S>,
-    block: BlockNumber,
+    pub(crate) store: Arc<S>,
+    pub(crate) block: BlockNumber,
 }
 
 impl<S> Clone for StoreResolver<S>
@@ -315,7 +315,7 @@ where
         ctx: &ExecutionContext<Self>,
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
-        super::prefetch::run(ctx, selection_set, self.store.clone()).map(|value| Some(value))
+        super::prefetch::run(&self, ctx, selection_set).map(|value| Some(value))
     }
 
     fn resolve_objects(

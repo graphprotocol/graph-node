@@ -7,7 +7,6 @@ use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Deref;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Instant;
 
 use graph::data::graphql::ext::ObjectTypeExt;
@@ -19,7 +18,7 @@ use graph::prelude::{
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
-use crate::store::build_query;
+use crate::store::{build_query, StoreResolver};
 
 lazy_static! {
     static ref ARG_FIRST: String = String::from("first");
@@ -458,11 +457,11 @@ impl<'a> Join<'a> {
 /// multiple values for what should be a relationship to a single object in
 /// @derivedFrom fields
 pub fn run(
+    resolver: &StoreResolver<impl Store>,
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
-    store: Arc<impl Store>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
-    execute_root_selection_set(ctx, store.as_ref(), selection_set).map(|nodes| {
+    execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
         let mut map = BTreeMap::default();
         map.insert(PREFETCH_KEY.to_owned(), q::Value::Boolean(true));
         q::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
@@ -477,8 +476,8 @@ pub fn run(
 
 /// Executes the root selection set of a query.
 fn execute_root_selection_set(
+    resolver: &StoreResolver<impl Store>,
     ctx: &ExecutionContext<impl Resolver>,
-    store: &impl Store,
     selection_set: &q::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
@@ -513,7 +512,13 @@ fn execute_root_selection_set(
     }
 
     // Execute the root selection set against the root query type
-    execute_selection_set(&ctx, store, make_root_node(), &data_set, &query_type.into())
+    execute_selection_set(
+        resolver,
+        ctx,
+        make_root_node(),
+        &data_set,
+        &query_type.into(),
+    )
 }
 
 fn object_or_interface_from_type<'a>(
@@ -539,8 +544,8 @@ fn object_or_interface_by_name<'a>(
 }
 
 fn execute_selection_set(
+    resolver: &StoreResolver<impl Store>,
     ctx: &ExecutionContext<impl Resolver>,
-    store: &impl Store,
     mut parents: Vec<Node>,
     selection_set: &q::SelectionSet,
     object_type: &ObjectOrInterface,
@@ -586,8 +591,8 @@ fn execute_selection_set(
                         );
 
                         match execute_field(
+                            resolver,
                             &ctx,
-                            store,
                             &concrete_type,
                             &parents,
                             &join,
@@ -603,8 +608,8 @@ fn execute_selection_set(
                                 )
                                 .expect("type of child field is object or interface");
                                 match execute_selection_set(
+                                    resolver,
                                     &ctx,
-                                    store,
                                     children,
                                     &child_selection_set,
                                     &child_object_type,
@@ -776,8 +781,8 @@ fn collect_fields<'a>(
 
 /// Executes a field.
 fn execute_field(
+    resolver: &StoreResolver<impl Store>,
     ctx: &ExecutionContext<impl Resolver>,
-    store: &impl Store,
     object_type: &ObjectOrInterface<'_>,
     parents: &Vec<Node>,
     join: &Join<'_>,
@@ -829,12 +834,12 @@ fn execute_field(
 
     fetch(
         ctx.logger.clone(),
-        store,
+        resolver.store.as_ref(),
         &parents,
         &join,
         &argument_values,
         ctx.query.schema.types_for_interface(),
-        ctx.block,
+        resolver.block,
         ctx.max_first,
     )
     .map_err(|e| vec![e])
