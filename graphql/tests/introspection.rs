@@ -3,9 +3,15 @@ extern crate pretty_assertions;
 
 use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
-use graph::prelude::*;
-use graph_graphql::prelude::*;
+use graph::prelude::{
+    o, slog, Logger, Query, QueryExecutionError, QueryResult, Schema, SubgraphDeploymentId,
+};
+use graph_graphql::prelude::{
+    api_schema, execute_query, object, object_value, ExecutionContext, ObjectOrInterface,
+    QueryExecutionOptions, Resolver,
+};
 
 /// Mock resolver used in tests that don't need a resolver.
 #[derive(Clone)]
@@ -27,7 +33,7 @@ impl Resolver for MockResolver {
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
-        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _types_for_interface: &BTreeMap<q::Name, Vec<s::ObjectType>>,
         _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
@@ -40,7 +46,7 @@ impl Resolver for MockResolver {
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
-        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+        _types_for_interface: &BTreeMap<q::Name, Vec<s::ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

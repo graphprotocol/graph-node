@@ -2,12 +2,16 @@ use futures01::future;
 use graphql_parser::query as q;
 use std::env;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::prelude::*;
+use crate::prelude::{object, QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_prepared_query;
 use crate::subscription::execute_prepared_subscription;
-use graph::prelude::{GraphQlRunner as GraphQlRunnerTrait, *};
+use graph::prelude::{
+    o, GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, QueryResult,
+    QueryResultFuture, Store, Subscription, SubscriptionResultFuture,
+};
 
 use lazy_static::lazy_static;
 

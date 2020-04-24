@@ -4,9 +4,17 @@ extern crate pretty_assertions;
 use graphql_parser::{query as q, Pos};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::iter::FromIterator;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use graph::prelude::*;
+use graph::prelude::{
+    futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o, slog, tokio,
+    Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension, Logger, Query,
+    QueryError, QueryExecutionError, QueryResult, QueryVariables, Schema, Store,
+    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
+    Subscription, SubscriptionError, Value,
+};
 use graph_graphql::prelude::*;
 use test_store::{transact_entity_operations, BLOCK_ONE, GENESIS_PTR, STORE};
 
