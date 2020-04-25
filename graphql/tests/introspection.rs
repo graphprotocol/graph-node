@@ -560,8 +560,6 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         logger: Logger::root(slog::Discard, o!()),
         resolver: MockResolver,
         deadline: None,
-        max_complexity: None,
-        max_depth: 100,
         max_first: std::u32::MAX,
     };
 

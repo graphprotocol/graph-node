@@ -107,8 +107,6 @@ where
                 logger: self.logger.clone(),
                 resolver,
                 deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
-                max_complexity: max_complexity,
-                max_depth: max_depth,
                 max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
             },
         )

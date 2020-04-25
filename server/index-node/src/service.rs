@@ -116,13 +116,10 @@ where
                         logger: logger.clone(),
                         resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
                         deadline: None,
-                        max_complexity: None,
-                        max_depth: 100,
                         max_first: std::u32::MAX,
                     };
-                    let result =
-                        PreparedQuery::new(query, options.max_complexity, options.max_depth)
-                            .and_then(|query| execute_query(query, options));
+                    let result = PreparedQuery::new(query, None, 100)
+                        .and_then(|query| execute_query(query, options));
 
                     futures03::future::ok(QueryResult::from(result))
                 })

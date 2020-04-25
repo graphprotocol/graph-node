@@ -378,8 +378,6 @@ fn execute_subgraph_query_internal(
         logger,
         resolver,
         deadline,
-        max_complexity,
-        max_depth: 100,
         max_first: std::u32::MAX,
     };
     QueryResult::from(execute_query(query, options))

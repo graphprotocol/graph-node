@@ -26,12 +26,6 @@ where
     /// Time at which the query times out.
     pub deadline: Option<Instant>,
 
-    /// Maximum complexity for a query.
-    pub max_complexity: Option<u64>,
-
-    /// Maximum depth for a query.
-    pub max_depth: u8,
-
     /// Maximum value for the `first` argument.
     pub max_first: u32,
 }
