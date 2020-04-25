@@ -30,7 +30,7 @@ mod runner;
 pub mod prelude {
     pub use super::execution::{ExecutionContext, ObjectOrInterface, Query, Resolver};
     pub use super::introspection::{introspection_schema, IntrospectionResolver};
-    pub use super::query::{execute_prepared_query, ext::BlockConstraint, QueryExecutionOptions};
+    pub use super::query::{execute_query, ext::BlockConstraint, QueryExecutionOptions};
     pub use super::schema::{api_schema, ast::validate_entity, APISchemaError};
     pub use super::store::{build_query, StoreResolver};
     pub use super::subscription::{execute_subscription, SubscriptionExecutionOptions};

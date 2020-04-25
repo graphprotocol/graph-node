@@ -9,7 +9,7 @@ use graph::prelude::{
     o, slog, Logger, Query, QueryExecutionError, QueryResult, Schema, SubgraphDeploymentId,
 };
 use graph_graphql::prelude::{
-    api_schema, execute_prepared_query, object, object_value, ExecutionContext, ObjectOrInterface,
+    api_schema, execute_query, object, object_value, ExecutionContext, ObjectOrInterface,
     Query as PreparedQuery, QueryExecutionOptions, Resolver,
 };
 
@@ -565,8 +565,8 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         max_first: std::u32::MAX,
     };
 
-    let result = PreparedQuery::new(query, None, 100)
-        .and_then(|query| execute_prepared_query(query, options));
+    let result =
+        PreparedQuery::new(query, None, 100).and_then(|query| execute_query(query, options));
     QueryResult::from(result)
 }
 

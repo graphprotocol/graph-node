@@ -7,9 +7,7 @@ use std::time::Instant;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
-use graph_graphql::prelude::{
-    execute_prepared_query, Query as PreparedQuery, QueryExecutionOptions,
-};
+use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
 
 use crate::request::IndexNodeRequest;
 use crate::resolver::IndexNodeResolver;
@@ -124,7 +122,7 @@ where
                     };
                     let result =
                         PreparedQuery::new(query, options.max_complexity, options.max_depth)
-                            .and_then(|query| execute_prepared_query(query, options));
+                            .and_then(|query| execute_query(query, options));
 
                     futures03::future::ok(QueryResult::from(result))
                 })

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use crate::prelude::{
     object, object_value, QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions,
 };
-use crate::query::execute_prepared_query;
+use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::prelude::{
     o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
@@ -101,7 +101,7 @@ where
         let (resolver, block_ptr) =
             StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
         let exts = self.make_extensions(&query.schema.id, &block_ptr)?;
-        execute_prepared_query(
+        execute_query(
             query,
             QueryExecutionOptions {
                 logger: self.logger.clone(),

@@ -37,7 +37,7 @@ where
 }
 
 /// Executes a query and returns a result.
-pub fn execute_prepared_query<R>(
+pub fn execute_query<R>(
     query: Arc<Query>,
     options: QueryExecutionOptions<R>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>

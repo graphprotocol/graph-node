@@ -5,7 +5,7 @@ use crate::tokio::runtime::{Builder, Runtime};
 use graph::log;
 use graph::prelude::{Store as _, *};
 use graph_graphql::prelude::{
-    execute_prepared_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
+    execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::create_connection_pool;
@@ -382,5 +382,5 @@ fn execute_subgraph_query_internal(
         max_depth: 100,
         max_first: std::u32::MAX,
     };
-    QueryResult::from(execute_prepared_query(query, options))
+    QueryResult::from(execute_query(query, options))
 }
