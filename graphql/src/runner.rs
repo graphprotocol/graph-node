@@ -5,12 +5,15 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::prelude::{object, QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
+use crate::prelude::{
+    object, object_value, QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions,
+};
 use crate::query::execute_prepared_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::prelude::{
-    o, GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, QueryResult,
-    QueryResultFuture, Store, Subscription, SubscriptionResultFuture,
+    o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
+    QueryExecutionError, QueryResult, QueryResultFuture, Store, SubgraphDeploymentId,
+    SubgraphDeploymentStore, Subscription, SubscriptionResultFuture,
 };
 
 use lazy_static::lazy_static;
@@ -46,7 +49,7 @@ lazy_static! {
 
 impl<S> GraphQlRunner<S>
 where
-    S: Store,
+    S: Store + SubgraphDeploymentStore,
 {
     /// Creates a new query runner.
     pub fn new(logger: &Logger, store: Arc<S>) -> Self {
@@ -54,6 +57,35 @@ where
             logger: logger.new(o!("component" => "GraphQlRunner")),
             store,
         }
+    }
+
+    /// Create a JSON value that contains the block information for our
+    /// response
+    fn make_extensions(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        block_ptr: &EthereumBlockPointer,
+    ) -> Result<q::Value, Vec<QueryExecutionError>> {
+        let network = self
+            .store
+            .network_name(subgraph)
+            .map_err(|e| vec![QueryExecutionError::StoreError(e.into())])?
+            .map(|s| format!("ethereum/{}", s))
+            .unwrap_or("unknown".to_string());
+        Ok(object! {
+            subgraph: object! {
+                id: subgraph.to_string(),
+                blocks: vec![
+                    object_value(vec![
+                        (network.as_str(),
+                            object! {
+                                hash: block_ptr.hash_hex(),
+                                number: q::Number::from(block_ptr.number as i32)
+                        })
+                    ])
+                ]
+            }
+        })
     }
 
     fn execute(
@@ -68,17 +100,7 @@ where
         let bc = query.block_constraint()?;
         let (resolver, block_ptr) =
             StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
-        let exts = object! {
-            subgraph: object! {
-                id: query.schema.id.to_string(),
-                blocks: vec![
-                    object! {
-                        hash: format!("{:x}", block_ptr.hash),
-                        number: q::Number::from(block_ptr.number as i32)
-                    }
-                ]
-            }
-        };
+        let exts = self.make_extensions(&query.schema.id, &block_ptr)?;
         execute_prepared_query(
             query,
             QueryExecutionOptions {
@@ -96,7 +118,7 @@ where
 
 impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
 where
-    S: Store,
+    S: Store + SubgraphDeploymentStore,
 {
     fn run_query(&self, query: Query) -> QueryResultFuture {
         self.run_query_with_complexity(
