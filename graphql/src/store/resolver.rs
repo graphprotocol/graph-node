@@ -35,7 +35,7 @@ where
 
 impl<S> StoreResolver<S>
 where
-    S: Store,
+    S: Store + SubgraphDeploymentStore,
 {
     /// Create a resolver that looks up entities at whatever block is the
     /// latest when the query is run. That means that multiple calls to find
@@ -266,60 +266,85 @@ where
         bc: BlockConstraint,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {
-        match bc {
-            BlockConstraint::Number(number) => store
-                .block_ptr(subgraph.clone())
-                .map_err(|e| StoreError::from(e).into())
-                .and_then(|ptr| {
-                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    if ptr.number < number as u64 {
-                        Err(QueryExecutionError::ValueParseError(
-                            "block.number".to_owned(),
-                            format!(
-                                "subgraph {} has only indexed up to block number {} \
+        if store
+            .uses_relational_schema(subgraph)
+            .map_err(StoreError::from)?
+            && !subgraph.is_meta()
+        {
+            // Relational storage (most subgraphs); block constraints fully
+            // supported
+            match bc {
+                BlockConstraint::Number(number) => store
+                    .block_ptr(subgraph.clone())
+                    .map_err(|e| StoreError::from(e).into())
+                    .and_then(|ptr| {
+                        let ptr =
+                            ptr.expect("we should have already checked that the subgraph exists");
+                        if ptr.number < number as u64 {
+                            Err(QueryExecutionError::ValueParseError(
+                                "block.number".to_owned(),
+                                format!(
+                                    "subgraph {} has only indexed up to block number {} \
                                  and data for block number {} is therefore not yet available",
-                                subgraph, ptr.number, number
-                            ),
-                        ))
-                    } else {
-                        // We don't have a way here to look the block hash up from
-                        // the database, and even if we did, there is no guarantee
-                        // that we have the block in our cache. We therefore
-                        // always return an all zeroes hash when users specify
-                        // a block number
-                        Ok(EthereumBlockPointer::from((
-                            web3::types::H256::zero(),
-                            number as u64,
-                        )))
-                    }
-                }),
-            BlockConstraint::Hash(hash) => store
-                .block_number(subgraph, hash)
-                .map_err(|e| e.into())
-                .and_then(|number| {
-                    number
-                        .ok_or_else(|| {
-                            QueryExecutionError::ValueParseError(
-                                "block.hash".to_owned(),
-                                "no block with that hash found".to_owned(),
-                            )
-                        })
-                        .map(|number| EthereumBlockPointer::from((hash, number as u64)))
-                }),
-            BlockConstraint::Latest => store
-                .block_ptr(subgraph.clone())
-                .map_err(|e| StoreError::from(e).into())
-                .and_then(|ptr| {
-                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    Ok(ptr)
-                }),
+                                    subgraph, ptr.number, number
+                                ),
+                            ))
+                        } else {
+                            // We don't have a way here to look the block hash up from
+                            // the database, and even if we did, there is no guarantee
+                            // that we have the block in our cache. We therefore
+                            // always return an all zeroes hash when users specify
+                            // a block number
+                            Ok(EthereumBlockPointer::from((
+                                web3::types::H256::zero(),
+                                number as u64,
+                            )))
+                        }
+                    }),
+                BlockConstraint::Hash(hash) => store
+                    .block_number(subgraph, hash)
+                    .map_err(|e| e.into())
+                    .and_then(|number| {
+                        number
+                            .ok_or_else(|| {
+                                QueryExecutionError::ValueParseError(
+                                    "block.hash".to_owned(),
+                                    "no block with that hash found".to_owned(),
+                                )
+                            })
+                            .map(|number| EthereumBlockPointer::from((hash, number as u64)))
+                    }),
+                BlockConstraint::Latest => store
+                    .block_ptr(subgraph.clone())
+                    .map_err(|e| StoreError::from(e).into())
+                    .and_then(|ptr| {
+                        let ptr =
+                            ptr.expect("we should have already checked that the subgraph exists");
+                        Ok(ptr)
+                    }),
+            }
+        } else {
+            // JSONB storage or subgraph metadata; only allow BlockConstraint::Latest
+            if matches!(bc, BlockConstraint::Latest) {
+                Ok(EthereumBlockPointer::from((
+                    web3::types::H256::zero(),
+                    BLOCK_NUMBER_MAX as u64,
+                )))
+            } else {
+                Err(QueryExecutionError::NotSupported(
+                    "This subgraph uses JSONB storage, which does not \
+            support querying at a specific block height. Redeploy \
+            a new version of this subgraph to enable this feature."
+                        .to_owned(),
+                ))
+            }
         }
     }
 }
 
 impl<S> Resolver for StoreResolver<S>
 where
-    S: Store,
+    S: Store + SubgraphDeploymentStore,
 {
     fn prefetch(
         &self,

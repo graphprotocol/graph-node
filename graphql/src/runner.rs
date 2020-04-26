@@ -12,7 +12,7 @@ use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::prelude::{
     o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
-    QueryExecutionError, QueryResult, QueryResultFuture, Store, SubgraphDeploymentId,
+    QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError, SubgraphDeploymentId,
     SubgraphDeploymentStore, Subscription, SubscriptionResultFuture,
 };
 
@@ -72,18 +72,28 @@ where
             .map_err(|e| vec![QueryExecutionError::StoreError(e.into())])?
             .map(|s| format!("ethereum/{}", s))
             .unwrap_or("unknown".to_string());
+        let network_info = if self
+            .store
+            .uses_relational_schema(subgraph)
+            .map_err(|e| vec![StoreError::from(e).into()])?
+        {
+            // Relational storage: produce the full output
+            object_value(vec![(
+                network.as_str(),
+                object! {
+                        hash: block_ptr.hash_hex(),
+                        number: q::Number::from(block_ptr.number as i32)
+                },
+            )])
+        } else {
+            // JSONB storage: we can not reliably report anything about
+            // the block where the query happened
+            object_value(vec![(network.as_str(), object_value(vec![]))])
+        };
         Ok(object! {
             subgraph: object! {
                 id: subgraph.to_string(),
-                blocks: vec![
-                    object_value(vec![
-                        (network.as_str(),
-                            object! {
-                                hash: block_ptr.hash_hex(),
-                                number: q::Number::from(block_ptr.number as i32)
-                        })
-                    ])
-                ]
+                blocks: vec![network_info]
             }
         })
     }
