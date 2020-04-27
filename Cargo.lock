@@ -195,9 +195,20 @@ checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
 
 [[package]]
 name = "bigdecimal"
-version = "0.1.0"
+version = "0.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "460825c9e21708024d67c07057cd5560e5acdccac85de0de624a81d3de51bacb"
+checksum = "f73d2953c59932d4a0ac941bb5ccca17e324ddae9aa487353dc22f0aade2c4b4"
+dependencies = [
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "bigdecimal"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1374191e2dd25f9ae02e3aa95041ed5d747fc77b3c102b49fe2dd9a8117a6244"
 dependencies = [
  "num-bigint",
  "num-integer",
@@ -652,7 +663,7 @@ version = "1.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d7ca63eb2efea87a7f56a283acc49e2ce4b2bd54adf7465dc1d81fef13d8fc"
 dependencies = [
- "bigdecimal",
+ "bigdecimal 0.0.15",
  "bitflags 1.2.1",
  "byteorder",
  "diesel_derives",
@@ -1193,7 +1204,7 @@ version = "0.18.0"
 dependencies = [
  "Inflector",
  "async-trait",
- "bigdecimal",
+ "bigdecimal 0.1.2",
  "bytes 0.5.4",
  "chrono",
  "diesel",
@@ -4139,7 +4150,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bfd5b7557925ce778ff9b9ef90e3ade34c524b5ff10e239c69a42d546d2af56"
 dependencies = [
- "rand 0.3.23",
+ "rand 0.7.3",
 ]
 
 [[package]]
