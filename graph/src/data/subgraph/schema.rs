@@ -365,8 +365,6 @@ impl SubgraphDeploymentEntity {
 
     fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
         let mut ops = vec![];
-        let mut entity = Entity::new();
-        entity.set("id", id.to_string());
 
         let SubgraphDeploymentEntity {
             manifest,
@@ -390,7 +388,7 @@ impl SubgraphDeploymentEntity {
         // A fresh subgraph will not have any errors.
         assert!(fatal_error.is_none());
         assert!(non_fatal_errors.is_empty());
-        entity.set("nonFatalErrors", Vec::<Value>::new());
+        let non_fatal_errors = Vec::<Value>::new();
 
         let manifest_id = SubgraphManifestEntity::id(&id);
         ops.extend(manifest.write_operations(&manifest_id));
@@ -401,6 +399,7 @@ impl SubgraphDeploymentEntity {
             failed: failed,
             health: health,
             synced: synced,
+            nonFatalErrors: non_fatal_errors,
             earliestEthereumBlockHash: earliest_ethereum_block_hash,
             earliestEthereumBlockNumber: earliest_ethereum_block_number,
             latestEthereumBlockHash: latest_ethereum_block_hash,
