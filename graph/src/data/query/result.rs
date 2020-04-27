@@ -3,6 +3,7 @@ use crate::data::graphql::SerializableValue;
 use graphql_parser::query as q;
 use serde::ser::*;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 fn serialize_data<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -36,8 +37,8 @@ impl QueryResult {
             extensions: None,
         }
     }
-    pub fn with_extensions(mut self, extensions: q::Value) -> Self {
-        self.extensions = Some(extensions);
+    pub fn with_extensions(mut self, extensions: BTreeMap<q::Name, q::Value>) -> Self {
+        self.extensions = Some(q::Value::Object(extensions));
         self
     }
 }

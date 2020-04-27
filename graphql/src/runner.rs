@@ -1,5 +1,6 @@
 use futures01::future;
 use graphql_parser::query as q;
+use std::collections::BTreeMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -65,7 +66,7 @@ where
         &self,
         subgraph: &SubgraphDeploymentId,
         block_ptr: &EthereumBlockPointer,
-    ) -> Result<q::Value, Vec<QueryExecutionError>> {
+    ) -> Result<BTreeMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
         let network = self
             .store
             .network_name(subgraph)
@@ -90,12 +91,15 @@ where
             // the block where the query happened
             object_value(vec![(network.as_str(), object_value(vec![]))])
         };
-        Ok(object! {
-            subgraph: object! {
+        let mut exts = BTreeMap::new();
+        exts.insert(
+            "subgraph".to_owned(),
+            object! {
                 id: subgraph.to_string(),
                 blocks: vec![network_info]
-            }
-        })
+            },
+        );
+        Ok(exts)
     }
 
     fn execute(
