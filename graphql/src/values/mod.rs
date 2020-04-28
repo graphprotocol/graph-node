@@ -34,6 +34,13 @@ impl IntoValue for &'_ str {
     }
 }
 
+impl IntoValue for i32 {
+    #[inline]
+    fn into_value(self) -> Value {
+        Value::Int(Number::from(self))
+    }
+}
+
 impl<T: IntoValue> IntoValue for Option<T> {
     #[inline]
     fn into_value(self) -> Value {
@@ -41,6 +48,13 @@ impl<T: IntoValue> IntoValue for Option<T> {
             Some(v) => v.into_value(),
             None => Value::Null,
         }
+    }
+}
+
+impl<T: IntoValue> IntoValue for Vec<T> {
+    #[inline]
+    fn into_value(self) -> Value {
+        Value::List(self.into_iter().map(|e| e.into_value()).collect::<Vec<_>>())
     }
 }
 
@@ -61,7 +75,6 @@ impl_into_values![
     (String, String),
     (f64, Float),
     (bool, Boolean),
-    (Vec<Value>, List),
     (Number, Int)
 ];
 
