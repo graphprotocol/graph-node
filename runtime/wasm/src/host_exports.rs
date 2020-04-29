@@ -146,6 +146,8 @@ impl HostExports {
         entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), HostExportError<impl ExportError>> {
+        data.insert("__typename".into(), entity_type.clone().into());
+
         let event = ProofOfIndexingEvent::SetEntity {
             entity_type: &entity_type,
             id: &entity_id,
