@@ -377,20 +377,17 @@ async fn ipfs_map() {
     let ipfs = Arc::new(ipfs_api::IpfsClient::default());
     let subgraph_id = "ipfsMap";
 
-    let run_ipfs_map = move |json_string| {
-        let ipfs = ipfs.clone();
-
+    async fn run_ipfs_map(
+        ipfs: Arc<ipfs_api::IpfsClient>,
+        subgraph_id: &'static str,
+        json_string: String,
+    ) -> Result<Vec<EntityModification>, Error> {
         let (mut module, store) =
             test_valid_module_and_store(subgraph_id, mock_data_source("wasm_test/ipfs_map.wasm"));
         let hash = if json_string == BAD_IPFS_HASH {
             "Qm".to_string()
         } else {
-            graph::spawn(async move { ipfs.add(Cursor::new(json_string)).await })
-                .compat()
-                .wait()
-                .unwrap()
-                .unwrap()
-                .hash
+            ipfs.add(Cursor::new(json_string)).await.unwrap().hash
         };
         let user_data = RuntimeValue::from(module.asc_new(USER_DATA));
         let converted = module.module.clone().invoke_export(
@@ -419,33 +416,46 @@ async fn ipfs_map() {
     // Try it with two valid objects
     let (str1, thing1) = make_thing(subgraph_id, "one", "eins");
     let (str2, thing2) = make_thing(subgraph_id, "two", "zwei");
-    let ops = run_ipfs_map(format!("{}\n{}", str1, str2)).expect("call failed");
+    let ops = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n{}", str1, str2))
+        .await
+        .expect("call failed");
     let expected = vec![thing1, thing2];
     assert_eq!(expected, ops);
 
     // Valid JSON, but not what the callback expected; it will
     // fail on an assertion
-    let err: Error = run_ipfs_map(format!("{}\n[1,2]", str1)).unwrap_err();
+    let err: Error = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n[1,2]", str1))
+        .await
+        .unwrap_err();
     assert!(err.to_string().contains("JSON value is not an object."));
 
     // Malformed JSON
-    let errmsg = run_ipfs_map(format!("{}\n[", str1))
+    let errmsg = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n[", str1))
+        .await
         .unwrap_err()
         .to_string();
     assert!(errmsg.contains("EOF while parsing a list"));
 
     // Empty input
-    let ops = run_ipfs_map("".to_string()).expect("call failed for emoty string");
+    let ops = run_ipfs_map(ipfs.clone(), subgraph_id, "".to_string())
+        .await
+        .expect("call failed for emoty string");
     assert_eq!(0, ops.len());
 
     // Missing entry in the JSON object
-    let errmsg = run_ipfs_map("{\"value\": \"drei\"}".to_string())
-        .unwrap_err()
-        .to_string();
+    let errmsg = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        "{\"value\": \"drei\"}".to_string(),
+    )
+    .await
+    .unwrap_err()
+    .to_string();
     assert!(errmsg.contains("JSON value is not a string."));
 
     // Bad IPFS hash.
-    let errmsg = run_ipfs_map(BAD_IPFS_HASH.to_string())
+    let errmsg = run_ipfs_map(ipfs.clone(), subgraph_id, BAD_IPFS_HASH.to_string())
+        .await
         .unwrap_err()
         .to_string();
     assert!(errmsg.contains("ApiError"));
