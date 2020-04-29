@@ -140,19 +140,23 @@ impl HostExports {
 
     pub(crate) fn store_set(
         &self,
+        logger: &Logger,
         state: &mut BlockState,
         entity_type: String,
         entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), HostExportError<impl ExportError>> {
-        state.proof_of_indexing.write(
-            &self.causality_region,
-            &ProofOfIndexingEvent::SetEntity {
-                entity_type: &entity_type,
-                id: &entity_id,
-                data: &data,
-            },
-        );
+        let event = ProofOfIndexingEvent::SetEntity {
+            entity_type: &entity_type,
+            id: &entity_id,
+            data: &data,
+        };
+
+        debug!(logger, "Proof of indexing event"; "event" => format!("{:?}", &event));
+
+        state
+            .proof_of_indexing
+            .write(&self.causality_region, &event);
 
         // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
@@ -194,17 +198,21 @@ impl HostExports {
 
     pub(crate) fn store_remove(
         &self,
+        logger: &Logger,
         state: &mut BlockState,
         entity_type: String,
         entity_id: String,
     ) {
-        state.proof_of_indexing.write(
-            &self.causality_region,
-            &ProofOfIndexingEvent::RemoveEntity {
-                entity_type: &entity_type,
-                id: &entity_id,
-            },
-        );
+        let event = ProofOfIndexingEvent::RemoveEntity {
+            entity_type: &entity_type,
+            id: &entity_id,
+        };
+
+        debug!(logger, "Proof of indexing event"; "event" => format!("{:?}", &event));
+
+        state
+            .proof_of_indexing
+            .write(&self.causality_region, &event);
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type,
