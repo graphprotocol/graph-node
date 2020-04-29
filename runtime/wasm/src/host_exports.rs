@@ -146,15 +146,19 @@ impl HostExports {
         entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), HostExportError<impl ExportError>> {
-        state.proof_of_indexing.write(
-            logger,
-            &self.causality_region,
-            &ProofOfIndexingEvent::SetEntity {
-                entity_type: &entity_type,
-                id: &entity_id,
-                data: &data,
-            },
-        );
+        data.insert("__typename".into(), entity_type.clone().into());
+
+        let event = ProofOfIndexingEvent::SetEntity {
+            entity_type: &entity_type,
+            id: &entity_id,
+            data: &data,
+        };
+
+        debug!(logger, "Proof of indexing event"; "event" => format!("{:?}", &event));
+
+        state
+            .proof_of_indexing
+            .write(logger, &self.causality_region, &event);
 
         // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
