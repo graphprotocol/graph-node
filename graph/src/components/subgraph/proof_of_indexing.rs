@@ -1,10 +1,19 @@
-use crate::prelude::Value;
+use crate::prelude::{debug, Logger, Value};
 use stable_hash::{prelude::*, utils::StableHasherWrapper, SequenceNumberInt};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 use twox_hash::XxHash64;
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref LOG_EVENTS: bool = std::env::var("GRAPH_LOG_POI_EVENTS")
+        .unwrap_or("false".into())
+        .parse::<bool>()
+        .expect("invalid GRAPH_LOG_POI_EVENTS");
+}
 
 #[derive(Debug)]
 pub struct ProofOfIndexingDigest(pub String);
@@ -26,6 +35,42 @@ pub enum ProofOfIndexingEvent<'a> {
         id: &'a str,
         data: &'a HashMap<String, Value>,
     },
+}
+
+/// Different than #[derive(Debug)] in order to be deterministic.
+/// In particular, we swap out the HashMap for a BTreeMap when printing
+/// the data field of the SetEntity variant so that the keys are sorted.
+impl fmt::Debug for ProofOfIndexingEvent<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut builder = f.debug_struct(self.as_static());
+        match self {
+            Self::RemoveEntity { entity_type, id } => {
+                builder.field("entity_type", entity_type);
+                builder.field("id", id);
+            }
+            Self::SetEntity {
+                entity_type,
+                id,
+                data,
+            } => {
+                builder.field("entity_type", entity_type);
+                builder.field("id", id);
+                builder.field("data", &data.iter().collect::<BTreeMap<_, _>>());
+            }
+        }
+        builder.finish()
+    }
+}
+
+impl slog::Value for ProofOfIndexingEvent<'_> {
+    fn serialize(
+        &self,
+        record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        format!("{:?}", self).serialize(record, key, serializer)
+    }
 }
 
 impl StableHash for ProofOfIndexingEvent<'_> {
@@ -115,7 +160,21 @@ impl fmt::Debug for ProofOfIndexing {
 
 impl ProofOfIndexing {
     /// Adds an event to the digest of the ProofOfIndexingStream local to the DataSource
-    pub fn write(&mut self, causality_region: &str, event: &ProofOfIndexingEvent<'_>) {
+    pub fn write(
+        &mut self,
+        logger: &Logger,
+        causality_region: &str,
+        event: &ProofOfIndexingEvent<'_>,
+    ) {
+        if *LOG_EVENTS {
+            debug!(
+                logger,
+                "Proof of indexing event";
+                "event" => &event,
+                "causality_region" => causality_region
+            );
+        }
+
         // This may be better with the raw_entry API, once that is stabilized
         if let Some(data_source) = self.per_causality_region.get_mut(causality_region) {
             data_source.write(event);

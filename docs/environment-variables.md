@@ -110,3 +110,5 @@ those.
   queries caused by subscriptions. Defaults to no logging.
 - `STORE_CONNECTION_POOL_SIZE`: How many simultaneous connections to allow to the store.
   Due to implementation details, this value may not be strictly adhered to. Defaults to 10. 
+- `GRAPH_LOG_POI_EVENTS`: Logs Proof of Indexing events deterministically.
+  This may be useful for debugging.
