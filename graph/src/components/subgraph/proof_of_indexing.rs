@@ -15,7 +15,7 @@ impl StableHash for ProofOfIndexingDigest {
     }
 }
 
-#[derive(AsStaticStr)]
+#[derive(AsStaticStr, Debug)]
 pub enum ProofOfIndexingEvent<'a> {
     RemoveEntity {
         entity_type: &'a str,

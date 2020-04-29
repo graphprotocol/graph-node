@@ -423,7 +423,7 @@ impl WasmiModule {
         let data = self.asc_get(data_ptr);
         self.ctx
             .host_exports
-            .store_set(&mut self.ctx.state, entity, id, data)?;
+            .store_set(&self.ctx.logger, &mut self.ctx.state, entity, id, data)?;
         Ok(None)
     }
 
@@ -440,7 +440,7 @@ impl WasmiModule {
         let id = self.asc_get(id_ptr);
         self.ctx
             .host_exports
-            .store_remove(&mut self.ctx.state, entity, id);
+            .store_remove(&self.ctx.logger, &mut self.ctx.state, entity, id);
         Ok(None)
     }
 
