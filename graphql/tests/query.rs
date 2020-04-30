@@ -17,9 +17,8 @@ use graph::prelude::{
 };
 use graph_graphql::prelude::*;
 use test_store::{
-    execute_subgraph_query, execute_subgraph_query_with_complexity,
-    execute_subgraph_query_with_deadline, transact_entity_operations, BLOCK_ONE, GENESIS_PTR,
-    STORE,
+    execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline, return_err,
+    transact_entity_operations, BLOCK_ONE, GENESIS_PTR, LOGGER, STORE,
 };
 
 lazy_static! {
@@ -231,9 +230,10 @@ fn execute_query_document_with_variables(
     query: q::Document,
     variables: Option<QueryVariables>,
 ) -> QueryResult {
+    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone());
     let query = Query::new(Arc::new(api_test_schema()), query, variables);
 
-    execute_subgraph_query(query)
+    return_err!(runner.execute(query, None, None, None))
 }
 
 #[test]
@@ -1306,4 +1306,26 @@ fn query_at_block() {
     musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
     musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
     musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
+}
+
+/// Check that the `extensions` field in the query result has the correct format
+#[test]
+fn block_extension() {
+    let query = format!("query {{ musicians(block: {{ number: 0 }}) {{ id }} }}");
+    let query = graphql_parser::parse_query(&query).expect("invalid test query");
+
+    let result = execute_query_document(query);
+
+    if STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap() {
+        let ext = object! {
+        subgraph: object! {
+            blocks: object! {
+                unknown: object! {
+                    hash: "0000000000000000000000000000000000000000000000000000000000000000",
+                    number: 0}},
+            id: "graphqlTestsQuery" }};
+        assert_eq!(Some(ext), result.extensions);
+    } else {
+        assert_eq!(None, result.extensions);
+    }
 }

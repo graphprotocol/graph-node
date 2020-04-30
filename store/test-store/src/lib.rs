@@ -350,6 +350,7 @@ pub fn execute_subgraph_query_with_deadline(
 
 /// Like `try!`, but we return the contents of an `Err`, not the
 /// whole `Result`
+#[macro_export]
 macro_rules! return_err {
     ( $ expr : expr ) => {
         match $expr {

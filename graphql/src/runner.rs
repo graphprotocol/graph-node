@@ -96,13 +96,13 @@ where
             "subgraph".to_owned(),
             object! {
                 id: subgraph.to_string(),
-                blocks: vec![network_info]
+                blocks: network_info
             },
         );
         Ok(exts)
     }
 
-    fn execute(
+    pub fn execute(
         &self,
         query: Query,
         max_complexity: Option<u64>,
