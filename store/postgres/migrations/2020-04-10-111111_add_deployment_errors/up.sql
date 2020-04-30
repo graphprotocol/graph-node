@@ -1,7 +1,9 @@
+alter table subgraphs.subgraph_deployment add unique (id);
+
 -- create subgraph_error
 create table subgraphs."subgraph_error" (
         "id"                 text not null,
-        "subgraph_id"        text not null,
+        "subgraph_id"        text not null references subgraphs.subgraph_deployment(id) on delete cascade,
         "message"            text not null,
         "block_number"       numeric,
         "block_hash"         bytea,
