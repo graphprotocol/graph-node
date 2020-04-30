@@ -34,18 +34,24 @@ add
     column non_fatal_errors text[] default '{}';
 
 -- add health column to subgraph_deployment
+create type subgraphs."health"
+    as enum ('failed', 'healthy', 'unhealthy');
+
 alter table
     subgraphs.subgraph_deployment
 add
-    column health text;
+    column health subgraphs.health;
+
+create index attr_subgraph_deployment_health
+    on subgraphs."subgraph_deployment" using btree("health");
 
 update
     subgraphs.subgraph_deployment
 set
     health = case
         failed
-        when false then 'healthy'
-        when true then 'failed'
+        when false then 'healthy'::subgraphs.health
+        when true then 'failed'::subgraphs.health
     end;
 
 alter table
