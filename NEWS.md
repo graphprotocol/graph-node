@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Feature: Include Block in Query Responses
+
+Responses to GraphQL queries now include the block at which the query was
+executed. The response now contains an `extensions` field of the following
+form:
+
+```json
+{
+  "data" : "...",
+  "extensions": {
+    "subgraph": {
+      "blocks": {
+        "ethereum/mainnet": {
+          "hash": "ea3bc37eb909f29c897d7a3fe3de30abd86baa58619403941e14a9797063a479",
+          "number": 9892879
+        }
+      },
+      "id": "QmZo35amfokYndPeuRd91bSzF6EusfBKMuDQCvaq25FVUX"
+    }
+  }
+}
+```
+
+The key in the `blocks` object indicate the Ethereum network that the
+subgraph indexes, such as `ethereum/mainnet` or `ethereum/kovan`. What
+exactly gets reported has `hash` and `number` depends on the query:
+
+- for time-travel queries with a block constraint of the form `block: {
+hash: "deadbeef" }`, that hash and the number of the corresponding block
+will appear in the response
+- for time-travel queries with a block constraint of the form `block: {
+number: 123456 }`, the `hash` will be all zeroes, and the number will be
+the number given in the query
+- for queries without any block constraint, the query will be run against
+  the latest block that subgraph has processed, the hash and number of that
+  block will be reported in the response
+
 ### Misc
 
 - Fix loading more than 200 dynamic data sources (#1596).
