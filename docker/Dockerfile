@@ -1,23 +1,23 @@
 # Full build with debuginfo for graph-node
 FROM rust:alpine as graph-node-bld
 
-# Replace this with the graph-node branch you want to build the image from;
-# Note: Docker Hub substitutes this automatically using our hooks/post_checkout script.
-ENV SOURCE_BRANCH "master"
+ADD . /graph-node
 
 # See https://github.com/rust-lang/cargo/issues/7563 for why we use -crt-static
 # in the RUSTFLAGS
 RUN apk update \
  && apk add musl-dev openssl-dev postgresql-dev git \
- && git clone https://github.com/lutter/graph-node /graph-node \
  && cd /graph-node \
- && git checkout "$SOURCE_BRANCH" \
  && RUSTFLAGS="-g -C target-feature=-crt-static" cargo install --locked --path node \
  && cargo clean \
  && objcopy --only-keep-debug /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graph-node.debug \
  && strip -g /usr/local/cargo/bin/graph-node \
  && cd /usr/local/cargo/bin \
- && objcopy --add-gnu-debuglink=graph-node.debug graph-node
+ && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
+ && echo "repo: $(git config --get remote.origin.url)" > /image-info \
+ && echo "commit: $(git describe --always)" >> /image-info \
+ && echo "cargo: $(cargo --version)" >> /image-info \
+ && echo "rust: $(rustc --version)" >> /image-info
 
 # The graph-node runtime image with only the executable
 FROM alpine:latest as graph-node-run
