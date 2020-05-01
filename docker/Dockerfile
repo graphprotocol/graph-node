@@ -57,10 +57,10 @@ RUN apt-get install gawk
 CMD wait-for-it.sh \
       $(echo $ipfs | \
         gawk 'match($0, /^([a-z]+:\/\/)?([^\/:]+)(:([0-9]+))?.*$/, m) { print m[2]":"(m[4] ? m[4] : (m[1] == "https://" ? 443 : 80)) }') \
-      -t 30 \
+      -t 120 \
     && wait-for-it.sh \
          $(echo $postgres_host | \
            gawk 'match($0, /^([a-z]+:\/\/)?([^\/:]+)(:([0-9]+))?.*$/, m) { print m[2]":"(m[4] ? m[4] : 5432) }') \
-         -t 30 \
+         -t 120 \
     && sleep 5 \
     && start-node
