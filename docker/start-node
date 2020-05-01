@@ -1,9 +1,0 @@
-#!/bin/bash
-
-set -e
-set -x
-
-graph-node \
-  --postgres-url "postgresql://$postgres_user:$postgres_pass@$postgres_host/$postgres_db" \
-  --ethereum-rpc $(echo $ethereum) \
-  --ipfs "$ipfs"
