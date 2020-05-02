@@ -11,9 +11,21 @@ steps:
          '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-bld:$SHORT_SHA',
          '-f', 'docker/Dockerfile', '.']
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'graph-node', '-t', 'gcr.io/$PROJECT_ID/alp-graph-node:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
+  args: ['build', '--target', 'graph-node',
+         '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
+         '--build-arg', 'REPO_NAME=$REPO_NAME',
+         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
+         '--build-arg', 'TAG_NAME=$TAG_NAME',
+         '-t', 'gcr.io/$PROJECT_ID/alp-graph-node:$SHORT_SHA',
+         '-f', 'docker/Dockerfile', '.']
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'graph-node-dbg', '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-dbg:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
+  args: ['build', '--target', 'graph-node-dbg',
+         '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
+         '--build-arg', 'REPO_NAME=$REPO_NAME',
+         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
+         '--build-arg', 'TAG_NAME=$TAG_NAME',
+         '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-dbg:$SHORT_SHA',
+         '-f', 'docker/Dockerfile', '.']
 images:
   - 'gcr.io/$PROJECT_ID/alp-graph-node-bld:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/alp-graph-node:$SHORT_SHA'
