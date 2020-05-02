@@ -63,9 +63,9 @@ sleep 5
 
 trap save_coredumps EXIT
 
-[ -z "$pod_name" ] && export PGAPPNAME="$HOSTNAME" || export PGAPPNAME="$pod_name"
+export PGAPPNAME="${pod_name-$HOSTNAME}"
 
-case "$1" in
+case "${node_role-combined-node}" in
     query-node)
         start_query_node
         ;;

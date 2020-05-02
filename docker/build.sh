@@ -9,9 +9,6 @@ type -p podman > /dev/null && docker=podman || docker=docker
 cd $(dirname $0)/..
 
 for stage in graph-node-bld \
-                 graph-node-run \
-                 query-node \
-                 index-node \
                  graph-node \
                  graph-node-dbg
 do

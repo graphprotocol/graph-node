@@ -32,7 +32,7 @@ RUN apk update \
  && echo "rust:   $(rustc --version)" >> /image-info
 
 # The graph-node runtime image with only the executable
-FROM alpine:latest as graph-node-run
+FROM alpine:latest as graph-node
 ENV RUST_LOG ""
 ENV GRAPH_LOG ""
 ENV EARLY_LOG_CHUNK_SIZE ""
@@ -47,6 +47,9 @@ ENV ipfs ""
 # The etherum network(s) to connect to. Set this to a space-separated
 # list of the networks where each entry has the form NAME:URL
 ENV ethereum ""
+# The role the node should have, one of index-node, query-node, or
+# combined-node
+ENV node_role "combined-node"
 
 # HTTP port
 EXPOSE 8000
@@ -61,18 +64,7 @@ ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-bld /usr/local/cargo/bin/graph-node /usr/local/bin
 COPY --from=graph-node-bld /image-info /image-info
 COPY docker/Dockerfile /Dockerfile
-
-# The query-node image
-FROM graph-node-run as query-node
-CMD start query-node
-
-# The index-node image
-FROM graph-node-run as index-node
-CMD start index-node
-
-# The combined-node image used for the public docker compose setup
-FROM graph-node-run as graph-node
-CMD start combined-node
+CMD start
 
 # Debug image to access core dumps
 FROM graph-node-bld as graph-node-dbg

@@ -11,19 +11,10 @@ steps:
          '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-bld:$SHORT_SHA',
          '-f', 'docker/Dockerfile', '.']
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'graph-node-run', '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-run:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'query-node', '-t', 'gcr.io/$PROJECT_ID/alp-query-node:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'index-node', '-t', 'gcr.io/$PROJECT_ID/alp-index-node:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
-- name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'graph-node', '-t', 'gcr.io/$PROJECT_ID/alp-graph-node:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'graph-node-dbg', '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-dbg:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
 images:
   - 'gcr.io/$PROJECT_ID/alp-graph-node-bld:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/alp-graph-node-run:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/alp-query-node:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/alp-index-node:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/alp-graph-node:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/alp-graph-node-dbg:$SHORT_SHA'
