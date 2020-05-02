@@ -35,28 +35,17 @@ start_query_node() {
 }
 
 start_index_node() {
-    POD_INDEX=${pod_name##*-}
-
-    # FIXME: Users should just pass this in or something
-    # Only enable block ingestion for `index-node-<network>-0`;
-    # disable it for all tracing and production nodes
-    if [[ ${pod_name} != *"block-ingestor"* ]]; then
+    # Only the index node with the name set in BLOCK_INGESTOR should ingest
+    # blocks
+    if [[ ${pod_name} != "${BLOCK_INGESTOR}" ]]; then
         export DISABLE_BLOCK_INGESTOR=true
     fi
 
-    if [ -z $MULTIPLE_ETHEREUM_NETWORKS ]; then
-        graph-node \
-	        --node-id "${pod_name//-/_}" \
-	        --postgres-url "$postgres_url" \
-	        --ethereum-rpc "$ETHEREUM_NETWORK" \
-	        --ipfs "$ipfs"
-    else
-        graph-node \
-	        --node-id "${pod_name//-/_}" \
-	        --postgres-url "$postgres_url" \
-	        --ethereum-rpc $ethereum \
-	        --ipfs "$ipfs"
-    fi
+    graph-node \
+	    --node-id "${pod_name//-/_}" \
+	    --postgres-url "$postgres_url" \
+	    --ethereum-rpc $ethereum \
+	    --ipfs "$ipfs"
 }
 
 start_combined_node() {
@@ -73,6 +62,8 @@ wait_for "$postgres_host:5432" -t 120
 sleep 5
 
 trap save_coredumps EXIT
+
+[ -z "$pod_name" ] && export PGAPPNAME="$HOSTNAME" || export PGAPPNAME="$pod_name"
 
 case "$1" in
     query-node)

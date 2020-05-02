@@ -1,4 +1,9 @@
 # Full build with debuginfo for graph-node
+#
+# The expectation if that the docker build uses the parent directory as PWD
+# by running something like the following
+#   docker build --target STAGE -f docker/Dockerfile .
+
 FROM rust:alpine as graph-node-bld
 
 ADD . /graph-node
@@ -45,8 +50,10 @@ EXPOSE 8020
 
 RUN apk add libgcc libssl1.1 libcrypto1.1 postgresql-libs bash
 
-ADD wait_for start /usr/local/bin
+ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-bld /usr/local/cargo/bin/graph-node /usr/local/bin
+COPY --from=graph-node-bld /image-info /image-info
+COPY docker/Dockerfile /Dockerfile
 
 # The query-node image
 FROM graph-node-run as query-node
@@ -63,4 +70,6 @@ CMD start combined-node
 # Debug image to access core dumps
 FROM graph-node-bld as graph-node-dbg
 RUN apk add gdb
-ADD debug /usr/local/bin
+ADD docker/debug /usr/local/bin
+COPY --from=graph-node-bld /image-info /image-info
+COPY docker/Dockerfile /Dockerfile
