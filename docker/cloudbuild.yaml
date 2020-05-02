@@ -3,7 +3,13 @@ options:
 timeout: 1800s
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'graph-node-bld', '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-bld:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
+  args: ['build', '--target', 'graph-node-bld',
+         '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
+         '--build-arg', 'REPO_NAME=$REPO_NAME',
+         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
+         '--build-arg', 'TAG_NAME=$TAG_NAME',
+         '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-bld:$SHORT_SHA',
+         '-f', 'docker/Dockerfile', '.']
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'graph-node-run', '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-run:$SHORT_SHA', '-f', 'docker/Dockerfile', '.']
 - name: 'gcr.io/cloud-builders/docker'

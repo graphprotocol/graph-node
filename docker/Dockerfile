@@ -6,6 +6,11 @@
 
 FROM rust:alpine as graph-node-bld
 
+ARG COMMIT_SHA=unknown
+ARG REPO_NAME=unknown
+ARG BRANCH_NAME=unknown
+ARG TAG_NAME=unknown
+
 ADD . /graph-node
 
 # See https://github.com/rust-lang/cargo/issues/7563 for why we use -crt-static
@@ -19,10 +24,12 @@ RUN apk update \
  && strip -g /usr/local/cargo/bin/graph-node \
  && cd /usr/local/cargo/bin \
  && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
- && echo "repo: $(git config --get remote.origin.url)" > /image-info \
- && echo "commit: $(git describe --always)" >> /image-info \
- && echo "cargo: $(cargo --version)" >> /image-info \
- && echo "rust: $(rustc --version)" >> /image-info
+ && echo "repo:   $REPO_NAME" > /image-info \
+ && echo "tag:    $TAG_NAME" >> /image-info \
+ && echo "branch: $BRANCH_NAME" >> /image-info \
+ && echo "commit: $COMMIT_SHA" >> /image-info \
+ && echo "cargo:  $(cargo --version)" >> /image-info \
+ && echo "rust:   $(rustc --version)" >> /image-info
 
 # The graph-node runtime image with only the executable
 FROM alpine:latest as graph-node-run
