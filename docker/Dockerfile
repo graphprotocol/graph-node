@@ -24,12 +24,12 @@ RUN apk update \
  && strip -g /usr/local/cargo/bin/graph-node \
  && cd /usr/local/cargo/bin \
  && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
- && echo "repo:   $REPO_NAME" > /image-info \
- && echo "tag:    $TAG_NAME" >> /image-info \
- && echo "branch: $BRANCH_NAME" >> /image-info \
- && echo "commit: $COMMIT_SHA" >> /image-info \
- && echo "cargo:  $(cargo --version)" >> /image-info \
- && echo "rust:   $(rustc --version)" >> /image-info
+ && echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
+ && echo "TAG_NAME='$TAG_NAME'" >> /etc/image-info \
+ && echo "BRANCH_NAME='$BRANCH_NAME'" >> /etc/image-info \
+ && echo "COMMIT_SHA='$COMMIT_SHA'" >> /etc/image-info \
+ && echo "CARGO_VERSION='$(cargo --version)'" >> /etc/image-info \
+ && echo "RUST_VERSION='$(rustc --version)'" >> /etc/image-info
 
 # The graph-node runtime image with only the executable
 FROM alpine:latest as graph-node
@@ -63,7 +63,7 @@ RUN apk add libgcc libssl1.1 libcrypto1.1 postgresql-libs bash
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-bld /usr/local/cargo/bin/graph-node /usr/local/bin
-COPY --from=graph-node-bld /image-info /image-info
+COPY --from=graph-node-bld /etc/image-info /etc/image-info
 COPY docker/Dockerfile /Dockerfile
 CMD start
 
@@ -71,5 +71,5 @@ CMD start
 FROM graph-node-bld as graph-node-dbg
 RUN apk add gdb
 ADD docker/debug /usr/local/bin
-COPY --from=graph-node-bld /image-info /image-info
+COPY --from=graph-node-bld /etc/image-info /etc/image-info
 COPY docker/Dockerfile /Dockerfile
