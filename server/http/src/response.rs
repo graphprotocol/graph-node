@@ -60,7 +60,7 @@ impl Future for GraphQLResponse {
         let response = Response::builder()
             .status(status_code)
             .header("Access-Control-Allow-Origin", "*")
-            .header("Access-Control-Allow-Headers", "Content-Type")
+            .header("Access-Control-Allow-Headers", "Content-Type, User-Agent")
             .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
             .header("Content-Type", "application/json")
             .body(Body::from(json))
