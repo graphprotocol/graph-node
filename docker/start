@@ -13,6 +13,8 @@ save_coredumps() {
         mkdir "$dst"
         cp /usr/local/cargo/bin/graph-node "$dst"
         cp /proc/loadavg "$dst"
+        [ -f /Dockerfile ] && cp /Dockerfile "$dst"
+        tar czf "$dst/etc.tgz" /etc/
         dmesg -e > "$dst/dmesg"
         # Capture environment variables, but filter out passwords
         env | sort | sed -r -e 's/^(postgres_pass|ELASTICSEARCH_PASSWORD)=.*$/\1=REDACTED/' > "$dst/env"
