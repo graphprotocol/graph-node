@@ -43,6 +43,7 @@ ENV postgres_host ""
 ENV postgres_user ""
 ENV postgres_pass ""
 ENV postgres_db ""
+# The full URL to the IPFS node
 ENV ipfs ""
 # The etherum network(s) to connect to. Set this to a space-separated
 # list of the networks where each entry has the form NAME:URL

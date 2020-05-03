@@ -26,6 +26,25 @@ save_coredumps() {
     fi
 }
 
+wait_for_ipfs() {
+    # Take the IPFS URL in $1 apart and extract host and port. If no explicit
+    # host is given, use 443 for https, and 80 otherwise
+    if [[ "$1" =~ ^((https?)://)?([^:/]+)(:([0-9]+))? ]]
+    then
+        proto=${BASH_REMATCH[2]:-http}
+        host=${BASH_REMATCH[3]}
+        port=${BASH_REMATCH[5]}
+        if [ -z "$port" ]
+        then
+            [ "$proto" = "https" ] && port=443 || port=80
+        fi
+        wait_for "$host:$port" -t 120
+    else
+        echo "invalid IPFS URL: $1"
+        exit 1
+    fi
+}
+
 start_query_node() {
     export DISABLE_BLOCK_INGESTOR=true
     graph-node \
@@ -57,8 +76,8 @@ start_combined_node() {
 
 postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host/$postgres_db"
 
-wait_for "$ipfs" -t 120
-wait_for "$postgres_host:5432" -t 120
+wait_for_ipfs "$ipfs"
+wait_for "$postgres_host:5432" -t 30
 sleep 5
 
 trap save_coredumps EXIT
