@@ -10,9 +10,9 @@ use std::str::FromStr;
 
 use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
-    bigdecimal::One, web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityQuery, EntityRange, Future01CompatExt, Schema, SubgraphDeploymentId, Value,
-    ValueType, BLOCK_NUMBER_MAX,
+    web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityQuery,
+    EntityRange, Future01CompatExt, Schema, SubgraphDeploymentId, Value, ValueType,
+    BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
 
@@ -94,7 +94,7 @@ lazy_static! {
         SubgraphDeploymentId::new("things").unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
     static ref LARGE_DECIMAL: BigDecimal =
-        BigDecimal::one() / LARGE_INT.clone().to_big_decimal(BigInt::from(1));
+        BigDecimal::from(1) / LARGE_INT.clone().to_big_decimal(BigInt::from(1));
     static ref BYTES_VALUE: H256 = H256::from(hex!(
         "e8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"
     ));
@@ -447,24 +447,25 @@ fn serialize_bigdecimal() {
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
 
-        let d = BigDecimal::from_str("5000").unwrap();
-        let d = d.with_scale(-2);
-        entity.set("bigDecimal", d);
+        for d in &["50", "50.00", "5000", "0.5000", "0.050", "0.5", "0.05"] {
+            let d = BigDecimal::from_str(d).unwrap();
+            entity.set("bigDecimal", d);
 
-        let key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Scalar".to_owned(),
-            entity_id: entity.id().unwrap().clone(),
-        };
-        layout
-            .update(&conn, &key, entity.clone(), 1)
-            .expect("Failed to update");
+            let key = EntityKey {
+                subgraph_id: THINGS_SUBGRAPH_ID.clone(),
+                entity_type: "Scalar".to_owned(),
+                entity_id: entity.id().unwrap().clone(),
+            };
+            layout
+                .update(&conn, &key, entity.clone(), 1)
+                .expect("Failed to update");
 
-        let actual = layout
-            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
-            .expect("Failed to read Scalar[one]")
-            .unwrap();
-        assert_entity_eq!(&entity, actual);
+            let actual = layout
+                .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
+                .expect("Failed to read Scalar[one]")
+                .unwrap();
+            assert_entity_eq!(&entity, actual);
+        }
         Ok(())
     });
 }
