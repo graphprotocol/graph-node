@@ -58,12 +58,12 @@ start_query_node() {
 start_index_node() {
     # Only the index node with the name set in BLOCK_INGESTOR should ingest
     # blocks
-    if [[ ${pod_name} != "${BLOCK_INGESTOR}" ]]; then
+    if [[ ${node_id} != "${BLOCK_INGESTOR}" ]]; then
         export DISABLE_BLOCK_INGESTOR=true
     fi
 
     graph-node \
-	    --node-id "${pod_name//-/_}" \
+	    --node-id "${node_id//-/_}" \
 	    --postgres-url "$postgres_url" \
 	    --ethereum-rpc $ethereum \
 	    --ipfs "$ipfs"
@@ -84,7 +84,7 @@ sleep 5
 
 trap save_coredumps EXIT
 
-export PGAPPNAME="${pod_name-$HOSTNAME}"
+export PGAPPNAME="${node_id-$HOSTNAME}"
 
 case "${node_role-combined-node}" in
     query-node)

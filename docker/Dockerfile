@@ -51,6 +51,8 @@ ENV ethereum ""
 # The role the node should have, one of index-node, query-node, or
 # combined-node
 ENV node_role "combined-node"
+# The name of this node
+ENV node_id "default"
 
 # HTTP port
 EXPOSE 8000
