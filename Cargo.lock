@@ -1199,6 +1199,7 @@ dependencies = [
  "bytes 0.5.4",
  "chrono",
  "diesel",
+ "diesel_derives",
  "ethabi 10.0.0",
  "failure",
  "futures 0.1.29",

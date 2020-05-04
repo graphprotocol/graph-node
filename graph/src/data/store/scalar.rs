@@ -1,3 +1,6 @@
+use diesel::deserialize::FromSql;
+use diesel::serialize::ToSql;
+use diesel_derives::{AsExpression, FromSqlRow};
 use failure::Fail;
 use hex;
 use num_bigint;
@@ -10,14 +13,158 @@ use stable_hash::{
 };
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
+use std::io::Write;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
-// Caveat: The exponent is currently an i64 and may overflow.
-// See https://github.com/akubera/bigdecimal-rs/issues/54.
-pub type BigDecimal = bigdecimal::BigDecimal;
+/// All operations on `BigDecimal` return a normalized value.
+// Caveat: The exponent is currently an i64 and may overflow. See
+// https://github.com/akubera/bigdecimal-rs/issues/54.
+// Using `#[serde(from = "BigDecimal"]` makes sure deserialization calls `BigDecimal::new()`.
+#[derive(
+    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
+)]
+#[serde(from = "bigdecimal::BigDecimal")]
+#[sql_type = "diesel::sql_types::Numeric"]
+pub struct BigDecimal(bigdecimal::BigDecimal);
+
+impl From<bigdecimal::BigDecimal> for BigDecimal {
+    fn from(big_decimal: bigdecimal::BigDecimal) -> Self {
+        BigDecimal(big_decimal).normalize()
+    }
+}
+
+impl BigDecimal {
+    pub fn new(digits: BigInt, exp: i64) -> Self {
+        Self::from(bigdecimal::BigDecimal::new(digits.0, -exp))
+    }
+
+    pub fn as_bigint_and_exponent(&self) -> (num_bigint::BigInt, i64) {
+        self.0.as_bigint_and_exponent()
+    }
+
+    pub(crate) fn digits(&self) -> u64 {
+        self.0.digits()
+    }
+
+    // Copy-pasted from `bigdecimal::BigDecimal::normalize`. We can use the upstream version once it
+    // is included in a released version supported by Diesel.
+    pub fn normalize(&self) -> BigDecimal {
+        let (bigint, exp) = self.0.as_bigint_and_exponent();
+        let (_, mut digits) = bigint.to_u32_digits();
+        let mut digits_iter = digits.iter().rev();
+        let mut trailing_count = 0;
+        while digits_iter.next() == Some(&0) {
+            trailing_count += 1;
+        }
+        digits.truncate(digits.len() - trailing_count as usize);
+        let int_val = num_bigint::BigInt::new(self.0.sign(), digits);
+        let scale = exp - trailing_count;
+        BigDecimal(bigdecimal::BigDecimal::new(int_val, scale))
+    }
+}
+
+impl Display for BigDecimal {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for BigDecimal {
+    type Err = <bigdecimal::BigDecimal as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<BigDecimal, Self::Err> {
+        Ok(Self::from(bigdecimal::BigDecimal::from_str(s)?))
+    }
+}
+
+impl From<i32> for BigDecimal {
+    fn from(n: i32) -> Self {
+        Self::from(bigdecimal::BigDecimal::from(n))
+    }
+}
+
+impl From<i64> for BigDecimal {
+    fn from(n: i64) -> Self {
+        Self::from(bigdecimal::BigDecimal::from(n))
+    }
+}
+
+impl From<u64> for BigDecimal {
+    fn from(n: u64) -> Self {
+        Self::from(bigdecimal::BigDecimal::from(n))
+    }
+}
+
+impl From<f64> for BigDecimal {
+    fn from(n: f64) -> Self {
+        Self::from(bigdecimal::BigDecimal::from(n))
+    }
+}
+
+impl Add for BigDecimal {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self::from(self.0.add(other.0))
+    }
+}
+
+impl Sub for BigDecimal {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        Self::from(self.0.sub(other.0))
+    }
+}
+
+impl Mul for BigDecimal {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self {
+        Self::from(self.0.mul(other.0))
+    }
+}
+
+impl Div for BigDecimal {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self {
+        if other == BigDecimal::from(0) {
+            panic!("Cannot divide by zero-valued `BigDecimal`!")
+        }
+
+        Self::from(self.0.div(other.0))
+    }
+}
+
+impl ToSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
+    fn to_sql<W: Write>(
+        &self,
+        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
+    ) -> diesel::serialize::Result {
+        <_ as ToSql<diesel::sql_types::Numeric, _>>::to_sql(&self.0, out)
+    }
+}
+
+impl FromSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
+    fn from_sql(
+        bytes: Option<&<diesel::pg::Pg as diesel::backend::Backend>::RawValue>,
+    ) -> diesel::deserialize::Result<Self> {
+        Ok(Self::from(bigdecimal::BigDecimal::from_sql(bytes)?))
+    }
+}
+
+impl bigdecimal::ToPrimitive for BigDecimal {
+    fn to_i64(&self) -> Option<i64> {
+        self.0.to_i64()
+    }
+    fn to_u64(&self) -> Option<u64> {
+        self.0.to_u64()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
@@ -167,7 +314,7 @@ impl BigInt {
         }
         let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
         byte_array[..bytes.len()].copy_from_slice(&bytes);
-        BigDecimal::new(self.0, -i64::from_le_bytes(byte_array))
+        BigDecimal::new(self, i64::from_le_bytes(byte_array))
     }
 
     pub fn pow(self, exponent: u8) -> Self {

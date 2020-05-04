@@ -337,19 +337,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 ),
             },
             Value::Int(i) => out.push_bind_param::<Integer, _>(i),
-            Value::BigDecimal(d) => {
-                // If a BigDecimal with negative scale gets sent to Diesel (and then Postgres)
-                // Postgres will complain with 'invalid scale in external "numeric" value'
-                let (_, scale) = d.as_bigint_and_exponent();
-                if scale < 0 {
-                    // This is safe since we are effectively multiplying the
-                    // integer part of d with 10^(-scale), an integer
-                    let d = d.with_scale(0);
-                    out.push_bind_param::<Numeric, _>(&d)
-                } else {
-                    out.push_bind_param::<Numeric, _>(d)
-                }
-            }
+            Value::BigDecimal(d) => out.push_bind_param::<Numeric, _>(d),
             Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
             Value::List(values) => {
                 let values = SqlValue::new_array(values.clone());
