@@ -10,9 +10,9 @@ use std::fmt::Debug;
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
-    bigdecimal::One, web3::types::H256, Entity, EntityCollection, EntityKey, EntityLink,
-    EntityRange, EntityWindow, Future01CompatExt, ParentLink, Schema, SubgraphDeploymentId, Value,
-    WindowAttribute, BLOCK_NUMBER_MAX,
+    web3::types::H256, Entity, EntityCollection, EntityKey, EntityLink, EntityRange, EntityWindow,
+    Future01CompatExt, ParentLink, Schema, SubgraphDeploymentId, Value, WindowAttribute,
+    BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::Layout;
 
@@ -50,7 +50,7 @@ lazy_static! {
         SubgraphDeploymentId::new("things").unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
     static ref LARGE_DECIMAL: BigDecimal =
-        BigDecimal::one() / LARGE_INT.clone().to_big_decimal(BigInt::from(1));
+        BigDecimal::from(1) / LARGE_INT.clone().to_big_decimal(BigInt::from(1));
     static ref BYTES_VALUE: H256 = H256::from(hex!(
         "e8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"
     ));
