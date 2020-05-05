@@ -71,7 +71,8 @@ CMD start
 
 # Debug image to access core dumps
 FROM graph-node-bld as graph-node-dbg
-RUN apk add gdb
+RUN apk add gdb postgresql-client bash curl
 ADD docker/debug /usr/local/bin
 COPY --from=graph-node-bld /etc/image-info /etc/image-info
 COPY docker/Dockerfile /Dockerfile
+COPY bin/* /usr/local/bin
