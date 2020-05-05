@@ -39,6 +39,11 @@ fn run_cmd(args: Vec<&str>, cwd: PathBuf) {
 }
 
 fn run_test(test: &str) {
+    // Do not run integration tests for JSONB.
+    if std::env::var("GRAPH_STORAGE_SCHEME") == Ok("json".to_string()) {
+        return;
+    }
+
     let dir = test_dir(&format!("{}{}", "integration-tests/", test));
     let graph = dir.join("node_modules/.bin/graph").clone();
     let graph_node = fs::canonicalize("../target/debug/graph-node").unwrap();

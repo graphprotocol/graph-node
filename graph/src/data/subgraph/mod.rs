@@ -132,7 +132,7 @@ impl<'de> de::Deserialize<'de> for SubgraphDeploymentId {
 
 impl TryFromValue for SubgraphDeploymentId {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        Self::new(String::try_from_value(value)?).map_err(|()| err_msg("Invalid subgraph id"))
+        Self::new(String::try_from_value(value)?).map_err(|()| err_msg("Invalid subgraph ID"))
     }
 }
 
