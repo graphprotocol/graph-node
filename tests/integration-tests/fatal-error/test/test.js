@@ -85,7 +85,6 @@ contract("Contract", (accounts) => {
   });
 
   it("subgraph fails with expected error", async () => {
-    // Wait for the subgraph to be indexed, and not fail
     await waitForSubgraphToFailWithError(3);
   });
 });
