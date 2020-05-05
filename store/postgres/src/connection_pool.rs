@@ -1,5 +1,5 @@
 use diesel::pg::PgConnection;
-use diesel::r2d2::{self, ConnectionManager, Pool};
+use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 
 use graph::prelude::*;
 use graph::util::security::SafeDisplay;
@@ -8,6 +8,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
+
+// Log connection checkouts that take longer than this many millis
+const CONTENTION_LOG_THRESHOLD: u64 = 100;
 
 struct ErrorHandler(Logger, Box<Counter>);
 
@@ -22,6 +25,25 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
         self.1.inc();
         error!(self.0, "Postgres connection error"; "error" => error.to_string());
     }
+}
+
+#[derive(Debug)]
+struct EventHandler(Logger);
+
+impl HandleEvent for EventHandler {
+    fn handle_acquire(&self, _: e::AcquireEvent) {}
+    fn handle_release(&self, _: e::ReleaseEvent) {}
+    fn handle_checkout(&self, event: e::CheckoutEvent) {
+        if event.duration() > Duration::from_millis(CONTENTION_LOG_THRESHOLD) {
+            warn!(self.0, "Excessive wait time on checkout";
+            "wait_ms" => event.duration().as_millis())
+        }
+    }
+    fn handle_timeout(&self, event: e::TimeoutEvent) {
+        error!(self.0, "Connection checkout timed out";
+            "wait_ms" => event.timeout().as_millis())
+    }
+    fn handle_checkin(&self, _: e::CheckinEvent) {}
 }
 
 pub fn create_connection_pool(
@@ -40,6 +62,7 @@ pub fn create_connection_pool(
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
+    let event_handler = Box::new(EventHandler(logger_pool.clone()));
 
     // Connect to Postgres
     let conn_manager = ConnectionManager::new(postgres_url.clone());
@@ -58,6 +81,7 @@ pub fn create_connection_pool(
     let timeout_seconds = if cfg!(test) { 30 } else { 6 * 60 * 60 };
     let pool = Pool::builder()
         .error_handler(error_handler)
+        .event_handler(event_handler)
         .connection_timeout(Duration::from_secs(timeout_seconds))
         .max_size(pool_size)
         .build(conn_manager)
