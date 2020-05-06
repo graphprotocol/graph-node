@@ -4,7 +4,7 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
-FROM rust:alpine as graph-node-bld
+FROM rust:latest as graph-node-bld
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
@@ -13,12 +13,8 @@ ARG TAG_NAME=unknown
 
 ADD . /graph-node
 
-# See https://github.com/rust-lang/cargo/issues/7563 for why we use -crt-static
-# in the RUSTFLAGS
-RUN apk update \
- && apk add musl-dev openssl-dev postgresql-dev git \
- && cd /graph-node \
- && RUSTFLAGS="-g -C target-feature=-crt-static" cargo install --locked --path node \
+RUN cd /graph-node \
+ && RUSTFLAGS="-g" cargo install --locked --path node \
  && cargo clean \
  && objcopy --only-keep-debug /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graph-node.debug \
  && strip -g /usr/local/cargo/bin/graph-node \
@@ -32,7 +28,7 @@ RUN apk update \
  && echo "RUST_VERSION='$(rustc --version)'" >> /etc/image-info
 
 # The graph-node runtime image with only the executable
-FROM alpine:latest as graph-node
+FROM debian:buster-slim as graph-node
 ENV RUST_LOG ""
 ENV GRAPH_LOG ""
 ENV EARLY_LOG_CHUNK_SIZE ""
@@ -61,7 +57,8 @@ EXPOSE 8001
 # JSON-RPC port
 EXPOSE 8020
 
-RUN apk add libgcc libssl1.1 libcrypto1.1 postgresql-libs bash
+RUN apt-get update \
+ && apt-get install -y libpq-dev ca-certificates
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-bld /usr/local/cargo/bin/graph-node /usr/local/bin
@@ -71,8 +68,8 @@ CMD start
 
 # Debug image to access core dumps
 FROM graph-node-bld as graph-node-dbg
-RUN apk add gdb postgresql-client bash curl
-ADD docker/debug /usr/local/bin
-COPY --from=graph-node-bld /etc/image-info /etc/image-info
+RUN apt-get update \
+ && apt-get install -y curl gdb postgresql-client
+
 COPY docker/Dockerfile /Dockerfile
-COPY bin/* /usr/local/bin
+COPY docker/bin/* /usr/local/bin/
