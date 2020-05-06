@@ -32,13 +32,20 @@ pub struct BigDecimal(bigdecimal::BigDecimal);
 
 impl From<bigdecimal::BigDecimal> for BigDecimal {
     fn from(big_decimal: bigdecimal::BigDecimal) -> Self {
-        BigDecimal(big_decimal).normalize()
+        BigDecimal(big_decimal).normalized()
     }
 }
 
 impl BigDecimal {
     pub fn new(digits: BigInt, exp: i64) -> Self {
+        // bigdecimal uses `scale` as the opposite of the power of ten, so negate `exp`.
         Self::from(bigdecimal::BigDecimal::new(digits.0, -exp))
+    }
+
+    pub fn zero() -> BigDecimal {
+        use bigdecimal::Zero;
+
+        BigDecimal(bigdecimal::BigDecimal::zero())
     }
 
     pub fn as_bigint_and_exponent(&self) -> (num_bigint::BigInt, i64) {
@@ -51,18 +58,18 @@ impl BigDecimal {
 
     // Copy-pasted from `bigdecimal::BigDecimal::normalize`. We can use the upstream version once it
     // is included in a released version supported by Diesel.
-    pub fn normalize(&self) -> BigDecimal {
-        let (bigint, exp) = self.0.as_bigint_and_exponent();
-        let (_, mut digits) = bigint.to_u32_digits();
-        let mut digits_iter = digits.iter().rev();
-        let mut trailing_count = 0;
-        while digits_iter.next() == Some(&0) {
-            trailing_count += 1;
+    #[must_use]
+    pub fn normalized(&self) -> BigDecimal {
+        if self == &BigDecimal::zero() {
+            return BigDecimal::zero();
         }
+        let (bigint, exp) = self.0.as_bigint_and_exponent();
+        let (sign, mut digits) = bigint.to_radix_be(10);
+        let trailing_count = digits.iter().rev().take_while(|i| **i == 0).count() as i64;
         digits.truncate(digits.len() - trailing_count as usize);
-        let int_val = num_bigint::BigInt::new(self.0.sign(), digits);
+        let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
         let scale = exp - trailing_count;
-        BigDecimal(bigdecimal::BigDecimal::new(int_val, scale))
+        BigDecimal(bigdecimal::BigDecimal::new(int_val.into(), scale))
     }
 }
 
@@ -166,20 +173,18 @@ impl bigdecimal::ToPrimitive for BigDecimal {
     }
 }
 
+impl StableHash for BigDecimal {
+    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+        let (int, exp) = self.as_bigint_and_exponent();
+        // This only allows for backward compatible changes between
+        // BigDecimal and unsigned ints
+        exp.stable_hash(sequence_number.next_child(), state);
+        big_int_stable_hash(&int, sequence_number, state);
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
-
-pub(crate) fn big_decimal_stable_hash(
-    decimal: &BigDecimal,
-    mut sequence_number: impl SequenceNumber,
-    state: &mut impl StableHasher,
-) {
-    let (int, exp) = decimal.as_bigint_and_exponent();
-    // This only allows for backward compatible changes between
-    // BigDecimal and unsigned ints
-    exp.stable_hash(sequence_number.next_child(), state);
-    big_int_stable_hash(&int, sequence_number, state);
-}
 
 fn big_int_stable_hash(
     int: &num_bigint::BigInt,
@@ -508,7 +513,7 @@ impl<'de> Deserialize<'de> for Bytes {
 
 #[cfg(test)]
 mod test {
-    use super::{big_decimal_stable_hash, BigDecimal, BigInt};
+    use super::{BigDecimal, BigInt};
     use stable_hash::prelude::*;
     use stable_hash::utils::stable_hash_with_hasher;
     use std::str::FromStr;
@@ -543,21 +548,11 @@ mod test {
         same_stable_hash(-1, BigInt::from_signed_bytes_le(&(-1i32).to_le_bytes()));
     }
 
-    struct BigDecimalStableHash(BigDecimal);
-    impl StableHash for BigDecimalStableHash {
-        fn stable_hash(&self, sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
-            big_decimal_stable_hash(&self.0, sequence_number, state);
-        }
-    }
-
     #[test]
     fn big_decimal_stable_hash_same_as_uint() {
-        same_stable_hash(0, BigDecimalStableHash(BigDecimal::from(0u64)));
-        same_stable_hash(4, BigDecimalStableHash(BigDecimal::from(4i64)));
-        same_stable_hash(
-            1u64 << 21,
-            BigDecimalStableHash(BigDecimal::from(1u64 << 21)),
-        );
+        same_stable_hash(0, BigDecimal::from(0u64));
+        same_stable_hash(4, BigDecimal::from(4i64));
+        same_stable_hash(1u64 << 21, BigDecimal::from(1u64 << 21));
     }
 
     #[test]
@@ -565,8 +560,36 @@ mod test {
         let cases = vec![(5580731626265347763, "0.1"), (15037326160029728810, "-0.1")];
         for case in cases.iter() {
             let dec = BigDecimal::from_str(case.1).unwrap();
-            let dec = BigDecimalStableHash(dec);
             assert_eq!(case.0, xx_stable_hash(dec));
+        }
+    }
+
+    #[test]
+    fn test_normalize() {
+        let vals = vec![
+            (
+                BigDecimal::new(BigInt::from(10), -2),
+                BigDecimal(bigdecimal::BigDecimal::new(1.into(), 1)),
+                "0.1",
+            ),
+            (
+                BigDecimal::new(BigInt::from(132400), 4),
+                BigDecimal(bigdecimal::BigDecimal::new(1324.into(), -6)),
+                "1324000000",
+            ),
+            (
+                BigDecimal::new(BigInt::from(1_900_000), -3),
+                BigDecimal(bigdecimal::BigDecimal::new(19.into(), -2)),
+                "1900",
+            ),
+            (BigDecimal::new(0.into(), 3), BigDecimal::zero(), "0"),
+            (BigDecimal::new(0.into(), -5), BigDecimal::zero(), "0"),
+        ];
+
+        for (not_normalized, normalized, string) in vals {
+            assert_eq!(not_normalized.normalized(), normalized);
+            assert_eq!(not_normalized.normalized().to_string(), string);
+            assert_eq!(normalized.to_string(), string);
         }
     }
 }
