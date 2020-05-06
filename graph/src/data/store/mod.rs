@@ -177,7 +177,7 @@ impl StableHash for Value {
                 "Int"
             }
             BigDecimal(inner) => {
-                scalar::big_decimal_stable_hash(inner, sequence_number.next_child(), state);
+                inner.stable_hash(sequence_number.next_child(), state);
                 "BigDecimal"
             }
             Bool(inner) => {
