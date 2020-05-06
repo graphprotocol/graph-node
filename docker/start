@@ -1,11 +1,13 @@
 #!/bin/bash
 
 save_coredumps() {
-    core_dir=/var/lib/graph/cores
+    graph_dir=/var/lib/graph
     datestamp=$(date +"%Y-%m-%dT%H:%M:%S")
     ls /core.* >& /dev/null && have_cores=yes || have_cores=no
-    if [ -d "$core_dir" -a "$have_cores" = yes ]
+    if [ -d "$graph_dir" -a "$have_cores" = yes ]
     then
+        core_dir=$graph_dir/cores
+        mkdir -p $core_dir
         exec >> "$core_dir"/messages 2>&1
         echo "${HOSTNAME##*-} Saving core dump on ${HOSTNAME} at ${datestamp}"
 
