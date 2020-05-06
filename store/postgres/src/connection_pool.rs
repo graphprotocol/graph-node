@@ -58,12 +58,12 @@ impl HandleEvent for EventHandler {
         self.gauge.inc();
         if event.duration() > Duration::from_millis(CONTENTION_LOG_THRESHOLD) {
             warn!(self.logger, "Excessive wait time on checkout";
-            "wait_ms" => event.duration().as_millis())
+                  "wait_ms" => event.duration().as_millis())
         }
     }
     fn handle_timeout(&self, event: e::TimeoutEvent) {
         error!(self.logger, "Connection checkout timed out";
-            "wait_ms" => event.timeout().as_millis())
+               "wait_ms" => event.timeout().as_millis())
     }
     fn handle_checkin(&self, _: e::CheckinEvent) {
         self.gauge.dec();
