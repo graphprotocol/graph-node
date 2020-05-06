@@ -27,23 +27,47 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
     }
 }
 
-#[derive(Debug)]
-struct EventHandler(Logger);
+struct EventHandler {
+    logger: Logger,
+    gauge: Box<Gauge>,
+}
+
+impl EventHandler {
+    fn new(logger: Logger, registry: Arc<dyn MetricsRegistry>) -> Self {
+        let gauge = registry
+            .new_gauge(
+                String::from("store_connection_checkout_count"),
+                String::from("The number of Postgres connections currently checked out"),
+                HashMap::new(),
+            )
+            .expect("failed to create `store_connection_checkout_count` counter");
+        EventHandler { logger, gauge }
+    }
+}
+
+impl Debug for EventHandler {
+    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Result::Ok(())
+    }
+}
 
 impl HandleEvent for EventHandler {
     fn handle_acquire(&self, _: e::AcquireEvent) {}
     fn handle_release(&self, _: e::ReleaseEvent) {}
     fn handle_checkout(&self, event: e::CheckoutEvent) {
+        self.gauge.inc();
         if event.duration() > Duration::from_millis(CONTENTION_LOG_THRESHOLD) {
-            warn!(self.0, "Excessive wait time on checkout";
+            warn!(self.logger, "Excessive wait time on checkout";
             "wait_ms" => event.duration().as_millis())
         }
     }
     fn handle_timeout(&self, event: e::TimeoutEvent) {
-        error!(self.0, "Connection checkout timed out";
+        error!(self.logger, "Connection checkout timed out";
             "wait_ms" => event.timeout().as_millis())
     }
-    fn handle_checkin(&self, _: e::CheckinEvent) {}
+    fn handle_checkin(&self, _: e::CheckinEvent) {
+        self.gauge.dec();
+    }
 }
 
 pub fn create_connection_pool(
@@ -62,7 +86,7 @@ pub fn create_connection_pool(
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
-    let event_handler = Box::new(EventHandler(logger_pool.clone()));
+    let event_handler = Box::new(EventHandler::new(logger_pool.clone(), registry));
 
     // Connect to Postgres
     let conn_manager = ConnectionManager::new(postgres_url.clone());
