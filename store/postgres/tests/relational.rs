@@ -45,11 +45,13 @@ const THINGS_GQL: &str = r#"
         bool: Boolean,
         int: Int,
         bigDecimal: BigDecimal,
+        bigDecimalArray: [BigDecimal!]!
         string: String,
         strings: [String!],
         bytes: Bytes,
         byteArray: [Bytes!],
         bigInt: BigInt,
+        bigIntArray: [BigInt!]!
         color: Color,
     }
 
@@ -121,12 +123,22 @@ lazy_static! {
         entity.set("id", "one");
         entity.set("bool", true);
         entity.set("int", std::i32::MAX);
-        entity.set("bigDecimal", (*LARGE_DECIMAL).clone());
+        let decimal = (*LARGE_DECIMAL).clone();
+        entity.set("bigDecimal", decimal.clone());
+        entity.set(
+            "bigDecimalArray",
+            vec![decimal.clone(), (decimal + 1.into()).clone()],
+        );
         entity.set("string", "scalar");
         entity.set("strings", strings);
         entity.set("bytes", (*BYTES_VALUE).clone());
         entity.set("byteArray", byte_array);
-        entity.set("bigInt", (*LARGE_INT).clone());
+        let big_int = (*LARGE_INT).clone();
+        entity.set("bigInt", big_int.clone());
+        entity.set(
+            "bigIntArray",
+            vec![big_int.clone(), (big_int + 1.into()).clone()],
+        );
         entity.set("color", "yellow");
         entity.set("__typename", "Scalar");
         entity

@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Numeric, Range, Text};
+use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
 use std::collections::{BTreeMap, HashSet};
 use std::convert::TryFrom;
@@ -337,20 +337,27 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 ),
             },
             Value::Int(i) => out.push_bind_param::<Integer, _>(i),
-            Value::BigDecimal(d) => out.push_bind_param::<Numeric, _>(d),
+            Value::BigDecimal(d) => {
+                out.push_bind_param::<Text, _>(&d.to_string())?;
+                out.push_sql("::numeric");
+                Ok(())
+            }
             Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
             Value::List(values) => {
-                let values = SqlValue::new_array(values.clone());
+                let sql_values = SqlValue::new_array(values.clone());
                 match &column_type {
                     ColumnType::BigDecimal | ColumnType::BigInt => {
-                        out.push_bind_param::<Array<Numeric>, _>(&values)
+                        let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
+                        out.push_bind_param::<Array<Text>, _>(&text_values)?;
+                        out.push_sql("::numeric[]");
+                        Ok(())
                     }
-                    ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(&values),
-                    ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&values),
-                    ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&values),
-                    ColumnType::String => out.push_bind_param::<Array<Text>, _>(&values),
+                    ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(&sql_values),
+                    ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&sql_values),
+                    ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&sql_values),
+                    ColumnType::String => out.push_bind_param::<Array<Text>, _>(&sql_values),
                     ColumnType::Enum(enum_type) => {
-                        out.push_bind_param::<Array<Text>, _>(&values)?;
+                        out.push_bind_param::<Array<Text>, _>(&sql_values)?;
                         out.push_sql("::");
                         out.push_sql(enum_type.name.as_str());
                         out.push_sql("[]");
@@ -359,7 +366,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
                     ColumnType::TSVector(config) => {
                         out.push_sql("(");
-                        for (i, value) in values.iter().enumerate() {
+                        for (i, value) in sql_values.iter().enumerate() {
                             if i > 0 {
                                 out.push_sql(") || ");
                             }
@@ -371,7 +378,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         out.push_sql("))");
                         Ok(())
                     }
-                    ColumnType::BytesId => out.push_bind_param::<Array<Binary>, _>(&values),
+                    ColumnType::BytesId => out.push_bind_param::<Array<Binary>, _>(&sql_values),
                 }
             }
             Value::Null => {
@@ -380,7 +387,9 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
             }
             Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
             Value::BigInt(i) => {
-                out.push_bind_param::<Numeric, _>(&i.clone().to_big_decimal(0.into()))
+                out.push_bind_param::<Text, _>(&i.to_string())?;
+                out.push_sql("::numeric");
+                Ok(())
             }
         }
     }
