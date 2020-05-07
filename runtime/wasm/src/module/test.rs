@@ -873,7 +873,9 @@ fn entity_store() {
             None
         } else {
             Some(Entity::from(
-                module.asc_get::<HashMap<String, Value>, _>(entity_ptr),
+                module
+                    .try_asc_get::<HashMap<String, Value>, _>(entity_ptr)
+                    .unwrap(),
             ))
         }
     };

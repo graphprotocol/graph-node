@@ -7,10 +7,11 @@ use graph::components::ethereum::{
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::web3::types as web3;
+use graph::prelude::{format_err, Error};
 use graph::prelude::{BigDecimal, BigInt};
 
 use crate::asc_abi::class::*;
-use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj};
+use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj, TryFromAscObj};
 
 use crate::UnresolvedContractCall;
 
@@ -77,21 +78,23 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
     }
 }
 
-impl FromAscObj<AscBigDecimal> for BigDecimal {
-    fn from_asc_obj<H: AscHeap>(big_decimal: AscBigDecimal, heap: &H) -> Self {
+impl TryFromAscObj<AscBigDecimal> for BigDecimal {
+    fn try_from_asc_obj<H: AscHeap>(big_decimal: AscBigDecimal, heap: &H) -> Result<Self, Error> {
         let digits: BigInt = heap.asc_get(big_decimal.digits);
         let exp: BigInt = heap.asc_get(big_decimal.exp);
 
         if exp < BIG_DECIMAL_MIN_EXP.into() || exp > BIG_DECIMAL_MAX_EXP.into() {
-            panic!(
+            return Err(format_err!(
                 "big decimal exponent `{}` is outside the `{}` to `{}` range",
-                exp, BIG_DECIMAL_MIN_EXP, BIG_DECIMAL_MAX_EXP
-            );
+                exp,
+                BIG_DECIMAL_MIN_EXP,
+                BIG_DECIMAL_MAX_EXP
+            ));
         }
         let bytes = exp.to_signed_bytes_le();
         let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
         byte_array[..bytes.len()].copy_from_slice(&bytes);
-        BigDecimal::new(digits, i64::from_le_bytes(byte_array))
+        Ok(BigDecimal::new(digits, i64::from_le_bytes(byte_array)))
     }
 }
 
@@ -176,12 +179,15 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
     }
 }
 
-impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
-    fn from_asc_obj<H: AscHeap>(asc_enum: AscEnum<StoreValueKind>, heap: &H) -> Self {
+impl TryFromAscObj<AscEnum<StoreValueKind>> for store::Value {
+    fn try_from_asc_obj<H: AscHeap>(
+        asc_enum: AscEnum<StoreValueKind>,
+        heap: &H,
+    ) -> Result<Self, Error> {
         use self::store::Value;
 
         let payload = asc_enum.payload;
-        match asc_enum.kind {
+        Ok(match asc_enum.kind {
             StoreValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);
                 Value::String(heap.asc_get(ptr))
@@ -189,12 +195,12 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
             StoreValueKind::Int => Value::Int(i32::from(payload)),
             StoreValueKind::BigDecimal => {
                 let ptr: AscPtr<AscBigDecimal> = AscPtr::from(payload);
-                Value::BigDecimal(heap.asc_get(ptr))
+                Value::BigDecimal(heap.try_asc_get(ptr)?)
             }
             StoreValueKind::Bool => Value::Bool(bool::from(payload)),
             StoreValueKind::Array => {
                 let ptr: AscEnumArray<StoreValueKind> = AscPtr::from(payload);
-                Value::List(heap.asc_get(ptr))
+                Value::List(heap.try_asc_get(ptr)?)
             }
             StoreValueKind::Null => Value::Null,
             StoreValueKind::Bytes => {
@@ -207,7 +213,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
                 let array: Vec<u8> = heap.asc_get(ptr);
                 Value::BigInt(store::scalar::BigInt::from_signed_bytes_le(&array))
             }
-        }
+        })
     }
 }
 

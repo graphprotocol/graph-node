@@ -227,33 +227,33 @@ fn abi_store_value() {
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return ptr");
-    let null_value: Value = module.asc_get(null_value_ptr);
+    let null_value: Value = module.try_asc_get(null_value_ptr).unwrap();
     assert_eq!(null_value, Value::Null);
 
     // Value::String
     let string = "some string";
     let string_ptr = module.asc_new(string);
     let new_value_ptr = module.takes_ptr_returns_ptr("value_from_string", string_ptr);
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::from(string));
 
     // Value::Int
     let int = i32::min_value();
     let new_value_ptr = module.takes_val_returns_ptr("value_from_int", RuntimeValue::from(int));
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Int(int));
 
     // Value::BigDecimal
     let big_decimal = BigDecimal::from_str("3.14159001").unwrap();
     let big_decimal_ptr = module.asc_new(&big_decimal);
     let new_value_ptr = module.takes_ptr_returns_ptr("value_from_big_decimal", big_decimal_ptr);
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(big_decimal));
 
     let big_decimal = BigDecimal::new(10.into(), 5);
     let big_decimal_ptr = module.asc_new(&big_decimal);
     let new_value_ptr = module.takes_ptr_returns_ptr("value_from_big_decimal", big_decimal_ptr);
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(1_000_000.into()));
 
     // Value::Bool
@@ -262,7 +262,7 @@ fn abi_store_value() {
         "value_from_bool",
         RuntimeValue::I32(if boolean { 1 } else { 0 }),
     );
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bool(boolean));
 
     // Value::List
@@ -281,7 +281,7 @@ fn abi_store_value() {
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return ptr");
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
         Value::List(vec![Value::from(string), Value::Int(int)])
@@ -293,7 +293,7 @@ fn abi_store_value() {
     ];
     let array_ptr = module.asc_new(array);
     let new_value_ptr = module.takes_ptr_returns_ptr("value_from_array", array_ptr);
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
         Value::List(vec![
@@ -306,14 +306,14 @@ fn abi_store_value() {
     let bytes: &[u8] = &[0, 2, 5];
     let bytes_ptr: AscPtr<Bytes> = module.asc_new(bytes);
     let new_value_ptr = module.takes_ptr_returns_ptr("value_from_bytes", bytes_ptr);
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bytes(bytes.into()));
 
     // Value::BigInt
     let bytes: &[u8] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
     let bytes_ptr: AscPtr<Uint8Array> = module.asc_new(bytes);
     let new_value_ptr = module.takes_ptr_returns_ptr("value_from_bigint", bytes_ptr);
-    let new_value: Value = module.asc_get(new_value_ptr);
+    let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
         Value::BigInt(::graph::data::store::scalar::BigInt::from_unsigned_bytes_le(bytes))
@@ -406,5 +406,5 @@ fn invalid_discriminant() {
         .expect("call returned nothing")
         .try_into()
         .expect("call did not return ptr");
-    let _value: Value = module.asc_get(value_ptr);
+    let _value: Value = module.try_asc_get(value_ptr).unwrap();
 }

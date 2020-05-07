@@ -1,9 +1,10 @@
+use graph::prelude::Error;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
 use crate::asc_abi::class::*;
-use crate::asc_abi::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj};
+use crate::asc_abi::{AscHeap, AscPtr, AscType, AscValue, FromAscObj, ToAscObj, TryFromAscObj};
 
 ///! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
 ///! Standard Rust types go in `mod.rs` and external types in `external.rs`.
@@ -78,6 +79,12 @@ impl FromAscObj<AscString> for String {
     }
 }
 
+impl TryFromAscObj<AscString> for String {
+    fn try_from_asc_obj<H: AscHeap>(asc_string: AscString, heap: &H) -> Result<Self, Error> {
+        Ok(Self::from_asc_obj(asc_string, heap))
+    }
+}
+
 impl<C: AscType, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Array<AscPtr<C>> {
         let content: Vec<_> = self.iter().map(|x| heap.asc_new(x)).collect();
@@ -95,11 +102,27 @@ impl<C: AscType, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for Vec<T> {
     }
 }
 
-impl<K: AscType, V: AscType, T: FromAscObj<K>, U: FromAscObj<V>> FromAscObj<AscTypedMapEntry<K, V>>
-    for (T, U)
+impl<C: AscType, T: TryFromAscObj<C>> TryFromAscObj<Array<AscPtr<C>>> for Vec<T> {
+    fn try_from_asc_obj<H: AscHeap>(array: Array<AscPtr<C>>, heap: &H) -> Result<Self, Error> {
+        array
+            .to_vec(heap)
+            .into_iter()
+            .map(|x| heap.try_asc_get(x))
+            .collect()
+    }
+}
+
+impl<K: AscType, V: AscType, T: TryFromAscObj<K>, U: TryFromAscObj<V>>
+    TryFromAscObj<AscTypedMapEntry<K, V>> for (T, U)
 {
-    fn from_asc_obj<H: AscHeap>(asc_entry: AscTypedMapEntry<K, V>, heap: &H) -> Self {
-        (heap.asc_get(asc_entry.key), heap.asc_get(asc_entry.value))
+    fn try_from_asc_obj<H: AscHeap>(
+        asc_entry: AscTypedMapEntry<K, V>,
+        heap: &H,
+    ) -> Result<Self, Error> {
+        Ok((
+            heap.try_asc_get(asc_entry.key)?,
+            heap.try_asc_get(asc_entry.value)?,
+        ))
     }
 }
 
@@ -114,11 +137,11 @@ impl<'a, 'b, K: AscType, V: AscType, T: ToAscObj<K>, U: ToAscObj<V>>
     }
 }
 
-impl<K: AscType, V: AscType, T: FromAscObj<K> + Hash + Eq, U: FromAscObj<V>>
-    FromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
+impl<K: AscType, V: AscType, T: TryFromAscObj<K> + Hash + Eq, U: TryFromAscObj<V>>
+    TryFromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
 {
-    fn from_asc_obj<H: AscHeap>(asc_map: AscTypedMap<K, V>, heap: &H) -> Self {
-        let entries: Vec<(T, U)> = heap.asc_get(asc_map.entries);
-        HashMap::from_iter(entries.into_iter())
+    fn try_from_asc_obj<H: AscHeap>(asc_map: AscTypedMap<K, V>, heap: &H) -> Result<Self, Error> {
+        let entries: Vec<(T, U)> = heap.try_asc_get(asc_map.entries)?;
+        Ok(HashMap::from_iter(entries.into_iter()))
     }
 }
