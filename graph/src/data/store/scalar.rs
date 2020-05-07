@@ -65,10 +65,10 @@ impl BigDecimal {
         }
         let (bigint, exp) = self.0.as_bigint_and_exponent();
         let (sign, mut digits) = bigint.to_radix_be(10);
-        let trailing_count = digits.iter().rev().take_while(|i| **i == 0).count() as i64;
-        digits.truncate(digits.len() - trailing_count as usize);
+        let trailing_count = digits.iter().rev().take_while(|i| **i == 0).count();
+        digits.truncate(digits.len() - trailing_count);
         let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
-        let scale = exp - trailing_count;
+        let scale = exp - trailing_count as i64;
         BigDecimal(bigdecimal::BigDecimal::new(int_val.into(), scale))
     }
 }
