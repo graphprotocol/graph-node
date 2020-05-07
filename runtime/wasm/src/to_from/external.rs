@@ -14,6 +14,11 @@ use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj};
 
 use crate::UnresolvedContractCall;
 
+// These are the limits of IEEE-754 decimal128, a format we may want to switch to.
+// See https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
+const BIG_DECIMAL_MIN_EXP: i32 = -6143;
+const BIG_DECIMAL_MAX_EXP: i32 = 6144;
+
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Uint8Array {
         self.0.to_asc_obj(heap)
@@ -74,8 +79,19 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
 
 impl FromAscObj<AscBigDecimal> for BigDecimal {
     fn from_asc_obj<H: AscHeap>(big_decimal: AscBigDecimal, heap: &H) -> Self {
-        heap.asc_get::<BigInt, _>(big_decimal.digits)
-            .to_big_decimal(heap.asc_get(big_decimal.exp))
+        let digits: BigInt = heap.asc_get(big_decimal.digits);
+        let exp: BigInt = heap.asc_get(big_decimal.exp);
+
+        if exp < BIG_DECIMAL_MIN_EXP.into() || exp > BIG_DECIMAL_MAX_EXP.into() {
+            panic!(
+                "big decimal exponent `{}` is outside the `{}` to `{}` range",
+                exp, BIG_DECIMAL_MIN_EXP, BIG_DECIMAL_MAX_EXP
+            );
+        }
+        let bytes = exp.to_signed_bytes_le();
+        let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
+        byte_array[..bytes.len()].copy_from_slice(&bytes);
+        BigDecimal::new(digits, i64::from_le_bytes(byte_array))
     }
 }
 
