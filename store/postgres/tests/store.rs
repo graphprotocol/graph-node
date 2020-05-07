@@ -780,6 +780,10 @@ fn find_float_less_than_range() {
 
 #[test]
 fn find_float_in() {
+    // This filter is no longer supported on JSONB.
+    if !*test_store::USING_RELATIONAL_STORAGE {
+        return;
+    }
     test_find(
         vec!["3", "1"],
         user_query()
