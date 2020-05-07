@@ -52,6 +52,14 @@ pub trait AscHeap: Sized {
     {
         T::from_asc_obj(asc_ptr.read_ptr(self), self)
     }
+
+    fn try_asc_get<T, C>(&self, asc_ptr: AscPtr<C>) -> Result<T, graph::prelude::Error>
+    where
+        C: AscType,
+        T: TryFromAscObj<C>,
+    {
+        T::try_from_asc_obj(asc_ptr.read_ptr(self), self)
+    }
 }
 
 /// Type that can be converted to an Asc object of class `C`.
@@ -62,6 +70,10 @@ pub trait ToAscObj<C: AscType> {
 /// Type that can be converted from an Asc object of class `C`.
 pub trait FromAscObj<C: AscType> {
     fn from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Self;
+}
+
+pub trait TryFromAscObj<C: AscType>: Sized {
+    fn try_from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Result<Self, graph::prelude::Error>;
 }
 
 // `AscType` is not really public, implementors should live inside the `class` module.

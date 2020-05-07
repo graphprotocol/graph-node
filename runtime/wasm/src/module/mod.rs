@@ -420,7 +420,7 @@ impl WasmiModule {
         }
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
-        let data = self.asc_get(data_ptr);
+        let data = self.try_asc_get(data_ptr).map_err(HostExportError::from)?;
         self.ctx
             .host_exports
             .store_set(&self.ctx.logger, &mut self.ctx.state, entity, id, data)?;
@@ -612,7 +612,7 @@ impl WasmiModule {
     ) -> Result<Option<RuntimeValue>, Trap> {
         let link: String = self.asc_get(link_ptr);
         let callback: String = self.asc_get(callback);
-        let user_data: store::Value = self.asc_get(user_data);
+        let user_data: store::Value = self.try_asc_get(user_data).map_err(HostExportError::from)?;
 
         let flags = self.asc_get(flags);
         let start_time = Instant::now();
@@ -768,7 +768,7 @@ impl WasmiModule {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_divided_by(x, self.asc_get(y_ptr))?;
+            .big_decimal_divided_by(x, self.try_asc_get(y_ptr).map_err(HostExportError::from)?)?;
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -815,10 +815,10 @@ impl WasmiModule {
         &mut self,
         big_decimal_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_to_string(self.asc_get(big_decimal_ptr));
+        let result = self.ctx.host_exports.big_decimal_to_string(
+            self.try_asc_get(big_decimal_ptr)
+                .map_err(HostExportError::from)?,
+        );
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -840,10 +840,10 @@ impl WasmiModule {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_plus(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result = self.ctx.host_exports.big_decimal_plus(
+            self.try_asc_get(x_ptr).map_err(HostExportError::from)?,
+            self.try_asc_get(y_ptr).map_err(HostExportError::from)?,
+        );
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -853,10 +853,10 @@ impl WasmiModule {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_minus(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result = self.ctx.host_exports.big_decimal_minus(
+            self.try_asc_get(x_ptr).map_err(HostExportError::from)?,
+            self.try_asc_get(y_ptr).map_err(HostExportError::from)?,
+        );
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -866,10 +866,10 @@ impl WasmiModule {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_times(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let result = self.ctx.host_exports.big_decimal_times(
+            self.try_asc_get(x_ptr).map_err(HostExportError::from)?,
+            self.try_asc_get(y_ptr).map_err(HostExportError::from)?,
+        );
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -879,10 +879,10 @@ impl WasmiModule {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
+        let result = self.ctx.host_exports.big_decimal_divided_by(
+            self.try_asc_get(x_ptr).map_err(HostExportError::from)?,
+            self.try_asc_get(y_ptr).map_err(HostExportError::from)?,
+        )?;
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -892,10 +892,10 @@ impl WasmiModule {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let equals = self
-            .ctx
-            .host_exports
-            .big_decimal_equals(self.asc_get(x_ptr), self.asc_get(y_ptr));
+        let equals = self.ctx.host_exports.big_decimal_equals(
+            self.try_asc_get(x_ptr).map_err(HostExportError::from)?,
+            self.try_asc_get(y_ptr).map_err(HostExportError::from)?,
+        );
         Ok(Some(RuntimeValue::I32(if equals { 1 } else { 0 })))
     }
 
@@ -926,7 +926,9 @@ impl WasmiModule {
     ) -> Result<Option<RuntimeValue>, Trap> {
         let name: String = self.asc_get(name_ptr);
         let params: Vec<String> = self.asc_get(params_ptr);
-        let context: HashMap<_, _> = self.asc_get(context_ptr);
+        let context: HashMap<_, _> = self
+            .try_asc_get(context_ptr)
+            .map_err(HostExportError::from)?;
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,
