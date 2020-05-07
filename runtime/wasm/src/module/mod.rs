@@ -764,7 +764,7 @@ impl WasmiModule {
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let x = self.asc_get::<BigInt, _>(x_ptr).to_big_decimal(0.into());
+        let x = BigDecimal::new(self.asc_get::<BigInt, _>(x_ptr), 0);
         let result = self
             .ctx
             .host_exports

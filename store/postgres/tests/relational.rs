@@ -96,7 +96,7 @@ lazy_static! {
         SubgraphDeploymentId::new("things").unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
     static ref LARGE_DECIMAL: BigDecimal =
-        BigDecimal::from(1) / LARGE_INT.clone().to_big_decimal(BigInt::from(1));
+        BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);
     static ref BYTES_VALUE: H256 = H256::from(hex!(
         "e8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"
     ));

@@ -295,19 +295,6 @@ impl BigInt {
         U256::from_little_endian(&bytes)
     }
 
-    pub fn to_big_decimal(self, exp: BigInt) -> BigDecimal {
-        let bytes = exp.to_signed_bytes_le();
-
-        // The hope here is that bigdecimal switches to BigInt exponents. Until
-        // then, a panic is fine since this is only used in mappings.
-        if bytes.len() > 8 {
-            panic!("big decimal exponent does not fit in i64")
-        }
-        let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
-        byte_array[..bytes.len()].copy_from_slice(&bytes);
-        BigDecimal::new(self, i64::from_le_bytes(byte_array))
-    }
-
     pub fn pow(self, exponent: u8) -> Self {
         use num_traits::pow::Pow;
 
