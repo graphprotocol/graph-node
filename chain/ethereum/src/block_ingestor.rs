@@ -82,71 +82,55 @@ where
         })
     }
 
-    pub fn into_polling_stream(self) -> impl Future<Item = (), Error = ()> {
-        // Currently, there is no way to stop block ingestion, so just leak self
-        let static_self: &'static _ = Box::leak(Box::new(self));
+    pub async fn into_polling_stream(self) {
+        loop {
+            match self.do_poll().await {
+                // Some polls will fail due to transient issues
+                Err(err @ EthereumAdapterError::BlockUnavailable(_)) => {
+                    trace!(
+                        self.logger,
+                        "Trying again after block polling failed: {}",
+                        err
+                    );
+                }
+                Err(EthereumAdapterError::Unknown(inner_err)) => {
+                    warn!(
+                        self.logger,
+                        "Trying again after block polling failed: {}", inner_err
+                    );
+                }
+                Ok(()) => (),
+            }
 
-        // Create stream that emits at polling interval
-        tokio::time::interval(static_self.polling_interval)
-            .map(Ok)
-            .compat()
-            .for_each(move |_| {
-                // Attempt to poll
-                static_self
-                    .do_poll()
-                    .boxed()
-                    .compat()
-                    .then(move |result| {
-                        if let Err(err) = result {
-                            // Some polls will fail due to transient issues
-                            match err {
-                                EthereumAdapterError::BlockUnavailable(_) => {
-                                    trace!(
-                                        static_self.logger,
-                                        "Trying again after block polling failed: {}",
-                                        err
-                                    );
-                                }
-                                EthereumAdapterError::Unknown(inner_err) => {
-                                    warn!(
-                                        static_self.logger,
-                                        "Trying again after block polling failed: {}", inner_err
-                                    );
-                                }
-                            }
-                        }
+            if *CLEANUP_BLOCKS {
+                self.cleanup_cached_blocks()
+            }
 
-                        // Continue polling even if polling failed
-                        future::ok(())
-                    })
-                    .inspect(move |_| {
-                        if *CLEANUP_BLOCKS {
-                            match static_self
-                                .chain_store
-                                .cleanup_cached_blocks(static_self.ancestor_count)
-                            {
-                                Ok((min_block, count)) => {
-                                    if count > 0 {
-                                        info!(
-                                            static_self.logger,
-                                            "Cleaned {} blocks from the block cache. \
-                                             Only blocks with number greater than {} remain",
-                                            count,
-                                            min_block
-                                        );
-                                    }
-                                }
-                                Err(e) => warn!(
-                                    static_self.logger,
-                                    "Failed to clean blocks from block cache: {}", e
-                                ),
-                            }
-                        }
-                    })
-            })
+            tokio::time::delay_for(self.polling_interval).await;
+        }
     }
 
-    async fn do_poll(&'static self) -> Result<(), EthereumAdapterError> {
+    fn cleanup_cached_blocks(&self) {
+        match self.chain_store.cleanup_cached_blocks(self.ancestor_count) {
+            Ok((min_block, count)) => {
+                if count > 0 {
+                    info!(
+                        self.logger,
+                        "Cleaned {} blocks from the block cache. \
+                                 Only blocks with number greater than {} remain",
+                        count,
+                        min_block
+                    );
+                }
+            }
+            Err(e) => warn!(
+                self.logger,
+                "Failed to clean blocks from block cache: {}", e
+            ),
+        }
+    }
+
+    async fn do_poll(&self) -> Result<(), EthereumAdapterError> {
         trace!(self.logger, "BlockIngestor::do_poll");
 
         // Get chain head ptr from store
@@ -247,7 +231,7 @@ where
     async fn ingest_blocks<
         B: Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'static,
     >(
-        &'static self,
+        &self,
         blocks: B,
     ) -> Result<Vec<H256>, EthereumAdapterError> {
         self.chain_store.upsert_blocks(blocks).compat().await?;
@@ -263,7 +247,7 @@ where
     /// Requests the specified blocks via web3, returning them in a stream (potentially out of
     /// order).
     fn get_blocks(
-        &'static self,
+        &self,
         block_hashes: &[H256],
     ) -> Box<dyn Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'static> {
         let logger = self.logger.clone();
