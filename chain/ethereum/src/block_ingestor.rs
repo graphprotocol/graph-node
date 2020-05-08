@@ -152,13 +152,22 @@ where
         // Get chain head ptr from store
         let head_block_ptr_opt = self.chain_store.chain_head_ptr()?;
 
-        // Ask for latest block from Ethereum node
-        let latest_block = self.eth_adapter.latest_block(&self.logger).compat().await?;
+        // To check if there is a new block or not, fetch only the block header since that's cheaper
+        // than the full block. This is worthwhile because most of the time there won't be a new
+        // block, as we expect the poll interval to be much shorter than the block time.
+        let latest_block = self
+            .eth_adapter
+            .latest_block_header(&self.logger)
+            .compat()
+            .await?;
 
         // If latest block matches head block in store, nothing needs to be done
-        if Some((&latest_block).into()) == head_block_ptr_opt {
+        if Some(latest_block.into()) == head_block_ptr_opt {
             return Ok(());
         }
+
+        // Ask for latest block again, but now with full transactions
+        let latest_block = self.eth_adapter.latest_block(&self.logger).compat().await?;
 
         // Compare latest block with head ptr, alert user if far behind
         match head_block_ptr_opt {
