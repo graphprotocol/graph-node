@@ -1089,17 +1089,16 @@ where
         let logger = logger.clone();
 
         futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
-            eth.cheap_clone()
-                .log_stream(
-                    logger.cheap_clone(),
-                    subgraph_metrics.cheap_clone(),
-                    from,
-                    to,
-                    filter,
-                )
-                .into_stream()
+            eth.cheap_clone().log_stream(
+                logger.cheap_clone(),
+                subgraph_metrics.cheap_clone(),
+                from,
+                to,
+                filter,
+            )
         }))
-        .flatten()
+        // Real limits on the number of parallel requests are imposed within the adapter.
+        .buffered(1000)
         .try_concat()
         .boxed()
     }
