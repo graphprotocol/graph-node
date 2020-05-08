@@ -627,6 +627,35 @@ where
         )
     }
 
+    fn latest_block_header(
+        &self,
+        logger: &Logger,
+    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = EthereumAdapterError> + Send> {
+        let web3 = self.web3.clone();
+
+        Box::new(
+            retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
+                .no_limit()
+                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .run(move || {
+                    web3.eth()
+                        .block(BlockNumber::Latest.into())
+                        .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
+                        .from_err()
+                        .and_then(|block_opt| {
+                            block_opt.ok_or_else(|| {
+                                format_err!("no latest block returned from Ethereum").into()
+                            })
+                        })
+                })
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        format_err!("Ethereum node took too long to return latest block").into()
+                    })
+                }),
+        )
+    }
+
     fn latest_block(
         &self,
         logger: &Logger,
@@ -634,7 +663,7 @@ where
         let web3 = self.web3.clone();
 
         Box::new(
-            retry("eth_getBlockByNumber(latest) RPC call", logger)
+            retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {

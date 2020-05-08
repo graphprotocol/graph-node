@@ -620,11 +620,17 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
 
-    /// Find the most recent block.
+    /// Get the latest block, including full transactions.
     fn latest_block(
         &self,
         logger: &Logger,
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send>;
+
+    /// Get the latest block, with only the header and transaction hashes.
+    fn latest_block_header(
+        &self,
+        logger: &Logger,
+    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = EthereumAdapterError> + Send>;
 
     fn load_block(
         &self,
