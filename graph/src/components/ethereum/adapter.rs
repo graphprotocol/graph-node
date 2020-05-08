@@ -8,6 +8,7 @@ use petgraph::graphmap::GraphMap;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::marker::Unpin;
 use tiny_keccak::keccak256;
 use web3::types::*;
 
@@ -624,7 +625,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send + Unpin>;
 
     /// Get the latest block, with only the header and transaction hashes.
     fn latest_block_header(
