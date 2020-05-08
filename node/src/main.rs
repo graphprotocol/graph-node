@@ -206,7 +206,7 @@ async fn main() {
             Arg::with_name("ethereum-polling-interval")
                 .long("ethereum-polling-interval")
                 .value_name("MILLISECONDS")
-                .default_value("500")
+                .default_value("1000")
                 .env("ETHEREUM_POLLING_INTERVAL")
                 .help("How often to poll the Ethereum node for new blocks"),
         )
