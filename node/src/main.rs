@@ -618,7 +618,7 @@ async fn main() {
                     .expect("failed to create Ethereum block ingestor");
 
                     // Run the Ethereum block ingestor in the background
-                    graph::spawn(block_ingestor.into_polling_stream().compat());
+                    graph::spawn(block_ingestor.into_polling_stream());
                 });
             }
 
