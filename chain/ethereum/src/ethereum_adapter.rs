@@ -659,7 +659,8 @@ where
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send + Unpin>
+    {
         let web3 = self.web3.clone();
 
         Box::new(
