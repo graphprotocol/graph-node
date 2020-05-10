@@ -601,7 +601,7 @@ fn execute_selection_set(
                         ) {
                             Ok(children) => {
                                 let child_selection_set =
-                                    crate::execution::merge_selection_sets(fields);
+                                    crate::execution::merge_selection_sets(&fields);
                                 let child_object_type = object_or_interface_from_type(
                                     &ctx.query.schema.document,
                                     &field.field_type,

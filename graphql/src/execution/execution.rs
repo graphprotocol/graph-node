@@ -412,7 +412,7 @@ fn execute_field(
                 &argument_values,
             )
         })
-        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, fields, value))
+        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, &fields, value))
 }
 
 /// Resolves the value of a field.
@@ -627,7 +627,7 @@ fn complete_value(
     ctx: &ExecutionContext<impl Resolver>,
     field: &q::Field,
     field_type: &s::Type,
-    fields: Vec<&q::Field>,
+    fields: &Vec<&q::Field>,
     resolved_value: q::Value,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     match field_type {
@@ -656,7 +656,7 @@ fn complete_value(
                     let mut errors = Vec::new();
                     let mut out = Vec::with_capacity(values.len());
                     for value in values.into_iter() {
-                        match complete_value(ctx, field, inner_type, fields.clone(), value) {
+                        match complete_value(ctx, field, inner_type, fields, value) {
                             Ok(value) => out.push(value),
                             Err(errs) => errors.extend(errs),
                         }
@@ -766,7 +766,7 @@ fn resolve_abstract_type<'a>(
 }
 
 /// Merges the selection sets of several fields into a single selection set.
-pub fn merge_selection_sets(fields: Vec<&q::Field>) -> q::SelectionSet {
+pub fn merge_selection_sets(fields: &Vec<&q::Field>) -> q::SelectionSet {
     let (span, items) = fields
         .iter()
         .fold((None, vec![]), |(span, mut items), field| {
