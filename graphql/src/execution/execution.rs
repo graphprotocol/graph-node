@@ -28,7 +28,7 @@ pub enum ExecutionMode {
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
-pub struct ExecutionContext<R>
+pub struct ExecutionContext<'a, R>
 where
     R: Resolver,
 {
@@ -42,7 +42,7 @@ where
     pub resolver: Arc<R>,
 
     /// The current field stack (e.g. allUsers > friends > name).
-    pub fields: Vec<q::Field>,
+    pub fields: Vec<&'a q::Field>,
 
     /// Time at which the query times out.
     pub deadline: Option<Instant>,
@@ -74,14 +74,14 @@ pub(crate) fn get_field<'a>(
     }
 }
 
-impl<R> ExecutionContext<R>
+impl<'a, R> ExecutionContext<'a, R>
 where
     R: Resolver,
 {
     /// Creates a derived context for a new field (added to the top of the field stack).
-    pub fn for_field<'a>(&self, field: &q::Field) -> Result<Self, QueryExecutionError> {
+    pub fn for_field(&'a self, field: &'a q::Field) -> Result<Self, QueryExecutionError> {
         let mut ctx = self.clone();
-        ctx.fields.push(field.clone());
+        ctx.fields.push(field);
         Ok(ctx)
     }
 
