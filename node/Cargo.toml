@@ -9,7 +9,7 @@ env_logger = "0.7.1"
 git-testament = "0.1"
 graphql-parser = "0.2.3"
 prometheus = "0.7"
-futures = { version = "0.3.1", features = ["compat"] }
+futures = { version = "0.3.5", features = ["compat"] }
 ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 url = "2.1.1"

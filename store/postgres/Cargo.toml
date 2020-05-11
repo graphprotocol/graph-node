@@ -14,7 +14,7 @@ diesel-derive-enum = { version = "0.4", features = ["postgres"] }
 diesel_migrations = "1.3.0"
 failure = "0.1.7"
 fallible-iterator = "0.1.4"
-futures = "0.1.21"
+futures = "0.3.5"
 graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-graphql = { path = "../../graphql" }

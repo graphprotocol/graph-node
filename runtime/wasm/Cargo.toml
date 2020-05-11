@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1.29"
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
-futures = "0.1.21"
+futures = "0.3.5"
 hex = "0.4.2"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
