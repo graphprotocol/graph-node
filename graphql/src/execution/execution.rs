@@ -27,7 +27,6 @@ pub enum ExecutionMode {
 }
 
 /// Contextual information passed around during query execution.
-#[derive(Clone)]
 pub struct ExecutionContext<R>
 where
     R: Resolver,
@@ -282,11 +281,8 @@ pub fn collect_fields<'a>(
                         .and_then(|fragment| {
                             // We have a fragment, only pass it on if it applies to the
                             // current object type
-                            if does_fragment_type_apply(
-                                ctx.clone(),
-                                object_type,
-                                &fragment.type_condition,
-                            ) {
+                            if does_fragment_type_apply(ctx, object_type, &fragment.type_condition)
+                            {
                                 Some(fragment)
                             } else {
                                 None
@@ -316,7 +312,7 @@ pub fn collect_fields<'a>(
 
             q::Selection::InlineFragment(fragment) => {
                 let applies = match &fragment.type_condition {
-                    Some(cond) => does_fragment_type_apply(ctx.clone(), object_type, &cond),
+                    Some(cond) => does_fragment_type_apply(ctx, object_type, &cond),
                     None => true,
                 };
 
@@ -344,7 +340,7 @@ pub fn collect_fields<'a>(
 
 /// Determines whether a fragment is applicable to the given object type.
 fn does_fragment_type_apply(
-    ctx: ExecutionContext<impl Resolver>,
+    ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     fragment_type: &q::TypeCondition,
 ) -> bool {
