@@ -1156,21 +1156,22 @@ dependencies = [
 
 [[package]]
 name = "git-testament"
-version = "0.1.7"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ef4008ae8759f8f634e9b4db201b2205cbc9992fc36fdacb54a9a7dbd045207"
+checksum = "60f131003265744033e147a3b1614cf953edc315d3350377442d8ad3df699103"
 dependencies = [
  "git-testament-derive",
 ]
 
 [[package]]
 name = "git-testament-derive"
-version = "0.1.8"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4262cd02031d4ce8dad7069232c2cfce38ff9f8557647ea96d130a99f2aa543"
+checksum = "526ad4c79ca35ec046176e89787409f1d75d9cd51fa9258c01ca206d4fba9340"
 dependencies = [
  "chrono",
  "log 0.4.8",
+ "proc-macro2 1.0.9",
  "quote 1.0.3",
  "syn 1.0.17",
 ]
