@@ -55,7 +55,6 @@ where
         logger: query_logger.clone(),
         resolver: Arc::new(options.resolver),
         query: query.clone(),
-        fields: vec![],
         deadline: options.deadline,
         max_first: options.max_first,
         mode,

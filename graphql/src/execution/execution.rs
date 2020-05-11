@@ -28,7 +28,7 @@ pub enum ExecutionMode {
 
 /// Contextual information passed around during query execution.
 #[derive(Clone)]
-pub struct ExecutionContext<'a, R>
+pub struct ExecutionContext<R>
 where
     R: Resolver,
 {
@@ -40,9 +40,6 @@ where
 
     /// The resolver to use.
     pub resolver: Arc<R>,
-
-    /// The current field stack (e.g. allUsers > friends > name).
-    pub fields: Vec<&'a q::Field>,
 
     /// Time at which the query times out.
     pub deadline: Option<Instant>,
@@ -74,17 +71,10 @@ pub(crate) fn get_field<'a>(
     }
 }
 
-impl<'a, R> ExecutionContext<'a, R>
+impl<R> ExecutionContext<R>
 where
     R: Resolver,
 {
-    /// Creates a derived context for a new field (added to the top of the field stack).
-    pub fn for_field(&'a self, field: &'a q::Field) -> Result<Self, QueryExecutionError> {
-        let mut ctx = self.clone();
-        ctx.fields.push(field);
-        Ok(ctx)
-    }
-
     pub fn as_introspection_context(&self) -> ExecutionContext<IntrospectionResolver> {
         let introspection_resolver = IntrospectionResolver::new(&self.logger, &self.query.schema);
 
@@ -92,7 +82,6 @@ where
             logger: self.logger.clone(),
             resolver: Arc::new(introspection_resolver),
             query: self.query.as_introspection_query(),
-            fields: vec![],
             deadline: self.deadline,
             max_first: std::u32::MAX,
             mode: ExecutionMode::Prefetch,
@@ -221,20 +210,13 @@ fn execute_selection_set_to_map(
 
         // If the field exists on the object, execute it and add its result to the result map
         if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
-            // Push the new field onto the context's field stack
-            match ctx.for_field(&fields[0]) {
-                Ok(ctx) => {
-                    match execute_field(&ctx, object_type, object_value, &fields[0], field, fields)
-                    {
-                        Ok(v) => {
-                            result_map.insert(response_key.to_owned(), v);
-                        }
-                        Err(mut e) => {
-                            errors.append(&mut e);
-                        }
-                    };
+            match execute_field(&ctx, object_type, object_value, &fields[0], field, fields) {
+                Ok(v) => {
+                    result_map.insert(response_key.to_owned(), v);
                 }
-                Err(e) => errors.push(e),
+                Err(mut e) => {
+                    errors.append(&mut e);
+                }
             }
         } else {
             errors.push(QueryExecutionError::UnknownField(
