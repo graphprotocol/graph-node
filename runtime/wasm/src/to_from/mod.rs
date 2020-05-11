@@ -67,7 +67,14 @@ impl ToAscObj<AscString> for String {
 
 impl FromAscObj<AscString> for String {
     fn from_asc_obj<H: AscHeap>(asc_string: AscString, _: &H) -> Self {
-        String::from_utf16(&asc_string.content).expect("asc string was not UTF-16")
+        let mut string =
+            String::from_utf16(&asc_string.content).expect("asc string was not UTF-16");
+
+        // Strip null characters since they are not accepted by Postgres.
+        if string.contains("\u{0000}") {
+            string = string.replace("\u{0000}", "");
+        }
+        string
     }
 }
 
