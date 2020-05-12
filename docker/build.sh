@@ -8,9 +8,7 @@ type -p podman > /dev/null && docker=podman || docker=docker
 
 cd $(dirname $0)/..
 
-for stage in graph-node-bld \
-                 graph-node \
-                 graph-node-dbg
+for stage in graph-node-build graph-node graph-node-debug
 do
     $docker build -t $stage --target $stage -f docker/Dockerfile .
 done

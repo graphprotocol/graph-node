@@ -4,7 +4,7 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
-FROM rust:latest as graph-node-bld
+FROM rust:latest as graph-node-build
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
@@ -61,13 +61,13 @@ RUN apt-get update \
  && apt-get install -y libpq-dev ca-certificates
 
 ADD docker/wait_for docker/start /usr/local/bin/
-COPY --from=graph-node-bld /usr/local/cargo/bin/graph-node /usr/local/bin
-COPY --from=graph-node-bld /etc/image-info /etc/image-info
+COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/bin
+COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY docker/Dockerfile /Dockerfile
 CMD start
 
 # Debug image to access core dumps
-FROM graph-node-bld as graph-node-dbg
+FROM graph-node-build as graph-node-debug
 RUN apt-get update \
  && apt-get install -y curl gdb postgresql-client
 
