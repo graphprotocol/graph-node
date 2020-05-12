@@ -81,7 +81,7 @@ start_combined_node() {
 postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host/$postgres_db"
 
 wait_for_ipfs "$ipfs"
-wait_for "$postgres_host:5432" -t 30
+wait_for "$postgres_host:5432" -t 120
 sleep 5
 
 trap save_coredumps EXIT
@@ -100,6 +100,6 @@ case "${node_role-combined-node}" in
         ;;
     *)
         echo "Unknown mode for start-node: $1"
-        echo "usage: start-node (query-node|index-node)"
+        echo "usage: start (combined-node|query-node|index-node)"
         exit 1
 esac
