@@ -597,7 +597,7 @@ where
             .timeout_secs(30)
             .run(move || {
                 web3.eth()
-                    .block(BlockNumber::Earliest.into())
+                    .block(BlockId::Number(BlockNumber::Number(0.into())))
                     .from_err()
                     .and_then(|gen_block_opt| {
                         future::result(
