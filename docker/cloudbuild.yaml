@@ -3,6 +3,10 @@ options:
 timeout: 1800s
 steps:
 - name: 'gcr.io/cloud-builders/docker'
+  entrypoint: 'bash'
+  args: ['-c', 'docker login --username=lutter --password=$$PASSWORD']
+  secretEnv: ['PASSWORD']
+- name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'graph-node-bld',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
          '--build-arg', 'REPO_NAME=$REPO_NAME',
@@ -26,7 +30,17 @@ steps:
          '--build-arg', 'TAG_NAME=$TAG_NAME',
          '-t', 'gcr.io/$PROJECT_ID/alp-graph-node-dbg:$SHORT_SHA',
          '-f', 'docker/Dockerfile', '.']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag',
+         'gcr.io/$PROJECT_ID/alp-graph-node:$SHORT_SHA',
+         'lutter/alp-graph-node:$SHORT_SHA']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'lutter/alp-graph-node:$SHORT_SHA']
 images:
   - 'gcr.io/$PROJECT_ID/alp-graph-node-bld:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/alp-graph-node:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/alp-graph-node-dbg:$SHORT_SHA'
+secrets:
+ - kmsKeyName: projects/the-graph-staging/locations/global/keyRings/docker/cryptoKeys/docker-hub-push
+   secretEnv:
+     PASSWORD: 'CiQAdfFldbmUiHgGP1lPq6bAOfd+VQ/dFwyohB1IQwiwQg03ZE8STQDvWKpv6eJHVUN1YoFC5FcooJrH+Stvx9oMD7jBjgxEH5ngIiAysWP3E4Pgxt/73xnaanbM1EQ94eVFKCiY0GaEKFNu0BJx22vCYmU4'
