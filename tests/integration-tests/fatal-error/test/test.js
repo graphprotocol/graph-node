@@ -34,9 +34,17 @@ const waitForSubgraphToFailWithError = async (blockNumber) =>
                   number
                 }
               }
+              # Test that non-fatal errors can be queried
+              nonFatalErrors {
+                handler
+              }
             }
           }`,
         });
+
+        if (result.errors != null) {
+          reject("query contains errors: " + JSON.stringify(result.errors))
+        }
 
         let status = result.data.indexingStatusForCurrentVersion;
         if (status.health == "failed") {
