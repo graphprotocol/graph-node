@@ -67,6 +67,7 @@ impl TryFromValue for DeploymentAssignment {
 }
 
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
+#[derive(Debug)]
 struct EthereumBlock(EthereumBlockPointer);
 
 impl From<EthereumBlock> for q::Value {
@@ -86,6 +87,7 @@ impl IntoValue for EthereumBlock {
 }
 
 /// The indexing status of a subgraph on an Ethereum network (like mainnet or ropsten).
+#[derive(Debug)]
 struct EthereumIndexingStatus {
     /// The network name (e.g. `mainnet`, `ropsten`, `rinkeby`, `kovan` or `goerli`).
     network: String,
@@ -98,6 +100,7 @@ struct EthereumIndexingStatus {
 }
 
 /// Indexing status information for different chains (only Ethereum right now).
+#[derive(Debug)]
 enum ChainIndexingStatus {
     Ethereum(EthereumIndexingStatus),
 }
@@ -119,6 +122,7 @@ impl From<ChainIndexingStatus> for q::Value {
 }
 
 /// The overall indexing status of a subgraph.
+#[derive(Debug)]
 struct IndexingStatusWithoutNode {
     /// The subgraph ID.
     subgraph: String,
@@ -133,6 +137,7 @@ struct IndexingStatusWithoutNode {
     chains: Vec<ChainIndexingStatus>,
 }
 
+#[derive(Debug)]
 struct IndexingStatus {
     /// The subgraph ID.
     subgraph: String,
@@ -255,7 +260,7 @@ impl From<IndexingStatus> for q::Value {
             synced: synced,
             health: q::Value::from(health),
             fatalError: fatal_error_val,
-            nonFatalErorrs: non_fatal_errors,
+            nonFatalErrors: non_fatal_errors,
             chains: chains.into_iter().map(q::Value::from).collect::<Vec<_>>(),
             node: node,
         }
