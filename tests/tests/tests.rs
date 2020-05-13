@@ -13,6 +13,8 @@ fn test_dir(name: &str) -> PathBuf {
 fn run_cmd(args: Vec<&str>, cwd: PathBuf) {
     let cmd_string = args.clone().join(" ");
 
+    println!("running command: {}", cmd_string);
+
     let (program, args) = args.split_first().expect("empty command provided");
 
     let output = cmd(*program, args)

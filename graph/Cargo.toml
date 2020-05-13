@@ -19,7 +19,7 @@ reqwest = "0.10"
 # and we should try to implement on top of ethabi instead of inside it, and
 # tuple support which isn't upstreamed yet. For now, we shall deviate from
 # ethabi, but long term we want to find a way to drop our fork.
-ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
+ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "rebased-master" }
 hex = "0.4.2"
 futures = "0.1.21"
 graphql-parser = "0.2.3"
@@ -55,7 +55,7 @@ futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 uuid = { version = "0.8.1", features = ["v4"] }
 
 # Our fork contains a small but hacky patch.
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches" }
 
 [dev-dependencies]
 test-store = { path = "../store/test-store" }
