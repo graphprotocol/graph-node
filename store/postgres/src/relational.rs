@@ -341,7 +341,7 @@ impl Layout {
         schema: &Schema,
         schema_name: &str,
     ) -> Result<Layout, StoreError> {
-        let layout = Self::new(schema, schema_name, true)?;
+        let layout = Self::new(schema, schema_name, false)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
