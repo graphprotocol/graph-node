@@ -1,5 +1,6 @@
 use diesel::deserialize::FromSql;
-use diesel_derives::FromSqlRow;
+use diesel::serialize::ToSql;
+use diesel_derives::{AsExpression, FromSqlRow};
 use failure::Fail;
 use hex;
 use num_bigint;
@@ -12,6 +13,7 @@ use stable_hash::{
 };
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
+use std::io::Write;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::str::FromStr;
 
@@ -21,8 +23,11 @@ pub use num_bigint::Sign as BigIntSign;
 // Caveat: The exponent is currently an i64 and may overflow. See
 // https://github.com/akubera/bigdecimal-rs/issues/54.
 // Using `#[serde(from = "BigDecimal"]` makes sure deserialization calls `BigDecimal::new()`.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, FromSqlRow)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
+)]
 #[serde(from = "bigdecimal::BigDecimal")]
+#[sql_type = "diesel::sql_types::Numeric"]
 pub struct BigDecimal(bigdecimal::BigDecimal);
 
 impl From<bigdecimal::BigDecimal> for BigDecimal {
@@ -139,6 +144,16 @@ impl Div for BigDecimal {
         }
 
         Self::from(self.0.div(other.0))
+    }
+}
+
+// Used only for JSONB support
+impl ToSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
+    fn to_sql<W: Write>(
+        &self,
+        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
+    ) -> diesel::serialize::Result {
+        <_ as ToSql<diesel::sql_types::Numeric, _>>::to_sql(&self.0, out)
     }
 }
 
