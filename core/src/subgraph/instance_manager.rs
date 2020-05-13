@@ -244,7 +244,7 @@ impl SubgraphInstanceManager {
             let mut assignment_stream = receiver.compat();
 
             // The channel will always be open so it never errors.
-            for event in assignment_stream.next().await.unwrap() {
+            while let Ok(event) = assignment_stream.next().await.unwrap() {
                 use self::SubgraphAssignmentProviderEvent::*;
 
                 match event {
