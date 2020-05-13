@@ -295,7 +295,7 @@ impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
             gas_limit: block.gas_limit,
             timestamp: block.timestamp,
             difficulty: block.difficulty,
-            total_difficulty: block.total_difficulty,
+            total_difficulty: block.total_difficulty.unwrap_or_default(),
             size: block.size,
         }
     }
@@ -318,7 +318,7 @@ impl From<&'_ Transaction> for EthereumTransactionData {
     fn from(tx: &Transaction) -> EthereumTransactionData {
         EthereumTransactionData {
             hash: tx.hash,
-            index: tx.transaction_index.unwrap(),
+            index: tx.transaction_index.unwrap().as_u64().into(),
             from: tx.from,
             to: tx.to,
             value: tx.value,

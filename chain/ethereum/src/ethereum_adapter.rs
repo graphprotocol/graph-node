@@ -369,6 +369,7 @@ where
         call_data: Bytes,
         block_number_opt: Option<BlockNumber>,
     ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
+        let block_number_opt = block_number_opt.map(Into::into);
         let web3 = self.web3.clone();
         let logger = logger.clone();
 
