@@ -15,7 +15,7 @@ use graph_chain_ethereum::network_indexer::{
 };
 use graph_core::MetricsRegistry;
 use graph_store_postgres::Store as DieselStore;
-use web3::types::{H256, H64};
+use web3::types::{H2048, H256, H64, U256};
 
 use test_store::*;
 
@@ -80,7 +80,6 @@ fn run_network_indexer(
         indexer
             .take_event_stream()
             .expect("failed to take stream from indexer")
-            .map_err(|_| ())
             .forward(event_sink.sink_map_err(|_| ()))
             .map(|_| ())
             .timeout(timeout),
@@ -129,6 +128,8 @@ fn create_chain(n: u64, parent: Option<&BlockWithOmmers>) -> Vec<BlockWithOmmers
         // Set required fields
         block.block.block.nonce = Some(H64::random());
         block.block.block.mix_hash = Some(H256::random());
+        block.block.block.logs_bloom = Some(H2048::default());
+        block.block.block.total_difficulty = Some(U256::default());
 
         // Use the index as the block number
         block.block.block.number = Some(number.into());
