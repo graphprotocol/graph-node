@@ -28,8 +28,8 @@ pub struct SubgraphInstance<T: RuntimeHostBuilder> {
     /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
 
-    /// Maps a serialized module to a channel to the thread in which the module is instantiated.
-    module_cache: HashMap<Vec<u8>, Sender<T::Req>>,
+    /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
+    module_cache: HashMap<[u8; 32], Sender<T::Req>>,
 }
 
 impl<T> SubgraphInstance<T>
@@ -93,17 +93,18 @@ where
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
-            let module_bytes = data_source.mapping.runtime.as_ref().clone().to_bytes()?;
-            if let Some(sender) = self.module_cache.get(&module_bytes) {
+            let module_bytes = data_source.mapping.runtime.as_ref();
+            let module_hash = tiny_keccak::keccak256(module_bytes);
+            if let Some(sender) = self.module_cache.get(&module_hash) {
                 sender.clone()
             } else {
                 let sender = T::spawn_mapping(
-                    data_source.mapping.runtime.as_ref().clone(),
+                    module_bytes,
                     logger,
                     self.subgraph_id.clone(),
                     host_metrics.clone(),
                 )?;
-                self.module_cache.insert(module_bytes, sender.clone());
+                self.module_cache.insert(module_hash, sender.clone());
                 sender
             }
         };

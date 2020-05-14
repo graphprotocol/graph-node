@@ -1404,9 +1404,7 @@ fn revert_block_with_partial_update() {
     })
 }
 
-fn mock_data_source(path: &str) -> DataSource {
-    let runtime = parity_wasm::deserialize_file(path).expect("Failed to deserialize wasm");
-
+fn mock_data_source() -> DataSource {
     DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
@@ -1428,7 +1426,7 @@ fn mock_data_source(path: &str) -> DataSource {
             link: Link {
                 link: "link".to_owned(),
             },
-            runtime: Arc::new(runtime.clone()),
+            runtime: Arc::new(Vec::new()),
         },
         templates: vec![DataSourceTemplate {
             kind: String::from("ethereum/contract"),
@@ -1449,7 +1447,7 @@ fn mock_data_source(path: &str) -> DataSource {
                 link: Link {
                     link: "link".to_owned(),
                 },
-                runtime: Arc::new(runtime),
+                runtime: Arc::new(Vec::new()),
             },
         }],
         context: None,
@@ -1478,7 +1476,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             .expect("missing entity");
 
         // Create operations to add a dynamic data source
-        let data_source = mock_data_source("../../runtime/wasm/wasm_test/abort.wasm");
+        let data_source = mock_data_source();
         let dynamic_ds = DynamicEthereumContractDataSourceEntity::from((
             &TEST_SUBGRAPH_ID.clone(),
             &data_source,

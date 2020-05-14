@@ -11,12 +11,13 @@ use web3::types::{Log, Transaction};
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module(
-    parsed_module: parity_wasm::elements::Module,
+    raw_module: &[u8],
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
     host_metrics: Arc<HostMetrics>,
     runtime: tokio::runtime::Handle,
 ) -> Result<mpsc::Sender<MappingRequest>, Error> {
+    let parsed_module = parity_wasm::deserialize_buffer(raw_module)?;
     let valid_module = Arc::new(ValidModule::new(parsed_module)?);
 
     // Create channel for event handling requests

@@ -6,8 +6,6 @@ use futures03::{
     stream::FuturesOrdered,
     TryStreamExt as _,
 };
-use parity_wasm;
-use parity_wasm::elements::Module;
 use serde::de;
 use serde::ser;
 use serde_yaml;
@@ -588,7 +586,7 @@ pub struct Mapping {
     pub block_handlers: Vec<MappingBlockHandler>,
     pub call_handlers: Vec<MappingCallHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
-    pub runtime: Arc<Module>,
+    pub runtime: Arc<Vec<u8>>,
     pub link: Link,
 }
 
@@ -620,7 +618,7 @@ impl UnresolvedMapping {
                 .try_collect::<Vec<_>>(),
             async {
                 let module_bytes = resolver.cat(logger, &link).await?;
-                Ok(Arc::new(parity_wasm::deserialize_buffer(&module_bytes)?))
+                Ok(Arc::new(module_bytes))
             },
         )
         .await?;

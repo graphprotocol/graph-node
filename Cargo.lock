@@ -1212,7 +1212,6 @@ dependencies = [
  "mockall",
  "num-bigint",
  "num-traits",
- "parity-wasm",
  "petgraph 0.5.0",
  "priority-queue",
  "prometheus",
