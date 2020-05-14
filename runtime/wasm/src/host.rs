@@ -89,13 +89,13 @@ where
     type Req = MappingRequest;
 
     fn spawn_mapping(
-        parsed_module: parity_wasm::elements::Module,
+        raw_module: &[u8],
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
         crate::mapping::spawn_module(
-            parsed_module,
+            raw_module,
             logger,
             subgraph_id,
             metrics,

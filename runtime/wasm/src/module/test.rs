@@ -59,7 +59,12 @@ fn test_valid_module_and_store(
     ));
 
     let module = WasmiModule::from_valid_module_with_ctx(
-        Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref().clone()).unwrap()),
+        Arc::new(
+            ValidModule::new(
+                parity_wasm::deserialize_buffer(data_source.mapping.runtime.as_ref()).unwrap(),
+            )
+            .unwrap(),
+        ),
         mock_context(deployment_id, data_source, store.clone()),
         host_metrics,
     )
@@ -73,7 +78,7 @@ fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmiModule {
 }
 
 fn mock_data_source(path: &str) -> DataSource {
-    let runtime = parity_wasm::deserialize_file(path).expect("Failed to deserialize wasm");
+    let runtime = std::fs::read(path).unwrap();
 
     DataSource {
         kind: String::from("ethereum/contract"),

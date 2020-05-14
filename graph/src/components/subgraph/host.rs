@@ -125,9 +125,9 @@ pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
     ) -> Result<Self::Host, Error>;
 
     /// Spawn a mapping and return a channel for mapping requests. The sender should be able to be
-    /// cached and shared among mappings that have the same `parsed_module`.
+    /// cached and shared among mappings that use the same wasm file.
     fn spawn_mapping(
-        parsed_module: parity_wasm::elements::Module,
+        raw_module: &[u8],
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
