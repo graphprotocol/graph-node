@@ -14,7 +14,7 @@ tag_and_push() {
 }
 
 echo "Logging into Docker Hub"
-echo $PASSWORD | docker login --username=lutter --password-stdin
+echo $PASSWORD | docker login --username="$DOCKER_HUB_USER" --password-stdin
 
 set -x
 

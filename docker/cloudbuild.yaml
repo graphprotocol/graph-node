@@ -3,10 +3,6 @@ options:
 timeout: 1800s
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  entrypoint: 'bash'
-  args: ['-c', 'docker login --username=lutter --password=$$PASSWORD']
-  secretEnv: ['PASSWORD']
-- name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'graph-node-build',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
          '--build-arg', 'REPO_NAME=$REPO_NAME',
@@ -42,10 +38,14 @@ steps:
     - 'SHORT_SHA=$SHORT_SHA'
     - 'TAG_NAME=$TAG_NAME'
     - 'PROJECT_ID=$PROJECT_ID'
+    - 'DOCKER_HUB_USER=$_DOCKER_HUB_USER'
 images:
   - 'gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA'
+substitutions:
+  # The owner of the access token whose encrypted value is in PASSWORD
+  _DOCKER_HUB_USER: "lutter"
 secrets:
  - kmsKeyName: projects/the-graph-staging/locations/global/keyRings/docker/cryptoKeys/docker-hub-push
    secretEnv:
