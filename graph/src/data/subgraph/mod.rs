@@ -6,6 +6,7 @@ use futures03::{
     stream::FuturesOrdered,
     TryStreamExt as _,
 };
+use lazy_static::lazy_static;
 use serde::de;
 use serde::ser;
 use serde_yaml;
@@ -35,6 +36,13 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
+
+lazy_static! {
+    static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
+        .ok()
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+}
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
@@ -1018,6 +1026,11 @@ impl UnvalidatedSubgraphManifest {
             });
 
         if let Some(graft) = &self.0.graft {
+            if *DISABLE_GRAFTS {
+                errors.push(SubgraphManifestValidationError::GraftBaseInvalid(
+                    "Grafting of subgraphs is currently disabled".to_owned(),
+                ));
+            }
             errors.extend(graft.validate(store));
         }
 
