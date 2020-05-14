@@ -5,7 +5,6 @@ use diesel::serialize::ToSql;
 use diesel::sql_types::{Array, Bool, Double, HasSqlType, Integer, Numeric, Text};
 use std::error::Error as StdError;
 use std::fmt::{self, Display};
-use std::str::FromStr;
 
 use graph::components::store::EntityFilter;
 use graph::data::store::*;
@@ -121,10 +120,8 @@ impl<QS> IntoFilter<QS> for BigInt {
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::numeric")
                 .sql(op)
-                // Using `BigDecimal::new(query_value.0, 0)` results in a
-                // mismatch of `bignum` versions, go through the string
-                // representation to work around that.
-                .bind::<Numeric, _>(BigDecimal::from_str(&self.to_string()).unwrap()),
+                .bind::<Text, _>(self.to_string())
+                .sql("::numeric"),
         ) as FilterExpression<QS>
     }
 }
@@ -136,7 +133,8 @@ impl<QS> IntoFilter<QS> for BigDecimal {
                 .bind::<Text, _>(attribute)
                 .sql("->> 'data')::numeric")
                 .sql(op)
-                .bind::<Numeric, _>(self),
+                .bind::<Text, _>(self.to_string())
+                .sql("::numeric"),
         ) as FilterExpression<QS>
     }
 }
