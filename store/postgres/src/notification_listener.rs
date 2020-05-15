@@ -115,67 +115,71 @@ impl NotificationListener {
         let (sender, receiver) = channel(1024);
 
         let worker_handle = thread::spawn(move || {
-            // Connect to Postgres
-            let conn = Connection::connect(postgres_url, TlsMode::None)
-                .expect("failed to connect notification listener to Postgres");
+            // We exit the process on panic so unwind safety is irrelevant.
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                // Connect to Postgres
+                let conn = Connection::connect(postgres_url, TlsMode::None)
+                    .expect("failed to connect notification listener to Postgres");
 
-            // Subscribe to the notification channel in Postgres
-            conn.execute(&format!("LISTEN {}", channel_name.0), &[])
-                .expect("failed to listen to Postgres notifications");
+                // Subscribe to the notification channel in Postgres
+                conn.execute(&format!("LISTEN {}", channel_name.0), &[])
+                    .expect("failed to listen to Postgres notifications");
 
-            // Wait until the listener has been started
-            barrier.wait();
+                // Wait until the listener has been started
+                barrier.wait();
 
-            // Read notifications until the thread is to be terminated
-            while !terminate.load(Ordering::SeqCst) {
-                // Obtain a notifications iterator from Postgres
-                let notifications = conn.notifications();
+                // Read notifications until the thread is to be terminated
+                while !terminate.load(Ordering::SeqCst) {
+                    // Obtain a notifications iterator from Postgres
+                    let notifications = conn.notifications();
 
-                // Read notifications until there hasn't been one for 500ms
-                for notification in notifications
-                    .timeout_iter(Duration::from_millis(500))
-                    .iterator()
-                    .filter_map(|item| match item {
-                        Ok(msg) => Some(msg),
-                        Err(e) => {
-                            let msg = format!("{}", e);
-                            crit!(logger, "Error receiving message"; "error" => &msg);
-                            eprintln!(
-                                "Connection to Postgres lost while listening for events. \
+                    // Read notifications until there hasn't been one for 500ms
+                    for notification in notifications
+                        .timeout_iter(Duration::from_millis(500))
+                        .iterator()
+                        .filter_map(|item| match item {
+                            Ok(msg) => Some(msg),
+                            Err(e) => {
+                                let msg = format!("{}", e);
+                                crit!(logger, "Error receiving message"; "error" => &msg);
+                                eprintln!(
+                                    "Connection to Postgres lost while listening for events. \
                                  Aborting to avoid inconsistent state. ({})",
-                                msg
-                            );
-                            std::process::abort();
-                        }
-                    })
-                    .filter(|notification| notification.channel == channel_name.0)
-                {
-                    // Terminate the thread if desired
-                    if terminate.load(Ordering::SeqCst) {
-                        break;
-                    }
-
-                    match JsonNotification::parse(&notification, &conn) {
-                        Ok(json_notification) => {
-                            // We'll assume here that if sending fails, this means that the
-                            // listener has already been dropped, the receiving
-                            // end is gone and we should terminate the listener loop
-                            if sender.clone().send(json_notification).wait().is_err() {
-                                break;
+                                    msg
+                                );
+                                std::process::abort();
                             }
+                        })
+                        .filter(|notification| notification.channel == channel_name.0)
+                    {
+                        // Terminate the thread if desired
+                        if terminate.load(Ordering::SeqCst) {
+                            break;
                         }
-                        Err(e) => {
-                            crit!(
-                                logger,
-                                "Failed to parse database notification";
-                                "notification" => format!("{:?}", notification),
-                                "error" => format!("{}", e),
-                            );
-                            continue;
+
+                        match JsonNotification::parse(&notification, &conn) {
+                            Ok(json_notification) => {
+                                // We'll assume here that if sending fails, this means that the
+                                // listener has already been dropped, the receiving
+                                // end is gone and we should terminate the listener loop
+                                if sender.clone().send(json_notification).wait().is_err() {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                crit!(
+                                    logger,
+                                    "Failed to parse database notification";
+                                    "notification" => format!("{:?}", notification),
+                                    "error" => format!("{}", e),
+                                );
+                                continue;
+                            }
                         }
                     }
                 }
-            }
+            }))
+            .unwrap_or_else(|_| std::process::exit(1))
         });
 
         (receiver, worker_handle, terminate_worker, worker_barrier)
