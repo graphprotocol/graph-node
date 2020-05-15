@@ -10,7 +10,7 @@ form:
 
 ```json
 {
-  "data" : "...",
+  "data": "...",
   "extensions": {
     "subgraph": {
       "blocks": {
@@ -49,6 +49,10 @@ the number given in the query
   the `GRAPH_LOG_QUERY_TIMING` [environment
   variable](docs/environment-variables.md) (#1595).
 - Add integration test for handling Ganache reverts (#1590).
+- Don't return `__typename` to mappings (#1629).
+- Normalize `BigDecimal` values, limit `BigDecimal` exponent (#1640).
+- Strip nulls from strings (#1656).
+- Less expensive block polling (#1645).
 
 ## 0.18.0
 
