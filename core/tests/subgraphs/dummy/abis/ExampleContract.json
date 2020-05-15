@@ -1,8 +1,0 @@
-[
-    {
-      "anonymous": false,
-      "inputs": [{ "indexed": true, "name": "exampleParam", "type": "string" }],
-      "name": "ExampleEvent",
-      "type": "event"
-    }
-  ]
