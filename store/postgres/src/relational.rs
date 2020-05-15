@@ -371,14 +371,17 @@ impl Layout {
         // as adding new tables in `self`; we only need to check that tables
         // that actually need to be copied from the source are compatible
         // with the corresponding tables in `self`
+        let block_number: BlockNumber = block
+            .number
+            .try_into()
+            .expect("block numbers fit into an i32");
         for (dst, src) in self
             .tables
             .values()
             .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
         {
             let start = Instant::now();
-            let count =
-                rq::CopyEntityDataQuery::new(dst, src, block.number as i32)?.execute(conn)?;
+            let count = rq::CopyEntityDataQuery::new(dst, src, block_number)?.execute(conn)?;
             info!(logger, "Copied {} {} entities", count, src.object;
                   "time_ms" => start.elapsed().as_millis());
         }
@@ -402,15 +405,11 @@ impl Layout {
         info!(logger, "Copied {} dynamic data sources", dds.len();
               "time_ms" => start.elapsed().as_millis());
 
-        // 3. Rewind the subgraph. `revert_block` gets rid of everything
+        // 3. Rewind the subgraph. `revert_metadata` gets rid of everything
         // including the block passed to it. We want to preserve `block`
         // and therefore revert `block+1`
         let start = Instant::now();
-        let block_to_revert: BlockNumber = (block.number + 1)
-            .try_into()
-            .expect("block numbers fit into an i32");
-        self.revert_block(conn, block_to_revert)?;
-        metadata.revert_metadata(conn, &self.subgraph, block_to_revert)?;
+        metadata.revert_metadata(conn, &self.subgraph, block_number + 1)?;
         info!(logger, "Rewound subgraph to block {}", block.number;
               "time_ms" => start.elapsed().as_millis());
         Ok(())

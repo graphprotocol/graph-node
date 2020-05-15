@@ -2331,7 +2331,8 @@ impl<'a> LoadQuery<PgConnection, RevertEntityData> for DeleteByPrefixQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for DeleteByPrefixQuery<'a> {}
 
-/// Copy the data of one table to another table
+/// Copy the data at a given block from one table to another table and
+/// mark all the copied entities as valid forever
 #[derive(Debug, Clone)]
 pub struct CopyEntityDataQuery<'a> {
     src: &'a Table,
@@ -2399,7 +2400,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityDataQuery<'a> {
             }
             out.push_sql(", ");
         }
-        out.push_sql("block_range from ");
+        out.push_sql("int4range(lower(block_range), null) from ");
         out.push_sql(self.src.qualified_name.as_str());
         out.push_sql(" where block_range @> ");
         out.push_sql(&self.block.to_string());
