@@ -2339,10 +2339,11 @@ pub struct CopyEntityDataQuery<'a> {
     // A list of columns common between src and dst that
     // need to be copied
     columns: Vec<&'a Column>,
+    block: BlockNumber,
 }
 
 impl<'a> CopyEntityDataQuery<'a> {
-    pub fn new(dst: &'a Table, src: &'a Table) -> Result<Self, StoreError> {
+    pub fn new(dst: &'a Table, src: &'a Table, block: BlockNumber) -> Result<Self, StoreError> {
         let mut columns = Vec::new();
         for dcol in &dst.columns {
             if let Some(scol) = src.column(&dcol.name) {
@@ -2364,7 +2365,12 @@ impl<'a> CopyEntityDataQuery<'a> {
             }
         }
 
-        Ok(Self { src, dst, columns })
+        Ok(Self {
+            src,
+            dst,
+            columns,
+            block,
+        })
     }
 }
 
@@ -2395,6 +2401,8 @@ impl<'a> QueryFragment<Pg> for CopyEntityDataQuery<'a> {
         }
         out.push_sql("block_range from ");
         out.push_sql(self.src.qualified_name.as_str());
+        out.push_sql(" where block_range @> ");
+        out.push_sql(&self.block.to_string());
         Ok(())
     }
 }

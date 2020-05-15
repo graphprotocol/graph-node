@@ -377,7 +377,8 @@ impl Layout {
             .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
         {
             let start = Instant::now();
-            let count = rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
+            let count =
+                rq::CopyEntityDataQuery::new(dst, src, block.number as i32)?.execute(conn)?;
             info!(logger, "Copied {} {} entities", count, src.object;
                   "time_ms" => start.elapsed().as_millis());
         }
