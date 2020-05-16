@@ -1560,10 +1560,11 @@ impl ChainStore for Store {
         // Only consider active subgraphs that have not failed
         let conn = self.get_conn()?;
         let query = "
-            select least(a.block,
+            select coalesce(
+                   least(a.block,
                         (select head_block_number::int - $1
                            from ethereum_networks
-                          where name = $2)) as block
+                          where name = $2)), -1)::int as block
               from (
                 select min(d.latest_ethereum_block_number) as block
                   from subgraphs.subgraph_deployment d,
@@ -1581,12 +1582,19 @@ impl ChainStore for Store {
             .load::<MinBlock>(&conn)?
             .first()
             .map(|MinBlock { block }| {
-                diesel::delete(dsl::ethereum_blocks)
-                    .filter(dsl::network_name.eq(&self.network_name))
-                    .filter(dsl::number.lt(*block as i64))
-                    .filter(dsl::number.gt(0))
-                    .execute(&conn)
-                    .map(|rows| (*block, rows))
+                // If we could not determine a minimum block, the query
+                // returns -1, and we should not do anything. We also guard
+                // against removing the genesis block
+                if *block > 0 {
+                    diesel::delete(dsl::ethereum_blocks)
+                        .filter(dsl::network_name.eq(&self.network_name))
+                        .filter(dsl::number.lt(*block as i64))
+                        .filter(dsl::number.gt(0))
+                        .execute(&conn)
+                        .map(|rows| (*block, rows))
+                } else {
+                    Ok((0, 0))
+                }
             })
             .unwrap_or(Ok((0, 0)))
             .map_err(|e| e.into())
