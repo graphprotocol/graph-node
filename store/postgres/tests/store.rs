@@ -2206,3 +2206,16 @@ fn find_at_block() {
         shaqueeena_at_block(7000, "teeko@email.com");
     }
 }
+
+#[test]
+fn cleanup_cached_blocks() {
+    run_test(|store| -> Result<(), ()> {
+        // This test is somewhat silly in that there is nothing to clean up.
+        // The main purpose for this test is to ensure that the SQL query
+        // we run in `cleanup_cached_blocks` to figure out the first block
+        // that should be removed is syntactically correct
+        let cleaned = store.cleanup_cached_blocks(10).expect("cleanup succeeds");
+        assert_eq!((0, 0), cleaned);
+        Ok(())
+    })
+}
