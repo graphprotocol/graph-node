@@ -292,9 +292,6 @@ pub struct SubgraphDeploymentEntity {
     earliest_ethereum_block_number: Option<u64>,
     latest_ethereum_block_hash: Option<H256>,
     latest_ethereum_block_number: Option<u64>,
-    ethereum_head_block_hash: Option<H256>,
-    ethereum_head_block_number: Option<u64>,
-    total_ethereum_blocks_count: u64,
     graft_base: Option<SubgraphDeploymentId>,
     graft_block_hash: Option<H256>,
     graft_block_number: Option<u64>,
@@ -310,7 +307,6 @@ impl SubgraphDeploymentEntity {
         source_manifest: &SubgraphManifest,
         synced: bool,
         earliest_ethereum_block: Option<EthereumBlockPointer>,
-        chain_head_block: Option<EthereumBlockPointer>,
     ) -> Self {
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
@@ -323,9 +319,6 @@ impl SubgraphDeploymentEntity {
             earliest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
             latest_ethereum_block_hash: earliest_ethereum_block.map(Into::into),
             latest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
-            ethereum_head_block_hash: chain_head_block.map(Into::into),
-            ethereum_head_block_number: chain_head_block.map(Into::into),
-            total_ethereum_blocks_count: chain_head_block.map_or(0, |block| block.number + 1),
             graft_base: None,
             graft_block_hash: None,
             graft_block_number: None,
@@ -377,9 +370,6 @@ impl SubgraphDeploymentEntity {
             earliest_ethereum_block_number,
             latest_ethereum_block_hash,
             latest_ethereum_block_number,
-            ethereum_head_block_hash,
-            ethereum_head_block_number,
-            total_ethereum_blocks_count,
             graft_base,
             graft_block_hash,
             graft_block_number,
@@ -404,9 +394,6 @@ impl SubgraphDeploymentEntity {
             earliestEthereumBlockNumber: earliest_ethereum_block_number,
             latestEthereumBlockHash: latest_ethereum_block_hash,
             latestEthereumBlockNumber: latest_ethereum_block_number,
-            ethereumHeadBlockHash: ethereum_head_block_hash,
-            ethereumHeadBlockNumber: ethereum_head_block_number,
-            totalEthereumBlocksCount: total_ethereum_blocks_count,
             entityCount: 0 as u64,
             graftBase: graft_base.map(|sid| sid.to_string()),
             graftBlockHash: graft_block_hash,
@@ -429,23 +416,6 @@ impl SubgraphDeploymentEntity {
         let entity = entity! {
             latestEthereumBlockHash: block_ptr_to.hash,
             latestEthereumBlockNumber: block_ptr_to.number
-        };
-
-        vec![update_metadata_operation(
-            Self::TYPENAME,
-            id.to_string(),
-            entity,
-        )]
-    }
-
-    pub fn update_ethereum_head_block_operations(
-        id: &SubgraphDeploymentId,
-        block_ptr: EthereumBlockPointer,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            totalEthereumBlocksCount: block_ptr.number,
-            ethereumHeadBlockHash: block_ptr.hash,
-            ethereumHeadBlockNumber: block_ptr.number,
         };
 
         vec![update_metadata_operation(

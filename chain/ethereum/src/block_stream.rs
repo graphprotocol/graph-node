@@ -216,11 +216,7 @@ where
             let ctx2 = ctx.clone();
             let ctx3 = ctx.clone();
 
-            // Update progress metrics
-            future::result(ctx1.update_subgraph_block_count())
-                // Determine the next step.
-                .and_then(move |()| ctx1.get_next_step())
-                // Do the next step.
+            ctx1.get_next_step()
                 .and_then(move |step| ctx2.do_step(step))
                 // Check outcome.
                 // Exit loop if done or there are blocks to process.
@@ -775,25 +771,6 @@ where
             self.subgraph_store
                 .apply_metadata_operations(ops)
                 .map_err(|e| format_err!("Failed to set deployment synced flag: {}", e))
-        }
-    }
-
-    /// Write latest block counts into subgraph entity based on current value of head and subgraph
-    /// block pointers.
-    fn update_subgraph_block_count(&self) -> Result<(), Error> {
-        let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-
-        match head_ptr_opt {
-            None => Ok(()),
-            Some(head_ptr) => {
-                let ops = SubgraphDeploymentEntity::update_ethereum_head_block_operations(
-                    &self.subgraph_id,
-                    head_ptr,
-                );
-                self.subgraph_store
-                    .apply_metadata_operations(ops)
-                    .map_err(|e| format_err!("Failed to set subgraph block count: {}", e))
-            }
         }
     }
 }

@@ -131,8 +131,8 @@ fn insert_test_data(store: Arc<DieselStore>) {
     };
 
     // Create SubgraphDeploymentEntity
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, None, Some(BLOCKS[0]))
-        .create_operations(&*TEST_SUBGRAPH_ID);
+    let ops =
+        SubgraphDeploymentEntity::new(&manifest, false, None).create_operations(&*TEST_SUBGRAPH_ID);
     store
         .create_subgraph_deployment(&TEST_SUBGRAPH_SCHEMA, ops)
         .unwrap();

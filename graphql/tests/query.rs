@@ -96,7 +96,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         templates: vec![],
     };
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, None, None)
+    let ops = SubgraphDeploymentEntity::new(&manifest, false, None)
         .create_operations_replace(&id)
         .into_iter()
         .map(|op| op.into())

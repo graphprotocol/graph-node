@@ -95,13 +95,8 @@ fn create_subgraph(
         templates: vec![],
     };
 
-    // Create deployment entity
-    let chain_head_block = match store.chain_head_ptr() {
-        Ok(block_ptr) => block_ptr,
-        Err(e) => return future::err(e.into()),
-    };
     ops.extend(
-        SubgraphDeploymentEntity::new(&manifest, false, start_block, chain_head_block)
+        SubgraphDeploymentEntity::new(&manifest, false, start_block)
             .create_operations(&manifest.id),
     );
 

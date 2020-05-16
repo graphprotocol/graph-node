@@ -466,8 +466,7 @@ fn create_subgraph(
     Ok(CreateSubgraphResult { id: entity_id })
 }
 
-/// Resolves the chain head block, the subgraph's earliest block, and
-/// the manifest's graft base block
+/// Resolves the subgraph's earliest block and the manifest's graft base block
 fn resolve_subgraph_chain_blocks(
     manifest: SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
@@ -476,7 +475,6 @@ fn resolve_subgraph_chain_blocks(
 ) -> Box<
     dyn Future<
             Item = (
-                Option<EthereumBlockPointer>,
                 Option<EthereumBlockPointer>,
                 Option<(SubgraphDeploymentId, EthereumBlockPointer)>,
             ),
@@ -511,12 +509,6 @@ fn resolve_subgraph_chain_blocks(
             ) as Box<dyn Future<Item = _, Error = _> + Send>,
         }
         .and_then(move |start_block_ptr| {
-            chain_store
-                .chain_head_ptr()
-                .map(|chain_head_block_ptr| (chain_head_block_ptr, start_block_ptr))
-                .map_err(SubgraphRegistrarError::Unknown)
-        })
-        .and_then(move |(chain_head_block_ptr, start_block_ptr)| {
             match manifest.graft {
                 None => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
                 Some(base) => {
@@ -540,7 +532,7 @@ fn resolve_subgraph_chain_blocks(
                     ) as Box<dyn Future<Item = _, Error = _> + Send>
                 }
             }
-            .map(move |base_ptr| (chain_head_block_ptr, start_block_ptr, base_ptr))
+            .map(move |base_ptr| (start_block_ptr, base_ptr))
         }),
     )
 }
@@ -863,7 +855,7 @@ fn create_subgraph_version(
                 ethereum_adapter.clone(),
                 &logger.clone(),
             )
-            .and_then(move |(chain_head_block, start_block, base_block)| {
+            .and_then(move |(start_block, base_block)| {
                 info!(
                     logger,
                     "Set subgraph start block";
@@ -889,7 +881,6 @@ fn create_subgraph_version(
                         &manifest,
                         false,
                         start_block,
-                        chain_head_block,
                     ).graft(base_block);
                     ops.extend(
                         deployment

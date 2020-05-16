@@ -9,7 +9,7 @@ use std::convert::TryInto;
 use web3::types::H256;
 
 static DEPLOYMENT_STATUS_FRAGMENT: &str = r#"
-    fragment deploymentStatus on SubgraphDeployment {
+    fragment deploymentStatus on SubgraphDeploymentDetail {
         id
         synced
         health
@@ -351,7 +351,7 @@ where
                   $whereDeployments: SubgraphDeployment_filter!,
                   $whereAssignments: SubgraphDeploymentAssignment_filter!
                 ) {
-                  subgraphDeployments(where: $whereDeployments, first: 1000000) {
+                  subgraphDeployments: subgraphDeploymentDetails(where: $whereDeployments, first: 1000000) {
                     ...deploymentStatus
                   }
                   subgraphDeploymentAssignments(where: $whereAssignments, first: 1000000) {
