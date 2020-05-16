@@ -1565,17 +1565,14 @@ impl ChainStore for Store {
                            from ethereum_networks
                           where name = $2)) as block
               from (
-                select min((d.data->'latestEthereumBlockNumber'->>'data')::int) as block
-                  from subgraphs.entities d,
-                       subgraphs.entities a,
-                       subgraphs.entities ds
-                 where d.entity = 'SubgraphDeployment'
-                   and a.entity = 'SubgraphDeploymentAssignment'
-                   and ds.entity = 'EthereumContractDataSource'
-                   and left(ds.id, 46) = d.id
+                select min(d.latest_ethereum_block_number) as block
+                  from subgraphs.subgraph_deployment d,
+                       subgraphs.subgraph_deployment_assignment a,
+                       subgraphs.ethereum_contract_data_source ds
+                 where left(ds.id, 46) = d.id
                    and a.id = d.id
-                   and not (d.data->'failed'->>'data')::bool
-                   and ds.data->'network'->>'data' = $2) a;";
+                   and not d.failed
+                   and ds.network = $2) a;";
         let ancestor_count = i32::try_from(ancestor_count)
             .expect("ancestor_count fits into a signed 32 bit integer");
         diesel::sql_query(query)
