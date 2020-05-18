@@ -320,7 +320,7 @@ pub fn main() {
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
     let schema = ensure(Schema::parse(&schema, subgraph), "Failed to parse schema");
     let catalog = ensure(
-        Catalog::new(db_schema.to_owned()),
+        Catalog::make_empty(db_schema.to_owned()),
         "Failed to construct catalog",
     );
     let layout = ensure(

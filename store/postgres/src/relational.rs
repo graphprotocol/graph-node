@@ -340,7 +340,7 @@ impl Layout {
         schema: &Schema,
         schema_name: String,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(schema_name)?;
+        let catalog = Catalog::new(conn, schema_name)?;
         let layout = Self::new(schema, catalog, false)?;
         let sql = layout
             .as_ddl()
@@ -866,6 +866,7 @@ impl ColumnType {
         catalog: &Catalog,
         enums: &EnumMap,
         id_types: &IdTypeMap,
+        is_existing_text_column: bool,
     ) -> Result<ColumnType, StoreError> {
         let name = named_type(field_type);
 
@@ -880,10 +881,18 @@ impl ColumnType {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
             let name = SqlName::qualified_name(&catalog.schema, &SqlName::from(name));
-            return Ok(ColumnType::Enum(EnumType {
-                name,
-                values: values.clone(),
-            }));
+            if is_existing_text_column {
+                // We used to have a bug where columns that should have really
+                // been of an enum type were created as text columns. To make
+                // queries work against such misgenerated tables, we pretend
+                // that this GraphQL attribute is really of type `String`
+                return Ok(ColumnType::String);
+            } else {
+                return Ok(ColumnType::Enum(EnumType {
+                    name,
+                    values: values.clone(),
+                }));
+            }
         }
 
         // It is not an object type or an enum, and therefore one of our
@@ -941,6 +950,7 @@ pub struct Column {
 
 impl Column {
     fn new(
+        table_name: &SqlName,
         field: &s::Field,
         catalog: &Catalog,
         enums: &EnumMap,
@@ -955,7 +965,14 @@ impl Column {
         let column_type = if sql_name.as_str() == PRIMARY_KEY_COLUMN {
             IdType::try_from(&field.field_type)?.into()
         } else {
-            ColumnType::from_field_type(&field.field_type, catalog, enums, id_types)?
+            let is_existing_text_column = catalog.is_existing_text_column(table_name, &sql_name);
+            ColumnType::from_field_type(
+                &field.field_type,
+                catalog,
+                enums,
+                id_types,
+                is_existing_text_column,
+            )?
         };
         Ok(Column {
             name: sql_name,
@@ -1123,7 +1140,7 @@ impl Table {
             .fields
             .iter()
             .filter(|field| !derived_column(field))
-            .map(|field| Column::new(field, catalog, enums, id_types))
+            .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
@@ -1285,7 +1302,7 @@ mod tests {
     fn test_layout(gql: &str) -> Layout {
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph).expect("Test schema invalid");
-        let catalog = Catalog::new("rel".to_owned()).expect("Can not create catalog");
+        let catalog = Catalog::make_empty("rel".to_owned()).expect("Can not create catalog");
         Layout::new(&schema, catalog, false).expect("Failed to construct Layout")
     }
 

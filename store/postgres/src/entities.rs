@@ -1403,7 +1403,7 @@ impl Storage {
             V::Relational => {
                 let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
                 let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
-                let catalog = Catalog::new(schema.name)?;
+                let catalog = Catalog::new(conn, schema.name)?;
                 let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
                 Storage::Relational(layout)
             }
