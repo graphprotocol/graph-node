@@ -164,6 +164,19 @@ type IdTypeMap = HashMap<String, IdType>;
 
 type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
+/// Information about what tables and columns we have in the database
+#[derive(Debug, Clone)]
+pub struct Catalog {
+    pub schema: String,
+}
+
+impl Catalog {
+    pub fn new(schema: String) -> Result<Self, StoreError> {
+        SqlName::check_valid_identifier(&schema, "database schema")?;
+        Ok(Catalog { schema })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Layout {
     /// Maps the GraphQL name of a type to the relational table
@@ -171,7 +184,7 @@ pub struct Layout {
     /// The subgraph id
     pub subgraph: SubgraphDeploymentId,
     /// The database schema for this subgraph
-    pub schema: String,
+    pub catalog: Catalog,
     /// Enums defined in the schema and their possible values. The names
     /// are the original GraphQL names
     pub enums: EnumMap,
@@ -185,11 +198,9 @@ impl Layout {
     /// the subgraph's tables live is in `schema`.
     pub fn new(
         schema: &Schema,
-        schema_name: &str,
+        catalog: Catalog,
         create_proof_of_indexing: bool,
     ) -> Result<Self, StoreError> {
-        SqlName::check_valid_identifier(schema_name, "database schema")?;
-
         // Extract enum types
         let enums: EnumMap = schema
             .document
@@ -259,7 +270,7 @@ impl Layout {
             .map(|(i, obj_type)| {
                 Table::new(
                     obj_type,
-                    &schema_name,
+                    &catalog,
                     Schema::entity_fulltext_definitions(&obj_type.name, &schema.document),
                     &enums,
                     &id_types,
@@ -268,7 +279,7 @@ impl Layout {
             })
             .collect::<Result<Vec<_>, _>>()?;
         if create_proof_of_indexing {
-            tables.push(Self::make_poi_table(&schema_name, tables.len()))
+            tables.push(Self::make_poi_table(&catalog, tables.len()))
         }
 
         let tables: Vec<_> = tables.into_iter().map(|table| Arc::new(table)).collect();
@@ -278,7 +289,7 @@ impl Layout {
             .map(|table| {
                 format!(
                     "select count(*) from \"{}\".\"{}\" where upper_inf(block_range)",
-                    schema_name, table.name
+                    &catalog.schema, table.name
                 )
             })
             .collect::<Vec<_>>()
@@ -294,18 +305,18 @@ impl Layout {
 
         Ok(Layout {
             subgraph: schema.id.clone(),
-            schema: schema_name.to_owned(),
+            catalog,
             tables,
             enums,
             count_query,
         })
     }
 
-    fn make_poi_table(schema_name: &str, position: usize) -> Table {
+    fn make_poi_table(catalog: &Catalog, position: usize) -> Table {
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
             object: POI_OBJECT.to_owned(),
-            qualified_name: SqlName::qualified_name(schema_name, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.schema, &table_name),
             name: table_name,
             columns: vec![
                 Column {
@@ -339,9 +350,10 @@ impl Layout {
     pub fn create_relational_schema(
         conn: &PgConnection,
         schema: &Schema,
-        schema_name: &str,
+        schema_name: String,
     ) -> Result<Layout, StoreError> {
-        let layout = Self::new(schema, schema_name, false)?;
+        let catalog = Catalog::new(schema_name)?;
+        let layout = Self::new(schema, catalog, false)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
@@ -447,7 +459,7 @@ impl Layout {
             write!(
                 out,
                 "create type {}.{}\n    as enum (",
-                self.schema,
+                self.catalog.schema,
                 name.quoted()
             )?;
             for value in values.iter() {
@@ -509,7 +521,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            schema: &self.schema,
+            schema: &self.catalog.schema,
             ids_for_type,
             tables,
             block,
@@ -863,7 +875,7 @@ impl From<IdType> for ColumnType {
 impl ColumnType {
     fn from_field_type(
         field_type: &q::Type,
-        schema: &str,
+        catalog: &Catalog,
         enums: &EnumMap,
         id_types: &IdTypeMap,
     ) -> Result<ColumnType, StoreError> {
@@ -879,7 +891,7 @@ impl ColumnType {
         if let Some(values) = enums.get(&*name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
-            let name = SqlName::qualified_name(schema, &SqlName::from(name));
+            let name = SqlName::qualified_name(&catalog.schema, &SqlName::from(name));
             return Ok(ColumnType::Enum(EnumType {
                 name,
                 values: values.clone(),
@@ -942,7 +954,7 @@ pub struct Column {
 impl Column {
     fn new(
         field: &s::Field,
-        schema: &str,
+        catalog: &Catalog,
         enums: &EnumMap,
         id_types: &IdTypeMap,
     ) -> Result<Column, StoreError> {
@@ -955,7 +967,7 @@ impl Column {
         let column_type = if sql_name.as_str() == PRIMARY_KEY_COLUMN {
             IdType::try_from(&field.field_type)?.into()
         } else {
-            ColumnType::from_field_type(&field.field_type, schema, enums, id_types)?
+            ColumnType::from_field_type(&field.field_type, catalog, enums, id_types)?
         };
         Ok(Column {
             name: sql_name,
@@ -1110,7 +1122,7 @@ pub struct Table {
 impl Table {
     fn new(
         defn: &s::ObjectType,
-        schema: &str,
+        catalog: &Catalog,
         fulltexts: Vec<FulltextDefinition>,
         enums: &EnumMap,
         id_types: &IdTypeMap,
@@ -1123,14 +1135,14 @@ impl Table {
             .fields
             .iter()
             .filter(|field| !derived_column(field))
-            .map(|field| Column::new(field, schema, enums, id_types))
+            .map(|field| Column::new(field, catalog, enums, id_types))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
 
         let table = Table {
             object: defn.name.clone(),
             name: table_name.clone(),
-            qualified_name: SqlName::qualified_name(schema, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.schema, &table_name),
             columns,
             position,
         };
@@ -1194,7 +1206,7 @@ impl Table {
         writeln!(
             out,
             "create table {}.{} (",
-            layout.schema,
+            layout.catalog.schema,
             self.name.quoted()
         )?;
         for column in self.columns.iter() {
@@ -1244,7 +1256,7 @@ impl Table {
                 table_name = self.name,
                 column_index = i,
                 column_name = column.name,
-                schema_name = layout.schema,
+                schema_name = layout.catalog.schema,
                 method = method,
                 index_expr = index_expr,
             )?;
@@ -1285,7 +1297,8 @@ mod tests {
     fn test_layout(gql: &str) -> Layout {
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph).expect("Test schema invalid");
-        Layout::new(&schema, "rel", false).expect("Failed to construct Layout")
+        let catalog = Catalog::new("rel".to_owned()).expect("Can not create catalog");
+        Layout::new(&schema, catalog, false).expect("Failed to construct Layout")
     }
 
     #[test]

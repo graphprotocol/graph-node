@@ -55,7 +55,7 @@ use crate::history_event::HistoryEvent;
 use crate::jsonb_queries::FilterQuery;
 use crate::metadata;
 use crate::notification_listener::JsonNotification;
-use crate::relational::Layout;
+use crate::relational::{Catalog, Layout};
 
 lazy_static! {
     // We allow overriding the default storage scheme with the environment
@@ -843,7 +843,8 @@ impl Connection<'_> {
 
         match *GRAPH_STORAGE_SCHEME {
             v::Relational => {
-                let layout = Layout::create_relational_schema(&self.conn, schema, schema_name)?;
+                let layout =
+                    Layout::create_relational_schema(&self.conn, schema, schema_name.to_owned())?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
                     match Storage::new(&self.conn, &base)? {
@@ -1402,7 +1403,8 @@ impl Storage {
             V::Relational => {
                 let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
                 let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
-                let layout = Layout::new(&subgraph_schema, &schema.name, has_poi)?;
+                let catalog = Catalog::new(schema.name)?;
+                let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
                 Storage::Relational(layout)
             }
         };

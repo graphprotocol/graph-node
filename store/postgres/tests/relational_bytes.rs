@@ -102,7 +102,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", SCHEMA_NAME);
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME)
+    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME.to_owned())
         .expect("Failed to create relational schema")
 }
 

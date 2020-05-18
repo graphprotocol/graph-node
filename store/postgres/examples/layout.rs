@@ -6,7 +6,7 @@ use std::fs;
 use std::process::exit;
 
 use graph::prelude::{Schema, SubgraphDeploymentId};
-use graph_store_postgres::relational::{Column, ColumnType, Layout};
+use graph_store_postgres::relational::{Catalog, Column, ColumnType, Layout};
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);
@@ -92,7 +92,7 @@ fn print_views(layout: &Layout) {
             }
             print!(" as {}", column.name.as_str());
         }
-        println!("\n  from {}.entities", layout.schema);
+        println!("\n  from {}.entities", layout.catalog.schema);
         println!(" where entity = '{}';", table.object);
     }
 }
@@ -319,9 +319,12 @@ pub fn main() {
     let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
     let schema = ensure(Schema::parse(&schema, subgraph), "Failed to parse schema");
-
+    let catalog = ensure(
+        Catalog::new(db_schema.to_owned()),
+        "Failed to construct catalog",
+    );
     let layout = ensure(
-        Layout::new(&schema, db_schema, false),
+        Layout::new(&schema, catalog, false),
         "Failed to construct Mapping",
     );
     match kind {
