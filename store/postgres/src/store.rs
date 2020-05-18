@@ -1638,9 +1638,9 @@ impl EthereumCallCache for Store {
         use crate::db_schema::{eth_call_cache, eth_call_meta};
         use diesel::dsl::sql;
 
-        let id = contract_call_id(contract_address, encoded_call, block);
+        let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
-        conn.transaction(|| {
+        if let Some(call_output) = conn.transaction::<_, Error, _>(|| {
             if let Some((return_value, update_accessed_at)) = eth_call_cache::table
                 .find(id.as_ref())
                 .inner_join(eth_call_meta::table)
@@ -1660,7 +1660,31 @@ impl EthereumCallCache for Store {
             } else {
                 Ok(None)
             }
-        })
+        })? {
+            Ok(Some(call_output))
+        } else {
+            // No entry with the new id format, try the old one.
+            let old_id = old_contract_call_id(&contract_address, &encoded_call, &block);
+            if let Some(return_value) = eth_call_cache::table
+                .find(old_id.as_ref())
+                .select(eth_call_cache::return_value)
+                .get_result::<Vec<u8>>(conn)
+                .optional()?
+            {
+                use crate::db_schema::eth_call_cache::dsl;
+
+                // Once we stop getting these logs, this code can be removed.
+                trace!(self.logger, "Updating eth call cache entry");
+
+                // Migrate to the new format by re-inserting the call and deleting the old entry.
+                self.set_call(contract_address, encoded_call, block, &return_value)?;
+                diesel::delete(eth_call_cache::table.filter(dsl::id.eq(old_id.as_ref())))
+                    .execute(conn)?;
+                Ok(Some(return_value))
+            } else {
+                Ok(None)
+            }
+        }
     }
 
     fn set_call(
@@ -1673,7 +1697,7 @@ impl EthereumCallCache for Store {
         use crate::db_schema::{eth_call_cache, eth_call_meta};
         use diesel::dsl::sql;
 
-        let id = contract_call_id(contract_address, encoded_call, block);
+        let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
         conn.transaction(|| {
             insert_into(eth_call_cache::table)
@@ -1702,12 +1726,11 @@ impl EthereumCallCache for Store {
     }
 }
 
-/// The id is the hashed contract_address + encoded_call + block hash. This uniquely identifies the
-/// call. Use 128 bits of output to save some bytes in the DB.
-fn contract_call_id(
-    contract_address: ethabi::Address,
+/// Deprecated format for the contract call id.
+fn old_contract_call_id(
+    contract_address: &ethabi::Address,
     encoded_call: &[u8],
-    block: EthereumBlockPointer,
+    block: &EthereumBlockPointer,
 ) -> [u8; 16] {
     let mut id = [0; 16];
     let mut hash = tiny_keccak::Keccak::new_shake128();
@@ -1716,6 +1739,21 @@ fn contract_call_id(
     hash.update(block.hash.as_ref());
     hash.finalize(&mut id);
     id
+}
+
+/// The id is the hashed encoded_call + contract_address + block hash to uniquely identify the call.
+/// 256 bits of output, and therefore 128 bits of security against collisions, are needed since this
+/// could be targeted by a birthday attack.
+fn contract_call_id(
+    contract_address: &ethabi::Address,
+    encoded_call: &[u8],
+    block: &EthereumBlockPointer,
+) -> [u8; 32] {
+    let mut hash = blake3::Hasher::new();
+    hash.update(encoded_call);
+    hash.update(contract_address.as_ref());
+    hash.update(block.hash.as_ref());
+    *hash.finalize().as_bytes()
 }
 
 /// Delete all entities. This function exists solely for integration tests

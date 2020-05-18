@@ -208,6 +208,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68df31bdf2bbb567e5adf8f21ac125dc0e897b1381e7b841f181521f06fc3134"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "crypto-mac 0.7.0",
+ "digest 0.8.1",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -302,9 +317,9 @@ checksum = "130aac562c0dd69c56b3b1cc8ffd2e17be31d0b6c25b61c96b76231aa23e39e1"
 
 [[package]]
 name = "cc"
-version = "1.0.41"
+version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dae9c4b8fedcae85592ba623c4fd08cfdab3e3b72d6df780c6ead964a69bfff"
+checksum = "404b1fe4f65288577753b17e3b36a04596ee784493ec249bf81c7f2d2acd751c"
 
 [[package]]
 name = "cfg-if"
@@ -1355,6 +1370,7 @@ version = "0.18.0"
 dependencies = [
  "Inflector",
  "async-trait",
+ "blake3",
  "clap",
  "derive_more",
  "diesel",
@@ -3033,8 +3049,7 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 [[package]]
 name = "secp256k1"
 version = "0.17.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2932dc07acd2066ff2e3921a4419606b220ba6cd03a9935123856cc534877056"
+source = "git+https://github.com/rust-bitcoin/rust-secp256k1#a1842125a77cadaa8ac7d6ca794ddb1f4852c593"
 dependencies = [
  "secp256k1-sys",
 ]
@@ -3042,8 +3057,7 @@ dependencies = [
 [[package]]
 name = "secp256k1-sys"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ab2c26f0d3552a0f12e639ae8a64afc2e3db9c52fe32f5fc6c289d38519f220"
+source = "git+https://github.com/rust-bitcoin/rust-secp256k1#a1842125a77cadaa8ac7d6ca794ddb1f4852c593"
 dependencies = [
  "cc",
 ]
@@ -4231,7 +4245,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.10.0"
-source = "git+https://github.com/graphprotocol/rust-web3#040c509828b521497c591a07d036f06f9868a9d9"
+source = "git+https://github.com/graphprotocol/rust-web3#40f9cb5c9f363543a21bd98524081c82115e3f85"
 dependencies = [
  "arrayvec",
  "base64 0.12.1",
