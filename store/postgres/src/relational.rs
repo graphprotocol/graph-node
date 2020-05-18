@@ -37,6 +37,7 @@ use graph::prelude::{
 };
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, BLOCK_UNVERSIONED};
+pub use crate::catalog::Catalog;
 use crate::entities::STRING_PREFIX_SIZE;
 
 /// A string we use as a SQL name for a table or column. The important thing
@@ -65,7 +66,7 @@ impl SqlName {
 
     // Check that `name` matches the regular expression `/[A-Za-z][A-Za-z0-9_]*/`
     // without pulling in a regex matcher
-    fn check_valid_identifier(name: &str, kind: &str) -> Result<(), StoreError> {
+    pub fn check_valid_identifier(name: &str, kind: &str) -> Result<(), StoreError> {
         let mut chars = name.chars();
         match chars.next() {
             Some(c) => {
@@ -163,19 +164,6 @@ impl TryFrom<&s::Type> for IdType {
 type IdTypeMap = HashMap<String, IdType>;
 
 type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
-
-/// Information about what tables and columns we have in the database
-#[derive(Debug, Clone)]
-pub struct Catalog {
-    pub schema: String,
-}
-
-impl Catalog {
-    pub fn new(schema: String) -> Result<Self, StoreError> {
-        SqlName::check_valid_identifier(&schema, "database schema")?;
-        Ok(Catalog { schema })
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Layout {

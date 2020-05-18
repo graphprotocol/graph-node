@@ -21,6 +21,7 @@ extern crate serde;
 extern crate uuid;
 
 mod block_range;
+mod catalog;
 mod chain_head_listener;
 pub mod connection_pool;
 mod db_schema;
