@@ -1349,6 +1349,22 @@ mod tests {
         let layout = test_layout(FULLTEXT_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
         assert_eq!(FULLTEXT_DDL, sql);
+
+        let layout = test_layout(FORWARD_ENUM_GQL);
+        let sql = layout.as_ddl().expect("Failed to generate DDL");
+        assert_eq!(FORWARD_ENUM_SQL, sql);
+    }
+
+    #[test]
+    fn forward_enum() {
+        let layout = test_layout(FORWARD_ENUM_GQL);
+        let table = layout
+            .table(&SqlName::from("thing"))
+            .expect("thing table exists");
+        let column = table
+            .column(&SqlName::from("orientation"))
+            .expect("orientation column exists");
+        assert!(column.is_enum());
     }
 
     #[test]
@@ -1717,6 +1733,34 @@ create index attr_2_1_habitat_most_common
     on rel.\"habitat\" using btree(\"most_common\");
 create index attr_2_2_habitat_dwellers
     on rel.\"habitat\" using gin(\"dwellers\");
+
+";
+
+    const FORWARD_ENUM_GQL: &str = "
+type Thing @entity  {
+    id: ID!,
+    orientation: Orientation!
+}
+
+enum Orientation {
+    UP, DOWN
+}
+";
+
+    const FORWARD_ENUM_SQL: &str = "create type rel.\"orientation\"
+    as enum (\'DOWN\', \'UP\');
+create table rel.\"thing\" (
+        \"id\"                 text not null,
+        \"orientation\"        \"rel\".\"orientation\" not null,
+
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        exclude using gist   (id with =, block_range with &&)
+);
+create index attr_0_0_thing_id
+    on rel.\"thing\" using btree(\"id\");
+create index attr_0_1_thing_orientation
+    on rel.\"thing\" using btree(\"orientation\");
 
 ";
 }
