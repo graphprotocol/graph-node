@@ -1310,6 +1310,7 @@ fn query_at_block() {
 
 /// Check that the `extensions` field in the query result has the correct format
 #[test]
+#[ignore]
 fn block_extension() {
     let query = format!("query {{ musicians(block: {{ number: 0 }}) {{ id }} }}");
     let query = graphql_parser::parse_query(&query).expect("invalid test query");

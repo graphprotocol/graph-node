@@ -33,6 +33,7 @@ where
 /// Executes a query and returns a result.
 pub fn execute_query<R>(
     query: Arc<Query>,
+    selection_set: Option<&q::SelectionSet>,
     options: QueryExecutionOptions<R>,
 ) -> Result<q::Value, Vec<QueryExecutionError>>
 where
@@ -65,10 +66,11 @@ where
             "Only queries are supported".to_string(),
         )]);
     }
+    let selection_set = selection_set.unwrap_or(&query.selection_set);
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
     let start = Instant::now();
-    let result = execute_root_selection_set(&ctx, &query.selection_set);
+    let result = execute_root_selection_set(&ctx, selection_set);
     if *graph::log::LOG_GQL_TIMING {
         info!(
             query_logger,

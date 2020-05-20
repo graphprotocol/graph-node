@@ -564,7 +564,7 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     };
 
     let result =
-        PreparedQuery::new(query, None, 100).and_then(|query| execute_query(query, options));
+        PreparedQuery::new(query, None, 100).and_then(|query| execute_query(query, None, options));
     QueryResult::from(result)
 }
 

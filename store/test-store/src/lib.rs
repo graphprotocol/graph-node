@@ -10,6 +10,7 @@ use graph_graphql::prelude::{
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{Store, StoreConfig};
+use graphql_parser::query as q;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
@@ -367,19 +368,36 @@ fn execute_subgraph_query_internal(
 ) -> QueryResult {
     let logger = Logger::root(slog::Discard, o!());
     let query = return_err!(PreparedQuery::new(query, max_complexity, 100));
-    let bc = return_err!(query.block_constraint());
-    let (resolver, _block_ptr) = return_err!(StoreResolver::at_block(
-        &logger,
-        STORE.clone(),
-        bc,
-        &query.schema.id
-    ));
-
-    let options = QueryExecutionOptions {
-        logger,
-        resolver,
-        deadline,
-        max_first: std::u32::MAX,
-    };
-    QueryResult::from(execute_query(query, options))
+    let mut values = std::collections::BTreeMap::new();
+    let mut errors = Vec::new();
+    for (bc, selection_set) in return_err!(query.block_constraint()) {
+        let logger = logger.clone();
+        let (resolver, _block_ptr) = return_err!(StoreResolver::at_block(
+            &logger,
+            STORE.clone(),
+            bc,
+            &query.schema.id
+        ));
+        match execute_query(
+            query.clone(),
+            Some(&selection_set),
+            QueryExecutionOptions {
+                logger,
+                resolver,
+                deadline,
+                max_first: std::u32::MAX,
+            },
+        ) {
+            Err(errs) => errors.extend(errs),
+            Ok(vals) => match vals {
+                q::Value::Object(mut map) => values.append(&mut map),
+                _ => unreachable!("execute_query returns a q::Value::Object"),
+            },
+        };
+    }
+    if !errors.is_empty() {
+        QueryResult::from(errors)
+    } else {
+        QueryResult::new(Some(q::Value::Object(values)))
+    }
 }

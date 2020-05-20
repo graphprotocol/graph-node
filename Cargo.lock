@@ -3495,6 +3495,7 @@ dependencies = [
  "graph-graphql",
  "graph-mock",
  "graph-store-postgres",
+ "graphql-parser",
  "hex-literal",
  "lazy_static",
 ]

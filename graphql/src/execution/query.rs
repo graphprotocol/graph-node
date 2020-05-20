@@ -1,5 +1,5 @@
 use graphql_parser::{query as q, schema as s, Style};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::data::graphql::ext::TypeExt;
@@ -129,8 +129,10 @@ impl Query {
     /// Return the block constraint for the toplevel query field(s) Since,
     /// syntactically, each toplevel field can have its own block constraint,
     /// we check that they are all identical and report an error otherwise
-    pub fn block_constraint(&self) -> Result<BlockConstraint, Vec<QueryExecutionError>> {
-        let mut bcs = HashSet::new();
+    pub fn block_constraint(
+        &self,
+    ) -> Result<HashMap<BlockConstraint, q::SelectionSet>, Vec<QueryExecutionError>> {
+        let mut bcs = HashMap::new();
         let mut errors = Vec::new();
 
         for field in self.selection_set.items.iter().filter_map(|sel| match sel {
@@ -139,21 +141,21 @@ impl Query {
         }) {
             match field.block_constraint() {
                 Ok(bc) => {
-                    bcs.insert(bc);
+                    let selection_set = bcs.entry(bc).or_insert(q::SelectionSet {
+                        span: self.selection_set.span.clone(),
+                        items: vec![],
+                    });
+                    selection_set.items.push(q::Selection::Field(field.clone()));
                 }
-                Err(e) => errors.push(e),
+                Err(e) => {
+                    errors.push(e);
+                }
             }
-        }
-        if bcs.len() > 1 {
-            errors.push(QueryExecutionError::InconsistentBlockConstraints)
         }
         if !errors.is_empty() {
             Err(errors)
         } else {
-            Ok(bcs
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| BlockConstraint::default()))
+            Ok(bcs)
         }
     }
 

@@ -60,7 +60,6 @@ pub enum QueryExecutionError {
     Panic(String),
     EventStreamError,
     FulltextQueryRequiresFilter,
-    InconsistentBlockConstraints,
 }
 
 impl Error for QueryExecutionError {
@@ -208,7 +207,6 @@ impl fmt::Display for QueryExecutionError {
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
-            InconsistentBlockConstraints => write!(f, "when a query has multiple top level fields, they all must have the same block constraint")
         }
     }
 }

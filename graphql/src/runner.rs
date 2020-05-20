@@ -62,6 +62,7 @@ where
 
     /// Create a JSON value that contains the block information for our
     /// response
+    #[allow(dead_code)]
     fn make_extensions(
         &self,
         subgraph: &SubgraphDeploymentId,
@@ -111,20 +112,33 @@ where
     ) -> Result<QueryResult, Vec<QueryExecutionError>> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
-        let bc = query.block_constraint()?;
-        let (resolver, block_ptr) =
-            StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
-        let exts = self.make_extensions(&query.schema.id, &block_ptr)?;
-        execute_query(
-            query,
-            QueryExecutionOptions {
-                logger: self.logger.clone(),
-                resolver,
-                deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
-                max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
-            },
-        )
-        .map(|values| QueryResult::new(Some(values)).with_extensions(exts))
+        let mut values = BTreeMap::new();
+        let mut errors = Vec::new();
+        for (bc, selection_set) in query.block_constraint()? {
+            let (resolver, _block_ptr) =
+                StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
+            match execute_query(
+                query.clone(),
+                Some(&selection_set),
+                QueryExecutionOptions {
+                    logger: self.logger.clone(),
+                    resolver,
+                    deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
+                    max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
+                },
+            ) {
+                Err(errs) => errors.extend(errs),
+                Ok(vals) => match vals {
+                    q::Value::Object(mut map) => values.append(&mut map),
+                    _ => unreachable!("execute_query returns a q::Value::Object"),
+                },
+            }
+        }
+        if !errors.is_empty() {
+            Err(errors)
+        } else {
+            Ok(QueryResult::new(Some(q::Value::Object(values))))
+        }
     }
 }
 
