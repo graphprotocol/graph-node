@@ -23,12 +23,13 @@ graphql-parser = "0.2.3"
 Inflector = "0.11.3"
 lazy_static = "1.1"
 lru_time_cache = "0.9"
-maybe-owned = "0.3.2"
+# TODO: Use crates.io once a version >= 0.3.3 is published
+# See also 92cd8019-0136-4011-96a0-40b3eec37f73
+maybe-owned = { git = "https://github.com/rustonaut/maybe-owned", branch = "master" }
 postgres = "0.15.2"
 serde = "1.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
-twox-hash = "1.5.0"
 
 [dev-dependencies]
 clap = "2.33.1"

@@ -1,5 +1,7 @@
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
+use stable_hash::prelude::*;
+use stable_hash::utils::AsBytes;
 use std::cmp::Ordering;
 use std::fmt;
 use web3::types::*;
@@ -407,6 +409,13 @@ impl Clone for EthereumCallData {
 pub struct EthereumBlockPointer {
     pub hash: H256,
     pub number: u64,
+}
+
+impl StableHash for EthereumBlockPointer {
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
+        AsBytes(self.hash.as_bytes()).stable_hash(sequence_number.next_child(), state);
+        self.number.stable_hash(sequence_number.next_child(), state);
+    }
 }
 
 impl EthereumBlockPointer {

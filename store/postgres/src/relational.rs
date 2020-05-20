@@ -27,6 +27,7 @@ use crate::relational_queries::{
 };
 use graph::data::graphql::ext::{DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
+use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
 };
@@ -312,9 +313,9 @@ impl Layout {
                     name: SqlName::from("digest"),
                     field: "digest".to_owned(),
                     field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
-                        "String".to_owned(),
+                        BYTES_SCALAR.to_owned(),
                     ))),
-                    column_type: ColumnType::String,
+                    column_type: ColumnType::Bytes,
                     fulltext_fields: None,
                     is_reference: false,
                 },
@@ -342,7 +343,7 @@ impl Layout {
         schema_name: String,
     ) -> Result<Layout, StoreError> {
         let catalog = Catalog::new(conn, schema_name)?;
-        let layout = Self::new(schema, catalog, false)?;
+        let layout = Self::new(schema, catalog, true)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;

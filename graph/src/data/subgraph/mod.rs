@@ -67,8 +67,20 @@ where
 pub struct SubgraphDeploymentId(String);
 
 impl StableHash for SubgraphDeploymentId {
-    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+    #[inline]
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         self.0.stable_hash(sequence_number.next_child(), state);
+    }
+}
+
+impl slog::Value for SubgraphDeploymentId {
+    fn serialize(
+        &self,
+        record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        self.0.serialize(record, key, serializer)
     }
 }
 

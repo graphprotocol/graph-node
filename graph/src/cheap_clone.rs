@@ -24,6 +24,7 @@ impl<T: ?Sized> CheapClone for Rc<T> {}
 impl<T: ?Sized> CheapClone for Arc<T> {}
 impl<T: ?Sized + CheapClone> CheapClone for Box<T> {}
 impl<T: ?Sized + CheapClone> CheapClone for std::pin::Pin<T> {}
+impl<T: CheapClone> CheapClone for Option<T> {}
 impl CheapClone for Logger {}
 
 // Pool is implemented as a newtype over Arc,

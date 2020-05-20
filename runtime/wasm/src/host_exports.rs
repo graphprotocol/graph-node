@@ -4,7 +4,7 @@ use ethabi::{Address, Token};
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
-use graph::components::subgraph::ProofOfIndexingEvent;
+use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::store;
 use graph::prelude::serde_json;
@@ -12,6 +12,7 @@ use graph::prelude::{slog::b, slog::record_static, *};
 use semver::Version;
 use std::collections::HashMap;
 use std::fmt;
+use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use web3::types::H160;
@@ -55,7 +56,7 @@ pub(crate) struct HostExports {
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<MappingABI>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
-    link_resolver: Arc<dyn LinkResolver>,
+    pub(crate) link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
     store: Arc<dyn crate::RuntimeStore>,
     handler_timeout: Option<Duration>,
@@ -142,19 +143,23 @@ impl HostExports {
         &self,
         logger: &Logger,
         state: &mut BlockState,
+        proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), HostExportError<impl ExportError>> {
-        state.proof_of_indexing.write(
-            logger,
-            &self.causality_region,
-            &ProofOfIndexingEvent::SetEntity {
-                entity_type: &entity_type,
-                id: &entity_id,
-                data: &data,
-            },
-        );
+        if let Some(proof_of_indexing) = proof_of_indexing {
+            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
+            proof_of_indexing.write(
+                logger,
+                &self.causality_region,
+                &ProofOfIndexingEvent::SetEntity {
+                    entity_type: &entity_type,
+                    id: &entity_id,
+                    data: &data,
+                },
+            );
+        }
 
         // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
@@ -198,17 +203,21 @@ impl HostExports {
         &self,
         logger: &Logger,
         state: &mut BlockState,
+        proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
     ) {
-        state.proof_of_indexing.write(
-            logger,
-            &self.causality_region,
-            &ProofOfIndexingEvent::RemoveEntity {
-                entity_type: &entity_type,
-                id: &entity_id,
-            },
-        );
+        if let Some(proof_of_indexing) = proof_of_indexing {
+            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
+            proof_of_indexing.write(
+                logger,
+                &self.causality_region,
+                &ProofOfIndexingEvent::RemoveEntity {
+                    entity_type: &entity_type,
+                    id: &entity_id,
+                },
+            );
+        }
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type,
@@ -334,20 +343,6 @@ impl HostExports {
         result
     }
 
-    /// Converts bytes to a hex string.
-    /// References:
-    /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
-    /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
-    pub(crate) fn bytes_to_hex(&self, bytes: Vec<u8>) -> String {
-        // Even an empty string must be prefixed with `0x`.
-        // Encodes each byte as a two hex digits.
-        format!("0x{}", ::hex::encode(bytes))
-    }
-
-    pub(crate) fn big_int_to_string(&self, n: BigInt) -> String {
-        format!("{}", n)
-    }
-
     /// Prints the module of `n` in hex.
     /// Integers are encoded using the least amount of digits (no leading zero digits).
     /// Their encoding may be of uneven length. The number zero encodes as "0x0".
@@ -380,13 +375,6 @@ impl HostExports {
         }
     }
 
-    pub(crate) fn json_from_bytes(
-        &self,
-        bytes: &Vec<u8>,
-    ) -> Result<serde_json::Value, serde_json::Error> {
-        serde_json::from_reader(bytes.as_slice())
-    }
-
     pub(crate) fn ipfs_cat(
         &self,
         logger: &Logger,
@@ -407,8 +395,8 @@ impl HostExports {
     // of the callback must be `callback(JSONValue, Value)`, and the `userData`
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
-        &self,
-        module: &WasmiModule,
+        link_resolver: &Arc<dyn LinkResolver>,
+        module: &mut WasmiModule,
         link: String,
         callback: &str,
         user_data: store::Value,
@@ -421,7 +409,7 @@ impl HostExports {
 
         let host_metrics = module.host_metrics.clone();
         let valid_module = module.valid_module.clone();
-        let ctx = module.ctx.clone_with_empty_block_state();
+        let ctx = module.ctx.derive_with_empty_block_state();
         let callback = callback.to_owned();
         // Create a base error message to avoid borrowing headaches
         let errmsg = format!(
@@ -434,16 +422,14 @@ impl HostExports {
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
         let result = block_on03(async move {
-            let mut stream: JsonValueStream = self
-                .link_resolver
-                .json_stream(&logger, &Link { link })
-                .await?;
+            let mut stream: JsonValueStream =
+                link_resolver.json_stream(&logger, &Link { link }).await?;
             let mut v = Vec::new();
             while let Some(sv) = stream.next().await {
                 let sv = sv?;
                 let module = WasmiModule::from_valid_module_with_ctx(
                     valid_module.clone(),
-                    ctx.clone_with_empty_block_state(),
+                    ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;

@@ -13,9 +13,8 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use web3::types::H256;
+use web3::types::{Address, H256};
 
-use crate::components::subgraph::ProofOfIndexingDigest;
 use crate::data::store::*;
 use crate::data::subgraph::schema::*;
 use crate::prelude::*;
@@ -48,7 +47,7 @@ pub struct EntityKey {
 }
 
 impl StableHash for EntityKey {
-    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         self.subgraph_id
             .stable_hash(sequence_number.next_child(), state);
         self.entity_type
@@ -821,8 +820,9 @@ pub trait Store: Send + Sync + 'static {
     fn get_proof_of_indexing<'a>(
         &'a self,
         subgraph_id: &'a SubgraphDeploymentId,
-        block_number: u64,
-    ) -> DynTryFuture<'a, Option<ProofOfIndexingDigest>>;
+        indexer: &'a Option<Address>,
+        block_hash: H256,
+    ) -> DynTryFuture<'a, Option<[u8; 32]>>;
 
     /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
@@ -1240,8 +1240,9 @@ impl Store for MockStore {
     fn get_proof_of_indexing<'a>(
         &'a self,
         _subgraph_id: &'a SubgraphDeploymentId,
-        _block_number: u64,
-    ) -> DynTryFuture<'a, Option<ProofOfIndexingDigest>> {
+        _indexer: &'a Option<Address>,
+        _block_hash: H256,
+    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         unimplemented!();
     }
 

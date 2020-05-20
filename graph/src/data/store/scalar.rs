@@ -14,7 +14,7 @@ use stable_hash::{
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Add, Deref, Div, Mul, Rem, Sub};
 use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
@@ -175,33 +175,26 @@ impl bigdecimal::ToPrimitive for BigDecimal {
 }
 
 impl StableHash for BigDecimal {
-    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         let (int, exp) = self.as_bigint_and_exponent();
         // This only allows for backward compatible changes between
         // BigDecimal and unsigned ints
         exp.stable_hash(sequence_number.next_child(), state);
-        big_int_stable_hash(&int, sequence_number, state);
+        BigInt(int).stable_hash(sequence_number, state);
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
 
-fn big_int_stable_hash(
-    int: &num_bigint::BigInt,
-    sequence_number: impl SequenceNumber,
-    state: &mut impl StableHasher,
-) {
-    AsInt {
-        is_negative: int.sign() == BigIntSign::Minus,
-        little_endian: &int.to_bytes_le().1,
-    }
-    .stable_hash(sequence_number, state)
-}
-
 impl StableHash for BigInt {
-    fn stable_hash(&self, sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
-        big_int_stable_hash(&self.0, sequence_number, state);
+    #[inline]
+    fn stable_hash<H: StableHasher>(&self, sequence_number: H::Seq, state: &mut H) {
+        AsInt {
+            is_negative: self.0.sign() == BigIntSign::Minus,
+            little_endian: &self.to_bytes_le().1,
+        }
+        .stable_hash(sequence_number, state)
     }
 }
 
@@ -446,8 +439,15 @@ impl Rem for BigInt {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bytes(Box<[u8]>);
 
+impl Deref for Bytes {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl StableHash for Bytes {
-    fn stable_hash(&self, sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+    fn stable_hash<H: StableHasher>(&self, sequence_number: H::Seq, state: &mut H) {
         AsBytes(&self.0).stable_hash(sequence_number, state);
     }
 }
@@ -502,10 +502,10 @@ impl<'de> Deserialize<'de> for Bytes {
 #[cfg(test)]
 mod test {
     use super::{BigDecimal, BigInt};
+    use stable_hash::crypto::SetHasher;
     use stable_hash::prelude::*;
-    use stable_hash::utils::stable_hash_with_hasher;
+    use stable_hash::utils::stable_hash;
     use std::str::FromStr;
-    use twox_hash::XxHash64;
     use web3::types::U64;
 
     #[test]
@@ -517,13 +517,13 @@ mod test {
         }
     }
 
-    fn xx_stable_hash(value: impl StableHash) -> u64 {
-        stable_hash_with_hasher::<XxHash64, _>(&value)
+    fn crypto_stable_hash(value: impl StableHash) -> <SetHasher as StableHasher>::Out {
+        stable_hash::<SetHasher, _>(&value)
     }
 
     fn same_stable_hash(left: impl StableHash, right: impl StableHash) {
-        let left = xx_stable_hash(left);
-        let right = xx_stable_hash(right);
+        let left = crypto_stable_hash(left);
+        let right = crypto_stable_hash(right);
         assert_eq!(left, right);
     }
 
@@ -545,10 +545,31 @@ mod test {
 
     #[test]
     fn big_decimal_stable() {
-        let cases = vec![(5580731626265347763, "0.1"), (15037326160029728810, "-0.1")];
-        for case in cases.iter() {
-            let dec = BigDecimal::from_str(case.1).unwrap();
-            assert_eq!(case.0, xx_stable_hash(dec));
+        let cases = vec![
+            (
+                "28b09c9c3f3e2fe037631b7fbccdf65c37594073016d8bf4bb0708b3fda8066a",
+                "0.1",
+            ),
+            (
+                "74fb39f038d2f1c8975740bf2651a5ac0403330ee7e9367f9563cbd7d21086bd",
+                "-0.1",
+            ),
+            (
+                "1d79e0476bc5d6fe6074fb54636b04fd3bc207053c767d9cb5e710ba5f002441",
+                "198.98765544",
+            ),
+            (
+                "e63f6ad2c65f193aa9eba18dd7e1043faa2d6183597ba84c67765aaa95c95351",
+                "0.00000093937698",
+            ),
+            (
+                "6b06b34cc714810072988dc46c493c66a6b6c2c2dd0030271aa3adf3b3f21c20",
+                "98765587998098786876.0",
+            ),
+        ];
+        for (hash, s) in cases.iter() {
+            let dec = BigDecimal::from_str(s).unwrap();
+            assert_eq!(*hash, hex::encode(crypto_stable_hash(dec)));
         }
     }
 

@@ -6,7 +6,7 @@ use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth, SUBGRAPHS_ID}
 use graph::prelude::*;
 use graph_graphql::prelude::{object, ExecutionContext, IntoValue, ObjectOrInterface, Resolver};
 use std::convert::TryInto;
-use web3::types::H256;
+use web3::types::{Address, H256};
 
 static DEPLOYMENT_STATUS_FRAGMENT: &str = r#"
     fragment deploymentStatus on SubgraphDeploymentDetail {
@@ -515,29 +515,31 @@ where
         &self,
         argument_values: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        let subgraph_id = argument_values
-            .get_required::<String>("subgraph")
-            .expect("subgraphId not provided");
+        let deployment_id = argument_values
+            .get_required::<SubgraphDeploymentId>("subgraph")
+            .expect("Valid subgraphId required");
 
-        let block_number = argument_values
-            .get_required::<BigInt>("blockNumber")
-            .expect("blockNumber not provided")
+        let block_hash = argument_values
+            .get_required::<H256>("blockHash")
+            .expect("Valid blockHash required")
             .try_into()
             .unwrap();
 
-        let deployment_id = SubgraphDeploymentId::new(subgraph_id.clone()).unwrap();
+        let indexer = argument_values
+            .get_optional::<Address>("indexer")
+            .expect("Invalid indexer");
 
         let poi_fut = self
             .store
-            .get_proof_of_indexing(&deployment_id, block_number);
+            .get_proof_of_indexing(&deployment_id, &indexer, block_hash);
         let poi = match futures::executor::block_on(poi_fut) {
-            Ok(Some(poi)) => q::Value::String(poi.0),
+            Ok(Some(poi)) => q::Value::String(format!("0x{}", hex::encode(&poi))),
             Ok(None) => q::Value::Null,
             Err(e) => {
                 error!(
                     self.logger,
                     "Failed to query proof of indexing";
-                    "subgraph" => subgraph_id,
+                    "subgraph" => deployment_id,
                     "error" => format!("{:?}", e)
                 );
                 q::Value::Null

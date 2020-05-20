@@ -7,6 +7,7 @@ use failure::Error;
 use futures::sync::mpsc;
 
 use crate::components::metrics::HistogramVec;
+use crate::components::subgraph::SharedProofOfIndexing;
 use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
@@ -30,6 +31,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         transaction: &Arc<Transaction>,
         log: &Arc<Log>,
         state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, Error>;
 
     /// Process an Ethereum call and return a vector of entity operations
@@ -40,6 +42,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         transaction: &Arc<Transaction>,
         call: &Arc<EthereumCall>,
         state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, Error>;
 
     /// Process an Ethereum block and return a vector of entity operations
@@ -49,6 +52,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         block: &Arc<LightEthereumBlock>,
         trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, Error>;
 }
 

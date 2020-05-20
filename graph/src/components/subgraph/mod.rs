@@ -13,7 +13,8 @@ pub use self::instance::{BlockState, DataSourceTemplateInfo, SubgraphInstance};
 pub use self::instance_manager::SubgraphInstanceManager;
 pub use self::loader::DataSourceLoader;
 pub use self::proof_of_indexing::{
-    ProofOfIndexing, ProofOfIndexingDigest, ProofOfIndexingEvent, ProofOfIndexingStream,
+    BlockEventStream, ProofOfIndexing, ProofOfIndexingEvent, ProofOfIndexingFinisher,
+    SharedProofOfIndexing,
 };
 pub use self::provider::SubgraphAssignmentProvider;
 pub use self::registrar::{SubgraphRegistrar, SubgraphVersionSwitchingMode};

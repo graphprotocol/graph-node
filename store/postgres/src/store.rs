@@ -9,7 +9,6 @@ use graph::prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError};
 use graph::spawn_blocking_async_allow_panic;
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
-use stable_hash::utils::stable_hash_with_hasher;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
@@ -20,7 +19,7 @@ use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use graph::components::store::{EntityCollection, Store as StoreTrait};
-use graph::components::subgraph::ProofOfIndexingDigest;
+use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
 };
@@ -39,7 +38,7 @@ use graph::prelude::{
 
 use graph_chain_ethereum::BlockIngestorMetrics;
 use graph_graphql::prelude::api_schema;
-use web3::types::H256;
+use web3::types::{Address, H256};
 
 use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
@@ -920,8 +919,7 @@ impl Store {
     }
 
     fn block_ptr_with_conn(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: &SubgraphDeploymentId,
         conn: &e::Connection,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
         let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
@@ -964,8 +962,8 @@ impl StoreTrait for Store {
         &self,
         subgraph_id: SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
-        self.block_ptr_with_conn(
-            subgraph_id,
+        Self::block_ptr_with_conn(
+            &subgraph_id,
             &self
                 .get_entity_conn(&*SUBGRAPHS_ID)
                 .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
@@ -986,52 +984,113 @@ impl StoreTrait for Store {
     fn get_proof_of_indexing<'a>(
         &'a self,
         subgraph_id: &'a SubgraphDeploymentId,
-        block_number: u64,
-    ) -> DynTryFuture<'a, Option<ProofOfIndexingDigest>> {
+        indexer: &'a Option<Address>,
+        block_hash: H256,
+    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         let logger = self.logger.cheap_clone();
+        let subgraph_id_inner = subgraph_id.clone();
+        let indexer = indexer.clone();
+        let self_inner = self.cheap_clone();
 
-        self.with_entity_conn(subgraph_id, move |conn, cancel| {
-            cancel.check_cancel()?;
+        async move {
+            let entities_blocknumber = self
+                .with_entity_conn(subgraph_id, move |conn, cancel| {
+                    cancel.check_cancel()?;
 
-            if !conn.supports_proof_of_indexing() {
+                    if !conn.supports_proof_of_indexing() {
+                        return Ok(None);
+                    }
+
+                    conn.transaction::<_, CancelableError, _>(move || {
+                        let latest_block_ptr =
+                            match Self::block_ptr_with_conn(&subgraph_id_inner, conn)? {
+                                Some(inner) => inner,
+                                None => return Ok(None),
+                            };
+
+                        cancel.check_cancel()?;
+
+                        // FIXME: (Determinism)
+                        // There is no guarantee that we are able to look up the block number
+                        // even if we have indexed beyond it, because the cache is sparse and
+                        // only populated by blocks with triggers.
+                        //
+                        // This is labeled as a determinism bug because the PoI needs to be
+                        // submitted to the network reliably. Strictly speaking, that's not
+                        // indeterminism to miss an opportunity to claim a reward, but it's very
+                        // similar to most determinism bugs in that money is on the line.
+                        let block_number = self_inner
+                            .block_number(&subgraph_id_inner, block_hash)
+                            .map_err(|e| CancelableError::Error(e.into()))?;
+                        let block_number = match block_number {
+                            Some(n) => n.try_into().unwrap(),
+                            None => return Ok(None),
+                        };
+                        cancel.check_cancel()?;
+
+                        // FIXME: (Determinism)
+                        // It is vital to ensure that the block hash given in the query
+                        // is a parent of the latest block indexed for the subgraph.
+                        // Unfortunately the machinery needed to do this is not yet in place.
+                        // The best we can do right now is just to make sure that the block number
+                        // is high enough.
+                        if latest_block_ptr.number < block_number {
+                            return Ok(None);
+                        }
+
+                        let entities = conn
+                            .query(
+                                &logger,
+                                EntityCollection::All(vec![POI_OBJECT.to_owned()]),
+                                None,
+                                None,
+                                EntityRange {
+                                    first: None,
+                                    skip: 0,
+                                },
+                                block_number.try_into().unwrap(),
+                            )
+                            .map_err(Error::from)?;
+
+                        Ok(Some((entities, block_number)))
+                    })
+                })
+                .await?;
+
+            let (entities, block_number) = if let Some(entities_blocknumber) = entities_blocknumber
+            {
+                entities_blocknumber
+            } else {
                 return Ok(None);
-            }
+            };
 
-            let entities = conn
-                .query(
-                    &logger,
-                    EntityCollection::All(vec![POI_OBJECT.to_owned()]),
-                    None,
-                    None,
-                    EntityRange {
-                        first: None,
-                        skip: 0,
-                    },
-                    block_number.try_into().unwrap(),
-                )
-                .map_err(Error::from)?;
-            cancel.check_cancel()?;
-
-            let by_causality_region = entities
+            let mut by_causality_region = entities
                 .into_iter()
                 .map(|e| {
                     let causality_region = e.id()?;
                     let digest = match e.get("digest") {
-                        None => Err(format_err!("Entity is missing a digest attribute")),
-                        Some(Value::String(s)) => Ok(s.to_owned()),
-                        _ => Err(format_err!("Entity has non-string digest attribute")),
+                        Some(Value::Bytes(b)) => Ok(b.to_owned()),
+                        other => Err(format_err!(
+                            "Entity has non-bytes digest attribute: {:?}",
+                            other
+                        )),
                     }?;
 
-                    let poi = ProofOfIndexingDigest(digest);
-
-                    Ok((causality_region, poi))
+                    Ok((causality_region, digest))
                 })
                 .collect::<Result<HashMap<_, _>, Error>>()?;
 
-            let hash = stable_hash_with_hasher::<twox_hash::XxHash64, _>(&by_causality_region);
-            let hash = format!("{:x}", hash);
-            Ok(Some(ProofOfIndexingDigest(hash)))
-        })
+            let block = EthereumBlockPointer {
+                number: block_number,
+                hash: block_hash,
+            };
+            let mut finisher = ProofOfIndexingFinisher::new(&block, &subgraph_id, &indexer);
+            for (name, region) in by_causality_region.drain() {
+                finisher.add_causality_region(&name, &region);
+            }
+
+            Ok(Some(finisher.finish()))
+        }
         .boxed()
     }
 
@@ -1122,7 +1181,7 @@ impl StoreTrait for Store {
 
         let (event, metadata_event, should_migrate) =
             econn.transaction(|| -> Result<_, StoreError> {
-                let block_ptr_from = self.block_ptr_with_conn(subgraph_id.clone(), &econn)?;
+                let block_ptr_from = Self::block_ptr_with_conn(&subgraph_id, &econn)?;
                 if let Some(ref block_ptr_from) = block_ptr_from {
                     assert!(block_ptr_from.number < block_ptr_to.number);
                 }
@@ -1217,7 +1276,7 @@ impl StoreTrait for Store {
         let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
             assert_eq!(
                 Some(block_ptr_from),
-                self.block_ptr_with_conn(subgraph_id.clone(), &econn)?
+                Self::block_ptr_with_conn(&subgraph_id, &econn)?
             );
             let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
                 &subgraph_id,

@@ -78,6 +78,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic_refcell"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bc31dce067eab974c815a9deb95f6217806de7b53685d7fc31f8ccf3fb2539f"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1104,6 +1110,7 @@ version = "0.18.0"
 dependencies = [
  "Inflector",
  "async-trait",
+ "atomic_refcell",
  "bigdecimal",
  "bytes 0.5.4",
  "chrono",
@@ -1118,6 +1125,7 @@ dependencies = [
  "ipfs-api",
  "isatty",
  "lazy_static",
+ "maplit",
  "mockall",
  "num-bigint",
  "num-traits",
@@ -1142,7 +1150,6 @@ dependencies = [
  "tiny-keccak 1.5.0",
  "tokio 0.2.21",
  "tokio-retry",
- "twox-hash",
  "url 2.1.1",
  "uuid 0.8.1",
  "web3",
@@ -1181,6 +1188,7 @@ name = "graph-core"
 version = "0.18.0"
 dependencies = [
  "async-trait",
+ "atomic_refcell",
  "bytes 0.5.4",
  "futures 0.1.29",
  "futures 0.3.4",
@@ -1271,6 +1279,7 @@ name = "graph-runtime-wasm"
 version = "0.18.0"
 dependencies = [
  "async-trait",
+ "atomic_refcell",
  "bs58",
  "bytes 0.5.4",
  "ethabi 12.0.0 (git+https://github.com/graphprotocol/ethabi.git)",
@@ -1285,6 +1294,7 @@ dependencies = [
  "hex 0.4.2",
  "ipfs-api",
  "lazy_static",
+ "maybe-owned",
  "parity-wasm",
  "pwasm-utils",
  "semver",
@@ -1395,7 +1405,6 @@ dependencies = [
  "serde",
  "stable-hash",
  "test-store",
- "twox-hash",
  "uuid 0.8.1",
 ]
 
@@ -1889,6 +1898,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
+name = "leb128"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3576a87f2ba00f6f106fdfcd16db1d698d648a26ad8e0573cad8537c3c362d2a"
+
+[[package]]
 name = "libc"
 version = "0.2.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1934,6 +1949,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab44e08e5b5110188be64dc8f0865635206ad7386fe672903bef195df3cc8960"
 
 [[package]]
+name = "maplit"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
+
+[[package]]
 name = "matches"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1941,9 +1962,8 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
 name = "maybe-owned"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "006ac35c23dc00cd88083b27297224aedc893d628aff7374352b4f3d57315fa9"
+version = "0.3.3"
+source = "git+https://github.com/rustonaut/maybe-owned#471652f18671340fa03b9e47a2abf77723593866"
 
 [[package]]
 name = "maybe-uninit"
@@ -3341,9 +3361,13 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stable-hash"
-version = "0.1.0"
-source = "git+https://github.com/graphprotocol/stable-hash#75d7ed4f5d2adce4d194b7aac6d78ec315298690"
+version = "0.3.0"
+source = "git+https://github.com/graphprotocol/stable-hash#eee60fa80997b10882d41067b11c265664d45add"
 dependencies = [
+ "blake3",
+ "lazy_static",
+ "leb128",
+ "num-bigint",
  "num-traits",
 ]
 
@@ -3918,15 +3942,6 @@ dependencies = [
  "sha-1",
  "url 2.1.1",
  "utf-8",
-]
-
-[[package]]
-name = "twox-hash"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bfd5b7557925ce778ff9b9ef90e3ade34c524b5ff10e239c69a42d546d2af56"
-dependencies = [
- "rand 0.7.3",
 ]
 
 [[package]]

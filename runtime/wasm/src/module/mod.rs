@@ -22,6 +22,7 @@ use web3::types::{Log, Transaction, U256};
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
 use crate::asc_abi::*;
+use crate::host_exports::HostExports;
 use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
 
@@ -178,6 +179,31 @@ impl WasmiModule {
         Ok(this)
     }
 
+    pub(crate) fn handle_json_callback(
+        mut self,
+        handler_name: &str,
+        value: &serde_json::Value,
+        user_data: &store::Value,
+    ) -> Result<BlockState, FailureError> {
+        let value = RuntimeValue::from(self.asc_new(value));
+        let user_data = RuntimeValue::from(self.asc_new(user_data));
+
+        // Invoke the callback
+        let result =
+            self.module
+                .clone()
+                .invoke_export(handler_name, &[value, user_data], &mut self);
+
+        // Return either the collected entity operations or an error
+        result.map(|_| self.ctx.state).map_err(|e| {
+            format_err!(
+                "Failed to handle callback with handler \"{}\": {}",
+                handler_name,
+                format_wasmi_error(e),
+            )
+        })
+    }
+
     pub(crate) fn handle_ethereum_log(
         mut self,
         handler_name: &str,
@@ -232,31 +258,6 @@ impl WasmiModule {
                 "Failed to handle Ethereum event with handler \"{}\": {}",
                 handler_name,
                 format_wasmi_error(e)
-            )
-        })
-    }
-
-    pub(crate) fn handle_json_callback(
-        mut self,
-        handler_name: &str,
-        value: &serde_json::Value,
-        user_data: &store::Value,
-    ) -> Result<BlockState, FailureError> {
-        let value = RuntimeValue::from(self.asc_new(value));
-        let user_data = RuntimeValue::from(self.asc_new(user_data));
-
-        // Invoke the callback
-        let result =
-            self.module
-                .clone()
-                .invoke_export(handler_name, &[value, user_data], &mut self);
-
-        // Return either the collected entity operations or an error
-        result.map(|_| self.ctx.state).map_err(|e| {
-            format_err!(
-                "Failed to handle callback with handler \"{}\": {}",
-                handler_name,
-                format_wasmi_error(e),
             )
         })
     }
@@ -363,6 +364,10 @@ impl AscHeap for WasmiModule {
 
 impl<E> HostError for HostExportError<E> where E: fmt::Debug + fmt::Display + Send + Sync + 'static {}
 
+fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::from_reader(bytes.as_slice())
+}
+
 // Implementation of externals.
 impl WasmiModule {
     fn gas(&mut self) -> Result<Option<RuntimeValue>, Trap> {
@@ -421,9 +426,14 @@ impl WasmiModule {
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
         let data = self.try_asc_get(data_ptr).map_err(HostExportError::from)?;
-        self.ctx
-            .host_exports
-            .store_set(&self.ctx.logger, &mut self.ctx.state, entity, id, data)?;
+        self.ctx.host_exports.store_set(
+            &self.ctx.logger,
+            &mut self.ctx.state,
+            &self.ctx.proof_of_indexing,
+            entity,
+            id,
+            data,
+        )?;
         Ok(None)
     }
 
@@ -438,9 +448,13 @@ impl WasmiModule {
         }
         let entity = self.asc_get(entity_ptr);
         let id = self.asc_get(id_ptr);
-        self.ctx
-            .host_exports
-            .store_remove(&self.ctx.logger, &mut self.ctx.state, entity, id);
+        self.ctx.host_exports.store_remove(
+            &self.ctx.logger,
+            &mut self.ctx.state,
+            &self.ctx.proof_of_indexing,
+            entity,
+            id,
+        );
         Ok(None)
     }
 
@@ -495,11 +509,17 @@ impl WasmiModule {
 
     /// Converts bytes to a hex string.
     /// function typeConversion.bytesToHex(bytes: Bytes): string
+    /// References:
+    /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
+    /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
     fn bytes_to_hex(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
-        let result = self.ctx.host_exports.bytes_to_hex(self.asc_get(bytes_ptr));
+        let bytes: Vec<u8> = self.asc_get(bytes_ptr);
+        // Even an empty string must be prefixed with `0x`.
+        // Encodes each byte as a two hex digits.
+        let result = format!("0x{}", hex::encode(bytes));
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -510,7 +530,7 @@ impl WasmiModule {
     ) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.asc_get(big_int_ptr);
         let n = BigInt::from_signed_bytes_le(&*bytes);
-        let result = self.ctx.host_exports.big_int_to_string(n);
+        let result = format!("{}", n);
         Ok(Some(RuntimeValue::from(self.asc_new(&result))))
     }
 
@@ -551,7 +571,7 @@ impl WasmiModule {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.asc_get(bytes_ptr);
-        let result = self.ctx.host_exports.json_from_bytes(&bytes).map_err(|e| {
+        let result = json_from_bytes(&bytes).map_err(|e| {
             HostExportError(format!(
                 "Failed to parse JSON from byte array. Bytes: `{bytes:?}`. Error: {error}",
                 bytes = bytes,
@@ -567,7 +587,7 @@ impl WasmiModule {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<Option<RuntimeValue>, Trap> {
         let bytes: Vec<u8> = self.asc_get(bytes_ptr);
-        let result = self.ctx.host_exports.json_from_bytes(&bytes).map_err(|e| {
+        let result = json_from_bytes(&bytes).map_err(|e| {
             warn!(
                 &self.ctx.logger,
                 "Failed to parse JSON from byte array";
@@ -616,36 +636,38 @@ impl WasmiModule {
 
         let flags = self.asc_get(flags);
         let start_time = Instant::now();
-        let result =
-            match self
-                .ctx
-                .host_exports
-                .ipfs_map(&self, link.clone(), &*callback, user_data, flags)
-            {
-                Ok(output_states) => {
-                    debug!(
-                        &self.ctx.logger,
-                        "Successfully processed file with ipfs.map";
-                        "link" => &link,
-                        "callback" => &*callback,
-                        "n_calls" => output_states.len(),
-                        "time" => format!("{}ms", start_time.elapsed().as_millis())
-                    );
-                    for output_state in output_states {
-                        self.ctx
-                            .state
-                            .entity_cache
-                            .extend(output_state.entity_cache)
-                            .map_err(|e| HostExportError(e.to_string()))?;
-                        self.ctx
-                            .state
-                            .created_data_sources
-                            .extend(output_state.created_data_sources);
-                    }
-                    Ok(None)
+        let result = match HostExports::ipfs_map(
+            &self.ctx.host_exports.link_resolver.clone(),
+            self,
+            link.clone(),
+            &*callback,
+            user_data,
+            flags,
+        ) {
+            Ok(output_states) => {
+                debug!(
+                    &self.ctx.logger,
+                    "Successfully processed file with ipfs.map";
+                    "link" => &link,
+                    "callback" => &*callback,
+                    "n_calls" => output_states.len(),
+                    "time" => format!("{}ms", start_time.elapsed().as_millis())
+                );
+                for output_state in output_states {
+                    self.ctx
+                        .state
+                        .entity_cache
+                        .extend(output_state.entity_cache)
+                        .map_err(|e| HostExportError(e.to_string()))?;
+                    self.ctx
+                        .state
+                        .created_data_sources
+                        .extend(output_state.created_data_sources);
                 }
-                Err(e) => Err(e.into()),
-            };
+                Ok(None)
+            }
+            Err(e) => Err(e.into()),
+        };
 
         // Advance this module's start time by the time it took to run the entire
         // ipfs_map. This has the effect of not charging this module for the time

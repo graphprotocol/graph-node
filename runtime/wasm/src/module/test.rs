@@ -172,6 +172,7 @@ fn mock_context(
         block: Default::default(),
         host_exports: Arc::new(mock_host_exports(subgraph_id, data_source, store.clone())),
         state: BlockState::new(store, Default::default()),
+        proof_of_indexing: None,
     }
 }
 
