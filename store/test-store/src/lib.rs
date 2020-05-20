@@ -389,10 +389,7 @@ fn execute_subgraph_query_internal(
             },
         ) {
             Err(errs) => errors.extend(errs),
-            Ok(vals) => match vals {
-                q::Value::Object(mut map) => values.append(&mut map),
-                _ => unreachable!("execute_query returns a q::Value::Object"),
-            },
+            Ok(mut vals) => values.append(&mut vals),
         };
     }
     if !errors.is_empty() {

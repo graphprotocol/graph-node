@@ -1,5 +1,6 @@
 use graph::prelude::{info, o, Logger, QueryExecutionError};
 use graphql_parser::query as q;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
@@ -35,7 +36,7 @@ pub fn execute_query<R>(
     query: Arc<Query>,
     selection_set: Option<&q::SelectionSet>,
     options: QueryExecutionOptions<R>,
-) -> Result<q::Value, Vec<QueryExecutionError>>
+) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>
 where
     R: Resolver,
 {

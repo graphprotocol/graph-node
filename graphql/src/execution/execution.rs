@@ -105,7 +105,7 @@ pub fn prefetch(
 pub fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
         Some(t) => t,
@@ -165,7 +165,7 @@ pub fn execute_root_selection_set(
             &None,
         )?);
     }
-    Ok(q::Value::Object(values))
+    Ok(values)
 }
 
 /// Executes a selection set, requiring the result to be of the given object type.

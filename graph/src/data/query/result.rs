@@ -69,3 +69,12 @@ impl From<Result<q::Value, Vec<QueryExecutionError>>> for QueryResult {
         }
     }
 }
+
+impl From<Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>> for QueryResult {
+    fn from(result: Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>) -> Self {
+        match result {
+            Ok(v) => QueryResult::new(Some(q::Value::Object(v))),
+            Err(errors) => QueryResult::from(errors),
+        }
+    }
+}
