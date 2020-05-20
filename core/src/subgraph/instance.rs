@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 
+use graph::components::subgraph::SharedProofOfIndexing;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use web3::types::Log;
 
@@ -135,8 +136,17 @@ where
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, Error> {
-        Self::process_trigger_in_runtime_hosts(logger, &self.hosts, block, trigger, state).await
+        Self::process_trigger_in_runtime_hosts(
+            logger,
+            &self.hosts,
+            block,
+            trigger,
+            state,
+            proof_of_indexing,
+        )
+        .await
     }
 
     async fn process_trigger_in_runtime_hosts(
@@ -145,6 +155,7 @@ where
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         mut state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, Error> {
         match trigger {
             EthereumTrigger::Log(log) => {
@@ -160,7 +171,14 @@ where
                 let transaction = Arc::new(transaction);
                 for host in matching_hosts {
                     state = host
-                        .process_log(logger, block, &transaction, &log, state)
+                        .process_log(
+                            logger,
+                            block,
+                            &transaction,
+                            &log,
+                            state,
+                            proof_of_indexing.cheap_clone(),
+                        )
                         .await?;
                 }
             }
@@ -175,7 +193,14 @@ where
 
                 for host in matching_hosts {
                     state = host
-                        .process_call(logger, block, &transaction, &call, state)
+                        .process_call(
+                            logger,
+                            block,
+                            &transaction,
+                            &call,
+                            state,
+                            proof_of_indexing.cheap_clone(),
+                        )
                         .await?;
                 }
             }
@@ -185,7 +210,13 @@ where
                     .filter(|host| host.matches_block(&trigger_type, ptr.number));
                 for host in matching_hosts {
                     state = host
-                        .process_block(logger, block, &trigger_type, state)
+                        .process_block(
+                            logger,
+                            block,
+                            &trigger_type,
+                            state,
+                            proof_of_indexing.cheap_clone(),
+                        )
                         .await?;
                 }
             }

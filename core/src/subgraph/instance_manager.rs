@@ -1,12 +1,14 @@
+use atomic_refcell::AtomicRefCell;
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use graph::components::ethereum::triggers_in_block;
 use graph::components::store::ModificationsAndCache;
-use graph::components::subgraph::{ProofOfIndexing, ProofOfIndexingDigest};
+use graph::components::subgraph::{ProofOfIndexing, SharedProofOfIndexing};
+use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{
     queries::LazyMetadata, DynamicEthereumContractDataSourceEntity, SubgraphError, SubgraphHealth,
     POI_OBJECT,
@@ -606,7 +608,7 @@ where
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-async fn process_block<B, T: RuntimeHostBuilder, S>(
+async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S>(
     logger: &Logger,
     eth_adapter: Arc<dyn EthereumAdapter>,
     mut ctx: IndexingContext<B, T, S>,
@@ -614,7 +616,6 @@ async fn process_block<B, T: RuntimeHostBuilder, S>(
     block: EthereumBlockWithTriggers,
 ) -> Result<(IndexingContext<B, T, S>, bool), CancelableError<Error>>
 where
-    B: BlockStreamBuilder,
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
     let triggers = block.triggers;
@@ -643,6 +644,19 @@ where
 
     let metrics = ctx.subgraph_metrics.clone();
 
+    let proof_of_indexing = if ctx
+        .inputs
+        .store
+        .supports_proof_of_indexing(&ctx.inputs.deployment_id)
+        .await?
+    {
+        Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
+            block_ptr.number,
+        ))))
+    } else {
+        None
+    };
+
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
     let (mut ctx, mut block_state) = process_triggers(
@@ -651,6 +665,7 @@ where
             ctx.inputs.store.clone(),
             std::mem::take(&mut ctx.state.entity_lfu_cache),
         ),
+        proof_of_indexing.cheap_clone(),
         ctx,
         &light_block,
         triggers,
@@ -727,6 +742,7 @@ where
                 &light_block,
                 trigger,
                 block_state,
+                proof_of_indexing.cheap_clone(),
             )
             .await?;
         }
@@ -739,14 +755,16 @@ where
         return Err(CancelableError::Cancel);
     }
 
-    update_proof_of_indexing(
-        &mut block_state.proof_of_indexing,
-        &ctx.host_metrics.stopwatch,
-        ctx.inputs.store.as_ref(),
-        &ctx.inputs.deployment_id,
-        &mut block_state.entity_cache,
-    )
-    .await?;
+    if let Some(proof_of_indexing) = proof_of_indexing {
+        let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
+        update_proof_of_indexing(
+            proof_of_indexing,
+            &ctx.host_metrics.stopwatch,
+            &ctx.inputs.deployment_id,
+            &mut block_state.entity_cache,
+        )
+        .await?;
+    }
 
     let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
@@ -811,26 +829,14 @@ where
 /// Transform the proof of indexing changes into entity updates that will be
 /// inserted when as_modifications is called.
 async fn update_proof_of_indexing(
-    proof_of_indexing: &mut ProofOfIndexing,
+    proof_of_indexing: ProofOfIndexing,
     stopwatch: &StopwatchMetrics,
-    store: &(impl Store + SubgraphDeploymentStore),
     deployment_id: &SubgraphDeploymentId,
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
-    // Need to take this out whether or not we hit the early return. Otherwise it accumulates
-    let mut proof_of_indexing = if let Some(proof_of_indexing) = proof_of_indexing.take() {
-        proof_of_indexing
-    } else {
-        return Ok(());
-    };
-
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
 
-    // Check if the PoI table actually exists. Do not update PoI unless the subgraph
-    // was deployed after the feature was implemented
-    if !store.supports_proof_of_indexing(&deployment_id).await? {
-        return Ok(());
-    }
+    let mut proof_of_indexing = proof_of_indexing.take();
 
     for (causality_region, stream) in proof_of_indexing.drain() {
         // Create the special POI entity key specific to this causality_region
@@ -846,12 +852,13 @@ async fn update_proof_of_indexing(
                 .get(&entity_key)
                 .map_err(Error::from)?
                 .map(|entity| match entity.get("digest") {
-                    Some(Value::String(s)) => ProofOfIndexingDigest(s.clone()),
-                    _ => panic!("Expected POI entity to have a digest and for it to be a string"),
+                    Some(Value::Bytes(b)) => b.clone(),
+                    _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
                 });
 
         // Finish the POI stream, getting the new POI value.
-        let ProofOfIndexingDigest(updated_proof_of_indexing) = stream.finish(&prev_poi);
+        let updated_proof_of_indexing = stream.pause(prev_poi.as_deref());
+        let updated_proof_of_indexing: Bytes = (&updated_proof_of_indexing[..]).into();
 
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
@@ -869,6 +876,7 @@ async fn update_proof_of_indexing(
 async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send + Sync>(
     logger: &Logger,
     mut block_state: BlockState,
+    proof_of_indexing: SharedProofOfIndexing,
     ctx: IndexingContext<B, T, S>,
     block: &Arc<LightEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
@@ -890,7 +898,13 @@ async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send 
         block_state = ctx
             .state
             .instance
-            .process_trigger(&logger, &block, trigger, block_state)
+            .process_trigger(
+                &logger,
+                &block,
+                trigger,
+                block_state,
+                proof_of_indexing.cheap_clone(),
+            )
             .await
             .map_err(move |e| match transaction_id {
                 Some(tx_hash) => format_err!(

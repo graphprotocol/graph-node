@@ -5,6 +5,7 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1.31"
+atomic_refcell = "0.1.6"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 bytes = "0.5"
 diesel = { version = "1.4.3", features = ["postgres", "serde_json", "numeric", "r2d2"] }
@@ -39,7 +40,6 @@ slog = { version = "2.5.2", features = ["release_max_level_trace", "max_level_tr
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
 strum = "0.18.0"
 strum_macros = "0.18.0"
-twox-hash = "1.5.0"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.5.0"
@@ -58,3 +58,4 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
 
 [dev-dependencies]
 test-store = { path = "../store/test-store" }
+maplit = "1.0.2"

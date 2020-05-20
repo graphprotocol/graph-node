@@ -3,7 +3,9 @@ use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
 use graph::components::ethereum::*;
+use graph::components::subgraph::SharedProofOfIndexing;
 use graph::prelude::*;
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 use strum_macros::AsStaticStr;
@@ -138,15 +140,17 @@ pub(crate) struct MappingContext {
     pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
     pub(crate) block: Arc<LightEthereumBlock>,
     pub(crate) state: BlockState,
+    pub(crate) proof_of_indexing: SharedProofOfIndexing,
 }
 
 impl MappingContext {
-    pub fn clone_with_empty_block_state(&self) -> Self {
+    pub fn derive_with_empty_block_state(&self) -> Self {
         MappingContext {
             logger: self.logger.clone(),
             host_exports: self.host_exports.clone(),
             block: self.block.clone(),
             state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
+            proof_of_indexing: self.proof_of_indexing.cheap_clone(),
         }
     }
 }

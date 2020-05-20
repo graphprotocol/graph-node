@@ -289,7 +289,7 @@ mod tests {
             None,
         );
 
-        // We don't spport going from Value::Float -> TypeDefinition::Scalar(Boolean)
+        // We don't support going from Value::Float -> TypeDefinition::Scalar(Boolean)
         assert_eq!(
             coerce_to_definition(
                 &Value::Float(1.0),
@@ -375,7 +375,7 @@ mod tests {
             Some(Value::String("-5".to_string())),
         );
 
-        // We don't spport going from Value::Boolean -> TypeDefinition::Scalar(Boolean)
+        // We don't support going from Value::Boolean -> TypeDefinition::Scalar(Boolean)
         assert_eq!(
             coerce_to_definition(
                 &Value::Boolean(true),
@@ -441,7 +441,7 @@ mod tests {
             None,
         );
 
-        // We don't spport going from Value::Float -> TypeDefinition::Scalar(String)
+        // We don't support going from Value::Float -> TypeDefinition::Scalar(String)
         assert_eq!(
             coerce_to_definition(
                 &Value::Float(23.7),

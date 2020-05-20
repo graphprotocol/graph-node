@@ -3,11 +3,10 @@ use mockall::*;
 use std::collections::BTreeMap;
 
 use graph::components::store::*;
-use graph::components::subgraph::ProofOfIndexingDigest;
 use graph::data::subgraph::schema::*;
 use graph::prelude::*;
 use graph_graphql::prelude::api_schema;
-use web3::types::H256;
+use web3::types::{Address, H256};
 
 mock! {
     pub Store {
@@ -87,8 +86,9 @@ impl Store for MockStore {
     fn get_proof_of_indexing<'a>(
         &'a self,
         _subgraph_id: &'a SubgraphDeploymentId,
-        _block_number: u64,
-    ) -> DynTryFuture<'a, Option<ProofOfIndexingDigest>> {
+        _indexer: &'a Option<Address>,
+        _block_hash: H256,
+    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         unimplemented!()
     }
 

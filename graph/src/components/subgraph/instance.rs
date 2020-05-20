@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use web3::types::Log;
 
-use super::ProofOfIndexing;
+use crate::components::subgraph::SharedProofOfIndexing;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 
@@ -17,7 +17,6 @@ pub struct DataSourceTemplateInfo {
 pub struct BlockState {
     pub entity_cache: EntityCache,
     pub created_data_sources: Vec<DataSourceTemplateInfo>,
-    pub proof_of_indexing: ProofOfIndexing,
 }
 
 impl BlockState {
@@ -25,7 +24,6 @@ impl BlockState {
         BlockState {
             entity_cache: EntityCache::with_current(store, lfu_cache),
             created_data_sources: Vec::new(),
-            proof_of_indexing: Default::default(),
         }
     }
 }
@@ -43,6 +41,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, Error>;
 
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
@@ -52,6 +51,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, Error>;
 
     /// Adds dynamic data sources to the subgraph.

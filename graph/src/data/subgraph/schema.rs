@@ -42,7 +42,7 @@ lazy_static! {
         SubgraphDeploymentId::new("subgraphs").unwrap();
 }
 
-pub const POI_TABLE: &str = "poi$";
+pub const POI_TABLE: &str = "poi2$";
 pub const POI_OBJECT: &str = "Poi$";
 
 /// Generic type for the entity types defined below.

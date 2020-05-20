@@ -11,7 +11,7 @@ type Query {
     subgraphName: String!
   ): [SubgraphIndexingStatus!]!
   indexingStatuses(subgraphs: [String!]): [SubgraphIndexingStatus!]!
-  proofOfIndexing(subgraph: String!, blockNumber: BigInt!): Bytes
+  proofOfIndexing(subgraph: String!, blockHash: Bytes!, indexer: Bytes): Bytes
 }
 
 type SubgraphIndexingStatus {

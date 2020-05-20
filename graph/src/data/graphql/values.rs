@@ -129,19 +129,12 @@ impl TryFromValue for Entity {
 }
 
 pub trait ValueMap {
-    fn get_required<T>(&self, key: &str) -> Result<T, Error>
-    where
-        T: TryFromValue;
-    fn get_optional<T>(&self, key: &str) -> Result<Option<T>, Error>
-    where
-        T: TryFromValue;
+    fn get_required<T: TryFromValue>(&self, key: &str) -> Result<T, Error>;
+    fn get_optional<T: TryFromValue>(&self, key: &str) -> Result<Option<T>, Error>;
 }
 
 impl ValueMap for Value {
-    fn get_required<T>(&self, key: &str) -> Result<T, Error>
-    where
-        T: TryFromValue,
-    {
+    fn get_required<T: TryFromValue>(&self, key: &str) -> Result<T, Error> {
         match self {
             Value::Object(map) => map.get_required(key),
             _ => Err(format_err!("value is not a map: {:?}", self)),

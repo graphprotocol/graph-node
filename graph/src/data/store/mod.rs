@@ -1,3 +1,6 @@
+use crate::data::subgraph::SubgraphDeploymentId;
+use crate::prelude::{format_err, EntityKey, QueryExecutionError};
+use crate::util::lfu_cache::CacheWeight;
 use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
@@ -10,10 +13,8 @@ use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-
-use crate::data::subgraph::SubgraphDeploymentId;
-use crate::prelude::{format_err, EntityKey, QueryExecutionError};
-use crate::util::lfu_cache::CacheWeight;
+use strum::AsStaticRef as _;
+use strum_macros::AsStaticStr;
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -152,6 +153,7 @@ impl ValueType {
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
+#[derive(AsStaticStr)]
 pub enum Value {
     String(String),
     Int(i32),
@@ -164,40 +166,28 @@ pub enum Value {
 }
 
 impl StableHash for Value {
-    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         use Value::*;
+
+        // This is the default, so write nothing.
         match self {
-            Null => "", // This is the default.
-            String(inner) => {
-                inner.stable_hash(sequence_number.next_child(), state);
-                "String"
-            }
-            Int(inner) => {
-                inner.stable_hash(sequence_number.next_child(), state);
-                "Int"
-            }
-            BigDecimal(inner) => {
-                inner.stable_hash(sequence_number.next_child(), state);
-                "BigDecimal"
-            }
-            Bool(inner) => {
-                inner.stable_hash(sequence_number.next_child(), state);
-                "Bool"
-            }
-            List(inner) => {
-                inner.stable_hash(sequence_number.next_child(), state);
-                "List"
-            }
-            Bytes(inner) => {
-                inner.stable_hash(sequence_number.next_child(), state);
-                "Bytes"
-            }
-            BigInt(inner) => {
-                inner.stable_hash(sequence_number.next_child(), state);
-                "BigInt"
-            }
+            Null => return,
+            _ => {}
         }
-        .stable_hash(sequence_number, state);
+
+        self.as_static()
+            .stable_hash(sequence_number.next_child(), state);
+
+        match self {
+            Null => unreachable!(),
+            String(inner) => inner.stable_hash(sequence_number, state),
+            Int(inner) => inner.stable_hash(sequence_number, state),
+            BigDecimal(inner) => inner.stable_hash(sequence_number, state),
+            Bool(inner) => inner.stable_hash(sequence_number, state),
+            List(inner) => inner.stable_hash(sequence_number, state),
+            Bytes(inner) => inner.stable_hash(sequence_number, state),
+            BigInt(inner) => inner.stable_hash(sequence_number, state),
+        }
     }
 }
 
@@ -406,6 +396,12 @@ impl<'a> From<&'a String> for Value {
     }
 }
 
+impl From<scalar::Bytes> for Value {
+    fn from(value: scalar::Bytes) -> Value {
+        Value::Bytes(value)
+    }
+}
+
 impl From<bool> for Value {
     fn from(value: bool) -> Value {
         Value::Bool(value)
@@ -477,7 +473,8 @@ where
 pub struct Entity(HashMap<Attribute, Value>);
 
 impl StableHash for Entity {
-    fn stable_hash(&self, mut sequence_number: impl SequenceNumber, state: &mut impl StableHasher) {
+    #[inline]
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         self.0.stable_hash(sequence_number.next_child(), state);
     }
 }
