@@ -111,3 +111,9 @@ fn value_roundtrip() {
     let _m = TEST_MUTEX.lock();
     run_test("value-roundtrip");
 }
+
+#[test]
+fn big_decimal() {
+    let _m = TEST_MUTEX.lock();
+    run_test("big-decimal");
+}
