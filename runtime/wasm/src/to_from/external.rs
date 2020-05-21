@@ -8,17 +8,12 @@ use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::web3::types as web3;
 use graph::prelude::{format_err, Error};
-use graph::prelude::{BigDecimal, BigInt};
+use graph::prelude::{BigDecimal, BigInt, BIG_DECIMAL_MAX_EXP, BIG_DECIMAL_MIN_EXP};
 
 use crate::asc_abi::class::*;
 use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj, TryFromAscObj};
 
 use crate::UnresolvedContractCall;
-
-// These are the limits of IEEE-754 decimal128, a format we may want to switch to.
-// See https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
-const BIG_DECIMAL_MIN_EXP: i32 = -6143;
-const BIG_DECIMAL_MAX_EXP: i32 = 6144;
 
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Uint8Array {
@@ -83,6 +78,13 @@ impl TryFromAscObj<AscBigDecimal> for BigDecimal {
         let digits: BigInt = heap.asc_get(big_decimal.digits);
         let exp: BigInt = heap.asc_get(big_decimal.exp);
 
+        let bytes = exp.to_signed_bytes_le();
+        let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
+        byte_array[..bytes.len()].copy_from_slice(&bytes);
+        let big_decimal = BigDecimal::new(digits, i64::from_le_bytes(byte_array));
+
+        // Validate the exponent.
+        let exp = -big_decimal.as_bigint_and_exponent().1;
         if exp < BIG_DECIMAL_MIN_EXP.into() || exp > BIG_DECIMAL_MAX_EXP.into() {
             return Err(format_err!(
                 "big decimal exponent `{}` is outside the `{}` to `{}` range",
@@ -91,10 +93,7 @@ impl TryFromAscObj<AscBigDecimal> for BigDecimal {
                 BIG_DECIMAL_MAX_EXP
             ));
         }
-        let bytes = exp.to_signed_bytes_le();
-        let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
-        byte_array[..bytes.len()].copy_from_slice(&bytes);
-        Ok(BigDecimal::new(digits, i64::from_le_bytes(byte_array)))
+        Ok(big_decimal)
     }
 }
 

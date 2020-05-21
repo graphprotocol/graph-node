@@ -7,6 +7,7 @@
     "ganache-reverts",
     "overloaded-contract-functions",
     "remove-then-update",
-    "value-roundtrip"
+    "value-roundtrip",
+    "big-decimal"
   ]
 }

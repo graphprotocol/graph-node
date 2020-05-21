@@ -19,7 +19,15 @@ use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
-/// All operations on `BigDecimal` return a normalized value.
+/// These are the limits of IEEE-754 decimal128, a format we may want to switch to. See
+/// https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
+pub const BIG_DECIMAL_MIN_EXP: i32 = -6143;
+pub const BIG_DECIMAL_MAX_EXP: i32 = 6144;
+
+/// We don't yet fully enforce this limit.
+pub const BIG_DECIMAL_MAX_SIGNFICANT_DIGITS: i32 = 34;
+
+/// All operations on `BigDecimal` resturn a normalized value.
 // Caveat: The exponent is currently an i64 and may overflow. See
 // https://github.com/akubera/bigdecimal-rs/issues/54.
 // Using `#[serde(from = "BigDecimal"]` makes sure deserialization calls `BigDecimal::new()`.
@@ -69,7 +77,14 @@ impl BigDecimal {
         digits.truncate(digits.len() - trailing_count);
         let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
         let scale = exp - trailing_count as i64;
-        BigDecimal(bigdecimal::BigDecimal::new(int_val.into(), scale))
+        let mut big_decimal = bigdecimal::BigDecimal::new(int_val.into(), scale);
+
+        // If the exponent is too negative, we try to make it fit by truncating to 34 significant
+        // digits. We want to unconditionally round here but we should evaluate the impact first.
+        if -scale < BIG_DECIMAL_MIN_EXP.into() {
+            big_decimal = big_decimal.with_prec(BIG_DECIMAL_MAX_SIGNFICANT_DIGITS as u64)
+        }
+        BigDecimal(big_decimal)
     }
 }
 
