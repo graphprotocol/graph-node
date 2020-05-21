@@ -1232,7 +1232,29 @@ impl Table {
 
         // Add a BRIN index on the block_range bounds to exploit the fact
         // that block ranges closely correlate with where in a table an
-        // entity appears physically
+        // entity appears physically. This index is incredibly efficient for
+        // reverts where we look for very recent blocks, so that this index
+        // is highly selective. See https://github.com/graphprotocol/graph-node/issues/1415#issuecomment-630520713
+        // for details on one experiment.
+        //
+        // We do not index the `block_range` as a whole, but rather the lower
+        // and upper bound separately, since experimentation has shown that
+        // Postgres will not use the index on `block_range` for clauses like
+        // `block_range @> $block` but rather falls back to a full table scan.
+        //
+        // We also make sure that we do not put `NULL` in the index for
+        // the upper bound since nulls can not be compared to anything and
+        // will make the index less effective.
+        //
+        // To make the index usable, queries need to have clauses using
+        // `lower(block_range)` and `coalesce(..)` verbatim.
+        //
+        // We also index `vid` as that correlates with the order in which
+        // entities are stored. Including `id` for now is somewhat
+        // speculative and will only have an effect for subgraphs that generate
+        // id's in lexicographic order and don't change those entities too
+        // often, but since these indexes are very small, the overhead
+        // is negligible
         write!(out,"create index brin_{table_name}\n    \
                     on {schema_name}.{table_name}\n \
                        using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid, id);\n",
