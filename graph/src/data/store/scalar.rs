@@ -19,7 +19,7 @@ use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
-/// All operations on `BigDecimal` resturn a normalized value.
+/// All operations on `BigDecimal` return a normalized value.
 // Caveat: The exponent is currently an i64 and may overflow. See
 // https://github.com/akubera/bigdecimal-rs/issues/54.
 // Using `#[serde(from = "BigDecimal"]` makes sure deserialization calls `BigDecimal::new()`.
