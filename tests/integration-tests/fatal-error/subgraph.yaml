@@ -18,7 +18,6 @@ dataSources:
       entities:
         - Call
       eventHandlers:
-        - event: Trigger()
+        - event: Trigger(uint16)
           handler: handleTrigger
       file: ./src/mapping.ts
-      
