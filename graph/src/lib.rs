@@ -118,9 +118,7 @@ pub mod prelude {
     };
     pub use crate::data::schema::Schema;
     pub use crate::data::store::ethereum::*;
-    pub use crate::data::store::scalar::{
-        BigDecimal, BigInt, BigIntSign, BIG_DECIMAL_MAX_EXP, BIG_DECIMAL_MIN_EXP,
-    };
+    pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
         ToEntityId, ToEntityKey, TryIntoEntity, Value, ValueType,

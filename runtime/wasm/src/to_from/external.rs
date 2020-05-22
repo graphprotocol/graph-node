@@ -8,7 +8,7 @@ use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::web3::types as web3;
 use graph::prelude::{format_err, Error};
-use graph::prelude::{BigDecimal, BigInt, BIG_DECIMAL_MAX_EXP, BIG_DECIMAL_MIN_EXP};
+use graph::prelude::{BigDecimal, BigInt};
 
 use crate::asc_abi::class::*;
 use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj, TryFromAscObj};
@@ -85,12 +85,12 @@ impl TryFromAscObj<AscBigDecimal> for BigDecimal {
 
         // Validate the exponent.
         let exp = -big_decimal.as_bigint_and_exponent().1;
-        if exp < BIG_DECIMAL_MIN_EXP.into() || exp > BIG_DECIMAL_MAX_EXP.into() {
+        if exp < BigDecimal::MIN_EXP.into() || exp > BigDecimal::MAX_EXP.into() {
             return Err(format_err!(
                 "big decimal exponent `{}` is outside the `{}` to `{}` range",
                 exp,
-                BIG_DECIMAL_MIN_EXP,
-                BIG_DECIMAL_MAX_EXP
+                BigDecimal::MIN_EXP,
+                BigDecimal::MAX_EXP
             ));
         }
         Ok(big_decimal)

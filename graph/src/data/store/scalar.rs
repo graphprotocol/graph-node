@@ -19,14 +19,6 @@ use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
-/// These are the limits of IEEE-754 decimal128, a format we may want to switch to. See
-/// https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
-pub const BIG_DECIMAL_MIN_EXP: i32 = -6143;
-pub const BIG_DECIMAL_MAX_EXP: i32 = 6144;
-
-/// We don't yet fully enforce this limit.
-pub const BIG_DECIMAL_MAX_SIGNFICANT_DIGITS: i32 = 34;
-
 /// All operations on `BigDecimal` resturn a normalized value.
 // Caveat: The exponent is currently an i64 and may overflow. See
 // https://github.com/akubera/bigdecimal-rs/issues/54.
@@ -45,6 +37,14 @@ impl From<bigdecimal::BigDecimal> for BigDecimal {
 }
 
 impl BigDecimal {
+    /// These are the limits of IEEE-754 decimal128, a format we may want to switch to. See
+    /// https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
+    pub const MIN_EXP: i32 = -6143;
+    pub const MAX_EXP: i32 = 6144;
+
+    /// We don't yet fully enforce this limit.
+    pub const MAX_SIGNFICANT_DIGITS: i32 = 34;
+
     pub fn new(digits: BigInt, exp: i64) -> Self {
         // bigdecimal uses `scale` as the opposite of the power of ten, so negate `exp`.
         Self::from(bigdecimal::BigDecimal::new(digits.0, -exp))
@@ -81,8 +81,8 @@ impl BigDecimal {
 
         // If the exponent is too negative, we try to make it fit by truncating to 34 significant
         // digits. We want to unconditionally round here but we should evaluate the impact first.
-        if -scale < BIG_DECIMAL_MIN_EXP.into() {
-            big_decimal = big_decimal.with_prec(BIG_DECIMAL_MAX_SIGNFICANT_DIGITS as u64)
+        if -scale < Self::MIN_EXP.into() {
+            big_decimal = big_decimal.with_prec(Self::MAX_SIGNFICANT_DIGITS as u64)
         }
         BigDecimal(big_decimal)
     }
