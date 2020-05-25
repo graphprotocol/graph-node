@@ -41,8 +41,6 @@ impl BigDecimal {
     /// https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
     pub const MIN_EXP: i32 = -6143;
     pub const MAX_EXP: i32 = 6144;
-
-    /// We don't yet fully enforce this limit.
     pub const MAX_SIGNFICANT_DIGITS: i32 = 34;
 
     pub fn new(digits: BigInt, exp: i64) -> Self {
@@ -71,20 +69,18 @@ impl BigDecimal {
         if self == &BigDecimal::zero() {
             return BigDecimal::zero();
         }
-        let (bigint, exp) = self.0.as_bigint_and_exponent();
+
+        // Round to the maximum significant digits.
+        let big_decimal = self.0.with_prec(Self::MAX_SIGNFICANT_DIGITS as u64);
+
+        let (bigint, exp) = big_decimal.as_bigint_and_exponent();
         let (sign, mut digits) = bigint.to_radix_be(10);
         let trailing_count = digits.iter().rev().take_while(|i| **i == 0).count();
         digits.truncate(digits.len() - trailing_count);
         let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
         let scale = exp - trailing_count as i64;
-        let mut big_decimal = bigdecimal::BigDecimal::new(int_val.into(), scale);
 
-        // If the exponent is too negative, we try to make it fit by truncating to 34 significant
-        // digits. We want to unconditionally round here but we should evaluate the impact first.
-        if -scale < Self::MIN_EXP.into() {
-            big_decimal = big_decimal.with_prec(Self::MAX_SIGNFICANT_DIGITS as u64)
-        }
-        BigDecimal(big_decimal)
+        BigDecimal(bigdecimal::BigDecimal::new(int_val.into(), scale))
     }
 }
 
