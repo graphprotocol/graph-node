@@ -1318,7 +1318,7 @@ dependencies = [
  "mockall",
  "num-bigint",
  "num-traits",
- "petgraph 0.5.0",
+ "petgraph 0.5.1",
  "priority-queue",
  "prometheus",
  "rand 0.6.5",
@@ -2617,9 +2617,9 @@ dependencies = [
 
 [[package]]
 name = "petgraph"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29c127eea4a29ec6c85d153c59dc1213f33ec74cead30fe4730aecc88cc1fd92"
+checksum = "467d164a6de56270bd7c4d070df81d07beace25012d5103ced4e9ff08d6afdb7"
 dependencies = [
  "fixedbitset 0.2.0",
  "indexmap",
