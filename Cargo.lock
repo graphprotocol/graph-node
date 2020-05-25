@@ -1889,6 +1889,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
+name = "leb128"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3576a87f2ba00f6f106fdfcd16db1d698d648a26ad8e0573cad8537c3c362d2a"
+
+[[package]]
 name = "libc"
 version = "0.2.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3341,9 +3347,13 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stable-hash"
-version = "0.1.0"
-source = "git+https://github.com/graphprotocol/stable-hash#75d7ed4f5d2adce4d194b7aac6d78ec315298690"
+version = "0.3.0"
+source = "git+https://github.com/graphprotocol/stable-hash#eee60fa80997b10882d41067b11c265664d45add"
 dependencies = [
+ "blake3",
+ "lazy_static",
+ "leb128",
+ "num-bigint",
  "num-traits",
 ]
 
