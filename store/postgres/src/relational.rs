@@ -1250,14 +1250,10 @@ impl Table {
         // `lower(block_range)` and `coalesce(..)` verbatim.
         //
         // We also index `vid` as that correlates with the order in which
-        // entities are stored. Including `id` for now is somewhat
-        // speculative and will only have an effect for subgraphs that generate
-        // id's in lexicographic order and don't change those entities too
-        // often, but since these indexes are very small, the overhead
-        // is negligible
+        // entities are stored.
         write!(out,"create index brin_{table_name}\n    \
                     on {schema_name}.{table_name}\n \
-                       using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid, id);\n",
+                       using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
             table_name = self.name,
             schema_name = layout.catalog.schema,
             block_max = BLOCK_NUMBER_MAX)?;
@@ -1498,7 +1494,7 @@ create table rel.\"thing\" (
 );
 create index brin_thing
     on rel.thing
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_0_0_thing_id
     on rel.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_big_thing
@@ -1520,7 +1516,7 @@ create table rel.\"scalar\" (
 );
 create index brin_scalar
     on rel.scalar
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_1_0_scalar_id
     on rel.\"scalar\" using btree(\"id\");
 create index attr_1_1_scalar_bool
@@ -1579,7 +1575,7 @@ type SongStat @entity {
 );
 create index brin_musician
     on rel.musician
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_0_0_musician_id
     on rel.\"musician\" using btree(\"id\");
 create index attr_0_1_musician_name
@@ -1600,7 +1596,7 @@ create table rel.\"band\" (
 );
 create index brin_band
     on rel.band
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_1_0_band_id
     on rel.\"band\" using btree(\"id\");
 create index attr_1_1_band_name
@@ -1619,7 +1615,7 @@ create table rel.\"song\" (
 );
 create index brin_song
     on rel.song
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_2_0_song_id
     on rel.\"song\" using btree(\"id\");
 create index attr_2_1_song_title
@@ -1637,7 +1633,7 @@ create table rel.\"song_stat\" (
 );
 create index brin_song_stat
     on rel.song_stat
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_3_0_song_stat_id
     on rel.\"song_stat\" using btree(\"id\");
 create index attr_3_1_song_stat_played
@@ -1676,7 +1672,7 @@ type Habitat @entity {
 );
 create index brin_animal
     on rel.animal
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_0_0_animal_id
     on rel.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_forest
@@ -1691,7 +1687,7 @@ create table rel.\"forest\" (
 );
 create index brin_forest
     on rel.forest
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_1_0_forest_id
     on rel.\"forest\" using btree(\"id\");
 
@@ -1706,7 +1702,7 @@ create table rel.\"habitat\" (
 );
 create index brin_habitat
     on rel.habitat
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_2_0_habitat_id
     on rel.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
@@ -1759,7 +1755,7 @@ type Habitat @entity {
 );
 create index brin_animal
     on rel.animal
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_0_0_animal_id
     on rel.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_name
@@ -1780,7 +1776,7 @@ create table rel.\"forest\" (
 );
 create index brin_forest
     on rel.forest
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_1_0_forest_id
     on rel.\"forest\" using btree(\"id\");
 
@@ -1795,7 +1791,7 @@ create table rel.\"habitat\" (
 );
 create index brin_habitat
     on rel.habitat
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_2_0_habitat_id
     on rel.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
@@ -1828,7 +1824,7 @@ create table rel.\"thing\" (
 );
 create index brin_thing
     on rel.thing
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid, id);
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index attr_0_0_thing_id
     on rel.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_orientation
