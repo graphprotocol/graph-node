@@ -29,4 +29,12 @@ export function handleTrigger(event: Trigger): void {
   let rounded = BigDecimal.fromString("100000000000000000000000000000000000");
 
   assert(big == rounded, "big not equal to rounded");
+
+  // This has 35 eights, but we round to 34 decimal digits.
+  let big2 = BigDecimal.fromString("88888888888888888888888888888888888");
+
+  // This has 33 eights.
+  let rounded2 = BigDecimal.fromString("88888888888888888888888888888888890");
+
+  assert(big2 == rounded2, "big2 not equal to rounded2 " + big2.toString());
 }
