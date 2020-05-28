@@ -3,7 +3,6 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, select, update};
-use futures::sync::mpsc::{channel, Sender};
 use futures03::FutureExt as _;
 use graph::prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError};
 use graph::spawn_blocking_async_allow_panic;
@@ -13,10 +12,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::sync::Semaphore;
-use uuid::Uuid;
 
 use graph::components::store::{EntityCollection, Store as StoreTrait};
 use graph::components::subgraph::ProofOfIndexingFinisher;
@@ -24,14 +22,13 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bail, debug, ethabi, format_err, futures03, info, o, serde_json, stream, tiny_keccak, tokio,
-    trace, warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
+    bail, debug, ethabi, format_err, futures03, info, o, serde_json, tiny_keccak, tokio, trace,
+    warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
     ChainHeadUpdateStream, ChainStore, CheapClone, DynTryFuture, Entity, EntityKey,
     EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
-    EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, EventProducer as _, Future,
-    Future01CompatExt, LightEthereumBlock, Logger, MetadataOperation, MetricsRegistry,
-    QueryExecutionError, Schema, Sink as _, StopwatchMetrics, StoreError, StoreEvent,
-    StoreEventStream, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
+    EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, Future, LightEthereumBlock,
+    Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics,
+    StoreError, StoreEvent, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
     SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError,
     Value, BLOCK_NUMBER_MAX,
 };
@@ -44,7 +41,7 @@ use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::history_event::HistoryEvent;
 use crate::metadata;
-use crate::store_events::StoreEventListener;
+use crate::store_events::SubscriptionManager;
 
 // TODO: Integrate with https://github.com/graphprotocol/graph-node/pull/1522/files
 lazy_static! {
@@ -158,10 +155,8 @@ struct SubgraphInfo {
 
 pub struct StoreInner {
     logger: Logger,
-    subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
+    subscriptions: Arc<SubscriptionManager>,
 
-    /// listen to StoreEvents generated when applying entity operations
-    listener: Mutex<StoreEventListener>,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
@@ -206,17 +201,14 @@ impl Store {
         // Create the entities table (if necessary)
         initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
 
-        // Listen to entity changes in Postgres
-        let mut listener = StoreEventListener::new(&logger, config.postgres_url.clone());
-        let store_events = listener
-            .take_event_stream()
-            .expect("Failed to listen to entity change events in Postgres");
-
+        let subscriptions = Arc::new(SubscriptionManager::new(
+            logger.clone(),
+            config.postgres_url.clone(),
+        ));
         // Create the store
         let store = StoreInner {
             logger: logger.clone(),
-            subscriptions: Arc::new(RwLock::new(HashMap::new())),
-            listener: Mutex::new(listener),
+            subscriptions,
             chain_head_update_listener,
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0 as u64).into(),
@@ -229,14 +221,6 @@ impl Store {
 
         // Add network to store and check network identifiers
         store.add_network_if_missing(net_identifiers).unwrap();
-
-        // Deal with store subscriptions
-        store.handle_store_events(store_events);
-        store.periodically_clean_up_stale_subscriptions();
-
-        let mut listener = store.listener.lock().unwrap();
-        listener.start();
-        drop(listener);
 
         // Return the store
         store
@@ -309,77 +293,6 @@ impl Store {
         }
 
         Ok(())
-    }
-
-    /// Receive store events from Postgres and send them to all active
-    /// subscriptions. Detect stale subscriptions in the process and
-    /// close them.
-    fn handle_store_events(
-        &self,
-        store_events: Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>,
-    ) {
-        let logger = self.logger.clone();
-        let subscriptions = self.subscriptions.clone();
-
-        graph::spawn(
-            store_events
-                .for_each(move |event| {
-                    let senders = subscriptions.read().unwrap().clone();
-                    let logger = logger.clone();
-                    let subscriptions = subscriptions.clone();
-
-                    // Write change to all matching subscription streams; remove subscriptions
-                    // whose receiving end has been dropped
-                    stream::iter_ok::<_, ()>(senders).for_each(move |(id, sender)| {
-                        let logger = logger.clone();
-                        let subscriptions = subscriptions.clone();
-
-                        sender.send(event.clone()).then(move |result| {
-                            match result {
-                                Err(_send_error) => {
-                                    // Receiver was dropped
-                                    debug!(logger, "Unsubscribe"; "id" => &id);
-                                    subscriptions.write().unwrap().remove(&id);
-                                    Ok(())
-                                }
-                                Ok(_sender) => Ok(()),
-                            }
-                        })
-                    })
-                })
-                .compat(),
-        );
-    }
-
-    fn periodically_clean_up_stale_subscriptions(&self) {
-        use futures03::stream::StreamExt;
-
-        let logger = self.logger.clone();
-        let subscriptions = self.subscriptions.clone();
-
-        // Clean up stale subscriptions every 5s
-        graph::spawn(
-            tokio::time::interval(Duration::from_secs(5)).for_each(move |_| {
-                let mut subscriptions = subscriptions.write().unwrap();
-
-                // Obtain IDs of subscriptions whose receiving end has gone
-                let stale_ids = subscriptions
-                    .iter_mut()
-                    .filter_map(|(id, sender)| match sender.poll_ready() {
-                        Err(_) => Some(id.clone()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                // Remove all stale subscriptions
-                for id in stale_ids {
-                    debug!(logger, "Unsubscribe"; "id" => &id);
-                    subscriptions.remove(&id);
-                }
-
-                futures03::future::ready(())
-            }),
-        );
     }
 
     /// Gets an entity from Postgres.
@@ -1291,27 +1204,7 @@ impl StoreTrait for Store {
     }
 
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
-        let subscriptions = self.subscriptions.clone();
-
-        // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
-        let mut id = Uuid::new_v4().to_string();
-        while subscriptions.read().unwrap().contains_key(&id) {
-            id = Uuid::new_v4().to_string();
-        }
-
-        debug!(self.logger, "Subscribe";
-               "id" => &id,
-               "entities" => format!("{:?}", entities));
-
-        // Prepare the new subscription by creating a channel and a subscription object
-        let (sender, receiver) = channel(100);
-
-        // Add the new subscription
-        let mut subscriptions = subscriptions.write().unwrap();
-        subscriptions.insert(id, sender);
-
-        // Return the subscription ID and entity change stream
-        StoreEventStream::new(Box::new(receiver)).filter_by_entities(entities)
+        self.subscriptions.subscribe(entities)
     }
 
     fn create_subgraph_deployment(
