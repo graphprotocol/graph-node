@@ -13,11 +13,12 @@ pub struct ChainHeadUpdateListener {
 impl ChainHeadUpdateListener {
     pub fn new(
         logger: &Logger,
-        ingestor_metrics: Arc<BlockIngestorMetrics>,
+        registry: Arc<dyn MetricsRegistry>,
         postgres_url: String,
         network_name: String,
     ) -> Self {
         let logger = logger.new(o!("component" => "ChainHeadUpdateListener"));
+        let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         // Create a Postgres notification listener for chain head updates
         let mut listener = NotificationListener::new(

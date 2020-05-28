@@ -36,7 +36,6 @@ use graph::prelude::{
     Value, BLOCK_NUMBER_MAX,
 };
 
-use graph_chain_ethereum::BlockIngestorMetrics;
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
@@ -211,7 +210,6 @@ impl Store {
         let store_events = listener
             .take_event_stream()
             .expect("Failed to listen to entity change events in Postgres");
-        let block_ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         // Create the store
         let store = StoreInner {
@@ -220,7 +218,7 @@ impl Store {
             listener: Mutex::new(listener),
             chain_head_update_listener: ChainHeadUpdateListener::new(
                 &logger,
-                block_ingestor_metrics,
+                registry.clone(),
                 config.postgres_url,
                 config.network_name.clone(),
             ),
