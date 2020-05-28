@@ -32,6 +32,7 @@ use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, Store as DieselStore, StoreConfig,
+    SubscriptionManager,
 };
 
 lazy_static! {
@@ -497,6 +498,12 @@ async fn main() {
         stores_metrics_registry.clone(),
         postgres_url.clone(),
     ));
+
+    let subscriptions = Arc::new(SubscriptionManager::new(
+        logger.clone(),
+        postgres_url.clone(),
+    ));
+
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_adapters.into_iter().map(
             |(network_name, eth_adapter)| {
@@ -532,6 +539,7 @@ async fn main() {
                     &stores_logger,
                     network_identifier,
                     chain_head_update_listener.clone(),
+                    subscriptions.clone(),
                     postgres_conn_pool.clone(),
                     stores_metrics_registry.clone(),
                 )),

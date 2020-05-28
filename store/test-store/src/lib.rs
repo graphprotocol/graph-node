@@ -9,7 +9,7 @@ use graph_graphql::prelude::{
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::create_connection_pool;
-use graph_store_postgres::{ChainHeadUpdateListener, Store, StoreConfig};
+use graph_store_postgres::{ChainHeadUpdateListener, Store, StoreConfig, SubscriptionManager};
 use graphql_parser::query as q;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -59,6 +59,10 @@ lazy_static! {
                 registry.clone(),
                 postgres_url.clone(),
             ));
+            let subscriptions = Arc::new(SubscriptionManager::new(
+                logger.clone(),
+                postgres_url.clone(),
+            ));
             Arc::new(Store::new(
                 StoreConfig {
                     postgres_url,
@@ -67,6 +71,7 @@ lazy_static! {
                 &logger,
                 net_identifiers,
                 chain_head_update_listener,
+                subscriptions,
                 postgres_conn_pool,
                 registry.clone(),
             ))

@@ -50,7 +50,7 @@ impl EventProducer<StoreEvent> for StoreEventListener {
     }
 }
 
-pub(crate) struct SubscriptionManager {
+pub struct SubscriptionManager {
     logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
 

@@ -192,6 +192,7 @@ impl Store {
         logger: &Logger,
         net_identifiers: EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+        subscriptions: Arc<SubscriptionManager>,
         pool: Pool<ConnectionManager<PgConnection>>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
@@ -201,10 +202,6 @@ impl Store {
         // Create the entities table (if necessary)
         initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
 
-        let subscriptions = Arc::new(SubscriptionManager::new(
-            logger.clone(),
-            config.postgres_url.clone(),
-        ));
         // Create the store
         let store = StoreInner {
             logger: logger.clone(),
