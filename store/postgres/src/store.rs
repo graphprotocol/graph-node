@@ -220,7 +220,6 @@ impl Store {
                 &logger,
                 registry.clone(),
                 config.postgres_url,
-                config.network_name.clone(),
             ),
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0 as u64).into(),
@@ -1538,7 +1537,8 @@ impl ChainStore for Store {
     }
 
     fn chain_head_updates(&self) -> ChainHeadUpdateStream {
-        self.chain_head_update_listener.subscribe()
+        self.chain_head_update_listener
+            .subscribe(self.0.network_name.to_owned())
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {

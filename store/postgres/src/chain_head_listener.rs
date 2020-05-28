@@ -1,4 +1,5 @@
 use tokio::sync::watch;
+use web3::types::H256;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
 use graph::prelude::serde_json;
@@ -6,17 +7,12 @@ use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *}
 use graph_chain_ethereum::BlockIngestorMetrics;
 
 pub struct ChainHeadUpdateListener {
-    update_receiver: watch::Receiver<()>,
+    update_receiver: watch::Receiver<ChainHeadUpdate>,
     _listener: NotificationListener,
 }
 
 impl ChainHeadUpdateListener {
-    pub fn new(
-        logger: &Logger,
-        registry: Arc<dyn MetricsRegistry>,
-        postgres_url: String,
-        network_name: String,
-    ) -> Self {
+    pub fn new(logger: &Logger, registry: Arc<dyn MetricsRegistry>, postgres_url: String) -> Self {
         let logger = logger.new(o!("component" => "ChainHeadUpdateListener"));
         let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
@@ -27,14 +23,13 @@ impl ChainHeadUpdateListener {
             SafeChannelName::i_promise_this_is_safe("chain_head_updates"),
         );
 
-        let (update_sender, update_receiver) = watch::channel(());
-        Self::listen(
-            logger,
-            ingestor_metrics,
-            &mut listener,
-            network_name,
-            update_sender,
-        );
+        let none_update = ChainHeadUpdate {
+            network_name: "none".to_owned(),
+            head_block_hash: H256::zero(),
+            head_block_number: 0,
+        };
+        let (update_sender, update_receiver) = watch::channel(none_update);
+        Self::listen(logger, ingestor_metrics, &mut listener, update_sender);
 
         ChainHeadUpdateListener {
             update_receiver,
@@ -50,8 +45,7 @@ impl ChainHeadUpdateListener {
         logger: Logger,
         metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
-        network_name: String,
-        update_sender: watch::Sender<()>,
+        update_sender: watch::Sender<ChainHeadUpdate>,
     ) {
         let logger = logger.clone();
 
@@ -77,13 +71,7 @@ impl ChainHeadUpdateListener {
                         &update.network_name,
                         *&update.head_block_number as i64,
                     );
-
-                    // Only include update if it is for the network we're interested in
-                    futures03::future::ok(if update.network_name == network_name {
-                        Some(update)
-                    } else {
-                        None
-                    })
+                    futures03::future::ok(Some(update))
                 })
                 .try_for_each(move |update| {
                     debug!(
@@ -94,7 +82,7 @@ impl ChainHeadUpdateListener {
                         "head_block_number" => &update.head_block_number,
                     );
 
-                    futures03::future::ready(update_sender.broadcast(()).map_err(|_| ()))
+                    futures03::future::ready(update_sender.broadcast(update).map_err(|_| ()))
                 }),
         );
 
@@ -104,7 +92,21 @@ impl ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
-    fn subscribe(&self) -> ChainHeadUpdateStream {
-        Box::new(self.update_receiver.clone().map(Ok).compat())
+    fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
+        let f = move |update: ChainHeadUpdate| {
+            if update.network_name == network_name {
+                futures03::future::ready(Some(()))
+            } else {
+                futures03::future::ready(None)
+            }
+        };
+        Box::new(
+            self.update_receiver
+                .clone()
+                .filter_map(f)
+                .map(Result::<_, ()>::Ok)
+                .boxed()
+                .compat(),
+        )
     }
 }

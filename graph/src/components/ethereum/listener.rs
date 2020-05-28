@@ -27,6 +27,6 @@ pub struct ChainHeadUpdate {
 pub type ChainHeadUpdateStream = Box<dyn Stream<Item = (), Error = ()> + Send>;
 
 pub trait ChainHeadUpdateListener {
-    // Subscribe to chain head updates.
-    fn subscribe(&self) -> ChainHeadUpdateStream;
+    // Subscribe to chain head updates for the given network.
+    fn subscribe(&self, network: String) -> ChainHeadUpdateStream;
 }
