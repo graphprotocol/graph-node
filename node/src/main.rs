@@ -30,7 +30,9 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::connection_pool::create_connection_pool;
-use graph_store_postgres::{Store as DieselStore, StoreConfig};
+use graph_store_postgres::{
+    ChainHeadUpdateListener as PostgresChainHeadUpdateListener, Store as DieselStore, StoreConfig,
+};
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -490,6 +492,11 @@ async fn main() {
         connection_pool_registry,
     );
 
+    let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
+        &logger,
+        stores_metrics_registry.clone(),
+        postgres_url.clone(),
+    ));
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_adapters.into_iter().map(
             |(network_name, eth_adapter)| {
@@ -524,6 +531,7 @@ async fn main() {
                     },
                     &stores_logger,
                     network_identifier,
+                    chain_head_update_listener.clone(),
                     postgres_conn_pool.clone(),
                     stores_metrics_registry.clone(),
                 )),

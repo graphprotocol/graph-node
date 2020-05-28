@@ -162,7 +162,7 @@ pub struct StoreInner {
 
     /// listen to StoreEvents generated when applying entity operations
     listener: Mutex<StoreEventListener>,
-    chain_head_update_listener: ChainHeadUpdateListener,
+    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
@@ -196,6 +196,7 @@ impl Store {
         config: StoreConfig,
         logger: &Logger,
         net_identifiers: EthereumNetworkIdentifier,
+        chain_head_update_listener: Arc<ChainHeadUpdateListener>,
         pool: Pool<ConnectionManager<PgConnection>>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
@@ -216,11 +217,7 @@ impl Store {
             logger: logger.clone(),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             listener: Mutex::new(listener),
-            chain_head_update_listener: ChainHeadUpdateListener::new(
-                &logger,
-                registry.clone(),
-                config.postgres_url,
-            ),
+            chain_head_update_listener,
             network_name: config.network_name.clone(),
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0 as u64).into(),
             conn: pool,
