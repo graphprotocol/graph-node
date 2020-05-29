@@ -54,7 +54,7 @@ impl EventProducer<StoreEvent> for StoreEventListener {
 /// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
     logger: Logger,
-    subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,
+    subscriptions: Arc<RwLock<HashMap<String, Sender<Arc<StoreEvent>>>>>,
 
     /// listen to StoreEvents generated when applying entity operations
     listener: Mutex<StoreEventListener>,
@@ -100,6 +100,7 @@ impl SubscriptionManager {
                     let senders = subscriptions.read().unwrap().clone();
                     let logger = logger.clone();
                     let subscriptions = subscriptions.clone();
+                    let event = Arc::new(event);
 
                     // Write change to all matching subscription streams; remove subscriptions
                     // whose receiving end has been dropped
@@ -107,7 +108,7 @@ impl SubscriptionManager {
                         let logger = logger.clone();
                         let subscriptions = subscriptions.clone();
 
-                        sender.send(event.clone()).then(move |result| {
+                        sender.send(event.cheap_clone()).then(move |result| {
                             match result {
                                 Err(_send_error) => {
                                     // Receiver was dropped

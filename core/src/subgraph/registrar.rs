@@ -158,12 +158,13 @@ where
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
                 // know that there is at least one, as that is what we subscribed to
-                stream::iter_ok(
-                    event
-                        .changes
-                        .into_iter()
-                        .filter(|change| change.entity_type == "SubgraphDeploymentAssignment"),
-                )
+                let assignments = event
+                    .changes
+                    .iter()
+                    .filter(|change| change.entity_type == "SubgraphDeploymentAssignment")
+                    .map(|change| change.to_owned())
+                    .collect::<Vec<_>>();
+                stream::iter_ok(assignments)
             })
             .flatten()
             .and_then(

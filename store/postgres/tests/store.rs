@@ -1121,9 +1121,10 @@ fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityC
 // Get as many events as expected contains from stream and check that they
 // are equal to the expected events
 fn check_events(
-    stream: StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send>,
+    stream: StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send>,
     expected: Vec<StoreEvent>,
 ) -> impl Future<Item = (), Error = tokio::time::Elapsed> {
+    let expected: Vec<_> = expected.into_iter().map(|event| Arc::new(event)).collect();
     stream
         .take(expected.len() as u64)
         .collect()
@@ -1143,7 +1144,7 @@ fn subscribe_and_consume(
     store: Arc<DieselStore>,
     subgraph: &SubgraphDeploymentId,
     entity_type: &str,
-) -> StoreEventStream<impl Stream<Item = StoreEvent, Error = ()> + Send> {
+) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
     const MARKER: &str = "Subgraph";
     const MARKER_ID: &str = "fake marker";
 
@@ -1184,7 +1185,8 @@ fn subscribe_and_consume(
         .skip(1)
         .filter_map(move |event| {
             // Remove anything about MARKER entities from the events
-            let changes = event
+            let changes = (*event)
+                .clone()
                 .changes
                 .into_iter()
                 .filter(|change| change.entity_type != MARKER)
@@ -1192,10 +1194,10 @@ fn subscribe_and_consume(
             if changes.is_empty() {
                 None
             } else {
-                Some(StoreEvent {
+                Some(Arc::new(StoreEvent {
                     tag: event.tag,
                     changes,
-                })
+                }))
             }
         });
     StoreEventStream::new(source)

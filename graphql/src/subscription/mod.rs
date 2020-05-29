@@ -150,10 +150,10 @@ fn map_source_to_response_stream(
     // at least once. This satisfies the GraphQL over Websocket protocol
     // requirement of "respond[ing] with at least one GQL_DATA message", see
     // https://github.com/apollographql/subscriptions-transport-ws/blob/master/PROTOCOL.md#gql_data
-    let trigger_stream = futures03::stream::iter(vec![Ok(StoreEvent {
+    let trigger_stream = futures03::stream::iter(vec![Ok(Arc::new(StoreEvent {
         tag: 0,
         changes: Default::default(),
-    })]);
+    }))]);
 
     Box::new(
         trigger_stream
@@ -179,7 +179,7 @@ async fn execute_subscription_event(
     logger: Logger,
     resolver: Arc<impl Resolver + 'static>,
     query: Arc<crate::execution::Query>,
-    event: StoreEvent,
+    event: Arc<StoreEvent>,
     timeout: Option<Duration>,
     max_first: u32,
 ) -> QueryResult {

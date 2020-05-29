@@ -520,13 +520,13 @@ pub struct StoreEventStream<S> {
 
 /// A boxed `StoreEventStream`
 pub type StoreEventStreamBox =
-    StoreEventStream<Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>>;
+    StoreEventStream<Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>>;
 
 impl<S> Stream for StoreEventStream<S>
 where
-    S: Stream<Item = StoreEvent, Error = ()> + Send,
+    S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send,
 {
-    type Item = StoreEvent;
+    type Item = Arc<StoreEvent>;
     type Error = ();
 
     fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
@@ -536,7 +536,7 @@ where
 
 impl<S> StoreEventStream<S>
 where
-    S: Stream<Item = StoreEvent, Error = ()> + Send + 'static,
+    S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send + 'static,
 {
     // Create a new `StoreEventStream` from another such stream
     pub fn new(source: S) -> Self {
@@ -601,7 +601,7 @@ where
         let mut delay = tokio::time::delay_for(interval).unit_error().compat();
         let logger = logger.clone();
 
-        let source = Box::new(poll_fn(move || -> Poll<Option<StoreEvent>, ()> {
+        let source = Box::new(poll_fn(move || -> Poll<Option<Arc<StoreEvent>>, ()> {
             if had_err {
                 // We had an error the last time through, but returned the pending
                 // event first. Indicate the error now
@@ -635,23 +635,26 @@ where
                 match source.poll() {
                     Ok(Async::NotReady) => {
                         if should_send && pending_event.is_some() {
-                            return Ok(Async::Ready(pending_event.take()));
+                            let event = pending_event.take().map(|event| Arc::new(event));
+                            return Ok(Async::Ready(event));
                         } else {
                             return Ok(Async::NotReady);
                         }
                     }
                     Ok(Async::Ready(None)) => {
-                        return Ok(Async::Ready(pending_event.take()));
+                        let event = pending_event.take().map(|event| Arc::new(event));
+                        return Ok(Async::Ready(event));
                     }
                     Ok(Async::Ready(Some(event))) => {
-                        StoreEvent::accumulate(&logger, &mut pending_event, event);
+                        StoreEvent::accumulate(&logger, &mut pending_event, (*event).clone());
                     }
                     Err(()) => {
                         // Before we report the error, deliver what we have accumulated so far.
                         // We will report the error the next time poll() is called
                         if pending_event.is_some() {
                             had_err = true;
-                            return Ok(Async::Ready(pending_event.take()));
+                            let event = pending_event.take().map(|event| Arc::new(event));
+                            return Ok(Async::Ready(event));
                         } else {
                             return Err(());
                         }
