@@ -1338,7 +1338,7 @@ impl ParentIds {
                             .into_iter()
                             .map(|s| {
                                 if s.contains('\'') {
-                                    SafeString(s.replace('\'', "'"))
+                                    SafeString(s.replace('\'', "''"))
                                 } else {
                                     SafeString(s)
                                 }
