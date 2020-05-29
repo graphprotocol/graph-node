@@ -50,6 +50,8 @@ impl EventProducer<StoreEvent> for StoreEventListener {
     }
 }
 
+/// Manage subscriptions to the `StoreEvent` stream. Keep a list of
+/// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
     logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Sender<StoreEvent>>>>,

@@ -7,6 +7,15 @@ use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *}
 use graph_chain_ethereum::BlockIngestorMetrics;
 
 pub struct ChainHeadUpdateListener {
+    /// A receiver that gets all chain head updates for all networks. We
+    /// filter notifications to the desired network in `subscribe`. Using
+    /// a `watch::Receiver` here has the downside that the notification for
+    /// one network can make the notification for another network disappear
+    /// if events aren't processed fast enough. If that happens, the update
+    /// for the preempted network will happen on the next block. Since even
+    /// the fastest network generates new blocks a few seconds apart, the
+    /// risk for collisions, and in particular sustained collisions is
+    /// very low
     update_receiver: watch::Receiver<ChainHeadUpdate>,
     _listener: NotificationListener,
 }
