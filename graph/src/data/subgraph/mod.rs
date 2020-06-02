@@ -27,7 +27,7 @@ use crate::data::subgraph::schema::{
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
-use crate::prelude::{format_err, BlockNumber, Deserialize, Fail, Serialize};
+use crate::prelude::{format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize};
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
 
@@ -73,16 +73,7 @@ impl StableHash for SubgraphDeploymentId {
     }
 }
 
-impl slog::Value for SubgraphDeploymentId {
-    fn serialize(
-        &self,
-        record: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        self.0.serialize(record, key, serializer)
-    }
-}
+impl_slog_value!(SubgraphDeploymentId);
 
 impl SubgraphDeploymentId {
     pub fn new(s: impl Into<String>) -> Result<Self, ()> {

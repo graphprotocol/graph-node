@@ -1,3 +1,22 @@
+#[macro_export]
+macro_rules! impl_slog_value {
+    ($T:ty) => {
+        impl_slog_value!($T, "{}");
+    };
+    ($T:ty, $fmt:expr) => {
+        impl ::slog::Value for $T {
+            fn serialize(
+                &self,
+                record: &::slog::Record,
+                key: ::slog::Key,
+                serializer: &mut dyn ::slog::Serializer,
+            ) -> ::slog::Result {
+                format!($fmt, self).serialize(record, key, serializer)
+            }
+        }
+    };
+}
+
 use isatty;
 use lazy_static::lazy_static;
 use slog::*;

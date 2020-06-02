@@ -27,13 +27,4 @@ impl Display for LogCode {
     }
 }
 
-impl slog::Value for LogCode {
-    fn serialize(
-        &self,
-        _rec: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        serializer.emit_str(key, format!("{}", self).as_str())
-    }
-}
+impl_slog_value!(LogCode, "{}");
