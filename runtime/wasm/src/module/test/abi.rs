@@ -8,7 +8,6 @@ async fn unbounded_loop() {
         "unboundedLoop",
         mock_data_source("wasm_test/non_terminating.wasm"),
     );
-    //module.start_time = Instant::now();
     let func = module.get_func("loop").get0().unwrap();
     let res: Result<(), _> = func();
     assert!(res.unwrap_err().to_string().contains("interrupt"));
@@ -22,7 +21,7 @@ async fn unbounded_recursion() {
     );
     let func = module.get_func("rabbit_hole").get0().unwrap();
     let res: Result<(), _> = func();
-    let err_msg = format!("{:#}", res.unwrap_err().to_string());
+    let err_msg = format!("{}", res.unwrap_err().to_string());
     assert!(err_msg.contains("call stack exhausted"), err_msg);
 }
 

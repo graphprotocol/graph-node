@@ -278,20 +278,16 @@ async fn json_parsing() {
     assert_eq!(output, "OK: foo");
 }
 
-#[tokio::test]
+#[tokio::test(threaded_scheduler)]
 async fn ipfs_cat() {
-    graph::spawn_blocking(async {
-        let ipfs = Arc::new(ipfs_api::IpfsClient::default());
-        let hash = ipfs.add(Cursor::new("42")).await.unwrap().hash;
+    let ipfs = Arc::new(ipfs_api::IpfsClient::default());
+    let hash = ipfs.add(Cursor::new("42")).await.unwrap().hash;
 
-        let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
-        let arg = module.asc_new(&hash);
-        let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-        let data: String = module.instance().asc_get(converted);
-        assert_eq!(data, "42");
-    })
-    .await
-    .unwrap();
+    let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let arg = module.asc_new(&hash);
+    let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
+    let data: String = module.instance().asc_get(converted);
+    assert_eq!(data, "42");
 }
 
 // The user_data value we use with calls to ipfs_map
@@ -416,18 +412,14 @@ async fn ipfs_map() {
     assert!(errmsg.contains("ApiError"));
 }
 
-#[tokio::test]
+#[tokio::test(threaded_scheduler)]
 async fn ipfs_fail() {
-    graph::spawn_blocking(async {
-        let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
+    let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
-        let hash = module.instance().asc_new("invalid hash");
-        assert!(module
-            .invoke_export::<_, AscString>("ipfsCat", hash,)
-            .is_null());
-    })
-    .await
-    .unwrap();
+    let hash = module.instance().asc_new("invalid hash");
+    assert!(module
+        .invoke_export::<_, AscString>("ipfsCat", hash,)
+        .is_null());
 }
 
 #[tokio::test]
