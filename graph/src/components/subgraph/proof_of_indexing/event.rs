@@ -1,4 +1,4 @@
-use crate::prelude::Value;
+use crate::prelude::{impl_slog_value, Value};
 use stable_hash::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -67,13 +67,4 @@ impl fmt::Debug for ProofOfIndexingEvent<'_> {
     }
 }
 
-impl slog::Value for ProofOfIndexingEvent<'_> {
-    fn serialize(
-        &self,
-        record: &slog::Record,
-        key: slog::Key,
-        serializer: &mut dyn slog::Serializer,
-    ) -> slog::Result {
-        format!("{:?}", self).serialize(record, key, serializer)
-    }
-}
+impl_slog_value!(ProofOfIndexingEvent<'_>, "{:?}");

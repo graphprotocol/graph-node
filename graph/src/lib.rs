@@ -139,6 +139,7 @@ pub mod prelude {
         CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
         SharedCancelGuard, StreamExtension,
     };
+    pub use crate::impl_slog_value;
     pub use crate::log::codes::LogCode;
     pub use crate::log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
     pub use crate::log::factory::{
