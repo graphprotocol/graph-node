@@ -389,7 +389,7 @@ impl HostExports {
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
-                    module.timeout.clone(),
+                    module.timeout,
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s

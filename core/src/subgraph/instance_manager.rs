@@ -909,12 +909,12 @@ async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send 
             .await
             .map_err(move |e| match transaction_id {
                 Some(tx_hash) => format_err!(
-                    "Failed to process trigger in block {}, transaction {:x}: {}",
+                    "Failed to process trigger in block {}, transaction {:x}: {:#}",
                     block_ptr,
                     tx_hash,
                     e
                 ),
-                None => format_err!("Failed to process trigger: {}", e),
+                None => format_err!("Failed to process trigger: {:#}", e),
             })?;
         let elapsed = start.elapsed().as_secs_f64();
         subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);

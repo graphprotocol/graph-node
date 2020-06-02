@@ -449,7 +449,7 @@ checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 [[package]]
 name = "cranelift-bforest"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "cranelift-entity",
 ]
@@ -457,7 +457,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "byteorder",
  "cranelift-bforest",
@@ -476,7 +476,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-meta"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "cranelift-codegen-shared",
  "cranelift-entity",
@@ -485,12 +485,12 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-shared"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 
 [[package]]
 name = "cranelift-entity"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "serde",
 ]
@@ -498,7 +498,7 @@ dependencies = [
 [[package]]
 name = "cranelift-frontend"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "cranelift-codegen",
  "log 0.4.8",
@@ -509,7 +509,7 @@ dependencies = [
 [[package]]
 name = "cranelift-native"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "cranelift-codegen",
  "raw-cpuid",
@@ -519,7 +519,7 @@ dependencies = [
 [[package]]
 name = "cranelift-wasm"
 version = "0.63.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
@@ -3165,9 +3165,9 @@ dependencies = [
 
 [[package]]
 name = "regalloc"
-version = "0.0.24"
+version = "0.0.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5842bece8a4b1690ffa6d9d959081c1d5d851ee4337a36c0a121fafe8c16add2"
+checksum = "cca5b48c9db66c5ba084e4660b4c0cfe8b551a96074bc04b7c11de86ad0bf1f9"
 dependencies = [
  "log 0.4.8",
  "rustc-hash",
@@ -4591,14 +4591,14 @@ checksum = "daf76fe7d25ac79748a37538b7daeed1c7a6867c92d3245c12c6222e4a20d639"
 
 [[package]]
 name = "wasmparser"
-version = "0.55.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af931e2e1960c53f4a28b063fec4cacd036f35acbec8ff3a4739125b17382a87"
+checksum = "32fddd575d477c6e9702484139cf9f23dcd554b06d185ed0f56c857dd3a47aa6"
 
 [[package]]
 name = "wasmtime"
 version = "0.16.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -4621,7 +4621,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-debug"
 version = "0.16.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "anyhow",
  "faerie",
@@ -4636,7 +4636,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-environ"
 version = "0.16.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "anyhow",
  "base64 0.12.1",
@@ -4664,7 +4664,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-jit"
 version = "0.16.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -4690,7 +4690,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-profiling"
 version = "0.16.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -4708,12 +4708,13 @@ dependencies = [
 [[package]]
 name = "wasmtime-runtime"
 version = "0.16.0"
-source = "git+https://github.com/leoyvens/wasmtime.git?branch=from-error-for-trap#26edb6de9bfa986a5acb8b29924912388e68929e"
+source = "git+https://github.com/bytecodealliance/wasmtime.git#15c68f2cc15709c65a7838c3c3641f716373d01c"
 dependencies = [
  "backtrace",
  "cc",
  "cfg-if",
  "indexmap",
+ "lazy_static",
  "libc",
  "memoffset",
  "more-asserts",

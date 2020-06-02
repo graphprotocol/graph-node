@@ -167,7 +167,7 @@ fn map_source_to_response_stream(
                     resolver.clone(),
                     query.clone(),
                     event,
-                    timeout.clone(),
+                    timeout,
                     max_first,
                 )
                 .boxed(),

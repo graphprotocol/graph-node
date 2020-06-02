@@ -24,7 +24,9 @@ bytes = "0.5"
 # PR is merged. https://github.com/rustonaut/maybe-owned/pull/9
 # See also 92cd8019-0136-4011-96a0-40b3eec37f73
 maybe-owned = { git = "https://github.com/rustonaut/maybe-owned", branch = "master" }
-wasmtime = { git = "https://github.com/leoyvens/wasmtime.git", branch = "from-error-for-trap" }
+
+# We can depend on the released version once 0.17 is released.
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime.git" }
 
 [dev-dependencies]
 graphql-parser = "0.2.3"

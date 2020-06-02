@@ -21,6 +21,8 @@ pub fn spawn_module(
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
 ) -> Result<mpsc::Sender<MappingRequest>, anyhow::Error> {
+    let valid_module = Arc::new(ValidModule::new(&raw_module).unwrap());
+
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
 
@@ -33,7 +35,6 @@ pub fn spawn_module(
     let conf =
         thread::Builder::new().name(format!("mapping-{}-{}", &subgraph_id, uuid::Uuid::new_v4()));
     conf.spawn(move || {
-        let valid_module = Arc::new(ValidModule::new(&raw_module).unwrap());
         runtime.enter(|| {
             // Pass incoming triggers to the WASM module and return entity changes;
             // Stop when canceled because all RuntimeHosts and their senders were dropped.
@@ -181,9 +182,8 @@ impl ValidModule {
         config.strategy(wasmtime::Strategy::Cranelift).unwrap();
         config.interruptable(true); // For timeouts.
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
-
-        let store = wasmtime::Store::new(&wasmtime::Engine::new(&config));
-        let module = wasmtime::Module::from_binary(&store, raw_module)?;
+        let engine = &wasmtime::Engine::new(&config);
+        let module = wasmtime::Module::from_binary(&engine, raw_module)?;
 
         let mut import_name_to_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (name, module) in module

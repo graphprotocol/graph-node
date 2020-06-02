@@ -31,6 +31,8 @@ use into_wasm_ret::IntoWasmRet;
 #[cfg(test)]
 mod test;
 
+const TRAP_TIMEOUT: &str = "trap: interrupt";
+
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
 pub(crate) struct WasmInstanceHandle {
     // This is the only reference to `WasmInstance` that's not within the instance itself,
@@ -177,8 +179,20 @@ impl WasmInstanceHandle {
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
 
-        func.get1()?(arg.wasm_ptr())
-            .with_context(|| format!("Failed to invoke handler '{}'", handler))
+        func.get1()?(arg.wasm_ptr()).map_err(|e| {
+            if e.to_string().contains(TRAP_TIMEOUT) {
+                anyhow::Error::context(
+                    e.into(),
+                    format!(
+                        "Handler '{}' hit the timeout of '{}' seconds",
+                        handler,
+                        self.instance().timeout.unwrap().as_secs()
+                    ),
+                )
+            } else {
+                anyhow::Error::context(e.into(), format!("Failed to invoke handler '{}'", handler))
+            }
+        })
     }
 }
 
@@ -210,7 +224,7 @@ impl WasmInstance {
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
     ) -> Result<WasmInstanceHandle, anyhow::Error> {
-        let mut linker = wasmtime::Linker::new(valid_module.module.store());
+        let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
 
         // Used by exports to access the instance context. It is `None` while the module is not yet
         // instantiated. A desirable consequence is that start function cannot access host exports.
@@ -391,7 +405,7 @@ impl WasmInstance {
             .get1()?;
 
         let should_interrupt = Arc::new(AtomicBool::new(true));
-        if let Some(timeout) = timeout.clone() {
+        if let Some(timeout) = timeout {
             // This task is likely to outlive the instance, which is fine.
             let interrupt_handle = instance.store().interrupt_handle().unwrap();
             let should_interrupt = should_interrupt.clone();
