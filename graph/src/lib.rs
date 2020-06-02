@@ -45,7 +45,7 @@ pub mod prelude {
     pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use ethabi;
-    pub use failure::{self, bail, err_msg, format_err, Error, Fail, SyncFailure};
+    pub use failure::{self, err_msg, format_err, Error, Fail, SyncFailure};
     pub use futures::future;
     pub use futures::prelude::*;
     pub use futures::stream;

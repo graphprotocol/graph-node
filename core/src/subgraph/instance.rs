@@ -139,7 +139,7 @@ where
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error> {
+    ) -> Result<BlockState, anyhow::Error> {
         Self::process_trigger_in_runtime_hosts(
             logger,
             &self.hosts,
@@ -158,7 +158,7 @@ where
         trigger: EthereumTrigger,
         mut state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error> {
+    ) -> Result<BlockState, anyhow::Error> {
         match trigger {
             EthereumTrigger::Log(log) => {
                 let log = Arc::new(log);
@@ -166,7 +166,7 @@ where
                 let transaction = block
                     .transaction_for_log(&log)
                     .map(Arc::new)
-                    .ok_or_else(|| format_err!("Found no transaction for event"))?;
+                    .context("Found no transaction for event")?;
                 let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
                 // Process the log in each host in the same order the corresponding data
                 // sources appear in the subgraph manifest
@@ -189,7 +189,7 @@ where
 
                 let transaction = block
                     .transaction_for_call(&call)
-                    .ok_or_else(|| format_err!("Found no transaction for call"))?;
+                    .context("Found no transaction for call")?;
                 let transaction = Arc::new(transaction);
                 let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
 
