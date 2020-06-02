@@ -10,7 +10,7 @@ async fn unbounded_loop() {
     );
     let func = module.get_func("loop").get0().unwrap();
     let res: Result<(), _> = func();
-    assert!(res.unwrap_err().to_string().contains("interrupt"));
+    assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
 }
 
 #[tokio::test]
