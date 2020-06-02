@@ -2,7 +2,6 @@ use super::{class::EnumPayload, AscHeap, AscType, AscValue};
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
-use wasmi::{FromRuntimeValue, RuntimeValue};
 
 /// A pointer to an object in the Asc heap.
 pub struct AscPtr<C>(u32, PhantomData<C>);
@@ -27,6 +26,13 @@ impl<T> fmt::Debug for AscPtr<T> {
     }
 }
 
+impl<C> AscPtr<C> {
+    // A raw pointer to be passed to wasm.
+    pub(crate) fn wasm_ptr(self) -> i32 {
+        i32::from_le_bytes(self.0.to_le_bytes())
+    }
+}
+
 impl<C: AscType> AscPtr<C> {
     /// Create a pointer that is equivalent to AssemblyScript's `null`.
     pub(crate) fn null() -> Self {
@@ -35,18 +41,18 @@ impl<C: AscType> AscPtr<C> {
 
     /// Read from `self` into the Rust struct `C`.
     pub(super) fn read_ptr<H: AscHeap>(self, heap: &H) -> C {
-        C::from_asc_bytes(&heap.get(self.0, C::asc_size(self, heap)).unwrap())
+        C::from_asc_bytes(&heap.get(self.0, C::asc_size(self, heap)))
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
     pub(super) fn alloc_obj<H: AscHeap>(asc_obj: &C, heap: &mut H) -> AscPtr<C> {
-        AscPtr(heap.raw_new(&asc_obj.to_asc_bytes()).unwrap(), PhantomData)
+        AscPtr(heap.raw_new(&asc_obj.to_asc_bytes()), PhantomData)
     }
 
     /// Helper used by arrays and strings to read their length.
     pub(super) fn read_u32<H: AscHeap>(&self, heap: &H) -> u32 {
         // Read the bytes pointed to by `self` as the bytes of a `u32`.
-        let raw_bytes = heap.get(self.0, size_of::<u32>() as u32).unwrap();
+        let raw_bytes = heap.get(self.0, size_of::<u32>() as u32);
         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
         u32_bytes.copy_from_slice(&raw_bytes);
         u32::from_le_bytes(u32_bytes)
@@ -61,17 +67,16 @@ impl<C: AscType> AscPtr<C> {
     pub(crate) fn is_null(&self) -> bool {
         self.0 == 0
     }
-}
 
-impl<C> From<AscPtr<C>> for RuntimeValue {
-    fn from(ptr: AscPtr<C>) -> RuntimeValue {
-        RuntimeValue::from(ptr.0)
+    // Erase type information.
+    pub(crate) fn erase(self) -> AscPtr<()> {
+        AscPtr(self.0, PhantomData)
     }
 }
 
-impl<C> FromRuntimeValue for AscPtr<C> {
-    fn from_runtime_value(val: RuntimeValue) -> Option<Self> {
-        u32::from_runtime_value(val).map(|ptr| AscPtr(ptr, PhantomData))
+impl<C> From<i32> for AscPtr<C> {
+    fn from(ptr: i32) -> Self {
+        AscPtr(u32::from_le_bytes(ptr.to_le_bytes()), PhantomData)
     }
 }
 

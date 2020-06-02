@@ -1,10 +1,11 @@
-use crate::module::WasmiModule;
+use crate::module::WasmInstance;
 use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
 use graph::components::ethereum::*;
 use graph::components::subgraph::SharedProofOfIndexing;
 use graph::prelude::*;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
@@ -13,19 +14,17 @@ use web3::types::{Log, Transaction};
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module(
-    raw_module: &[u8],
+    raw_module: Vec<u8>,
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
     host_metrics: Arc<HostMetrics>,
     runtime: tokio::runtime::Handle,
-) -> Result<mpsc::Sender<MappingRequest>, Error> {
-    let parsed_module = parity_wasm::deserialize_buffer(raw_module)?;
-    let valid_module = Arc::new(ValidModule::new(parsed_module)?);
-
+    timeout: Option<Duration>,
+) -> Result<mpsc::Sender<MappingRequest>, anyhow::Error> {
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
 
-    // wasmi modules are not `Send` therefore they cannot be scheduled by
+    // wasmtime instances are not `Send` therefore they cannot be scheduled by
     // the regular tokio executor, so we create a dedicated thread.
     //
     // In case of failure, this thread may panic or simply terminate,
@@ -34,24 +33,26 @@ pub fn spawn_module(
     let conf =
         thread::Builder::new().name(format!("mapping-{}-{}", &subgraph_id, uuid::Uuid::new_v4()));
     conf.spawn(move || {
+        let valid_module = Arc::new(ValidModule::new(&raw_module).unwrap());
         runtime.enter(|| {
             // Pass incoming triggers to the WASM module and return entity changes;
             // Stop when canceled because all RuntimeHosts and their senders were dropped.
             match mapping_request_receiver
                 .map_err(|()| unreachable!())
-                .for_each(move |request| -> Result<(), Error> {
+                .for_each(move |request| {
                     let MappingRequest {
                         ctx,
                         trigger,
                         result_sender,
                     } = request;
 
-                    // Start the WASMI module runtime.
+                    // Start the WASM module runtime.
                     let section = host_metrics.stopwatch.start_section("module_init");
-                    let module = WasmiModule::from_valid_module_with_ctx(
+                    let module = WasmInstance::from_valid_module_with_ctx(
                         valid_module.clone(),
                         ctx,
                         host_metrics.clone(),
+                        timeout,
                     )?;
                     section.end();
 
@@ -89,7 +90,7 @@ pub fn spawn_module(
 
                     result_sender
                         .send((result, future::ok(Instant::now())))
-                        .map_err(|_| err_msg("WASM module result receiver dropped."))
+                        .map_err(|_| anyhow::anyhow!("WASM module result receiver dropped."))
                 })
                 .wait()
             {
@@ -100,7 +101,7 @@ pub fn spawn_module(
         })
     })
     .map(|_| ())
-    .map_err(|e| format_err!("Spawning WASM runtime thread failed: {}", e))?;
+    .context("Spawning WASM runtime thread failed")?;
 
     Ok(mapping_request_sender)
 }
@@ -125,7 +126,10 @@ pub(crate) enum MappingTrigger {
     },
 }
 
-type MappingResponse = (Result<BlockState, Error>, futures::Finished<Instant, Error>);
+type MappingResponse = (
+    Result<BlockState, anyhow::Error>,
+    futures::Finished<Instant, Error>,
+);
 
 #[derive(Debug)]
 pub struct MappingRequest {
@@ -155,36 +159,46 @@ impl MappingContext {
     }
 }
 
-/// A pre-processed and valid WASM module, ready to be started as a WasmiModule.
+/// A pre-processed and valid WASM module, ready to be started as a WasmModule.
 pub(crate) struct ValidModule {
-    pub(super) module: wasmi::Module,
-    pub(super) host_module_names: Vec<String>,
+    pub(super) module: wasmtime::Module,
+
+    // A wasm import consists of a `module` and a `name`. AS will generates imports such that they
+    // have `module` set to the name of the file it is imported from and `name` set to the imported
+    // function name or `namespace.function` if inside a namespace. We'd rather not specify names of
+    // source files, so we consider that the import `name` uniquely identifies an import. Still we
+    // need to know the `module` to properly link it, so here we map import names to modules.
+    //
+    // AS now has an `@external("module", "name")` decorator which would make things cleaner, but
+    // the ship has sailed.
+    pub(super) import_name_to_modules: BTreeMap<String, Vec<String>>,
 }
 
 impl ValidModule {
     /// Pre-process and validate the module.
-    pub fn new(parsed_module: parity_wasm::elements::Module) -> Result<Self, Error> {
-        // Inject metering calls, which are used for checking timeouts.
-        let parsed_module = pwasm_utils::inject_gas_counter(parsed_module, &Default::default())
-            .map_err(|_| err_msg("failed to inject gas counter"))?;
+    pub fn new(raw_module: &[u8]) -> Result<Self, anyhow::Error> {
+        let mut config = wasmtime::Config::new();
+        config.strategy(wasmtime::Strategy::Cranelift).unwrap();
+        config.interruptable(true); // For timeouts.
+        config.cranelift_nan_canonicalization(true); // For NaN determinism.
 
-        // `inject_gas_counter` injects an import so the section must exist.
-        let import_section = parsed_module.import_section().unwrap().clone();
+        let store = wasmtime::Store::new(&wasmtime::Engine::new(&config));
+        let module = wasmtime::Module::from_binary(&store, raw_module)?;
 
-        // Collect the names of all host modules used in the WASM module
-        let mut host_module_names: Vec<_> = import_section
-            .entries()
-            .into_iter()
-            .map(|import| import.module().to_owned())
-            .collect();
-        host_module_names.dedup();
-
-        let module = wasmi::Module::from_parity_wasm_module(parsed_module)
-            .map_err(|e| format_err!("Invalid WASM module: {}", e))?;
+        let mut import_name_to_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (name, module) in module
+            .imports()
+            .map(|import| (import.name(), import.module()))
+        {
+            import_name_to_modules
+                .entry(name.to_string())
+                .or_default()
+                .push(module.to_string());
+        }
 
         Ok(ValidModule {
             module,
-            host_module_names,
+            import_name_to_modules,
         })
     }
 }

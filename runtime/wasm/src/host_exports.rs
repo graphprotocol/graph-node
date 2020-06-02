@@ -11,7 +11,6 @@ use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use semver::Version;
 use std::collections::HashMap;
-use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -19,27 +18,7 @@ use web3::types::H160;
 
 use graph_graphql::prelude::validate_entity;
 
-use crate::module::WasmiModule;
-
-pub(crate) trait ExportError: fmt::Debug + fmt::Display + Send + Sync + 'static {}
-
-impl<E> ExportError for E where E: fmt::Debug + fmt::Display + Send + Sync + 'static {}
-
-/// Error raised in host functions.
-#[derive(Debug)]
-pub(crate) struct HostExportError<E>(pub(crate) E);
-
-impl<E: fmt::Display> fmt::Display for HostExportError<E> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<graph::prelude::Error> for HostExportError<String> {
-    fn from(e: graph::prelude::Error) -> Self {
-        HostExportError(e.to_string())
-    }
-}
+use crate::module::WasmInstance;
 
 pub(crate) struct HostExports {
     subgraph_id: SubgraphDeploymentId,
@@ -59,7 +38,6 @@ pub(crate) struct HostExports {
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
     store: Arc<dyn crate::RuntimeStore>,
-    handler_timeout: Option<Duration>,
     arweave_adapter: Arc<dyn ArweaveAdapter>,
     three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
@@ -85,7 +63,6 @@ impl HostExports {
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
-        handler_timeout: Option<Duration>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
@@ -105,7 +82,6 @@ impl HostExports {
             link_resolver,
             call_cache,
             store,
-            handler_timeout,
             arweave_adapter,
             three_box_adapter,
         }
@@ -115,9 +91,9 @@ impl HostExports {
         &self,
         message: Option<String>,
         file_name: Option<String>,
-        line_number: Option<u32>,
-        column_number: Option<u32>,
-    ) -> Result<(), HostExportError<impl ExportError>> {
+        line_number: Option<i32>,
+        column_number: Option<i32>,
+    ) -> Result<(), anyhow::Error> {
         let message = message
             .map(|message| format!("message: {}", message))
             .unwrap_or_else(|| "no message".into());
@@ -133,10 +109,11 @@ impl HostExports {
             ),
             _ => unreachable!(),
         };
-        Err(HostExportError(format!(
+        Err(anyhow::anyhow!(
             "Mapping aborted at {}, with {}",
-            location, message
-        )))
+            location,
+            message
+        ))
     }
 
     pub(crate) fn store_set(
@@ -147,7 +124,9 @@ impl HostExports {
         entity_type: String,
         entity_id: String,
         mut data: HashMap<String, Value>,
-    ) -> Result<(), HostExportError<impl ExportError>> {
+    ) -> Result<(), anyhow::Error> {
+        use graph::prelude::failure::ResultExt;
+
         if let Some(proof_of_indexing) = proof_of_indexing {
             let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
             proof_of_indexing.write(
@@ -164,11 +143,13 @@ impl HostExports {
         // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
             Some(ref v) if v != &Value::String(entity_id.clone()) => {
-                return Err(HostExportError(format!(
+                anyhow::bail!(
                     "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
                      {} != {}",
-                    entity_type, v, entity_id,
-                )));
+                    entity_type,
+                    v,
+                    entity_id,
+                );
             }
             _ => (),
         }
@@ -179,20 +160,22 @@ impl HostExports {
             entity_id,
         };
         let entity = Entity::from(data);
-        let schema = self.store.input_schema(&self.subgraph_id)?;
+        let schema = self.store.input_schema(&self.subgraph_id).compat()?;
         let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
-        state
-            .entity_cache
-            .set(key.clone(), entity)
-            .map_err(|e| HostExportError(e.to_string()))?;
+        state.entity_cache.set(key.clone(), entity).compat()?;
 
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
-        if !is_valid && self.store.uses_relational_schema(&self.subgraph_id)? {
+        if !is_valid
+            && self
+                .store
+                .uses_relational_schema(&self.subgraph_id)
+                .compat()?
+        {
             let entity = state
                 .entity_cache
                 .get(&key)
-                .map_err(|e| HostExportError(e.to_string()))?
+                .compat()?
                 .expect("we just stored this entity");
             validate_entity(&schema.document, &key, &entity)?;
         }
@@ -231,20 +214,14 @@ impl HostExports {
         state: &mut BlockState,
         entity_type: String,
         entity_id: String,
-    ) -> Result<Option<Entity>, HostExportError<impl ExportError>> {
+    ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: entity_type.clone(),
             entity_id: entity_id.clone(),
         };
 
-        let result = state
-            .entity_cache
-            .get(&store_key)
-            .map_err(HostExportError)
-            .map(|ok| ok.to_owned());
-
-        result
+        Ok(state.entity_cache.get(&store_key)?)
     }
 
     /// Returns `Ok(None)` if the call was reverted.
@@ -253,7 +230,7 @@ impl HostExports {
         logger: &Logger,
         block: &LightEthereumBlock,
         unresolved_call: UnresolvedContractCall,
-    ) -> Result<Option<Vec<Token>>, HostExportError<impl ExportError>> {
+    ) -> Result<Option<Vec<Token>>, anyhow::Error> {
         let start_time = Instant::now();
 
         // Obtain the path to the contract ABI
@@ -261,12 +238,12 @@ impl HostExports {
             .abis
             .iter()
             .find(|abi| abi.name == unresolved_call.contract_name)
-            .ok_or_else(|| {
-                HostExportError(format!(
+            .with_context(|| {
+                format!(
                     "Could not find ABI for contract \"{}\", try adding it to the 'abis' section \
                      of the subgraph manifest",
                     unresolved_call.contract_name
-                ))
+                )
             })?
             .contract
             .clone();
@@ -277,11 +254,11 @@ impl HostExports {
             // and may lead to encoding/decoding errors
             None => contract
                 .function(unresolved_call.function_name.as_str())
-                .map_err(|e| {
-                    HostExportError(format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime: {}",
-                        unresolved_call.contract_name, unresolved_call.function_name, e
-                    ))
+                .with_context(|| {
+                    format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime",
+                        unresolved_call.contract_name, unresolved_call.function_name
+                    )
                 })?,
 
             // Behavior for apiVersion >= 0.0.04: look up function by signature of
@@ -289,22 +266,22 @@ impl HostExports {
             // correctly picks the correct variant of an overloaded function
             Some(ref function_signature) => contract
                 .functions_by_name(unresolved_call.function_name.as_str())
-                .map_err(|e| {
-                    HostExportError(format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime: {}",
-                        unresolved_call.contract_name, unresolved_call.function_name, e
-                    ))
+                .with_context(|| {
+                    format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime",
+                        unresolved_call.contract_name, unresolved_call.function_name
+                    )
                 })?
                 .iter()
                 .find(|f| function_signature == &f.signature())
-                .ok_or_else(|| {
-                    HostExportError(format!(
+                .with_context(|| {
+                    format!(
                         "Unknown function \"{}::{}\" with signature `{}` \
                          called from WASM runtime",
                         unresolved_call.contract_name,
                         unresolved_call.function_name,
                         function_signature,
-                    ))
+                    )
                 })?,
         };
 
@@ -327,10 +304,12 @@ impl HostExports {
                 info!(logger, "Contract call reverted"; "reason" => reason);
                 Ok(None)
             }
-            Err(e) => Err(HostExportError(format!(
+            Err(e) => Err(anyhow::anyhow!(
                 "Failed to call function \"{}\" of contract \"{}\": {}",
-                unresolved_call.function_name, unresolved_call.contract_name, e
-            ))),
+                unresolved_call.function_name,
+                unresolved_call.contract_name,
+                e
+            )),
         };
 
         debug!(logger, "Contract call finished";
@@ -357,34 +336,10 @@ impl HostExports {
         format!("0x{}", ::hex::encode(bytes).trim_start_matches('0'))
     }
 
-    pub(crate) fn big_int_to_i32(
-        &self,
-        n: BigInt,
-    ) -> Result<i32, HostExportError<impl ExportError>> {
-        if n >= i32::min_value().into() && n <= i32::max_value().into() {
-            let n_bytes = n.to_signed_bytes_le();
-            let mut i_bytes: [u8; 4] = if n < 0.into() { [255; 4] } else { [0; 4] };
-            i_bytes[..n_bytes.len()].copy_from_slice(&n_bytes);
-            let i = i32::from_le_bytes(i_bytes);
-            Ok(i)
-        } else {
-            Err(HostExportError(format!(
-                "BigInt value does not fit into i32: {}",
-                n
-            )))
-        }
-    }
+    pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
+        use graph::prelude::failure::ResultExt;
 
-    pub(crate) fn ipfs_cat(
-        &self,
-        logger: &Logger,
-        link: String,
-    ) -> Result<Vec<u8>, HostExportError<impl ExportError>> {
-        block_on03(
-            self.link_resolver
-                .cat(logger, &Link { link })
-                .map_err(HostExportError),
-        )
+        Ok(block_on03(self.link_resolver.cat(logger, &Link { link })).compat()?)
     }
 
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
@@ -396,16 +351,19 @@ impl HostExports {
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
         link_resolver: &Arc<dyn LinkResolver>,
-        module: &mut WasmiModule,
+        module: &mut WasmInstance,
         link: String,
         callback: &str,
         user_data: store::Value,
         flags: Vec<String>,
-    ) -> Result<Vec<BlockState>, HostExportError<impl ExportError>> {
+    ) -> Result<Vec<BlockState>, anyhow::Error> {
+        use graph::prelude::failure::ResultExt;
+
         const JSON_FLAG: &str = "json";
-        if !flags.contains(&JSON_FLAG.to_string()) {
-            return Err(HostExportError(format!("Flags must contain 'json'")));
-        }
+        anyhow::ensure!(
+            flags.contains(&JSON_FLAG.to_string()),
+            "Flags must contain 'json'"
+        );
 
         let host_metrics = module.host_metrics.clone();
         let valid_module = module.valid_module.clone();
@@ -421,16 +379,17 @@ impl HostExports {
         let mut last_log = start;
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
-        let result = block_on03(async move {
+        let result = {
             let mut stream: JsonValueStream =
-                link_resolver.json_stream(&logger, &Link { link }).await?;
+                block_on03(link_resolver.json_stream(&logger, &Link { link })).compat()?;
             let mut v = Vec::new();
-            while let Some(sv) = stream.next().await {
-                let sv = sv?;
-                let module = WasmiModule::from_valid_module_with_ctx(
+            while let Some(sv) = block_on03(stream.next()) {
+                let sv = sv.compat()?;
+                let module = WasmInstance::from_valid_module_with_ctx(
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
+                    module.timeout.clone(),
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s
@@ -446,44 +405,29 @@ impl HostExports {
                 v.push(result)
             }
             Ok(v)
-        });
-        result.map_err(move |e: Error| HostExportError(format!("{}: {}", errmsg, e.to_string())))
+        };
+        result.map_err(move |e: Error| anyhow::anyhow!("{}: {}", errmsg, e.to_string()))
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_i64(
-        &self,
-        json: String,
-    ) -> Result<i64, HostExportError<impl ExportError>> {
-        i64::from_str(&json)
-            .map_err(|_| HostExportError(format!("JSON `{}` cannot be parsed as i64", json)))
+    pub(crate) fn json_to_i64(&self, json: String) -> Result<i64, anyhow::Error> {
+        i64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as i64", json))
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_u64(
-        &self,
-        json: String,
-    ) -> Result<u64, HostExportError<impl ExportError>> {
-        u64::from_str(&json)
-            .map_err(|_| HostExportError(format!("JSON `{}` cannot be parsed as u64", json)))
+    pub(crate) fn json_to_u64(&self, json: String) -> Result<u64, anyhow::Error> {
+        u64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as u64", json))
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_f64(
-        &self,
-        json: String,
-    ) -> Result<f64, HostExportError<impl ExportError>> {
-        f64::from_str(&json)
-            .map_err(|_| HostExportError(format!("JSON `{}` cannot be parsed as f64", json)))
+    pub(crate) fn json_to_f64(&self, json: String) -> Result<f64, anyhow::Error> {
+        f64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as f64", json))
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_big_int(
-        &self,
-        json: String,
-    ) -> Result<Vec<u8>, HostExportError<impl ExportError>> {
+    pub(crate) fn json_to_big_int(&self, json: String) -> Result<Vec<u8>, anyhow::Error> {
         let big_int = BigInt::from_str(&json)
-            .map_err(|_| HostExportError(format!("JSON `{}` is not a decimal string", json)))?;
+            .with_context(|| format!("JSON `{}` is not a decimal string", json))?;
         Ok(big_int.to_signed_bytes_le())
     }
 
@@ -503,17 +447,8 @@ impl HostExports {
         x * y
     }
 
-    pub(crate) fn big_int_divided_by(
-        &self,
-        x: BigInt,
-        y: BigInt,
-    ) -> Result<BigInt, HostExportError<impl ExportError>> {
-        if y == 0.into() {
-            return Err(HostExportError(format!(
-                "attempted to divide BigInt `{}` by zero",
-                x
-            )));
-        }
+    pub(crate) fn big_int_divided_by(&self, x: BigInt, y: BigInt) -> Result<BigInt, anyhow::Error> {
+        anyhow::ensure!(y != 0.into(), "attempted to divide BigInt `{}` by zero", x);
         Ok(x / y)
     }
 
@@ -524,18 +459,6 @@ impl HostExports {
     /// Limited to a small exponent to avoid creating huge BigInts.
     pub(crate) fn big_int_pow(&self, x: BigInt, exponent: u8) -> BigInt {
         x.pow(exponent)
-    }
-
-    pub(crate) fn check_timeout(
-        &self,
-        start_time: Instant,
-    ) -> Result<(), HostExportError<impl ExportError>> {
-        if let Some(timeout) = self.handler_timeout {
-            if start_time.elapsed() > timeout {
-                return Err(HostExportError(format!("Mapping handler timed out")));
-            }
-        }
-        Ok(())
     }
 
     /// Useful for IPFS hashes stored as bytes
@@ -560,12 +483,9 @@ impl HostExports {
         &self,
         x: BigDecimal,
         y: BigDecimal,
-    ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
+    ) -> Result<BigDecimal, anyhow::Error> {
         if y == 0.into() {
-            return Err(HostExportError(format!(
-                "attempted to divide BigDecimal `{}` by zero",
-                x
-            )));
+            anyhow::bail!("attempted to divide BigDecimal `{}` by zero", x);
         }
 
         Ok(x / y)
@@ -579,12 +499,8 @@ impl HostExports {
         x.to_string()
     }
 
-    pub(crate) fn big_decimal_from_string(
-        &self,
-        s: String,
-    ) -> Result<BigDecimal, HostExportError<impl ExportError>> {
-        BigDecimal::from_str(&s)
-            .map_err(|e| HostExportError(format!("failed to parse BigDecimal: {}", e)))
+    pub(crate) fn big_decimal_from_string(&self, s: String) -> Result<BigDecimal, anyhow::Error> {
+        BigDecimal::from_str(&s).context("failed to parse BigDecimal")
     }
 
     pub(crate) fn data_source_create(
@@ -594,7 +510,7 @@ impl HostExports {
         name: String,
         params: Vec<String>,
         context: Option<DataSourceContext>,
-    ) -> Result<(), HostExportError<impl ExportError>> {
+    ) -> Result<(), anyhow::Error> {
         info!(
             logger,
             "Create data source";
@@ -607,8 +523,8 @@ impl HostExports {
             .templates
             .iter()
             .find(|template| template.name == name)
-            .ok_or_else(|| {
-                HostExportError(format!(
+            .with_context(|| {
+                format!(
                     "Failed to create data source from name `{}`: \
                      No template with this name in parent data source `{}`. \
                      Available names: {}.",
@@ -619,7 +535,7 @@ impl HostExports {
                         .map(|template| template.name.clone())
                         .collect::<Vec<_>>()
                         .join(", ")
-                ))
+                )
             })?
             .clone();
 
@@ -634,11 +550,10 @@ impl HostExports {
         Ok(())
     }
 
-    pub(crate) fn ens_name_by_hash(
-        &self,
-        hash: &str,
-    ) -> Result<Option<String>, HostExportError<impl ExportError>> {
-        self.store.find_ens_name(hash).map_err(HostExportError)
+    pub(crate) fn ens_name_by_hash(&self, hash: &str) -> Result<Option<String>, anyhow::Error> {
+        use graph::prelude::failure::ResultExt;
+
+        Ok(self.store.find_ens_name(hash).compat()?)
     }
 
     pub(crate) fn log_log(&self, logger: &Logger, level: slog::Level, msg: String) {
@@ -679,11 +594,14 @@ impl HostExports {
     }
 }
 
-pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError<impl ExportError>> {
+pub(crate) fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::from_reader(bytes.as_slice())
+}
+
+pub(crate) fn string_to_h160(string: &str) -> Result<H160, anyhow::Error> {
     // `H160::from_str` takes a hex string with no leading `0x`.
     let string = string.trim_start_matches("0x");
-    H160::from_str(string)
-        .map_err(|e| HostExportError(format!("Failed to convert string to Address/H160: {}", e)))
+    H160::from_str(string).context("Failed to convert string to Address/H160")
 }
 
 pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {

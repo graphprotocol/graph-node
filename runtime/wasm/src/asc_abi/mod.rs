@@ -6,8 +6,8 @@
 //! Implementations of `To`/`FromAscObj` live in the `to_from` module.
 
 pub use self::asc_ptr::AscPtr;
+use graph::prelude::anyhow;
 use std::mem::size_of;
-use wasmi;
 
 pub mod asc_ptr;
 pub mod class;
@@ -23,10 +23,9 @@ compile_error!("big-endian targets are currently unsupported");
 /// The implementor must provide the direct Asc interface with `raw_new` and `get`.
 pub trait AscHeap: Sized {
     /// Allocate new space and write `bytes`, return the allocated address.
-    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, wasmi::Error>;
+    fn raw_new(&mut self, bytes: &[u8]) -> u32;
 
-    /// Just like `wasmi::MemoryInstance::get`.
-    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, wasmi::Error>;
+    fn get(&self, offset: u32, size: u32) -> Vec<u8>;
 
     /// Instatiate `rust_obj` as an Asc object of class `C`.
     /// Returns a pointer to the Asc heap.
@@ -53,7 +52,7 @@ pub trait AscHeap: Sized {
         T::from_asc_obj(asc_ptr.read_ptr(self), self)
     }
 
-    fn try_asc_get<T, C>(&self, asc_ptr: AscPtr<C>) -> Result<T, graph::prelude::Error>
+    fn try_asc_get<T, C>(&self, asc_ptr: AscPtr<C>) -> Result<T, anyhow::Error>
     where
         C: AscType,
         T: TryFromAscObj<C>,
@@ -73,7 +72,7 @@ pub trait FromAscObj<C: AscType> {
 }
 
 pub trait TryFromAscObj<C: AscType>: Sized {
-    fn try_from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Result<Self, graph::prelude::Error>;
+    fn try_from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Result<Self, anyhow::Error>;
 }
 
 // `AscType` is not really public, implementors should live inside the `class` module.

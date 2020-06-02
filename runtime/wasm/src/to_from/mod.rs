@@ -1,4 +1,4 @@
-use graph::prelude::Error;
+use graph::prelude::anyhow::Error;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;

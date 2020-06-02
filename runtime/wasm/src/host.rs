@@ -90,17 +90,23 @@ where
     type Req = MappingRequest;
 
     fn spawn_mapping(
-        raw_module: &[u8],
+        raw_module: Vec<u8>,
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Sender<Self::Req>, Error> {
+    ) -> Result<Sender<Self::Req>, anyhow::Error> {
+        let timeout = std::env::var(TIMEOUT_ENV_VAR)
+            .ok()
+            .and_then(|s| u64::from_str(&s).ok())
+            .map(Duration::from_secs);
+
         crate::mapping::spawn_module(
             raw_module,
             logger,
             subgraph_id,
             metrics,
             tokio::runtime::Handle::current(),
+            timeout,
         )
     }
 
@@ -205,10 +211,6 @@ impl RuntimeHost {
             .clone();
 
         let data_source_name = config.data_source_name;
-        let timeout = std::env::var(TIMEOUT_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok())
-            .map(Duration::from_secs);
 
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
@@ -225,7 +227,6 @@ impl RuntimeHost {
             link_resolver,
             store,
             call_cache,
-            timeout,
             arweave_adapter,
             three_box_adapter,
         ));
@@ -391,7 +392,7 @@ impl RuntimeHost {
         trigger: MappingTrigger,
         block: &Arc<LightEthereumBlock>,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, failure::Error> {
+    ) -> Result<BlockState, anyhow::Error> {
         let trigger_type = trigger.as_static();
         debug!(
             logger, "Start processing Ethereum trigger";
@@ -418,13 +419,13 @@ impl RuntimeHost {
                 trigger,
                 result_sender,
             })
-            .map_err(|_| format_err!("Mapping terminated before passing in trigger"))
             .compat()
-            .await?;
+            .await
+            .context("Mapping terminated before passing in trigger")?;
 
         let (result, send_time) = result_receiver
             .await
-            .map_err(|_| format_err!("Mapping terminated before handling trigger"))?;
+            .context("Mapping terminated before handling trigger")?;
 
         let elapsed = start_time.elapsed();
         metrics.observe_handler_execution_time(elapsed.as_secs_f64(), handler);
@@ -578,6 +579,7 @@ impl RuntimeHostTrait for RuntimeHost {
             proof_of_indexing,
         )
         .await
+        .map_err(err_msg)
     }
 
     async fn process_block(
@@ -604,6 +606,7 @@ impl RuntimeHostTrait for RuntimeHost {
             proof_of_indexing,
         )
         .await
+        .map_err(err_msg)
     }
 
     async fn process_log(
@@ -717,5 +720,6 @@ impl RuntimeHostTrait for RuntimeHost {
             proof_of_indexing,
         )
         .await
+        .map_err(err_msg)
     }
 }

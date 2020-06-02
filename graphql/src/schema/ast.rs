@@ -478,17 +478,15 @@ pub fn validate_entity(
     schema: &Document,
     key: &EntityKey,
     entity: &Entity,
-) -> Result<(), graph::prelude::Error> {
+) -> Result<(), anyhow::Error> {
     let object_type_definitions = get_object_type_definitions(schema);
     let object_type = object_type_definitions
         .iter()
         .find(|object_type| object_type.name == key.entity_type)
-        .ok_or_else(|| {
-            format_err!(
+        .with_context(|| {
+            format!(
                 "Entity {}[{}]: unknown entity type `{}`",
-                key.entity_type,
-                key.entity_id,
-                key.entity_type
+                key.entity_type, key.entity_id, key.entity_type
             )
         })?;
 
@@ -504,7 +502,7 @@ pub fn validate_entity(
                     if let store::Value::List(elts) = value {
                         for (index, elt) in elts.iter().enumerate() {
                             if !is_assignable(elt, &scalar_type, false) {
-                                return Err(format_err!("Entity {}[{}]: field `{}` is of type {}, but the value `{}` contains a {} at index {}",
+                                anyhow::bail!("Entity {}[{}]: field `{}` is of type {}, but the value `{}` contains a {} at index {}",
                                 key.entity_type,
                                 key.entity_id,
                                 field.name,
@@ -512,13 +510,13 @@ pub fn validate_entity(
                                 value,
                                 elt.type_name(),
                                 index
-                            ));
+                            );
                             }
                         }
                     }
                 }
                 if !is_assignable(value, &scalar_type, is_list(&field.field_type)) {
-                    return Err(format_err!(
+                    anyhow::bail!(
                         "Entity {}[{}]: the value `{}` for field `{}` must have type {} but has type {}",
                         key.entity_type,
                         key.entity_id,
@@ -526,26 +524,26 @@ pub fn validate_entity(
                         field.name,
                         &field.field_type,
                         value.type_name()
-                    ));
+                    );
                 }
             }
             (None, false) => {
                 if is_non_null_type(&field.field_type) {
-                    return Err(format_err!(
+                    anyhow::bail!(
                         "Entity {}[{}]: missing value for non-nullable field `{}`",
                         key.entity_type,
                         key.entity_id,
-                        field.name
-                    ));
+                        field.name,
+                    );
                 }
             }
             (Some(_), true) => {
-                return Err(format_err!(
+                anyhow::bail!(
                     "Entity {}[{}]: field `{}` is derived and can not be set",
                     key.entity_type,
                     key.entity_id,
                     field.name,
-                ));
+                );
             }
             (None, true) => {
                 // derived fields should not be set
