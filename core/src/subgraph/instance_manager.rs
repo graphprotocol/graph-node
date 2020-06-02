@@ -735,7 +735,6 @@ where
 
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
-
         for trigger in triggers.into_iter() {
             block_state = SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
                 &logger,
@@ -745,7 +744,8 @@ where
                 block_state,
                 proof_of_indexing.cheap_clone(),
             )
-            .await?;
+            .await
+            .map_err(|e| format_err!("{:#}", e))?;
         }
     }
 

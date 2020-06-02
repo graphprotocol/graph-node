@@ -42,7 +42,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error>;
+    ) -> Result<BlockState, anyhow::Error>;
 
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
     async fn process_trigger_in_runtime_hosts(
@@ -52,7 +52,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error>;
+    ) -> Result<BlockState, anyhow::Error>;
 
     /// Adds dynamic data sources to the subgraph.
     fn add_dynamic_data_source(

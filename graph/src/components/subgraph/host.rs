@@ -32,7 +32,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         log: &Arc<Log>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error>;
+    ) -> Result<BlockState, anyhow::Error>;
 
     /// Process an Ethereum call and return a vector of entity operations
     async fn process_call(
@@ -43,7 +43,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         call: &Arc<EthereumCall>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error>;
+    ) -> Result<BlockState, anyhow::Error>;
 
     /// Process an Ethereum block and return a vector of entity operations
     async fn process_block(
@@ -53,7 +53,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error>;
+    ) -> Result<BlockState, anyhow::Error>;
 }
 
 pub struct HostMetrics {

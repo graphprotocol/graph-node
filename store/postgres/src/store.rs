@@ -22,8 +22,8 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bail, debug, ethabi, format_err, futures03, info, o, serde_json, tiny_keccak, tokio, trace,
-    warn, web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
+    debug, ethabi, format_err, futures03, info, o, serde_json, tiny_keccak, tokio, trace, warn,
+    web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
     ChainHeadUpdateStream, ChainStore, CheapClone, DynTryFuture, Entity, EntityKey,
     EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
     EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, Future, LightEthereumBlock,
@@ -1461,7 +1461,7 @@ impl ChainStore for Store {
         offset: u64,
     ) -> Result<Option<EthereumBlock>, Error> {
         if block_ptr.number < offset {
-            bail!("block offset points to before genesis block");
+            failure::bail!("block offset points to before genesis block");
         }
 
         select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
+use anyhow::bail;
 use async_trait::async_trait;
 use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
@@ -295,12 +296,9 @@ impl RuntimeHost {
         source_address_matches && self.handler_for_block(block_trigger_type).is_ok()
     }
 
-    fn handlers_for_log(&self, log: &Arc<Log>) -> Result<Vec<MappingEventHandler>, Error> {
+    fn handlers_for_log(&self, log: &Arc<Log>) -> Result<Vec<MappingEventHandler>, anyhow::Error> {
         // Get signature from the log
-        let topic0 = match log.topics.iter().next() {
-            Some(topic0) => topic0,
-            None => return Err(format_err!("Ethereum event has no topics")),
-        };
+        let topic0 = log.topics.get(0).context("Ethereum event has no topics")?;
 
         let handlers = self
             .data_source_event_handlers
@@ -309,23 +307,21 @@ impl RuntimeHost {
             .cloned()
             .collect::<Vec<_>>();
 
-        if !handlers.is_empty() {
-            Ok(handlers)
-        } else {
-            Err(format_err!(
+        if handlers.is_empty() {
+            bail!(
                 "No event handler found for event in data source \"{}\"",
                 self.data_source_name,
-            ))
+            )
         }
+
+        Ok(handlers)
     }
 
-    fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, Error> {
+    fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, anyhow::Error> {
         // First four bytes of the input for the call are the first four
         // bytes of hash of the function signature
         if call.input.0.len() < 4 {
-            return Err(format_err!(
-                "Ethereum call has input with less than 4 bytes"
-            ));
+            bail!("Ethereum call has input with less than 4 bytes");
         }
 
         let target_method_id = &call.input.0[..4];
@@ -338,7 +334,7 @@ impl RuntimeHost {
                 target_method_id == actual_method_id
             })
             .cloned()
-            .ok_or_else(|| {
+            .with_context(|| {
                 format_err!(
                     "No call handler found for call in data source \"{}\"",
                     self.data_source_name,
@@ -349,14 +345,14 @@ impl RuntimeHost {
     fn handler_for_block(
         &self,
         trigger_type: &EthereumBlockTriggerType,
-    ) -> Result<MappingBlockHandler, Error> {
+    ) -> Result<MappingBlockHandler, anyhow::Error> {
         match trigger_type {
             EthereumBlockTriggerType::Every => self
                 .data_source_block_handlers
                 .iter()
                 .find(move |handler| handler.filter == None)
                 .cloned()
-                .ok_or_else(|| {
+                .with_context(|| {
                     format_err!(
                         "No block handler for `Every` block trigger \
                          type found in data source \"{}\"",
@@ -371,7 +367,7 @@ impl RuntimeHost {
                         && handler.filter.clone().unwrap() == BlockHandlerFilter::Call
                 })
                 .cloned()
-                .ok_or_else(|| {
+                .with_context(|| {
                     format_err!(
                         "No block handler for `WithCallTo` block trigger \
                          type found in data source \"{}\"",
@@ -483,7 +479,7 @@ impl RuntimeHostTrait for RuntimeHost {
         call: &Arc<EthereumCall>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error> {
+    ) -> Result<BlockState, anyhow::Error> {
         // Identify the call handler for this call
         let call_handler = self.handler_for_call(&call)?;
 
@@ -492,7 +488,7 @@ impl RuntimeHostTrait for RuntimeHost {
             &self.data_source_contract_abi.contract,
             call_handler.function.as_str(),
         )
-        .ok_or_else(|| {
+        .with_context(|| {
             format_err!(
                 "Function with the signature \"{}\" not found in \
                     contract \"{}\" of data source \"{}\"",
@@ -509,18 +505,13 @@ impl RuntimeHostTrait for RuntimeHost {
         // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
         let tokens = function_abi
             .decode_input(&call.input.0[4..])
-            .map_err(|err| {
-                format_err!(
-                    "Generating function inputs for an Ethereum call failed = {}",
-                    err,
-                )
-            })?;
+            .context("Generating function inputs for an Ethereum call failed")?;
 
         if tokens.len() != function_abi.inputs.len() {
-            return Err(format_err!(
+            bail!(
                 "Number of arguments in call does not match \
                     number of inputs in function signature."
-            ));
+            );
         }
 
         let inputs = tokens
@@ -537,18 +528,15 @@ impl RuntimeHostTrait for RuntimeHost {
         // Take the output for the call, then call `function.decode_output` to
         // get a vector of `Token`s. Match the `Token`s with the `Param`s in
         // `function.outputs` to create a `Vec<LogParam>`.
-        let tokens = function_abi.decode_output(&call.output.0).map_err(|err| {
-            format_err!(
-                "Generating function outputs for an Ethereum call failed = {}",
-                err,
-            )
-        })?;
+        let tokens = function_abi
+            .decode_output(&call.output.0)
+            .context("Generating function outputs for an Ethereum call failed")?;
 
         if tokens.len() != function_abi.outputs.len() {
-            return Err(format_err!(
+            bail!(
                 "Number of parameters in the call output does not match \
                         number of outputs in the function signature."
-            ));
+            );
         }
 
         let outputs = tokens
@@ -579,7 +567,6 @@ impl RuntimeHostTrait for RuntimeHost {
             proof_of_indexing,
         )
         .await
-        .map_err(err_msg)
     }
 
     async fn process_block(
@@ -589,7 +576,7 @@ impl RuntimeHostTrait for RuntimeHost {
         trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error> {
+    ) -> Result<BlockState, anyhow::Error> {
         let block_handler = self.handler_for_block(trigger_type)?;
         self.send_mapping_request(
             logger,
@@ -606,7 +593,6 @@ impl RuntimeHostTrait for RuntimeHost {
             proof_of_indexing,
         )
         .await
-        .map_err(err_msg)
     }
 
     async fn process_log(
@@ -617,7 +603,7 @@ impl RuntimeHostTrait for RuntimeHost {
         log: &Arc<Log>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, Error> {
+    ) -> Result<BlockState, anyhow::Error> {
         let data_source_name = &self.data_source_name;
         let abi_name = &self.data_source_contract_abi.name;
         let contract = &self.data_source_contract_abi.contract;
@@ -635,7 +621,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     contract,
                     event_handler.event.as_str(),
                 )
-                .ok_or_else(|| {
+                .with_context(|| {
                     format_err!(
                         "Event with the signature \"{}\" not found in \
                                 contract \"{}\" of data source \"{}\"",
@@ -646,7 +632,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 })?;
                 Ok((event_handler, event_abi))
             })
-            .collect::<Result<Vec<_>, failure::Error>>()?;
+            .collect::<Result<Vec<_>, anyhow::Error>>()?;
 
         // Filter out handlers whose corresponding event ABIs cannot decode the
         // params (this is common for overloaded events that have the same topic0
@@ -696,10 +682,10 @@ impl RuntimeHostTrait for RuntimeHost {
         let (event_handler, params) = matching_handlers.pop().unwrap();
 
         if !matching_handlers.is_empty() {
-            return Err(format_err!(
+            bail!(
                 "Multiple handlers defined for event `{}`, only one is supported",
                 &event_handler.event
-            ));
+            );
         }
 
         self.send_mapping_request(
@@ -720,6 +706,5 @@ impl RuntimeHostTrait for RuntimeHost {
             proof_of_indexing,
         )
         .await
-        .map_err(err_msg)
     }
 }
