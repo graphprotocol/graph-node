@@ -8,7 +8,7 @@ pub use host::RuntimeHostBuilder;
 /// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.
 mod mapping;
 
-/// Deals with wasmi.
+/// WASM module instance.
 mod module;
 
 /// Runtime-agnostic implementation of exports to WASM.

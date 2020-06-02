@@ -92,7 +92,7 @@ where
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
-    ) -> Result<T::Host, Error> {
+    ) -> Result<T::Host, anyhow::Error> {
         let mapping_request_sender = {
             let module_bytes = data_source.mapping.runtime.as_ref();
             let module_hash = tiny_keccak::keccak256(module_bytes);
@@ -100,7 +100,7 @@ where
                 sender.clone()
             } else {
                 let sender = T::spawn_mapping(
-                    module_bytes,
+                    module_bytes.clone(),
                     logger,
                     self.subgraph_id.clone(),
                     host_metrics.clone(),
@@ -109,14 +109,16 @@ where
                 sender
             }
         };
-        self.host_builder.build(
-            self.network.clone(),
-            self.subgraph_id.clone(),
-            data_source,
-            top_level_templates,
-            mapping_request_sender,
-            host_metrics,
-        )
+        self.host_builder
+            .build(
+                self.network.clone(),
+                self.subgraph_id.clone(),
+                data_source,
+                top_level_templates,
+                mapping_request_sender,
+                host_metrics,
+            )
+            .map_err(|e| e.compat().into())
     }
 }
 
@@ -230,14 +232,14 @@ where
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Arc<T::Host>, Error> {
+    ) -> Result<Arc<T::Host>, anyhow::Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = *MAX_DATA_SOURCES {
             if self.hosts.len() >= max_data_sources {
-                return Err(format_err!(
+                anyhow::bail!(
                     "Limit of {} data sources per subgraph exceeded",
-                    max_data_sources
-                ));
+                    max_data_sources,
+                );
             }
         }
 

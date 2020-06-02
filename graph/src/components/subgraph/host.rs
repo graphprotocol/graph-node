@@ -131,9 +131,9 @@ pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
     /// Spawn a mapping and return a channel for mapping requests. The sender should be able to be
     /// cached and shared among mappings that use the same wasm file.
     fn spawn_mapping(
-        raw_module: &[u8],
+        raw_module: Vec<u8>,
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
-    ) -> Result<mpsc::Sender<Self::Req>, Error>;
+    ) -> Result<mpsc::Sender<Self::Req>, anyhow::Error>;
 }

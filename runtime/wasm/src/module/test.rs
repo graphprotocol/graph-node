@@ -4,14 +4,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::io::Cursor;
 use std::str::FromStr;
-use wasmi::nan_preserving_float::F64;
 
 use crate::host_exports::HostExports;
 use graph::components::store::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::mock::MockEthereumAdapter;
-use graph::prelude::Error;
 use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
@@ -28,7 +26,7 @@ fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
 ) -> (
-    WasmiModule,
+    WasmInstanceHandle,
     Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) {
     let store = STORE.clone();
@@ -58,22 +56,21 @@ fn test_valid_module_and_store(
         stopwatch_metrics,
     ));
 
-    let module = WasmiModule::from_valid_module_with_ctx(
-        Arc::new(
-            ValidModule::new(
-                parity_wasm::deserialize_buffer(data_source.mapping.runtime.as_ref()).unwrap(),
-            )
-            .unwrap(),
-        ),
+    let module = WasmInstance::from_valid_module_with_ctx(
+        Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(deployment_id, data_source, store.clone()),
         host_metrics,
+        std::env::var(crate::host::TIMEOUT_ENV_VAR)
+            .ok()
+            .and_then(|s| u64::from_str(&s).ok())
+            .map(std::time::Duration::from_secs),
     )
     .unwrap();
 
     (module, store)
 }
 
-fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmiModule {
+fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstanceHandle {
     test_valid_module_and_store(subgraph_id, data_source).0
 }
 
@@ -153,10 +150,6 @@ fn mock_host_exports(
         )),
         store.clone(),
         store,
-        std::env::var(crate::host::TIMEOUT_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok())
-            .map(std::time::Duration::from_secs),
         arweave_adapter,
         three_box_adapter,
     )
@@ -176,49 +169,57 @@ fn mock_context(
     }
 }
 
-impl WasmiModule {
-    fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: RuntimeValue) -> AscPtr<P> {
-        self.module
-            .clone()
-            .invoke_export(fn_name, &[val], self)
-            .expect("call failed")
-            .expect("call returned nothing")
-            .try_into()
-            .expect("call did not return pointer")
+impl WasmInstanceHandle {
+    fn get_func(&self, name: &str) -> wasmtime::Func {
+        self.borrow_instance().instance.get_func(name).unwrap()
     }
 
-    fn takes_ptr_returns_ptr<P, Q>(&mut self, fn_name: &str, arg: AscPtr<P>) -> AscPtr<Q> {
-        self.module
-            .clone()
-            .invoke_export(fn_name, &[RuntimeValue::from(arg)], self)
-            .expect("call failed")
-            .expect("call returned nothing")
-            .try_into()
-            .expect("call did not return pointer")
+    fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
+        let func = self.get_func(f).get1().unwrap();
+        let ptr: i32 = func(arg.wasm_ptr()).unwrap();
+        ptr.into()
     }
 
-    fn takes_ptr_ptr_returns_ptr<P, Q, R>(
-        &mut self,
-        fn_name: &str,
-        arg1: AscPtr<P>,
-        arg2: AscPtr<Q>,
-    ) -> AscPtr<R> {
-        self.module
-            .clone()
-            .invoke_export(
-                fn_name,
-                &[RuntimeValue::from(arg1), RuntimeValue::from(arg2)],
-                self,
-            )
-            .expect("call failed")
-            .expect("call returned nothing")
-            .try_into()
-            .expect("call did not return pointer")
+    fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R> {
+        let func = self.get_func(f).get2().unwrap();
+        let ptr: i32 = func(arg0.wasm_ptr(), arg1.wasm_ptr()).unwrap();
+        ptr.into()
+    }
+
+    fn invoke_export2_void<C, D>(
+        &self,
+        f: &str,
+        arg0: AscPtr<C>,
+        arg1: AscPtr<D>,
+    ) -> Result<(), wasmtime::Trap> {
+        let func = self.get_func(f).get2().unwrap();
+        func(arg0.wasm_ptr(), arg1.wasm_ptr())
+    }
+
+    fn takes_ptr_returns_val<P, V: wasmtime::WasmTy>(&mut self, fn_name: &str, v: AscPtr<P>) -> V {
+        let func = self.get_func(fn_name).get1().unwrap();
+        func(v.wasm_ptr()).unwrap()
+    }
+
+    fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P> {
+        let func = self.get_func(fn_name).get1().unwrap();
+        let ptr: i32 = func(val).unwrap();
+        ptr.into()
     }
 }
 
-#[test]
-fn json_conversions() {
+impl AscHeap for WasmInstanceHandle {
+    fn raw_new(&mut self, bytes: &[u8]) -> u32 {
+        self.instance().raw_new(bytes)
+    }
+
+    fn get(&self, offset: u32, size: u32) -> Vec<u8> {
+        self.borrow_instance().get(offset, size)
+    }
+}
+
+#[tokio::test]
+async fn json_conversions() {
     let mut module = test_module(
         "jsonConversions",
         mock_data_source("wasm_test/string_to_number.wasm"),
@@ -227,57 +228,25 @@ fn json_conversions() {
     // test u64 conversion
     let number = 9223372036850770800;
     let number_ptr = module.asc_new(&number.to_string());
-    let converted: u64 = module
-        .module
-        .clone()
-        .invoke_export("testToU64", &[RuntimeValue::from(number_ptr)], &mut module)
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return I64");
-    assert_eq!(number, converted);
+    let converted: i64 = module.takes_ptr_returns_val("testToU64", number_ptr);
+    assert_eq!(number, u64::from_le_bytes(converted.to_le_bytes()));
 
     // test i64 conversion
     let number = -9223372036850770800;
     let number_ptr = module.asc_new(&number.to_string());
-    let converted: i64 = module
-        .module
-        .clone()
-        .invoke_export("testToI64", &[RuntimeValue::from(number_ptr)], &mut module)
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return I64");
+    let converted: i64 = module.takes_ptr_returns_val("testToI64", number_ptr);
     assert_eq!(number, converted);
 
     // test f64 conversion
-    let number = F64::from(-9223372036850770.92345034);
-    let number_ptr = module.asc_new(&number.to_float().to_string());
-    let converted: F64 = module
-        .module
-        .clone()
-        .invoke_export("testToF64", &[RuntimeValue::from(number_ptr)], &mut module)
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return F64");
+    let number = -9223372036850770.92345034;
+    let number_ptr = module.asc_new(&number.to_string());
+    let converted: f64 = module.takes_ptr_returns_val("testToF64", number_ptr);
     assert_eq!(number, converted);
 
     // test BigInt conversion
     let number = "-922337203685077092345034";
     let number_ptr = module.asc_new(number);
-    let big_int_obj: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export(
-            "testToBigInt",
-            &[RuntimeValue::from(number_ptr)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let big_int_obj: AscPtr<AscBigInt> = module.invoke_export("testToBigInt", number_ptr);
     let bytes: Vec<u8> = module.asc_get(big_int_obj);
     assert_eq!(
         scalar::BigInt::from_str(number).unwrap(),
@@ -285,8 +254,8 @@ fn json_conversions() {
     );
 }
 
-#[test]
-fn json_parsing() {
+#[tokio::test]
+async fn json_parsing() {
     let mut module = test_module(
         "jsonParsing",
         mock_data_source("wasm_test/json_parsing.wasm"),
@@ -296,18 +265,7 @@ fn json_parsing() {
     let s = "foo"; // Invalid because there are no quotes around `foo`
     let bytes: &[u8] = s.as_ref();
     let bytes_ptr = module.asc_new(bytes);
-    let return_value: AscPtr<AscString> = module
-        .module
-        .clone()
-        .invoke_export(
-            "handleJsonError",
-            &[RuntimeValue::from(bytes_ptr)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return a string");
+    let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
     let output: String = module.asc_get(return_value);
     assert_eq!(output, "ERROR: true");
 
@@ -315,19 +273,8 @@ fn json_parsing() {
     let s = "\"foo\""; // Valid because there are quotes around `foo`
     let bytes: &[u8] = s.as_ref();
     let bytes_ptr = module.asc_new(bytes);
-    let return_value: AscPtr<AscString> = module
-        .module
-        .clone()
-        .invoke_export(
-            "handleJsonError",
-            &[RuntimeValue::from(bytes_ptr)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return a string");
-    let output: String = module.asc_get(return_value);
+    let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
+    let output: String = module.instance().asc_get(return_value);
     assert_eq!(output, "OK: foo");
 }
 
@@ -338,19 +285,9 @@ async fn ipfs_cat() {
         let hash = ipfs.add(Cursor::new("42")).await.unwrap().hash;
 
         let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
-        let converted: AscPtr<AscString> = module
-            .module
-            .clone()
-            .invoke_export(
-                "ipfsCatString",
-                &[RuntimeValue::from(module.asc_new(&hash))],
-                &mut module,
-            )
-            .expect("call failed")
-            .expect("call returned nothing")
-            .try_into()
-            .expect("call did not return pointer");
-        let data: String = module.asc_get(converted);
+        let arg = module.asc_new(&hash);
+        let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
+        let data: String = module.instance().asc_get(converted);
         assert_eq!(data, "42");
     })
     .await
@@ -387,7 +324,7 @@ async fn ipfs_map() {
         ipfs: Arc<ipfs_api::IpfsClient>,
         subgraph_id: &'static str,
         json_string: String,
-    ) -> Result<Vec<EntityModification>, Error> {
+    ) -> Result<Vec<EntityModification>, anyhow::Error> {
         let (mut module, store) =
             test_valid_module_and_store(subgraph_id, mock_data_source("wasm_test/ipfs_map.wasm"));
         let hash = if json_string == BAD_IPFS_HASH {
@@ -395,14 +332,21 @@ async fn ipfs_map() {
         } else {
             ipfs.add(Cursor::new(json_string)).await.unwrap().hash
         };
-        let user_data = RuntimeValue::from(module.asc_new(USER_DATA));
-        let converted = module.module.clone().invoke_export(
-            "ipfsMap",
-            &[RuntimeValue::from(module.asc_new(&hash)), user_data],
-            &mut module,
-        )?;
-        assert_eq!(None, converted);
+        let value = module.instance().asc_new(&hash);
+        let user_data = module.instance().asc_new(USER_DATA);
+
+        // Invoke the callback
+        let func = module
+            .instance()
+            .instance
+            .get_func("ipfsMap")
+            .unwrap()
+            .get2()
+            .unwrap();
+        let _: () = func(value.wasm_ptr(), user_data.wasm_ptr())?;
+
         let mut mods = module
+            .take_instance()
             .ctx
             .state
             .entity_cache
@@ -430,10 +374,13 @@ async fn ipfs_map() {
 
     // Valid JSON, but not what the callback expected; it will
     // fail on an assertion
-    let err: Error = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n[1,2]", str1))
+    let err = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n[1,2]", str1))
         .await
         .unwrap_err();
-    assert!(err.to_string().contains("JSON value is not an object."));
+    assert!(
+        format!("{:#}", err).contains("JSON value is not an object."),
+        format!("{:#}", err)
+    );
 
     // Malformed JSON
     let errmsg = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n[", str1))
@@ -449,14 +396,16 @@ async fn ipfs_map() {
     assert_eq!(0, ops.len());
 
     // Missing entry in the JSON object
-    let errmsg = run_ipfs_map(
-        ipfs.clone(),
-        subgraph_id,
-        "{\"value\": \"drei\"}".to_string(),
-    )
-    .await
-    .unwrap_err()
-    .to_string();
+    let errmsg = format!(
+        "{:#}",
+        run_ipfs_map(
+            ipfs.clone(),
+            subgraph_id,
+            "{\"value\": \"drei\"}".to_string(),
+        )
+        .await
+        .unwrap_err()
+    );
     assert!(errmsg.contains("JSON value is not a string."));
 
     // Bad IPFS hash.
@@ -472,29 +421,22 @@ async fn ipfs_fail() {
     graph::spawn_blocking(async {
         let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
-        let hash = module.asc_new("invalid hash");
+        let hash = module.instance().asc_new("invalid hash");
         assert!(module
-            .takes_ptr_returns_ptr::<_, AscString>("ipfsCat", hash,)
+            .invoke_export::<_, AscString>("ipfsCat", hash,)
             .is_null());
     })
     .await
     .unwrap();
 }
 
-#[test]
-fn crypto_keccak256() {
+#[tokio::test]
+async fn crypto_keccak256() {
     let mut module = test_module("cryptoKeccak256", mock_data_source("wasm_test/crypto.wasm"));
     let input: &[u8] = "eth".as_ref();
     let input: AscPtr<Uint8Array> = module.asc_new(input);
 
-    let hash: AscPtr<Uint8Array> = module
-        .module
-        .clone()
-        .invoke_export("hash", &[RuntimeValue::from(input)], &mut module)
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let hash: AscPtr<Uint8Array> = module.invoke_export("hash", input);
     let hash: Vec<u8> = module.asc_get(hash);
     assert_eq!(
         hex::encode(hash),
@@ -502,72 +444,8 @@ fn crypto_keccak256() {
     );
 }
 
-#[test]
-fn token_numeric_conversion() {
-    let mut module = test_module(
-        "TestNumericConversion",
-        mock_data_source("wasm_test/token_to_numeric.wasm"),
-    );
-
-    // Convert numeric to token and back.
-    let num = i32::min_value();
-    let token_ptr: AscPtr<AscEnum<EthereumValueKind>> =
-        module.takes_val_returns_ptr("token_from_i32", RuntimeValue::from(num));
-    let num_return = module
-        .module
-        .clone()
-        .invoke_export(
-            "token_to_i32",
-            &[RuntimeValue::from(token_ptr)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into::<i32>()
-        .expect("call did not return i32");
-    assert_eq!(num, num_return);
-}
-
-#[test]
-fn big_int_to_from_i32() {
-    let mut module = test_module(
-        "BigIntToFromI32",
-        mock_data_source("wasm_test/big_int_to_from_i32.wasm"),
-    );
-
-    // Convert i32 to BigInt
-    let input: i32 = -157;
-    let output_ptr: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export("i32_to_big_int", &[RuntimeValue::from(input)], &mut module)
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
-    let output: BigInt = module.asc_get(output_ptr);
-    assert_eq!(output, BigInt::from(-157 as i32));
-
-    // Convert BigInt to i32
-    let input = BigInt::from(-50 as i32);
-    let input_ptr: AscPtr<AscBigInt> = module.asc_new(&input);
-    let output: i32 = module
-        .module
-        .clone()
-        .invoke_export(
-            "big_int_to_i32",
-            &[RuntimeValue::from(input_ptr)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
-    assert_eq!(output, -50 as i32);
-}
-
-#[test]
-fn big_int_to_hex() {
+#[tokio::test]
+async fn big_int_to_hex() {
     let mut module = test_module(
         "BigIntToHex",
         mock_data_source("wasm_test/big_int_to_hex.wasm"),
@@ -576,46 +454,21 @@ fn big_int_to_hex() {
     // Convert zero to hex
     let zero = BigInt::from_unsigned_u256(&U256::zero());
     let zero: AscPtr<AscBigInt> = module.asc_new(&zero);
-    let zero_hex_ptr: AscPtr<AscString> = module
-        .module
-        .clone()
-        .invoke_export("big_int_to_hex", &[RuntimeValue::from(zero)], &mut module)
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let zero_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", zero);
     let zero_hex_str: String = module.asc_get(zero_hex_ptr);
     assert_eq!(zero_hex_str, "0x0");
 
     // Convert 1 to hex
     let one = BigInt::from_unsigned_u256(&U256::one());
     let one: AscPtr<AscBigInt> = module.asc_new(&one);
-    let one_hex_ptr: AscPtr<AscString> = module
-        .module
-        .clone()
-        .invoke_export("big_int_to_hex", &[RuntimeValue::from(one)], &mut module)
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let one_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", one);
     let one_hex_str: String = module.asc_get(one_hex_ptr);
     assert_eq!(one_hex_str, "0x1");
 
     // Convert U256::max_value() to hex
     let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
     let u256_max: AscPtr<AscBigInt> = module.asc_new(&u256_max);
-    let u256_max_hex_ptr: AscPtr<AscString> = module
-        .module
-        .clone()
-        .invoke_export(
-            "big_int_to_hex",
-            &[RuntimeValue::from(u256_max)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", u256_max);
     let u256_max_hex_str: String = module.asc_get(u256_max_hex_ptr);
     assert_eq!(
         u256_max_hex_str,
@@ -623,8 +476,8 @@ fn big_int_to_hex() {
     );
 }
 
-#[test]
-fn big_int_arithmetic() {
+#[tokio::test]
+async fn big_int_arithmetic() {
     let mut module = test_module(
         "BigIntArithmetic",
         mock_data_source("wasm_test/big_int_arithmetic.wasm"),
@@ -635,18 +488,7 @@ fn big_int_arithmetic() {
     let zero: AscPtr<AscBigInt> = module.asc_new(&zero);
     let one = BigInt::from(1);
     let one: AscPtr<AscBigInt> = module.asc_new(&one);
-    let result_ptr: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export(
-            "plus",
-            &[RuntimeValue::from(zero), RuntimeValue::from(one)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
     let result: BigInt = module.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(1));
 
@@ -655,18 +497,7 @@ fn big_int_arithmetic() {
     let zero: AscPtr<AscBigInt> = module.asc_new(&zero);
     let one = BigInt::from(1);
     let one: AscPtr<AscBigInt> = module.asc_new(&one);
-    let result_ptr: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export(
-            "plus",
-            &[RuntimeValue::from(zero), RuntimeValue::from(one)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
     let result: BigInt = module.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(128));
 
@@ -675,18 +506,7 @@ fn big_int_arithmetic() {
     let five: AscPtr<AscBigInt> = module.asc_new(&five);
     let ten = BigInt::from(10);
     let ten: AscPtr<AscBigInt> = module.asc_new(&ten);
-    let result_ptr: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export(
-            "minus",
-            &[RuntimeValue::from(five), RuntimeValue::from(ten)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("minus", five, ten);
     let result: BigInt = module.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(-5));
 
@@ -695,18 +515,7 @@ fn big_int_arithmetic() {
     let minus_twenty: AscPtr<AscBigInt> = module.asc_new(&minus_twenty);
     let five = BigInt::from(5);
     let five: AscPtr<AscBigInt> = module.asc_new(&five);
-    let result_ptr: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export(
-            "times",
-            &[RuntimeValue::from(minus_twenty), RuntimeValue::from(five)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("times", minus_twenty, five);
     let result: BigInt = module.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(-100));
 
@@ -715,18 +524,7 @@ fn big_int_arithmetic() {
     let five: AscPtr<AscBigInt> = module.asc_new(&five);
     let two = BigInt::from(2);
     let two: AscPtr<AscBigInt> = module.asc_new(&two);
-    let result_ptr: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export(
-            "dividedBy",
-            &[RuntimeValue::from(five), RuntimeValue::from(two)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("dividedBy", five, two);
     let result: BigInt = module.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(2));
 
@@ -735,35 +533,24 @@ fn big_int_arithmetic() {
     let five: AscPtr<AscBigInt> = module.asc_new(&five);
     let two = BigInt::from(2);
     let two: AscPtr<AscBigInt> = module.asc_new(&two);
-    let result_ptr: AscPtr<AscBigInt> = module
-        .module
-        .clone()
-        .invoke_export(
-            "mod",
-            &[RuntimeValue::from(five), RuntimeValue::from(two)],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("mod", five, two);
     let result: BigInt = module.asc_get(result_ptr);
     assert_eq!(result, BigInt::from(1));
 }
 
-#[test]
-fn abort() {
-    let mut module = test_module("abort", mock_data_source("wasm_test/abort.wasm"));
-    let err = module
-        .module
-        .clone()
-        .invoke_export("abort", &[], &mut module)
-        .unwrap_err();
-    assert_eq!(err.to_string(), "Trap: Trap { kind: Host(HostExportError(\"Mapping aborted at abort.ts, line 6, column 2, with message: not true\")) }");
+#[tokio::test]
+async fn abort() {
+    let module = test_module("abort", mock_data_source("wasm_test/abort.wasm"));
+    let func = module.get_func("abort").get0().unwrap();
+    let res: Result<(), _> = func();
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("line 6, column 2, with message: not true"));
 }
 
-#[test]
-fn bytes_to_base58() {
+#[tokio::test]
+async fn bytes_to_base58() {
     let mut module = test_module(
         "bytesToBase58",
         mock_data_source("wasm_test/bytes_to_base58.wasm"),
@@ -771,28 +558,25 @@ fn bytes_to_base58() {
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
     let bytes_ptr = module.asc_new(bytes.as_slice());
-    let result_ptr: AscPtr<AscString> = module.takes_ptr_returns_ptr("bytes_to_base58", bytes_ptr);
+    let result_ptr: AscPtr<AscString> = module.invoke_export("bytes_to_base58", bytes_ptr);
     let base58: String = module.asc_get(result_ptr);
     assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
 }
 
-#[test]
-fn data_source_create() {
+#[tokio::test]
+async fn data_source_create() {
     let run_data_source_create = move |name: String,
                                        params: Vec<String>|
-          -> Result<Vec<DataSourceTemplateInfo>, Error> {
+          -> Result<Vec<DataSourceTemplateInfo>, wasmtime::Trap> {
         let mut module = test_module(
             "DataSourceCreate",
             mock_data_source("wasm_test/data_source_create.wasm"),
         );
 
-        let name = RuntimeValue::from(module.asc_new(&name));
-        let params = RuntimeValue::from(module.asc_new(&*params));
-        module
-            .module
-            .clone()
-            .invoke_export("dataSourceCreate", &[name, params], &mut module)?;
-        Ok(module.ctx.state.created_data_sources)
+        let name = module.asc_new(&name);
+        let params = module.asc_new(&*params);
+        module.invoke_export2_void("dataSourceCreate", name, params)?;
+        Ok(module.take_instance().ctx.state.created_data_sources)
     };
 
     // Test with a valid template
@@ -810,19 +594,16 @@ fn data_source_create() {
     let params = vec![String::from("0xc000000000000000000000000000000000000000")];
     match run_data_source_create(template.clone(), params.clone()) {
         Ok(_) => panic!("expected an error because the template does not exist"),
-        Err(e) => assert_eq!(
-            e.to_string(),
-            "Trap: Trap { kind: Host(HostExportError(\
-             \"Failed to create data source from name `nonexistent template`: \
+        Err(e) => assert!(e.to_string().contains(
+            "Failed to create data source from name `nonexistent template`: \
              No template with this name in parent data source `example data source`. \
-             Available names: example template.\"\
-             )) }"
-        ),
+             Available names: example template."
+        )),
     };
 }
 
-#[test]
-fn ens_name_by_hash() {
+#[tokio::test]
+async fn ens_name_by_hash() {
     let mut module = test_module(
         "EnsNameByHash",
         mock_data_source("wasm_test/ens_name_by_hash.wasm"),
@@ -831,29 +612,19 @@ fn ens_name_by_hash() {
     let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
     let name = "dealdrafts";
     test_store::insert_ens_name(hash, name);
-    let converted: AscPtr<AscString> = module
-        .module
-        .clone()
-        .invoke_export(
-            "nameByHash",
-            &[RuntimeValue::from(module.asc_new(hash))],
-            &mut module,
-        )
-        .expect("call failed")
-        .expect("call returned nothing")
-        .try_into()
-        .expect("call did not return pointer");
+    let val = module.asc_new(hash);
+    let converted: AscPtr<AscString> = module.invoke_export("nameByHash", val);
     let data: String = module.asc_get(converted);
     assert_eq!(data, name);
 
     let hash = module.asc_new("impossible keccak hash");
     assert!(module
-        .takes_ptr_returns_ptr::<_, AscString>("nameByHash", hash)
+        .invoke_export::<_, AscString>("nameByHash", hash)
         .is_null());
 }
 
-#[test]
-fn entity_store() {
+#[tokio::test]
+async fn entity_store() {
     let (mut module, store) =
         test_valid_module_and_store("entityStore", mock_data_source("wasm_test/store.wasm"));
 
@@ -866,15 +637,9 @@ fn entity_store() {
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
     test_store::insert_entities(subgraph_id, vec![("User", alex), ("User", steve)]).unwrap();
 
-    let get_user = move |module: &mut WasmiModule, id: &str| -> Option<Entity> {
-        let entity_ptr: AscPtr<AscEntity> = module
-            .module
-            .clone()
-            .invoke_export("getUser", &[RuntimeValue::from(module.asc_new(id))], module)
-            .expect("call failed")
-            .expect("call returned nothing")
-            .try_into()
-            .expect("call did not return pointer");
+    let get_user = move |module: &mut WasmInstanceHandle, id: &str| -> Option<Entity> {
+        let id = module.asc_new(id);
+        let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
         if entity_ptr.is_null() {
             None
         } else {
@@ -886,19 +651,12 @@ fn entity_store() {
         }
     };
 
-    let load_and_set_user_name = |module: &mut WasmiModule, id: &str, name: &str| {
+    let load_and_set_user_name = |module: &mut WasmInstanceHandle, id: &str, name: &str| {
+        let id_ptr = module.asc_new(id);
+        let name_ptr = module.asc_new(name);
         module
-            .module
-            .clone()
-            .invoke_export(
-                "loadAndSetUserName",
-                &[
-                    RuntimeValue::from(module.asc_new(id)),
-                    RuntimeValue::from(module.asc_new(name)),
-                ],
-                module,
-            )
-            .expect("call failed");
+            .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
+            .unwrap();
     };
 
     // store.get of a nonexistent user
@@ -909,10 +667,13 @@ fn entity_store() {
 
     // Load, set, save cycle for an existing entity
     load_and_set_user_name(&mut module, "steve", "Steve-O");
-    let mut mods = module
-        .ctx
-        .state
-        .entity_cache
+
+    // We need to empty the cache for the next test
+    let cache = std::mem::replace(
+        &mut module.instance().ctx.state.entity_cache,
+        EntityCache::new(store.clone()),
+    );
+    let mut mods = cache
         .as_modifications(store.as_ref())
         .unwrap()
         .modifications;
@@ -926,13 +687,13 @@ fn entity_store() {
     }
 
     // Load, set, save cycle for a new entity with fulltext API
-    module.ctx.state.entity_cache = EntityCache::new(store.clone());
     load_and_set_user_name(&mut module, "herobrine", "Brine-O");
     let mut fulltext_entities = BTreeMap::new();
     let mut fulltext_fields = BTreeMap::new();
     fulltext_fields.insert("name".to_string(), vec!["search".to_string()]);
     fulltext_entities.insert("User".to_string(), fulltext_fields);
     let mut mods = module
+        .take_instance()
         .ctx
         .state
         .entity_cache

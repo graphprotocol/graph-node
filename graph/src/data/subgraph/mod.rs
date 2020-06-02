@@ -27,7 +27,10 @@ use crate::data::subgraph::schema::{
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
-use crate::prelude::{format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize};
+use crate::prelude::{
+    anyhow::{self, Context},
+    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize,
+};
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
 
@@ -722,9 +725,9 @@ impl UnresolvedDataSource {
 }
 
 impl TryFrom<DataSourceTemplateInfo> for DataSource {
-    type Error = failure::Error;
+    type Error = anyhow::Error;
 
-    fn try_from(info: DataSourceTemplateInfo) -> Result<Self, failure::Error> {
+    fn try_from(info: DataSourceTemplateInfo) -> Result<Self, anyhow::Error> {
         let DataSourceTemplateInfo {
             data_source: _,
             template,
@@ -735,19 +738,18 @@ impl TryFrom<DataSourceTemplateInfo> for DataSource {
         // Obtain the address from the parameters
         let string = params
             .get(0)
-            .ok_or_else(|| {
-                format_err!(
+            .with_context(|| {
+                format!(
                     "Failed to create data source from template `{}`: address parameter is missing",
                     template.name
                 )
             })?
             .trim_start_matches("0x");
 
-        let address = Address::from_str(string).map_err(|e| {
-            format_err!(
-                "Failed to create data source from template `{}`: invalid address provided: {}",
-                template.name,
-                e
+        let address = Address::from_str(string).with_context(|| {
+            format!(
+                "Failed to create data source from template `{}`, invalid address provided",
+                template.name
             )
         })?;
 

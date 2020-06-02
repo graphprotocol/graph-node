@@ -35,7 +35,6 @@ stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
 clap = "2.33.1"
 graphql-parser = "0.2.3"
 hex = "0.4.2"
-parity-wasm = "0.40"
 test-store = { path = "../test-store" }
 hex-literal = "0.2"
 graph-mock = { path = "../../mock" }

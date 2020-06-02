@@ -41,6 +41,7 @@ pub use url;
 /// ```
 pub mod prelude {
     pub use super::entity;
+    pub use anyhow::{self, Context as _};
     pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use ethabi;

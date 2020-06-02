@@ -5,9 +5,9 @@ use graph::components::ethereum::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
 use graph::data::store;
+use graph::prelude::anyhow::{self, Error};
 use graph::prelude::serde_json;
 use graph::prelude::web3::types as web3;
-use graph::prelude::{format_err, Error};
 use graph::prelude::{BigDecimal, BigInt};
 
 use crate::asc_abi::class::*;
@@ -86,12 +86,12 @@ impl TryFromAscObj<AscBigDecimal> for BigDecimal {
         // Validate the exponent.
         let exp = -big_decimal.as_bigint_and_exponent().1;
         if exp < BigDecimal::MIN_EXP.into() || exp > BigDecimal::MAX_EXP.into() {
-            return Err(format_err!(
+            anyhow::bail!(
                 "big decimal exponent `{}` is outside the `{}` to `{}` range",
                 exp,
                 BigDecimal::MIN_EXP,
                 BigDecimal::MAX_EXP
-            ));
+            );
         }
         Ok(big_decimal)
     }

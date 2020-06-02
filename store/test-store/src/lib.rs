@@ -38,44 +38,47 @@ lazy_static! {
 
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<Store> = {
-        STORE_RUNTIME.lock().unwrap().block_on(async {
-            // Set up Store
-            let logger = &*LOGGER;
-            let postgres_url = postgres_test_url();
-            let net_identifiers = EthereumNetworkIdentifier {
-                net_version: NETWORK_VERSION.to_owned(),
-                genesis_block_hash: GENESIS_PTR.hash,
-            };
-            let conn_pool_size: u32 = 20;
-            let postgres_conn_pool = create_connection_pool(
-                postgres_url.clone(),
-                conn_pool_size,
-                &logger,
-                Arc::new(MockMetricsRegistry::new()),
-            );
-            let registry = Arc::new(MockMetricsRegistry::new());
-            let chain_head_update_listener = Arc::new(ChainHeadUpdateListener::new(
-                &logger,
-                registry.clone(),
-                postgres_url.clone(),
-            ));
-            let subscriptions = Arc::new(SubscriptionManager::new(
-                logger.clone(),
-                postgres_url.clone(),
-            ));
-            Arc::new(Store::new(
-                StoreConfig {
-                    postgres_url,
-                    network_name: NETWORK_NAME.to_owned(),
-                },
-                &logger,
-                net_identifiers,
-                chain_head_update_listener,
-                subscriptions,
-                postgres_conn_pool,
-                registry.clone(),
-            ))
-        })
+        // Use a separate thread to work around issues with recursive `block_on`.
+        std::thread::spawn(move || {
+            STORE_RUNTIME.lock().unwrap().block_on(async {
+                // Set up Store
+                let logger = &*LOGGER;
+                let postgres_url = postgres_test_url();
+                let net_identifiers = EthereumNetworkIdentifier {
+                    net_version: NETWORK_VERSION.to_owned(),
+                    genesis_block_hash: GENESIS_PTR.hash,
+                };
+                let conn_pool_size: u32 = 20;
+                let postgres_conn_pool = create_connection_pool(
+                    postgres_url.clone(),
+                    conn_pool_size,
+                    &logger,
+                    Arc::new(MockMetricsRegistry::new()),
+                );
+                let registry = Arc::new(MockMetricsRegistry::new());
+                let chain_head_update_listener = Arc::new(ChainHeadUpdateListener::new(
+                    &logger,
+                    registry.clone(),
+                    postgres_url.clone(),
+                ));
+                let subscriptions = Arc::new(SubscriptionManager::new(
+                    logger.clone(),
+                    postgres_url.clone(),
+                ));
+                Arc::new(Store::new(
+                    StoreConfig {
+                        postgres_url,
+                        network_name: NETWORK_NAME.to_owned(),
+                    },
+                    &logger,
+                    net_identifiers,
+                    chain_head_update_listener,
+                    subscriptions,
+                    postgres_conn_pool,
+                    registry.clone(),
+                ))
+            })
+        }).join().unwrap()
     };
 
     pub static ref GENESIS_PTR: EthereumBlockPointer = (

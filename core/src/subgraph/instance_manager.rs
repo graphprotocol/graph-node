@@ -692,7 +692,8 @@ where
             &mut ctx,
             host_metrics.clone(),
             block_state.created_data_sources.drain(..),
-        )?;
+        )
+        .map_err(err_msg)?;
 
         // Reprocess the triggers from this block that match the new data sources
         let block_with_triggers = triggers_in_block(
@@ -926,7 +927,7 @@ fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     ctx: &mut IndexingContext<B, T, S>,
     host_metrics: Arc<HostMetrics>,
     created_data_sources: impl Iterator<Item = DataSourceTemplateInfo>,
-) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
+) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), anyhow::Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store + SubgraphDeploymentStore + EthereumCallCache,

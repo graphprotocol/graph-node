@@ -4,6 +4,7 @@ version = "0.18.0"
 edition = "2018"
 
 [dependencies]
+anyhow = "1.0"
 async-trait = "0.1.31"
 atomic_refcell = "0.1.6"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
