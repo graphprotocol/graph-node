@@ -11,8 +11,8 @@ use std::time::Instant;
 
 use graph::data::graphql::ext::ObjectTypeExt;
 use graph::prelude::{
-    BlockNumber, Entity, EntityCollection, EntityFilter, EntityLink, EntityWindow, Logger,
-    ParentLink, QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
+    BlockNumber, Entity, EntityCollection, EntityFilter, EntityLink, EntityOrder, EntityWindow,
+    Logger, ParentLink, QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
 };
 
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
@@ -805,8 +805,9 @@ fn execute_field(
         }
     }?;
 
+    let is_list = sast::is_list_or_non_null_list_field(field_definition);
     if !argument_values.contains_key(&*ARG_FIRST) {
-        let first = if sast::is_list_or_non_null_list_field(field_definition) {
+        let first = if is_list {
             // This makes `build_range` use the default, 100
             q::Value::Null
         } else {
@@ -828,6 +829,7 @@ fn execute_field(
         &parents,
         &join,
         &argument_values,
+        is_list,
         ctx.query.schema.types_for_interface(),
         resolver.block,
         ctx.max_first,
@@ -843,6 +845,7 @@ fn fetch<S: Store>(
     parents: &Vec<Node>,
     join: &Join<'_>,
     arguments: &HashMap<&q::Name, q::Value>,
+    is_list: bool,
     types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
@@ -854,6 +857,12 @@ fn fetch<S: Store>(
         types_for_interface,
         max_first,
     )?;
+
+    if !is_list {
+        // Suppress 'order by' in lookups of scalar values since
+        // that causes unnecessary work in the database
+        query.order = EntityOrder::Unordered;
+    }
 
     query.logger = Some(logger);
     if let Some(q::Value::String(id)) = arguments.get(&*ARG_ID) {
