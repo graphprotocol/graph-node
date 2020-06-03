@@ -476,7 +476,7 @@ impl Connection<'_> {
                 let order = match order {
                     EntityOrder::Ascending(attr, value_type) => Some((attr, value_type, "asc")),
                     EntityOrder::Descending(attr, value_type) => Some((attr, value_type, "desc")),
-                    EntityOrder::Default => None,
+                    EntityOrder::Default | EntityOrder::Unordered => None,
                 };
                 json.query(&self.conn, collection, filter, order, range)
             }

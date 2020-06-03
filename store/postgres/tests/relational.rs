@@ -567,7 +567,7 @@ fn conflicting_entity() {
 }
 
 fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
-    let expected_entity_ids: Vec<String> =
+    let mut expected_entity_ids: Vec<String> =
         expected_entity_ids.into_iter().map(str::to_owned).collect();
 
     run_test(move |conn, layout| -> Result<(), ()> {
@@ -587,6 +587,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
         );
         insert_pets(conn, layout);
 
+        let unordered = matches!(query.order, EntityOrder::Unordered);
         let entities = layout
             .query(
                 &*LOGGER,
@@ -599,7 +600,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
             )
             .expect("layout.query failed to execute query");
 
-        let entity_ids: Vec<_> = entities
+        let mut entity_ids: Vec<_> = entities
             .into_iter()
             .map(|entity| match entity.get("id") {
                 Some(Value::String(id)) => id.to_owned(),
@@ -607,6 +608,11 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
                 None => panic!("layout.query returned entity with no ID attribute"),
             })
             .collect();
+
+        if unordered {
+            entity_ids.sort();
+            expected_entity_ids.sort();
+        }
 
         assert_eq!(entity_ids, expected_entity_ids);
 
@@ -629,6 +635,7 @@ fn user_query() -> EntityQuery {
 trait EasyOrder {
     fn asc(self, attr: &str) -> Self;
     fn desc(self, attr: &str) -> Self;
+    fn unordered(self) -> Self;
 }
 
 impl EasyOrder for EntityQuery {
@@ -640,6 +647,10 @@ impl EasyOrder for EntityQuery {
     fn desc(self, attr: &str) -> Self {
         // The ValueType doesn't matter since relational layouts ignore it
         self.order(EntityOrder::Descending(attr.to_owned(), ValueType::String))
+    }
+
+    fn unordered(self) -> Self {
+        self.order(EntityOrder::Unordered)
     }
 }
 
@@ -668,6 +679,11 @@ fn find_interface() {
     test_find(
         vec!["garfield", "pluto"],
         query(vec!["Cat", "Dog"]).asc("id"),
+    );
+
+    test_find(
+        vec!["garfield", "pluto"],
+        query(vec!["Cat", "Dog"]).unordered(),
     );
 }
 
@@ -1193,12 +1209,14 @@ fn find_null_not_in() {
 fn find_order_by_float() {
     test_find(vec!["3", "2", "1"], user_query().asc("weight"));
     test_find(vec!["1", "2", "3"], user_query().desc("weight"));
+    test_find(vec!["1", "2", "3"], user_query().unordered());
 }
 
 #[test]
 fn find_order_by_id() {
     test_find(vec!["1", "2", "3"], user_query().asc("id"));
     test_find(vec!["3", "2", "1"], user_query().desc("id"));
+    test_find(vec!["1", "2", "3"], user_query().unordered());
 }
 
 #[test]

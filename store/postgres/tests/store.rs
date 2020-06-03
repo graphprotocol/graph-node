@@ -2051,6 +2051,10 @@ impl WindowQuery {
         )
     }
 
+    fn unordered(self) -> Self {
+        WindowQuery(self.0.order(EntityOrder::Unordered), self.1)
+    }
+
     fn above(self, age: i32) -> Self {
         WindowQuery(
             self.0
@@ -2065,10 +2069,11 @@ impl WindowQuery {
         WindowQuery(query, self.1).default_window()
     }
 
-    fn expect(&self, expected_ids: Vec<&str>, qid: &str) {
+    fn expect(&self, mut expected_ids: Vec<&str>, qid: &str) {
         let query = self.0.clone();
         let store = &self.1;
-        let entity_ids = store
+        let unordered = matches!(query.order, EntityOrder::Unordered);
+        let mut entity_ids = store
             .find(query)
             .expect("store.find failed to execute query")
             .into_iter()
@@ -2078,6 +2083,10 @@ impl WindowQuery {
                 None => panic!("store.find returned entity with no ID attribute"),
             })
             .collect::<Vec<_>>();
+        if unordered {
+            entity_ids.sort();
+            expected_ids.sort();
+        }
         assert_eq!(expected_ids, entity_ids, "Failed query: {}", qid);
     }
 }
@@ -2173,6 +2182,15 @@ fn window() {
             .above(12)
             .against_color_and_age()
             .expect(vec!["11", "5", "p2", "9"], "q8");
+
+        WindowQuery::new(&store)
+            .unordered()
+            .above(12)
+            .against_color_and_age()
+            .expect(
+                vec!["10", "11", "2", "4", "5", "6", "7", "8", "9", "p2"],
+                "q9",
+            );
 
         Ok(())
     });

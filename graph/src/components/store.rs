@@ -123,9 +123,15 @@ impl EntityFilter {
 /// The order in which entities should be restored from a store.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityOrder {
+    /// Order ascending by the given attribute. Use `id` as a tie-breaker
     Ascending(String, ValueType),
+    /// Order descending by the given attribute. Use `id` as a tie-breaker
     Descending(String, ValueType),
+    /// Order by the `id` of the entities
     Default,
+    /// Do not order at all. This speeds up queries where we know that
+    /// order does not matter
+    Unordered,
 }
 
 /// How many entities to return, how many to skip etc.

@@ -1647,16 +1647,21 @@ pub struct SortKey<'a> {
     column: Option<&'a Column>,
     value: Option<&'a str>,
     direction: &'static str,
+    /// Entirely skip creating an `order by` clause. The other fields of this
+    /// struct will be ignored if this is `true`
+    omit: bool,
 }
 
 impl<'a> SortKey<'a> {
     /// Generate selecting the sort key if it is needed
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if let Some(column) = self.column {
-            let name = column.name.as_str();
-            if !column.is_primary_key() {
-                out.push_sql(", c.");
-                out.push_identifier(name)?;
+        if !self.omit {
+            if let Some(column) = self.column {
+                let name = column.name.as_str();
+                if !column.is_primary_key() {
+                    out.push_sql(", c.");
+                    out.push_identifier(name)?;
+                }
             }
         }
         Ok(())
@@ -1665,15 +1670,24 @@ impl<'a> SortKey<'a> {
     /// Generate
     ///   order by [name direction], id
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql("order by ");
-        self.sort_expr(out)
+        if self.omit {
+            Ok(())
+        } else {
+            out.push_sql("order by ");
+            self.sort_expr(out)
+        }
     }
 
     /// Generate
     ///   order by g$parent_id, [name direction], id
     fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql("order by g$parent_id, ");
-        self.sort_expr(out)
+        if self.omit {
+            out.push_sql("order by g$parent_id ");
+            Ok(())
+        } else {
+            out.push_sql("order by g$parent_id, ");
+            self.sort_expr(out)
+        }
     }
 
     /// Generate
@@ -1761,6 +1775,41 @@ impl<'a> FilterQuery<'a> {
     ) -> Result<Self, QueryExecutionError> {
         const ASC: &str = "asc";
         const DESC: &str = "desc";
+
+        fn sort_key<'a>(
+            table: &'a Table,
+            attribute: String,
+            filter: Option<&'a EntityFilter>,
+            direction: &'static str,
+        ) -> Result<SortKey<'a>, QueryExecutionError> {
+            let column = table.column_for_field(&attribute)?;
+            if column.is_fulltext() {
+                match filter {
+                    Some(entity_filter) => match entity_filter {
+                        EntityFilter::Equal(_, value) => {
+                            let sort_value = value.as_str();
+
+                            Ok(SortKey {
+                                column: Some(column),
+                                value: sort_value,
+                                direction,
+                                omit: false,
+                            })
+                        }
+                        _ => unreachable!(),
+                    },
+                    None => unreachable!(),
+                }
+            } else {
+                Ok(SortKey {
+                    column: Some(column),
+                    value: None,
+                    direction,
+                    omit: false,
+                })
+            }
+        }
+
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
         // in that interface so that all tables have a column for that. It is
@@ -1768,42 +1817,20 @@ impl<'a> FilterQuery<'a> {
         let first_table = collection
             .first_table()
             .expect("an entity query always contains at least one entity type/table");
-        let (attribute, direction) = match order {
-            EntityOrder::Ascending(attr, _) => (Some(attr), ASC),
-            EntityOrder::Descending(attr, _) => (Some(attr), DESC),
-            EntityOrder::Default => (None, ASC),
-        };
-        let sort_key = match attribute {
-            Some(attribute) => {
-                let column = first_table.column_for_field(&attribute)?;
-                if column.is_fulltext() {
-                    match filter {
-                        Some(entity_filter) => match entity_filter {
-                            EntityFilter::Equal(_, value) => {
-                                let sort_value = value.as_str();
-
-                                SortKey {
-                                    column: Some(column),
-                                    value: sort_value,
-                                    direction,
-                                }
-                            }
-                            _ => unreachable!(),
-                        },
-                        None => unreachable!(),
-                    }
-                } else {
-                    SortKey {
-                        column: Some(column),
-                        value: None,
-                        direction,
-                    }
-                }
-            }
-            None => SortKey {
+        let sort_key = match order {
+            EntityOrder::Ascending(attr, _) => sort_key(first_table, attr, filter, ASC)?,
+            EntityOrder::Descending(attr, _) => sort_key(first_table, attr, filter, DESC)?,
+            EntityOrder::Default => SortKey {
                 column: None,
                 value: None,
                 direction: ASC,
+                omit: false,
+            },
+            EntityOrder::Unordered => SortKey {
+                column: None,
+                value: None,
+                direction: ASC,
+                omit: true,
             },
         };
 
