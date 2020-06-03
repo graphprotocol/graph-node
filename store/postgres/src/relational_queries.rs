@@ -1398,8 +1398,8 @@ impl<'a> ParentLimit<'a> {
 
     fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
-            out.push_sql(" order by ");
-            sort_key.sort_expr(out)?;
+            out.push_sql(" ");
+            sort_key.order_by(out)?;
             range.walk_ast(out.reborrow())?;
         }
         Ok(())
@@ -1643,56 +1643,78 @@ impl<'a> FilterCollection<'a> {
 /// Convenience to pass the name of the column to order by around. If `name`
 /// is `None`, the sort key should be ignored
 #[derive(Debug, Clone, Copy)]
-pub struct SortKey<'a> {
-    column: Option<&'a Column>,
-    value: Option<&'a str>,
-    direction: &'static str,
-    /// Entirely skip creating an `order by` clause. The other fields of this
-    /// struct will be ignored if this is `true`
-    omit: bool,
+pub enum SortKey<'a> {
+    None,
+    Key {
+        column: Option<&'a Column>,
+        value: Option<&'a str>,
+        direction: &'static str,
+    },
 }
 
 impl<'a> SortKey<'a> {
     /// Generate selecting the sort key if it is needed
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if !self.omit {
-            if let Some(column) = self.column {
-                let name = column.name.as_str();
-                if !column.is_primary_key() {
-                    out.push_sql(", c.");
-                    out.push_identifier(name)?;
+        match self {
+            SortKey::None => Ok(()),
+            SortKey::Key {
+                column,
+                value: _,
+                direction: _,
+            } => {
+                if let Some(column) = column {
+                    let name = column.name.as_str();
+                    if !column.is_primary_key() {
+                        out.push_sql(", c.");
+                        out.push_identifier(name)?;
+                    }
                 }
+                Ok(())
             }
         }
-        Ok(())
     }
 
     /// Generate
     ///   order by [name direction], id
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if self.omit {
-            Ok(())
-        } else {
-            out.push_sql("order by ");
-            self.sort_expr(out)
+        match self {
+            SortKey::None => Ok(()),
+            SortKey::Key {
+                column,
+                value,
+                direction,
+            } => {
+                out.push_sql("order by ");
+                SortKey::sort_expr(column, value, direction, out)
+            }
         }
     }
 
     /// Generate
     ///   order by g$parent_id, [name direction], id
     fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if self.omit {
-            Ok(())
-        } else {
-            out.push_sql("order by g$parent_id, ");
-            self.sort_expr(out)
+        match self {
+            SortKey::None => Ok(()),
+            SortKey::Key {
+                column,
+                value,
+                direction,
+            } => {
+                out.push_sql("order by g$parent_id, ");
+                SortKey::sort_expr(column, value, direction, out)
+            }
         }
     }
 
     /// Generate
     ///   [name direction,] id
-    fn sort_expr(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if let Some(column) = self.column {
+    fn sort_expr(
+        column: &Option<&Column>,
+        value: &Option<&str>,
+        direction: &str,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        if let Some(column) = column {
             match &column.column_type {
                 ColumnType::TSVector(config) => {
                     let algorithm = match config.algorithm {
@@ -1704,9 +1726,9 @@ impl<'a> SortKey<'a> {
                     out.push_identifier(name)?;
                     out.push_sql(", to_tsquery(");
 
-                    out.push_bind_param::<Text, _>(&String::from(self.value.unwrap()))?;
+                    out.push_bind_param::<Text, _>(&String::from(value.unwrap()))?;
                     out.push_sql(")) ");
-                    out.push_sql(self.direction);
+                    out.push_sql(direction);
                     out.push_sql(" nulls last");
                     if name != PRIMARY_KEY_COLUMN {
                         out.push_sql(", ");
@@ -1718,7 +1740,7 @@ impl<'a> SortKey<'a> {
                     let name = column.name.as_str();
                     out.push_identifier(name)?;
                     out.push_sql(" ");
-                    out.push_sql(self.direction);
+                    out.push_sql(direction);
                     out.push_sql(" nulls last");
                     if name != PRIMARY_KEY_COLUMN {
                         out.push_sql(", ");
@@ -1788,11 +1810,10 @@ impl<'a> FilterQuery<'a> {
                         EntityFilter::Equal(_, value) => {
                             let sort_value = value.as_str();
 
-                            Ok(SortKey {
+                            Ok(SortKey::Key {
                                 column: Some(column),
                                 value: sort_value,
                                 direction,
-                                omit: false,
                             })
                         }
                         _ => unreachable!(),
@@ -1800,11 +1821,10 @@ impl<'a> FilterQuery<'a> {
                     None => unreachable!(),
                 }
             } else {
-                Ok(SortKey {
+                Ok(SortKey::Key {
                     column: Some(column),
                     value: None,
                     direction,
-                    omit: false,
                 })
             }
         }
@@ -1819,18 +1839,12 @@ impl<'a> FilterQuery<'a> {
         let sort_key = match order {
             EntityOrder::Ascending(attr, _) => sort_key(first_table, attr, filter, ASC)?,
             EntityOrder::Descending(attr, _) => sort_key(first_table, attr, filter, DESC)?,
-            EntityOrder::Default => SortKey {
+            EntityOrder::Default => SortKey::Key {
                 column: None,
                 value: None,
                 direction: ASC,
-                omit: false,
             },
-            EntityOrder::Unordered => SortKey {
-                column: None,
-                value: None,
-                direction: ASC,
-                omit: true,
-            },
+            EntityOrder::Unordered => SortKey::None,
         };
 
         Ok(FilterQuery {
