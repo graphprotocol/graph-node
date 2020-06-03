@@ -37,8 +37,8 @@ pub fn build_query<'a>(
         query = query.filter(filter);
     }
     let order = match (
-        dbg!(build_order_by(entity, arguments)?),
-        dbg!(build_order_direction(arguments)?),
+        build_order_by(entity, arguments)?,
+        build_order_direction(arguments)?,
     ) {
         (Some((attr, value_type)), OrderDirection::Ascending) => {
             EntityOrder::Ascending(attr, value_type)
