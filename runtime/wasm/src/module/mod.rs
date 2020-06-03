@@ -35,16 +35,18 @@ const TRAP_TIMEOUT: &str = "trap: interrupt";
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
 pub(crate) struct WasmInstanceHandle {
-    // This is the only reference to `WasmInstance` that's not within the instance itself,
-    // so we can always borrow the `RefCell` with no concern for race conditions.
+    // This is the only reference to `WasmInstance` that's not within the instance itself, so we can
+    // always borrow the `RefCell` with no concern for race conditions.
+    //
+    // Also this is the only strong reference, so the instance will be dropped once this is dropped.
+    // The weak references are circulary held by instance itself through host exports.
     instance: Rc<RefCell<Option<WasmInstance>>>,
 }
 
 impl Drop for WasmInstanceHandle {
     fn drop(&mut self) {
-        // `WasmInstance` is in a reference cycle with `wasmtime::Instance`, more precisely
-        // `wasmtime::Store`. Drop the `WasmInstance` to avoid leaks.
-        self.instance.borrow_mut().take();
+        // Assert that the instance will be dropped.
+        assert_eq!(Rc::strong_count(&self.instance), 1);
     }
 }
 
@@ -244,12 +246,13 @@ impl WasmInstance {
 
                 // link an import with all the modules that require it.
                 for module in modules {
-                    let func_shared_instance = shared_instance.clone();
+                    let func_shared_instance = Rc::downgrade(&shared_instance);
                     linker.func(
                         module,
                         $wasm_name,
                         move |$($param: i32),*| {
-                            let mut instance = func_shared_instance.borrow_mut();
+                            let instance = func_shared_instance.upgrade().unwrap();
+                            let mut instance = instance.borrow_mut();
                             let instance = instance.as_mut().unwrap();
                             let _section = instance.host_metrics.stopwatch.start_section($section);
                             instance.$rust_name(
@@ -268,10 +271,11 @@ impl WasmInstance {
             .flatten();
 
         for module in modules {
-            let func_shared_instance = shared_instance.clone();
+            let func_shared_instance = Rc::downgrade(&shared_instance);
             linker.func(module, "store.get", move |entity_ptr: i32, id_ptr: i32| {
                 let start = Instant::now();
-                let mut instance = func_shared_instance.borrow_mut();
+                let instance = func_shared_instance.upgrade().unwrap();
+                let mut instance = instance.borrow_mut();
                 let instance = instance.as_mut().unwrap();
                 let stopwatch = &instance.host_metrics.stopwatch;
                 let _section = stopwatch.start_section("host_export_store_get");
@@ -292,10 +296,11 @@ impl WasmInstance {
             .flatten();
 
         for module in modules {
-            let func_shared_instance = shared_instance.clone();
+            let func_shared_instance = Rc::downgrade(&shared_instance);
             linker.func(module, "ethereum.call", move |call_ptr: i32| {
                 let start = Instant::now();
-                let mut instance = func_shared_instance.borrow_mut();
+                let instance = func_shared_instance.upgrade().unwrap();
+                let mut instance = instance.borrow_mut();
                 let instance = instance.as_mut().unwrap();
                 let stopwatch = &instance.host_metrics.stopwatch;
                 let _section = stopwatch.start_section("host_export_ethereum_call");
