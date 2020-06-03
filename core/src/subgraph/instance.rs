@@ -118,7 +118,7 @@ where
                 mapping_request_sender,
                 host_metrics,
             )
-            .map_err(|e| e.compat().into())
+            .compat_err()
     }
 }
 

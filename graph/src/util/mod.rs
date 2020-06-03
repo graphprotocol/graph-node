@@ -8,3 +8,5 @@ pub mod ethereum;
 pub mod security;
 
 pub mod lfu_cache;
+
+pub mod error;

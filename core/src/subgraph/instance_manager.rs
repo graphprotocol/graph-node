@@ -693,7 +693,7 @@ where
             host_metrics.clone(),
             block_state.created_data_sources.drain(..),
         )
-        .map_err(err_msg)?;
+        .compat_err()?;
 
         // Reprocess the triggers from this block that match the new data sources
         let block_with_triggers = triggers_in_block(
@@ -745,7 +745,7 @@ where
                 proof_of_indexing.cheap_clone(),
             )
             .await
-            .map_err(|e| format_err!("{:#}", e))?;
+            .compat_err()?;
         }
     }
 
