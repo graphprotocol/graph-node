@@ -1645,8 +1645,9 @@ impl<'a> FilterCollection<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum SortKey<'a> {
     None,
+    Id,
     Key {
-        column: Option<&'a Column>,
+        column: &'a Column,
         value: Option<&'a str>,
         direction: &'static str,
     },
@@ -1656,18 +1657,16 @@ impl<'a> SortKey<'a> {
     /// Generate selecting the sort key if it is needed
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
-            SortKey::None => Ok(()),
+            SortKey::None | SortKey::Id => Ok(()),
             SortKey::Key {
                 column,
                 value: _,
                 direction: _,
             } => {
-                if let Some(column) = column {
-                    let name = column.name.as_str();
-                    if !column.is_primary_key() {
-                        out.push_sql(", c.");
-                        out.push_identifier(name)?;
-                    }
+                let name = column.name.as_str();
+                if !column.is_primary_key() {
+                    out.push_sql(", c.");
+                    out.push_identifier(name)?;
                 }
                 Ok(())
             }
@@ -1679,6 +1678,10 @@ impl<'a> SortKey<'a> {
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
+            SortKey::Id => {
+                out.push_sql("order by ");
+                out.push_identifier(PRIMARY_KEY_COLUMN)
+            }
             SortKey::Key {
                 column,
                 value,
@@ -1695,6 +1698,10 @@ impl<'a> SortKey<'a> {
     fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
+            SortKey::Id => {
+                out.push_sql("order by g$parent_id, ");
+                out.push_identifier(PRIMARY_KEY_COLUMN)
+            }
             SortKey::Key {
                 column,
                 value,
@@ -1709,48 +1716,44 @@ impl<'a> SortKey<'a> {
     /// Generate
     ///   [name direction,] id
     fn sort_expr(
-        column: &Option<&Column>,
+        column: &Column,
         value: &Option<&str>,
         direction: &str,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
-        if let Some(column) = column {
-            match &column.column_type {
-                ColumnType::TSVector(config) => {
-                    let algorithm = match config.algorithm {
-                        FulltextAlgorithm::Rank => "ts_rank(",
-                        FulltextAlgorithm::ProximityRank => "ts_rank_cd(",
-                    };
-                    out.push_sql(algorithm);
-                    let name = column.name.as_str();
-                    out.push_identifier(name)?;
-                    out.push_sql(", to_tsquery(");
+        match &column.column_type {
+            ColumnType::TSVector(config) => {
+                let algorithm = match config.algorithm {
+                    FulltextAlgorithm::Rank => "ts_rank(",
+                    FulltextAlgorithm::ProximityRank => "ts_rank_cd(",
+                };
+                out.push_sql(algorithm);
+                let name = column.name.as_str();
+                out.push_identifier(name)?;
+                out.push_sql(", to_tsquery(");
 
-                    out.push_bind_param::<Text, _>(&String::from(value.unwrap()))?;
-                    out.push_sql(")) ");
-                    out.push_sql(direction);
-                    out.push_sql(" nulls last");
-                    if name != PRIMARY_KEY_COLUMN {
-                        out.push_sql(", ");
-                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                    }
-                    Ok(())
+                out.push_bind_param::<Text, _>(&String::from(value.unwrap()))?;
+                out.push_sql(")) ");
+                out.push_sql(direction);
+                out.push_sql(" nulls last");
+                if name != PRIMARY_KEY_COLUMN {
+                    out.push_sql(", ");
+                    out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 }
-                _ => {
-                    let name = column.name.as_str();
-                    out.push_identifier(name)?;
-                    out.push_sql(" ");
-                    out.push_sql(direction);
-                    out.push_sql(" nulls last");
-                    if name != PRIMARY_KEY_COLUMN {
-                        out.push_sql(", ");
-                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                    }
-                    Ok(())
-                }
+                Ok(())
             }
-        } else {
-            out.push_identifier(PRIMARY_KEY_COLUMN)
+            _ => {
+                let name = column.name.as_str();
+                out.push_identifier(name)?;
+                out.push_sql(" ");
+                out.push_sql(direction);
+                out.push_sql(" nulls last");
+                if name != PRIMARY_KEY_COLUMN {
+                    out.push_sql(", ");
+                    out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -1811,7 +1814,7 @@ impl<'a> FilterQuery<'a> {
                             let sort_value = value.as_str();
 
                             Ok(SortKey::Key {
-                                column: Some(column),
+                                column,
                                 value: sort_value,
                                 direction,
                             })
@@ -1822,7 +1825,7 @@ impl<'a> FilterQuery<'a> {
                 }
             } else {
                 Ok(SortKey::Key {
-                    column: Some(column),
+                    column,
                     value: None,
                     direction,
                 })
@@ -1839,11 +1842,7 @@ impl<'a> FilterQuery<'a> {
         let sort_key = match order {
             EntityOrder::Ascending(attr, _) => sort_key(first_table, attr, filter, ASC)?,
             EntityOrder::Descending(attr, _) => sort_key(first_table, attr, filter, DESC)?,
-            EntityOrder::Default => SortKey::Key {
-                column: None,
-                value: None,
-                direction: ASC,
-            },
+            EntityOrder::Default => SortKey::Id,
             EntityOrder::Unordered => SortKey::None,
         };
 
