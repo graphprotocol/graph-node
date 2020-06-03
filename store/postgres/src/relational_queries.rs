@@ -20,7 +20,7 @@ use graph::data::{schema::FulltextAlgorithm, store::scalar};
 use graph::prelude::{
     format_err, serde_json, Attribute, BlockNumber, Entity, EntityCollection, EntityFilter,
     EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink, QueryExecutionError,
-    StoreError, Value, ValueType,
+    StoreError, Value,
 };
 
 use crate::block_range::{
@@ -1646,7 +1646,7 @@ impl<'a> FilterCollection<'a> {
 pub struct SortKey<'a> {
     column: Option<&'a Column>,
     value: Option<&'a str>,
-    direction: EntityOrder,
+    direction: &'static str,
 }
 
 impl<'a> SortKey<'a> {
@@ -1679,7 +1679,7 @@ impl<'a> SortKey<'a> {
 
                     out.push_bind_param::<Text, _>(&String::from(self.value.unwrap()))?;
                     out.push_sql(")) ");
-                    out.push_sql(self.direction.to_sql());
+                    out.push_sql(self.direction);
                     out.push_sql(" nulls last");
                     if name != PRIMARY_KEY_COLUMN {
                         out.push_sql(", ");
@@ -1691,7 +1691,7 @@ impl<'a> SortKey<'a> {
                     let name = column.name.as_str();
                     out.push_identifier(name)?;
                     out.push_sql(" ");
-                    out.push_sql(self.direction.to_sql());
+                    out.push_sql(self.direction);
                     out.push_sql(" nulls last");
                     if name != PRIMARY_KEY_COLUMN {
                         out.push_sql(", ");
@@ -1741,10 +1741,12 @@ impl<'a> FilterQuery<'a> {
     pub fn new(
         collection: &'a FilterCollection,
         filter: Option<&'a EntityFilter>,
-        order: Option<(String, ValueType, EntityOrder)>,
+        order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
+        const ASC: &str = "asc";
+        const DESC: &str = "desc";
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
         // in that interface so that all tables have a column for that. It is
@@ -1752,8 +1754,13 @@ impl<'a> FilterQuery<'a> {
         let first_table = collection
             .first_table()
             .expect("an entity query always contains at least one entity type/table");
-        let sort_key = match order {
-            Some((ref attribute, _, direction)) => {
+        let (attribute, direction) = match order {
+            EntityOrder::Ascending(attr, _) => (Some(attr), ASC),
+            EntityOrder::Descending(attr, _) => (Some(attr), DESC),
+            EntityOrder::Default => (None, ASC),
+        };
+        let sort_key = match attribute {
+            Some(attribute) => {
                 let column = first_table.column_for_field(&attribute)?;
                 if column.is_fulltext() {
                     match filter {
@@ -1782,7 +1789,7 @@ impl<'a> FilterQuery<'a> {
             None => SortKey {
                 column: None,
                 value: None,
-                direction: EntityOrder::Ascending,
+                direction: ASC,
             },
         };
 

@@ -121,20 +121,11 @@ impl EntityFilter {
 }
 
 /// The order in which entities should be restored from a store.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum EntityOrder {
-    Ascending,
-    Descending,
-}
-
-impl EntityOrder {
-    /// Return `"asc"` or `"desc"` as is used in SQL
-    pub fn to_sql(self) -> &'static str {
-        match self {
-            EntityOrder::Ascending => "asc",
-            EntityOrder::Descending => "desc",
-        }
-    }
+    Ascending(String, ValueType),
+    Descending(String, ValueType),
+    Default,
 }
 
 /// How many entities to return, how many to skip etc.
@@ -267,11 +258,8 @@ pub struct EntityQuery {
     /// Filter to filter entities by.
     pub filter: Option<EntityFilter>,
 
-    /// An optional attribute to order the entities by.
-    pub order_by: Option<(String, ValueType)>,
-
-    /// The direction to order entities in.
-    pub order_direction: Option<EntityOrder>,
+    /// How to order the entities
+    pub order: EntityOrder,
 
     /// A range to limit the size of the result.
     pub range: EntityRange,
@@ -293,8 +281,7 @@ impl EntityQuery {
             block,
             collection,
             filter: None,
-            order_by: None,
-            order_direction: None,
+            order: EntityOrder::Default,
             range: EntityRange::first(100),
             logger: None,
             _force_use_of_new: (),
@@ -306,24 +293,8 @@ impl EntityQuery {
         self
     }
 
-    pub fn order_direction(mut self, direction: EntityOrder) -> Self {
-        self.order_direction = Some(direction);
-        self
-    }
-
-    pub fn order_by_attribute(mut self, by: (String, ValueType)) -> Self {
-        self.order_by = Some(by);
-        self
-    }
-
-    pub fn order_by(
-        mut self,
-        attribute: &str,
-        value_type: ValueType,
-        direction: EntityOrder,
-    ) -> Self {
-        self.order_by = Some((attribute.to_owned(), value_type));
-        self.order_direction = Some(direction);
+    pub fn order(mut self, order: EntityOrder) -> Self {
+        self.order = order;
         self
     }
 

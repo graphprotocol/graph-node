@@ -8,7 +8,7 @@ use diesel::query_dsl::RunQueryDsl;
 use diesel::result::QueryResult;
 use diesel::sql_types::{Array, Bool, Jsonb, Text};
 use graph::prelude::{
-    EntityCollection, EntityFilter, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
+    EntityCollection, EntityFilter, EntityLink, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, ValueType, WindowAttribute,
 };
 use std::collections::HashSet;
@@ -22,7 +22,7 @@ pub struct OrderDetails {
     attribute: String,
     cast: &'static str,
     prefix_only: bool,
-    direction: EntityOrder,
+    direction: &'static str,
 }
 
 pub struct FilterQuery<'a> {
@@ -38,7 +38,7 @@ impl<'a> FilterQuery<'a> {
         table: &'a EntityTable,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, EntityOrder)>,
+        order: Option<(String, ValueType, &'static str)>,
         range: EntityRange,
     ) -> Result<Self, QueryExecutionError> {
         let order = if let Some((attribute, value_type, direction)) = order {
@@ -133,7 +133,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql("g$sort_key");
             }
             out.push_sql(" ");
-            out.push_sql(order.direction.to_sql());
+            out.push_sql(order.direction);
             out.push_sql(" nulls last, ");
         }
         out.push_identifier(PRIMARY_KEY_COLUMN)

@@ -457,7 +457,7 @@ impl Connection<'_> {
         logger: &Logger,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, EntityOrder)>,
+        order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
@@ -473,6 +473,11 @@ impl Connection<'_> {
                     )
                     .into());
                 }
+                let order = match order {
+                    EntityOrder::Ascending(attr, value_type) => Some((attr, value_type, "asc")),
+                    EntityOrder::Descending(attr, value_type) => Some((attr, value_type, "desc")),
+                    EntityOrder::Default => None,
+                };
                 json.query(&self.conn, collection, filter, order, range)
             }
             Storage::Relational(layout) => {
@@ -983,7 +988,7 @@ impl JsonStorage {
         conn: &PgConnection,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, EntityOrder)>,
+        order: Option<(String, ValueType, &'static str)>,
         range: EntityRange,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let query = FilterQuery::new(&self.table, collection, filter, order, range)?;

@@ -277,7 +277,10 @@ fn graft() {
             BLOCK_NUMBER_MAX,
             EntityCollection::All(vec![USER.to_owned()]),
         )
-        .order_by("name", ValueType::String, EntityOrder::Descending);
+        .order(EntityOrder::Descending(
+            "name".to_string(),
+            ValueType::String,
+        ));
 
         let entities = store
             .find(query)

@@ -570,7 +570,7 @@ impl Layout {
         conn: &PgConnection,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, EntityOrder)>,
+        order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, QueryExecutionError> {

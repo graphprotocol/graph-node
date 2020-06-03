@@ -580,6 +580,23 @@ fn user_query() -> EntityQuery {
     )
 }
 
+trait EasyOrder {
+    fn asc(self, attr: &str) -> Self;
+    fn desc(self, attr: &str) -> Self;
+}
+
+impl EasyOrder for EntityQuery {
+    fn asc(self, attr: &str) -> Self {
+        // The ValueType doesn't matter since relational layouts ignore it
+        self.order(EntityOrder::Ascending(attr.to_owned(), ValueType::String))
+    }
+
+    fn desc(self, attr: &str) -> Self {
+        // The ValueType doesn't matter since relational layouts ignore it
+        self.order(EntityOrder::Descending(attr.to_owned(), ValueType::String))
+    }
+}
+
 #[test]
 fn find_string_contains() {
     test_find(
@@ -602,7 +619,7 @@ fn find_string_not_equal() {
         vec!["1", "3"],
         user_query()
             .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
-            .order_by("name", ValueType::String, EntityOrder::Ascending),
+            .asc("name"),
     )
 }
 
@@ -620,7 +637,7 @@ fn find_string_less_than_order_by_asc() {
         vec!["2", "1"],
         user_query()
             .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
-            .order_by("name", ValueType::String, EntityOrder::Ascending),
+            .asc("name"),
     )
 }
 
@@ -630,7 +647,7 @@ fn find_string_less_than_order_by_desc() {
         vec!["1", "2"],
         user_query()
             .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -640,7 +657,7 @@ fn find_string_less_than_range() {
         vec!["1"],
         user_query()
             .filter(EntityFilter::LessThan("name".to_owned(), "ZZZ".into()))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(1)
             .skip(1),
     )
@@ -655,7 +672,7 @@ fn find_string_multiple_and() {
                 EntityFilter::LessThan("name".to_owned(), "Cz".into()),
                 EntityFilter::Equal("name".to_owned(), "Cindini".into()),
             ]))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -665,7 +682,7 @@ fn find_string_ends_with() {
         vec!["2"],
         user_query()
             .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -675,7 +692,7 @@ fn find_string_not_ends_with() {
         vec!["3", "1"],
         user_query()
             .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -685,7 +702,7 @@ fn find_string_in() {
         vec!["1"],
         user_query()
             .filter(EntityFilter::In("name".to_owned(), vec!["Johnton".into()]))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -698,7 +715,7 @@ fn find_string_not_in() {
                 "name".to_owned(),
                 vec!["Shaqueeena".into()],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -722,7 +739,7 @@ fn find_float_not_equal() {
                 "weight".to_owned(),
                 Value::BigDecimal(184.4.into()),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -746,7 +763,7 @@ fn find_float_less_than() {
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Ascending),
+            .asc("name"),
     )
 }
 
@@ -759,7 +776,7 @@ fn find_float_less_than_order_by_desc() {
                 "weight".to_owned(),
                 Value::BigDecimal(160.0.into()),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -772,7 +789,7 @@ fn find_float_less_than_range() {
                 "weight".to_owned(),
                 Value::BigDecimal(161.0.into()),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(1)
             .skip(1),
     )
@@ -790,7 +807,7 @@ fn find_float_in() {
                     Value::BigDecimal(111.7.into()),
                 ],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(5),
     )
 }
@@ -807,7 +824,7 @@ fn find_float_not_in() {
                     Value::BigDecimal(111.7.into()),
                 ],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(5),
     )
 }
@@ -818,7 +835,7 @@ fn find_int_equal() {
         vec!["1"],
         user_query()
             .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67 as i32)))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -828,7 +845,7 @@ fn find_int_not_equal() {
         vec!["3", "2"],
         user_query()
             .filter(EntityFilter::Not("age".to_owned(), Value::Int(67 as i32)))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -852,7 +869,7 @@ fn find_int_greater_or_equal() {
                 "age".to_owned(),
                 Value::Int(43 as i32),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Ascending),
+            .asc("name"),
     )
 }
 
@@ -865,7 +882,7 @@ fn find_int_less_than() {
                 "age".to_owned(),
                 Value::Int(50 as i32),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Ascending),
+            .asc("name"),
     )
 }
 
@@ -878,7 +895,7 @@ fn find_int_less_or_equal() {
                 "age".to_owned(),
                 Value::Int(43 as i32),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Ascending),
+            .asc("name"),
     )
 }
 
@@ -891,7 +908,7 @@ fn find_int_less_than_order_by_desc() {
                 "age".to_owned(),
                 Value::Int(50 as i32),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -904,7 +921,7 @@ fn find_int_less_than_range() {
                 "age".to_owned(),
                 Value::Int(67 as i32),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(1)
             .skip(1),
     )
@@ -919,7 +936,7 @@ fn find_int_in() {
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(5),
     )
 }
@@ -933,7 +950,7 @@ fn find_int_not_in() {
                 "age".to_owned(),
                 vec![Value::Int(67 as i32), Value::Int(43 as i32)],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(5),
     )
 }
@@ -944,7 +961,7 @@ fn find_bool_equal() {
         vec!["2"],
         user_query()
             .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -954,7 +971,7 @@ fn find_bool_not_equal() {
         vec!["1", "3"],
         user_query()
             .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
-            .order_by("name", ValueType::String, EntityOrder::Ascending),
+            .asc("name"),
     )
 }
 
@@ -967,7 +984,7 @@ fn find_bool_in() {
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(5),
     )
 }
@@ -981,7 +998,7 @@ fn find_bool_not_in() {
                 "coffee".to_owned(),
                 vec![Value::Bool(true)],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending)
+            .desc("name")
             .first(5),
     )
 }
@@ -995,7 +1012,7 @@ fn find_bytes_equal() {
                 "bin_name".to_owned(),
                 Value::Bytes("Johnton".as_bytes().into()),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -1008,7 +1025,7 @@ fn find_null_equal() {
                 "favorite_color".to_owned(),
                 Value::Null,
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -1018,7 +1035,7 @@ fn find_null_not_equal() {
         vec!["2"],
         user_query()
             .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
@@ -1031,56 +1048,32 @@ fn find_null_not_in() {
                 "favorite_color".to_owned(),
                 vec![Value::Null],
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending),
+            .desc("name"),
     )
 }
 
 #[test]
 fn find_order_by_float() {
-    test_find(
-        vec!["3", "2", "1"],
-        user_query().order_by("weight", ValueType::BigDecimal, EntityOrder::Ascending),
-    );
-    test_find(
-        vec!["1", "2", "3"],
-        user_query().order_by("weight", ValueType::BigDecimal, EntityOrder::Descending),
-    );
+    test_find(vec!["3", "2", "1"], user_query().asc("weight"));
+    test_find(vec!["1", "2", "3"], user_query().desc("weight"));
 }
 
 #[test]
 fn find_order_by_id() {
-    test_find(
-        vec!["1", "2", "3"],
-        user_query().order_by("id", ValueType::String, EntityOrder::Ascending),
-    );
-    test_find(
-        vec!["3", "2", "1"],
-        user_query().order_by("id", ValueType::String, EntityOrder::Descending),
-    );
+    test_find(vec!["1", "2", "3"], user_query().asc("id"));
+    test_find(vec!["3", "2", "1"], user_query().desc("id"));
 }
 
 #[test]
 fn find_order_by_int() {
-    test_find(
-        vec!["3", "2", "1"],
-        user_query().order_by("age", ValueType::Int, EntityOrder::Ascending),
-    );
-    test_find(
-        vec!["1", "2", "3"],
-        user_query().order_by("age", ValueType::Int, EntityOrder::Descending),
-    );
+    test_find(vec!["3", "2", "1"], user_query().asc("age"));
+    test_find(vec!["1", "2", "3"], user_query().desc("age"));
 }
 
 #[test]
 fn find_order_by_string() {
-    test_find(
-        vec!["2", "1", "3"],
-        user_query().order_by("name", ValueType::String, EntityOrder::Ascending),
-    );
-    test_find(
-        vec!["3", "1", "2"],
-        user_query().order_by("name", ValueType::String, EntityOrder::Descending),
-    );
+    test_find(vec!["2", "1", "3"], user_query().asc("name"));
+    test_find(vec!["3", "1", "2"], user_query().desc("name"));
 }
 
 #[test]
@@ -1092,7 +1085,7 @@ fn find_where_nested_and_or() {
                 EntityFilter::Equal("id".to_owned(), Value::from("1")),
                 EntityFilter::Equal("id".to_owned(), Value::from("2")),
             ])]))
-            .order_by("id", ValueType::String, EntityOrder::Ascending),
+            .asc("id"),
     )
 }
 
@@ -1214,7 +1207,7 @@ fn check_basic_revert(
             "name".to_owned(),
             Value::String("Shaqueeena".to_owned()),
         ))
-        .order_by("name", ValueType::String, EntityOrder::Descending);
+        .desc("name");
 
     let subscription = subscribe_and_consume(store.clone(), subgraph_id, entity_type);
 
@@ -1281,7 +1274,7 @@ fn revert_block_with_delete() {
                 "name".to_owned(),
                 Value::String("Cindini".to_owned()),
             ))
-            .order_by("name", ValueType::String, EntityOrder::Descending);
+            .desc("name");
 
         // Delete entity with id=2
         let del_key = EntityKey {
@@ -1958,7 +1951,7 @@ fn handle_large_string_with_index() {
                 NAME.to_owned(),
                 long_text.clone().into(),
             ))
-            .order_by(NAME, ValueType::String, EntityOrder::Ascending);
+            .asc(NAME);
 
         let ids = store
             .find(query)
@@ -1976,7 +1969,7 @@ fn handle_large_string_with_index() {
         let query = user_query()
             .first(5)
             .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
-            .order_by(NAME, ValueType::String, EntityOrder::Ascending);
+            .asc(NAME);
 
         let ids = store
             .find(query)
@@ -2042,8 +2035,20 @@ impl WindowQuery {
         WindowQuery(self.0.skip(skip), self.1)
     }
 
-    fn order(self, attr: &str, dir: EntityOrder) -> Self {
-        WindowQuery(self.0.order_by(attr, ValueType::String, dir), self.1)
+    fn asc(self, attr: &str) -> Self {
+        WindowQuery(
+            self.0
+                .order(EntityOrder::Ascending(attr.to_owned(), ValueType::String)),
+            self.1,
+        )
+    }
+
+    fn desc(self, attr: &str) -> Self {
+        WindowQuery(
+            self.0
+                .order(EntityOrder::Descending(attr.to_owned(), ValueType::String)),
+            self.1,
+        )
     }
 
     fn above(self, age: i32) -> Self {
@@ -2117,8 +2122,6 @@ fn window() {
     ];
 
     run_test(|store| -> Result<(), ()> {
-        use EntityOrder::*;
-
         transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
             .expect("Failed to create test users");
 
@@ -2139,19 +2142,19 @@ fn window() {
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
-            .order("id", Descending)
+            .desc("id")
             .expect(vec!["10", "5", "7"], "q4");
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
-            .order("favorite_color", Descending)
+            .desc("favorite_color")
             .expect(vec!["11", "5", "7"], "q5");
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
-            .order("favorite_color", Descending)
+            .desc("favorite_color")
             .above(25)
             .expect(vec!["6", "8"], "q6");
 
@@ -2159,14 +2162,14 @@ fn window() {
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
-            .order("favorite_color", Descending)
+            .desc("favorite_color")
             .above(12)
             .against_color_and_age()
             .expect(vec!["11", "5", "7"], "q7");
 
         WindowQuery::new(&store)
             .first(1)
-            .order("age", Ascending)
+            .asc("age")
             .above(12)
             .against_color_and_age()
             .expect(vec!["11", "5", "p2", "9"], "q8");
@@ -2181,7 +2184,7 @@ fn find_at_block() {
         run_test(move |store| -> Result<(), ()> {
             let mut query = user_query()
                 .filter(EntityFilter::Equal("name".to_owned(), "Shaqueeena".into()))
-                .order_by("name", ValueType::String, EntityOrder::Descending);
+                .desc("name");
             query.block = block;
 
             let entities = store

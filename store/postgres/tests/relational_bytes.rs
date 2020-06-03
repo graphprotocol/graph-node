@@ -10,9 +10,9 @@ use std::fmt::Debug;
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
-    web3::types::H256, Entity, EntityCollection, EntityKey, EntityLink, EntityRange, EntityWindow,
-    Future01CompatExt, ParentLink, Schema, SubgraphDeploymentId, Value, WindowAttribute,
-    BLOCK_NUMBER_MAX,
+    web3::types::H256, Entity, EntityCollection, EntityKey, EntityLink, EntityOrder, EntityRange,
+    EntityWindow, Future01CompatExt, ParentLink, Schema, SubgraphDeploymentId, Value,
+    WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::Layout;
 
@@ -364,7 +364,7 @@ fn query() {
                 conn,
                 coll,
                 None,
-                None,
+                EntityOrder::Default,
                 EntityRange::first(10),
                 BLOCK_NUMBER_MAX,
             )

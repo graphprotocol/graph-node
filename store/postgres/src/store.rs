@@ -319,22 +319,13 @@ impl Store {
         conn: &e::Connection,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        // Add order by filters to query
-        let order = match query.order_by {
-            Some((attribute, value_type)) => {
-                let direction = query.order_direction.unwrap_or(EntityOrder::Ascending);
-                Some((attribute, value_type, direction))
-            }
-            None => None,
-        };
-
         // Process results; deserialize JSON data
         let logger = query.logger.unwrap_or(self.logger.clone());
         conn.query(
             &logger,
             query.collection,
             query.filter,
-            order,
+            query.order,
             query.range,
             query.block,
         )
@@ -491,7 +482,7 @@ impl Store {
                 // Sort entity IDs lexicographically if and only if no sort order is specified.
                 // When no sort order is specified, the entity ordering is arbitrary and should not be a
                 // factor in deciding whether or not to abort.
-                if query.order_by.is_none() {
+                if matches!(query.order, EntityOrder::Default) {
                     expected_entity_ids.sort();
                     actual_entity_ids.sort();
                 }
@@ -947,7 +938,7 @@ impl StoreTrait for Store {
                                 &logger,
                                 EntityCollection::All(vec![POI_OBJECT.to_owned()]),
                                 None,
-                                None,
+                                EntityOrder::Default,
                                 EntityRange {
                                     first: None,
                                     skip: 0,

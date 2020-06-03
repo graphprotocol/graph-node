@@ -7,6 +7,12 @@ use graph::prelude::*;
 use crate::execution::ObjectOrInterface;
 use crate::schema::ast as sast;
 
+#[derive(Debug)]
+enum OrderDirection {
+    Ascending,
+    Descending,
+}
+
 /// Builds a EntityQuery from GraphQL arguments.
 ///
 /// Panics if `entity` is not present in `schema`.
@@ -30,12 +36,19 @@ pub fn build_query<'a>(
     if let Some(filter) = build_filter(entity, arguments)? {
         query = query.filter(filter);
     }
-    if let Some(order_by) = build_order_by(entity, arguments)? {
-        query = query.order_by_attribute(order_by);
-    }
-    if let Some(direction) = build_order_direction(arguments)? {
-        query = query.order_direction(direction);
-    }
+    let order = match (
+        dbg!(build_order_by(entity, arguments)?),
+        dbg!(build_order_direction(arguments)?),
+    ) {
+        (Some((attr, value_type)), OrderDirection::Ascending) => {
+            EntityOrder::Ascending(attr, value_type)
+        }
+        (Some((attr, value_type)), OrderDirection::Descending) => {
+            EntityOrder::Descending(attr, value_type)
+        }
+        (None, _) => EntityOrder::Default,
+    };
+    query = query.order(order);
     Ok(query)
 }
 
@@ -238,14 +251,15 @@ fn build_fulltext_order_by_from_object(
 /// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
     arguments: &HashMap<&q::Name, q::Value>,
-) -> Result<Option<EntityOrder>, QueryExecutionError> {
+) -> Result<OrderDirection, QueryExecutionError> {
     Ok(arguments
         .get(&"orderDirection".to_string())
-        .and_then(|value| match value {
-            q::Value::Enum(name) if name == "asc" => Some(EntityOrder::Ascending),
-            q::Value::Enum(name) if name == "desc" => Some(EntityOrder::Descending),
-            _ => None,
-        }))
+        .map(|value| match value {
+            q::Value::Enum(name) if name == "asc" => OrderDirection::Ascending,
+            q::Value::Enum(name) if name == "desc" => OrderDirection::Descending,
+            _ => OrderDirection::Ascending,
+        })
+        .unwrap_or(OrderDirection::Ascending))
 }
 
 /// Parses the subgraph ID from the ObjectType directives.
@@ -445,20 +459,8 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_by,
-            None,
-        );
-        assert_eq!(
-            build_query(
-                &default_object(),
-                BLOCK_NUMBER_MAX,
-                &default_arguments(),
-                &BTreeMap::new(),
-                std::u32::MAX
-            )
-            .unwrap()
-            .order_direction,
-            None,
+            .order,
+            EntityOrder::Default,
         );
     }
 
@@ -476,8 +478,8 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_by,
-            Some(("name".to_string(), ValueType::String))
+            .order,
+            EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
         let mut args = default_arguments();
@@ -491,8 +493,8 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_by,
-            Some(("email".to_string(), ValueType::String))
+            .order,
+            EntityOrder::Ascending("email".to_string(), ValueType::String)
         );
     }
 
@@ -510,8 +512,8 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_by,
-            None,
+            .order,
+            EntityOrder::Default
         );
 
         let mut args = default_arguments();
@@ -525,15 +527,17 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_by,
-            None,
+            .order,
+            EntityOrder::Default
         );
     }
 
     #[test]
     fn build_query_parses_order_direction_from_enum_values_correctly() {
+        let order_by = "orderBy".to_string();
         let order_direction = "orderDirection".to_string();
         let mut args = default_arguments();
+        args.insert(&order_by, q::Value::Enum("name".to_string()));
         args.insert(&order_direction, q::Value::Enum("asc".to_string()));
         assert_eq!(
             build_query(
@@ -544,11 +548,12 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_direction,
-            Some(EntityOrder::Ascending)
+            .order,
+            EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
         let mut args = default_arguments();
+        args.insert(&order_by, q::Value::Enum("name".to_string()));
         args.insert(&order_direction, q::Value::Enum("desc".to_string()));
         assert_eq!(
             build_query(
@@ -559,12 +564,16 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_direction,
-            Some(EntityOrder::Descending)
+            .order,
+            EntityOrder::Descending("name".to_string(), ValueType::String)
         );
 
         let mut args = default_arguments();
-        args.insert(&order_direction, q::Value::Enum("ascending...".to_string()));
+        args.insert(&order_by, q::Value::Enum("name".to_string()));
+        args.insert(
+            &order_direction,
+            q::Value::Enum("descending...".to_string()),
+        );
         assert_eq!(
             build_query(
                 &default_object(),
@@ -574,15 +583,36 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_direction,
-            None,
+            .order,
+            EntityOrder::Ascending("name".to_string(), ValueType::String)
+        );
+
+        // No orderBy -> EntityOrder::Default
+        let mut args = default_arguments();
+        args.insert(
+            &order_direction,
+            q::Value::Enum("descending...".to_string()),
+        );
+        assert_eq!(
+            build_query(
+                &default_object(),
+                BLOCK_NUMBER_MAX,
+                &args,
+                &BTreeMap::new(),
+                std::u32::MAX
+            )
+            .unwrap()
+            .order,
+            EntityOrder::Default
         );
     }
 
     #[test]
     fn build_query_ignores_order_direction_from_non_enum_values() {
+        let order_by = "orderBy".to_string();
         let order_direction = "orderDirection".to_string();
         let mut args = default_arguments();
+        args.insert(&order_by, q::Value::Enum("name".to_string()));
         args.insert(&order_direction, q::Value::String("asc".to_string()));
         assert_eq!(
             build_query(
@@ -593,11 +623,12 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_direction,
-            None,
+            .order,
+            EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
         let mut args = default_arguments();
+        args.insert(&order_by, q::Value::Enum("name".to_string()));
         args.insert(&order_direction, q::Value::String("desc".to_string()));
         assert_eq!(
             build_query(
@@ -608,8 +639,8 @@ mod tests {
                 std::u32::MAX
             )
             .unwrap()
-            .order_direction,
-            None,
+            .order,
+            EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
     }
 
