@@ -27,7 +27,7 @@ impl<T> fmt::Debug for AscPtr<T> {
 }
 
 impl<C> AscPtr<C> {
-    // A raw pointer to be passed to wasm.
+    /// A raw pointer to be passed to wasm. Wasmtime uses `i32` for 32 bits wasm integers.
     pub(crate) fn wasm_ptr(self) -> i32 {
         i32::from_le_bytes(self.0.to_le_bytes())
     }
@@ -74,6 +74,7 @@ impl<C: AscType> AscPtr<C> {
     }
 }
 
+/// WASM integers do not carry sign information, but wasmtime uses `i32` for them.
 impl<C> From<i32> for AscPtr<C> {
     fn from(ptr: i32) -> Self {
         AscPtr(u32::from_le_bytes(ptr.to_le_bytes()), PhantomData)
