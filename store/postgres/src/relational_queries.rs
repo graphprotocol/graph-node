@@ -1682,7 +1682,6 @@ impl<'a> SortKey<'a> {
     ///   order by g$parent_id, [name direction], id
     fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if self.omit {
-            out.push_sql("order by g$parent_id ");
             Ok(())
         } else {
             out.push_sql("order by g$parent_id, ");
