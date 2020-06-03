@@ -502,15 +502,17 @@ pub fn validate_entity(
                     if let store::Value::List(elts) = value {
                         for (index, elt) in elts.iter().enumerate() {
                             if !is_assignable(elt, &scalar_type, false) {
-                                anyhow::bail!("Entity {}[{}]: field `{}` is of type {}, but the value `{}` contains a {} at index {}",
-                                key.entity_type,
-                                key.entity_id,
-                                field.name,
-                                &field.field_type,
-                                value,
-                                elt.type_name(),
-                                index
-                            );
+                                anyhow::bail!(
+                                    "Entity {}[{}]: field `{}` is of type {}, but the value `{}` \
+                                    contains a {} at index {}",
+                                    key.entity_type,
+                                    key.entity_id,
+                                    field.name,
+                                    &field.field_type,
+                                    value,
+                                    elt.type_name(),
+                                    index
+                                );
                             }
                         }
                     }
