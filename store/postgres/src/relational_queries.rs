@@ -1399,7 +1399,7 @@ impl<'a> ParentLimit<'a> {
     fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
             out.push_sql(" order by ");
-            sort_key.order_by(out)?;
+            sort_key.sort_expr(out)?;
             range.walk_ast(out.reborrow())?;
         }
         Ok(())
@@ -1663,8 +1663,22 @@ impl<'a> SortKey<'a> {
     }
 
     /// Generate
-    ///   order by [name direction,] id
+    ///   order by [name direction], id
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("order by ");
+        self.sort_expr(out)
+    }
+
+    /// Generate
+    ///   order by g$parent_id, [name direction], id
+    fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("order by g$parent_id, ");
+        self.sort_expr(out)
+    }
+
+    /// Generate
+    ///   [name direction,] id
+    fn sort_expr(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let Some(column) = self.column {
             match &column.column_type {
                 ColumnType::TSVector(config) => {
@@ -1853,7 +1867,7 @@ impl<'a> FilterQuery<'a> {
         Self::select_entity_and_data(table, &mut out);
         out.push_sql(" from (select * ");
         self.filtered_rows(table, filter, out.reborrow())?;
-        out.push_sql("\n order by ");
+        out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c");
@@ -1881,8 +1895,8 @@ impl<'a> FilterQuery<'a> {
             out.reborrow(),
         )?;
         out.push_sql(") c");
-        out.push_sql("\n order by g$parent_id, ");
-        self.sort_key.order_by(&mut out)
+        out.push_sql("\n ");
+        self.sort_key.order_by_parent(&mut out)
     }
 
     /// No windowing, but multiple entity types
@@ -1931,7 +1945,7 @@ impl<'a> FilterQuery<'a> {
             self.sort_key.select(&mut out)?;
             self.filtered_rows(table, filter, out.reborrow())?;
         }
-        out.push_sql("\n order by ");
+        out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
         self.range.walk_ast(out.reborrow())?;
 
@@ -1951,7 +1965,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("\n where c.vid = m.vid and m.entity = ");
             out.push_bind_param::<Text, _>(&table.object)?;
         }
-        out.push_sql("\n order by ");
+        out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
         Ok(())
     }
@@ -2001,7 +2015,7 @@ impl<'a> FilterQuery<'a> {
             }
             window.children_uniform(&self.sort_key, self.block, out.reborrow())?;
         }
-        out.push_sql("\norder by ");
+        out.push_sql("\n");
         self.sort_key.order_by(&mut out)?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c)\n");
@@ -2032,8 +2046,8 @@ impl<'a> FilterQuery<'a> {
             out.push_sql(object);
             out.push_sql("'");
         }
-        out.push_sql("\n order by g$parent_id,");
-        self.sort_key.order_by(&mut out)
+        out.push_sql("\n ");
+        self.sort_key.order_by_parent(&mut out)
     }
 }
 
