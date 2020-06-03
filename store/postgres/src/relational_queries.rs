@@ -1654,6 +1654,54 @@ pub enum SortKey<'a> {
 }
 
 impl<'a> SortKey<'a> {
+    fn new(
+        order: EntityOrder,
+        table: &'a Table,
+        filter: Option<&'a EntityFilter>,
+    ) -> Result<Self, QueryExecutionError> {
+        const ASC: &str = "asc";
+        const DESC: &str = "desc";
+
+        fn with_key<'a>(
+            table: &'a Table,
+            attribute: String,
+            filter: Option<&'a EntityFilter>,
+            direction: &'static str,
+        ) -> Result<SortKey<'a>, QueryExecutionError> {
+            let column = table.column_for_field(&attribute)?;
+            if column.is_fulltext() {
+                match filter {
+                    Some(entity_filter) => match entity_filter {
+                        EntityFilter::Equal(_, value) => {
+                            let sort_value = value.as_str();
+
+                            Ok(SortKey::Key {
+                                column,
+                                value: sort_value,
+                                direction,
+                            })
+                        }
+                        _ => unreachable!(),
+                    },
+                    None => unreachable!(),
+                }
+            } else {
+                Ok(SortKey::Key {
+                    column,
+                    value: None,
+                    direction,
+                })
+            }
+        }
+
+        match order {
+            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC),
+            EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC),
+            EntityOrder::Default => Ok(SortKey::Id),
+            EntityOrder::Unordered => Ok(SortKey::None),
+        }
+    }
+
     /// Generate selecting the sort key if it is needed
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
@@ -1797,41 +1845,6 @@ impl<'a> FilterQuery<'a> {
         range: EntityRange,
         block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
-        const ASC: &str = "asc";
-        const DESC: &str = "desc";
-
-        fn sort_key<'a>(
-            table: &'a Table,
-            attribute: String,
-            filter: Option<&'a EntityFilter>,
-            direction: &'static str,
-        ) -> Result<SortKey<'a>, QueryExecutionError> {
-            let column = table.column_for_field(&attribute)?;
-            if column.is_fulltext() {
-                match filter {
-                    Some(entity_filter) => match entity_filter {
-                        EntityFilter::Equal(_, value) => {
-                            let sort_value = value.as_str();
-
-                            Ok(SortKey::Key {
-                                column,
-                                value: sort_value,
-                                direction,
-                            })
-                        }
-                        _ => unreachable!(),
-                    },
-                    None => unreachable!(),
-                }
-            } else {
-                Ok(SortKey::Key {
-                    column,
-                    value: None,
-                    direction,
-                })
-            }
-        }
-
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
         // in that interface so that all tables have a column for that. It is
@@ -1839,12 +1852,7 @@ impl<'a> FilterQuery<'a> {
         let first_table = collection
             .first_table()
             .expect("an entity query always contains at least one entity type/table");
-        let sort_key = match order {
-            EntityOrder::Ascending(attr, _) => sort_key(first_table, attr, filter, ASC)?,
-            EntityOrder::Descending(attr, _) => sort_key(first_table, attr, filter, DESC)?,
-            EntityOrder::Default => SortKey::Id,
-            EntityOrder::Unordered => SortKey::None,
-        };
+        let sort_key = SortKey::new(order, first_table, filter)?;
 
         Ok(FilterQuery {
             collection,
