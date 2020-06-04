@@ -484,9 +484,10 @@ impl HostExports {
         x: BigDecimal,
         y: BigDecimal,
     ) -> Result<BigDecimal, anyhow::Error> {
-        if y == 0.into() {
-            anyhow::bail!("attempted to divide BigDecimal `{}` by zero", x);
-        }
+        anyhow::ensure!(
+            y != 0.into(),
+            format!("attempted to divide BigDecimal `{}` by zero", x)
+        );
 
         Ok(x / y)
     }
@@ -500,7 +501,7 @@ impl HostExports {
     }
 
     pub(crate) fn big_decimal_from_string(&self, s: String) -> Result<BigDecimal, anyhow::Error> {
-        BigDecimal::from_str(&s).context("failed to parse BigDecimal")
+        BigDecimal::from_str(&s).with_context(|| format!("string  is not a BigDecimal: '{}'", s))
     }
 
     pub(crate) fn data_source_create(
@@ -600,8 +601,8 @@ pub(crate) fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, serd
 
 pub(crate) fn string_to_h160(string: &str) -> Result<H160, anyhow::Error> {
     // `H160::from_str` takes a hex string with no leading `0x`.
-    let string = string.trim_start_matches("0x");
-    H160::from_str(string).context("Failed to convert string to Address/H160")
+    let s = string.trim_start_matches("0x");
+    H160::from_str(s).with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
 }
 
 pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
