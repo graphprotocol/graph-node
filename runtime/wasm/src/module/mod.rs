@@ -198,6 +198,12 @@ impl WasmInstanceHandle {
     }
 }
 
+/// Our usage of the unsafe `wastime::Memory` API relies on the `WasmInstance` being `!Sync`.
+///
+/// ```compile_fail
+/// fn assert_sync<T: Sync>() {}
+/// assert_sync::<WasmInstance>();
+/// ```
 pub(crate) struct WasmInstance {
     instance: wasmtime::Instance,
     memory: Memory,
@@ -461,7 +467,18 @@ impl AscHeap for WasmInstance {
 
         let ptr = self.arena_start_ptr as usize;
 
-        // Safe because we are accessing and immediately dropping the reference to the data.
+        // Safety:
+        // First `wasmtime::Memory` is `!Sync`, so two threads cannot simultaneously hold a
+        // reference into it. Given that, accessing the memory is only unsound if a reference into
+        // the memory is exists at this point [1]. Since we are in safe code up to this point, that
+        // reference can only exist if it originated in a previously executed unsafe block.
+        // Therefore:
+        // - If no unsafe block exposes references into memory to safe code and each individual
+        //   unsafe block does not cause unsoundness by itself, then the entire program is sound.
+        // [1] - https://docs.rs/wasmtime/0.17.0/wasmtime/struct.Memory.html
+        //
+        // This unsafe block has been checked to not cause unsoundness by itself.
+        // See also 2155cdca-dfaa-4fba-86e4-289e7683c1bf
         unsafe { self.memory.data_unchecked_mut()[ptr..(ptr + bytes.len())].copy_from_slice(bytes) }
         self.arena_start_ptr += size;
         self.arena_free_size -= size;
@@ -473,7 +490,9 @@ impl AscHeap for WasmInstance {
         let offset = offset as usize;
         let size = size as usize;
 
-        // Safe because we are accessing and immediately dropping the reference to the data.
+        // Safety:
+        // This unsafe block has been checked to not cause unsoundness by itself.
+        // See 2155cdca-dfaa-4fba-86e4-289e7683c1bf for why this is sufficient.
         unsafe { self.memory.data_unchecked()[offset..(offset + size)].to_vec() }
     }
 }
