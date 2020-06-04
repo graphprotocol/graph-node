@@ -771,7 +771,7 @@ fn execute_field(
     field: &q::Field,
     field_definition: &s::Field,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
-    let mut argument_values = match object_type {
+    let argument_values = match object_type {
         ObjectOrInterface::Object(object_type) => {
             crate::execution::coerce_argument_values(ctx, object_type, field)
         }
@@ -797,31 +797,13 @@ fn execute_field(
         }
     }?;
 
-    let is_list = sast::is_list_or_non_null_list_field(field_definition);
-    if !argument_values.contains_key(&*ARG_FIRST) {
-        let first = if is_list {
-            // This makes `build_range` use the default, 100
-            q::Value::Null
-        } else {
-            // For non-list fields, get up to 2 entries so we can spot
-            // ambiguous references that should only have one entry
-            q::Value::Int(2.into())
-        };
-        argument_values.insert(&*ARG_FIRST, first);
-    }
-
-    if !argument_values.contains_key(&*ARG_SKIP) {
-        // Use the default in build_range
-        argument_values.insert(&*ARG_SKIP, q::Value::Null);
-    }
-
     fetch(
         ctx.logger.clone(),
         resolver.store.as_ref(),
         &parents,
         &join,
-        &argument_values,
-        is_list,
+        argument_values,
+        sast::is_list_or_non_null_list_field(field_definition),
         ctx.query.schema.types_for_interface(),
         resolver.block,
         ctx.max_first,
@@ -836,16 +818,33 @@ fn fetch<S: Store>(
     store: &S,
     parents: &Vec<Node>,
     join: &Join<'_>,
-    arguments: &HashMap<&q::Name, q::Value>,
+    mut arguments: HashMap<&q::Name, q::Value>,
     is_list: bool,
     types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
 ) -> Result<Vec<Node>, QueryExecutionError> {
+    if !arguments.contains_key(&*ARG_FIRST) {
+        let first = if is_list {
+            // This makes `build_range` use the default, 100
+            q::Value::Null
+        } else {
+            // For non-list fields, get up to 2 entries so we can spot
+            // ambiguous references that should only have one entry
+            q::Value::Int(2.into())
+        };
+        arguments.insert(&*ARG_FIRST, first);
+    }
+
+    if !arguments.contains_key(&*ARG_SKIP) {
+        // Use the default in build_range
+        arguments.insert(&*ARG_SKIP, q::Value::Null);
+    }
+
     let mut query = build_query(
         join.child_type,
         block,
-        arguments,
+        &arguments,
         types_for_interface,
         max_first,
     )?;
