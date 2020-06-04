@@ -239,10 +239,10 @@ impl WasmInstance {
 
             ($wasm_name:expr, $rust_name:ident, $section:expr, $($param:ident),*) => {
                 let modules = valid_module
-                .import_name_to_modules
-                .get($wasm_name)
-                .into_iter()
-                .flatten();
+                    .import_name_to_modules
+                    .get($wasm_name)
+                    .into_iter()
+                    .flatten();
 
                 // link an import with all the modules that require it.
                 for module in modules {

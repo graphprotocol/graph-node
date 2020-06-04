@@ -21,7 +21,7 @@ pub fn spawn_module(
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
 ) -> Result<mpsc::Sender<MappingRequest>, anyhow::Error> {
-    let valid_module = Arc::new(ValidModule::new(&raw_module).unwrap());
+    let valid_module = Arc::new(ValidModule::new(&raw_module)?);
 
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
@@ -164,7 +164,7 @@ impl MappingContext {
 pub(crate) struct ValidModule {
     pub(super) module: wasmtime::Module,
 
-    // A wasm import consists of a `module` and a `name`. AS will generates imports such that they
+    // A wasm import consists of a `module` and a `name`. AS will generate imports such that they
     // have `module` set to the name of the file it is imported from and `name` set to the imported
     // function name or `namespace.function` if inside a namespace. We'd rather not specify names of
     // source files, so we consider that the import `name` uniquely identifies an import. Still we

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use anyhow::bail;
+use anyhow::ensure;
 use async_trait::async_trait;
 use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
@@ -307,12 +307,13 @@ impl RuntimeHost {
             .cloned()
             .collect::<Vec<_>>();
 
-        if handlers.is_empty() {
-            bail!(
+        ensure!(
+            !handlers.is_empty(),
+            format!(
                 "No event handler found for event in data source \"{}\"",
                 self.data_source_name,
             )
-        }
+        );
 
         Ok(handlers)
     }
@@ -320,9 +321,10 @@ impl RuntimeHost {
     fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, anyhow::Error> {
         // First four bytes of the input for the call are the first four
         // bytes of hash of the function signature
-        if call.input.0.len() < 4 {
-            bail!("Ethereum call has input with less than 4 bytes");
-        }
+        ensure!(
+            call.input.0.len() >= 4,
+            "Ethereum call has input with less than 4 bytes"
+        );
 
         let target_method_id = &call.input.0[..4];
 
@@ -507,12 +509,11 @@ impl RuntimeHostTrait for RuntimeHost {
             .decode_input(&call.input.0[4..])
             .context("Generating function inputs for an Ethereum call failed")?;
 
-        if tokens.len() != function_abi.inputs.len() {
-            bail!(
-                "Number of arguments in call does not match \
+        ensure!(
+            tokens.len() == function_abi.inputs.len(),
+            "Number of arguments in call does not match \
                     number of inputs in function signature."
-            );
-        }
+        );
 
         let inputs = tokens
             .into_iter()
@@ -532,12 +533,11 @@ impl RuntimeHostTrait for RuntimeHost {
             .decode_output(&call.output.0)
             .context("Generating function outputs for an Ethereum call failed")?;
 
-        if tokens.len() != function_abi.outputs.len() {
-            bail!(
-                "Number of parameters in the call output does not match \
+        ensure!(
+            tokens.len() == function_abi.outputs.len(),
+            "Number of parameters in the call output does not match \
                         number of outputs in the function signature."
-            );
-        }
+        );
 
         let outputs = tokens
             .into_iter()
@@ -681,12 +681,13 @@ impl RuntimeHostTrait for RuntimeHost {
         // Process the event with the matching handler
         let (event_handler, params) = matching_handlers.pop().unwrap();
 
-        if !matching_handlers.is_empty() {
-            bail!(
+        ensure!(
+            matching_handlers.is_empty(),
+            format!(
                 "Multiple handlers defined for event `{}`, only one is supported",
                 &event_handler.event
-            );
-        }
+            )
+        );
 
         self.send_mapping_request(
             logger,
