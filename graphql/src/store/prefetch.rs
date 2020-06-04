@@ -803,7 +803,7 @@ fn execute_field(
         &parents,
         &join,
         argument_values,
-        sast::is_list_or_non_null_list_field(field_definition),
+        !sast::is_list_or_non_null_list_field(field_definition),
         ctx.query.schema.types_for_interface(),
         resolver.block,
         ctx.max_first,
@@ -812,28 +812,23 @@ fn execute_field(
 }
 
 /// Query child entities for `parents` from the store. The `join` indicates
-/// in which child field to look for the parent's id/join field
+/// in which child field to look for the parent's id/join field. When
+/// `is_single` is `true`, there is at most one child per parent.
 fn fetch<S: Store>(
     logger: Logger,
     store: &S,
     parents: &Vec<Node>,
     join: &Join<'_>,
     mut arguments: HashMap<&q::Name, q::Value>,
-    is_list: bool,
+    is_single: bool,
     types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
 ) -> Result<Vec<Node>, QueryExecutionError> {
-    if !arguments.contains_key(&*ARG_FIRST) {
-        let first = if is_list {
-            // This makes `build_range` use the default, 100
-            q::Value::Null
-        } else {
-            // For non-list fields, get up to 2 entries so we can spot
-            // ambiguous references that should only have one entry
-            q::Value::Int(2.into())
-        };
-        arguments.insert(&*ARG_FIRST, first);
+    if is_single {
+        // For non-list fields, get up to 2 entries so we can spot
+        // ambiguous references that should only have one entry
+        arguments.insert(&*ARG_FIRST, q::Value::Int(2.into()));
     }
 
     if !arguments.contains_key(&*ARG_SKIP) {
@@ -849,7 +844,7 @@ fn fetch<S: Store>(
         max_first,
     )?;
 
-    if !is_list {
+    if is_single {
         // Suppress 'order by' in lookups of scalar values since
         // that causes unnecessary work in the database
         query.order = EntityOrder::Unordered;
