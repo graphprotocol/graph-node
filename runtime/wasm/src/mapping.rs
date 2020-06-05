@@ -178,10 +178,14 @@ pub(crate) struct ValidModule {
 impl ValidModule {
     /// Pre-process and validate the module.
     pub fn new(raw_module: &[u8]) -> Result<Self, anyhow::Error> {
+        // We currently use Cranelift as a compilation engine. Cranelift is an optimizing compiler,
+        // but that should not cause determinism issues since it adheres to the Wasm spec. Still we
+        // turn off optional optimizations to be conservative.
         let mut config = wasmtime::Config::new();
         config.strategy(wasmtime::Strategy::Cranelift).unwrap();
         config.interruptable(true); // For timeouts.
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
+        config.cranelift_opt_level(wasmtime::OptLevel::None);
         let engine = &wasmtime::Engine::new(&config);
         let module = wasmtime::Module::from_binary(&engine, raw_module)?;
 
