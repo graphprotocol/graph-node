@@ -37,22 +37,22 @@ impl IntoWasmRet for f64 {
 }
 
 impl IntoWasmRet for u64 {
-    type Ret = i64;
-    fn into_wasm_ret(self) -> i64 {
-        i64::from_le_bytes(self.to_le_bytes())
+    type Ret = u64;
+    fn into_wasm_ret(self) -> u64 {
+        self
     }
 }
 
 impl IntoWasmRet for bool {
     type Ret = i32;
     fn into_wasm_ret(self) -> i32 {
-        self as i32
+        self.into()
     }
 }
 
 impl<C> IntoWasmRet for AscPtr<C> {
-    type Ret = i32;
-    fn into_wasm_ret(self) -> i32 {
+    type Ret = u32;
+    fn into_wasm_ret(self) -> u32 {
         self.wasm_ptr()
     }
 }

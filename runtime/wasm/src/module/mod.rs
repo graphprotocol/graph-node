@@ -261,7 +261,7 @@ impl WasmInstance {
                     linker.func(
                         module,
                         $wasm_name,
-                        move |$($param: i32),*| {
+                        move |$($param: u32),*| {
                             let instance = func_shared_instance.upgrade().unwrap();
                             let mut instance = instance.borrow_mut();
                             let instance = instance.as_mut().unwrap();
@@ -283,7 +283,7 @@ impl WasmInstance {
 
         for module in modules {
             let func_shared_instance = Rc::downgrade(&shared_instance);
-            linker.func(module, "store.get", move |entity_ptr: i32, id_ptr: i32| {
+            linker.func(module, "store.get", move |entity_ptr: u32, id_ptr: u32| {
                 let start = Instant::now();
                 let instance = func_shared_instance.upgrade().unwrap();
                 let mut instance = instance.borrow_mut();
@@ -308,7 +308,7 @@ impl WasmInstance {
 
         for module in modules {
             let func_shared_instance = Rc::downgrade(&shared_instance);
-            linker.func(module, "ethereum.call", move |call_ptr: i32| {
+            linker.func(module, "ethereum.call", move |call_ptr: u32| {
                 let start = Instant::now();
                 let instance = func_shared_instance.upgrade().unwrap();
                 let mut instance = instance.borrow_mut();
@@ -510,8 +510,8 @@ impl WasmInstance {
         &self,
         message_ptr: AscPtr<AscString>,
         file_name_ptr: AscPtr<AscString>,
-        line_number: i32,
-        column_number: i32,
+        line_number: u32,
+        column_number: u32,
     ) -> Result<(), Trap> {
         let message = match message_ptr.is_null() {
             false => Some(self.asc_get(message_ptr)),
@@ -890,7 +890,7 @@ impl WasmInstance {
     fn big_int_pow(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
-        exp: i32,
+        exp: u32,
     ) -> Result<AscPtr<AscBigInt>, Trap> {
         let exp = u8::try_from(exp).map_err(anyhow::Error::from)?;
         let result = self.ctx.host_exports.big_int_pow(self.asc_get(x_ptr), exp);
@@ -1061,7 +1061,7 @@ impl WasmInstance {
             .unwrap_or(AscPtr::null()))
     }
 
-    fn log_log(&mut self, level: i32, msg: AscPtr<AscString>) {
+    fn log_log(&mut self, level: u32, msg: AscPtr<AscString>) {
         let level = LogLevel::from(level).into();
         let msg: String = self.asc_get(msg);
         self.ctx.host_exports.log_log(&self.ctx.logger, level, msg);

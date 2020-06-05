@@ -197,7 +197,7 @@ async fn abi_store_value() {
 
     // Value::Null
     let func = module.get_func("value_null").get0().unwrap();
-    let ptr: i32 = func().unwrap();
+    let ptr: u32 = func().unwrap();
     let null_value_ptr: AscPtr<AscEnum<StoreValueKind>> = ptr.into();
     let null_value: Value = module.try_asc_get(null_value_ptr).unwrap();
     assert_eq!(null_value, Value::Null);
@@ -237,7 +237,7 @@ async fn abi_store_value() {
 
     // Value::List
     let func = module.get_func("array_from_values").get2().unwrap();
-    let new_value_ptr: i32 = func(module.asc_new(string).wasm_ptr(), int).unwrap();
+    let new_value_ptr: u32 = func(module.asc_new(string).wasm_ptr(), int).unwrap();
     let new_value_ptr = AscPtr::from(new_value_ptr);
     let new_value: Value = module.try_asc_get(new_value_ptr).unwrap();
     assert_eq!(
@@ -356,6 +356,6 @@ async fn invalid_discriminant() {
     );
 
     let func = module.get_func("invalid_discriminant").get0().unwrap();
-    let ptr: i32 = func().unwrap();
+    let ptr: u32 = func().unwrap();
     let _value: Value = module.try_asc_get(ptr.into()).unwrap();
 }

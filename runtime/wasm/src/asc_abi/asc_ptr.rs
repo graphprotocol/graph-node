@@ -1,5 +1,4 @@
 use super::{class::EnumPayload, AscHeap, AscType, AscValue};
-use std::convert::TryFrom;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -28,9 +27,9 @@ impl<T> fmt::Debug for AscPtr<T> {
 }
 
 impl<C> AscPtr<C> {
-    /// A raw pointer to be passed to wasm. Wasmtime uses `i32` for 32 bits wasm integers.
-    pub(crate) fn wasm_ptr(self) -> i32 {
-        self.0 as i32
+    /// A raw pointer to be passed to Wasm.
+    pub(crate) fn wasm_ptr(self) -> u32 {
+        self.0
     }
 }
 
@@ -75,10 +74,9 @@ impl<C: AscType> AscPtr<C> {
     }
 }
 
-/// WASM integers do not carry sign information, but wasmtime uses `i32` for them.
-impl<C> From<i32> for AscPtr<C> {
-    fn from(ptr: i32) -> Self {
-        AscPtr(u32::try_from(ptr).unwrap(), PhantomData)
+impl<C> From<u32> for AscPtr<C> {
+    fn from(ptr: u32) -> Self {
+        AscPtr(ptr, PhantomData)
     }
 }
 
