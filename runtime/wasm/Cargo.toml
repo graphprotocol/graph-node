@@ -25,7 +25,8 @@ bytes = "0.5"
 # See also 92cd8019-0136-4011-96a0-40b3eec37f73
 maybe-owned = { git = "https://github.com/rustonaut/maybe-owned", branch = "master" }
 
-wasmtime = "0.17"
+# Use a released version once 0.18 is released.
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime" }
 
 [dev-dependencies]
 graphql-parser = "0.2.3"

@@ -91,8 +91,8 @@ impl HostExports {
         &self,
         message: Option<String>,
         file_name: Option<String>,
-        line_number: Option<i32>,
-        column_number: Option<i32>,
+        line_number: Option<u32>,
+        column_number: Option<u32>,
     ) -> Result<(), anyhow::Error> {
         let message = message
             .map(|message| format!("message: {}", message))

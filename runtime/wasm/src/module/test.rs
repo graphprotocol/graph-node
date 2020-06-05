@@ -176,13 +176,13 @@ impl WasmInstanceHandle {
 
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self.get_func(f).get1().unwrap();
-        let ptr: i32 = func(arg.wasm_ptr()).unwrap();
+        let ptr: u32 = func(arg.wasm_ptr()).unwrap();
         ptr.into()
     }
 
     fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R> {
         let func = self.get_func(f).get2().unwrap();
-        let ptr: i32 = func(arg0.wasm_ptr(), arg1.wasm_ptr()).unwrap();
+        let ptr: u32 = func(arg0.wasm_ptr(), arg1.wasm_ptr()).unwrap();
         ptr.into()
     }
 
@@ -203,7 +203,7 @@ impl WasmInstanceHandle {
 
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P> {
         let func = self.get_func(fn_name).get1().unwrap();
-        let ptr: i32 = func(val).unwrap();
+        let ptr: u32 = func(val).unwrap();
         ptr.into()
     }
 }

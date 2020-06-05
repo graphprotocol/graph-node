@@ -430,8 +430,8 @@ impl FromAscObj<AscUnresolvedContractCall_0_0_4> for UnresolvedContractCall {
     }
 }
 
-impl From<i32> for LogLevel {
-    fn from(i: i32) -> Self {
+impl From<u32> for LogLevel {
+    fn from(i: u32) -> Self {
         match i {
             0 => LogLevel::Critical,
             1 => LogLevel::Error,
