@@ -39,6 +39,7 @@ steps:
     - 'TAG_NAME=$TAG_NAME'
     - 'PROJECT_ID=$PROJECT_ID'
     - 'DOCKER_HUB_USER=$_DOCKER_HUB_USER'
+    - 'BRANCH_NAME=$BRANCH_NAME'
 images:
   - 'gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA'

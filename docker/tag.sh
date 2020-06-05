@@ -19,9 +19,8 @@ echo $PASSWORD | docker login --username="$DOCKER_HUB_USER" --password-stdin
 set -x
 
 tag_and_push "$SHORT_SHA"
-tag_and_push latest
 
-if [ -n "$TAG_NAME" ]
-then
-    tag_and_push "$TAG_NAME"
-fi
+# Builds on the master branch become the 'latest'
+[ "$BRANCH_NAME" = master ] && tag_and_push latest
+# Builds of tags set the tag in Docker Hub, too
+[ -n "$TAG_NAME" ] && tag_and_push "$TAG_NAME"
