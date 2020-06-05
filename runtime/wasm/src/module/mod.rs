@@ -57,8 +57,8 @@ impl WasmInstanceHandle {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState, anyhow::Error> {
-        let value = self.instance().asc_new(value);
-        let user_data = self.instance().asc_new(user_data);
+        let value = self.instance_mut().asc_new(value);
+        let user_data = self.instance_mut().asc_new(user_data);
 
         // Invoke the callback
         let func = self
@@ -86,7 +86,7 @@ impl WasmInstanceHandle {
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
         let event = if self.instance().ctx.host_exports.api_version >= Version::new(0, 0, 2) {
-            self.instance()
+            self.instance_mut()
                 .asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(&EthereumEventData {
                     block: EthereumBlockData::from(block.as_ref()),
                     transaction: EthereumTransactionData::from(transaction.deref()),
@@ -98,7 +98,7 @@ impl WasmInstanceHandle {
                 })
                 .erase()
         } else {
-            self.instance()
+            self.instance_mut()
                 .asc_new::<AscEthereumEvent<AscEthereumTransaction>, _>(&EthereumEventData {
                     block: EthereumBlockData::from(block.as_ref()),
                     transaction: EthereumTransactionData::from(transaction.deref()),
@@ -135,11 +135,13 @@ impl WasmInstanceHandle {
             outputs,
         };
         let arg = if self.instance().ctx.host_exports.api_version >= Version::new(0, 0, 3) {
-            self.instance()
+            self.instance_mut()
                 .asc_new::<AscEthereumCall_0_0_3, _>(&call)
                 .erase()
         } else {
-            self.instance().asc_new::<AscEthereumCall, _>(&call).erase()
+            self.instance_mut()
+                .asc_new::<AscEthereumCall, _>(&call)
+                .erase()
         };
 
         self.invoke_handler(handler_name, arg)?;
@@ -154,14 +156,14 @@ impl WasmInstanceHandle {
         let block = EthereumBlockData::from(self.instance().ctx.block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
-        let arg = self.instance().asc_new(&block);
+        let arg = self.instance_mut().asc_new(&block);
 
         self.invoke_handler(handler_name, arg)?;
 
         Ok(self.take_instance().ctx.state)
     }
 
-    pub(crate) fn instance(&mut self) -> RefMut<'_, WasmInstance> {
+    pub(crate) fn instance_mut(&mut self) -> RefMut<'_, WasmInstance> {
         RefMut::map(self.instance.borrow_mut(), |i| i.as_mut().unwrap())
     }
 
@@ -169,8 +171,7 @@ impl WasmInstanceHandle {
         self.instance.borrow_mut().take().unwrap()
     }
 
-    #[cfg(test)]
-    pub(crate) fn borrow_instance(&self) -> std::cell::Ref<'_, WasmInstance> {
+    pub(crate) fn instance(&self) -> std::cell::Ref<'_, WasmInstance> {
         std::cell::Ref::map(self.instance.borrow(), |i| i.as_ref().unwrap())
     }
 

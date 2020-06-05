@@ -171,7 +171,7 @@ fn mock_context(
 
 impl WasmInstanceHandle {
     fn get_func(&self, name: &str) -> wasmtime::Func {
-        self.borrow_instance().instance.get_func(name).unwrap()
+        self.instance().instance.get_func(name).unwrap()
     }
 
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
@@ -210,11 +210,11 @@ impl WasmInstanceHandle {
 
 impl AscHeap for WasmInstanceHandle {
     fn raw_new(&mut self, bytes: &[u8]) -> u32 {
-        self.instance().raw_new(bytes)
+        self.instance_mut().raw_new(bytes)
     }
 
     fn get(&self, offset: u32, size: u32) -> Vec<u8> {
-        self.borrow_instance().get(offset, size)
+        self.instance().get(offset, size)
     }
 }
 
@@ -328,8 +328,8 @@ async fn ipfs_map() {
         } else {
             ipfs.add(Cursor::new(json_string)).await.unwrap().hash
         };
-        let value = module.instance().asc_new(&hash);
-        let user_data = module.instance().asc_new(USER_DATA);
+        let value = module.instance_mut().asc_new(&hash);
+        let user_data = module.instance_mut().asc_new(USER_DATA);
 
         // Invoke the callback
         let func = module
@@ -416,7 +416,7 @@ async fn ipfs_map() {
 async fn ipfs_fail() {
     let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
-    let hash = module.instance().asc_new("invalid hash");
+    let hash = module.instance_mut().asc_new("invalid hash");
     assert!(module
         .invoke_export::<_, AscString>("ipfsCat", hash,)
         .is_null());
@@ -662,7 +662,7 @@ async fn entity_store() {
 
     // We need to empty the cache for the next test
     let cache = std::mem::replace(
-        &mut module.instance().ctx.state.entity_cache,
+        &mut module.instance_mut().ctx.state.entity_cache,
         EntityCache::new(store.clone()),
     );
     let mut mods = cache
