@@ -206,6 +206,10 @@ impl WasmInstanceHandle {
 /// ```
 pub(crate) struct WasmInstance {
     instance: wasmtime::Instance,
+
+    // In the future there may be multiple memories, but currently there is only one memory per
+    // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
+    // is zeroed when initialized or grown.
     memory: Memory,
     memory_allocate: Box<dyn Fn(i32) -> Result<i32, Trap>>,
 
