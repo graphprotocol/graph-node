@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ops::Deref;
 use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use semver::Version;
@@ -26,7 +24,10 @@ use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
 
 mod into_wasm_ret;
+mod stopwatch;
+
 use into_wasm_ret::IntoWasmRet;
+use stopwatch::TimeoutStopwatch;
 
 #[cfg(test)]
 mod test;
@@ -219,8 +220,8 @@ pub(crate) struct WasmInstance {
     pub(crate) host_metrics: Arc<HostMetrics>,
     pub(crate) timeout: Option<Duration>,
 
-    // Used by ipfs.map to turn off interrupts.
-    should_interrupt: Arc<AtomicBool>,
+    // Used by ipfs.map.
+    pub(crate) timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
 
     // First free byte in the current arena.
     arena_start_ptr: i32,
@@ -420,15 +421,19 @@ impl WasmInstance {
             .context("`memory.allocate` function not found")?
             .get1()?;
 
-        let should_interrupt = Arc::new(AtomicBool::new(true));
+        let timeout_stopwatch = Arc::new(std::sync::Mutex::new(TimeoutStopwatch::start_new()));
         if let Some(timeout) = timeout {
             // This task is likely to outlive the instance, which is fine.
             let interrupt_handle = instance.store().interrupt_handle().unwrap();
-            let should_interrupt = should_interrupt.clone();
-            graph::spawn(async move {
-                tokio::time::delay_for(timeout).await;
-                if should_interrupt.load(Ordering::SeqCst) {
-                    interrupt_handle.interrupt()
+            let timeout_stopwatch = timeout_stopwatch.clone();
+            graph::spawn_allow_panic(async move {
+                loop {
+                    let time_left =
+                        timeout.checked_sub(timeout_stopwatch.lock().unwrap().elapsed());
+                    match time_left {
+                        None => break interrupt_handle.interrupt(), // Timed out.
+                        Some(time) => tokio::time::delay_for(time).await,
+                    }
                 }
             });
         }
@@ -441,7 +446,7 @@ impl WasmInstance {
             valid_module,
             host_metrics,
             timeout,
-            should_interrupt,
+            timeout_stopwatch,
 
             // `arena_start_ptr` will be set on the first call to `raw_new`.
             arena_free_size: 0,
@@ -717,9 +722,10 @@ impl WasmInstance {
         let callback: String = self.asc_get(callback);
         let user_data: store::Value = self.try_asc_get(user_data)?;
 
-        // `ipfs_map` can take a long time to process, so disable the timeout.
-        self.should_interrupt.store(false, Ordering::SeqCst);
         let flags = self.asc_get(flags);
+
+        // Pause the timeout while running ipfs_map
+        self.timeout_stopwatch.lock().unwrap().stop();
         let start_time = Instant::now();
         let output_states = HostExports::ipfs_map(
             &self.ctx.host_exports.link_resolver.clone(),
@@ -750,12 +756,8 @@ impl WasmInstance {
                 .extend(output_state.created_data_sources);
         }
 
-        // Advance this module's start time by the time it took to run the entire
-        // ipfs_map. This has the effect of not charging this module for the time
-        // spent running the callback on every JSON object in the IPFS file
+        self.timeout_stopwatch.lock().unwrap().start();
 
-        // TODO
-        // self.start_time += start_time.elapsed();
         Ok(())
     }
 
