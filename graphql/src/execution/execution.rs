@@ -15,9 +15,57 @@ use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
+use lru_time_cache::LruCache;
+use std::sync::Mutex;
 
 lazy_static! {
     static ref NO_PREFETCH: bool = std::env::var_os("GRAPH_GRAPHQL_NO_PREFETCH").is_some();
+
+    // Comma separated subgraph ids to cache queries for.
+    static ref CACHED_SUBGRAPH_IDS: Vec<String> = {
+        std::env::var("GRAPH_CACHED_SUBGRAPH_IDS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.to_owned())
+        .collect()
+    };
+
+    // Cache expiry time, 1 minute by default.
+    static ref CACHE_EXPIRY: Duration = {
+        std::env::var("GRAPH_CACHE_EXPIRY_SECS")
+        .unwrap_or("60".to_string())
+        .parse::<u64>()
+        .map(|s| Duration::from_secs(s))
+        .unwrap()
+    };
+
+    // This cache might serve stale data.
+    static ref QUERY_CACHE: Mutex<LruCache<[u8; 32], BTreeMap<String, q::Value>>>
+                                = Mutex::new(LruCache::with_expiry_duration(*CACHE_EXPIRY));
+}
+
+// The key is: subgraph id + selection set + variables + fragment definitions
+fn cache_key(ctx: &ExecutionContext<impl Resolver>, selection_set: &q::SelectionSet) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    // subgraph id
+    hasher.update(ctx.query.schema.id.to_string().as_bytes());
+
+    // selection set
+    hasher.update(selection_set.to_string().as_bytes());
+
+    // variables
+    for (key, value) in &ctx.query.variables {
+        hasher.update(key.as_bytes());
+        hasher.update(value.to_string().as_bytes());
+    }
+
+    // fragment definitions
+    for (key, fragment) in &ctx.query.fragments {
+        hasher.update(key.as_bytes());
+        hasher.update(fragment.to_string().as_bytes());
+    }
+
+    *hasher.finalize().as_bytes()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -106,6 +154,20 @@ pub fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
 ) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+    if CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
+        // Check if the response is cached.
+        let mut cache = QUERY_CACHE.lock().unwrap();
+
+        // Remove expired entries.
+        cache.notify_iter();
+
+        // Peek because we want even hot entries to invalidate after the expiry period.
+        if let Some(response) = cache.peek(&cache_key(ctx, selection_set)) {
+            debug!(ctx.logger, "Query cache hit");
+            return Ok(response.clone());
+        }
+    }
+
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
         Some(t) => t,
@@ -165,6 +227,13 @@ pub fn execute_root_selection_set(
             &None,
         )?);
     }
+
+    if CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
+        // Insert into the cache.
+        let mut cache = QUERY_CACHE.lock().unwrap();
+        cache.insert(cache_key(ctx, selection_set), values.clone());
+    }
+
     Ok(values)
 }
 

@@ -35,7 +35,7 @@ pub struct Query {
     pub variables: HashMap<q::Name, q::Value>,
     /// The root selection set of the query
     pub selection_set: q::SelectionSet,
-    fragments: HashMap<String, q::FragmentDefinition>,
+    pub(crate) fragments: HashMap<String, q::FragmentDefinition>,
     kind: Kind,
     /// This is `true` if the query should run in both prefetch and slow
     /// execution modes, and the results of the two executions should be
