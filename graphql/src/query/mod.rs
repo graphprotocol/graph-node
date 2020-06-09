@@ -46,12 +46,6 @@ where
         "query_id" => query_id
     ));
 
-    let mode = if query.verify {
-        ExecutionMode::Verify
-    } else {
-        ExecutionMode::Prefetch
-    };
-
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: query_logger.clone(),
@@ -59,7 +53,6 @@ where
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
-        mode,
     };
 
     if !query.is_query() {

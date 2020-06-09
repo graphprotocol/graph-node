@@ -8,16 +8,6 @@ use crate::schema::ast as sast;
 
 type TypeObjectsMap = BTreeMap<String, q::Value>;
 
-fn object_field<'a>(object: &'a Option<q::Value>, field: &str) -> Option<&'a q::Value> {
-    object
-        .as_ref()
-        .and_then(|object| match object {
-            q::Value::Object(ref data) => Some(data),
-            _ => None,
-        })
-        .and_then(|data| data.get(field))
-}
-
 fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
     sast::get_type_definitions(&schema.document).iter().fold(
         BTreeMap::new(),
@@ -368,22 +358,19 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
 
     fn resolve_objects(
         &self,
-        parent: &Option<q::Value>,
+        objects_value: Option<q::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
-        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
-                let type_names = object_field(parent, "possibleTypes")
-                    .and_then(|value| match value {
-                        q::Value::List(type_names) => Some(type_names.clone()),
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| vec![]);
+                let type_names = match objects_value {
+                    Some(q::Value::List(type_names)) => Some(type_names),
+                    _ => None,
+                }
+                .unwrap_or_default();
 
                 if !type_names.is_empty() {
                     Ok(q::Value::List(
@@ -400,19 +387,17 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     Ok(q::Value::Null)
                 }
             }
-            _ => object_field(parent, field.name.as_str())
-                .map_or(Ok(q::Value::Null), |value| Ok(value.clone())),
+            _ => Ok(objects_value.unwrap_or(q::Value::Null)),
         }
     }
 
     fn resolve_object(
         &self,
-        parent: &Option<q::Value>,
+        object_value: Option<q::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
-        _: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),
@@ -425,21 +410,16 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                 })?;
                 self.type_object(name)
             }
-            "type" => object_field(parent, "type")
-                .and_then(|value| match value {
-                    q::Value::String(type_name) => self.type_objects.get(type_name).cloned(),
-                    _ => Some(value.clone()),
-                })
-                .unwrap_or(q::Value::Null),
-            "ofType" => object_field(parent, "ofType")
-                .and_then(|value| match value {
-                    q::Value::String(type_name) => self.type_objects.get(type_name).cloned(),
-                    _ => Some(value.clone()),
-                })
-                .unwrap_or(q::Value::Null),
-            _ => object_field(parent, field.name.as_str())
-                .cloned()
-                .unwrap_or(q::Value::Null),
+            "type" | "ofType" => match object_value {
+                Some(q::Value::String(type_name)) => self
+                    .type_objects
+                    .get(&type_name)
+                    .cloned()
+                    .unwrap_or(q::Value::Null),
+                Some(v) => v,
+                None => q::Value::Null,
+            },
+            _ => object_value.unwrap_or(q::Value::Null),
         };
         Ok(object)
     }

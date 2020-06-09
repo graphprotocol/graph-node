@@ -1,5 +1,5 @@
 use graphql_parser::{query as q, schema as s};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::prelude::*;
 use crate::schema::ast::get_named_type;
@@ -72,24 +72,21 @@ pub trait Resolver: Clone + Send + Sync {
     /// Resolves entities referenced by a parent object.
     fn resolve_objects(
         &self,
-        parent: &Option<q::Value>,
+        objects_value: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
-        types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        max_first: u32,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an entity referenced by a parent object.
     fn resolve_object(
         &self,
-        parent: &Option<q::Value>,
+        object_value: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
-        types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.
@@ -97,24 +94,23 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         _field: &q::Field,
         _enum_type: &s::EnumType,
-        value: Option<&q::Value>,
+        value: Option<q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        Ok(value.cloned().unwrap_or(q::Value::Null))
+        Ok(value.unwrap_or(q::Value::Null))
     }
 
     /// Resolves a scalar value for a given scalar type.
     fn resolve_scalar_value(
         &self,
         _parent_object_type: &s::ObjectType,
-        _parent: &BTreeMap<String, q::Value>,
         _field: &q::Field,
         _scalar_type: &s::ScalarType,
-        value: Option<&q::Value>,
+        value: Option<q::Value>,
         _argument_values: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         // This code is duplicated.
         // See also c2112309-44fd-4a84-92a0-5a651e6ed548
-        Ok(value.cloned().unwrap_or(q::Value::Null))
+        Ok(value.unwrap_or(q::Value::Null))
     }
 
     /// Resolves a list of enum values for a given enum type.
@@ -122,9 +118,9 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         _field: &q::Field,
         _enum_type: &s::EnumType,
-        value: Option<&q::Value>,
+        value: Option<q::Value>,
     ) -> Result<q::Value, Vec<QueryExecutionError>> {
-        Ok(value.cloned().unwrap_or(q::Value::Null))
+        Ok(value.unwrap_or(q::Value::Null))
     }
 
     /// Resolves a list of scalar values for a given list type.
@@ -132,9 +128,9 @@ pub trait Resolver: Clone + Send + Sync {
         &self,
         _field: &q::Field,
         _scalar_type: &s::ScalarType,
-        value: Option<&q::Value>,
+        value: Option<q::Value>,
     ) -> Result<q::Value, Vec<QueryExecutionError>> {
-        Ok(value.cloned().unwrap_or(q::Value::Null))
+        Ok(value.unwrap_or(q::Value::Null))
     }
 
     // Resolves an abstract type into the specific type of an object.
