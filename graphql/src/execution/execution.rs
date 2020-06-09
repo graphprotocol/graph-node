@@ -748,17 +748,22 @@ fn complete_value(
         s::Type::ListType(inner_type) => {
             match resolved_value {
                 // Complete list values individually
-                q::Value::List(values) => {
+                q::Value::List(mut values) => {
                     let mut errors = Vec::new();
-                    let mut out = Vec::with_capacity(values.len());
-                    for value in values.into_iter() {
+
+                    // To avoid allocating a new vector this completes the values in place.
+                    for value_place in &mut values {
+                        // Put in a placeholder, complete the value, put the completed value back.
+                        let value = std::mem::replace(value_place, q::Value::Null);
                         match complete_value(ctx, field, inner_type, fields, value) {
-                            Ok(value) => out.push(value),
+                            Ok(value) => {
+                                *value_place = value;
+                            }
                             Err(errs) => errors.extend(errs),
                         }
                     }
                     match errors.is_empty() {
-                        true => Ok(q::Value::List(out)),
+                        true => Ok(q::Value::List(values)),
                         false => Err(errors),
                     }
                 }
