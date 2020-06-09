@@ -2,7 +2,7 @@
 extern crate pretty_assertions;
 
 use graphql_parser::{query as q, schema as s};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::prelude::{
@@ -28,25 +28,22 @@ impl Resolver for MockResolver {
 
     fn resolve_objects<'a>(
         &self,
-        _parent: &Option<q::Value>,
+        _: Option<q::Value>,
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
-        _types_for_interface: &BTreeMap<q::Name, Vec<s::ObjectType>>,
-        _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
 
     fn resolve_object(
         &self,
-        _parent: &Option<q::Value>,
+        __: Option<q::Value>,
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
-        _types_for_interface: &BTreeMap<q::Name, Vec<s::ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

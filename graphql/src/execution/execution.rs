@@ -24,8 +24,6 @@ use std::sync::Mutex;
 type QueryHash = <SetHasher as StableHasher>::Out;
 
 lazy_static! {
-    static ref NO_PREFETCH: bool = std::env::var_os("GRAPH_GRAPHQL_NO_PREFETCH").is_some();
-
     // Comma separated subgraph ids to cache queries for.
     static ref CACHED_SUBGRAPH_IDS: Vec<String> = {
         std::env::var("GRAPH_CACHED_SUBGRAPH_IDS")
@@ -111,12 +109,6 @@ fn cache_key(ctx: &ExecutionContext<impl Resolver>, selection_set: &q::Selection
     stable_hash::<SetHasher, _>(&query)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ExecutionMode {
-    Prefetch,
-    Verify,
-}
-
 /// Contextual information passed around during query execution.
 pub struct ExecutionContext<R>
 where
@@ -136,8 +128,6 @@ where
 
     /// Max value for `first`.
     pub max_first: u32,
-
-    pub mode: ExecutionMode,
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
@@ -174,7 +164,6 @@ where
             query: self.query.as_introspection_query(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
-            mode: ExecutionMode::Prefetch,
         }
     }
 }
@@ -183,13 +172,7 @@ pub fn prefetch(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
 ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
-    // Allow turning prefetch off as a safety valve. Once we are confident
-    // prefetching contains no more bugs, we should remove this env variable
-    if *NO_PREFETCH {
-        Ok(None)
-    } else {
-        ctx.resolver.prefetch(&ctx, selection_set)
-    }
+    ctx.resolver.prefetch(&ctx, selection_set)
 }
 
 /// Executes the root selection set of a query.
@@ -252,17 +235,7 @@ pub fn execute_root_selection_set(
         BTreeMap::default()
     } else {
         let initial_data = prefetch(&ctx, &data_set)?;
-        let values = execute_selection_set_to_map(&ctx, &data_set, query_type, &initial_data)?;
-        if ctx.mode == ExecutionMode::Verify {
-            let single_values = execute_selection_set_to_map(&ctx, &data_set, query_type, &None)?;
-            if values != single_values {
-                return Err(vec![QueryExecutionError::IncorrectPrefetchResult {
-                    slow: q::Value::Object(single_values),
-                    prefetch: q::Value::Object(values),
-                }]);
-            }
-        }
-        values
+        execute_selection_set_to_map(&ctx, &data_set, query_type, initial_data)?
     };
 
     // Resolve introspection fields, if there are any
@@ -273,7 +246,7 @@ pub fn execute_root_selection_set(
             &ictx,
             &intro_set,
             &*INTROSPECTION_QUERY_TYPE,
-            &None,
+            None,
         )?);
     }
 
@@ -293,7 +266,7 @@ pub fn execute_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     object_type: &s::ObjectType,
-    object_value: &Option<q::Value>,
+    object_value: Option<q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     Ok(q::Value::Object(execute_selection_set_to_map(
         ctx,
@@ -307,8 +280,13 @@ fn execute_selection_set_to_map(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     object_type: &s::ObjectType,
-    object_value: &Option<q::Value>,
+    object_value: Option<q::Value>,
 ) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+    let mut object_value = match object_value {
+        Some(q::Value::Object(object)) => Some(object),
+        Some(_) => unreachable!(),
+        None => None,
+    };
     let mut errors: Vec<QueryExecutionError> = Vec::new();
     let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
 
@@ -327,7 +305,16 @@ fn execute_selection_set_to_map(
 
         // If the field exists on the object, execute it and add its result to the result map
         if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
-            match execute_field(&ctx, object_type, object_value, &fields[0], field, fields) {
+            // If we have the value already, because it's a scalar or a prefetched object, we want
+            // to use it and avoid cloning, so we take it from the object value.
+            let field_value = object_value
+                .as_mut()
+                .map(|o| {
+                    o.remove(&format!("prefetch:{}", response_key))
+                        .or(o.remove(response_key))
+                })
+                .flatten();
+            match execute_field(&ctx, object_type, field_value, &fields[0], field, fields) {
                 Ok(v) => {
                     result_map.insert(response_key.to_owned(), v);
                 }
@@ -491,7 +478,7 @@ fn does_fragment_type_apply(
 fn execute_field(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    object_value: &Option<q::Value>,
+    field_value: Option<q::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     fields: Vec<&q::Field>,
@@ -501,7 +488,7 @@ fn execute_field(
             resolve_field_value(
                 ctx,
                 object_type,
-                object_value,
+                field_value,
                 field,
                 field_definition,
                 &field_definition.field_type,
@@ -515,7 +502,7 @@ fn execute_field(
 fn resolve_field_value(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    object_value: &Option<q::Value>,
+    field_value: Option<q::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
@@ -525,7 +512,7 @@ fn resolve_field_value(
         s::Type::NonNullType(inner_type) => resolve_field_value(
             ctx,
             object_type,
-            object_value,
+            field_value,
             field,
             field_definition,
             inner_type.as_ref(),
@@ -535,7 +522,7 @@ fn resolve_field_value(
         s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
             ctx,
             object_type,
-            object_value,
+            field_value,
             field,
             field_definition,
             name,
@@ -545,7 +532,7 @@ fn resolve_field_value(
         s::Type::ListType(inner_type) => resolve_field_value_for_list_type(
             ctx,
             object_type,
-            object_value,
+            field_value,
             field,
             field_definition,
             inner_type.as_ref(),
@@ -558,7 +545,7 @@ fn resolve_field_value(
 fn resolve_field_value_for_named_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    object_value: &Option<q::Value>,
+    field_value: Option<q::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     type_name: &s::Name,
@@ -568,56 +555,32 @@ fn resolve_field_value_for_named_type(
     let named_type = sast::get_named_type(&ctx.query.schema.document, type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
     match named_type {
-        // Let the resolver decide how the field (with the given object type)
-        // is resolved into an entity based on the (potential) parent object
+        // Let the resolver decide how the field (with the given object type) is resolved
         s::TypeDefinition::Object(t) => ctx.resolver.resolve_object(
-            object_value,
+            field_value,
             field,
             field_definition,
             t.into(),
             argument_values,
-            ctx.query.schema.types_for_interface(),
         ),
 
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL enums
-        s::TypeDefinition::Enum(t) => match object_value {
-            Some(q::Value::Object(o)) => {
-                ctx.resolver
-                    .resolve_enum_value(field, t, o.get(&field.name))
-            }
-            _ => Ok(q::Value::Null),
-        },
+        s::TypeDefinition::Enum(t) => ctx.resolver.resolve_enum_value(field, t, field_value),
 
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL scalars
-        s::TypeDefinition::Scalar(t) => match object_value {
-            Some(q::Value::Object(o)) => ctx.resolver.resolve_scalar_value(
-                object_type,
-                o,
-                field,
-                t,
-                o.get(&field.name),
-                argument_values,
-            ),
-            None => ctx.resolver.resolve_scalar_value(
-                object_type,
-                &BTreeMap::new(),
-                field,
-                t,
-                None,
-                argument_values,
-            ),
-            _ => Ok(q::Value::Null),
-        },
+        s::TypeDefinition::Scalar(t) => {
+            ctx.resolver
+                .resolve_scalar_value(object_type, field, t, field_value, argument_values)
+        }
 
         s::TypeDefinition::Interface(i) => ctx.resolver.resolve_object(
-            object_value,
+            field_value,
             field,
             field_definition,
             i.into(),
             argument_values,
-            ctx.query.schema.types_for_interface(),
         ),
 
         s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),
@@ -631,7 +594,7 @@ fn resolve_field_value_for_named_type(
 fn resolve_field_value_for_list_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    object_value: &Option<q::Value>,
+    field_value: Option<q::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
@@ -641,7 +604,7 @@ fn resolve_field_value_for_list_type(
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
             ctx,
             object_type,
-            object_value,
+            field_value,
             field,
             field_definition,
             inner_type,
@@ -658,46 +621,34 @@ fn resolve_field_value_for_list_type(
                 s::TypeDefinition::Object(t) => ctx
                     .resolver
                     .resolve_objects(
-                        object_value,
+                        field_value,
                         field,
                         field_definition,
                         t.into(),
                         argument_values,
-                        ctx.query.schema.types_for_interface(),
-                        ctx.max_first,
                     )
                     .map_err(|e| vec![e]),
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL enums
-                s::TypeDefinition::Enum(t) => match object_value {
-                    Some(q::Value::Object(o)) => {
-                        ctx.resolver
-                            .resolve_enum_values(field, &t, o.get(&field.name))
-                    }
-                    _ => Ok(q::Value::Null),
-                },
+                s::TypeDefinition::Enum(t) => {
+                    ctx.resolver.resolve_enum_values(field, &t, field_value)
+                }
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL scalars
-                s::TypeDefinition::Scalar(t) => match object_value {
-                    Some(q::Value::Object(o)) => {
-                        ctx.resolver
-                            .resolve_scalar_values(field, &t, o.get(&field.name))
-                    }
-                    _ => Ok(q::Value::Null),
-                },
+                s::TypeDefinition::Scalar(t) => {
+                    ctx.resolver.resolve_scalar_values(field, &t, field_value)
+                }
 
                 s::TypeDefinition::Interface(t) => ctx
                     .resolver
                     .resolve_objects(
-                        object_value,
+                        field_value,
                         field,
                         field_definition,
                         t.into(),
                         argument_values,
-                        ctx.query.schema.types_for_interface(),
-                        ctx.max_first,
                     )
                     .map_err(|e| vec![e]),
 
@@ -814,7 +765,7 @@ fn complete_value(
                     ctx,
                     &merge_selection_sets(fields),
                     object_type,
-                    &Some(resolved_value),
+                    Some(resolved_value),
                 ),
 
                 // Resolve interface types using the resolved value and complete the value recursively
@@ -825,7 +776,7 @@ fn complete_value(
                         ctx,
                         &merge_selection_sets(fields),
                         object_type,
-                        &Some(resolved_value),
+                        Some(resolved_value),
                     )
                 }
 
@@ -837,7 +788,7 @@ fn complete_value(
                         ctx,
                         &merge_selection_sets(fields),
                         object_type,
-                        &Some(resolved_value),
+                        Some(resolved_value),
                     )
                 }
 

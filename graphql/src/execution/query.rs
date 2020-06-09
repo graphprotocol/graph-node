@@ -37,10 +37,7 @@ pub struct Query {
     pub selection_set: q::SelectionSet,
     pub(crate) fragments: HashMap<String, q::FragmentDefinition>,
     kind: Kind,
-    /// This is `true` if the query should run in both prefetch and slow
-    /// execution modes, and the results of the two executions should be
-    /// checked against each other
-    pub verify: bool,
+
     /// Used only for logging; if logging is configured off, these will
     /// have dummy values
     pub(crate) query_text: Arc<String>,
@@ -86,12 +83,6 @@ impl Query {
         }
         let operation = operation.ok_or(QueryExecutionError::OperationNameRequired)?;
 
-        let verify = if let q::OperationDefinition::Query(query) = &operation {
-            query.directives.iter().any(|dir| dir.name == "verify")
-        } else {
-            false
-        };
-
         let variables = coerce_variables(&query.schema, &operation, query.variables)?;
         let (kind, selection_set) = match operation {
             q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
@@ -115,7 +106,6 @@ impl Query {
             fragments,
             selection_set,
             kind,
-            verify,
             query_text,
             variables_text,
         });
@@ -169,7 +159,6 @@ impl Query {
             fragments: self.fragments.clone(),
             selection_set: self.selection_set.clone(),
             kind: self.kind,
-            verify: self.verify,
             query_text: self.query_text.clone(),
             variables_text: self.variables_text.clone(),
         })

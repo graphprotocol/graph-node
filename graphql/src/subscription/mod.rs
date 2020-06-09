@@ -81,7 +81,6 @@ where
         query: query.clone(),
         deadline: None,
         max_first: options.max_first,
-        mode: ExecutionMode::Prefetch,
     };
 
     if !query.is_subscription() {
@@ -192,7 +191,6 @@ async fn execute_subscription_event(
         query,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
-        mode: ExecutionMode::Prefetch,
     };
 
     // We have established that this exists earlier in the subscription execution
@@ -209,7 +207,7 @@ async fn execute_subscription_event(
             &ctx,
             &ctx.query.selection_set,
             &subscription_type,
-            &initial_data,
+            initial_data,
         )
     })
     .await

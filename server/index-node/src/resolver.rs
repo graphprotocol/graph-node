@@ -1,5 +1,5 @@
-use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
-use std::collections::{BTreeMap, HashMap};
+use graphql_parser::{query as q, schema as s};
+use std::collections::HashMap;
 
 use graph::data::graphql::{TryFromValue, ValueList, ValueMap};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth, SUBGRAPHS_ID};
@@ -707,10 +707,9 @@ where
     fn resolve_scalar_value(
         &self,
         parent_object_type: &s::ObjectType,
-        _parent: &BTreeMap<String, q::Value>,
         field: &q::Field,
         scalar_type: &s::ScalarType,
-        value: Option<&q::Value>,
+        value: Option<q::Value>,
         argument_values: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         // Check if we are resolving the proofOfIndexing bytes
@@ -725,29 +724,25 @@ where
         // is no way to call back into the default implementation for the trait.
         // So, note that this is duplicated.
         // See also c2112309-44fd-4a84-92a0-5a651e6ed548
-        Ok(value.cloned().unwrap_or(q::Value::Null))
+        Ok(value.unwrap_or(q::Value::Null))
     }
 
     fn resolve_objects(
         &self,
-        parent: &Option<q::Value>,
+        objects_value: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
-        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
-        _max_first: u32,
     ) -> Result<q::Value, QueryExecutionError> {
-        match (parent, object_type.name(), field.name.as_str()) {
+        match (objects_value, object_type.name(), field.name.as_str()) {
             // The top-level `indexingStatuses` field
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
                 self.resolve_indexing_statuses(arguments)
             }
 
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
-            (Some(q::Value::Object(map)), _, field) => {
-                Ok(map.get(field).cloned().unwrap_or(q::Value::Null))
-            }
+            (Some(value), _, _) => Ok(value),
 
             // The top-level `indexingStatusesForSubgraphName` field
             (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
@@ -765,14 +760,13 @@ where
 
     fn resolve_object(
         &self,
-        parent: &Option<q::Value>,
+        object_value: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
-        _types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     ) -> Result<q::Value, QueryExecutionError> {
-        match (parent, field.name.as_str()) {
+        match (object_value, field.name.as_str()) {
             // The top-level `indexingStatusForCurrentVersion` field
             (None, "indexingStatusForCurrentVersion") => {
                 self.resolve_indexing_statuses_for_version(arguments, true)
@@ -784,9 +778,7 @@ where
             }
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
-            (Some(q::Value::Object(map)), field) => {
-                Ok(map.get(field).cloned().unwrap_or(q::Value::Null))
-            }
+            (Some(object_value), _) => Ok(object_value),
 
             // Something we don't know how to resolve.
             (_, name) => Err(QueryExecutionError::UnknownField(
