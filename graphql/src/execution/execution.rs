@@ -54,13 +54,15 @@ fn cache_key(ctx: &ExecutionContext<impl Resolver>, selection_set: &q::Selection
     hasher.update(selection_set.to_string().as_bytes());
 
     // variables
-    for (key, value) in &ctx.query.variables {
+    let variables: BTreeMap<_, _> = ctx.query.variables.iter().collect();
+    for (key, value) in variables {
         hasher.update(key.as_bytes());
         hasher.update(value.to_string().as_bytes());
     }
 
     // fragment definitions
-    for (key, fragment) in &ctx.query.fragments {
+    let fragments: BTreeMap<_, _> = ctx.query.fragments.iter().collect();
+    for (key, fragment) in fragments {
         hasher.update(key.as_bytes());
         hasher.update(fragment.to_string().as_bytes());
     }
