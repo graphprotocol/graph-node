@@ -1049,12 +1049,17 @@ impl<'a> InsertQuery<'a> {
         for column in table.columns.iter() {
             match column.fulltext_fields.as_ref() {
                 Some(fields) => {
-                    let fulltext_updates = fields
+                    let fulltext_field_values = fields
                         .iter()
                         .filter_map(|field| entity.get(field))
                         .cloned()
-                        .collect();
-                    entity.insert(column.field.to_string(), Value::List(fulltext_updates));
+                        .collect::<Vec<Value>>();
+                    if !fulltext_field_values.is_empty() {
+                        entity.insert(
+                            column.field.to_string(),
+                            Value::List(fulltext_field_values),
+                        );
+                    }
                 }
                 None => (),
             }
