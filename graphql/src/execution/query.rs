@@ -92,7 +92,7 @@ impl Query {
             false
         };
 
-        let variables = coerce_variables(&query.schema, &operation, &query.variables)?;
+        let variables = coerce_variables(&query.schema, &operation, query.variables)?;
         let (kind, selection_set) = match operation {
             q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
                 (Kind::Query, selection_set)
@@ -425,7 +425,7 @@ impl Query {
 pub fn coerce_variables(
     schema: &Schema,
     operation: &q::OperationDefinition,
-    variables: &Option<QueryVariables>,
+    mut variables: Option<QueryVariables>,
 ) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
@@ -444,10 +444,10 @@ pub fn coerce_variables(
         }
 
         let value = variables
-            .as_ref()
-            .and_then(|vars| vars.get(&variable_def.name));
+            .as_mut()
+            .and_then(|vars| vars.remove(&variable_def.name));
 
-        let value = match value.or(variable_def.default_value.as_ref()) {
+        let value = match value.or_else(|| variable_def.default_value.clone()) {
             // No variable value provided and no default for non-null type, fail
             None => {
                 if sast::is_non_null_type(&variable_def.var_type) {
@@ -465,7 +465,7 @@ pub fn coerce_variables(
         // of the variable definition
         coerced_values.insert(
             variable_def.name.to_owned(),
-            coerce_variable(schema, variable_def, &value)?,
+            coerce_variable(schema, variable_def, value)?,
         );
     }
 
@@ -479,13 +479,13 @@ pub fn coerce_variables(
 fn coerce_variable(
     schema: &Schema,
     variable_def: &q::VariableDefinition,
-    value: &q::Value,
+    value: q::Value,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
     let resolver = |name: &q::Name| sast::get_named_type(&schema.document, name);
 
-    coerce_value(&value, &variable_def.var_type, &resolver, &HashMap::new()).ok_or_else(|| {
+    coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(
             variable_def.position,
             variable_def.name.to_owned(),

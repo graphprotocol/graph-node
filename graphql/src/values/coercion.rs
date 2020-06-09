@@ -6,57 +6,65 @@ use std::collections::{BTreeMap, HashMap};
 
 /// A GraphQL value that can be coerced according to a type.
 pub trait MaybeCoercible<T> {
-    fn coerce(&self, using_type: &T) -> Option<Value>;
+    /// On error,  `self` is returned as `Err(self)`.
+    fn coerce(self, using_type: &T) -> Result<Value, Value>;
 }
 
 impl MaybeCoercible<EnumType> for Value {
-    fn coerce(&self, using_type: &EnumType) -> Option<Value> {
+    fn coerce(self, using_type: &EnumType) -> Result<Value, Value> {
         match self {
-            Value::Null => Some(Value::Null),
-            Value::String(name) | Value::Enum(name) => using_type
-                .values
-                .iter()
-                .find(|value| &value.name == name)
-                .map(|_| Value::Enum(name.clone())),
-            _ => None,
+            Value::Null => Ok(Value::Null),
+            Value::String(name) | Value::Enum(name)
+                if using_type.values.iter().any(|value| value.name == name) =>
+            {
+                Ok(Value::Enum(name))
+            }
+            _ => Err(self),
         }
     }
 }
 
 impl MaybeCoercible<ScalarType> for Value {
-    fn coerce(&self, using_type: &ScalarType) -> Option<Value> {
+    fn coerce(self, using_type: &ScalarType) -> Result<Value, Value> {
         match (using_type.name.as_str(), self) {
-            (_, v @ Value::Null) => Some(v.clone()),
-            ("Boolean", v @ Value::Boolean(_)) => Some(v.clone()),
-            ("BigDecimal", Value::Float(f)) => Some(Value::String(f.to_string())),
-            ("BigDecimal", Value::Int(i)) => Some(Value::String(i.as_i64()?.to_string())),
-            ("BigDecimal", v @ Value::String(_)) => Some(v.clone()),
+            (_, v @ Value::Null) => Ok(v),
+            ("Boolean", v @ Value::Boolean(_)) => Ok(v),
+            ("BigDecimal", Value::Float(f)) => Ok(Value::String(f.to_string())),
+            ("BigDecimal", Value::Int(i)) => {
+                Ok(Value::String(i.as_i64().ok_or(Value::Int(i))?.to_string()))
+            }
+            ("BigDecimal", v @ Value::String(_)) => Ok(v),
             ("Int", Value::Int(num)) => {
-                let num = num.as_i64()?;
-                if i32::min_value() as i64 <= num && num <= i32::max_value() as i64 {
-                    Some(Value::Int((num as i32).into()))
+                let n = num.as_i64().ok_or_else(|| Value::Int(num.clone()))?;
+                if i32::min_value() as i64 <= n && n <= i32::max_value() as i64 {
+                    Ok(Value::Int((n as i32).into()))
                 } else {
-                    None
+                    Err(Value::Int(num))
                 }
             }
-            ("String", v @ Value::String(_)) => Some(v.clone()),
-            ("ID", v @ Value::String(_)) => Some(v.clone()),
-            ("ID", Value::Int(num)) => Some(Value::String(num.as_i64()?.to_string())),
-            ("Bytes", v @ Value::String(_)) => Some(v.clone()),
-            ("BigInt", v @ Value::String(_)) => Some(v.clone()),
-            ("BigInt", Value::Int(num)) => Some(Value::String(num.as_i64()?.to_string())),
-            _ => None,
+            ("String", v @ Value::String(_)) => Ok(v),
+            ("ID", v @ Value::String(_)) => Ok(v),
+            ("ID", Value::Int(n)) => {
+                Ok(Value::String(n.as_i64().ok_or(Value::Int(n))?.to_string()))
+            }
+            ("Bytes", v @ Value::String(_)) => Ok(v),
+            ("BigInt", v @ Value::String(_)) => Ok(v),
+            ("BigInt", Value::Int(n)) => {
+                Ok(Value::String(n.as_i64().ok_or(Value::Int(n))?.to_string()))
+            }
+            (_, v) => Err(v),
         }
     }
 }
 
+/// On error, the `value` is returned as `Err(value)`.
 fn coerce_to_definition<'a>(
-    value: &Value,
+    value: Value,
     definition: &Name,
     resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
     variables: &HashMap<q::Name, q::Value>,
-) -> Option<Value> {
-    match resolver(definition)? {
+) -> Result<Value, Value> {
+    match resolver(definition).ok_or_else(|| value.clone())? {
         // Accept enum values if they match a value in the enum type
         TypeDefinition::Enum(t) => value.coerce(t),
 
@@ -66,22 +74,29 @@ fn coerce_to_definition<'a>(
         // Try to coerce InputObject values
         TypeDefinition::InputObject(t) => match value {
             Value::Object(object) => {
+                let object_for_error = Value::Object(object.clone());
                 let mut coerced_object = BTreeMap::new();
                 for (name, value) in object {
-                    let def = t.fields.iter().find(|f| f.name == *name)?;
+                    let def = t
+                        .fields
+                        .iter()
+                        .find(|f| f.name == name)
+                        .ok_or_else(|| object_for_error.clone())?;
                     coerced_object.insert(
                         name.clone(),
-                        coerce_input_value(Some(value.clone()), def, resolver, variables)
-                            .ok()??,
+                        match coerce_input_value(Some(value), def, resolver, variables) {
+                            Err(_) | Ok(None) => return Err(object_for_error),
+                            Ok(Some(v)) => v,
+                        },
                     );
                 }
-                Some(Value::Object(coerced_object))
+                Ok(Value::Object(coerced_object))
             }
-            _ => None,
+            _ => Err(value),
         },
 
         // Everything else remains unimplemented
-        _ => None,
+        _ => Err(value),
     }
 }
 
@@ -117,55 +132,69 @@ pub(crate) fn coerce_input_value<'a>(
     };
 
     Ok(Some(
-        coerce_value(&value, &def.value_type, resolver, variable_values).ok_or_else(|| {
+        coerce_value(value, &def.value_type, resolver, variable_values).map_err(|val| {
             QueryExecutionError::InvalidArgumentError(
                 def.position.clone(),
                 def.name.to_owned(),
-                value.clone(),
+                val,
             )
         })?,
     ))
 }
 
+/// On error, the `value` is returned as `Err(value)`.
 pub(crate) fn coerce_value<'a>(
-    value: &Value,
+    value: Value,
     ty: &Type,
     resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
     variable_values: &HashMap<q::Name, q::Value>,
-) -> Option<Value> {
+) -> Result<Value, Value> {
     match (ty, value) {
         // Null values cannot be coerced into non-null types.
-        (Type::NonNullType(_), Value::Null) => None,
+        (Type::NonNullType(_), Value::Null) => Err(Value::Null),
 
         // Non-null values may be coercible into non-null types
-        (Type::NonNullType(t), _) => coerce_value(value, t, resolver, variable_values),
+        (Type::NonNullType(_), val) => {
+            // We cannot bind `t` in the pattern above because "binding by-move and by-ref in the
+            // same pattern is unstable". Refactor this and the others when Rust fixes this.
+            let t = match ty {
+                Type::NonNullType(ty) => ty,
+                _ => unreachable!(),
+            };
+            coerce_value(val, t, resolver, variable_values)
+        }
 
         // Nullable types can be null.
-        (_, Value::Null) => Some(Value::Null),
+        (_, Value::Null) => Ok(Value::Null),
 
         // Resolve named types, then try to coerce the value into the resolved type
-        (Type::NamedType(name), _) => coerce_to_definition(value, name, resolver, variable_values),
+        (Type::NamedType(_), val) => {
+            let name = match ty {
+                Type::NamedType(name) => name,
+                _ => unreachable!(),
+            };
+            coerce_to_definition(val, name, resolver, variable_values)
+        }
 
         // List values are coercible if their values are coercible into the
         // inner type.
-        (Type::ListType(t), Value::List(ref values)) => {
+        (Type::ListType(_), Value::List(values)) => {
+            let t = match ty {
+                Type::ListType(ty) => ty,
+                _ => unreachable!(),
+            };
             let mut coerced_values = vec![];
 
             // Coerce the list values individually
             for value in values {
-                if let Some(v) = coerce_value(value, t, resolver, variable_values) {
-                    coerced_values.push(v);
-                } else {
-                    // Fail if not all values could be coerced
-                    return None;
-                }
+                coerced_values.push(coerce_value(value, t, resolver, variable_values)?);
             }
 
-            Some(Value::List(coerced_values))
+            Ok(Value::List(coerced_values))
         }
 
         // Otherwise the list type is not coercible.
-        (Type::ListType(_), _) => None,
+        (Type::ListType(_), value) => Err(value),
     }
 }
 
@@ -197,46 +226,42 @@ mod tests {
         // We can coerce from Value::Enum -> TypeDefinition::Enum if the variant is valid
         assert_eq!(
             coerce_to_definition(
-                &Value::Enum("ValidVariant".to_string()),
+                Value::Enum("ValidVariant".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Enum("ValidVariant".to_string()))
+            Ok(Value::Enum("ValidVariant".to_string()))
         );
 
         // We cannot coerce from Value::Enum -> TypeDefinition::Enum if the variant is invalid
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Enum("InvalidVariant".to_string()),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
+        assert!(coerce_to_definition(
+            Value::Enum("InvalidVariant".to_string()),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
 
         // We also support going from Value::String -> TypeDefinition::Scalar(Enum)
         assert_eq!(
             coerce_to_definition(
-                &Value::String("ValidVariant".to_string()),
+                Value::String("ValidVariant".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Enum("ValidVariant".to_string())),
+            Ok(Value::Enum("ValidVariant".to_string())),
         );
 
         // But we don't support invalid variants
-        assert_eq!(
-            coerce_to_definition(
-                &Value::String("InvalidVariant".to_string()),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
+        assert!(coerce_to_definition(
+            Value::String("InvalidVariant".to_string()),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
     }
 
     #[test]
@@ -252,62 +277,54 @@ mod tests {
         // We can coerce from Value::Boolean -> TypeDefinition::Scalar(Boolean)
         assert_eq!(
             coerce_to_definition(
-                &Value::Boolean(true),
+                Value::Boolean(true),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Boolean(true))
+            Ok(Value::Boolean(true))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::Boolean(false),
+                Value::Boolean(false),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Boolean(false))
+            Ok(Value::Boolean(false))
         );
 
         // We don't support going from Value::String -> TypeDefinition::Scalar(Boolean)
-        assert_eq!(
-            coerce_to_definition(
-                &Value::String("true".to_string()),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
-        assert_eq!(
-            coerce_to_definition(
-                &Value::String("false".to_string()),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
+        assert!(coerce_to_definition(
+            Value::String("true".to_string()),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
+        assert!(coerce_to_definition(
+            Value::String("false".to_string()),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
 
         // We don't support going from Value::Float -> TypeDefinition::Scalar(Boolean)
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Float(1.0),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Float(0.0),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
+        assert!(coerce_to_definition(
+            Value::Float(1.0),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
+        assert!(coerce_to_definition(
+            Value::Float(0.0),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
     }
 
     #[test]
@@ -318,82 +335,78 @@ mod tests {
         // We can coerce from Value::Float -> TypeDefinition::Scalar(BigDecimal)
         assert_eq!(
             coerce_to_definition(
-                &Value::Float(23.7),
+                Value::Float(23.7),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("23.7".to_string()))
+            Ok(Value::String("23.7".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::Float(-5.879),
+                Value::Float(-5.879),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("-5.879".to_string()))
+            Ok(Value::String("-5.879".to_string()))
         );
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(BigDecimal)
         assert_eq!(
             coerce_to_definition(
-                &Value::String("23.7".to_string()),
+                Value::String("23.7".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("23.7".to_string()))
+            Ok(Value::String("23.7".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::String("-5.879".to_string()),
+                Value::String("-5.879".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("-5.879".to_string())),
+            Ok(Value::String("-5.879".to_string())),
         );
 
         // We can coerce from Value::Int -> TypeDefinition::Scalar(BigDecimal)
         assert_eq!(
             coerce_to_definition(
-                &Value::Int(23.into()),
+                Value::Int(23.into()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("23".to_string()))
+            Ok(Value::String("23".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::Int((-5 as i32).into()),
+                Value::Int((-5 as i32).into()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("-5".to_string())),
+            Ok(Value::String("-5".to_string())),
         );
 
         // We don't support going from Value::Boolean -> TypeDefinition::Scalar(Boolean)
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Boolean(true),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Boolean(false),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
+        assert!(coerce_to_definition(
+            Value::Boolean(true),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
+        assert!(coerce_to_definition(
+            Value::Boolean(false),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
     }
 
     #[test]
@@ -404,62 +417,54 @@ mod tests {
         // We can coerce from Value::String -> TypeDefinition::Scalar(String)
         assert_eq!(
             coerce_to_definition(
-                &Value::String("foo".to_string()),
+                Value::String("foo".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("foo".to_string()))
+            Ok(Value::String("foo".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::String("bar".to_string()),
+                Value::String("bar".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("bar".to_string()))
+            Ok(Value::String("bar".to_string()))
         );
 
         // We don't support going from Value::Boolean -> TypeDefinition::Scalar(String)
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Boolean(true),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Boolean(false),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
+        assert!(coerce_to_definition(
+            Value::Boolean(true),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
+        assert!(coerce_to_definition(
+            Value::Boolean(false),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
 
         // We don't support going from Value::Float -> TypeDefinition::Scalar(String)
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Float(23.7),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None
-        );
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Float(-5.879),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None
-        );
+        assert!(coerce_to_definition(
+            Value::Float(23.7),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
+        assert!(coerce_to_definition(
+            Value::Float(-5.879),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
     }
 
     #[test]
@@ -470,73 +475,66 @@ mod tests {
         // We can coerce from Value::String -> TypeDefinition::Scalar(ID)
         assert_eq!(
             coerce_to_definition(
-                &Value::String("foo".to_string()),
+                Value::String("foo".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("foo".to_string()))
+            Ok(Value::String("foo".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::String("bar".to_string()),
+                Value::String("bar".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("bar".to_string()))
+            Ok(Value::String("bar".to_string()))
         );
 
         // And also from Value::Int
         assert_eq!(
             coerce_to_definition(
-                &Value::Int(1234.into()),
+                Value::Int(1234.into()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("1234".to_string()))
+            Ok(Value::String("1234".to_string()))
         );
 
         // We don't support going from Value::Boolean -> TypeDefinition::Scalar(ID)
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Boolean(true),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Boolean(false),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None,
-        );
+        assert!(coerce_to_definition(
+            Value::Boolean(true),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
+
+        assert!(coerce_to_definition(
+            Value::Boolean(false),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
 
         // We don't support going from Value::Float -> TypeDefinition::Scalar(ID)
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Float(23.7),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None
-        );
-        assert_eq!(
-            coerce_to_definition(
-                &Value::Float(-5.879),
-                &String::new(),
-                &resolver,
-                &HashMap::new()
-            ),
-            None
-        );
+        assert!(coerce_to_definition(
+            Value::Float(23.7),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
+        assert!(coerce_to_definition(
+            Value::Float(-5.879),
+            &String::new(),
+            &resolver,
+            &HashMap::new()
+        )
+        .is_err());
     }
 
     #[test]
@@ -547,32 +545,32 @@ mod tests {
         // We can coerce from Value::String -> TypeDefinition::Scalar(BigInt)
         assert_eq!(
             coerce_to_definition(
-                &Value::String("1234".to_string()),
+                Value::String("1234".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("1234".to_string()))
+            Ok(Value::String("1234".to_string()))
         );
 
         // And also from Value::Int
         assert_eq!(
             coerce_to_definition(
-                &Value::Int(1234.into()),
+                Value::Int(1234.into()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("1234".to_string()))
+            Ok(Value::String("1234".to_string()))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::Int((-1234 as i32).into()),
+                Value::Int((-1234 as i32).into()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("-1234".to_string()))
+            Ok(Value::String("-1234".to_string()))
         );
     }
 
@@ -584,12 +582,12 @@ mod tests {
         // We can coerce from Value::String -> TypeDefinition::Scalar(Bytes)
         assert_eq!(
             coerce_to_definition(
-                &Value::String("0x21f".to_string()),
+                Value::String("0x21f".to_string()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::String("0x21f".to_string()))
+            Ok(Value::String("0x21f".to_string()))
         );
     }
 
@@ -600,21 +598,21 @@ mod tests {
 
         assert_eq!(
             coerce_to_definition(
-                &Value::Int(13289123.into()),
+                Value::Int(13289123.into()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Int(13289123.into()))
+            Ok(Value::Int(13289123.into()))
         );
         assert_eq!(
             coerce_to_definition(
-                &Value::Int((-13289123 as i32).into()),
+                Value::Int((-13289123 as i32).into()),
                 &String::new(),
                 &resolver,
                 &HashMap::new()
             ),
-            Some(Value::Int((-13289123 as i32).into()))
+            Ok(Value::Int((-13289123 as i32).into()))
         );
     }
 }
