@@ -215,9 +215,9 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68df31bdf2bbb567e5adf8f21ac125dc0e897b1381e7b841f181521f06fc3134"
+checksum = "423897d97e11b810c9da22458400b28ec866991c711409073662eb34dc44bfff"
 dependencies = [
  "arrayref",
  "arrayvec",
@@ -1199,7 +1199,7 @@ dependencies = [
  "hex 0.4.2",
  "ipfs-api",
  "lazy_static",
- "lru_time_cache",
+ "lru_time_cache 0.9.0",
  "semver",
  "serde",
  "serde_json",
@@ -1213,11 +1213,13 @@ name = "graph-graphql"
 version = "0.18.0"
 dependencies = [
  "Inflector",
+ "blake3",
  "futures 0.1.29",
  "graph",
  "graphql-parser",
  "indexmap",
  "lazy_static",
+ "lru_time_cache 0.10.0",
  "pretty_assertions",
  "test-store",
  "uuid 0.8.1",
@@ -1398,7 +1400,7 @@ dependencies = [
  "hex 0.4.2",
  "hex-literal",
  "lazy_static",
- "lru_time_cache",
+ "lru_time_cache 0.9.0",
  "maybe-owned",
  "parity-wasm",
  "postgres",
@@ -1947,6 +1949,12 @@ name = "lru_time_cache"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab44e08e5b5110188be64dc8f0865635206ad7386fe672903bef195df3cc8960"
+
+[[package]]
+name = "lru_time_cache"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adb241df5c4caeb888755363fc95f8a896618dc0d435e9e775f7930cb099beab"
 
 [[package]]
 name = "maplit"
