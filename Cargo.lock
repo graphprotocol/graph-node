@@ -1213,7 +1213,6 @@ name = "graph-graphql"
 version = "0.18.0"
 dependencies = [
  "Inflector",
- "blake3",
  "futures 0.1.29",
  "graph",
  "graphql-parser",
@@ -1221,6 +1220,7 @@ dependencies = [
  "lazy_static",
  "lru_time_cache 0.10.0",
  "pretty_assertions",
+ "stable-hash",
  "test-store",
  "uuid 0.8.1",
 ]

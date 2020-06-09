@@ -2,6 +2,9 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
+use stable_hash::crypto::SetHasher;
+use stable_hash::prelude::*;
+use stable_hash::utils::stable_hash;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
@@ -17,6 +20,8 @@ use crate::schema::ast as sast;
 use crate::values::coercion;
 use lru_time_cache::LruCache;
 use std::sync::Mutex;
+
+type QueryHash = <SetHasher as StableHasher>::Out;
 
 lazy_static! {
     static ref NO_PREFETCH: bool = std::env::var_os("GRAPH_GRAPHQL_NO_PREFETCH").is_some();
@@ -40,34 +45,70 @@ lazy_static! {
     };
 
     // This cache might serve stale data.
-    static ref QUERY_CACHE: Mutex<LruCache<[u8; 32], BTreeMap<String, q::Value>>>
+    static ref QUERY_CACHE: Mutex<LruCache<QueryHash, BTreeMap<String, q::Value>>>
                                 = Mutex::new(LruCache::with_expiry_duration(*CACHE_EXPIRY));
 }
 
+struct HashableQuery<'a> {
+    query_schema_id: &'a SubgraphDeploymentId,
+    query_variables: &'a HashMap<q::Name, q::Value>,
+    query_fragments: &'a HashMap<String, q::FragmentDefinition>,
+    selection_set: &'a q::SelectionSet,
+}
+
+/// Note that the use of StableHash here is a little bit loose. In particular,
+/// we are converting items to a string inside here as a quick-and-dirty
+/// implementation. This precludes the ability to add new fields (unlikely
+/// anyway). So, this hash isn't really Stable in the way that the StableHash
+/// crate defines it. Since hashes are only persisted for this process, we don't
+/// need that property. The reason we are using StableHash is to get collision
+/// resistance and use it's foolproof API to prevent easy mistakes instead.
+///
+/// This is also only as collision resistant insofar as the to_string impls are
+/// collision resistant. It is highly likely that this is ok, since these come
+/// from an ast.
+///
+/// It is possible that multiple asts that are effectively the same query with
+/// different representations. This is considered not an issue. The worst
+/// possible outcome is that the same query will have multiple cache entries.
+/// But, the wrong result should not be served.
+impl StableHash for HashableQuery<'_> {
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
+        self.query_schema_id
+            .stable_hash(sequence_number.next_child(), state);
+
+        // Not stable! Uses to_string()
+        self.query_variables
+            .iter()
+            .map(|(k, v)| (k, v.to_string()))
+            .collect::<HashMap<_, _>>()
+            .stable_hash(sequence_number.next_child(), state);
+
+        // Not stable! Uses to_string()
+        self.query_fragments
+            .iter()
+            .map(|(k, v)| (k, v.to_string()))
+            .collect::<HashMap<_, _>>()
+            .stable_hash(sequence_number.next_child(), state);
+
+        // Not stable! Uses to_string
+        self.selection_set
+            .to_string()
+            .stable_hash(sequence_number.next_child(), state);
+    }
+}
+
 // The key is: subgraph id + selection set + variables + fragment definitions
-fn cache_key(ctx: &ExecutionContext<impl Resolver>, selection_set: &q::SelectionSet) -> [u8; 32] {
-    let mut hasher = blake3::Hasher::new();
-    // subgraph id
-    hasher.update(ctx.query.schema.id.to_string().as_bytes());
-
-    // selection set
-    hasher.update(selection_set.to_string().as_bytes());
-
-    // variables
-    let variables: BTreeMap<_, _> = ctx.query.variables.iter().collect();
-    for (key, value) in variables {
-        hasher.update(key.as_bytes());
-        hasher.update(value.to_string().as_bytes());
-    }
-
-    // fragment definitions
-    let fragments: BTreeMap<_, _> = ctx.query.fragments.iter().collect();
-    for (key, fragment) in fragments {
-        hasher.update(key.as_bytes());
-        hasher.update(fragment.to_string().as_bytes());
-    }
-
-    *hasher.finalize().as_bytes()
+fn cache_key(ctx: &ExecutionContext<impl Resolver>, selection_set: &q::SelectionSet) -> QueryHash {
+    // It is very important that all data used for the query is included.
+    // Otherwise, incorrect results may be returned.
+    let query = HashableQuery {
+        query_schema_id: &ctx.query.schema.id,
+        query_variables: &ctx.query.variables,
+        query_fragments: &ctx.query.fragments,
+        selection_set,
+    };
+    stable_hash::<SetHasher, _>(&query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -156,7 +197,14 @@ pub fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
 ) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+    // Cache the cache key to not have to calculate it twice - once for lookup
+    // and once for insert.
+    let mut key: Option<QueryHash> = None;
+
     if CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
+        // Calculate the hash outside of the lock
+        key = Some(cache_key(ctx, selection_set));
+
         // Check if the response is cached.
         let mut cache = QUERY_CACHE.lock().unwrap();
 
@@ -164,8 +212,7 @@ pub fn execute_root_selection_set(
         cache.notify_iter();
 
         // Peek because we want even hot entries to invalidate after the expiry period.
-        if let Some(response) = cache.peek(&cache_key(ctx, selection_set)) {
-            debug!(ctx.logger, "Query cache hit");
+        if let Some(response) = cache.peek(key.as_ref().unwrap()) {
             return Ok(response.clone());
         }
     }
@@ -230,10 +277,10 @@ pub fn execute_root_selection_set(
         )?);
     }
 
-    if CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
+    if let Some(key) = key {
         // Insert into the cache.
         let mut cache = QUERY_CACHE.lock().unwrap();
-        cache.insert(cache_key(ctx, selection_set), values.clone());
+        cache.insert(key, values.clone());
     }
 
     Ok(values)
