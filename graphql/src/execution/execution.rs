@@ -777,11 +777,11 @@ fn complete_value(
             match named_type {
                 // Complete scalar values
                 s::TypeDefinition::Scalar(scalar_type) => {
-                    resolved_value.coerce(scalar_type).ok_or_else(|| {
+                    resolved_value.coerce(scalar_type).map_err(|value| {
                         vec![QueryExecutionError::ScalarCoercionError(
                             field.position.clone(),
                             field.name.to_owned(),
-                            resolved_value.clone(),
+                            value,
                             scalar_type.name.to_owned(),
                         )]
                     })
@@ -789,11 +789,11 @@ fn complete_value(
 
                 // Complete enum values
                 s::TypeDefinition::Enum(enum_type) => {
-                    resolved_value.coerce(enum_type).ok_or_else(|| {
+                    resolved_value.coerce(enum_type).map_err(|value| {
                         vec![QueryExecutionError::EnumCoercionError(
                             field.position.clone(),
                             field.name.to_owned(),
-                            resolved_value.clone(),
+                            value,
                             enum_type.name.to_owned(),
                             enum_type
                                 .values
