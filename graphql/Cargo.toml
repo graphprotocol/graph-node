@@ -12,7 +12,7 @@ Inflector = "0.11.3"
 lazy_static = "1.2.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 lru_time_cache = "0.10"
-blake3 = "0.3"
+stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
