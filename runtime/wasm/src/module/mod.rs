@@ -427,11 +427,14 @@ impl WasmInstance {
             let interrupt_handle = instance.store().interrupt_handle().unwrap();
             let timeout_stopwatch = timeout_stopwatch.clone();
             graph::spawn_allow_panic(async move {
+                let minimum_wait = Duration::from_secs(1);
                 loop {
                     let time_left =
                         timeout.checked_sub(timeout_stopwatch.lock().unwrap().elapsed());
                     match time_left {
                         None => break interrupt_handle.interrupt(), // Timed out.
+
+                        Some(time) if time < minimum_wait => break interrupt_handle.interrupt(),
                         Some(time) => tokio::time::delay_for(time).await,
                     }
                 }
@@ -724,8 +727,11 @@ impl WasmInstance {
 
         let flags = self.asc_get(flags);
 
-        // Pause the timeout while running ipfs_map
+        // Pause the timeout while running ipfs_map, ensure it will be restarted by using a guard.
         self.timeout_stopwatch.lock().unwrap().stop();
+        let defer_stopwatch = self.timeout_stopwatch.clone();
+        let _stopwatch_guard = defer::defer(|| defer_stopwatch.lock().unwrap().start());
+
         let start_time = Instant::now();
         let output_states = HostExports::ipfs_map(
             &self.ctx.host_exports.link_resolver.clone(),
@@ -755,8 +761,6 @@ impl WasmInstance {
                 .created_data_sources
                 .extend(output_state.created_data_sources);
         }
-
-        self.timeout_stopwatch.lock().unwrap().start();
 
         Ok(())
     }

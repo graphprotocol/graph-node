@@ -8,8 +8,6 @@ use std::time::{Duration, Instant};
 pub struct TimeoutStopwatch {
     /// The time the stopwatch was started last, if ever.
     start_time: Option<Instant>,
-    /// The time the stopwatch was split last, if ever.
-    split_time: Option<Instant>,
     /// The time elapsed while the stopwatch was running (between start() and stop()).
     elapsed: Duration,
 }
@@ -18,7 +16,6 @@ impl Default for TimeoutStopwatch {
     fn default() -> TimeoutStopwatch {
         TimeoutStopwatch {
             start_time: None,
-            split_time: None,
             elapsed: Duration::from_secs(0),
         }
     }
@@ -47,7 +44,6 @@ impl TimeoutStopwatch {
     pub fn stop(&mut self) {
         self.elapsed = self.elapsed();
         self.start_time = None;
-        self.split_time = None;
     }
 
     /// Returns the elapsed time since the start of the stopwatch.

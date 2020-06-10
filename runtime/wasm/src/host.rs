@@ -309,10 +309,8 @@ impl RuntimeHost {
 
         ensure!(
             !handlers.is_empty(),
-            format!(
-                "No event handler found for event in data source \"{}\"",
-                self.data_source_name,
-            )
+            "No event handler found for event in data source \"{}\"",
+            self.data_source_name,
         );
 
         Ok(handlers)
