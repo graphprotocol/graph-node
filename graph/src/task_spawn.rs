@@ -2,7 +2,7 @@
 //! underlying executor implementation which currently is tokio. This serves a few purposes:
 //! - Avoid depending directly on tokio APIs, making upgrades or a potential switch easier.
 //! - Reflect our chosen default semantics of aborting on task panic, offering `*_allow_panic`
-//!   functoins to opt out of that.
+//!   functions to opt out of that.
 //! - Reflect that historically we've used blocking futures due to making DB calls directly within
 //!   futures. This point should go away once https://github.com/graphprotocol/graph-node/issues/905
 //!   is resolved. Then the blocking flavors should no longer accept futures but closures.
