@@ -28,6 +28,8 @@ maybe-owned = { git = "https://github.com/rustonaut/maybe-owned", branch = "mast
 # Use a released version once 0.18 is released.
 wasmtime = { git = "https://github.com/bytecodealliance/wasmtime" }
 
+defer = "0.1"
+
 [dev-dependencies]
 graphql-parser = "0.2.3"
 graph-core = { path = "../../core" }
