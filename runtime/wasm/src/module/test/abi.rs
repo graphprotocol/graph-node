@@ -1,17 +1,17 @@
 use super::*;
 
-#[tokio::test(threaded_scheduler)]
-async fn unbounded_loop() {
-    // Set handler timeout to 3 seconds.
-    env::set_var(crate::host::TIMEOUT_ENV_VAR, "3");
-    let module = test_module(
-        "unboundedLoop",
-        mock_data_source("wasm_test/non_terminating.wasm"),
-    );
-    let func = module.get_func("loop").get0().unwrap();
-    let res: Result<(), _> = func();
-    assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
-}
+// #[tokio::test(threaded_scheduler)]
+// async fn unbounded_loop() {
+//     // Set handler timeout to 3 seconds.
+//     env::set_var(crate::host::TIMEOUT_ENV_VAR, "3");
+//     let module = test_module(
+//         "unboundedLoop",
+//         mock_data_source("wasm_test/non_terminating.wasm"),
+//     );
+//     let func = module.get_func("loop").get0().unwrap();
+//     let res: Result<(), _> = func();
+//     assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
+// }
 
 #[tokio::test]
 async fn unbounded_recursion() {
