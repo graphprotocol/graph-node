@@ -287,15 +287,11 @@ async fn ipfs_cat() {
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
         runtime.enter(|| {
-            // Ipfs host functions use `block_on` which must be called from a sync context.
-            tokio::task::block_in_place(|| {
-                let mut module =
-                    test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
-                let arg = module.asc_new(&hash);
-                let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-                let data: String = module.instance().asc_get(converted);
-                assert_eq!(data, "42");
-            })
+            let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
+            let arg = module.asc_new(&hash);
+            let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
+            let data: String = module.instance().asc_get(converted);
+            assert_eq!(data, "42");
         })
     })
     .join()
