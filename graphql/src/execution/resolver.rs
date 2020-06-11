@@ -69,20 +69,20 @@ pub trait Resolver: Clone + Send + Sync {
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>>;
 
-    /// Resolves entities referenced by a parent object.
+    /// Resolves list of objects, `prefetched_objects` is `Some` if the parent already calculated the value.
     fn resolve_objects(
         &self,
-        objects_value: Option<q::Value>,
+        prefetched_objects: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 
-    /// Resolves an entity referenced by a parent object.
+    /// Resolves an object, `prefetched_object` is `Some` if the parent already calculated the value.
     fn resolve_object(
         &self,
-        object_value: Option<q::Value>,
+        prefetched_object: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,

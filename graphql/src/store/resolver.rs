@@ -163,13 +163,13 @@ where
 
     fn resolve_objects(
         &self,
-        objects_value: Option<q::Value>,
+        prefetched_objects: Option<q::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(child) = objects_value {
+        if let Some(child) = prefetched_objects {
             Ok(child)
         } else {
             Err(QueryExecutionError::ResolveEntitiesError(format!(
@@ -183,13 +183,13 @@ where
 
     fn resolve_object(
         &self,
-        object_value: Option<q::Value>,
+        prefetched_object: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(q::Value::List(children)) = object_value {
+        if let Some(q::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
                 let derived_from_field =
                     sast::get_derived_from_field(object_type, field_definition)
