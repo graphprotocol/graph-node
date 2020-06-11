@@ -168,13 +168,6 @@ where
     }
 }
 
-pub fn prefetch(
-    ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
-) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
-    ctx.resolver.prefetch(&ctx, selection_set)
-}
-
 /// Executes the root selection set of a query.
 pub fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
@@ -234,7 +227,7 @@ pub fn execute_root_selection_set(
     let mut values = if data_set.items.is_empty() {
         BTreeMap::default()
     } else {
-        let initial_data = prefetch(&ctx, &data_set)?;
+        let initial_data = ctx.resolver.prefetch(&ctx, selection_set)?;
         execute_selection_set_to_map(&ctx, &data_set, query_type, initial_data)?
     };
 

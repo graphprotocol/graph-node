@@ -68,60 +68,6 @@ where
         Ok((resolver, block_ptr))
     }
 
-    fn resolve_objects_prefetch(
-        &self,
-        objects_value: Option<q::Value>,
-        field: &q::Field,
-        object_type: ObjectOrInterface<'_>,
-    ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(child) = objects_value {
-            Ok(child)
-        } else {
-            Err(QueryExecutionError::ResolveEntitiesError(format!(
-                "internal error resolving {}.{}: \
-                 expected prefetched result, but found nothing",
-                object_type.name(),
-                &field.name,
-            )))
-        }
-    }
-
-    fn resolve_object_prefetch(
-        &self,
-        object_value: Option<q::Value>,
-        field: &q::Field,
-        field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
-    ) -> Result<q::Value, QueryExecutionError> {
-        if let Some(q::Value::List(children)) = object_value {
-            if children.len() > 1 {
-                let derived_from_field =
-                    sast::get_derived_from_field(object_type, field_definition)
-                        .expect("only derived fields can lead to multiple children here");
-
-                return Err(QueryExecutionError::AmbiguousDerivedFromResult(
-                    field.position.clone(),
-                    field.name.to_owned(),
-                    object_type.name().to_owned(),
-                    derived_from_field.name.to_owned(),
-                ));
-            } else {
-                return Ok(children
-                    .into_iter()
-                    .next()
-                    .map(|value| value.clone())
-                    .unwrap_or(q::Value::Null));
-            }
-        } else {
-            return Err(QueryExecutionError::ResolveEntitiesError(format!(
-                "internal error resolving {}.{}: \
-                 expected prefetched result, but found nothing",
-                object_type.name(),
-                &field.name,
-            )));
-        }
-    }
-
     fn locate_block(
         store: &S,
         bc: BlockConstraint,
@@ -223,7 +169,16 @@ where
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        self.resolve_objects_prefetch(objects_value, field, object_type)
+        if let Some(child) = objects_value {
+            Ok(child)
+        } else {
+            Err(QueryExecutionError::ResolveEntitiesError(format!(
+                "internal error resolving {}.{}: \
+                 expected prefetched result, but found nothing",
+                object_type.name(),
+                &field.name,
+            )))
+        }
     }
 
     fn resolve_object(
@@ -234,7 +189,33 @@ where
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        self.resolve_object_prefetch(object_value, field, field_definition, object_type)
+        if let Some(q::Value::List(children)) = object_value {
+            if children.len() > 1 {
+                let derived_from_field =
+                    sast::get_derived_from_field(object_type, field_definition)
+                        .expect("only derived fields can lead to multiple children here");
+
+                return Err(QueryExecutionError::AmbiguousDerivedFromResult(
+                    field.position.clone(),
+                    field.name.to_owned(),
+                    object_type.name().to_owned(),
+                    derived_from_field.name.to_owned(),
+                ));
+            } else {
+                return Ok(children
+                    .into_iter()
+                    .next()
+                    .map(|value| value.clone())
+                    .unwrap_or(q::Value::Null));
+            }
+        } else {
+            return Err(QueryExecutionError::ResolveEntitiesError(format!(
+                "internal error resolving {}.{}: \
+                 expected prefetched result, but found nothing",
+                object_type.name(),
+                &field.name,
+            )));
+        }
     }
 
     fn resolve_field_stream<'a, 'b>(
