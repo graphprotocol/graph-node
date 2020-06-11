@@ -386,7 +386,7 @@ impl WasmInstance {
         link!("bigDecimal.plus", big_decimal_plus, x_ptr, y_ptr);
         link!("bigDecimal.minus", big_decimal_minus, x_ptr, y_ptr);
         link!("bigDecimal.times", big_decimal_times, x_ptr, y_ptr);
-        link!("bigDecimal.divided_by", big_decimal_divided_by, x, y);
+        link!("bigDecimal.dividedBy", big_decimal_divided_by, x, y);
         link!("bigDecimal.equals", big_decimal_equals, x_ptr, y_ptr);
 
         link!("dataSource.create", data_source_create, name, params);

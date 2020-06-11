@@ -37,4 +37,8 @@ export function handleTrigger(event: Trigger): void {
   let rounded2 = BigDecimal.fromString("88888888888888888888888888888888890");
 
   assert(big2 == rounded2, "big2 not equal to rounded2 " + big2.toString());
+
+  // Test big decimal division.
+  let one = BigDecimal.fromString("1");
+  assert(one / BigDecimal.fromString("10") == BigDecimal.fromString("0.1"));
 }
