@@ -729,13 +729,13 @@ where
 
     fn resolve_objects(
         &self,
-        objects_value: Option<q::Value>,
+        prefetched_objects: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        match (objects_value, object_type.name(), field.name.as_str()) {
+        match (prefetched_objects, object_type.name(), field.name.as_str()) {
             // The top-level `indexingStatuses` field
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
                 self.resolve_indexing_statuses(arguments)
@@ -760,13 +760,13 @@ where
 
     fn resolve_object(
         &self,
-        object_value: Option<q::Value>,
+        prefetched_object: Option<q::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        match (object_value, field.name.as_str()) {
+        match (prefetched_object, field.name.as_str()) {
             // The top-level `indexingStatusForCurrentVersion` field
             (None, "indexingStatusForCurrentVersion") => {
                 self.resolve_indexing_statuses_for_version(arguments, true)

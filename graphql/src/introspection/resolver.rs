@@ -358,7 +358,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
 
     fn resolve_objects(
         &self,
-        objects_value: Option<q::Value>,
+        prefetched_objects: Option<q::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
@@ -366,7 +366,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
     ) -> Result<q::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
-                let type_names = match objects_value {
+                let type_names = match prefetched_objects {
                     Some(q::Value::List(type_names)) => Some(type_names),
                     _ => None,
                 }
@@ -387,13 +387,13 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                     Ok(q::Value::Null)
                 }
             }
-            _ => Ok(objects_value.unwrap_or(q::Value::Null)),
+            _ => Ok(prefetched_objects.unwrap_or(q::Value::Null)),
         }
     }
 
     fn resolve_object(
         &self,
-        object_value: Option<q::Value>,
+        prefetched_object: Option<q::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
@@ -410,7 +410,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                 })?;
                 self.type_object(name)
             }
-            "type" | "ofType" => match object_value {
+            "type" | "ofType" => match prefetched_object {
                 Some(q::Value::String(type_name)) => self
                     .type_objects
                     .get(&type_name)
@@ -419,7 +419,7 @@ impl<'a> Resolver for IntrospectionResolver<'a> {
                 Some(v) => v,
                 None => q::Value::Null,
             },
-            _ => object_value.unwrap_or(q::Value::Null),
+            _ => prefetched_object.unwrap_or(q::Value::Null),
         };
         Ok(object)
     }

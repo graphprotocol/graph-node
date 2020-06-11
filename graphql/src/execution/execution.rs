@@ -259,13 +259,13 @@ pub fn execute_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     object_type: &s::ObjectType,
-    object_value: Option<q::Value>,
+    prefetched_value: Option<q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     Ok(q::Value::Object(execute_selection_set_to_map(
         ctx,
         selection_set,
         object_type,
-        object_value,
+        prefetched_value,
     )?))
 }
 
@@ -273,9 +273,9 @@ fn execute_selection_set_to_map(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     object_type: &s::ObjectType,
-    object_value: Option<q::Value>,
+    prefetched_value: Option<q::Value>,
 ) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
-    let mut object_value = match object_value {
+    let mut prefetched_object = match prefetched_value {
         Some(q::Value::Object(object)) => Some(object),
         Some(_) => unreachable!(),
         None => None,
@@ -300,7 +300,7 @@ fn execute_selection_set_to_map(
         if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
             // If we have the value already, because it's a scalar or a prefetched object, we want
             // to use it and avoid cloning, so we take it from the object value.
-            let field_value = object_value
+            let field_value = prefetched_object
                 .as_mut()
                 .map(|o| {
                     o.remove(&format!("prefetch:{}", response_key))
