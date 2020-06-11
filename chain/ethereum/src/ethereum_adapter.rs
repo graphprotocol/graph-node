@@ -466,25 +466,12 @@ where
                                 },
 
                                 // Check for Geth revert.
-                                Err(web3::Error::Rpc(ref rpc_error))
+                                Err(web3::Error::Rpc(rpc_error))
                                     if GETH_EXECUTION_ERRORS
                                         .iter()
                                         .any(|e| rpc_error.message.contains(e)) =>
                                 {
-                                    let mut reason = "no revert reason".to_string();
-
-                                    // Some reverts carry the reason in the data, see
-                                    // https://github.com/ethereum/go-ethereum/releases/tag/v1.9.15
-                                    if let Some(jsonrpc_core::Value::String(s)) = &rpc_error.data {
-                                        if let Ok(bytes) = hex::decode(s) {
-                                            if let Some(r) = as_solidity_revert_with_reason(&bytes)
-                                            {
-                                                reason = r;
-                                            }
-                                        }
-                                    }
-
-                                    Err(EthereumContractCallError::Revert(reason))
+                                    Err(EthereumContractCallError::Revert(rpc_error.message))
                                 }
 
                                 // Check for Parity revert.
