@@ -415,11 +415,13 @@ where
                             // reverts is not standardized, the current situation for the tested
                             // clients is:
                             //
-                            // - Parity/Alchemy returns a reliable RPC error response for reverts.
+                            // - Parity returns a reliable RPC error response for reverts.
                             // - Ganache also returns a reliable RPC error.
-                            // - Geth/Infura will either return `0x` on a revert with no reason
-                            //   string, or a Solidity encoded `Error(string)` call from `revert`
-                            //   and `require` calls with a reason string.
+                            // - Geth now also returns an RPC error. It used to return `0x` on a
+                            //   revert with no reason string, or a Solidity encoded `Error(string)`
+                            //   call from `revert` and `require` calls with a reason string. We
+                            //   still have support for those but that can be removed on the next
+                            //   hard fork (Berlin).
 
                             // 0xfe is the "designated bad instruction" of the EVM, and Solidity
                             // uses it for asserts.
@@ -436,6 +438,12 @@ where
                             const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                             const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
+                            // Deterministic Geth execution errors. We might need to expand this as
+                            // subgraphs come across other errors. See
+                            // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go#L25
+                            const GETH_EXECUTION_ERRORS: &[&str] =
+                                &["execution reverted", "invalid jump destination"];
+
                             let as_solidity_revert_with_reason = |bytes: &[u8]| {
                                 let solidity_revert_function_selector =
                                     &tiny_keccak::keccak256(b"Error(string)")[..4];
@@ -451,11 +459,33 @@ where
                             };
 
                             match result {
-                                // Check for Geth revert with reason.
+                                // Check for old Geth revert with reason.
                                 Ok(bytes) => match as_solidity_revert_with_reason(&bytes.0) {
                                     None => Ok(bytes),
                                     Some(reason) => Err(EthereumContractCallError::Revert(reason)),
                                 },
+
+                                // Check for Geth revert.
+                                Err(web3::Error::Rpc(ref rpc_error))
+                                    if GETH_EXECUTION_ERRORS
+                                        .iter()
+                                        .any(|e| rpc_error.message.contains(e)) =>
+                                {
+                                    let mut reason = "no revert reason".to_string();
+
+                                    // Some reverts carry the reason in the data, see
+                                    // https://github.com/ethereum/go-ethereum/releases/tag/v1.9.15
+                                    if let Some(jsonrpc_core::Value::String(s)) = &rpc_error.data {
+                                        if let Ok(bytes) = hex::decode(s) {
+                                            if let Some(r) = as_solidity_revert_with_reason(&bytes)
+                                            {
+                                                reason = r;
+                                            }
+                                        }
+                                    }
+
+                                    Err(EthereumContractCallError::Revert(reason))
+                                }
 
                                 // Check for Parity revert.
                                 Err(web3::Error::Rpc(ref rpc_error))
@@ -1196,7 +1226,7 @@ where
             // Decode the return values according to the ABI
             .and_then(move |output| {
                 if output.is_empty() {
-                    // We got a `0x` response. For Geth, this can mean a revert. It can also be
+                    // We got a `0x` response. For old Geth, this can mean a revert. It can also be
                     // that the contract actually returned an empty response. A view call is meant
                     // to return something, so we treat empty responses the same as reverts.
                     Err(EthereumContractCallError::Revert("empty response".into()))
