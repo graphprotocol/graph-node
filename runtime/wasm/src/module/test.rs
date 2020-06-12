@@ -25,7 +25,7 @@ fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
 ) -> (
-    WasmInstanceHandle,
+    WasmInstance,
     Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) {
     let store = STORE.clone();
@@ -69,7 +69,7 @@ fn test_valid_module_and_store(
     (module, store)
 }
 
-fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstanceHandle {
+fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstance {
     test_valid_module_and_store(subgraph_id, data_source).0
 }
 
@@ -168,11 +168,7 @@ fn mock_context(
     }
 }
 
-impl WasmInstanceHandle {
-    fn get_func(&self, name: &str) -> wasmtime::Func {
-        self.instance().instance.get_func(name).unwrap()
-    }
-
+impl WasmInstance {
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self.get_func(f).get1().unwrap();
         let ptr: u32 = func(arg.wasm_ptr()).unwrap();
@@ -204,16 +200,6 @@ impl WasmInstanceHandle {
         let func = self.get_func(fn_name).get1().unwrap();
         let ptr: u32 = func(val).unwrap();
         ptr.into()
-    }
-}
-
-impl AscHeap for WasmInstanceHandle {
-    fn raw_new(&mut self, bytes: &[u8]) -> u32 {
-        self.instance_mut().raw_new(bytes)
-    }
-
-    fn get(&self, offset: u32, size: u32) -> Vec<u8> {
-        self.instance().get(offset, size)
     }
 }
 
@@ -273,7 +259,7 @@ async fn json_parsing() {
     let bytes: &[u8] = s.as_ref();
     let bytes_ptr = module.asc_new(bytes);
     let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
-    let output: String = module.instance().asc_get(return_value);
+    let output: String = module.asc_get(return_value);
     assert_eq!(output, "OK: foo");
 }
 
@@ -290,7 +276,7 @@ async fn ipfs_cat() {
             let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
             let arg = module.asc_new(&hash);
             let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-            let data: String = module.instance().asc_get(converted);
+            let data: String = module.instance_ctx().asc_get(converted);
             assert_eq!(data, "42");
         })
     })
@@ -344,20 +330,14 @@ async fn ipfs_map() {
                     subgraph_id,
                     mock_data_source("wasm_test/ipfs_map.wasm"),
                 );
-                let value = module.instance_mut().asc_new(&hash);
-                let user_data = module.instance_mut().asc_new(USER_DATA);
+                let value = module.asc_new(&hash);
+                let user_data = module.asc_new(USER_DATA);
 
                 // Invoke the callback
-                let func = module
-                    .instance()
-                    .instance
-                    .get_func("ipfsMap")
-                    .unwrap()
-                    .get2()
-                    .unwrap();
+                let func = module.get_func("ipfsMap").get2().unwrap();
                 let _: () = func(value.wasm_ptr(), user_data.wasm_ptr())?;
                 let mut mods = module
-                    .take_instance()
+                    .take_ctx()
                     .ctx
                     .state
                     .entity_cache
@@ -441,7 +421,7 @@ async fn ipfs_fail() {
         runtime.enter(|| {
             let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
-            let hash = module.instance_mut().asc_new("invalid hash");
+            let hash = module.asc_new("invalid hash");
             assert!(module
                 .invoke_export::<_, AscString>("ipfsCat", hash,)
                 .is_null());
@@ -597,7 +577,7 @@ async fn data_source_create() {
         let name = module.asc_new(&name);
         let params = module.asc_new(&*params);
         module.invoke_export2_void("dataSourceCreate", name, params)?;
-        Ok(module.take_instance().ctx.state.created_data_sources)
+        Ok(module.take_ctx().ctx.state.created_data_sources)
     };
 
     // Test with a valid template
@@ -658,7 +638,7 @@ async fn entity_store() {
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
     test_store::insert_entities(subgraph_id, vec![("User", alex), ("User", steve)]).unwrap();
 
-    let get_user = move |module: &mut WasmInstanceHandle, id: &str| -> Option<Entity> {
+    let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
         let id = module.asc_new(id);
         let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
         if entity_ptr.is_null() {
@@ -672,7 +652,7 @@ async fn entity_store() {
         }
     };
 
-    let load_and_set_user_name = |module: &mut WasmInstanceHandle, id: &str, name: &str| {
+    let load_and_set_user_name = |module: &mut WasmInstance, id: &str, name: &str| {
         let id_ptr = module.asc_new(id);
         let name_ptr = module.asc_new(name);
         module
@@ -691,7 +671,7 @@ async fn entity_store() {
 
     // We need to empty the cache for the next test
     let cache = std::mem::replace(
-        &mut module.instance_mut().ctx.state.entity_cache,
+        &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(store.clone()),
     );
     let mut mods = cache
@@ -714,7 +694,7 @@ async fn entity_store() {
     fulltext_fields.insert("name".to_string(), vec!["search".to_string()]);
     fulltext_entities.insert("User".to_string(), fulltext_fields);
     let mut mods = module
-        .take_instance()
+        .take_ctx()
         .ctx
         .state
         .entity_cache
