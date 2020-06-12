@@ -330,63 +330,65 @@ impl WasmInstance {
 
         let modules = valid_module
             .import_name_to_modules
-            .get("store.get")
-            .into_iter()
-            .flatten();
-
-        for module in modules {
-            let func_shared_ctx = Rc::downgrade(&shared_ctx);
-            linker.func(module, "store.get", move |entity_ptr: u32, id_ptr: u32| {
-                let start = Instant::now();
-                let instance = func_shared_ctx.upgrade().unwrap();
-                let mut instance = instance.borrow_mut();
-                let instance = instance.as_mut().expect("called store.get in a global");
-                let stopwatch = &instance.host_metrics.stopwatch;
-                let _section = stopwatch.start_section("host_export_store_get");
-                let ret = instance
-                    .store_get(entity_ptr.into(), id_ptr.into())?
-                    .wasm_ptr();
-                instance
-                    .host_metrics
-                    .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), "store_get");
-                Ok(ret)
-            })?;
-        }
-
-        let modules = valid_module
-            .import_name_to_modules
             .get("ethereum.call")
             .into_iter()
             .flatten();
 
         for module in modules {
             let func_shared_ctx = Rc::downgrade(&shared_ctx);
-            linker.func(module, "ethereum.call", move |call_ptr: u32| {
-                let start = Instant::now();
-                let instance = func_shared_ctx.upgrade().unwrap();
-                let mut instance = instance.borrow_mut();
-                let instance = instance.as_mut().expect("called ethereum.call in a global");
-                let stopwatch = &instance.host_metrics.stopwatch;
-                let _section = stopwatch.start_section("host_export_ethereum_call");
+            let valid_module = valid_module.cheap_clone();
+            let host_metrics = host_metrics.cheap_clone();
+            let timeout_stopwatch = timeout_stopwatch.cheap_clone();
+            let ctx = ctx.cheap_clone();
+            linker.func(
+                module,
+                "ethereum.call",
+                move |caller: wasmtime::Caller, call_ptr: u32| {
+                    let start = Instant::now();
+                    let instance = func_shared_ctx.upgrade().unwrap();
+                    let mut instance = instance.borrow_mut();
 
-                // For apiVersion >= 0.0.4 the call passed from the mapping includes the
-                // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
-                // the the signature along with the call.
-                let arg = if instance.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
-                    instance.asc_get::<_, AscUnresolvedContractCall_0_0_4>(call_ptr.into())
-                } else {
-                    instance.asc_get::<_, AscUnresolvedContractCall>(call_ptr.into())
-                };
+                    // Happens when calling a host fn in Wasm start.
+                    if instance.is_none() {
+                        *instance = Some(
+                            WasmInstanceContext::from_caller(
+                                caller,
+                                ctx.borrow_mut().take().unwrap(),
+                                valid_module.cheap_clone(),
+                                host_metrics.cheap_clone(),
+                                timeout,
+                                timeout_stopwatch.cheap_clone(),
+                            )
+                            .unwrap(),
+                        )
+                    }
 
-                let ret = instance.ethereum_call(arg)?.wasm_ptr();
-                instance
-                    .host_metrics
-                    .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), "ethereum_call");
-                Ok(ret)
-            })?;
+                    let instance = instance.as_mut().unwrap();
+                    let stopwatch = &instance.host_metrics.stopwatch;
+                    let _section = stopwatch.start_section("host_export_ethereum_call");
+
+                    // For apiVersion >= 0.0.4 the call passed from the mapping includes the
+                    // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
+                    // the the signature along with the call.
+                    let arg = if instance.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
+                        instance.asc_get::<_, AscUnresolvedContractCall_0_0_4>(call_ptr.into())
+                    } else {
+                        instance.asc_get::<_, AscUnresolvedContractCall>(call_ptr.into())
+                    };
+
+                    let ret = instance.ethereum_call(arg)?.wasm_ptr();
+                    instance.host_metrics.observe_host_fn_execution_time(
+                        start.elapsed().as_secs_f64(),
+                        "ethereum_call",
+                    );
+                    Ok(ret)
+                },
+            )?;
         }
 
         link!("abort", abort, message_ptr, file_name_ptr, line, column);
+
+        link!("store.get", store_get, "host_export_store_get", entity, id);
         link!(
             "store.set",
             store_set,
@@ -672,6 +674,7 @@ impl WasmInstanceContext {
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, Trap> {
+        let start = Instant::now();
         let entity_ptr = self.asc_get(entity_ptr);
         let id_ptr = self.asc_get(id_ptr);
         let entity_option =
@@ -679,7 +682,7 @@ impl WasmInstanceContext {
                 .host_exports
                 .store_get(&mut self.ctx.state, entity_ptr, id_ptr)?;
 
-        Ok(match entity_option {
+        let ret = Ok(match entity_option {
             Some(entity) => {
                 let _section = self
                     .host_metrics
@@ -688,7 +691,12 @@ impl WasmInstanceContext {
                 self.asc_new(&entity)
             }
             None => AscPtr::null(),
-        })
+        });
+
+        self.host_metrics
+            .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), "store_get");
+
+        ret
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token> | null

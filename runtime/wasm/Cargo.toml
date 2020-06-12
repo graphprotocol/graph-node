@@ -28,9 +28,10 @@ maybe-owned = { git = "https://github.com/rustonaut/maybe-owned", branch = "mast
 # We need patch in order to be able to call host exports when initializing globals.
 #
 # By this conversation, wasmtime does not want to upstream this, pointing out that there is an
-# incompatibility between the way AS does things and the direction wasmtime wants to take:
+# incompatibility between the way AS does things and the direction wasmtime wants to take.
+# See:
 # https://bytecodealliance.zulipchat.com/#narrow/stream/206238-general/topic/Host.20functions.20in.20start
-#
+# https://github.com/AssemblyScript/assemblyscript/issues/1333
 # See also 3a23f045-eb9d-4b12-8c7c-3a4c2e34bea1
 wasmtime = { git = "https://github.com/graphprotocol/wasmtime", branch = "master" }
 
