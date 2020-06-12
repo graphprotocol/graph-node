@@ -35,35 +35,48 @@ mod test;
 const TRAP_TIMEOUT: &str = "trap: interrupt";
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
-pub(crate) struct WasmInstanceHandle {
-    // This is the only reference to `WasmInstance` that's not within the instance itself, so we can
-    // always borrow the `RefCell` with no concern for race conditions.
+pub(crate) struct WasmInstance {
+    instance: wasmtime::Instance,
+
+    // This is the only reference to `WasmInstanceContext` that's not within the instance itself, so
+    // we can always borrow the `RefCell` with no concern for race conditions.
     //
     // Also this is the only strong reference, so the instance will be dropped once this is dropped.
     // The weak references are circulary held by instance itself through host exports.
-    instance: Rc<RefCell<Option<WasmInstance>>>,
+    instance_ctx: Rc<RefCell<Option<WasmInstanceContext>>>,
 }
 
-impl Drop for WasmInstanceHandle {
+impl Drop for WasmInstance {
     fn drop(&mut self) {
         // Assert that the instance will be dropped.
-        assert_eq!(Rc::strong_count(&self.instance), 1);
+        assert_eq!(Rc::strong_count(&self.instance_ctx), 1);
     }
 }
 
-impl WasmInstanceHandle {
+/// Proxies to the WasmInstanceContext.
+impl AscHeap for WasmInstance {
+    fn raw_new(&mut self, bytes: &[u8]) -> u32 {
+        let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
+        ctx.raw_new(bytes)
+    }
+
+    fn get(&self, offset: u32, size: u32) -> Vec<u8> {
+        self.instance_ctx().get(offset, size)
+    }
+}
+
+impl WasmInstance {
     pub(crate) fn handle_json_callback(
         mut self,
         handler_name: &str,
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState, anyhow::Error> {
-        let value = self.instance_mut().asc_new(value);
-        let user_data = self.instance_mut().asc_new(user_data);
+        let value = self.asc_new(value);
+        let user_data = self.asc_new(user_data);
 
         // Invoke the callback
         let func = self
-            .instance()
             .instance
             .get_func(handler_name)
             .with_context(|| format!("function {} not found", handler_name))?
@@ -71,7 +84,7 @@ impl WasmInstanceHandle {
         func(value.wasm_ptr(), user_data.wasm_ptr())
             .with_context(|| format!("Failed to handle callback '{}'", handler_name))?;
 
-        Ok(self.take_instance().ctx.state)
+        Ok(self.take_ctx().ctx.state)
     }
 
     pub(crate) fn handle_ethereum_log(
@@ -81,42 +94,40 @@ impl WasmInstanceHandle {
         log: Arc<Log>,
         params: Vec<LogParam>,
     ) -> Result<BlockState, anyhow::Error> {
-        let block = self.instance().ctx.block.clone();
+        let block = self.instance_ctx().ctx.block.clone();
 
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
-        let event = if self.instance().ctx.host_exports.api_version >= Version::new(0, 0, 2) {
-            self.instance_mut()
-                .asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(&EthereumEventData {
-                    block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::from(transaction.deref()),
-                    address: log.address,
-                    log_index: log.log_index.unwrap_or(U256::zero()),
-                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                    log_type: log.log_type.clone(),
-                    params,
-                })
-                .erase()
+        let event = if self.instance_ctx().ctx.host_exports.api_version >= Version::new(0, 0, 2) {
+            self.asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(&EthereumEventData {
+                block: EthereumBlockData::from(block.as_ref()),
+                transaction: EthereumTransactionData::from(transaction.deref()),
+                address: log.address,
+                log_index: log.log_index.unwrap_or(U256::zero()),
+                transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                log_type: log.log_type.clone(),
+                params,
+            })
+            .erase()
         } else {
-            self.instance_mut()
-                .asc_new::<AscEthereumEvent<AscEthereumTransaction>, _>(&EthereumEventData {
-                    block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::from(transaction.deref()),
-                    address: log.address,
-                    log_index: log.log_index.unwrap_or(U256::zero()),
-                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                    log_type: log.log_type.clone(),
-                    params,
-                })
-                .erase()
+            self.asc_new::<AscEthereumEvent<AscEthereumTransaction>, _>(&EthereumEventData {
+                block: EthereumBlockData::from(block.as_ref()),
+                transaction: EthereumTransactionData::from(transaction.deref()),
+                address: log.address,
+                log_index: log.log_index.unwrap_or(U256::zero()),
+                transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                log_type: log.log_type.clone(),
+                params,
+            })
+            .erase()
         };
 
         // Invoke the event handler
         self.invoke_handler(handler_name, event)?;
 
         // Return the output state
-        Ok(self.take_instance().ctx.state)
+        Ok(self.take_ctx().ctx.state)
     }
 
     pub(crate) fn handle_ethereum_call(
@@ -130,55 +141,56 @@ impl WasmInstanceHandle {
         let call = EthereumCallData {
             to: call.to,
             from: call.from,
-            block: EthereumBlockData::from(self.instance().ctx.block.as_ref()),
+            block: EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref()),
             transaction: EthereumTransactionData::from(transaction.deref()),
             inputs,
             outputs,
         };
-        let arg = if self.instance().ctx.host_exports.api_version >= Version::new(0, 0, 3) {
-            self.instance_mut()
-                .asc_new::<AscEthereumCall_0_0_3, _>(&call)
-                .erase()
+        let arg = if self.instance_ctx().ctx.host_exports.api_version >= Version::new(0, 0, 3) {
+            self.asc_new::<AscEthereumCall_0_0_3, _>(&call).erase()
         } else {
-            self.instance_mut()
-                .asc_new::<AscEthereumCall, _>(&call)
-                .erase()
+            self.asc_new::<AscEthereumCall, _>(&call).erase()
         };
 
         self.invoke_handler(handler_name, arg)?;
 
-        Ok(self.take_instance().ctx.state)
+        Ok(self.take_ctx().ctx.state)
     }
 
     pub(crate) fn handle_ethereum_block(
         mut self,
         handler_name: &str,
     ) -> Result<BlockState, anyhow::Error> {
-        let block = EthereumBlockData::from(self.instance().ctx.block.as_ref());
+        let block = EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
-        let arg = self.instance_mut().asc_new(&block);
+        let arg = self.asc_new(&block);
 
         self.invoke_handler(handler_name, arg)?;
 
-        Ok(self.take_instance().ctx.state)
+        Ok(self.take_ctx().ctx.state)
     }
 
-    pub(crate) fn instance_mut(&mut self) -> RefMut<'_, WasmInstance> {
-        RefMut::map(self.instance.borrow_mut(), |i| i.as_mut().unwrap())
+    pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext {
+        self.instance_ctx.borrow_mut().take().unwrap()
     }
 
-    pub(crate) fn take_instance(&mut self) -> WasmInstance {
-        self.instance.borrow_mut().take().unwrap()
+    pub(crate) fn instance_ctx(&self) -> std::cell::Ref<'_, WasmInstanceContext> {
+        std::cell::Ref::map(self.instance_ctx.borrow(), |i| i.as_ref().unwrap())
     }
 
-    pub(crate) fn instance(&self) -> std::cell::Ref<'_, WasmInstance> {
-        std::cell::Ref::map(self.instance.borrow(), |i| i.as_ref().unwrap())
+    #[cfg(test)]
+    pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext> {
+        std::cell::RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_func(&self, func_name: &str) -> wasmtime::Func {
+        self.instance.get_func(func_name).unwrap()
     }
 
     fn invoke_handler<C>(&mut self, handler: &str, arg: AscPtr<C>) -> Result<(), anyhow::Error> {
         let func = self
-            .instance()
             .instance
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
@@ -190,7 +202,7 @@ impl WasmInstanceHandle {
                     format!(
                         "Handler '{}' hit the timeout of '{}' seconds",
                         handler,
-                        self.instance().timeout.unwrap().as_secs()
+                        self.instance_ctx().timeout.unwrap().as_secs()
                     ),
                 )
             } else {
@@ -204,11 +216,9 @@ impl WasmInstanceHandle {
 ///
 /// ```compile_fail
 /// fn assert_sync<T: Sync>() {}
-/// assert_sync::<WasmInstance>();
+/// assert_sync::<WasmInstanceContext>();
 /// ```
-pub(crate) struct WasmInstance {
-    instance: wasmtime::Instance,
-
+pub(crate) struct WasmInstanceContext {
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
     // is zeroed when initialized or grown.
@@ -237,12 +247,12 @@ impl WasmInstance {
         ctx: MappingContext,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
-    ) -> Result<WasmInstanceHandle, anyhow::Error> {
+    ) -> Result<WasmInstance, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
 
         // Used by exports to access the instance context. It is `None` while the module is not yet
         // instantiated. A desirable consequence is that start function cannot access host exports.
-        let shared_instance: Rc<RefCell<Option<WasmInstance>>> = Rc::new(RefCell::new(None));
+        let shared_ctx: Rc<RefCell<Option<WasmInstanceContext>>> = Rc::new(RefCell::new(None));
 
         macro_rules! link {
             ($wasm_name:expr, $rust_name:ident, $($param:ident),*) => {
@@ -258,12 +268,12 @@ impl WasmInstance {
 
                 // link an import with all the modules that require it.
                 for module in modules {
-                    let func_shared_instance = Rc::downgrade(&shared_instance);
+                    let func_shared_ctx = Rc::downgrade(&shared_ctx);
                     linker.func(
                         module,
                         $wasm_name,
                         move |$($param: u32),*| {
-                            let instance = func_shared_instance.upgrade().unwrap();
+                            let instance = func_shared_ctx.upgrade().unwrap();
                             let mut instance = instance.borrow_mut();
                             let instance = instance.as_mut().unwrap();
                             let _section = instance.host_metrics.stopwatch.start_section($section);
@@ -283,10 +293,10 @@ impl WasmInstance {
             .flatten();
 
         for module in modules {
-            let func_shared_instance = Rc::downgrade(&shared_instance);
+            let func_shared_ctx = Rc::downgrade(&shared_ctx);
             linker.func(module, "store.get", move |entity_ptr: u32, id_ptr: u32| {
                 let start = Instant::now();
-                let instance = func_shared_instance.upgrade().unwrap();
+                let instance = func_shared_ctx.upgrade().unwrap();
                 let mut instance = instance.borrow_mut();
                 let instance = instance.as_mut().unwrap();
                 let stopwatch = &instance.host_metrics.stopwatch;
@@ -308,10 +318,10 @@ impl WasmInstance {
             .flatten();
 
         for module in modules {
-            let func_shared_instance = Rc::downgrade(&shared_instance);
+            let func_shared_ctx = Rc::downgrade(&shared_ctx);
             linker.func(module, "ethereum.call", move |call_ptr: u32| {
                 let start = Instant::now();
-                let instance = func_shared_instance.upgrade().unwrap();
+                let instance = func_shared_ctx.upgrade().unwrap();
                 let mut instance = instance.borrow_mut();
                 let instance = instance.as_mut().unwrap();
                 let stopwatch = &instance.host_metrics.stopwatch;
@@ -441,8 +451,7 @@ impl WasmInstance {
             });
         }
 
-        *shared_instance.borrow_mut() = Some(WasmInstance {
-            instance,
+        *shared_ctx.borrow_mut() = Some(WasmInstanceContext {
             memory_allocate: Box::new(memory_allocate),
             memory,
             ctx,
@@ -456,13 +465,14 @@ impl WasmInstance {
             arena_start_ptr: 0,
         });
 
-        Ok(WasmInstanceHandle {
-            instance: shared_instance.clone(),
+        Ok(WasmInstance {
+            instance: instance,
+            instance_ctx: shared_ctx,
         })
     }
 }
 
-impl AscHeap for WasmInstance {
+impl AscHeap for WasmInstanceContext {
     fn raw_new(&mut self, bytes: &[u8]) -> u32 {
         // We request large chunks from the AssemblyScript allocator to use as arenas that we
         // manage directly.
@@ -511,7 +521,7 @@ impl AscHeap for WasmInstance {
 }
 
 // Implementation of externals.
-impl WasmInstance {
+impl WasmInstanceContext {
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
     fn abort(

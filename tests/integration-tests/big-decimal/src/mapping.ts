@@ -1,6 +1,9 @@
 import { Trigger } from "../generated/Contract/Contract";
 import { BigDecimal, BigInt } from "@graphprotocol/graph-ts";
 
+// Test that host exports work in globals.
+let one = BigDecimal.fromString("1");
+
 export function handleTrigger(event: Trigger): void {
   // There are 35 digits after the dot.
   // big_decimal exponent will be: -35 - 6109 = -6144.
@@ -39,6 +42,5 @@ export function handleTrigger(event: Trigger): void {
   assert(big2 == rounded2, "big2 not equal to rounded2 " + big2.toString());
 
   // Test big decimal division.
-  let one = BigDecimal.fromString("1");
   assert(one / BigDecimal.fromString("10") == BigDecimal.fromString("0.1"));
 }

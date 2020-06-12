@@ -18,7 +18,7 @@ use web3::types::H160;
 
 use graph_graphql::prelude::validate_entity;
 
-use crate::module::WasmInstance;
+use crate::module::{WasmInstance, WasmInstanceContext};
 
 pub(crate) struct HostExports {
     subgraph_id: SubgraphDeploymentId,
@@ -351,7 +351,7 @@ impl HostExports {
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
         link_resolver: &Arc<dyn LinkResolver>,
-        module: &mut WasmInstance,
+        module: &mut WasmInstanceContext,
         link: String,
         callback: &str,
         user_data: store::Value,
