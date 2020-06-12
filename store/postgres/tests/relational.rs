@@ -32,7 +32,22 @@ const THINGS_GQL: &str = r#"
                 ]
             }
         ]
+    ) @fulltext(
+        name: "nullableStringsSearch"
+        language: en
+        algorithm: rank
+        include: [
+            {
+                entity: "NullableStrings",
+                fields: [
+                    { name: "name"},
+                    { name: "description"},
+                    { name: "test"},
+                ]
+            }
+        ]
     )
+
     type Thing @entity {
         id: ID!
         bigThing: Thing!
@@ -86,6 +101,13 @@ const THINGS_GQL: &str = r#"
         coffee: Boolean!,
         favorite_color: Color,
         drinks: [String!]
+    }
+
+    type NullableStrings @entity {
+        id: ID!,
+        name: String,
+        description: String,
+        test: String
     }
 "#;
 
@@ -141,6 +163,12 @@ lazy_static! {
         );
         entity.set("color", "yellow");
         entity.set("__typename", "Scalar");
+        entity
+    };
+    static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
+        let mut entity = Entity::new();
+        entity.set("id", "one");
+        entity.set("__typename", "NullableStrings");
         entity
     };
 }
@@ -414,6 +442,27 @@ fn find() {
                 assert!(false)
             }
         }
+        Ok(())
+    });
+}
+
+#[test]
+fn insert_null_fulltext_fields() {
+    run_test(|conn, layout| -> Result<(), ()> {
+        insert_entity(
+            &conn,
+            &layout,
+            "NullableStrings",
+            EMPTY_NULLABLESTRINGS_ENTITY.clone(),
+        );
+
+        // Find entity with null string values
+        let entity = layout
+            .find(conn, "NullableStrings", "one", BLOCK_NUMBER_MAX)
+            .expect("Failed to read NullableStrings[one]")
+            .unwrap();
+        assert_entity_eq!(scrub(&*EMPTY_NULLABLESTRINGS_ENTITY), entity);
+
         Ok(())
     });
 }

@@ -1055,10 +1055,7 @@ impl<'a> InsertQuery<'a> {
                         .cloned()
                         .collect::<Vec<Value>>();
                     if !fulltext_field_values.is_empty() {
-                        entity.insert(
-                            column.field.to_string(),
-                            Value::List(fulltext_field_values),
-                        );
+                        entity.insert(column.field.to_string(), Value::List(fulltext_field_values));
                     }
                 }
                 None => (),
