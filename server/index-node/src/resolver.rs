@@ -731,7 +731,7 @@ where
         &self,
         prefetched_objects: Option<q::Value>,
         field: &q::Field,
-        field_definition: &s::Field,
+        _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
@@ -741,20 +741,13 @@ where
                 self.resolve_indexing_statuses(arguments)
             }
 
-            // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
-            (Some(value), _, _) => Ok(value),
-
             // The top-level `indexingStatusesForSubgraphName` field
             (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
                 self.resolve_indexing_statuses_for_subgraph_name(arguments)
             }
 
-            // Something we don't know how to resolve.
-            (_, _, name) => Err(QueryExecutionError::UnknownField(
-                field_definition.position.clone(),
-                "Query".into(),
-                name.into(),
-            )),
+            // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
+            (value, _, _) => Ok(value.unwrap_or(q::Value::Null)),
         }
     }
 
@@ -762,8 +755,8 @@ where
         &self,
         prefetched_object: Option<q::Value>,
         field: &q::Field,
-        field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        _field_definition: &s::Field,
+        _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         match (prefetched_object, field.name.as_str()) {
@@ -778,14 +771,7 @@ where
             }
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
-            (Some(object_value), _) => Ok(object_value),
-
-            // Something we don't know how to resolve.
-            (_, name) => Err(QueryExecutionError::UnknownField(
-                field_definition.position.clone(),
-                object_type.name().into(),
-                name.into(),
-            )),
+            (value, _) => Ok(value.unwrap_or(q::Value::Null)),
         }
     }
 }
