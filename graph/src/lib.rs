@@ -80,8 +80,8 @@ pub mod prelude {
         EthereumBlockPointer, EthereumBlockTriggerType, EthereumBlockWithCalls,
         EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumCallFilter,
         EthereumContractCall, EthereumContractCallError, EthereumEventData, EthereumLogFilter,
-        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
-        LightEthereumBlockExt, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, FullEthereumBlockData,
+        LightEthereumBlock, LightEthereumBlockExt, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     };
     pub use crate::components::graphql::{GraphQlRunner, SubscriptionResultFuture};
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};

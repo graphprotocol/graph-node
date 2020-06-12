@@ -291,7 +291,7 @@ impl RuntimeHost {
                     // Do not match if this datasource has no address
                     .map_or(false, |addr| addr == *address)
             }
-            EthereumBlockTriggerType::Every => true,
+            EthereumBlockTriggerType::Every(_) => true,
         };
         source_address_matches && self.handler_for_block(block_trigger_type).is_ok()
     }
@@ -347,7 +347,7 @@ impl RuntimeHost {
         trigger_type: &EthereumBlockTriggerType,
     ) -> Result<MappingBlockHandler, anyhow::Error> {
         match trigger_type {
-            EthereumBlockTriggerType::Every => self
+            EthereumBlockTriggerType::Every(_type) => self
                 .data_source_block_handlers
                 .iter()
                 .find(move |handler| handler.filter == None)
@@ -386,7 +386,7 @@ impl RuntimeHost {
         state: BlockState,
         handler: &str,
         trigger: MappingTrigger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error> {
         let trigger_type = trigger.as_static();
@@ -561,7 +561,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 outputs,
                 handler: call_handler.clone(),
             },
-            block,
+            &Arc::new(EthereumBlockType::from(block.as_ref())),
             proof_of_indexing,
         )
         .await
@@ -576,6 +576,25 @@ impl RuntimeHostTrait for RuntimeHost {
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error> {
         let block_handler = self.handler_for_block(trigger_type)?;
+        let theblock: EthereumBlockType = match trigger_type {
+            EthereumBlockTriggerType::Every(BlockType::Full) => match graph::block_on_allow_panic(
+                future::lazy(move || {
+                    self.host_exports
+                        .ethereum_adapter
+                        .load_full_block(logger, block.as_ref().clone())
+                })
+                .compat(),
+            ) {
+                Ok(block) => Ok(EthereumBlockType::Full(block)),
+                Err(e) => Err(anyhow::anyhow!(
+                    "Failed to load full block: {}, error: {}",
+                    &block.number.unwrap().to_string(),
+                    e
+                )),
+            }?,
+            _ => EthereumBlockType::from(block.as_ref()),
+        };
+
         self.send_mapping_request(
             logger,
             o! {
@@ -587,7 +606,7 @@ impl RuntimeHostTrait for RuntimeHost {
             MappingTrigger::Block {
                 handler: block_handler.clone(),
             },
-            block,
+            &Arc::new(theblock),
             proof_of_indexing,
         )
         .await
@@ -701,7 +720,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 params,
                 handler: event_handler.clone(),
             },
-            block,
+            &Arc::new(EthereumBlockType::from(block.as_ref())),
             proof_of_indexing,
         )
         .await

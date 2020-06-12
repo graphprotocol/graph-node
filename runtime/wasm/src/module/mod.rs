@@ -161,10 +161,17 @@ impl WasmInstance {
         mut self,
         handler_name: &str,
     ) -> Result<BlockState, anyhow::Error> {
-        let block = EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref());
+        let block = self.instance_ctx().ctx.block.clone();
 
         // Prepare an EthereumBlock for the WASM runtime
-        let arg = self.asc_new(&block);
+        let arg = match block.as_ref() {
+            EthereumBlockType::Full(block) => self
+                .asc_new::<AscFullEthereumBlock, _>(&FullEthereumBlockData::from(block))
+                .erase(),
+            EthereumBlockType::Light(light_block) => self
+                .asc_new::<AscEthereumBlock, _>(&EthereumBlockData::from(light_block))
+                .erase(),
+        };
 
         self.invoke_handler(handler_name, arg)?;
 
@@ -704,10 +711,11 @@ impl WasmInstanceContext {
         &mut self,
         call: UnresolvedContractCall,
     ) -> Result<AscEnumArray<EthereumValueKind>, Trap> {
-        let result =
-            self.ctx
-                .host_exports
-                .ethereum_call(&self.ctx.logger, &self.ctx.block, call)?;
+        let result = self.ctx.host_exports.ethereum_call(
+            &self.ctx.logger,
+            &LightEthereumBlock::from(self.ctx.block.as_ref()),
+            call,
+        )?;
         Ok(match result {
             Some(tokens) => self.asc_new(tokens.as_slice()),
             None => AscPtr::null(),

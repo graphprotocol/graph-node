@@ -411,6 +411,7 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
 pub struct EthereumBlockFilter {
     pub contract_addresses: HashSet<(u64, Address)>,
     pub trigger_every_block: bool,
+    pub full_block: bool,
 }
 
 impl EthereumBlockFilter {
@@ -435,8 +436,10 @@ impl EthereumBlockFilter {
                     .into_iter()
                     .any(|block_handler| block_handler.filter.is_none());
 
+                // TODO: process data source to get full_block boolean
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
+                    full_block: true,
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(
                             data_source.source.start_block,
@@ -816,7 +819,7 @@ fn parse_block_triggers(
     if trigger_every_block {
         triggers.push(EthereumTrigger::Block(
             block_ptr,
-            EthereumBlockTriggerType::Every,
+            EthereumBlockTriggerType::Every(BlockType::Full),
         ));
     }
     triggers
@@ -921,7 +924,12 @@ pub fn blocks_with_triggers(
                 .block_range_to_ptrs(logger.clone(), from, to)
                 .map(move |ptrs| {
                     ptrs.into_iter()
-                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
+                        .map(|ptr| {
+                            EthereumTrigger::Block(
+                                ptr,
+                                EthereumBlockTriggerType::Every(BlockType::Full),
+                            )
+                        })
                         .collect()
                 }),
         ))
