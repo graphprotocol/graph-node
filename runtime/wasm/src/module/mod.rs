@@ -233,7 +233,7 @@ pub(crate) struct WasmInstanceContext {
     // Used by ipfs.map.
     pub(crate) timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
 
-    // First free byte in the current arena.
+    // First free byte in the current arena. Set on the first call to `raw_new`.
     arena_start_ptr: i32,
 
     // Number of free bytes starting from `arena_start_ptr`.
@@ -254,6 +254,31 @@ impl WasmInstance {
         // instantiated. A desirable consequence is that start function cannot access host exports.
         let shared_ctx: Rc<RefCell<Option<WasmInstanceContext>>> = Rc::new(RefCell::new(None));
 
+        // We will move the ctx only once, to init `shared_ctx`. But we don't statically know where
+        // it will be moved so we need this ugly thing.
+        let ctx: Rc<RefCell<Option<MappingContext>>> = Rc::new(RefCell::new(Some(ctx)));
+
+        // Start the timeout watchdog task.
+        let timeout_stopwatch = Arc::new(std::sync::Mutex::new(TimeoutStopwatch::start_new()));
+        if let Some(timeout) = timeout {
+            // This task is likely to outlive the instance, which is fine.
+            let interrupt_handle = linker.store().interrupt_handle().unwrap();
+            let timeout_stopwatch = timeout_stopwatch.clone();
+            graph::spawn_allow_panic(async move {
+                let minimum_wait = Duration::from_secs(1);
+                loop {
+                    let time_left =
+                        timeout.checked_sub(timeout_stopwatch.lock().unwrap().elapsed());
+                    match time_left {
+                        None => break interrupt_handle.interrupt(), // Timed out.
+
+                        Some(time) if time < minimum_wait => break interrupt_handle.interrupt(),
+                        Some(time) => tokio::time::delay_for(time).await,
+                    }
+                }
+            });
+        }
+
         macro_rules! link {
             ($wasm_name:expr, $rust_name:ident, $($param:ident),*) => {
                 link!($wasm_name, $rust_name, "host_export_other", $($param),*)
@@ -269,12 +294,29 @@ impl WasmInstance {
                 // link an import with all the modules that require it.
                 for module in modules {
                     let func_shared_ctx = Rc::downgrade(&shared_ctx);
+                    let valid_module = valid_module.cheap_clone();
+                    let host_metrics = host_metrics.cheap_clone();
+                    let timeout_stopwatch = timeout_stopwatch.cheap_clone();
+                    let ctx = ctx.cheap_clone();
                     linker.func(
                         module,
                         $wasm_name,
-                        move |$($param: u32),*| {
+                        move |caller: wasmtime::Caller, $($param: u32),*| {
                             let instance = func_shared_ctx.upgrade().unwrap();
                             let mut instance = instance.borrow_mut();
+
+                            // Happens when calling a host fn in Wasm start.
+                            if instance.is_none() {
+                                *instance = Some(WasmInstanceContext::from_caller(
+                                    caller,
+                                    ctx.borrow_mut().take().unwrap(),
+                                    valid_module.cheap_clone(),
+                                    host_metrics.cheap_clone(),
+                                    timeout,
+                                    timeout_stopwatch.cheap_clone(),
+                                ).unwrap())
+                            }
+
                             let instance = instance.as_mut().unwrap();
                             let _section = instance.host_metrics.stopwatch.start_section($section);
                             instance.$rust_name(
@@ -298,7 +340,7 @@ impl WasmInstance {
                 let start = Instant::now();
                 let instance = func_shared_ctx.upgrade().unwrap();
                 let mut instance = instance.borrow_mut();
-                let instance = instance.as_mut().unwrap();
+                let instance = instance.as_mut().expect("called store.get in a global");
                 let stopwatch = &instance.host_metrics.stopwatch;
                 let _section = stopwatch.start_section("host_export_store_get");
                 let ret = instance
@@ -323,7 +365,7 @@ impl WasmInstance {
                 let start = Instant::now();
                 let instance = func_shared_ctx.upgrade().unwrap();
                 let mut instance = instance.borrow_mut();
-                let instance = instance.as_mut().unwrap();
+                let instance = instance.as_mut().expect("called ethereum.call in a global");
                 let stopwatch = &instance.host_metrics.stopwatch;
                 let _section = stopwatch.start_section("host_export_ethereum_call");
 
@@ -421,52 +463,20 @@ impl WasmInstance {
 
         let instance = linker.instantiate(&valid_module.module)?;
 
-        // Provide access to the WASM runtime linear memory
-        let memory = instance
-            .get_memory("memory")
-            .context("Failed to find memory export in the WASM module")?;
-
-        let memory_allocate = instance
-            .get_func("memory.allocate")
-            .context("`memory.allocate` function not found")?
-            .get1()?;
-
-        let timeout_stopwatch = Arc::new(std::sync::Mutex::new(TimeoutStopwatch::start_new()));
-        if let Some(timeout) = timeout {
-            // This task is likely to outlive the instance, which is fine.
-            let interrupt_handle = instance.store().interrupt_handle().unwrap();
-            let timeout_stopwatch = timeout_stopwatch.clone();
-            graph::spawn_allow_panic(async move {
-                let minimum_wait = Duration::from_secs(1);
-                loop {
-                    let time_left =
-                        timeout.checked_sub(timeout_stopwatch.lock().unwrap().elapsed());
-                    match time_left {
-                        None => break interrupt_handle.interrupt(), // Timed out.
-
-                        Some(time) if time < minimum_wait => break interrupt_handle.interrupt(),
-                        Some(time) => tokio::time::delay_for(time).await,
-                    }
-                }
-            });
+        // Usually `shared_ctx` is still `None` because no host fns were called during start.
+        if shared_ctx.borrow().is_none() {
+            *shared_ctx.borrow_mut() = Some(WasmInstanceContext::from_instance(
+                &instance,
+                ctx.borrow_mut().take().unwrap(),
+                valid_module,
+                host_metrics,
+                timeout,
+                timeout_stopwatch,
+            )?);
         }
 
-        *shared_ctx.borrow_mut() = Some(WasmInstanceContext {
-            memory_allocate: Box::new(memory_allocate),
-            memory,
-            ctx,
-            valid_module,
-            host_metrics,
-            timeout,
-            timeout_stopwatch,
-
-            // `arena_start_ptr` will be set on the first call to `raw_new`.
-            arena_free_size: 0,
-            arena_start_ptr: 0,
-        });
-
         Ok(WasmInstance {
-            instance: instance,
+            instance,
             instance_ctx: shared_ctx,
         })
     }
@@ -517,6 +527,73 @@ impl AscHeap for WasmInstanceContext {
         // This unsafe block has been checked to not cause unsoundness by itself.
         // See 2155cdca-dfaa-4fba-86e4-289e7683c1bf for why this is sufficient.
         unsafe { self.memory.data_unchecked()[offset..(offset + size)].to_vec() }
+    }
+}
+
+impl WasmInstanceContext {
+    fn from_instance(
+        instance: &wasmtime::Instance,
+        ctx: MappingContext,
+        valid_module: Arc<ValidModule>,
+        host_metrics: Arc<HostMetrics>,
+        timeout: Option<Duration>,
+        timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
+    ) -> Result<Self, anyhow::Error> {
+        // Provide access to the WASM runtime linear memory
+        let memory = instance
+            .get_memory("memory")
+            .context("Failed to find memory export in the WASM module")?;
+
+        let memory_allocate = instance
+            .get_func("memory.allocate")
+            .context("`memory.allocate` function not found")?
+            .get1()?;
+
+        Ok(WasmInstanceContext {
+            memory_allocate: Box::new(memory_allocate),
+            memory,
+            ctx,
+            valid_module,
+            host_metrics,
+            timeout,
+            timeout_stopwatch,
+            arena_free_size: 0,
+            arena_start_ptr: 0,
+        })
+    }
+
+    fn from_caller(
+        caller: wasmtime::Caller,
+        ctx: MappingContext,
+        valid_module: Arc<ValidModule>,
+        host_metrics: Arc<HostMetrics>,
+        timeout: Option<Duration>,
+        timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
+    ) -> Result<Self, anyhow::Error> {
+        let memory = caller
+            .get_export("memory")
+            .and_then(|e| e.into_memory())
+            .context("Failed to find memory export in the WASM module")?;
+
+        // This is where we require our patch wasmtime.
+        // See also: 3a23f045-eb9d-4b12-8c7c-3a4c2e34bea1
+        let memory_allocate = caller
+            .get_export("memory.allocate")
+            .and_then(|e| e.into_func())
+            .context("`memory.allocate` function not found")?
+            .get1()?;
+
+        Ok(WasmInstanceContext {
+            memory_allocate: Box::new(memory_allocate),
+            memory,
+            ctx,
+            valid_module,
+            host_metrics,
+            timeout,
+            timeout_stopwatch,
+            arena_free_size: 0,
+            arena_start_ptr: 0,
+        })
     }
 }
 
