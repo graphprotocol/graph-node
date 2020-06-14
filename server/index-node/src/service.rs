@@ -126,20 +126,14 @@ where
             })
             .then(move |result| {
                 let elapsed = start.elapsed().as_millis();
-                match result {
-                    Ok(_) => info!(
-                        result_logger,
-                        "GraphQL query served";
-                        "query_time_ms" => elapsed,
-                        "code" => LogCode::GraphQlQuerySuccess,
-                    ),
-                    Err(ref e) => error!(
+                if let Err(e) = &result {
+                    error!(
                         result_logger,
                         "GraphQL query failed";
                         "error" => e.to_string(),
                         "query_time_ms" => elapsed,
                         "code" => LogCode::GraphQlQueryFailure,
-                    ),
+                    )
                 }
                 IndexNodeResponse::new(result).compat()
             })

@@ -280,22 +280,15 @@ where
                     sd_id.deref().to_string(),
                 );
                 let elapsed = start.elapsed().as_millis();
-                match result {
-                    Ok(_) => info!(
-                        logger,
-                        "GraphQL query served";
-                        "subgraph_deployment" => sd_id.deref(),
-                        "query_time_ms" => elapsed,
-                        "code" => LogCode::GraphQlQuerySuccess,
-                    ),
-                    Err(ref e) => error!(
+                if let Err(e) = &result {
+                    error!(
                         logger,
                         "GraphQL query failed";
                         "subgraph_deployment" => sd_id.deref(),
                         "error" => e.to_string(),
                         "query_time_ms" => elapsed,
                         "code" => LogCode::GraphQlQueryFailure,
-                    ),
+                    )
                 }
                 GraphQLResponse::new(result).compat()
             })
