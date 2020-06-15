@@ -16,7 +16,7 @@ tag_and_push() {
 echo "Logging into Docker Hub"
 echo $PASSWORD | docker login --username="$DOCKER_HUB_USER" --password-stdin
 
-set -x
+set -ex
 
 tag_and_push "$SHORT_SHA"
 
@@ -24,3 +24,5 @@ tag_and_push "$SHORT_SHA"
 [ "$BRANCH_NAME" = master ] && tag_and_push latest
 # Builds of tags set the tag in Docker Hub, too
 [ -n "$TAG_NAME" ] && tag_and_push "$TAG_NAME"
+
+exit 0
