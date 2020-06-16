@@ -566,7 +566,17 @@ fn alias() {
                     parent: Legged
                   }";
 
-    let query = "query { l: legged(id: \"child\") { ... on Animal { p: parent { i: id, t: __typename } } } }";
+    let query = "query {
+                    l: legged(id: \"child\") {
+                        ... on Animal {
+                            p: parent {
+                                i: id,
+                                t: __typename,
+                                __typename
+                            }
+                        }
+                    }
+            }";
 
     let parent = (
         Entity::from(vec![
@@ -594,7 +604,8 @@ fn alias() {
             l: object! {
                 p: object! {
                     i: "parent",
-                    t: "Animal"
+                    t: "Animal",
+                    __typename: "Animal"
                 }
             }
         }
