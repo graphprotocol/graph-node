@@ -1,6 +1,7 @@
 // Tests for graphql interfaces.
 
 use graph::prelude::*;
+use graph_graphql::prelude::object;
 use test_store::*;
 
 // `entities` is `(entity, type)`.
@@ -553,4 +554,49 @@ fn invalid_fragment() {
         }
         e => panic!("error {} is not the expected one", e),
     }
+}
+
+#[test]
+fn alias() {
+    let subgraph_id = "Alias";
+    let schema = "interface Legged { id: ID!, legs: Int! }
+                  type Animal implements Legged @entity {
+                    id: ID!
+                    legs: Int!
+                    parent: Legged
+                  }";
+
+    let query = "query { l: legged(id: \"child\") { ... on Animal { p: parent { i: id, t: __typename } } } }";
+
+    let parent = (
+        Entity::from(vec![
+            ("id", Value::from("parent")),
+            ("legs", Value::from(4)),
+            ("parent", Value::Null),
+        ]),
+        "Animal",
+    );
+    let child = (
+        Entity::from(vec![
+            ("id", Value::from("child")),
+            ("legs", Value::from(3)),
+            ("parent", Value::String("parent".into())),
+        ]),
+        "Animal",
+    );
+
+    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            l: object! {
+                p: object! {
+                    i: "parent",
+                    t: "Animal"
+                }
+            }
+        }
+    )
 }
