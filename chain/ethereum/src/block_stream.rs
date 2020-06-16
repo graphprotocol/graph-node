@@ -15,7 +15,7 @@ use graph::prelude::{
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
     static ref MAX_BLOCK_RANGE_SIZE: u64 = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
-        .unwrap_or("100000".into())
+        .unwrap_or("1000".into())
         .parse::<u64>()
         .expect("invalid GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE");
 
