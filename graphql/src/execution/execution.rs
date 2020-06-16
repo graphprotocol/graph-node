@@ -286,6 +286,18 @@ fn execute_selection_set_to_map(
     // Group fields with the same response key, so we can execute them together
     let grouped_field_set = collect_fields(ctx, object_type, selection_set, None);
 
+    // Gather fields that appear more than once with the same response key.
+    let multiple_response_keys = {
+        let mut multiple_response_keys = HashSet::new();
+        let mut fields = HashSet::new();
+        for field in grouped_field_set.iter().map(|(_, f)| f.iter()).flatten() {
+            if !fields.insert(field.name.as_str()) {
+                multiple_response_keys.insert(field.name.as_str());
+            }
+        }
+        multiple_response_keys
+    };
+
     // Process all field groups in order
     for (response_key, fields) in grouped_field_set {
         match ctx.deadline {
@@ -298,15 +310,21 @@ fn execute_selection_set_to_map(
 
         // If the field exists on the object, execute it and add its result to the result map
         if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
-            // If we have the value already, because it's a scalar or a prefetched object, we want
-            // to use it and avoid cloning, so we take it from the object value.
+            // Check if we have the value already.
             let field_value = prefetched_object
                 .as_mut()
                 .map(|o| {
-                    // Prefetched objects associated to `prefetch:response_key`,
-                    // while scalars are associated to the field name.
-                    o.remove(&format!("prefetch:{}", response_key))
-                        .or(o.remove(&fields[0].name))
+                    // Prefetched objects are associated to `prefetch:response_key`.
+                    if let Some(val) = o.remove(&format!("prefetch:{}", response_key)) {
+                        return Some(val);
+                    }
+
+                    // Scalars and scalar lists are associated to the field name.
+                    // If the field has more than one response key, we have to clone.
+                    match multiple_response_keys.contains(fields[0].name.as_str()) {
+                        false => o.remove(&fields[0].name),
+                        true => o.get(&fields[0].name).cloned(),
+                    }
                 })
                 .flatten();
             match execute_field(&ctx, object_type, field_value, &fields[0], field, fields) {
