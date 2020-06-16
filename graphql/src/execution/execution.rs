@@ -303,8 +303,10 @@ fn execute_selection_set_to_map(
             let field_value = prefetched_object
                 .as_mut()
                 .map(|o| {
+                    // Prefetched objects associated to `prefetch:response_key`,
+                    // while scalars are associated to the field name.
                     o.remove(&format!("prefetch:{}", response_key))
-                        .or(o.remove(response_key))
+                        .or(o.remove(&fields[0].name))
                 })
                 .flatten();
             match execute_field(&ctx, object_type, field_value, &fields[0], field, fields) {
