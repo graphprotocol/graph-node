@@ -27,7 +27,7 @@ those.
 - `ETHEREUM_BLOCK_BATCH_SIZE`: number of Ethereum blocks to request in parallel
   (defaults to 50)
 - `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`: Maximum number of blocks to scan for
-  triggers in each request (defaults to 100000).
+  triggers in each request (defaults to 1000).
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
   requests that dont filter on contract address, only event signature.
 - `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`: Timeout for Ethereum JSON-RPC requests.
@@ -109,6 +109,6 @@ those.
   queries caused by mappings when processing blocks for a subgraph, and
   queries caused by subscriptions. Defaults to no logging.
 - `STORE_CONNECTION_POOL_SIZE`: How many simultaneous connections to allow to the store.
-  Due to implementation details, this value may not be strictly adhered to. Defaults to 10. 
+  Due to implementation details, this value may not be strictly adhered to. Defaults to 10.
 - `GRAPH_LOG_POI_EVENTS`: Logs Proof of Indexing events deterministically.
   This may be useful for debugging.
