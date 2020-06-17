@@ -364,7 +364,7 @@ impl fmt::Display for Value {
 impl From<Value> for query::Value {
     fn from(value: Value) -> Self {
         match value {
-            Value::String(s) => query::Value::String(s.to_string()),
+            Value::String(s) => query::Value::String(s),
             Value::Int(i) => query::Value::Int(query::Number::from(i)),
             Value::BigDecimal(d) => query::Value::String(d.to_string()),
             Value::Bool(b) => query::Value::Boolean(b),
@@ -558,8 +558,8 @@ impl DerefMut for Entity {
 impl From<Entity> for BTreeMap<String, query::Value> {
     fn from(entity: Entity) -> BTreeMap<String, query::Value> {
         let mut fields = BTreeMap::new();
-        for (attr, value) in entity.iter() {
-            fields.insert(attr.to_string(), value.clone().into());
+        for (attr, value) in entity.0.into_iter() {
+            fields.insert(attr, value.into());
         }
         fields
     }

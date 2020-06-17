@@ -202,11 +202,7 @@ where
                     derived_from_field.name.to_owned(),
                 ));
             } else {
-                return Ok(children
-                    .into_iter()
-                    .next()
-                    .map(|value| value.clone())
-                    .unwrap_or(q::Value::Null));
+                return Ok(children.into_iter().next().unwrap_or(q::Value::Null));
             }
         } else {
             return Err(QueryExecutionError::ResolveEntitiesError(format!(
