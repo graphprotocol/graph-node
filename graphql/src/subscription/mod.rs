@@ -1,5 +1,6 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
+use std::iter;
 use std::result::Result;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -106,7 +107,12 @@ fn create_source_event_stream(
     let subscription_type = sast::get_root_subscription_type(&ctx.query.schema.document)
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
-    let grouped_field_set = collect_fields(ctx, &subscription_type, &ctx.query.selection_set, None);
+    let grouped_field_set = collect_fields(
+        ctx,
+        &subscription_type,
+        iter::once(&ctx.query.selection_set),
+        None,
+    );
 
     if grouped_field_set.is_empty() {
         return Err(SubscriptionError::from(QueryExecutionError::EmptyQuery));
@@ -205,7 +211,7 @@ async fn execute_subscription_event(
         let initial_data = ctx.resolver.prefetch(&ctx, &ctx.query.selection_set)?;
         execute_selection_set(
             &ctx,
-            &ctx.query.selection_set,
+            iter::once(&ctx.query.selection_set),
             &subscription_type,
             initial_data,
         )

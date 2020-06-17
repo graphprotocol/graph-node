@@ -493,7 +493,7 @@ fn execute_root_selection_set(
         items: Vec::new(),
     };
 
-    for (_, type_fields) in collect_fields(ctx, &query_type.into(), selection_set, None) {
+    for (_, type_fields) in collect_fields(ctx, &query_type.into(), vec![selection_set], None) {
         let fields = match type_fields.get(&TypeCondition::Any) {
             None => return Ok(vec![]),
             Some(fields) => fields,
@@ -516,7 +516,7 @@ fn execute_root_selection_set(
         resolver,
         ctx,
         make_root_node(),
-        &data_set,
+        vec![&data_set],
         &query_type.into(),
     )
 }
@@ -543,17 +543,17 @@ fn object_or_interface_by_name<'a>(
     }
 }
 
-fn execute_selection_set(
+fn execute_selection_set<'a>(
     resolver: &StoreResolver<impl Store>,
-    ctx: &ExecutionContext<impl Resolver>,
+    ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
-    selection_set: &q::SelectionSet,
+    selection_sets: Vec<&'a q::SelectionSet>,
     object_type: &ObjectOrInterface,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
     // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = collect_fields(ctx, object_type, selection_set, None);
+    let grouped_field_set = collect_fields(ctx, object_type, selection_sets, None);
 
     // Process all field groups in order
     for (response_key, type_map) in grouped_field_set {
@@ -596,7 +596,6 @@ fn execute_selection_set(
                     field,
                 ) {
                     Ok(children) => {
-                        let child_selection_set = crate::execution::merge_selection_sets(&fields);
                         let child_object_type = object_or_interface_from_type(
                             &ctx.query.schema.document,
                             &field.field_type,
@@ -604,9 +603,9 @@ fn execute_selection_set(
                         .expect("type of child field is object or interface");
                         match execute_selection_set(
                             resolver,
-                            &ctx,
+                            ctx,
                             children,
-                            &child_selection_set,
+                            fields.into_iter().map(|f| &f.selection_set).collect(),
                             &child_object_type,
                         ) {
                             Ok(children) => Join::perform(&mut parents, children, response_key),
@@ -645,125 +644,126 @@ fn execute_selection_set(
 fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &ObjectOrInterface,
-    selection_set: &'a q::SelectionSet,
+    selection_sets: Vec<&'a q::SelectionSet>,
     visited_fragments: Option<HashSet<&'a q::Name>>,
 ) -> HashMap<&'a String, HashMap<TypeCondition, Vec<&'a q::Field>>> {
     let mut visited_fragments = visited_fragments.unwrap_or_default();
     let mut grouped_fields: HashMap<_, HashMap<_, Vec<_>>> = HashMap::new();
 
-    // Only consider selections that are not skipped and should be included
-    let selections: Vec<_> = selection_set
-        .items
-        .iter()
-        .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
-        .filter(|selection| qast::include_selection(selection, &ctx.query.variables))
-        .collect();
+    for selection_set in selection_sets {
+        // Only consider selections that are not skipped and should be included
+        let selections = selection_set
+            .items
+            .iter()
+            .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
+            .filter(|selection| qast::include_selection(selection, &ctx.query.variables));
 
-    fn is_reference_field(
-        schema: &s::Document,
-        object_type: &ObjectOrInterface,
-        field: &q::Field,
-    ) -> bool {
-        object_type
-            .field(&field.name)
-            .map(|field_def| sast::get_type_definition_from_field(schema, field_def))
-            .unwrap_or(None)
-            .map(|type_def| match type_def {
-                s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => true,
-                _ => false,
-            })
-            .unwrap_or(false)
-    }
+        fn is_reference_field(
+            schema: &s::Document,
+            object_type: &ObjectOrInterface,
+            field: &q::Field,
+        ) -> bool {
+            object_type
+                .field(&field.name)
+                .map(|field_def| sast::get_type_definition_from_field(schema, field_def))
+                .unwrap_or(None)
+                .map(|type_def| match type_def {
+                    s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => true,
+                    _ => false,
+                })
+                .unwrap_or(false)
+        }
 
-    for selection in selections {
-        match selection {
-            q::Selection::Field(ref field) => {
-                // Only consider fields that point to objects or interfaces, and
-                // ignore nonexistent fields
-                if is_reference_field(&ctx.query.schema.document, object_type, field) {
-                    let response_key = qast::get_response_key(field);
+        for selection in selections {
+            match selection {
+                q::Selection::Field(ref field) => {
+                    // Only consider fields that point to objects or interfaces, and
+                    // ignore nonexistent fields
+                    if is_reference_field(&ctx.query.schema.document, object_type, field) {
+                        let response_key = qast::get_response_key(field);
 
-                    // Create a field group for this response key and add the field
-                    // with no type condition
-                    grouped_fields
-                        .entry(response_key)
-                        .or_default()
-                        .entry(TypeCondition::Any)
-                        .or_default()
-                        .push(field);
+                        // Create a field group for this response key and add the field
+                        // with no type condition
+                        grouped_fields
+                            .entry(response_key)
+                            .or_default()
+                            .entry(TypeCondition::Any)
+                            .or_default()
+                            .push(field);
+                    }
                 }
-            }
 
-            q::Selection::FragmentSpread(spread) => {
-                // Only consider the fragment if it hasn't already been included,
-                // as would be the case if the same fragment spread ...Foo appeared
-                // twice in the same selection set
-                if !visited_fragments.contains(&spread.fragment_name) {
-                    visited_fragments.insert(&spread.fragment_name);
+                q::Selection::FragmentSpread(spread) => {
+                    // Only consider the fragment if it hasn't already been included,
+                    // as would be the case if the same fragment spread ...Foo appeared
+                    // twice in the same selection set
+                    if !visited_fragments.contains(&spread.fragment_name) {
+                        visited_fragments.insert(&spread.fragment_name);
 
-                    ctx.query
-                        .get_fragment(&spread.fragment_name)
-                        .map(|fragment| {
-                            let fragment_grouped_field_set = collect_fields(
-                                ctx,
-                                object_type,
-                                &fragment.selection_set,
-                                Some(visited_fragments.clone()),
-                            );
+                        ctx.query
+                            .get_fragment(&spread.fragment_name)
+                            .map(|fragment| {
+                                let fragment_grouped_field_set = collect_fields(
+                                    ctx,
+                                    object_type,
+                                    vec![&fragment.selection_set],
+                                    Some(visited_fragments.clone()),
+                                );
 
-                            // Add all items from each fragments group to the field group
-                            // with the corresponding response key
-                            let fragment_cond =
-                                TypeCondition::from(Some(fragment.type_condition.clone()));
-                            for (response_key, type_fields) in fragment_grouped_field_set {
-                                for (type_cond, mut group) in type_fields {
-                                    if let Some(cond) = fragment_cond.and(&type_cond) {
-                                        grouped_fields
-                                            .entry(response_key)
-                                            .or_default()
-                                            .entry(cond)
-                                            .or_default()
-                                            .append(&mut group);
+                                // Add all items from each fragments group to the field group
+                                // with the corresponding response key
+                                let fragment_cond =
+                                    TypeCondition::from(Some(fragment.type_condition.clone()));
+                                for (response_key, type_fields) in fragment_grouped_field_set {
+                                    for (type_cond, mut group) in type_fields {
+                                        if let Some(cond) = fragment_cond.and(&type_cond) {
+                                            grouped_fields
+                                                .entry(response_key)
+                                                .or_default()
+                                                .entry(cond)
+                                                .or_default()
+                                                .append(&mut group);
+                                        }
                                     }
                                 }
-                            }
-                        });
+                            });
+                    }
                 }
-            }
 
-            q::Selection::InlineFragment(fragment) => {
-                let fragment_cond = TypeCondition::from(fragment.type_condition.clone());
-                // Fields for this fragment need to be looked up in the type
-                // mentioned in the condition
-                let fragment_type =
-                    fragment_cond.matching_type(&ctx.query.schema.document, object_type);
+                q::Selection::InlineFragment(fragment) => {
+                    let fragment_cond = TypeCondition::from(fragment.type_condition.clone());
+                    // Fields for this fragment need to be looked up in the type
+                    // mentioned in the condition
+                    let fragment_type =
+                        fragment_cond.matching_type(&ctx.query.schema.document, object_type);
 
-                // The `None` case here indicates an error where the type condition
-                // mentions a nonexistent type; the overall query execution logic will catch
-                // that
-                if let Some(fragment_type) = fragment_type {
-                    let fragment_grouped_field_set = collect_fields(
-                        ctx,
-                        &fragment_type,
-                        &fragment.selection_set,
-                        Some(visited_fragments.clone()),
-                    );
+                    // The `None` case here indicates an error where the type condition
+                    // mentions a nonexistent type; the overall query execution logic will catch
+                    // that
+                    if let Some(fragment_type) = fragment_type {
+                        let fragment_grouped_field_set = collect_fields(
+                            ctx,
+                            &fragment_type,
+                            vec![&fragment.selection_set],
+                            Some(visited_fragments.clone()),
+                        );
 
-                    for (response_key, type_fields) in fragment_grouped_field_set {
-                        for (type_cond, mut group) in type_fields {
-                            if let Some(cond) = fragment_cond.and(&type_cond) {
-                                grouped_fields
-                                    .entry(response_key)
-                                    .or_default()
-                                    .entry(cond)
-                                    .or_default()
-                                    .append(&mut group);
+                        for (response_key, type_fields) in fragment_grouped_field_set {
+                            for (type_cond, mut group) in type_fields {
+                                if let Some(cond) = fragment_cond.and(&type_cond) {
+                                    grouped_fields
+                                        .entry(response_key)
+                                        .or_default()
+                                        .entry(cond)
+                                        .or_default()
+                                        .append(&mut group);
+                                }
                             }
                         }
                     }
                 }
-            }
-        };
+            };
+        }
     }
 
     grouped_fields
