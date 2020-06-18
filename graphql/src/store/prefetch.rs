@@ -26,8 +26,6 @@ lazy_static! {
     static ref ARG_ID: String = String::from("id");
 }
 
-pub const PREFETCH_KEY: &str = ":prefetch";
-
 /// Similar to the TypeCondition from graphql_parser, but with
 /// derives that make it possible to use it as the key in a HashMap
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -146,13 +144,10 @@ fn make_root_node() -> Vec<Node> {
 /// Recursively convert a `Node` into the corresponding `q::Value`, which is
 /// always a `q::Value::Object`. The entity's associations are mapped to
 /// entries `r:{response_key}` as that name is guaranteed to not conflict
-/// with any field of the entity. Also add an entry `:prefetch` so that
-/// the resolver can later tell whether the `q::Value` was produced by prefetch
-/// and should therefore have `r:{response_key}` entries.
+/// with any field of the entity.
 impl From<Node> for q::Value {
     fn from(node: Node) -> Self {
         let mut map: BTreeMap<_, _> = node.entity.into();
-        map.insert(PREFETCH_KEY.to_owned(), q::Value::Boolean(true));
         for (key, nodes) in node.children.into_iter() {
             map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
         }
@@ -445,9 +440,7 @@ impl<'a> Join<'a> {
 /// The returned value contains a `q::Value::Object` that contains a tree of
 /// all the entities (converted into objects) in the form in which they need
 /// to be returned. Nested object fields appear under the key `r:response_key`
-/// in these objects, and are always `q::Value::List` of objects. In addition,
-/// each entity has a property `:prefetch` set so that the resolver can
-/// tell whether the `r:response_key` associations should be there.
+/// in these objects, and are always `q::Value::List` of objects.
 ///
 /// For the above example, the returned object would have one entry under
 /// `r:musicians`, which is a list of all the musicians; each musician has an
@@ -462,8 +455,7 @@ pub fn run(
     selection_set: &q::SelectionSet,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
-        let mut map = BTreeMap::default();
-        map.insert(PREFETCH_KEY.to_owned(), q::Value::Boolean(true));
+        let map = BTreeMap::default();
         q::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
             // For root nodes, we only care about the children
             for (key, nodes) in node.children.into_iter() {
