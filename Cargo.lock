@@ -172,7 +172,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460825c9e21708024d67c07057cd5560e5acdccac85de0de624a81d3de51bacb"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-integer",
  "num-traits",
  "serde",
@@ -727,7 +727,7 @@ dependencies = [
  "bitflags 1.2.1",
  "byteorder",
  "diesel_derives",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-integer",
  "num-traits",
  "pq-sys",
@@ -1316,7 +1316,7 @@ dependencies = [
  "lazy_static",
  "maplit",
  "mockall",
- "num-bigint",
+ "num-bigint 0.3.0",
  "num-traits",
  "petgraph 0.5.0",
  "priority-queue",
@@ -2376,6 +2376,17 @@ name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+dependencies = [
+ "autocfg 1.0.0",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f3fc75e3697059fb1bc465e3d8cca6cf92f56854f201158b3f9c77d5a3cfa0"
 dependencies = [
  "autocfg 1.0.0",
  "num-integer",
@@ -3672,7 +3683,7 @@ dependencies = [
  "blake3",
  "lazy_static",
  "leb128",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-traits",
 ]
 
