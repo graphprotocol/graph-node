@@ -46,9 +46,10 @@ lazy_static! {
             .expect("invalid ETHEREUM_BLOCK_BATCH_SIZE env var");
 
     /// This should not be too large that it causes requests to timeout without us catching it, nor
-    /// too small that it causes us to timeout requests that would've succeeded.
+    /// too small that it causes us to timeout requests that would've succeeded. We've seen
+    /// successful `eth_getLogs` requests take over 120 seconds.
     static ref JSON_RPC_TIMEOUT: u64 = std::env::var("GRAPH_ETHEREUM_JSON_RPC_TIMEOUT")
-            .unwrap_or("120".into())
+            .unwrap_or("180".into())
             .parse::<u64>()
             .expect("invalid GRAPH_ETHEREUM_JSON_RPC_TIMEOUT env var");
 
