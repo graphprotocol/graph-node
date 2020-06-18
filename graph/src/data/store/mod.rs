@@ -557,11 +557,7 @@ impl DerefMut for Entity {
 
 impl From<Entity> for BTreeMap<String, query::Value> {
     fn from(entity: Entity) -> BTreeMap<String, query::Value> {
-        let mut fields = BTreeMap::new();
-        for (attr, value) in entity.0.into_iter() {
-            fields.insert(attr, value.into());
-        }
-        fields
+        entity.0.into_iter().map(|(k, v)| (k, v.into())).collect()
     }
 }
 
