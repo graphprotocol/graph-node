@@ -6,6 +6,7 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::execution::*;
+use crate::schema::ast as sast;
 
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
@@ -62,9 +63,15 @@ where
     }
     let selection_set = selection_set.unwrap_or(&query.selection_set);
 
+    // Obtain the root Query type and fail if there isn't one
+    let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
+        Some(t) => t,
+        None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
+    };
+
     // Execute top-level `query { ... }` and `{ ... }` expressions.
     let start = Instant::now();
-    let result = execute_root_selection_set(&ctx, selection_set);
+    let result = execute_root_selection_set(&ctx, selection_set, query_type);
     if *graph::log::LOG_GQL_TIMING {
         info!(
             query_logger,

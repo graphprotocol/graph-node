@@ -172,6 +172,7 @@ where
 pub fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
+    root_type: &s::ObjectType,
 ) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
     // Cache the cache key to not have to calculate it twice - once for lookup
     // and once for insert.
@@ -193,12 +194,6 @@ pub fn execute_root_selection_set(
         }
     }
 
-    // Obtain the root Query type and fail if there isn't one
-    let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
-        Some(t) => t,
-        None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
-    };
-
     // Split the toplevel fields into introspection fields and
     // regular data fields
     let mut data_set = q::SelectionSet {
@@ -210,7 +205,7 @@ pub fn execute_root_selection_set(
         items: Vec::new(),
     };
 
-    for (_, fields) in collect_fields(ctx, query_type, iter::once(selection_set), None) {
+    for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set), None) {
         let name = fields[0].name.clone();
         let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
         // See if this is an introspection or data field. We don't worry about
@@ -228,7 +223,7 @@ pub fn execute_root_selection_set(
         BTreeMap::default()
     } else {
         let initial_data = ctx.resolver.prefetch(&ctx, selection_set)?;
-        execute_selection_set_to_map(&ctx, iter::once(&data_set), query_type, initial_data)?
+        execute_selection_set_to_map(&ctx, iter::once(&data_set), root_type, initial_data)?
     };
 
     // Resolve introspection fields, if there are any
@@ -255,7 +250,7 @@ pub fn execute_root_selection_set(
 /// Executes a selection set, requiring the result to be of the given object type.
 ///
 /// Allows passing in a parent value during recursive processing of objects and their fields.
-pub fn execute_selection_set<'a>(
+fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     object_type: &s::ObjectType,
