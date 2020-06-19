@@ -2,7 +2,7 @@ use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::iter;
 use std::result::Result;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 use std::time::{Duration, Instant};
 
 use graph::prelude::*;
@@ -82,6 +82,7 @@ where
         query: query.clone(),
         deadline: None,
         max_first: options.max_first,
+        cached: AtomicBool::new(false),
     };
 
     if !query.is_subscription() {
@@ -197,6 +198,7 @@ async fn execute_subscription_event(
         query,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
+        cached: AtomicBool::new(false),
     };
 
     // We have established that this exists earlier in the subscription execution

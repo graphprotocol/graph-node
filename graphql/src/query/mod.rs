@@ -1,7 +1,7 @@
 use graph::prelude::{info, o, Logger, QueryExecutionError};
 use graphql_parser::query as q;
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -54,6 +54,7 @@ where
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
+        cached: AtomicBool::new(false),
     };
 
     if !query.is_query() {
@@ -79,6 +80,7 @@ where
             "query" => &query.query_text,
             "variables" => &query.variables_text,
             "query_time_ms" => start.elapsed().as_millis(),
+            "cached" => ctx.cached.load(std::sync::atomic::Ordering::SeqCst),
         );
     }
     result

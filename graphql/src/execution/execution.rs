@@ -7,6 +7,7 @@ use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use graph::prelude::*;
@@ -128,6 +129,9 @@ where
 
     /// Max value for `first`.
     pub max_first: u32,
+
+    /// Set to `true` if the response was cached. Used for logging.
+    pub cached: AtomicBool,
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
@@ -164,6 +168,7 @@ where
             query: self.query.as_introspection_query(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
+            cached: AtomicBool::new(false),
         }
     }
 }
@@ -190,6 +195,7 @@ pub fn execute_root_selection_set(
 
         // Peek because we want even hot entries to invalidate after the expiry period.
         if let Some(response) = cache.peek(key.as_ref().unwrap()) {
+            ctx.cached.store(true, std::sync::atomic::Ordering::SeqCst);
             return Ok(response.clone());
         }
     }
