@@ -1009,6 +1009,7 @@ impl TryFromValue for EthereumContractAbiEntity {
 pub struct EthereumBlockHandlerEntity {
     pub handler: String,
     pub filter: Option<EthereumBlockHandlerFilterEntity>,
+    pub input: EthereumBlockHandlerData,
 }
 
 impl WriteOperations for EthereumBlockHandlerEntity {
@@ -1025,6 +1026,7 @@ impl WriteOperations for EthereumBlockHandlerEntity {
         if let Some(filter_id) = filter_id {
             entity.set("filter", filter_id);
         }
+        entity.set("data", String::from(self.input));
         ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
@@ -1048,6 +1050,7 @@ impl From<super::MappingBlockHandler> for EthereumBlockHandlerEntity {
         EthereumBlockHandlerEntity {
             handler: block_handler.handler,
             filter,
+            input: EthereumBlockHandlerData::from(block_handler.input),
         }
     }
 }
@@ -1065,6 +1068,7 @@ impl TryFromValue for EthereumBlockHandlerEntity {
         Ok(EthereumBlockHandlerEntity {
             handler: map.get_required("handler")?,
             filter: map.get_optional("filter")?,
+            input: map.get_optional("input")?.unwrap_or_default(),
         })
     }
 }
@@ -1103,6 +1107,69 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
         Ok(Self {
             kind: map.get_optional("kind")?,
         })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum EthereumBlockHandlerData {
+    Block,
+    FullBlock,
+}
+
+impl Default for EthereumBlockHandlerData {
+    fn default() -> EthereumBlockHandlerData {
+        EthereumBlockHandlerData::Block
+    }
+}
+
+impl FromStr for EthereumBlockHandlerData {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<EthereumBlockHandlerData, Error> {
+        match s {
+            "FullBlock" => Ok(EthereumBlockHandlerData::FullBlock),
+            "Block" => Ok(EthereumBlockHandlerData::Block),
+            _ => Err(format_err!(
+                "failed to parse `{}` as EthereumBlockHandlerData",
+                s
+            )),
+        }
+    }
+}
+
+impl From<EthereumBlockHandlerData> for String {
+    fn from(data: EthereumBlockHandlerData) -> String {
+        match data {
+            EthereumBlockHandlerData::FullBlock => "FullBlock".into(),
+            EthereumBlockHandlerData::Block => "Block".into(),
+        }
+    }
+}
+
+impl From<super::BlockHandlerData> for EthereumBlockHandlerData {
+    fn from(data: BlockHandlerData) -> Self {
+        match data {
+            BlockHandlerData::FullBlock => EthereumBlockHandlerData::FullBlock,
+            _ => EthereumBlockHandlerData::Block,
+        }
+    }
+}
+
+impl From<EthereumBlockHandlerData> for q::Value {
+    fn from(data: EthereumBlockHandlerData) -> q::Value {
+        q::Value::Enum(data.into())
+    }
+}
+
+impl TryFromValue for EthereumBlockHandlerData {
+    fn try_from_value(value: &q::Value) -> Result<EthereumBlockHandlerData, Error> {
+        match value {
+            q::Value::Enum(data) => EthereumBlockHandlerData::from_str(data),
+            _ => Err(format_err!(
+                "cannot parse value as EthereumBlockHandlerData: `{:?}`",
+                value
+            )),
+        }
     }
 }
 

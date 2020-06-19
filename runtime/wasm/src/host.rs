@@ -576,7 +576,7 @@ impl RuntimeHostTrait for RuntimeHost {
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error> {
         let block_handler = self.handler_for_block(trigger_type)?;
-        let theblock: EthereumBlockType = match trigger_type {
+        let theblock: EthereumBlockType = match dbg!(trigger_type) {
             EthereumBlockTriggerType::Every(BlockType::Full) => match graph::block_on_allow_panic(
                 future::lazy(move || {
                     self.host_exports
@@ -585,7 +585,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 })
                 .compat(),
             ) {
-                Ok(block) => Ok(EthereumBlockType::Full(block)),
+                Ok(block) => Ok(EthereumBlockType::Full(dbg!(block))),
                 Err(e) => Err(anyhow::anyhow!(
                     "Failed to load full block: {}, error: {}",
                     &block.number.unwrap().to_string(),
@@ -606,7 +606,7 @@ impl RuntimeHostTrait for RuntimeHost {
             MappingTrigger::Block {
                 handler: block_handler.clone(),
             },
-            &Arc::new(theblock),
+            &Arc::new(dbg!(theblock)),
             proof_of_indexing,
         )
         .await

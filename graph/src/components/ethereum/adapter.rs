@@ -14,6 +14,7 @@ use web3::types::*;
 
 use super::types::*;
 use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
+use crate::data::subgraph::BlockHandlerData;
 use crate::prelude::*;
 
 pub type EventSignature = H256;
@@ -422,8 +423,7 @@ impl EthereumBlockFilter {
                 let has_block_handler_with_call_filter = data_source
                     .mapping
                     .block_handlers
-                    .clone()
-                    .into_iter()
+                    .iter()
                     .any(|block_handler| match block_handler.filter {
                         Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
                         _ => return false,
@@ -432,14 +432,21 @@ impl EthereumBlockFilter {
                 let has_block_handler_without_filter = data_source
                     .mapping
                     .block_handlers
-                    .clone()
-                    .into_iter()
+                    .iter()
                     .any(|block_handler| block_handler.filter.is_none());
 
-                // TODO: process data source to get full_block boolean
+                let has_block_handler_with_fullblock = data_source
+                    .mapping
+                    .block_handlers
+                    .iter()
+                    .any(|block_handler| match block_handler.input {
+                        BlockHandlerData::FullBlock => return true,
+                        _ => return false,
+                    });
+
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
-                    full_block: true,
+                    full_block: has_block_handler_with_fullblock,
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(
                             data_source.source.start_block,
