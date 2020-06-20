@@ -332,7 +332,18 @@ fn delete() {
 const ROOT: &str = "dead00";
 const CHILD1: &str = "babe01";
 const CHILD2: &str = "babe02";
+const GRANDCHILD1: &str = "fafa01";
+const GRANDCHILD2: &str = "fafa02";
 
+/// Create a set of test data that forms a tree through the `parent` and `children` attributes.
+/// The tree has this form:
+///
+///   root
+///     +- child1
+///          +- grandchild1
+///     +- child2
+///          +- grandchild2
+///
 fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
     let root = entity! {
         id: ROOT,
@@ -342,16 +353,31 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
     let child1 = entity! {
         id: CHILD1,
         name: "child1",
-        parent: "dead00"
+        parent: "dead00",
+        children: vec![GRANDCHILD1]
     };
     let child2 = entity! {
         id: CHILD2,
         name: "child2",
-        parent: "dead00"
+        parent: "dead00",
+        children: vec![GRANDCHILD1]
     };
+    let grand_child1 = entity! {
+        id: GRANDCHILD1,
+        name: "grandchild1",
+        parent: CHILD1
+    };
+    let grand_child2 = entity! {
+        id: GRANDCHILD2,
+        name: "grandchild2",
+        parent: CHILD2
+    };
+
     insert_entity(conn, layout, "Thing", root.clone());
     insert_entity(conn, layout, "Thing", child1.clone());
     insert_entity(conn, layout, "Thing", child2.clone());
+    insert_entity(conn, layout, "Thing", grand_child1.clone());
+    insert_entity(conn, layout, "Thing", grand_child2.clone());
     (root, child1, child2)
 }
 
@@ -375,6 +401,12 @@ fn query() {
     }
 
     run_test(|conn, layout| -> Result<(), ()> {
+        // This test exercises the different types of queries we generate;
+        // the type of query is based on knowledge of what the test data
+        // looks like, not on just an inference from the GraphQL model.
+        // Especially the multiplicity for type A and B queries is determined
+        // by knowing whether there are one or many entities per parent
+        // in the test data
         make_thing_tree(conn, layout);
 
         // See https://graphprotocol.github.io/rfcs/engineering-plans/0001-graphql-query-prefetching.html#handling-parentchild-relationships
@@ -383,9 +415,9 @@ fn query() {
         // EntityCollection::All
         let coll = EntityCollection::All(vec!["Thing".to_owned()]);
         let things = fetch(conn, layout, coll);
-        assert_eq!(vec![CHILD1, CHILD2, ROOT], things);
+        assert_eq!(vec![CHILD1, CHILD2, ROOT, GRANDCHILD1, GRANDCHILD2], things);
 
-        // EntityCollection::Window, type A
+        // EntityCollection::Window, type A, many
         //   things(where: { children_contains: [CHILD1] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: "Thing".to_owned(),
@@ -398,18 +430,44 @@ fn query() {
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![ROOT], things);
 
-        // EntityCollection::Window, type B
+        // EntityCollection::Window, type A, single
+        //   things(where: { children_contains: [GRANDCHILD1, GRANDCHILD2] }) { id }
+        let coll = EntityCollection::Window(vec![EntityWindow {
+            child_type: "Thing".to_owned(),
+            ids: vec![GRANDCHILD1.to_owned(), GRANDCHILD2.to_owned()],
+            link: EntityLink::Direct(
+                WindowAttribute::List("children".to_string()),
+                ChildMultiplicity::Single,
+            ),
+        }]);
+        let things = fetch(conn, layout, coll);
+        assert_eq!(vec![CHILD1, CHILD2], things);
+
+        // EntityCollection::Window, type B, many
         //   things(where: { parent: [ROOT] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: "Thing".to_owned(),
             ids: vec![ROOT.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::Scalar("parent".to_string()),
-                ChildMultiplicity::Single,
+                ChildMultiplicity::Many,
             ),
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2], things);
+
+        // EntityCollection::Window, type B, single
+        //   things(where: { parent: [CHILD1, CHILD2] }) { id }
+        let coll = EntityCollection::Window(vec![EntityWindow {
+            child_type: "Thing".to_owned(),
+            ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
+            link: EntityLink::Direct(
+                WindowAttribute::Scalar("parent".to_string()),
+                ChildMultiplicity::Single,
+            ),
+        }]);
+        let things = fetch(conn, layout, coll);
+        assert_eq!(vec![GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type C
         //   things { children { id } }

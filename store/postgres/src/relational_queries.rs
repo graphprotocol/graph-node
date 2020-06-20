@@ -18,9 +18,9 @@ use std::str::FromStr;
 
 use graph::data::{schema::FulltextAlgorithm, store::scalar};
 use graph::prelude::{
-    format_err, serde_json, Attribute, BlockNumber, Entity, EntityCollection, EntityFilter,
-    EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink, QueryExecutionError,
-    StoreError, Value,
+    format_err, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
+    EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
+    QueryExecutionError, StoreError, Value,
 };
 
 use crate::block_range::{
@@ -1361,16 +1361,16 @@ impl ParentIds {
 /// corresponding table and column
 #[derive(Debug, Clone)]
 enum TableLink<'a> {
-    Direct(&'a Column),
+    Direct(&'a Column, ChildMultiplicity),
     Parent(ParentIds),
 }
 
 impl<'a> TableLink<'a> {
     fn new(child_table: &'a Table, link: EntityLink) -> Result<Self, QueryExecutionError> {
         match link {
-            EntityLink::Direct(attribute, _) => {
+            EntityLink::Direct(attribute, multiplicity) => {
                 let column = child_table.column_for_field(attribute.name())?;
-                Ok(TableLink::Direct(column))
+                Ok(TableLink::Direct(column, multiplicity))
             }
             EntityLink::Parent(parent_link) => Ok(TableLink::Parent(ParentIds::new(parent_link))),
         }
@@ -1487,7 +1487,7 @@ impl<'a> FilterWindow<'a> {
         //             limit {first} offset {skip}) c
         //     order by c.{sort_key}
 
-        out.push_sql("\n  from unnest(");
+        out.push_sql("\n/* children_type_a */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select * from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1500,6 +1500,37 @@ impl<'a> FilterWindow<'a> {
         self.and_filter(out.reborrow())?;
         limit.restrict(out)?;
         out.push_sql(") c");
+        Ok(())
+    }
+
+    fn child_type_a(
+        &self,
+        column: &Column,
+        limit: ParentLimit<'_>,
+        block: BlockNumber,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        assert!(column.is_list());
+
+        // Generate
+        //      from unnest({parent_ids}) as p(id),
+        //           children c
+        //     where c.{parent_field} @> array[p.id]
+        //       and .. other conditions on c ..
+        //     limit {parent_ids.len} + 1
+
+        out.push_sql("\n/* child_type_a */ from unnest(");
+        column.bind_ids(&self.ids, out)?;
+        out.push_sql(") as p(id), ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" c where ");
+        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        limit.filter(out);
+        out.push_sql(" and c.");
+        out.push_identifier(column.name.as_str())?;
+        out.push_sql(" @> array[p.id]");
+        self.and_filter(out.reborrow())?;
+        limit.single_limit(self.ids.len(), out);
         Ok(())
     }
 
@@ -1523,7 +1554,7 @@ impl<'a> FilterWindow<'a> {
         //             limit {first} offset {skip}) c
         //     order by c.{sort_key}
 
-        out.push_sql("\n  from unnest(");
+        out.push_sql("\n/* children_type_b */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select * from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1535,6 +1566,35 @@ impl<'a> FilterWindow<'a> {
         self.and_filter(out.reborrow())?;
         limit.restrict(out)?;
         out.push_sql(") c");
+        Ok(())
+    }
+
+    fn child_type_b(
+        &self,
+        column: &Column,
+        limit: ParentLimit<'_>,
+        block: BlockNumber,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        assert!(!column.is_list());
+
+        // Generate
+        //      from unnest({parent_ids}) as p(id), children c
+        //     where c.{parent_field} = p.id
+        //       and .. other conditions on c ..
+        //     limit {parent_ids.len} + 1
+
+        out.push_sql("\n/* child_type_b */  from unnest(");
+        column.bind_ids(&self.ids, out)?;
+        out.push_sql(") as p(id), ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" c where ");
+        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        limit.filter(out);
+        out.push_sql(" and p.id = c.");
+        out.push_identifier(column.name.as_str())?;
+        self.and_filter(out.reborrow())?;
+        limit.single_limit(self.ids.len(), out);
         Ok(())
     }
 
@@ -1557,7 +1617,7 @@ impl<'a> FilterWindow<'a> {
         //             limit {first} offset {skip}) c
         //     order by c.{sort_key}
 
-        out.push_sql("\n  from ");
+        out.push_sql("\n/* children_type_c */  from ");
         out.push_sql("rows from (unnest(");
         out.push_bind_param::<Array<Text>, _>(&self.ids)?;
         out.push_sql("), reduce_dim(");
@@ -1588,7 +1648,7 @@ impl<'a> FilterWindow<'a> {
         //     where c.id = p.child_id
         //       and .. other conditions on c ..
 
-        out.push_sql("\n  from rows from (unnest(");
+        out.push_sql("\n/* child_type_d */ from rows from (unnest(");
         out.push_bind_param::<Array<Text>, _>(&self.ids)?;
         out.push_sql("), unnest(");
         self.table.primary_key().bind_ids(&child_ids, out)?;
@@ -1611,11 +1671,18 @@ impl<'a> FilterWindow<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         match &self.link {
-            TableLink::Direct(column) => {
+            TableLink::Direct(column, multiplicity) => {
+                use ChildMultiplicity::*;
                 if column.is_list() {
-                    self.children_type_a(column, limit, block, &mut out)
+                    match multiplicity {
+                        Many => self.children_type_a(column, limit, block, &mut out),
+                        Single => self.child_type_a(column, limit, block, &mut out),
+                    }
                 } else {
-                    self.children_type_b(column, limit, block, &mut out)
+                    match multiplicity {
+                        Many => self.children_type_b(column, limit, block, &mut out),
+                        Single => self.child_type_b(column, limit, block, &mut out),
+                    }
                 }
             }
             TableLink::Parent(ParentIds::List(child_ids)) => {
