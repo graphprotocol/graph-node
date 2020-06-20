@@ -832,23 +832,12 @@ fn fetch<S: Store>(
     store: &S,
     parents: &Vec<Node>,
     join: &Join<'_>,
-    mut arguments: HashMap<&q::Name, q::Value>,
+    arguments: HashMap<&q::Name, q::Value>,
     multiplicity: ChildMultiplicity,
     types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
 ) -> Result<Vec<Node>, QueryExecutionError> {
-    if multiplicity == ChildMultiplicity::Single {
-        // For non-list fields, get up to 2 entries so we can spot
-        // ambiguous references that should only have one entry
-        arguments.insert(&*ARG_FIRST, q::Value::Int(2.into()));
-    }
-
-    if !arguments.contains_key(&*ARG_SKIP) {
-        // Use the default in build_range
-        arguments.insert(&*ARG_SKIP, q::Value::Null);
-    }
-
     let mut query = build_query(
         join.child_type,
         block,
