@@ -1575,7 +1575,7 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn children_type_d(
+    fn child_type_d(
         &self,
         child_ids: &Vec<String>,
         limit: ParentLimit<'_>,
@@ -1583,23 +1583,16 @@ impl<'a> FilterWindow<'a> {
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
         // Generate
-        //    select c.*, p.id as parent_id
-        //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id, child_id)
-        //             cross join lateral
-        //           (select *
-        //              from children c
-        //             where c.id = p.child_id
-        //               and .. other conditions on c ..
-        //             order by c.{sort_key}
-        //             limit {first} offset {skip}) c
-        //     order by c.{sort_key}
+        //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id, child_id),
+        //           children c
+        //     where c.id = p.child_id
+        //       and .. other conditions on c ..
 
-        out.push_sql("\n  from unnest(");
+        out.push_sql("\n  from rows from (unnest(");
         out.push_bind_param::<Array<Text>, _>(&self.ids)?;
-        out.push_sql(",");
+        out.push_sql("), unnest(");
         self.table.primary_key().bind_ids(&child_ids, out)?;
-        out.push_sql(") as p(id, child_id)");
-        out.push_sql(" cross join lateral (select * from ");
+        out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
@@ -1607,8 +1600,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" and ");
         out.push_sql("c.id = p.child_id");
         self.and_filter(out.reborrow())?;
-        limit.restrict(out)?;
-        out.push_sql(") c");
+        limit.single_limit(self.ids.len(), out);
         Ok(())
     }
 
@@ -1630,7 +1622,7 @@ impl<'a> FilterWindow<'a> {
                 self.children_type_c(child_ids, limit, block, &mut out)
             }
             TableLink::Parent(ParentIds::Scalar(child_ids)) => {
-                self.children_type_d(child_ids, limit, block, &mut out)
+                self.child_type_d(child_ids, limit, block, &mut out)
             }
         }
     }
