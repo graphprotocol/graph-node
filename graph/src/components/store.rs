@@ -244,7 +244,7 @@ pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
 /// A query for entities in a store.
 ///
 /// Details of how query generation for `EntityQuery` works can be found
-/// in `docs/implementation/query-prefetching.md`
+/// at https://github.com/graphprotocol/rfcs/blob/master/engineering-plans/0001-graphql-query-prefetching.md
 #[derive(Clone, Debug)]
 pub struct EntityQuery {
     /// ID of the subgraph.
