@@ -1406,6 +1406,15 @@ impl<'a> ParentLimit<'a> {
         }
         Ok(())
     }
+
+    /// Include a 'limit {num_parents}+1' clause for single-object queries
+    /// if that is needed
+    fn single_limit(&self, num_parents: usize, out: &mut AstPass<Pg>) {
+        if let ParentLimit::Ranked(_, _) = self {
+            out.push_sql(" limit ");
+            out.push_sql(&(num_parents + 1).to_string());
+        }
+    }
 }
 
 /// This is the parallel to `EntityWindow`, with names translated to
