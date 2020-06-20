@@ -1368,7 +1368,7 @@ enum TableLink<'a> {
 impl<'a> TableLink<'a> {
     fn new(child_table: &'a Table, link: EntityLink) -> Result<Self, QueryExecutionError> {
         match link {
-            EntityLink::Direct(attribute) => {
+            EntityLink::Direct(attribute, _) => {
                 let column = child_table.column_for_field(attribute.name())?;
                 Ok(TableLink::Direct(column))
             }

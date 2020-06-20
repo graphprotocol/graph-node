@@ -11,8 +11,9 @@ use std::time::Instant;
 
 use graph::data::graphql::ext::ObjectTypeExt;
 use graph::prelude::{
-    BlockNumber, Entity, EntityCollection, EntityFilter, EntityLink, EntityOrder, EntityWindow,
-    Logger, ParentLink, QueryExecutionError, Schema, Store, Value as StoreValue, WindowAttribute,
+    BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter, EntityLink,
+    EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, Schema, Store,
+    Value as StoreValue, WindowAttribute,
 };
 
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
@@ -248,12 +249,19 @@ impl<'a> JoinCond<'a> {
         }
     }
 
-    fn entity_link(&self, parents_by_id: Vec<(String, &Node)>) -> (Vec<String>, EntityLink) {
+    fn entity_link(
+        &self,
+        parents_by_id: Vec<(String, &Node)>,
+        multiplicity: ChildMultiplicity,
+    ) -> (Vec<String>, EntityLink) {
         match &self.relation {
             JoinRelation::Direct(field) => {
                 // we only need the parent ids
                 let ids = parents_by_id.into_iter().map(|(id, _)| id).collect();
-                (ids, EntityLink::Direct(field.window_attribute()))
+                (
+                    ids,
+                    EntityLink::Direct(field.window_attribute(), multiplicity),
+                )
             }
             JoinRelation::Derived(field) => {
                 let (ids, parent_link) = match field {
@@ -404,7 +412,7 @@ impl<'a> Join<'a> {
         }
     }
 
-    fn windows(&self, parents: &Vec<Node>) -> Vec<EntityWindow> {
+    fn windows(&self, parents: &Vec<Node>, multiplicity: ChildMultiplicity) -> Vec<EntityWindow> {
         let mut windows = vec![];
 
         for cond in &self.conds {
@@ -420,7 +428,7 @@ impl<'a> Join<'a> {
                 parents_by_id.sort_unstable_by(|(id1, _), (id2, _)| id1.cmp(id2));
                 parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
 
-                let (ids, link) = cond.entity_link(parents_by_id);
+                let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
                 windows.push(EntityWindow {
                     child_type: cond.child_type.to_owned(),
                     ids,
@@ -797,13 +805,18 @@ fn execute_field(
         }
     }?;
 
+    let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
+        ChildMultiplicity::Many
+    } else {
+        ChildMultiplicity::Single
+    };
     fetch(
         ctx.logger.clone(),
         resolver.store.as_ref(),
         &parents,
         &join,
         argument_values,
-        !sast::is_list_or_non_null_list_field(field_definition),
+        multiplicity,
         ctx.query.schema.types_for_interface(),
         resolver.block,
         ctx.max_first,
@@ -820,12 +833,12 @@ fn fetch<S: Store>(
     parents: &Vec<Node>,
     join: &Join<'_>,
     mut arguments: HashMap<&q::Name, q::Value>,
-    is_single: bool,
+    multiplicity: ChildMultiplicity,
     types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
 ) -> Result<Vec<Node>, QueryExecutionError> {
-    if is_single {
+    if multiplicity == ChildMultiplicity::Single {
         // For non-list fields, get up to 2 entries so we can spot
         // ambiguous references that should only have one entry
         arguments.insert(&*ARG_FIRST, q::Value::Int(2.into()));
@@ -844,7 +857,7 @@ fn fetch<S: Store>(
         max_first,
     )?;
 
-    if is_single {
+    if multiplicity == ChildMultiplicity::Single {
         // Suppress 'order by' in lookups of scalar values since
         // that causes unnecessary work in the database
         query.order = EntityOrder::Unordered;
@@ -861,7 +874,7 @@ fn fetch<S: Store>(
     if !is_root_node(parents) {
         // For anything but the root node, restrict the children we select
         // by the parent list
-        let windows = join.windows(parents);
+        let windows = join.windows(parents, multiplicity);
         if windows.len() == 0 {
             return Ok(vec![]);
         }

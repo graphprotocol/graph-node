@@ -10,9 +10,9 @@ use std::fmt::Debug;
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
-    web3::types::H256, Entity, EntityCollection, EntityKey, EntityLink, EntityOrder, EntityRange,
-    EntityWindow, Future01CompatExt, ParentLink, Schema, SubgraphDeploymentId, Value,
-    WindowAttribute, BLOCK_NUMBER_MAX,
+    web3::types::H256, ChildMultiplicity, Entity, EntityCollection, EntityKey, EntityLink,
+    EntityOrder, EntityRange, EntityWindow, Future01CompatExt, ParentLink, Schema,
+    SubgraphDeploymentId, Value, WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::Layout;
 
@@ -390,7 +390,10 @@ fn query() {
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: "Thing".to_owned(),
             ids: vec![CHILD1.to_owned()],
-            link: EntityLink::Direct(WindowAttribute::List("children".to_string())),
+            link: EntityLink::Direct(
+                WindowAttribute::List("children".to_string()),
+                ChildMultiplicity::Many,
+            ),
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![ROOT], things);
@@ -400,7 +403,10 @@ fn query() {
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: "Thing".to_owned(),
             ids: vec![ROOT.to_owned()],
-            link: EntityLink::Direct(WindowAttribute::Scalar("parent".to_string())),
+            link: EntityLink::Direct(
+                WindowAttribute::Scalar("parent".to_string()),
+                ChildMultiplicity::Single,
+            ),
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2], things);

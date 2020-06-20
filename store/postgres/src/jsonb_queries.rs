@@ -216,7 +216,7 @@ impl<'a> FilterQuery<'a> {
 
     fn expand_parents(&self, window: &EntityWindow, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match &window.link {
-            EntityLink::Direct(_) => {
+            EntityLink::Direct(_, _) => {
                 // Type A and B
                 // unnest($parent_ids) as p(id)
                 out.push_sql("unnest(");
@@ -247,7 +247,7 @@ impl<'a> FilterQuery<'a> {
 
     fn linked_children(&self, window: &EntityWindow, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match &window.link {
-            EntityLink::Direct(WindowAttribute::List(name)) => {
+            EntityLink::Direct(WindowAttribute::List(name), _) => {
                 // Type A
                 // The `in (..)` part turns the id's stored in `name` into
                 // a list of parent ids
@@ -255,7 +255,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_bind_param::<Text, _>(name)?;
                 out.push_sql("->'data') ary)");
             }
-            EntityLink::Direct(WindowAttribute::Scalar(name)) => {
+            EntityLink::Direct(WindowAttribute::Scalar(name), _) => {
                 // Type B
                 // p.id = c.data->{name}->>'data'
                 out.push_sql("p.id = c.data->");

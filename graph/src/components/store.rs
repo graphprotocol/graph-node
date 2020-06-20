@@ -186,13 +186,21 @@ pub enum ParentLink {
     Scalar(Vec<String>),
 }
 
+/// How many children a parent can have when the child stores
+/// the id of the parent
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ChildMultiplicity {
+    Single,
+    Many,
+}
+
 /// How to select children for their parents depending on whether the
 /// child stores parent ids (`Direct`) or the parent
 /// stores child ids (`Parent`)
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityLink {
     /// The parent id is stored in this child attribute
-    Direct(WindowAttribute),
+    Direct(WindowAttribute, ChildMultiplicity),
     /// Join with the parents table to get at the parent id
     Parent(ParentLink),
 }
@@ -328,7 +336,7 @@ impl EntityQuery {
                 let window = windows.first().expect("we just checked");
                 if window.ids.len() == 1 {
                     let id = window.ids.first().expect("we just checked");
-                    if let EntityLink::Direct(attribute) = &window.link {
+                    if let EntityLink::Direct(attribute, _) = &window.link {
                         let filter = match attribute {
                             WindowAttribute::Scalar(name) => {
                                 EntityFilter::Equal(name.to_owned(), id.into())

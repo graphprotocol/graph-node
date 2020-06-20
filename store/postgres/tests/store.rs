@@ -2011,7 +2011,7 @@ impl WindowQuery {
             .into_iter()
             .map(|child_type| {
                 let attribute = WindowAttribute::Scalar("favorite_color".to_owned());
-                let link = EntityLink::Direct(attribute);
+                let link = EntityLink::Direct(attribute, ChildMultiplicity::Many);
                 let ids = vec!["red", "green", "yellow", "blue"]
                     .into_iter()
                     .map(String::from)
