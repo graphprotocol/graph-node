@@ -1450,68 +1450,156 @@ impl<'a> FilterWindow<'a> {
         })
     }
 
-    fn expand_parents(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        match &self.link {
-            TableLink::Direct(column) => {
-                // Type A and B
-                // unnest($parent_ids) as p(id)
-                out.push_sql("unnest(");
-                column.bind_ids(&self.ids, out)?;
-                out.push_sql(") as p(id)");
-            }
-            // For types C and D we always treat the parent ids as strings,
-            // regardless of the actual IdType of the parent since we never
-            // compare them to anything, and solely copy them through to the
-            // result so that they can be matched up with the parent object
-            // by the GraphQL query execution
-            TableLink::Parent(ParentIds::List(child_ids)) => {
-                // Type C
-                // unnest($parent_ids, $child_id_matrix) as p(id, child_ids)
-                out.push_sql("rows from (unnest(");
-                out.push_bind_param::<Array<Text>, _>(&self.ids)?;
-                out.push_sql("), reduce_dim(");
-                self.table.primary_key().push_matrix(&child_ids, out)?;
-                out.push_sql(")) as p(id, child_ids)");
-            }
-            TableLink::Parent(ParentIds::Scalar(child_ids)) => {
-                // Type D
-                // unnest($parent_ids, $child_ids) as p(id, child_id)
-                out.push_sql("unnest(");
-                out.push_bind_param::<Array<Text>, _>(&self.ids)?;
-                out.push_sql(",");
-                self.table.primary_key().bind_ids(&child_ids, out)?;
-                out.push_sql(") as p(id, child_id)");
-            }
+    fn and_filter(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        if let Some(filter) = &self.query_filter {
+            out.push_sql("\n   and ");
+            filter.walk_ast(out)?
         }
         Ok(())
     }
 
-    fn linked_children(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn children_type_a(
+        &self,
+        column: &Column,
+        limit: ParentLimit<'_>,
+        block: BlockNumber,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        assert!(column.is_list());
+
+        // Generate
+        //      from unnest({parent_ids}) as p(id)
+        //           cross join lateral
+        //           (select *
+        //              from children c
+        //             where p.id = any(c.{parent_field})
+        //               and .. other conditions on c ..
+        //             order by c.{sort_key}
+        //             limit {first} offset {skip}) c
+        //     order by c.{sort_key}
+
+        out.push_sql("\n  from unnest(");
+        column.bind_ids(&self.ids, out)?;
+        out.push_sql(") as p(id) cross join lateral (select * from ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" c where ");
+        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        limit.filter(out);
+        out.push_sql(" and p.id = any(c.");
+        out.push_identifier(column.name.as_str())?;
+        out.push_sql(")");
+        self.and_filter(out.reborrow())?;
+        limit.restrict(out)?;
+        out.push_sql(") c");
+        Ok(())
+    }
+
+    fn children_type_b(
+        &self,
+        column: &Column,
+        limit: ParentLimit<'_>,
+        block: BlockNumber,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        assert!(!column.is_list());
+
+        // Generate
+        //      from unnest({parent_ids}) as p(id)
+        //           cross join lateral
+        //           (select *
+        //              from children c
+        //             where p.id = c.{parent_field}
+        //               and .. other conditions on c ..
+        //             order by c.{sort_key}
+        //             limit {first} offset {skip}) c
+        //     order by c.{sort_key}
+
+        out.push_sql("\n  from unnest(");
+        column.bind_ids(&self.ids, out)?;
+        out.push_sql(") as p(id) cross join lateral (select * from ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" c where ");
+        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        limit.filter(out);
+        out.push_sql(" and p.id = c.");
+        out.push_identifier(column.name.as_str())?;
+        self.and_filter(out.reborrow())?;
+        limit.restrict(out)?;
+        out.push_sql(") c");
+        Ok(())
+    }
+
+    fn children_type_c(
+        &self,
+        child_ids: &Vec<Vec<Option<SafeString>>>,
+        limit: ParentLimit<'_>,
+        block: BlockNumber,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        // Generate
+        //      from rows from (unnest({parent_ids}), reduce_dim({child_id_matrix}))
+        //                  as p(id, child_ids)
+        //           cross join lateral
+        //           (select *
+        //              from children c
+        //             where c.id = any(p.child_ids)
+        //               and .. other conditions on c ..
+        //             order by c.{sort_key}
+        //             limit {first} offset {skip}) c
+        //     order by c.{sort_key}
+
+        out.push_sql("\n  from ");
+        out.push_sql("rows from (unnest(");
+        out.push_bind_param::<Array<Text>, _>(&self.ids)?;
+        out.push_sql("), reduce_dim(");
+        self.table.primary_key().push_matrix(&child_ids, out)?;
+        out.push_sql(")) as p(id, child_ids)");
+        out.push_sql(" cross join lateral (select * from ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" c where ");
+        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        limit.filter(out);
+        out.push_sql(" and c.id = any(p.child_ids)");
+        self.and_filter(out.reborrow())?;
+        limit.restrict(out)?;
+        out.push_sql(") c");
+        Ok(())
+    }
+
+    fn children_type_d(
+        &self,
+        child_ids: &Vec<String>,
+        limit: ParentLimit<'_>,
+        block: BlockNumber,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        // Generate
+        //    select c.*, p.id as parent_id
+        //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id, child_id)
+        //             cross join lateral
+        //           (select *
+        //              from children c
+        //             where c.id = p.child_id
+        //               and .. other conditions on c ..
+        //             order by c.{sort_key}
+        //             limit {first} offset {skip}) c
+        //     order by c.{sort_key}
+
+        out.push_sql("\n  from unnest(");
+        out.push_bind_param::<Array<Text>, _>(&self.ids)?;
+        out.push_sql(",");
+        self.table.primary_key().bind_ids(&child_ids, out)?;
+        out.push_sql(") as p(id, child_id)");
+        out.push_sql(" cross join lateral (select * from ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" c where ");
+        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        limit.filter(out);
         out.push_sql(" and ");
-        match &self.link {
-            TableLink::Direct(column) => {
-                if column.is_list() {
-                    // Type A
-                    // p.id = any(c.{parent_field})
-                    out.push_sql("p.id = any(c.");
-                    out.push_identifier(column.name.as_str())?;
-                    out.push_sql(")");
-                } else {
-                    // Type B
-                    // p.id = c.{parent_field}
-                    out.push_sql("p.id = c.");
-                    out.push_identifier(column.name.as_str())?;
-                }
-            }
-            TableLink::Parent(ParentIds::List(_)) => {
-                // Type C
-                out.push_sql("c.id = any(p.child_ids)");
-            }
-            TableLink::Parent(ParentIds::Scalar(_)) => {
-                // Type D
-                out.push_sql("c.id = p.child_id");
-            }
-        }
+        out.push_sql("c.id = p.child_id");
+        self.and_filter(out.reborrow())?;
+        limit.restrict(out)?;
+        out.push_sql(") c");
         Ok(())
     }
 
@@ -1521,21 +1609,21 @@ impl<'a> FilterWindow<'a> {
         block: BlockNumber,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        out.push_sql("\n  from ");
-        self.expand_parents(&mut out)?;
-        out.push_sql(" cross join lateral (select * from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
-        limit.filter(&mut out);
-        self.linked_children(&mut out)?;
-        if let Some(filter) = &self.query_filter {
-            out.push_sql("\n   and ");
-            filter.walk_ast(out.reborrow())?
+        match &self.link {
+            TableLink::Direct(column) => {
+                if column.is_list() {
+                    self.children_type_a(column, limit, block, &mut out)
+                } else {
+                    self.children_type_b(column, limit, block, &mut out)
+                }
+            }
+            TableLink::Parent(ParentIds::List(child_ids)) => {
+                self.children_type_c(child_ids, limit, block, &mut out)
+            }
+            TableLink::Parent(ParentIds::Scalar(child_ids)) => {
+                self.children_type_d(child_ids, limit, block, &mut out)
+            }
         }
-        limit.restrict(&mut out)?;
-        out.push_sql(") c");
-        Ok(())
     }
 
     /// Select a basic subset of columns from the child table for use in
