@@ -66,7 +66,7 @@ fn build_range(
                 Err("first")
             }
         }
-        Some(q::Value::Null) => Ok(100),
+        Some(q::Value::Null) | None => Ok(100),
         _ => unreachable!("first is an Int with a default value"),
     };
 
@@ -79,7 +79,7 @@ fn build_range(
                 Err("skip")
             }
         }
-        Some(q::Value::Null) => Ok(0),
+        Some(q::Value::Null) | None => Ok(0),
         _ => unreachable!("skip is an Int with a default value"),
     };
 
