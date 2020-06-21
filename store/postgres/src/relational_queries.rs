@@ -171,21 +171,15 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-/// Helper struct for retrieving entities from the database. With diesel, we
-/// can only run queries that return columns whose number and type are known
-/// at compile time. Because of that, we retrieve the actual data for an
-/// entity as Jsonb by converting the row containing the entity using the
-/// `to_jsonb` function.
-#[derive(QueryableByName)]
-pub struct EntityData {
-    #[sql_type = "Text"]
-    entity: String,
-    #[sql_type = "Jsonb"]
-    data: serde_json::Value,
+trait FromColumnValue: Sized {
+    fn from_column_value(
+        column_type: &ColumnType,
+        json: serde_json::Value,
+    ) -> Result<Self, StoreError>;
 }
 
-impl EntityData {
-    fn value_from_json(
+impl FromColumnValue for graph::prelude::Value {
+    fn from_column_value(
         column_type: &ColumnType,
         json: serde_json::Value,
     ) -> Result<graph::prelude::Value, StoreError> {
@@ -254,7 +248,7 @@ impl EntityData {
             (j::Array(values), _) => Ok(g::List(
                 values
                     .into_iter()
-                    .map(|v| Self::value_from_json(column_type, v))
+                    .map(|v| Self::from_column_value(column_type, v))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             (j::Object(_), _) => {
@@ -262,7 +256,22 @@ impl EntityData {
             }
         }
     }
+}
 
+/// Helper struct for retrieving entities from the database. With diesel, we
+/// can only run queries that return columns whose number and type are known
+/// at compile time. Because of that, we retrieve the actual data for an
+/// entity as Jsonb by converting the row containing the entity using the
+/// `to_jsonb` function.
+#[derive(QueryableByName)]
+pub struct EntityData {
+    #[sql_type = "Text"]
+    entity: String,
+    #[sql_type = "Jsonb"]
+    data: serde_json::Value,
+}
+
+impl EntityData {
     pub fn entity_type(&self) -> String {
         self.entity.clone()
     }
@@ -285,10 +294,12 @@ impl EntityData {
                     // column; those will be things like the block_range that
                     // is used internally for versioning
                     if key == "g$parent_id" {
-                        let value = Self::value_from_json(&ColumnType::String, json)?;
+                        let value =
+                            graph::prelude::Value::from_column_value(&ColumnType::String, json)?;
                         entity.insert("g$parent_id".to_owned(), value);
                     } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
-                        let value = Self::value_from_json(&column.column_type, json)?;
+                        let value =
+                            graph::prelude::Value::from_column_value(&column.column_type, json)?;
                         if value != Value::Null {
                             entity.insert(column.field.clone(), value);
                         }
