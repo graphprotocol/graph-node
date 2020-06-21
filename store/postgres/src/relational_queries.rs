@@ -171,7 +171,25 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-trait FromColumnValue: Sized {
+pub trait FromEntityData: Default {
+    type Value: FromColumnValue;
+
+    fn insert_entity_data(&mut self, key: String, v: Self::Value);
+}
+
+impl FromEntityData for Entity {
+    type Value = graph::prelude::Value;
+
+    fn insert_entity_data(&mut self, key: String, v: Self::Value) {
+        self.insert(key, v);
+    }
+}
+
+pub trait FromColumnValue: Sized {
+    fn is_null(&self) -> bool;
+
+    fn from_string(s: String) -> Self;
+
     fn from_column_value(
         column_type: &ColumnType,
         json: serde_json::Value,
@@ -179,6 +197,14 @@ trait FromColumnValue: Sized {
 }
 
 impl FromColumnValue for graph::prelude::Value {
+    fn is_null(&self) -> bool {
+        self == &Value::Null
+    }
+
+    fn from_string(s: String) -> Self {
+        Value::String(s)
+    }
+
     fn from_column_value(
         column_type: &ColumnType,
         json: serde_json::Value,
@@ -276,36 +302,33 @@ impl EntityData {
         self.entity.clone()
     }
 
-    /// Map the `EntityData` to an entity using the schema information
-    /// in `Layout`
-    pub fn to_entity(self, layout: &Layout) -> Result<Entity, StoreError> {
+    /// Map the `EntityData` using the schema information in `Layout`
+    pub fn deserialize_with_layout<T: FromEntityData>(
+        self,
+        layout: &Layout,
+    ) -> Result<T, StoreError> {
         let table = layout.table_for_entity(&self.entity)?;
 
         use serde_json::Value as j;
         match self.data {
             j::Object(map) => {
-                let mut entity = Entity::new();
-                entity.insert(
-                    "__typename".to_owned(),
-                    graph::prelude::Value::from(self.entity),
-                );
+                let mut out = T::default();
+                out.insert_entity_data("__typename".to_owned(), T::Value::from_string(self.entity));
                 for (key, json) in map {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that
                     // is used internally for versioning
                     if key == "g$parent_id" {
-                        let value =
-                            graph::prelude::Value::from_column_value(&ColumnType::String, json)?;
-                        entity.insert("g$parent_id".to_owned(), value);
+                        let value = T::Value::from_column_value(&ColumnType::String, json)?;
+                        out.insert_entity_data("g$parent_id".to_owned(), value);
                     } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
-                        let value =
-                            graph::prelude::Value::from_column_value(&column.column_type, json)?;
-                        if value != Value::Null {
-                            entity.insert(column.field.clone(), value);
+                        let value = T::Value::from_column_value(&column.column_type, json)?;
+                        if !value.is_null() {
+                            out.insert_entity_data(column.field.clone(), value);
                         }
                     }
                 }
-                Ok(entity)
+                Ok(out)
             }
             _ => unreachable!(
                 "we use `to_json` in our queries, and will therefore always get an object back"

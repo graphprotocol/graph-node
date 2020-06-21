@@ -496,7 +496,7 @@ impl Layout {
         FindQuery::new(table.as_ref(), id, block)
             .get_result::<EntityData>(conn)
             .optional()?
-            .map(|entity_data| entity_data.to_entity(self))
+            .map(|entity_data| entity_data.deserialize_with_layout(self))
             .transpose()
     }
 
@@ -521,7 +521,7 @@ impl Layout {
             entities_for_type
                 .entry(data.entity_type())
                 .or_default()
-                .push(data.to_entity(self)?);
+                .push(data.deserialize_with_layout(self)?);
         }
         Ok(entities_for_type)
     }
@@ -619,7 +619,11 @@ impl Layout {
         log_query_timing(logger, &query_clone, start.elapsed(), values.len());
         values
             .into_iter()
-            .map(|entity_data| entity_data.to_entity(self).map_err(|e| e.into()))
+            .map(|entity_data| {
+                entity_data
+                    .deserialize_with_layout(self)
+                    .map_err(|e| e.into())
+            })
             .collect()
     }
 
