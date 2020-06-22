@@ -538,7 +538,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
     ]);
     let collection = EntityCollection::All(vec!["Scalar".to_owned()]);
     layout
-        .query(
+        .query::<Entity>(
             &*LOGGER,
             &conn,
             collection,
@@ -638,7 +638,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
 
         let unordered = matches!(query.order, EntityOrder::Unordered);
         let entities = layout
-            .query(
+            .query::<Entity>(
                 &*LOGGER,
                 conn,
                 query.collection,
@@ -1374,7 +1374,7 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
         let query = query(vec!["Ferret"]).filter(filter).asc("id");
 
         let entities = layout
-            .query(
+            .query::<Entity>(
                 &*LOGGER,
                 conn,
                 query.collection,

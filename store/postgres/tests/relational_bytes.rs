@@ -385,7 +385,7 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
 fn query() {
     fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
         layout
-            .query(
+            .query::<Entity>(
                 &*LOGGER,
                 conn,
                 coll,
