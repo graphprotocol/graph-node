@@ -441,9 +441,12 @@ where
 
                             // Deterministic Geth execution errors. We might need to expand this as
                             // subgraphs come across other errors. See
-                            // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go#L25
-                            const GETH_EXECUTION_ERRORS: &[&str] =
-                                &["execution reverted", "invalid jump destination"];
+                            // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
+                            const GETH_EXECUTION_ERRORS: &[&str] = &[
+                                "execution reverted",
+                                "invalid jump destination",
+                                "invalid opcode",
+                            ];
 
                             let as_solidity_revert_with_reason = |bytes: &[u8]| {
                                 let solidity_revert_function_selector =
