@@ -41,6 +41,7 @@ use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::history_event::HistoryEvent;
 use crate::metadata;
+use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
 
 // TODO: Integrate with https://github.com/graphprotocol/graph-node/pull/1522/files
@@ -314,11 +315,11 @@ impl Store {
         })
     }
 
-    fn execute_query(
+    fn execute_query<T: FromEntityData>(
         &self,
         conn: &e::Connection,
         query: EntityQuery,
-    ) -> Result<Vec<Entity>, QueryExecutionError> {
+    ) -> Result<Vec<T>, QueryExecutionError> {
         // Process results; deserialize JSON data
         let logger = query.logger.unwrap_or(self.logger.clone());
         conn.query(
@@ -464,7 +465,7 @@ impl Store {
                 entity_ids: mut expected_entity_ids,
             } => {
                 // Execute query
-                let actual_entities = self.execute_query(conn, query.clone()).map_err(|e| {
+                    self.execute_query::<Entity>(conn, query.clone())
                     format_err!(
                         "AbortUnless ({}): query execution error: {:?}, {}",
                         description,
@@ -934,7 +935,7 @@ impl StoreTrait for Store {
                         }
 
                         let entities = conn
-                            .query(
+                            .query::<Entity>(
                                 &logger,
                                 EntityCollection::All(vec![POI_OBJECT.to_owned()]),
                                 None,

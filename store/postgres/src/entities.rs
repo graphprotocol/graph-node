@@ -452,7 +452,7 @@ impl Connection<'_> {
         }
     }
 
-    pub(crate) fn query(
+    pub(crate) fn query<T: crate::relational_queries::FromEntityData>(
         &self,
         logger: &Logger,
         collection: EntityCollection,
@@ -460,7 +460,7 @@ impl Connection<'_> {
         order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
-    ) -> Result<Vec<Entity>, QueryExecutionError> {
+    ) -> Result<Vec<T>, QueryExecutionError> {
         match &*self.storage {
             Storage::Json(json) => {
                 // JSON storage can only query at the latest block
@@ -983,14 +983,14 @@ impl JsonStorage {
     }
 
     /// order is a tuple (attribute, value_type, direction)
-    fn query(
+    fn query<T: From<Entity>>(
         &self,
         conn: &PgConnection,
         collection: EntityCollection,
         filter: Option<EntityFilter>,
         order: Option<(String, ValueType, &'static str)>,
         range: EntityRange,
-    ) -> Result<Vec<Entity>, QueryExecutionError> {
+    ) -> Result<Vec<T>, QueryExecutionError> {
         let query = FilterQuery::new(&self.table, collection, filter, order, range)?;
 
         let query_debug_info = debug_query(&query).to_string();
@@ -1006,7 +1006,9 @@ impl JsonStorage {
         values
             .into_iter()
             .map(|(_, value, entity_type)| {
-                entity_from_json(value, &entity_type).map_err(QueryExecutionError::from)
+                entity_from_json(value, &entity_type)
+                    .map(T::from)
+                    .map_err(QueryExecutionError::from)
             })
             .collect()
     }
