@@ -185,6 +185,14 @@ impl FromEntityData for Entity {
     }
 }
 
+impl FromEntityData for BTreeMap<String, graphql_parser::query::Value> {
+    type Value = graphql_parser::query::Value;
+
+    fn insert_entity_data(&mut self, key: String, v: Self::Value) {
+        self.insert(key, v);
+    }
+}
+
 pub trait FromColumnValue: Sized {
     fn is_null(&self) -> bool;
 
@@ -194,6 +202,79 @@ pub trait FromColumnValue: Sized {
         column_type: &ColumnType,
         json: serde_json::Value,
     ) -> Result<Self, StoreError>;
+}
+
+impl FromColumnValue for graphql_parser::query::Value {
+    fn is_null(&self) -> bool {
+        self == &graphql_parser::query::Value::Null
+    }
+
+    fn from_string(s: String) -> Self {
+        graphql_parser::query::Value::String(s)
+    }
+
+    fn from_column_value(
+        column_type: &ColumnType,
+        json: serde_json::Value,
+    ) -> Result<graphql_parser::query::Value, StoreError> {
+        use graphql_parser::query::Value as q;
+        use serde_json::Value as j;
+        // Many possible conversion errors are already caught by how
+        // we define the schema; for example, we can only get a NULL for
+        // a column that is actually nullable
+        match (json, column_type) {
+            (j::Null, _) => Ok(q::Null),
+            (j::Bool(b), _) => Ok(q::Boolean(b)),
+            (j::Number(number), ColumnType::Int) => match number.as_i64() {
+                Some(i) => i32::try_from(i).map(|i| q::Int(i.into())).map_err(|e| {
+                    StoreError::Unknown(format_err!("failed to convert {} to Int: {}", number, e))
+                }),
+                None => Err(StoreError::Unknown(format_err!(
+                    "failed to convert {} to Int",
+                    number
+                ))),
+            },
+            (j::Number(number), ColumnType::BigDecimal) => {
+                let s = number.to_string();
+                scalar::BigDecimal::from_str(s.as_str())
+                    .map(|d| q::String(d.to_string()))
+                    .map_err(|e| {
+                        StoreError::Unknown(format_err!(
+                            "failed to convert {} to BigDecimal: {}",
+                            number,
+                            e
+                        ))
+                    })
+            }
+            (j::Number(number), ColumnType::BigInt) => Ok(q::String(number.to_string())),
+            (j::Number(number), column_type) => Err(StoreError::Unknown(format_err!(
+                "can not convert number {} to {:?}",
+                number,
+                column_type
+            ))),
+            (j::String(s), ColumnType::String) | (j::String(s), ColumnType::Enum(_)) => {
+                Ok(q::String(s))
+            }
+            (j::String(s), ColumnType::Bytes) => {
+                Ok(q::String(format!("0x{}", s.trim_start_matches("\\x"))))
+            }
+            (j::String(s), ColumnType::BytesId) => Ok(q::String(bytes_as_str(&s))),
+            (j::String(s), column_type) => Err(StoreError::Unknown(format_err!(
+                "can not convert string {} to {:?}",
+                s,
+                column_type
+            ))),
+            (j::Array(values), _) => Ok(q::List(
+                values
+                    .into_iter()
+                    .map(|v| Self::from_column_value(column_type, v))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            (j::Object(_), _) => {
+                unimplemented!("objects as entity attributes are not needed/supported")
+            }
+        }
+    }
 }
 
 impl FromColumnValue for graph::prelude::Value {

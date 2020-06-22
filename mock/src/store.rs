@@ -96,6 +96,13 @@ impl Store for MockStore {
         unimplemented!()
     }
 
+    fn find_query_values(
+        &self,
+        _: EntityQuery,
+    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError> {
+        unimplemented!()
+    }
+
     fn find_one(&self, _query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
         unimplemented!()
     }

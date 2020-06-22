@@ -465,14 +465,16 @@ impl Store {
                 entity_ids: mut expected_entity_ids,
             } => {
                 // Execute query
+                let actual_entities =
                     self.execute_query::<Entity>(conn, query.clone())
-                    format_err!(
-                        "AbortUnless ({}): query execution error: {:?}, {}",
-                        description,
-                        query,
-                        e
-                    )
-                })?;
+                        .map_err(|e| {
+                            format_err!(
+                                "AbortUnless ({}): query execution error: {:?}, {}",
+                                description,
+                                query,
+                                e
+                            )
+                        })?;
 
                 // Extract IDs from entities
                 let mut actual_entity_ids: Vec<String> = actual_entities
@@ -1012,6 +1014,16 @@ impl StoreTrait for Store {
     }
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        let conn = self
+            .get_entity_conn(&query.subgraph_id)
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        self.execute_query(&conn, query)
+    }
+
+    fn find_query_values(
+        &self,
+        query: EntityQuery,
+    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError> {
         let conn = self
             .get_entity_conn(&query.subgraph_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;

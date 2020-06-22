@@ -826,6 +826,11 @@ pub trait Store: Send + Sync + 'static {
     /// Queries the store for entities that match the store query.
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;
 
+    fn find_query_values(
+        &self,
+        query: EntityQuery,
+    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError>;
+
     /// Queries the store for a single entity matching the store query.
     fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError>;
 
@@ -1247,6 +1252,13 @@ impl Store for MockStore {
     }
 
     fn find(&self, _query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        unimplemented!()
+    }
+
+    fn find_query_values(
+        &self,
+        _: EntityQuery,
+    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError> {
         unimplemented!()
     }
 

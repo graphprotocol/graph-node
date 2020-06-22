@@ -5,15 +5,14 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::ops::Deref;
 use std::rc::Rc;
 use std::time::Instant;
 
 use graph::data::graphql::ext::ObjectTypeExt;
 use graph::prelude::{
-    BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter, EntityLink,
-    EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, Schema, Store,
-    Value as StoreValue, WindowAttribute,
+    BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink, EntityOrder,
+    EntityWindow, Logger, ParentLink, QueryExecutionError, Schema, Store, Value as StoreValue,
+    WindowAttribute,
 };
 
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
@@ -87,7 +86,7 @@ impl From<Option<q::TypeCondition>> for TypeCondition {
 /// has an entry mapping the response key to the list of nodes.
 #[derive(Debug, Clone)]
 struct Node {
-    entity: Entity,
+    entity: BTreeMap<String, q::Value>,
     /// We are using an `Rc` here for two reasons: it allows us to defer
     /// copying objects until the end, when converting to `q::Value` forces
     /// us to copy any child that is referenced by multiple parents. It also
@@ -97,8 +96,8 @@ struct Node {
     children: BTreeMap<String, Vec<Rc<Node>>>,
 }
 
-impl From<Entity> for Node {
-    fn from(entity: Entity) -> Self {
+impl From<BTreeMap<String, q::Value>> for Node {
+    fn from(entity: BTreeMap<String, q::Value>) -> Self {
         Node {
             entity,
             children: BTreeMap::default(),
@@ -137,7 +136,7 @@ fn is_root_node(nodes: &Vec<Node>) -> bool {
 
 fn make_root_node() -> Vec<Node> {
     vec![Node {
-        entity: Entity::new(),
+        entity: BTreeMap::new(),
         children: BTreeMap::default(),
     }]
 }
@@ -148,7 +147,7 @@ fn make_root_node() -> Vec<Node> {
 /// with any field of the entity.
 impl From<Node> for q::Value {
     fn from(node: Node) -> Self {
-        let mut map: BTreeMap<_, _> = node.entity.into();
+        let mut map = node.entity;
         for (key, nodes) in node.children.into_iter() {
             map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
         }
@@ -156,15 +155,36 @@ impl From<Node> for q::Value {
     }
 }
 
-impl Deref for Node {
-    type Target = Entity;
+trait ValueExt {
+    fn as_str(&self) -> Option<&str>;
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.entity
+impl ValueExt for q::Value {
+    fn as_str(&self) -> Option<&str> {
+        match self {
+            q::Value::String(s) => Some(s),
+            _ => None,
+        }
     }
 }
 
 impl Node {
+    fn id(&self) -> Result<String, graph::prelude::failure::Error> {
+        match self.get("id") {
+            None => Err(graph::prelude::failure::format_err!(
+                "Entity is missing an `id` attribute"
+            )),
+            Some(q::Value::String(s)) => Ok(s.to_owned()),
+            _ => Err(graph::prelude::failure::format_err!(
+                "Entity has non-string `id` attribute"
+            )),
+        }
+    }
+
+    fn get(&self, key: &str) -> Option<&q::Value> {
+        self.entity.get(key)
+    }
+
     fn typename(&self) -> &str {
         self.get("__typename")
             .expect("all entities have a __typename")
@@ -288,7 +308,7 @@ impl<'a> JoinCond<'a> {
                             .filter_map(|(id, node)| {
                                 node.get(*child_field)
                                     .and_then(|value| match value {
-                                        StoreValue::List(values) => {
+                                        q::Value::List(values) => {
                                             let values: Vec<_> = values
                                                 .into_iter()
                                                 .filter_map(|value| {
@@ -382,7 +402,7 @@ impl<'a> Join<'a> {
                 .get("g$parent_id")
                 .expect("the query that produces 'child' ensures there is always a g$parent_id")
             {
-                StoreValue::String(key) => grouped.entry(key).or_default().push(child.clone()),
+                q::Value::String(key) => grouped.entry(&key).or_default().push(child.clone()),
                 _ => unreachable!("the parent_id returned by the query is always a string"),
             }
         }
@@ -871,6 +891,6 @@ fn fetch<S: Store>(
     }
 
     store
-        .find(query)
+        .find_query_values(query)
         .map(|entities| entities.into_iter().map(|entity| entity.into()).collect())
 }
