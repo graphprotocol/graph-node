@@ -196,37 +196,37 @@ impl FromEntityData for BTreeMap<String, graphql_parser::query::Value> {
 pub trait FromColumnValue: Sized {
     fn is_null(&self) -> bool;
 
+    fn null() -> Self;
+
     fn from_string(s: String) -> Self;
 
-    fn from_column_value(
-        column_type: &ColumnType,
-        json: serde_json::Value,
-    ) -> Result<Self, StoreError>;
-}
+    fn from_bool(b: bool) -> Self;
 
-impl FromColumnValue for graphql_parser::query::Value {
-    fn is_null(&self) -> bool {
-        self == &graphql_parser::query::Value::Null
-    }
+    fn from_i32(i: i32) -> Self;
 
-    fn from_string(s: String) -> Self {
-        graphql_parser::query::Value::String(s)
-    }
+    fn from_big_decimal(d: scalar::BigDecimal) -> Self;
+
+    fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError>;
+
+    // The string returned by the DB, without the leading '\x'
+    fn from_bytes(i: &str) -> Result<Self, StoreError>;
+
+    fn from_vec(v: Vec<Self>) -> Self;
 
     fn from_column_value(
         column_type: &ColumnType,
         json: serde_json::Value,
-    ) -> Result<graphql_parser::query::Value, StoreError> {
-        use graphql_parser::query::Value as q;
+    ) -> Result<Self, StoreError> {
+        //use graphql_parser::query::Value as q;
         use serde_json::Value as j;
         // Many possible conversion errors are already caught by how
         // we define the schema; for example, we can only get a NULL for
         // a column that is actually nullable
         match (json, column_type) {
-            (j::Null, _) => Ok(q::Null),
-            (j::Bool(b), _) => Ok(q::Boolean(b)),
+            (j::Null, _) => Ok(Self::null()),
+            (j::Bool(b), _) => Ok(Self::from_bool(b)),
             (j::Number(number), ColumnType::Int) => match number.as_i64() {
-                Some(i) => i32::try_from(i).map(|i| q::Int(i.into())).map_err(|e| {
+                Some(i) => i32::try_from(i).map(Self::from_i32).map_err(|e| {
                     StoreError::Unknown(format_err!("failed to convert {} to Int: {}", number, e))
                 }),
                 None => Err(StoreError::Unknown(format_err!(
@@ -237,7 +237,7 @@ impl FromColumnValue for graphql_parser::query::Value {
             (j::Number(number), ColumnType::BigDecimal) => {
                 let s = number.to_string();
                 scalar::BigDecimal::from_str(s.as_str())
-                    .map(|d| q::String(d.to_string()))
+                    .map(Self::from_big_decimal)
                     .map_err(|e| {
                         StoreError::Unknown(format_err!(
                             "failed to convert {} to BigDecimal: {}",
@@ -246,25 +246,23 @@ impl FromColumnValue for graphql_parser::query::Value {
                         ))
                     })
             }
-            (j::Number(number), ColumnType::BigInt) => Ok(q::String(number.to_string())),
+            (j::Number(number), ColumnType::BigInt) => Self::from_big_int(number),
             (j::Number(number), column_type) => Err(StoreError::Unknown(format_err!(
                 "can not convert number {} to {:?}",
                 number,
                 column_type
             ))),
             (j::String(s), ColumnType::String) | (j::String(s), ColumnType::Enum(_)) => {
-                Ok(q::String(s))
+                Ok(Self::from_string(s))
             }
-            (j::String(s), ColumnType::Bytes) => {
-                Ok(q::String(format!("0x{}", s.trim_start_matches("\\x"))))
-            }
-            (j::String(s), ColumnType::BytesId) => Ok(q::String(bytes_as_str(&s))),
+            (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
+            (j::String(s), ColumnType::BytesId) => Ok(Self::from_string(bytes_as_str(&s))),
             (j::String(s), column_type) => Err(StoreError::Unknown(format_err!(
                 "can not convert string {} to {:?}",
                 s,
                 column_type
             ))),
-            (j::Array(values), _) => Ok(q::List(
+            (j::Array(values), _) => Ok(Self::from_vec(
                 values
                     .into_iter()
                     .map(|v| Self::from_column_value(column_type, v))
@@ -274,6 +272,44 @@ impl FromColumnValue for graphql_parser::query::Value {
                 unimplemented!("objects as entity attributes are not needed/supported")
             }
         }
+    }
+}
+
+impl FromColumnValue for graphql_parser::query::Value {
+    fn is_null(&self) -> bool {
+        self == &graphql_parser::query::Value::Null
+    }
+
+    fn null() -> Self {
+        Self::Null
+    }
+
+    fn from_string(s: String) -> Self {
+        graphql_parser::query::Value::String(s)
+    }
+
+    fn from_bool(b: bool) -> Self {
+        graphql_parser::query::Value::Boolean(b)
+    }
+
+    fn from_i32(i: i32) -> Self {
+        graphql_parser::query::Value::Int(i.into())
+    }
+
+    fn from_big_decimal(d: scalar::BigDecimal) -> Self {
+        graphql_parser::query::Value::String(d.to_string())
+    }
+
+    fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
+        Ok(graphql_parser::query::Value::String(i.to_string()))
+    }
+
+    fn from_bytes(b: &str) -> Result<Self, StoreError> {
+        Ok(graphql_parser::query::Value::String(format!("0x{}", b)))
+    }
+
+    fn from_vec(v: Vec<Self>) -> Self {
+        graphql_parser::query::Value::List(v)
     }
 }
 
@@ -282,86 +318,44 @@ impl FromColumnValue for graph::prelude::Value {
         self == &Value::Null
     }
 
-    fn from_string(s: String) -> Self {
-        Value::String(s)
+    fn null() -> Self {
+        Self::Null
     }
 
-    fn from_column_value(
-        column_type: &ColumnType,
-        json: serde_json::Value,
-    ) -> Result<graph::prelude::Value, StoreError> {
-        use graph::prelude::Value as g;
-        use serde_json::Value as j;
-        // Many possible conversion errors are already caught by how
-        // we define the schema; for example, we can only get a NULL for
-        // a column that is actually nullable
-        match (json, column_type) {
-            (j::Null, _) => Ok(g::Null),
-            (j::Bool(b), _) => Ok(g::Bool(b)),
-            (j::Number(number), ColumnType::Int) => match number.as_i64() {
-                Some(i) => i32::try_from(i).map(|i| g::Int(i)).map_err(|e| {
-                    StoreError::Unknown(format_err!("failed to convert {} to Int: {}", number, e))
-                }),
-                None => Err(StoreError::Unknown(format_err!(
-                    "failed to convert {} to Int",
-                    number
-                ))),
-            },
-            (j::Number(number), ColumnType::BigDecimal) => {
-                let s = number.to_string();
-                scalar::BigDecimal::from_str(s.as_str())
-                    .map(|d| g::BigDecimal(d))
-                    .map_err(|e| {
-                        StoreError::Unknown(format_err!(
-                            "failed to convert {} to BigDecimal: {}",
-                            number,
-                            e
-                        ))
-                    })
-            }
-            (j::Number(number), ColumnType::BigInt) => {
-                let s = number.to_string();
-                scalar::BigInt::from_str(s.as_str())
-                    .map(|d| g::BigInt(d))
-                    .map_err(|e| {
-                        StoreError::Unknown(format_err!(
-                            "failed to convert {} to BigInt: {}",
-                            number,
-                            e
-                        ))
-                    })
-            }
-            (j::Number(number), column_type) => Err(StoreError::Unknown(format_err!(
-                "can not convert number {} to {:?}",
-                number,
-                column_type
-            ))),
-            (j::String(s), ColumnType::String) | (j::String(s), ColumnType::Enum(_)) => {
-                Ok(g::String(s))
-            }
-            (j::String(s), ColumnType::Bytes) => {
-                scalar::Bytes::from_str(s.trim_start_matches("\\x"))
-                    .map(|b| g::Bytes(b))
-                    .map_err(|e| {
-                        StoreError::Unknown(format_err!("failed to convert {} to Bytes: {}", s, e))
-                    })
-            }
-            (j::String(s), ColumnType::BytesId) => Ok(g::String(bytes_as_str(&s))),
-            (j::String(s), column_type) => Err(StoreError::Unknown(format_err!(
-                "can not convert string {} to {:?}",
-                s,
-                column_type
-            ))),
-            (j::Array(values), _) => Ok(g::List(
-                values
-                    .into_iter()
-                    .map(|v| Self::from_column_value(column_type, v))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
-            (j::Object(_), _) => {
-                unimplemented!("objects as entity attributes are not needed/supported")
-            }
-        }
+    fn from_string(s: String) -> Self {
+        graph::prelude::Value::String(s)
+    }
+
+    fn from_bool(b: bool) -> Self {
+        graph::prelude::Value::Bool(b)
+    }
+
+    fn from_i32(i: i32) -> Self {
+        graph::prelude::Value::Int(i)
+    }
+
+    fn from_big_decimal(d: scalar::BigDecimal) -> Self {
+        graph::prelude::Value::BigDecimal(d)
+    }
+
+    fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
+        scalar::BigInt::from_str(&i.to_string())
+            .map(graph::prelude::Value::BigInt)
+            .map_err(|e| {
+                StoreError::Unknown(format_err!("failed to convert {} to BigInt: {}", i, e))
+            })
+    }
+
+    fn from_bytes(b: &str) -> Result<Self, StoreError> {
+        scalar::Bytes::from_str(b)
+            .map(graph::prelude::Value::Bytes)
+            .map_err(|e| {
+                StoreError::Unknown(format_err!("failed to convert {} to Bytes: {}", b, e))
+            })
+    }
+
+    fn from_vec(v: Vec<Self>) -> Self {
+        graph::prelude::Value::List(v)
     }
 }
 
