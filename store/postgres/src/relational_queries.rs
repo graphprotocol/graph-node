@@ -171,7 +171,7 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: Default {
+pub trait FromEntityData: Default + From<Entity> {
     type Value: FromColumnValue;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value);

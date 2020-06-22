@@ -564,7 +564,7 @@ impl Layout {
     }
 
     /// order is a tuple (attribute, value_type, direction)
-    pub fn query(
+    pub fn query<T: crate::relational_queries::FromEntityData>(
         &self,
         logger: &Logger,
         conn: &PgConnection,
@@ -573,7 +573,7 @@ impl Layout {
         order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
-    ) -> Result<Vec<Entity>, QueryExecutionError> {
+    ) -> Result<Vec<T>, QueryExecutionError> {
         fn log_query_timing(
             logger: &Logger,
             query: &FilterQuery,
