@@ -1410,9 +1410,15 @@ impl<'a> ParentLimit<'a> {
     /// Include a 'limit {num_parents}+1' clause for single-object queries
     /// if that is needed
     fn single_limit(&self, num_parents: usize, out: &mut AstPass<Pg>) {
-        if let ParentLimit::Ranked(_, _) = self {
-            out.push_sql(" limit ");
-            out.push_sql(&(num_parents + 1).to_string());
+        match self {
+            ParentLimit::Ranked(_, _) => {
+                out.push_sql(" limit ");
+                out.push_sql(&(num_parents + 1).to_string());
+            }
+            ParentLimit::Outer => {
+                // limiting is taken care of in a wrapper around
+                // the query we are currently building
+            }
         }
     }
 }
