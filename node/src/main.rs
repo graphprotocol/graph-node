@@ -60,7 +60,10 @@ enum ConnectionType {
     WS,
 }
 
-#[tokio::main]
+// Saturating the blocking threads can cause all sorts of issues, so set a large maximum.
+// Ideally we'd use semaphores to not use more blocking threads than DB connections,
+// but for now this is necessary.
+#[tokio::main(max_threads = 2000)]
 async fn main() {
     env_logger::init();
 
