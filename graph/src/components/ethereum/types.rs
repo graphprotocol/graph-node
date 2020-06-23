@@ -203,9 +203,6 @@ impl PartialEq for EthereumTrigger {
 
 impl Eq for EthereumTrigger {}
 
-/// This is used in `EthereumAdapter::triggers_in_block`, called when re-processing a block for
-/// newly created data sources. This allows the re-processing to be reorg safe without having to
-/// always fetch the full block data.
 #[derive(Clone, Debug)]
 pub enum EthereumBlockType {
     Light(LightEthereumBlock),
@@ -303,8 +300,8 @@ impl PartialOrd for EthereumTrigger {
 
 pub struct EthereumTransactionReceiptData {
     // from receipts
-    pub transaction_hash: H256,
-    pub transaction_index: Index,
+    pub hash: H256,
+    pub index: Index,
     pub cumulative_gas_used: U256,
     pub gas_used: Option<U256>,
     pub contract_address: Option<H160>,
@@ -360,8 +357,8 @@ impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockData {
                     transaction_and_receipt.1.transaction_hash
                 );
                 EthereumTransactionReceiptData {
-                    transaction_hash: transaction_and_receipt.0.hash,
-                    transaction_index: transaction_and_receipt.1.transaction_index,
+                    hash: transaction_and_receipt.0.hash,
+                    index: transaction_and_receipt.1.transaction_index,
                     cumulative_gas_used: transaction_and_receipt.1.cumulative_gas_used,
                     gas_used: transaction_and_receipt.1.gas_used,
                     contract_address: transaction_and_receipt.1.contract_address,
@@ -413,8 +410,8 @@ impl<'a> From<&'a EthereumBlock> for FullEthereumBlockData {
                     transaction_and_receipt.1.transaction_hash
                 );
                 EthereumTransactionReceiptData {
-                    transaction_hash: transaction_and_receipt.0.hash,
-                    transaction_index: transaction_and_receipt.1.transaction_index,
+                    hash: transaction_and_receipt.0.hash,
+                    index: transaction_and_receipt.1.transaction_index,
                     cumulative_gas_used: transaction_and_receipt.1.cumulative_gas_used,
                     gas_used: transaction_and_receipt.1.gas_used,
                     contract_address: transaction_and_receipt.1.contract_address,
@@ -470,10 +467,11 @@ pub struct EthereumBlockData {
     pub difficulty: U256,
     pub total_difficulty: U256,
     pub size: Option<U256>,
+    pub transactions: Vec<EthereumTransactionData>,
 }
 
-impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
-    fn from(block: &'a Block<T>) -> EthereumBlockData {
+impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData {
+    fn from(block: &'a LightEthereumBlock) -> EthereumBlockData {
         EthereumBlockData {
             hash: block.hash.unwrap(),
             parent_hash: block.parent_hash,
@@ -489,6 +487,11 @@ impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
             difficulty: block.difficulty,
             total_difficulty: block.total_difficulty.unwrap_or_default(),
             size: block.size,
+            transactions: block
+                .transactions
+                .iter()
+                .map(|tx| EthereumTransactionData::from(tx))
+                .collect(),
         }
     }
 }
@@ -515,6 +518,11 @@ impl<'a> From<&'a EthereumBlockType> for EthereumBlockData {
             difficulty: block.difficulty,
             total_difficulty: block.total_difficulty.unwrap_or_default(),
             size: block.size,
+            transactions: block
+                .transactions
+                .iter()
+                .map(|tx| EthereumTransactionData::from(tx))
+                .collect(),
         }
     }
 }

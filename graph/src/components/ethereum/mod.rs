@@ -13,8 +13,9 @@ pub use self::adapter::{
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
 pub use self::types::{
-    EthereumBlockType, BlockFinality, BlockType, EthereumBlock, EthereumBlockData, EthereumBlockPointer,
-    EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
-    EthereumCallData, EthereumEventData, EthereumTransactionData, EthereumTransactionReceiptData,
-    EthereumTrigger, FullEthereumBlockData, LightEthereumBlock, LightEthereumBlockExt,
+    BlockFinality, BlockType, EthereumBlock, EthereumBlockData, EthereumBlockPointer,
+    EthereumBlockTriggerType, EthereumBlockType, EthereumBlockWithCalls, EthereumBlockWithTriggers,
+    EthereumCall, EthereumCallData, EthereumEventData, EthereumTransactionData,
+    EthereumTransactionReceiptData, EthereumTrigger, FullEthereumBlockData, LightEthereumBlock,
+    LightEthereumBlockExt,
 };

@@ -325,6 +325,31 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
     }
 }
 
+impl ToAscObj<AscEthereumBlock_0_0_5> for EthereumBlockData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumBlock_0_0_5 {
+        AscEthereumBlock_0_0_5 {
+            hash: heap.asc_new(&self.hash),
+            parent_hash: heap.asc_new(&self.parent_hash),
+            uncles_hash: heap.asc_new(&self.uncles_hash),
+            author: heap.asc_new(&self.author),
+            state_root: heap.asc_new(&self.state_root),
+            transactions_root: heap.asc_new(&self.transactions_root),
+            receipts_root: heap.asc_new(&self.receipts_root),
+            number: heap.asc_new(&BigInt::from(self.number)),
+            gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
+            gas_limit: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_limit)),
+            timestamp: heap.asc_new(&BigInt::from_unsigned_u256(&self.timestamp)),
+            difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.difficulty)),
+            total_difficulty: heap.asc_new(&BigInt::from_unsigned_u256(&self.total_difficulty)),
+            size: self
+                .size
+                .map(|size| heap.asc_new(&BigInt::from_unsigned_u256(&size)))
+                .unwrap_or_else(|| AscPtr::null()),
+            transactions: heap.asc_new(self.transactions.as_slice()),
+        }
+    }
+}
+
 impl ToAscObj<AscFullEthereumBlock> for FullEthereumBlockData {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscFullEthereumBlock {
         AscFullEthereumBlock {
@@ -354,8 +379,8 @@ impl ToAscObj<AscEthereumTransactionReceipt> for EthereumTransactionReceiptData 
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumTransactionReceipt {
         AscEthereumTransactionReceipt {
             //from receipts
-            transaction_hash: heap.asc_new(&self.transaction_hash),
-            transaction_index: heap.asc_new(&BigInt::from(self.transaction_index)),
+            hash: heap.asc_new(&self.hash),
+            index: heap.asc_new(&BigInt::from(self.index)),
             cumulative_gas_used: heap
                 .asc_new(&BigInt::from_unsigned_u256(&self.cumulative_gas_used)),
             gas_used: self

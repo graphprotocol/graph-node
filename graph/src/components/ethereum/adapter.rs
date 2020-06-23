@@ -813,6 +813,10 @@ fn parse_block_triggers(
 ) -> Vec<EthereumTrigger> {
     let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
     let trigger_every_block = block_filter.trigger_every_block;
+    let block_type = match block_filter.full_block {
+        true => BlockType::Full,
+        false => BlockType::Light,
+    };
     let call_filter = EthereumCallFilter::from(block_filter);
     let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
         calls
@@ -826,7 +830,7 @@ fn parse_block_triggers(
     if trigger_every_block {
         triggers.push(EthereumTrigger::Block(
             block_ptr,
-            EthereumBlockTriggerType::Every(BlockType::Full),
+            EthereumBlockTriggerType::Every(block_type),
         ));
     }
     triggers
@@ -934,7 +938,9 @@ pub fn blocks_with_triggers(
                         .map(|ptr| {
                             EthereumTrigger::Block(
                                 ptr,
-                                EthereumBlockTriggerType::Every(BlockType::Full),
+                                EthereumBlockTriggerType::Every(BlockType::from(
+                                    block_filter.full_block,
+                                )),
                             )
                         })
                         .collect()

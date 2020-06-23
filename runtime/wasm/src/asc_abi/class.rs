@@ -420,6 +420,26 @@ pub(crate) struct AscEthereumBlock {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscEthereumBlock_0_0_5 {
+    pub hash: AscPtr<AscH256>,
+    pub parent_hash: AscPtr<AscH256>,
+    pub uncles_hash: AscPtr<AscH256>,
+    pub author: AscPtr<AscH160>,
+    pub state_root: AscPtr<AscH256>,
+    pub transactions_root: AscPtr<AscH256>,
+    pub receipts_root: AscPtr<AscH256>,
+    pub number: AscPtr<AscBigInt>,
+    pub gas_used: AscPtr<AscBigInt>,
+    pub gas_limit: AscPtr<AscBigInt>,
+    pub timestamp: AscPtr<AscBigInt>,
+    pub difficulty: AscPtr<AscBigInt>,
+    pub total_difficulty: AscPtr<AscBigInt>,
+    pub size: AscPtr<AscBigInt>,
+    pub transactions: AscPtr<Array<AscPtr<AscEthereumTransaction_0_0_2>>>,
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscFullEthereumBlock {
     pub hash: AscPtr<AscH256>,
     pub parent_hash: AscPtr<AscH256>,
@@ -453,8 +473,8 @@ pub(crate) struct AscEthereumTransaction {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEthereumTransactionReceipt {
-    pub transaction_hash: AscPtr<AscH256>,
-    pub transaction_index: AscPtr<AscBigInt>,
+    pub hash: AscPtr<AscH256>,
+    pub index: AscPtr<AscBigInt>,
     pub cumulative_gas_used: AscPtr<AscBigInt>,
     pub gas_used: AscPtr<AscBigInt>,
     pub contract_address: AscPtr<AscH160>,

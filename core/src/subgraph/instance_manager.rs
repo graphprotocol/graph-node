@@ -879,7 +879,7 @@ async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send 
     mut block_state: BlockState,
     proof_of_indexing: SharedProofOfIndexing,
     ctx: IndexingContext<B, T, S>,
-    block: &Arc<EthereumBlock>,
+    block: &Arc<LightEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
 ) -> Result<(IndexingContext<B, T, S>, BlockState), CancelableError<Error>> {
     for trigger in triggers.into_iter() {
