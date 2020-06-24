@@ -260,7 +260,7 @@ impl Default for BlockType {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EthereumBlockTriggerType {
     Every(BlockType),
-    WithCallTo(Address),
+    WithCallTo(Address, BlockType),
 }
 
 impl EthereumTrigger {
@@ -892,7 +892,7 @@ mod test {
                 number: 0,
                 hash: H256::random(),
             },
-            EthereumBlockTriggerType::WithCallTo(Address::random()),
+            EthereumBlockTriggerType::WithCallTo(Address::random(), BlockType::Light),
         );
 
         let mut call1 = EthereumCall::default();

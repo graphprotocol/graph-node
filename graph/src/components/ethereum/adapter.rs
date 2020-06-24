@@ -843,7 +843,10 @@ fn parse_block_triggers(
             .iter()
             .filter(move |call| call_filter.matches(call))
             .map(move |call| {
-                EthereumTrigger::Block(block_ptr, EthereumBlockTriggerType::WithCallTo(call.to))
+                EthereumTrigger::Block(
+                    block_ptr,
+                    EthereumBlockTriggerType::WithCallTo(call.to, block_type),
+                )
             })
             .collect::<Vec<EthereumTrigger>>()
     });
@@ -968,13 +971,14 @@ pub fn blocks_with_triggers(
         // To determine which blocks include a call to addresses
         // in the block filter, transform the `block_filter` into
         // a `call_filter` and run `blocks_with_calls`
+        let block_type = block_filter.block_type.clone();
         let call_filter = EthereumCallFilter::from(block_filter);
         trigger_futs.push(Box::new(
             eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
-                .map(|call| {
+                .map(move |call| {
                     EthereumTrigger::Block(
                         EthereumBlockPointer::from(&call),
-                        EthereumBlockTriggerType::WithCallTo(call.to),
+                        EthereumBlockTriggerType::WithCallTo(call.to, block_type.clone()),
                     )
                 })
                 .collect(),

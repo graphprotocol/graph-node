@@ -285,7 +285,7 @@ impl RuntimeHost {
 
     fn matches_block_trigger(&self, block_trigger_type: &EthereumBlockTriggerType) -> bool {
         let source_address_matches = match block_trigger_type {
-            EthereumBlockTriggerType::WithCallTo(address) => {
+            EthereumBlockTriggerType::WithCallTo(address, _block_type) => {
                 self.data_source_contract
                     .address
                     // Do not match if this datasource has no address
@@ -347,7 +347,7 @@ impl RuntimeHost {
         trigger_type: &EthereumBlockTriggerType,
     ) -> Result<MappingBlockHandler, anyhow::Error> {
         match trigger_type {
-            EthereumBlockTriggerType::Every(_type) => self
+            EthereumBlockTriggerType::Every(_block_type) => self
                 .data_source_block_handlers
                 .iter()
                 .find(move |handler| handler.filter == None)
@@ -359,7 +359,7 @@ impl RuntimeHost {
                         self.data_source_name,
                     )
                 }),
-            EthereumBlockTriggerType::WithCallTo(_address) => self
+            EthereumBlockTriggerType::WithCallTo(_address, _block_type) => self
                 .data_source_block_handlers
                 .iter()
                 .find(move |handler| {
@@ -577,23 +577,20 @@ impl RuntimeHostTrait for RuntimeHost {
     ) -> Result<BlockState, anyhow::Error> {
         let block_handler = self.handler_for_block(trigger_type)?;
         let mapping_block: EthereumBlockType = match trigger_type {
-            EthereumBlockTriggerType::Every(BlockType::FullWithReceipts) => {
-                match graph::block_on_allow_panic(
-                    future::lazy(move || {
-                        self.host_exports
-                            .ethereum_adapter
-                            .load_full_block(logger, block.light_block().clone())
-                    })
-                    .compat(),
-                ) {
-                    Ok(block) => Ok(EthereumBlockType::FullWithReceipts(block)),
-                    Err(e) => Err(anyhow::anyhow!(
-                        "Failed to load full block: {}, error: {}",
-                        &block.number().to_string(),
-                        e
-                    )),
-                }?
-            }
+            EthereumBlockTriggerType::Every(BlockType::FullWithReceipts) => match self
+                .host_exports
+                .ethereum_adapter
+                .load_full_block(logger, block.light_block().clone())
+                .compat()
+                .await
+            {
+                Ok(block) => Ok(EthereumBlockType::FullWithReceipts(block)),
+                Err(e) => Err(anyhow::anyhow!(
+                    "Failed to load full block: {}, error: {}",
+                    &block.number().to_string(),
+                    e
+                )),
+            }?,
             EthereumBlockTriggerType::Every(BlockType::Full) => {
                 EthereumBlockType::Full(block.light_block().clone())
             }
