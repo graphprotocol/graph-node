@@ -23,7 +23,7 @@ use graph::data::subgraph::schema::{
 };
 use graph::prelude::{
     debug, ethabi, format_err, futures03, info, o, serde_json, tiny_keccak, tokio, trace, warn,
-    web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
+    web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener,
     ChainHeadUpdateStream, ChainStore, CheapClone, DynTryFuture, Entity, EntityKey,
     EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
     EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, Future, LightEthereumBlock,
@@ -36,7 +36,6 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
-use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::entities as e;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::history_event::HistoryEvent;
@@ -158,7 +157,7 @@ pub struct StoreInner {
     logger: Logger,
     subscriptions: Arc<SubscriptionManager>,
 
-    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+    chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
@@ -192,7 +191,7 @@ impl Store {
         config: StoreConfig,
         logger: &Logger,
         net_identifiers: EthereumNetworkIdentifier,
-        chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+        chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
         subscriptions: Arc<SubscriptionManager>,
         pool: Pool<ConnectionManager<PgConnection>>,
         registry: Arc<dyn MetricsRegistry>,

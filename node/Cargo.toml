@@ -20,6 +20,7 @@ graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-arweave = { path = "../chain/arweave" }
 graph-graphql = { path = "../graphql" }
 graph-mock = { path = "../mock" }
+graph-nats = { path = "../nats" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
 graph-server-index-node = { path = "../server/index-node" }

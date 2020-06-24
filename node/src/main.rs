@@ -23,6 +23,7 @@ use graph_core::{
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
+use graph_nats::ChainHeadUpdateListener as NatsChainHeadUpdateListener;
 use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
@@ -258,6 +259,13 @@ async fn main() {
                 .long("3box-api")
                 .value_name("URL")
                 .help("HTTP endpoint for 3box profiles"),
+        )
+        .arg(
+            Arg::with_name("nats")
+                .default_value("http://localhost:4222")
+                .long("nats")
+                .value_name("URL")
+                .help("NATS server to use for cross-node communication"),
         )
         .get_matches();
 
@@ -496,11 +504,19 @@ async fn main() {
         connection_pool_registry,
     );
 
-    let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-        &logger,
-        stores_metrics_registry.clone(),
-        postgres_url.clone(),
-    ));
+    let nats = matches.value_of("nats");
+
+    let chain_head_update_listener: Arc<dyn ChainHeadUpdateListener> = if let Some(nats) = nats {
+        Arc::new(
+            NatsChainHeadUpdateListener::new(&logger, nats).expect("Failed to connect to NATS"),
+        )
+    } else {
+        Arc::new(PostgresChainHeadUpdateListener::new(
+            &logger,
+            stores_metrics_registry.clone(),
+            postgres_url.clone(),
+        ))
+    };
 
     let subscriptions = Arc::new(SubscriptionManager::new(
         logger.clone(),

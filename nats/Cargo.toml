@@ -1,0 +1,10 @@
+[package]
+name = "graph-nats"
+version = "0.18.0"
+edition = "2018"
+
+[dependencies]
+graph = { path = "../graph" }
+nats = "0.5"
+
+[dev-dependencies]

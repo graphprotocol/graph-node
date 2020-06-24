@@ -26,7 +26,7 @@ pub struct ChainHeadUpdate {
 /// to check what the latest block is.
 pub type ChainHeadUpdateStream = Box<dyn Stream<Item = (), Error = ()> + Send>;
 
-pub trait ChainHeadUpdateListener {
+pub trait ChainHeadUpdateListener: Send + Sync {
     // Subscribe to chain head updates for the given network.
     fn subscribe(&self, network: String) -> ChainHeadUpdateStream;
 }
