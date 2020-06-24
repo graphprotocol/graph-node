@@ -49,6 +49,14 @@ lazy_static! {
         .map(|s| u64::from_str(&s)
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
         .unwrap_or(50);
+
+    // Run against a read-only database. This turns off a few things:
+    // - Chain head listeners
+    // - Store events
+    // - Subscriptions and the WebSocket server
+    // - The JSON-RPC admin server
+    static ref EXPERIMENTAL_READONLY_DB: bool = env::var("GRAPH_EXPERIMENTAL_READONLY_DB")
+        .ok().is_some();
 }
 
 git_testament!(TESTAMENT);
@@ -258,12 +266,6 @@ async fn main() {
                 .long("3box-api")
                 .value_name("URL")
                 .help("HTTP endpoint for 3box profiles"),
-        )
-        .arg(
-            Arg::with_name("readonly-db")
-                .takes_value(false)
-                .long("readonly-db")
-                .help("Run against a readonly db (no subscriptions etc.)"),
         )
         .get_matches();
 
@@ -502,9 +504,7 @@ async fn main() {
         connection_pool_registry,
     );
 
-    let readonly_db = matches.is_present("readonly-db");
-
-    let chain_head_update_listener = if readonly_db {
+    let chain_head_update_listener = if *EXPERIMENTAL_READONLY_DB {
         None
     } else {
         Some(Arc::new(PostgresChainHeadUpdateListener::new(
@@ -514,7 +514,7 @@ async fn main() {
         )))
     };
 
-    let subscriptions = if readonly_db {
+    let subscriptions = if *EXPERIMENTAL_READONLY_DB {
         None
     } else {
         Some(Arc::new(SubscriptionManager::new(
@@ -580,7 +580,7 @@ async fn main() {
 
             // Disable the subscriptions server when running against a read-only
             // database
-            if !readonly_db {
+            if !*EXPERIMENTAL_READONLY_DB {
                 let subscription_server = GraphQLSubscriptionServer::new(
                     &logger,
                     graphql_runner.clone(),
@@ -598,7 +598,7 @@ async fn main() {
                 node_id.clone(),
             );
 
-            if !readonly_db {
+            if !*EXPERIMENTAL_READONLY_DB {
                 // Spawn Ethereum network indexers for all networks that are to be indexed
                 if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
                     network_subgraphs
