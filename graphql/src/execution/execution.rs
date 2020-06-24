@@ -5,9 +5,10 @@ use lazy_static::lazy_static;
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::sync::atomic::AtomicBool;
+use std::sync::RwLock;
 use std::time::Instant;
 
 use graph::prelude::*;
@@ -19,13 +20,18 @@ use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
-use lru_time_cache::LruCache;
-use std::sync::Mutex;
 
 type QueryHash = <SetHasher as StableHasher>::Out;
 
+#[derive(Debug)]
+struct CacheByBlock {
+    block: EthereumBlockPointer,
+    cache: BTreeMap<QueryHash, BTreeMap<String, q::Value>>,
+}
+
 lazy_static! {
     // Comma separated subgraph ids to cache queries for.
+    // If `*` is present in the list, queries are cached for all subgraphs.
     static ref CACHED_SUBGRAPH_IDS: Vec<String> = {
         std::env::var("GRAPH_CACHED_SUBGRAPH_IDS")
         .unwrap_or_default()
@@ -34,18 +40,22 @@ lazy_static! {
         .collect()
     };
 
-    // Cache expiry time, 1 minute by default.
-    static ref CACHE_EXPIRY: Duration = {
-        std::env::var("GRAPH_CACHE_EXPIRY_SECS")
-        .unwrap_or("60".to_string())
-        .parse::<u64>()
-        .map(|s| Duration::from_secs(s))
-        .unwrap()
+    static ref CACHE_ALL: bool = CACHED_SUBGRAPH_IDS.contains(&"*".to_string());
+
+    // How many blocks should be kept in the query cache. When the limit is reached, older blocks
+    // are evicted. This should be kept small since a lookup to the cache is O(n) on this value, and
+    // the cache memory usage also increases with larger number. Set to 0 to disable the cache,
+    // defaults to disabled.
+    static ref QUERY_CACHE_BLOCKS: usize = {
+        std::env::var("GRAPH_QUERY_CACHE_BLOCKS")
+        .unwrap_or("0".to_string())
+        .parse::<usize>()
+        .expect("Invalid value for GRAPH_QUERY_CACHE_BLOCKS environment variable")
     };
 
-    // This cache might serve stale data.
-    static ref QUERY_CACHE: Mutex<LruCache<QueryHash, BTreeMap<String, q::Value>>>
-                                = Mutex::new(LruCache::with_expiry_duration(*CACHE_EXPIRY));
+    // News blocks go on the front, so the oldest block will be at the back.
+    // This `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
+    static ref QUERY_CACHE: RwLock<VecDeque<CacheByBlock>> = RwLock::new(VecDeque::new());
 }
 
 struct HashableQuery<'a> {
@@ -178,25 +188,34 @@ pub fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
+    block_ptr: Option<EthereumBlockPointer>,
 ) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
     // Cache the cache key to not have to calculate it twice - once for lookup
     // and once for insert.
     let mut key: Option<QueryHash> = None;
 
-    if CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
-        // Calculate the hash outside of the lock
-        key = Some(cache_key(ctx, selection_set));
+    if *CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
+        if let Some(block_ptr) = block_ptr {
+            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
+            // - Metadata queries are not cacheable.
+            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
+            if block_ptr.number != BLOCK_NUMBER_MAX as u64 {
+                // Calculate the hash outside of the lock
+                let cache_key = cache_key(ctx, selection_set);
 
-        // Check if the response is cached.
-        let mut cache = QUERY_CACHE.lock().unwrap();
+                // Check if the response is cached.
+                let cache = QUERY_CACHE.read().unwrap();
 
-        // Remove expired entries.
-        cache.notify_iter();
+                // Iterate from the most recent block looking for a block that matches.
+                if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
+                    if let Some(response) = cache_by_block.cache.get(&cache_key) {
+                        ctx.cached.store(true, std::sync::atomic::Ordering::SeqCst);
+                        return Ok(response.clone());
+                    }
+                }
 
-        // Peek because we want even hot entries to invalidate after the expiry period.
-        if let Some(response) = cache.peek(key.as_ref().unwrap()) {
-            ctx.cached.store(true, std::sync::atomic::Ordering::SeqCst);
-            return Ok(response.clone());
+                key = Some(cache_key);
+            }
         }
     }
 
@@ -244,10 +263,36 @@ pub fn execute_root_selection_set(
         )?);
     }
 
-    if let Some(key) = key {
-        // Insert into the cache.
-        let mut cache = QUERY_CACHE.lock().unwrap();
-        cache.insert(key, values.clone());
+    // Check if this query should be cached.
+    if let (Some(key), Some(block_ptr)) = (key, block_ptr) {
+        let mut cache = QUERY_CACHE.write().unwrap();
+
+        // If there is already a cache by the block of this query, just add it there.
+        if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
+            cache_by_block.cache.insert(key, values.clone());
+        } else if *QUERY_CACHE_BLOCKS > 0 {
+            // We're creating a new `CacheByBlock` if:
+            // - There are none yet, this is the first query being cached, or
+            // - `block_ptr` is of higher or equal number than the most recent block in the cache.
+            // Otherwise this is a historical query which will not be cached.
+            let should_insert = match cache.iter().next() {
+                None => true,
+                Some(highest) if highest.block.number <= block_ptr.number => true,
+                Some(_) => false,
+            };
+
+            if should_insert {
+                if cache.len() == *QUERY_CACHE_BLOCKS {
+                    // At capacity, so pop the oldest block.
+                    cache.pop_back();
+                }
+
+                cache.push_front(CacheByBlock {
+                    block: block_ptr,
+                    cache: BTreeMap::from_iter(iter::once((key, values.clone()))),
+                });
+            }
+        }
     }
 
     Ok(values)

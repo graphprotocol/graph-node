@@ -1,4 +1,4 @@
-use graph::prelude::{info, o, Logger, QueryExecutionError};
+use graph::prelude::{info, o, EthereumBlockPointer, Logger, QueryExecutionError};
 use graphql_parser::query as q;
 use std::collections::BTreeMap;
 use std::sync::{atomic::AtomicBool, Arc};
@@ -36,6 +36,7 @@ where
 pub fn execute_query<R>(
     query: Arc<Query>,
     selection_set: Option<&q::SelectionSet>,
+    block_ptr: Option<EthereumBlockPointer>,
     options: QueryExecutionOptions<R>,
 ) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>
 where
@@ -72,7 +73,7 @@ where
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
     let start = Instant::now();
-    let result = execute_root_selection_set(&ctx, selection_set, query_type);
+    let result = execute_root_selection_set(&ctx, selection_set, query_type, block_ptr);
     if *graph::log::LOG_GQL_TIMING {
         info!(
             query_logger,
@@ -81,6 +82,7 @@ where
             "variables" => &query.variables_text,
             "query_time_ms" => start.elapsed().as_millis(),
             "cached" => ctx.cached.load(std::sync::atomic::Ordering::SeqCst),
+            "block" => block_ptr.map(|b| b.number).unwrap_or(0),
         );
     }
     result

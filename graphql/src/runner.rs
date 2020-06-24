@@ -115,11 +115,12 @@ where
         let mut values = BTreeMap::new();
         let mut errors = Vec::new();
         for (bc, selection_set) in query.block_constraint()? {
-            let (resolver, _block_ptr) =
+            let (resolver, block_ptr) =
                 StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
             match execute_query(
                 query.clone(),
                 Some(&selection_set),
+                Some(block_ptr),
                 QueryExecutionOptions {
                     logger: self.logger.clone(),
                     resolver,

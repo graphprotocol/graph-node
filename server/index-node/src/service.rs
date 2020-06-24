@@ -119,7 +119,7 @@ where
                         max_first: std::u32::MAX,
                     };
                     let result = PreparedQuery::new(query, None, 100)
-                        .and_then(|query| execute_query(query, None, options));
+                        .and_then(|query| execute_query(query, None, None, options));
 
                     futures03::future::ok(QueryResult::from(result))
                 })

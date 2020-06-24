@@ -210,7 +210,7 @@ async fn execute_subscription_event(
     // once, from flooding the blocking thread pool and the DB connection pool.
     let _permit = SUBSCRIPTION_QUERY_SEMAPHORE.acquire();
     let result = graph::spawn_blocking_allow_panic(async move {
-        execute_root_selection_set(&ctx, &ctx.query.selection_set, &subscription_type)
+        execute_root_selection_set(&ctx, &ctx.query.selection_set, &subscription_type, None)
     })
     .await
     .map_err(|e| vec![QueryExecutionError::Panic(e.to_string())])
