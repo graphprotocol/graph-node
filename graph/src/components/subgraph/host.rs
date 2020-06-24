@@ -27,7 +27,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     async fn process_log(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         transaction: &Arc<Transaction>,
         log: &Arc<Log>,
         state: BlockState,
@@ -38,7 +38,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     async fn process_call(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         transaction: &Arc<Transaction>,
         call: &Arc<EthereumCall>,
         state: BlockState,
@@ -49,7 +49,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     async fn process_block(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,

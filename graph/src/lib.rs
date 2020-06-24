@@ -77,7 +77,7 @@ pub mod prelude {
         BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
         ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream, EthereumAdapter,
         EthereumAdapterError, EthereumBlock, EthereumBlockData, EthereumBlockFilter,
-        EthereumBlockPointer, EthereumBlockTriggerType, EthereumBlockWithCalls,
+        EthereumBlockPointer, EthereumBlockTriggerType, EthereumBlockType, EthereumBlockWithCalls,
         EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumCallFilter,
         EthereumContractCall, EthereumContractCallError, EthereumEventData, EthereumLogFilter,
         EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, FullEthereumBlockData,

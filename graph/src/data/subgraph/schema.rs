@@ -1114,7 +1114,7 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
 pub enum EthereumBlockHandlerData {
     Block,
     FullBlock,
-    FullBlockWithReceipts
+    FullBlockWithReceipts,
 }
 
 impl Default for EthereumBlockHandlerData {

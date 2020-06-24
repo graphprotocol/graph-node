@@ -135,7 +135,7 @@ where
     async fn process_trigger(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
@@ -154,7 +154,7 @@ where
     async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: &[Arc<T::Host>],
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         trigger: EthereumTrigger,
         mut state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,

@@ -13,8 +13,6 @@ pub type LightEthereumBlock = Block<Transaction>;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> u64;
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
     fn format(&self) -> String;
 }
@@ -22,18 +20,6 @@ pub trait LightEthereumBlockExt {
 impl LightEthereumBlockExt for LightEthereumBlock {
     fn number(&self) -> u64 {
         self.number.unwrap().as_u64()
-    }
-
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
-        log.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
-    }
-
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
-        call.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
     }
 
     fn parent_ptr(&self) -> Option<EthereumBlockPointer> {
@@ -212,6 +198,45 @@ pub enum EthereumBlockType {
 
     FullWithReceipts(EthereumBlock),
 }
+impl EthereumBlockType {
+    pub fn light_block(&self) -> &LightEthereumBlock {
+        match self {
+            EthereumBlockType::Light(block) => block,
+            EthereumBlockType::Full(block) => block,
+            EthereumBlockType::FullWithReceipts(block) => &block.block,
+        }
+    }
+
+    pub fn hash(&self) -> H256 {
+        self.light_block().hash.unwrap()
+    }
+
+    pub fn number(&self) -> u64 {
+        self.light_block().number.unwrap().as_u64()
+    }
+
+    pub fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+        log.transaction_hash
+            .and_then(|hash| {
+                self.light_block()
+                    .transactions
+                    .iter()
+                    .find(|tx| tx.hash == hash)
+            })
+            .cloned()
+    }
+
+    pub fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
+        call.transaction_hash
+            .and_then(|hash| {
+                self.light_block()
+                    .transactions
+                    .iter()
+                    .find(|tx| tx.hash == hash)
+            })
+            .cloned()
+    }
+}
 
 impl Default for EthereumBlockType {
     fn default() -> Self {
@@ -342,7 +367,9 @@ pub struct FullEthereumBlockDataWithReceipts {
 impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockDataWithReceipts {
     type Error = String;
 
-    fn try_from(block: &'a EthereumBlockType) -> Result<FullEthereumBlockDataWithReceipts, Self::Error> {
+    fn try_from(
+        block: &'a EthereumBlockType,
+    ) -> Result<FullEthereumBlockDataWithReceipts, Self::Error> {
         let fullblock = match block {
             EthereumBlockType::FullWithReceipts(full_block) => full_block,
             EthereumBlockType::Full(_) => return Err(format!(
@@ -766,6 +793,16 @@ impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
         EthereumBlockPointer {
             hash: b.block.hash.unwrap(),
             number: b.block.number.unwrap().as_u64(),
+        }
+    }
+}
+
+impl<'a> From<&'a EthereumBlockType> for EthereumBlockPointer {
+    fn from(b: &'a EthereumBlockType) -> EthereumBlockPointer {
+        match b {
+            EthereumBlockType::Light(block) => EthereumBlockPointer::from(block),
+            EthereumBlockType::Full(block) => EthereumBlockPointer::from(block),
+            EthereumBlockType::FullWithReceipts(block) => EthereumBlockPointer::from(block),
         }
     }
 }

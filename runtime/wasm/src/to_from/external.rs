@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use graph::components::ethereum::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
-    EthereumTransactionReceiptData, FullEthereumBlockData, FullEthereumBlockDataWithReceipts
+    EthereumTransactionReceiptData, FullEthereumBlockData, FullEthereumBlockDataWithReceipts,
 };
 use graph::data::store;
 use graph::prelude::anyhow::{ensure, Error};

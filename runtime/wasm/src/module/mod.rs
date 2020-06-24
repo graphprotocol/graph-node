@@ -166,7 +166,9 @@ impl WasmInstance {
         // Prepare an Ethereum Block for the WASM runtime
         let arg = match block.as_ref() {
             EthereumBlockType::FullWithReceipts(block) => self
-                .asc_new::<AscFullEthereumBlockWithReceipts, _>(&FullEthereumBlockDataWithReceipts::from(block))
+                .asc_new::<AscFullEthereumBlockWithReceipts, _>(
+                    &FullEthereumBlockDataWithReceipts::from(block),
+                )
                 .erase(),
             EthereumBlockType::Full(block) => self
                 .asc_new::<AscFullEthereumBlock, _>(&FullEthereumBlockData::from(block))

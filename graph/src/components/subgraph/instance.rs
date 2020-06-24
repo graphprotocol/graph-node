@@ -38,7 +38,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
     async fn process_trigger(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
@@ -48,7 +48,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
     async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: &[Arc<H>],
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,

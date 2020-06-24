@@ -638,7 +638,7 @@ where
     }
 
     // Obtain current and new block pointer (after this block is processed)
-    let light_block = Arc::new(block.light_block());
+    let light_block = Arc::new(EthereumBlockType::Light(block.light_block()));
     let block_ptr_after = EthereumBlockPointer::from(&block);
     let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
@@ -879,7 +879,7 @@ async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send 
     mut block_state: BlockState,
     proof_of_indexing: SharedProofOfIndexing,
     ctx: IndexingContext<B, T, S>,
-    block: &Arc<LightEthereumBlock>,
+    block: &Arc<EthereumBlockType>,
     triggers: Vec<EthereumTrigger>,
 ) -> Result<(IndexingContext<B, T, S>, BlockState), CancelableError<Error>> {
     for trigger in triggers.into_iter() {

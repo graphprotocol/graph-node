@@ -474,7 +474,7 @@ impl RuntimeHostTrait for RuntimeHost {
     async fn process_call(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         transaction: &Arc<Transaction>,
         call: &Arc<EthereumCall>,
         state: BlockState,
@@ -561,7 +561,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 outputs,
                 handler: call_handler.clone(),
             },
-            &Arc::new(EthereumBlockType::Light(LightEthereumBlock::from(block.as_ref().clone()))),
+            block,
             proof_of_indexing,
         )
         .await
@@ -570,37 +570,41 @@ impl RuntimeHostTrait for RuntimeHost {
     async fn process_block(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error> {
         let block_handler = self.handler_for_block(trigger_type)?;
         let mapping_block: EthereumBlockType = match trigger_type {
-            EthereumBlockTriggerType::Every(BlockType::FullWithReceipts) => match graph::block_on_allow_panic(
-                future::lazy(move || {
-                    self.host_exports
-                        .ethereum_adapter
-                        .load_full_block(logger, block.as_ref().clone())
-                })
-                .compat(),
-            ) {
-                Ok(block) => Ok(EthereumBlockType::FullWithReceipts(block)),
-                Err(e) => Err(anyhow::anyhow!(
-                    "Failed to load full block: {}, error: {}",
-                    &block.number.unwrap().to_string(),
-                    e
-                )),
-            }?,
-            EthereumBlockTriggerType::Every(BlockType::Full) => EthereumBlockType::Full(LightEthereumBlock::from(block.as_ref().clone())),
-            _ => EthereumBlockType::Light(LightEthereumBlock::from(block.as_ref().clone()))
+            EthereumBlockTriggerType::Every(BlockType::FullWithReceipts) => {
+                match graph::block_on_allow_panic(
+                    future::lazy(move || {
+                        self.host_exports
+                            .ethereum_adapter
+                            .load_full_block(logger, block.light_block().clone())
+                    })
+                    .compat(),
+                ) {
+                    Ok(block) => Ok(EthereumBlockType::FullWithReceipts(block)),
+                    Err(e) => Err(anyhow::anyhow!(
+                        "Failed to load full block: {}, error: {}",
+                        &block.number().to_string(),
+                        e
+                    )),
+                }?
+            }
+            EthereumBlockTriggerType::Every(BlockType::Full) => {
+                EthereumBlockType::Full(block.light_block().clone())
+            }
+            _ => block.as_ref().clone(),
         };
 
         self.send_mapping_request(
             logger,
             o! {
-                "hash" => block.hash.unwrap().to_string(),
-                "number" => &block.number.unwrap().to_string(),
+                "hash" => block.hash().to_string(),
+                "number" => &block.number().to_string(),
             },
             state,
             &block_handler.handler,
@@ -616,7 +620,7 @@ impl RuntimeHostTrait for RuntimeHost {
     async fn process_log(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         transaction: &Arc<Transaction>,
         log: &Arc<Log>,
         state: BlockState,
@@ -721,7 +725,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 params,
                 handler: event_handler.clone(),
             },
-            &Arc::new(EthereumBlockType::Light(block.as_ref()))),
+            block,
             proof_of_indexing,
         )
         .await

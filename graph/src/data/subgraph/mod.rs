@@ -528,7 +528,9 @@ pub enum BlockHandlerData {
 impl From<EthereumBlockHandlerData> for BlockHandlerData {
     fn from(data: EthereumBlockHandlerData) -> Self {
         match data {
-            EthereumBlockHandlerData::FullBlockWithReceipts => BlockHandlerData::FullBlockWithReceipts,
+            EthereumBlockHandlerData::FullBlockWithReceipts => {
+                BlockHandlerData::FullBlockWithReceipts
+            }
             EthereumBlockHandlerData::FullBlock => BlockHandlerData::FullBlock,
             EthereumBlockHandlerData::Block => BlockHandlerData::Block,
         }
