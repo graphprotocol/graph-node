@@ -478,6 +478,15 @@ impl EthereumBlockFilter {
 
     pub fn extend(&mut self, other: EthereumBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
+        self.block_type = match self.block_type {
+            BlockType::FullWithReceipts => BlockType::FullWithReceipts,
+            BlockType::Full => match other.block_type {
+                BlockType::FullWithReceipts => BlockType::FullWithReceipts,
+                _ => BlockType::Full,
+            },
+            BlockType::Light => other.block_type,
+        };
+
         self.contract_addresses = self.contract_addresses.iter().cloned().fold(
             HashSet::new(),
             |mut addresses, (start_block, address)| {
@@ -839,10 +848,10 @@ fn parse_block_triggers(
             .collect::<Vec<EthereumTrigger>>()
     });
     if trigger_every_block {
-        triggers.push(EthereumTrigger::Block(
+        triggers.push(dbg!(EthereumTrigger::Block(
             block_ptr,
             EthereumBlockTriggerType::Every(block_type),
-        ));
+        )));
     }
     triggers
 }
