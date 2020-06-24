@@ -60,7 +60,8 @@ impl LightEthereumBlockExt for LightEthereumBlock {
 impl<'a> From<&'a EthereumBlockType> for LightEthereumBlock {
     fn from(block: &'a EthereumBlockType) -> LightEthereumBlock {
         match block {
-            EthereumBlockType::Full(block) => block.block.clone(),
+            EthereumBlockType::FullWithReceipts(block) => block.block.clone(),
+            EthereumBlockType::Full(block) => block.clone(),
             EthereumBlockType::Light(block) => block.clone(),
         }
     }
@@ -207,7 +208,9 @@ impl Eq for EthereumTrigger {}
 pub enum EthereumBlockType {
     Light(LightEthereumBlock),
 
-    Full(EthereumBlock),
+    Full(LightEthereumBlock),
+
+    FullWithReceipts(EthereumBlock),
 }
 
 impl Default for EthereumBlockType {
@@ -216,16 +219,17 @@ impl Default for EthereumBlockType {
     }
 }
 
-impl<'a> From<&'a LightEthereumBlock> for EthereumBlockType {
-    fn from(block: &'a LightEthereumBlock) -> EthereumBlockType {
-        EthereumBlockType::Light(block.clone())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlockType {
     Light,
     Full,
+    FullWithReceipts,
+}
+
+impl Default for BlockType {
+    fn default() -> BlockType {
+        BlockType::Light
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -317,7 +321,7 @@ pub struct EthereumTransactionReceiptData {
     pub input: Bytes,
 }
 
-pub struct FullEthereumBlockData {
+pub struct FullEthereumBlockDataWithReceipts {
     pub hash: H256,
     pub parent_hash: H256,
     pub uncles_hash: H256,
@@ -335,14 +339,17 @@ pub struct FullEthereumBlockData {
     pub transaction_receipts: Vec<EthereumTransactionReceiptData>,
 }
 
-impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockData {
+impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockDataWithReceipts {
     type Error = String;
 
-    fn try_from(block: &'a EthereumBlockType) -> Result<FullEthereumBlockData, Self::Error> {
+    fn try_from(block: &'a EthereumBlockType) -> Result<FullEthereumBlockDataWithReceipts, Self::Error> {
         let fullblock = match block {
-            EthereumBlockType::Full(full_block) => full_block,
+            EthereumBlockType::FullWithReceipts(full_block) => full_block,
+            EthereumBlockType::Full(_) => return Err(format!(
+                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires a EthereumBlockType::FullWithReceipts()"
+            )),
             EthereumBlockType::Light(_) => return Err(format!(
-                "Failed to convert EthereumBlockType to FUllEthereumBlockData, requires a EthereumBlockType::Full()"
+                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires a EthereumBlockType::FullWithReceipts()"
             ))
         };
         let block = &fullblock.block;
@@ -376,7 +383,7 @@ impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockData {
             })
             .collect::<Vec<EthereumTransactionReceiptData>>();
 
-        Ok(FullEthereumBlockData {
+        Ok(FullEthereumBlockDataWithReceipts {
             hash: block.hash.unwrap(),
             parent_hash: block.parent_hash,
             uncles_hash: block.uncles_hash,
@@ -396,8 +403,8 @@ impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockData {
     }
 }
 
-impl<'a> From<&'a EthereumBlock> for FullEthereumBlockData {
-    fn from(block: &'a EthereumBlock) -> FullEthereumBlockData {
+impl<'a> From<&'a EthereumBlock> for FullEthereumBlockDataWithReceipts {
+    fn from(block: &'a EthereumBlock) -> FullEthereumBlockDataWithReceipts {
         let transaction_receipts_data = block
             .block
             .transactions
@@ -430,7 +437,7 @@ impl<'a> From<&'a EthereumBlock> for FullEthereumBlockData {
             .collect::<Vec<EthereumTransactionReceiptData>>();
         let block = &block.block;
 
-        FullEthereumBlockData {
+        FullEthereumBlockDataWithReceipts {
             hash: block.hash.unwrap(),
             parent_hash: block.parent_hash,
             uncles_hash: block.uncles_hash,
@@ -452,7 +459,7 @@ impl<'a> From<&'a EthereumBlock> for FullEthereumBlockData {
 
 /// Ethereum block data.
 #[derive(Clone, Debug, Default)]
-pub struct EthereumBlockData {
+pub struct FullEthereumBlockData {
     pub hash: H256,
     pub parent_hash: H256,
     pub uncles_hash: H256,
@@ -470,9 +477,9 @@ pub struct EthereumBlockData {
     pub transactions: Vec<EthereumTransactionData>,
 }
 
-impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData {
-    fn from(block: &'a LightEthereumBlock) -> EthereumBlockData {
-        EthereumBlockData {
+impl<'a> From<&'a LightEthereumBlock> for FullEthereumBlockData {
+    fn from(block: &'a LightEthereumBlock) -> FullEthereumBlockData {
+        FullEthereumBlockData {
             hash: block.hash.unwrap(),
             parent_hash: block.parent_hash,
             uncles_hash: block.uncles_hash,
@@ -496,14 +503,15 @@ impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData {
     }
 }
 
-impl<'a> From<&'a EthereumBlockType> for EthereumBlockData {
-    fn from(block: &'a EthereumBlockType) -> EthereumBlockData {
+impl<'a> From<&'a EthereumBlockType> for FullEthereumBlockData {
+    fn from(block: &'a EthereumBlockType) -> FullEthereumBlockData {
         let block = match block {
-            EthereumBlockType::Full(full_block) => &full_block.block,
+            EthereumBlockType::FullWithReceipts(full_block) => &full_block.block,
+            EthereumBlockType::Full(block) => &block,
             EthereumBlockType::Light(light_block) => light_block,
         };
 
-        EthereumBlockData {
+        FullEthereumBlockData {
             hash: block.hash.unwrap(),
             parent_hash: block.parent_hash,
             uncles_hash: block.uncles_hash,
@@ -523,6 +531,73 @@ impl<'a> From<&'a EthereumBlockType> for EthereumBlockData {
                 .iter()
                 .map(|tx| EthereumTransactionData::from(tx))
                 .collect(),
+        }
+    }
+}
+
+/// Ethereum block data.
+#[derive(Clone, Debug, Default)]
+pub struct EthereumBlockData {
+    pub hash: H256,
+    pub parent_hash: H256,
+    pub uncles_hash: H256,
+    pub author: H160,
+    pub state_root: H256,
+    pub transactions_root: H256,
+    pub receipts_root: H256,
+    pub number: U64,
+    pub gas_used: U256,
+    pub gas_limit: U256,
+    pub timestamp: U256,
+    pub difficulty: U256,
+    pub total_difficulty: U256,
+    pub size: Option<U256>,
+}
+
+impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData {
+    fn from(block: &'a LightEthereumBlock) -> EthereumBlockData {
+        EthereumBlockData {
+            hash: block.hash.unwrap(),
+            parent_hash: block.parent_hash,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number.unwrap(),
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty.unwrap_or_default(),
+            size: block.size,
+        }
+    }
+}
+
+impl<'a> From<&'a EthereumBlockType> for EthereumBlockData {
+    fn from(block: &'a EthereumBlockType) -> EthereumBlockData {
+        let block = match block {
+            EthereumBlockType::FullWithReceipts(full_block) => &full_block.block,
+            EthereumBlockType::Full(full_block) => &full_block,
+            EthereumBlockType::Light(light_block) => light_block,
+        };
+
+        EthereumBlockData {
+            hash: block.hash.unwrap(),
+            parent_hash: block.parent_hash,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number.unwrap(),
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty.unwrap_or_default(),
+            size: block.size,
         }
     }
 }

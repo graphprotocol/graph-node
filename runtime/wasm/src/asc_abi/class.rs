@@ -420,7 +420,7 @@ pub(crate) struct AscEthereumBlock {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumBlock_0_0_5 {
+pub(crate) struct AscFullEthereumBlock {
     pub hash: AscPtr<AscH256>,
     pub parent_hash: AscPtr<AscH256>,
     pub uncles_hash: AscPtr<AscH256>,
@@ -440,7 +440,7 @@ pub(crate) struct AscEthereumBlock_0_0_5 {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscFullEthereumBlock {
+pub(crate) struct AscFullEthereumBlockWithReceipts {
     pub hash: AscPtr<AscH256>,
     pub parent_hash: AscPtr<AscH256>,
     pub uncles_hash: AscPtr<AscH256>,

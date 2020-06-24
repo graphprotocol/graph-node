@@ -412,7 +412,7 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
 pub struct EthereumBlockFilter {
     pub contract_addresses: HashSet<(u64, Address)>,
     pub trigger_every_block: bool,
-    pub full_block: bool,
+    pub block_type: BlockType,
 }
 
 impl EthereumBlockFilter {
@@ -435,18 +435,32 @@ impl EthereumBlockFilter {
                     .iter()
                     .any(|block_handler| block_handler.filter.is_none());
 
-                let has_block_handler_with_fullblock = data_source
+                let block_type = if data_source
+                    .mapping
+                    .block_handlers
+                    .iter()
+                    .any(|block_handler| match block_handler.input {
+                        BlockHandlerData::FullBlockWithReceipts => return true,
+                        _ => return false,
+                    }) {
+                    BlockType::FullWithReceipts
+                } else if data_source
                     .mapping
                     .block_handlers
                     .iter()
                     .any(|block_handler| match block_handler.input {
                         BlockHandlerData::FullBlock => return true,
                         _ => return false,
-                    });
+                    })
+                {
+                    BlockType::Full
+                } else {
+                    BlockType::Light
+                };
 
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
-                    full_block: has_block_handler_with_fullblock,
+                    block_type,
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(
                             data_source.source.start_block,
@@ -813,10 +827,7 @@ fn parse_block_triggers(
 ) -> Vec<EthereumTrigger> {
     let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
     let trigger_every_block = block_filter.trigger_every_block;
-    let block_type = match block_filter.full_block {
-        true => BlockType::Full,
-        false => BlockType::Light,
-    };
+    let block_type = block_filter.block_type;
     let call_filter = EthereumCallFilter::from(block_filter);
     let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
         calls
@@ -938,9 +949,7 @@ pub fn blocks_with_triggers(
                         .map(|ptr| {
                             EthereumTrigger::Block(
                                 ptr,
-                                EthereumBlockTriggerType::Every(BlockType::from(
-                                    block_filter.full_block,
-                                )),
+                                EthereumBlockTriggerType::Every(block_filter.block_type),
                             )
                         })
                         .collect()

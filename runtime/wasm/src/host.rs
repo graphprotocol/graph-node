@@ -561,7 +561,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 outputs,
                 handler: call_handler.clone(),
             },
-            &Arc::new(EthereumBlockType::from(block.as_ref())),
+            &Arc::new(EthereumBlockType::Light(LightEthereumBlock::from(block.as_ref().clone()))),
             proof_of_indexing,
         )
         .await
@@ -577,7 +577,7 @@ impl RuntimeHostTrait for RuntimeHost {
     ) -> Result<BlockState, anyhow::Error> {
         let block_handler = self.handler_for_block(trigger_type)?;
         let mapping_block: EthereumBlockType = match trigger_type {
-            EthereumBlockTriggerType::Every(BlockType::Full) => match graph::block_on_allow_panic(
+            EthereumBlockTriggerType::Every(BlockType::FullWithReceipts) => match graph::block_on_allow_panic(
                 future::lazy(move || {
                     self.host_exports
                         .ethereum_adapter
@@ -585,14 +585,15 @@ impl RuntimeHostTrait for RuntimeHost {
                 })
                 .compat(),
             ) {
-                Ok(block) => Ok(EthereumBlockType::Full(block)),
+                Ok(block) => Ok(EthereumBlockType::FullWithReceipts(block)),
                 Err(e) => Err(anyhow::anyhow!(
                     "Failed to load full block: {}, error: {}",
                     &block.number.unwrap().to_string(),
                     e
                 )),
             }?,
-            _ => EthereumBlockType::from(block.as_ref()),
+            EthereumBlockTriggerType::Every(BlockType::Full) => EthereumBlockType::Full(LightEthereumBlock::from(block.as_ref().clone())),
+            _ => EthereumBlockType::Light(LightEthereumBlock::from(block.as_ref().clone()))
         };
 
         self.send_mapping_request(
@@ -720,7 +721,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 params,
                 handler: event_handler.clone(),
             },
-            &Arc::new(EthereumBlockType::from(block.as_ref())),
+            &Arc::new(EthereumBlockType::Light(block.as_ref()))),
             proof_of_indexing,
         )
         .await

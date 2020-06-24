@@ -522,13 +522,15 @@ pub struct MappingBlockHandler {
 pub enum BlockHandlerData {
     Block,
     FullBlock,
+    FullBlockWithReceipts,
 }
 
 impl From<EthereumBlockHandlerData> for BlockHandlerData {
     fn from(data: EthereumBlockHandlerData) -> Self {
         match data {
+            EthereumBlockHandlerData::FullBlockWithReceipts => BlockHandlerData::FullBlockWithReceipts,
             EthereumBlockHandlerData::FullBlock => BlockHandlerData::FullBlock,
-            _ => BlockHandlerData::Block,
+            EthereumBlockHandlerData::Block => BlockHandlerData::Block,
         }
     }
 }

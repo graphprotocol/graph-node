@@ -1114,6 +1114,7 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
 pub enum EthereumBlockHandlerData {
     Block,
     FullBlock,
+    FullBlockWithReceipts
 }
 
 impl Default for EthereumBlockHandlerData {
@@ -1140,6 +1141,7 @@ impl FromStr for EthereumBlockHandlerData {
 impl From<EthereumBlockHandlerData> for String {
     fn from(data: EthereumBlockHandlerData) -> String {
         match data {
+            EthereumBlockHandlerData::FullBlockWithReceipts => "FullBlockWithReceipts".into(),
             EthereumBlockHandlerData::FullBlock => "FullBlock".into(),
             EthereumBlockHandlerData::Block => "Block".into(),
         }

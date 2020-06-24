@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use graph::components::ethereum::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
-    EthereumTransactionReceiptData, FullEthereumBlockData,
+    EthereumTransactionReceiptData, FullEthereumBlockData, FullEthereumBlockDataWithReceipts
 };
 use graph::data::store;
 use graph::prelude::anyhow::{ensure, Error};
@@ -325,9 +325,9 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
     }
 }
 
-impl ToAscObj<AscEthereumBlock_0_0_5> for EthereumBlockData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscEthereumBlock_0_0_5 {
-        AscEthereumBlock_0_0_5 {
+impl ToAscObj<AscFullEthereumBlock> for FullEthereumBlockData {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscFullEthereumBlock {
+        AscFullEthereumBlock {
             hash: heap.asc_new(&self.hash),
             parent_hash: heap.asc_new(&self.parent_hash),
             uncles_hash: heap.asc_new(&self.uncles_hash),
@@ -350,9 +350,9 @@ impl ToAscObj<AscEthereumBlock_0_0_5> for EthereumBlockData {
     }
 }
 
-impl ToAscObj<AscFullEthereumBlock> for FullEthereumBlockData {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscFullEthereumBlock {
-        AscFullEthereumBlock {
+impl ToAscObj<AscFullEthereumBlockWithReceipts> for FullEthereumBlockDataWithReceipts {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> AscFullEthereumBlockWithReceipts {
+        AscFullEthereumBlockWithReceipts {
             hash: heap.asc_new(&self.hash),
             parent_hash: heap.asc_new(&self.parent_hash),
             uncles_hash: heap.asc_new(&self.uncles_hash),
