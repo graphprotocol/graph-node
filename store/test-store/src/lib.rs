@@ -72,8 +72,8 @@ lazy_static! {
                     },
                     &logger,
                     net_identifiers,
-                    chain_head_update_listener,
-                    subscriptions,
+                    Some(chain_head_update_listener),
+                    Some(subscriptions),
                     postgres_conn_pool,
                     registry.clone(),
                 ))

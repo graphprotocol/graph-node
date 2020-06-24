@@ -234,11 +234,15 @@ where
 
         // Subscribe to the store and return the entity change stream
         let deployment_id = parse_subgraph_id(object_type)?;
-        Ok(self.store.subscribe(entities).throttle_while_syncing(
-            &self.logger,
-            self.store.clone(),
-            deployment_id,
-            *SUBSCRIPTION_THROTTLE_INTERVAL,
-        ))
+
+        match self.store.subscribe(entities) {
+            Some(stream) => Ok(stream.throttle_while_syncing(
+                &self.logger,
+                self.store.clone(),
+                deployment_id,
+                *SUBSCRIPTION_THROTTLE_INTERVAL,
+            )),
+            None => Err(QueryExecutionError::SubscriptionsDisabled),
+        }
     }
 }

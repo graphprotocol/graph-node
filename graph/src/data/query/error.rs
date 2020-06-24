@@ -60,6 +60,7 @@ pub enum QueryExecutionError {
     Panic(String),
     EventStreamError,
     FulltextQueryRequiresFilter,
+    SubscriptionsDisabled,
 }
 
 impl Error for QueryExecutionError {
@@ -207,6 +208,7 @@ impl fmt::Display for QueryExecutionError {
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
+            SubscriptionsDisabled => write!(f, "subscriptions are disabled"),
         }
     }
 }

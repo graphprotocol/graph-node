@@ -36,7 +36,7 @@ mock! {
 
         fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
 
-        fn chain_head_updates(&self) -> ChainHeadUpdateStream;
+        fn chain_head_updates(&self) -> Option<ChainHeadUpdateStream>;
 
         fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
@@ -145,7 +145,7 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> Option<StoreEventStreamBox> {
         unimplemented!()
     }
 
