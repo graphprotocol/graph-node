@@ -881,7 +881,7 @@ pub trait Store: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
     ///
     /// Returns a stream of store events that match the input arguments.
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> Option<StoreEventStreamBox>;
 
     fn resolve_subgraph_name_to_id(
         &self,
@@ -1304,7 +1304,7 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> Option<StoreEventStreamBox> {
         unimplemented!()
     }
 
@@ -1403,7 +1403,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
 
     /// Subscribe to chain head updates.
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream;
+    fn chain_head_updates(&self) -> Option<ChainHeadUpdateStream>;
 
     /// Get the current head block pointer for this chain.
     /// Any changes to the head block pointer will be to a block with a larger block number, never

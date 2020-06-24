@@ -170,7 +170,9 @@ where
         BlockStream {
             state: Mutex::new(BlockStreamState::New),
             consecutive_err_count: 0,
-            chain_head_update_stream: chain_store.chain_head_updates(),
+            chain_head_update_stream: chain_store
+                .chain_head_updates()
+                .expect("running against a readonly database"),
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,

@@ -156,9 +156,9 @@ struct SubgraphInfo {
 
 pub struct StoreInner {
     logger: Logger,
-    subscriptions: Arc<SubscriptionManager>,
+    subscriptions: Option<Arc<SubscriptionManager>>,
 
-    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+    chain_head_update_listener: Option<Arc<ChainHeadUpdateListener>>,
     network_name: String,
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
@@ -192,8 +192,8 @@ impl Store {
         config: StoreConfig,
         logger: &Logger,
         net_identifiers: EthereumNetworkIdentifier,
-        chain_head_update_listener: Arc<ChainHeadUpdateListener>,
-        subscriptions: Arc<SubscriptionManager>,
+        chain_head_update_listener: Option<Arc<ChainHeadUpdateListener>>,
+        subscriptions: Option<Arc<SubscriptionManager>>,
         pool: Pool<ConnectionManager<PgConnection>>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
@@ -1204,8 +1204,10 @@ impl StoreTrait for Store {
         })
     }
 
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
-        self.subscriptions.subscribe(entities)
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> Option<StoreEventStreamBox> {
+        self.subscriptions
+            .as_ref()
+            .map(|subs| subs.subscribe(entities))
     }
 
     fn create_subgraph_deployment(
@@ -1427,9 +1429,10 @@ impl ChainStore for Store {
         .and_then(|r| r.map_err(Error::from))
     }
 
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
+    fn chain_head_updates(&self) -> Option<ChainHeadUpdateStream> {
         self.chain_head_update_listener
-            .subscribe(self.0.network_name.to_owned())
+            .as_ref()
+            .map(|listener| listener.subscribe(self.0.network_name.to_owned()))
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {

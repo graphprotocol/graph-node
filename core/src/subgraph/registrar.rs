@@ -154,6 +154,7 @@ where
             .subscribe(vec![
                 SubgraphDeploymentAssignmentEntity::subgraph_entity_pair(),
             ])
+            .expect("running against a readonly database")
             .map_err(|()| format_err!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
