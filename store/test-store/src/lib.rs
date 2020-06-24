@@ -397,6 +397,7 @@ fn execute_subgraph_query_internal(
         match execute_query(
             query.clone(),
             Some(&selection_set),
+            None,
             QueryExecutionOptions {
                 logger,
                 resolver,
