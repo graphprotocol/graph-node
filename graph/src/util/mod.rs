@@ -12,3 +12,5 @@ pub mod lfu_cache;
 pub mod error;
 
 pub mod stats;
+
+pub mod cache_weight;

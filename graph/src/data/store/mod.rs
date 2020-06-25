@@ -1,6 +1,5 @@
 use crate::data::subgraph::SubgraphDeploymentId;
 use crate::prelude::{format_err, EntityKey, QueryExecutionError};
-use crate::util::lfu_cache::CacheWeight;
 use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
@@ -594,32 +593,6 @@ pub trait ToEntityId {
 /// A value that can be converted to an `Entity` key.
 pub trait ToEntityKey {
     fn to_entity_key(&self, subgraph: SubgraphDeploymentId) -> EntityKey;
-}
-
-impl CacheWeight for Value {
-    fn weight(&self) -> u64 {
-        use std::mem::size_of_val;
-        size_of_val(self) as u64
-            + match self {
-                Value::String(s) => s.len() as u64,
-                Value::BigDecimal(d) => (d.digits() as f32).log2() as u64,
-                Value::List(values) => values.iter().map(|value| value.weight()).sum(),
-                Value::Bytes(bytes) => bytes.as_slice().len() as u64,
-                Value::BigInt(n) => n.bits() / 8 as u64,
-                Value::Int(_) | Value::Bool(_) | Value::Null => 0,
-            }
-    }
-}
-
-impl CacheWeight for Entity {
-    /// The weight of an entity in the cache is the approximate amount of bytes occupied by it.
-    fn weight(&self) -> u64 {
-        use std::mem::size_of_val;
-        self.0
-            .iter()
-            .map(|(key, value)| size_of_val(key) as u64 + key.len() as u64 + value.weight())
-            .sum()
-    }
 }
 
 #[test]

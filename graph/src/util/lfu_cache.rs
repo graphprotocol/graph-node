@@ -1,3 +1,4 @@
+use crate::prelude::CacheWeight;
 use priority_queue::PriorityQueue;
 use std::cmp::Reverse;
 use std::fmt::Debug;
@@ -6,23 +7,10 @@ use std::hash::{Hash, Hasher};
 // The number of `evict` calls without access after which an entry is considered stale.
 const STALE_PERIOD: u64 = 100;
 
-pub trait CacheWeight {
-    fn weight(&self) -> u64;
-}
-
-impl<T: CacheWeight> CacheWeight for Option<T> {
-    fn weight(&self) -> u64 {
-        match self {
-            Some(x) => x.weight(),
-            None => 0,
-        }
-    }
-}
-
 /// `PartialEq` and `Hash` are delegated to the `key`.
 #[derive(Clone, Debug)]
 pub struct CacheEntry<K, V> {
-    weight: u64,
+    weight: usize,
     key: K,
     value: V,
     will_stale: bool,
@@ -66,7 +54,7 @@ type Priority = (bool, Reverse<u64>);
 #[derive(Clone, Debug)]
 pub struct LfuCache<K: Eq + Hash, V> {
     queue: PriorityQueue<CacheEntry<K, V>, Priority>,
-    total_weight: u64,
+    total_weight: usize,
     stale_counter: u64,
 }
 
@@ -157,7 +145,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
         self.queue.len()
     }
 
-    pub fn evict(&mut self, max_weight: u64) {
+    pub fn evict(&mut self, max_weight: usize) {
         if self.total_weight <= max_weight {
             return;
         }
@@ -204,18 +192,25 @@ impl<K: Ord + Eq + Hash, V> Extend<(CacheEntry<K, V>, Priority)> for LfuCache<K,
 
 #[test]
 fn entity_lru_cache() {
-    impl CacheWeight for u64 {
-        fn weight(&self) -> u64 {
-            *self
+    #[derive(Default, Debug, PartialEq, Eq)]
+    struct Weight(usize);
+
+    impl CacheWeight for Weight {
+        fn weight(&self) -> usize {
+            self.0
+        }
+
+        fn indirect_weight(&self) -> usize {
+            0
         }
     }
 
-    let mut cache: LfuCache<&'static str, u64> = LfuCache::new();
-    cache.insert("panda", 2);
-    cache.insert("cow", 1);
+    let mut cache: LfuCache<&'static str, Weight> = LfuCache::new();
+    cache.insert("panda", Weight(2));
+    cache.insert("cow", Weight(1));
 
-    assert_eq!(cache.get(&"cow"), Some(&1));
-    assert_eq!(cache.get(&"panda"), Some(&2));
+    assert_eq!(cache.get(&"cow"), Some(&Weight(1)));
+    assert_eq!(cache.get(&"panda"), Some(&Weight(2)));
 
     // Total weight is 3, nothing is evicted.
     cache.evict(3);
@@ -226,7 +221,7 @@ fn entity_lru_cache() {
     cache.evict(2);
     assert!(cache.get(&"panda").is_none());
 
-    cache.insert("alligator", 2);
+    cache.insert("alligator", Weight(2));
 
     // Give "cow" and "alligator" a high frequency.
     for _ in 0..1000 {
@@ -234,14 +229,14 @@ fn entity_lru_cache() {
         cache.get(&"alligator");
     }
 
-    cache.insert("lion", 3);
+    cache.insert("lion", Weight(3));
 
     // Make "cow" and "alligator" stale and remove them.
     for _ in 0..(2 * STALE_PERIOD) {
         cache.get(&"lion");
 
         // The "whale" is something to evict so the stale counter moves.
-        cache.insert("whale", 100);
+        cache.insert("whale", Weight(100));
         cache.evict(10);
     }
 
@@ -249,5 +244,5 @@ fn entity_lru_cache() {
     // "lion" will be kept, it had lower frequency but was not stale.
     assert!(cache.get(&"cow").is_none());
     assert!(cache.get(&"alligator").is_none());
-    assert_eq!(cache.get(&"lion"), Some(&3));
+    assert_eq!(cache.get(&"lion"), Some(&Weight(3)));
 }

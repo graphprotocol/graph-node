@@ -3,7 +3,10 @@ use graphql_parser::query as q;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Instant;
 
 use graph::data::graphql::effort::LoadManager;
@@ -66,6 +69,7 @@ where
         deadline: options.deadline,
         max_first: options.max_first,
         cached: AtomicBool::new(true),
+        cache_insert: AtomicBool::new(false),
     };
 
     if !query.is_query() {
