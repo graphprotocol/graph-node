@@ -1166,7 +1166,6 @@ fn subscribe_and_consume(
         .expect("Failed to apply marker operation");
 
     let source = subscription
-        .expect("read-only db?")
         .skip_while(move |event| {
             // Skip events until we see the fake event we generated above
             future::ok(
