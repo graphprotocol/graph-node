@@ -593,7 +593,6 @@ async fn main() {
                     subscriptions.clone(),
                     postgres_conn_pool.clone(),
                     stores_metrics_registry.clone(),
-                    *EXPERIMENTAL_READONLY_DB,
                 )),
             )
         })

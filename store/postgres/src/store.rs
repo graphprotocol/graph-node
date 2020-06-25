@@ -196,15 +196,12 @@ impl Store {
         subscriptions: Option<Arc<SubscriptionManager>>,
         pool: Pool<ConnectionManager<PgConnection>>,
         registry: Arc<dyn MetricsRegistry>,
-        readonly_db: bool,
     ) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
 
         // Create the entities table (if necessary)
-        if !readonly_db {
-            initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
-        }
+        initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
 
         // Create the store
         let store = StoreInner {

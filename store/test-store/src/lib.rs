@@ -76,7 +76,6 @@ lazy_static! {
                     Some(subscriptions),
                     postgres_conn_pool,
                     registry.clone(),
-                    false,
                 ))
             })
         }).join().unwrap()
