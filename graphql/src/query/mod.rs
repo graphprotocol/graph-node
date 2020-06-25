@@ -55,7 +55,7 @@ where
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
-        cached: AtomicBool::new(false),
+        cached: AtomicBool::new(true),
     };
 
     if !query.is_query() {
@@ -85,5 +85,5 @@ where
             "block" => block_ptr.map(|b| b.number).unwrap_or(0),
         );
     }
-    result
+    result.to_inner()
 }

@@ -88,7 +88,7 @@ impl Query {
             q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
                 (Kind::Query, selection_set)
             }
-            // Queries can be run by just sending a selction set
+            // Queries can be run by just sending a selection set
             q::OperationDefinition::SelectionSet(selection_set) => (Kind::Query, selection_set),
             q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
                 (Kind::Subscription, selection_set)

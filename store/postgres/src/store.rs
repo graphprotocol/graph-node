@@ -1060,11 +1060,9 @@ impl StoreTrait for Store {
             .get_result::<String>(&conn)
             .optional()
             .map_err(|e| {
-                QueryExecutionError::StoreError(format_err!(
-                    "error looking up ens_name for hash {}: {}",
-                    hash,
-                    e
-                ))
+                QueryExecutionError::StoreError(
+                    format_err!("error looking up ens_name for hash {}: {}", hash, e).into(),
+                )
             })
     }
 
