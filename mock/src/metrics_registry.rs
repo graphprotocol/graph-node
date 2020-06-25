@@ -62,8 +62,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
         Ok(counter)
     }
 
-    fn global_counter(&self, name: String) -> Result<Counter, PrometheusError> {
-        let opts = Opts::new(name, "global_counter".to_owned());
+    fn global_counter(&self, name: String, help: String) -> Result<Counter, PrometheusError> {
+        let opts = Opts::new(name, help);
         Counter::with_opts(opts)
     }
 
