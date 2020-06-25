@@ -42,6 +42,7 @@ pub struct Query {
     /// have dummy values
     pub(crate) query_text: Arc<String>,
     pub(crate) variables_text: Arc<String>,
+    pub(crate) complexity: u64,
 }
 
 impl Query {
@@ -88,7 +89,7 @@ impl Query {
             q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
                 (Kind::Query, selection_set)
             }
-            // Queries can be run by just sending a selction set
+            // Queries can be run by just sending a selection set
             q::OperationDefinition::SelectionSet(selection_set) => (Kind::Query, selection_set),
             q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
                 (Kind::Subscription, selection_set)
@@ -100,7 +101,7 @@ impl Query {
             }
         };
 
-        let query = Arc::new(Self {
+        let mut query = Self {
             schema: query.schema,
             variables,
             fragments,
@@ -108,12 +109,13 @@ impl Query {
             kind,
             query_text,
             variables_text,
-        });
+            complexity: 0,
+        };
 
         query.validate_fields()?;
         query.check_complexity(max_complexity, max_depth)?;
 
-        Ok(query)
+        Ok(Arc::new(query))
     }
 
     /// Return the block constraint for the toplevel query field(s) Since,
@@ -161,6 +163,7 @@ impl Query {
             kind: self.kind,
             query_text: self.query_text.clone(),
             variables_text: self.variables_text.clone(),
+            complexity: self.complexity,
         })
     }
 
@@ -186,7 +189,7 @@ impl Query {
     }
 
     fn check_complexity(
-        &self,
+        &mut self,
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<(), Vec<QueryExecutionError>> {
@@ -198,6 +201,7 @@ impl Query {
                     max_complexity,
                 )]);
             }
+            self.complexity = complexity;
         }
         Ok(())
     }
