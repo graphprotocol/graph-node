@@ -83,6 +83,7 @@ where
         deadline: None,
         max_first: options.max_first,
         cached: AtomicBool::new(true),
+        cache_insert: AtomicBool::new(false),
     };
 
     if !query.is_subscription() {
@@ -199,6 +200,7 @@ async fn execute_subscription_event(
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
         cached: AtomicBool::new(true),
+        cache_insert: AtomicBool::new(false),
     };
 
     // We have established that this exists earlier in the subscription execution

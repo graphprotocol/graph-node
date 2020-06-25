@@ -10,7 +10,7 @@ use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::ops::Deref;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 use std::time::Instant;
 
@@ -31,15 +31,42 @@ type QueryResponse = Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>
 #[derive(Debug)]
 struct CacheByBlock {
     block: EthereumBlockPointer,
-    cache: BTreeMap<QueryHash, CachedResponse<QueryResponse>>,
+    max_weight: usize,
+    weight: usize,
+    cache: HashMap<QueryHash, CachedResponse<QueryResponse>>,
+}
+
+impl CacheByBlock {
+    fn new(block: EthereumBlockPointer, max_weight: usize) -> Self {
+        CacheByBlock {
+            block,
+            max_weight,
+            weight: 0,
+            cache: HashMap::new(),
+        }
+    }
+
+    /// Returns `true` if the insert was successful or `false` if the cache was full.
+    fn insert(&mut self, key: QueryHash, value: &CachedResponse<QueryResponse>) -> bool {
+        // Unwrap: We never try to insert errors into this cache.
+        let weight = value.deref().as_ref().ok().unwrap().weight();
+
+        let fits_in_cache = self.weight + weight <= self.max_weight;
+        if fits_in_cache {
+            self.weight += weight;
+            self.cache.insert(key, value.cheap_clone());
+        }
+        fits_in_cache
+    }
 }
 
 lazy_static! {
     // Comma separated subgraph ids to cache queries for.
     // If `*` is present in the list, queries are cached for all subgraphs.
+    // Defaults to "*".
     static ref CACHED_SUBGRAPH_IDS: Vec<String> = {
         std::env::var("GRAPH_CACHED_SUBGRAPH_IDS")
-        .unwrap_or_default()
+        .unwrap_or("*".to_string())
         .split(',')
         .map(|s| s.to_owned())
         .collect()
@@ -49,16 +76,25 @@ lazy_static! {
 
     // How many blocks should be kept in the query cache. When the limit is reached, older blocks
     // are evicted. This should be kept small since a lookup to the cache is O(n) on this value, and
-    // the cache memory usage also increases with larger number. Set to 0 to disable the cache,
-    // defaults to disabled.
+    // the cache memory usage also increases with larger number. Set to 0 to disable the cache.
+    // Defaults to 1.
     static ref QUERY_CACHE_BLOCKS: usize = {
         std::env::var("GRAPH_QUERY_CACHE_BLOCKS")
-        .unwrap_or("0".to_string())
+        .unwrap_or("1".to_string())
         .parse::<usize>()
         .expect("Invalid value for GRAPH_QUERY_CACHE_BLOCKS environment variable")
     };
 
-    // New blocks go on the front, so the oldest block will be at the back.
+    /// blocks, each block has a max size of `QUERY_CACHE_MAX_MEM` / `QUERY_CACHE_BLOCKS`.
+    /// The env var is in MB.
+    static ref QUERY_CACHE_MAX_MEM: usize = {
+        1_000_000 *
+        std::env::var("GRAPH_QUERY_CACHE_MAX_MEM")
+        .unwrap_or("100".to_string())
+        .parse::<usize>()
+        .expect("Invalid value for GRAPH_QUERY_CACHE_MAX_MEM environment variable")
+    };
+
     // This `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_CACHE: RwLock<VecDeque<CacheByBlock>> = RwLock::new(VecDeque::new());
     static ref QUERY_HERD_CACHE: QueryCache<QueryResponse> = QueryCache::new();
@@ -176,6 +212,9 @@ where
     ///
     /// Used for logging.
     pub cached: AtomicBool,
+
+    /// Set to `true` if the response was inserted in the cache. Used for logging.
+    pub cache_insert: AtomicBool,
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
@@ -213,6 +252,7 @@ where
             deadline: self.deadline,
             max_first: std::u32::MAX,
             cached: AtomicBool::new(true),
+            cache_insert: AtomicBool::new(false),
         }
     }
 }
@@ -326,7 +366,8 @@ pub fn execute_root_selection_set(
 
             // If there is already a cache by the block of this query, just add it there.
             if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-                cache_by_block.cache.insert(key, cached.cheap_clone());
+                let cache_insert = cache_by_block.insert(key, cached);
+                ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
             } else if *QUERY_CACHE_BLOCKS > 0 {
                 // We're creating a new `CacheByBlock` if:
                 // - There are none yet, this is the first query being cached, or
@@ -344,10 +385,12 @@ pub fn execute_root_selection_set(
                         cache.pop_back();
                     }
 
-                    cache.push_front(CacheByBlock {
-                        block: block_ptr,
-                        cache: BTreeMap::from_iter(iter::once((key, cached.cheap_clone()))),
-                    });
+                    // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
+                    let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
+                    let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
+                    let cache_insert = cache_by_block.insert(key, cached);
+                    ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
+                    cache.push_front(cache_by_block);
                 }
             }
         }

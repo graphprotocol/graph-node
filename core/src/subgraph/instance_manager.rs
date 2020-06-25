@@ -21,10 +21,10 @@ use super::SubgraphInstance;
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
     // Multiplied by 1000 because the env var is in KB.
-    pub static ref ENTITY_CACHE_SIZE: u64 = 1000
+    pub static ref ENTITY_CACHE_SIZE: usize = 1000
         * std::env::var("GRAPH_ENTITY_CACHE_SIZE")
             .unwrap_or("10000".into())
-            .parse::<u64>()
+            .parse::<usize>()
             .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
 }
 
