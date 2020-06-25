@@ -1,3 +1,5 @@
+use super::cache::{CachedResponse, QueryCache};
+use graph::prelude::CheapClone;
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use indexmap::IndexMap;
@@ -7,6 +9,7 @@ use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
+use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
 use std::sync::RwLock;
 use std::time::Instant;
@@ -23,10 +26,12 @@ use crate::values::coercion;
 
 type QueryHash = <SetHasher as StableHasher>::Out;
 
+type QueryResponse = Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>;
+
 #[derive(Debug)]
 struct CacheByBlock {
     block: EthereumBlockPointer,
-    cache: BTreeMap<QueryHash, BTreeMap<String, q::Value>>,
+    cache: BTreeMap<QueryHash, CachedResponse<QueryResponse>>,
 }
 
 lazy_static! {
@@ -53,9 +58,25 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_CACHE_BLOCKS environment variable")
     };
 
-    // News blocks go on the front, so the oldest block will be at the back.
+    // New blocks go on the front, so the oldest block will be at the back.
     // This `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_CACHE: RwLock<VecDeque<CacheByBlock>> = RwLock::new(VecDeque::new());
+    static ref QUERY_HERD_CACHE: QueryCache<QueryResponse> = QueryCache::new();
+}
+
+pub enum MaybeCached<T> {
+    NotCached(T),
+    Cached(CachedResponse<T>),
+}
+
+impl<T: Clone> MaybeCached<T> {
+    // Note that this drops any handle to the cache that may exist.
+    pub fn to_inner(self) -> T {
+        match self {
+            MaybeCached::NotCached(t) => t,
+            MaybeCached::Cached(t) => t.deref().clone(),
+        }
+    }
 }
 
 struct HashableQuery<'a> {
@@ -63,6 +84,7 @@ struct HashableQuery<'a> {
     query_variables: &'a HashMap<q::Name, q::Value>,
     query_fragments: &'a HashMap<String, q::FragmentDefinition>,
     selection_set: &'a q::SelectionSet,
+    block_ptr: &'a EthereumBlockPointer,
 }
 
 /// Note that the use of StableHash here is a little bit loose. In particular,
@@ -104,11 +126,18 @@ impl StableHash for HashableQuery<'_> {
         self.selection_set
             .to_string()
             .stable_hash(sequence_number.next_child(), state);
+
+        self.block_ptr
+            .stable_hash(sequence_number.next_child(), state);
     }
 }
 
 // The key is: subgraph id + selection set + variables + fragment definitions
-fn cache_key(ctx: &ExecutionContext<impl Resolver>, selection_set: &q::SelectionSet) -> QueryHash {
+fn cache_key(
+    ctx: &ExecutionContext<impl Resolver>,
+    selection_set: &q::SelectionSet,
+    block_ptr: &EthereumBlockPointer,
+) -> QueryHash {
     // It is very important that all data used for the query is included.
     // Otherwise, incorrect results may be returned.
     let query = HashableQuery {
@@ -116,6 +145,7 @@ fn cache_key(ctx: &ExecutionContext<impl Resolver>, selection_set: &q::Selection
         query_variables: &ctx.query.variables,
         query_fragments: &ctx.query.fragments,
         selection_set,
+        block_ptr,
     };
     stable_hash::<SetHasher, _>(&query)
 }
@@ -140,7 +170,11 @@ where
     /// Max value for `first`.
     pub max_first: u32,
 
-    /// Set to `true` if the response was cached. Used for logging.
+    /// Will be `true` if the response was pulled from cache. The mechanism by
+    /// which this is set is actually to start at `true` and then be set to
+    /// `false` if the query is executed.
+    ///
+    /// Used for logging.
     pub cached: AtomicBool,
 }
 
@@ -178,48 +212,19 @@ where
             query: self.query.as_introspection_query(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
-            cached: AtomicBool::new(false),
+            cached: AtomicBool::new(true),
         }
     }
 }
 
-/// Executes the root selection set of a query.
-pub fn execute_root_selection_set(
+pub fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
-    block_ptr: Option<EthereumBlockPointer>,
-) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
-    // Cache the cache key to not have to calculate it twice - once for lookup
-    // and once for insert.
-    let mut key: Option<QueryHash> = None;
+) -> QueryResponse {
+    ctx.cached.store(false, std::sync::atomic::Ordering::SeqCst);
 
-    if *CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
-        if let Some(block_ptr) = block_ptr {
-            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
-            // - Metadata queries are not cacheable.
-            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
-            if block_ptr.number != BLOCK_NUMBER_MAX as u64 {
-                // Calculate the hash outside of the lock
-                let cache_key = cache_key(ctx, selection_set);
-
-                // Check if the response is cached.
-                let cache = QUERY_CACHE.read().unwrap();
-
-                // Iterate from the most recent block looking for a block that matches.
-                if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
-                    if let Some(response) = cache_by_block.cache.get(&cache_key) {
-                        ctx.cached.store(true, std::sync::atomic::Ordering::SeqCst);
-                        return Ok(response.clone());
-                    }
-                }
-
-                key = Some(cache_key);
-            }
-        }
-    }
-
-    // Split the toplevel fields into introspection fields and
+    // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = q::SelectionSet {
         span: selection_set.span.clone(),
@@ -234,7 +239,7 @@ pub fn execute_root_selection_set(
         let name = fields[0].name.clone();
         let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
         // See if this is an introspection or data field. We don't worry about
-        // nonexistant fields; those will cause an error later when we execute
+        // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
         if is_introspection_field(&name) {
             intro_set.items.extend(selections)
@@ -263,39 +268,92 @@ pub fn execute_root_selection_set(
         )?);
     }
 
-    // Check if this query should be cached.
-    if let (Some(key), Some(block_ptr)) = (key, block_ptr) {
-        let mut cache = QUERY_CACHE.write().unwrap();
+    Ok(values)
+}
 
-        // If there is already a cache by the block of this query, just add it there.
-        if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-            cache_by_block.cache.insert(key, values.clone());
-        } else if *QUERY_CACHE_BLOCKS > 0 {
-            // We're creating a new `CacheByBlock` if:
-            // - There are none yet, this is the first query being cached, or
-            // - `block_ptr` is of higher or equal number than the most recent block in the cache.
-            // Otherwise this is a historical query which will not be cached.
-            let should_insert = match cache.iter().next() {
-                None => true,
-                Some(highest) if highest.block.number <= block_ptr.number => true,
-                Some(_) => false,
-            };
+/// Executes the root selection set of a query.
+pub fn execute_root_selection_set(
+    ctx: &ExecutionContext<impl Resolver>,
+    selection_set: &q::SelectionSet,
+    root_type: &s::ObjectType,
+    block_ptr: Option<EthereumBlockPointer>,
+) -> MaybeCached<QueryResponse> {
+    // Cache the cache key to not have to calculate it twice - once for lookup
+    // and once for insert.
+    let mut key: Option<QueryHash> = None;
 
-            if should_insert {
-                if cache.len() == *QUERY_CACHE_BLOCKS {
-                    // At capacity, so pop the oldest block.
-                    cache.pop_back();
+    if *CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
+        if let Some(block_ptr) = block_ptr {
+            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
+            // - Metadata queries are not cacheable.
+            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
+            if block_ptr.number != BLOCK_NUMBER_MAX as u64 {
+                // Calculate the hash outside of the lock
+                let cache_key = cache_key(ctx, selection_set, &block_ptr);
+
+                // Check if the response is cached.
+                let cache = QUERY_CACHE.read().unwrap();
+
+                // Iterate from the most recent block looking for a block that matches.
+                if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
+                    if let Some(response) = cache_by_block.cache.get(&cache_key) {
+                        return MaybeCached::Cached(response.cheap_clone());
+                    }
                 }
 
-                cache.push_front(CacheByBlock {
-                    block: block_ptr,
-                    cache: BTreeMap::from_iter(iter::once((key, values.clone()))),
-                });
+                key = Some(cache_key);
             }
         }
     }
 
-    Ok(values)
+    let result = if let Some(key) = key {
+        let cached = QUERY_HERD_CACHE.cached_query(key, || {
+            execute_root_selection_set_uncached(ctx, selection_set, root_type)
+        });
+        MaybeCached::Cached(cached)
+    } else {
+        let not_cached = execute_root_selection_set_uncached(ctx, selection_set, root_type);
+        MaybeCached::NotCached(not_cached)
+    };
+
+    // Check if this query should be cached.
+    if let (MaybeCached::Cached(cached), Some(key), Some(block_ptr)) = (&result, key, block_ptr) {
+        // Share errors from the herd cache, but don't store them in generational cache.
+        // In particular, there is a problem where asking for a block pointer beyond the chain
+        // head can cause the legitimate cache to be thrown out.
+        if cached.is_ok() {
+            let mut cache = QUERY_CACHE.write().unwrap();
+
+            // If there is already a cache by the block of this query, just add it there.
+            if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
+                cache_by_block.cache.insert(key, cached.cheap_clone());
+            } else if *QUERY_CACHE_BLOCKS > 0 {
+                // We're creating a new `CacheByBlock` if:
+                // - There are none yet, this is the first query being cached, or
+                // - `block_ptr` is of higher or equal number than the most recent block in the cache.
+                // Otherwise this is a historical query which will not be cached.
+                let should_insert = match cache.iter().next() {
+                    None => true,
+                    Some(highest) if highest.block.number <= block_ptr.number => true,
+                    Some(_) => false,
+                };
+
+                if should_insert {
+                    if cache.len() == *QUERY_CACHE_BLOCKS {
+                        // At capacity, so pop the oldest block.
+                        cache.pop_back();
+                    }
+
+                    cache.push_front(CacheByBlock {
+                        block: block_ptr,
+                        cache: BTreeMap::from_iter(iter::once((key, cached.cheap_clone()))),
+                    });
+                }
+            }
+        }
+    }
+
+    result
 }
 
 /// Executes a selection set, requiring the result to be of the given object type.
@@ -320,7 +378,7 @@ fn execute_selection_set_to_map<'a>(
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     object_type: &s::ObjectType,
     prefetched_value: Option<q::Value>,
-) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+) -> QueryResponse {
     let mut prefetched_object = match prefetched_value {
         Some(q::Value::Object(object)) => Some(object),
         Some(_) => unreachable!(),

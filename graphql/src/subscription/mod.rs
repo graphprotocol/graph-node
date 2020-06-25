@@ -82,7 +82,7 @@ where
         query: query.clone(),
         deadline: None,
         max_first: options.max_first,
-        cached: AtomicBool::new(false),
+        cached: AtomicBool::new(true),
     };
 
     if !query.is_subscription() {
@@ -198,7 +198,7 @@ async fn execute_subscription_event(
         query,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
-        cached: AtomicBool::new(false),
+        cached: AtomicBool::new(true),
     };
 
     // We have established that this exists earlier in the subscription execution
@@ -213,6 +213,10 @@ async fn execute_subscription_event(
         execute_root_selection_set(&ctx, &ctx.query.selection_set, &subscription_type, None)
     })
     .await
+    // Performance: Taking the low road here for expediency. Ideally
+    // we save the cached value for as long as is possible, avoiding
+    // any possible clone that happens here.
+    .map(|x| x.to_inner())
     .map_err(|e| vec![QueryExecutionError::Panic(e.to_string())])
     .and_then(|x| x);
 

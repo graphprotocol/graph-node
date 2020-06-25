@@ -341,7 +341,7 @@ where
             // The query is against the subgraph of subgraphs
             self.store
                 .api_schema(&SUBGRAPHS_ID)
-                .map_err(QueryExecutionError::StoreError)?,
+                .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
             // We're querying all deployments that match the provided filter
             q::parse_query(&format!(
                 "{}{}",
@@ -421,7 +421,7 @@ where
             // The query is against the subgraph of subgraphs
             self.store
                 .api_schema(&SUBGRAPHS_ID)
-                .map_err(QueryExecutionError::StoreError)?,
+                .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
             // We're querying all deployments that match the provided filter
             q::parse_query(&format!(
                 "{}{}",
@@ -571,7 +571,7 @@ where
         let query = Query::new(
             self.store
                 .api_schema(&SUBGRAPHS_ID)
-                .map_err(QueryExecutionError::StoreError)?,
+                .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
             q::parse_query(&format!(
                 "{}{}",
                 DEPLOYMENT_STATUS_FRAGMENT,

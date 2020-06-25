@@ -58,7 +58,7 @@ where
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
-        cached: AtomicBool::new(false),
+        cached: AtomicBool::new(true),
     };
 
     if !query.is_query() {
@@ -89,5 +89,5 @@ where
             "complexity" => &query.complexity
         );
     }
-    result
+    result.to_inner()
 }

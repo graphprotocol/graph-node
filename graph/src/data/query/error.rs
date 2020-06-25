@@ -7,13 +7,29 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::string::FromUtf8Error;
+use std::sync::Arc;
 
 use crate::components::store::StoreError;
 use crate::data::graphql::SerializableValue;
 use crate::data::subgraph::*;
 
-/// Error caused while executing a [Query](struct.Query.html).
 #[derive(Debug)]
+pub struct CloneableFailureError(Arc<failure::Error>);
+
+impl Clone for CloneableFailureError {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl From<failure::Error> for CloneableFailureError {
+    fn from(f: failure::Error) -> Self {
+        Self(Arc::new(f))
+    }
+}
+
+/// Error caused while executing a [Query](struct.Query.html).
+#[derive(Debug, Clone)]
 pub enum QueryExecutionError {
     OperationNameRequired,
     OperationNotFound(String),
@@ -45,7 +61,7 @@ pub enum QueryExecutionError {
     ValueParseError(String, String),
     AttributeTypeError(String, String),
     EntityParseError(String),
-    StoreError(failure::Error),
+    StoreError(CloneableFailureError),
     Timeout,
     EmptySelectionSet(String),
     AmbiguousDerivedFromResult(Pos, String, String, String),
@@ -173,7 +189,7 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "Broken entity found in store: {}", s)
             }
             StoreError(e) => {
-                write!(f, "Store error: {}", e)
+                write!(f, "Store error: {}", e.0)
             }
             Timeout => write!(f, "Query timed out"),
             EmptySelectionSet(entity_type) => {
@@ -239,7 +255,7 @@ impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
 
 impl From<StoreError> for QueryExecutionError {
     fn from(e: StoreError) -> Self {
-        QueryExecutionError::StoreError(e.into())
+        QueryExecutionError::StoreError(CloneableFailureError(Arc::new(e.into())))
     }
 }
 
