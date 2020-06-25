@@ -86,6 +86,7 @@ where
             "query_time_ms" => start.elapsed().as_millis(),
             "cached" => ctx.cached.load(std::sync::atomic::Ordering::SeqCst),
             "block" => block_ptr.map(|b| b.number).unwrap_or(0),
+            "complexity" => &query.complexity
         );
     }
     result
