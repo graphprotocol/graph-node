@@ -54,6 +54,7 @@ pub enum QueryExecutionError {
     ScalarCoercionError(Pos, String, q::Value, String),
     TooComplex(u64, u64), // (complexity, max_complexity)
     TooDeep(u8),          // max_depth
+    TooExpensive,
     UndefinedFragment(String),
     // Using slow and prefetch query resolution yield different results
     IncorrectPrefetchResult { slow: q::Value, prefetch: q::Value },
@@ -209,6 +210,7 @@ impl fmt::Display for QueryExecutionError {
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
             SubscriptionsDisabled => write!(f, "subscriptions are disabled"),
+            TooExpensive => write!(f, "query is too expensive")
         }
     }
 }

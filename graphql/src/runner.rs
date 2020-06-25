@@ -1,6 +1,6 @@
 use futures01::future;
 use graphql_parser::query as q;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -9,12 +9,12 @@ use std::time::{Duration, Instant};
 use crate::prelude::{
     object, object_value, QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions,
 };
-use crate::query::execute_query;
+use crate::query::{execute_query, shape_hash::shape_hash};
 use crate::subscription::execute_prepared_subscription;
 use graph::prelude::{
     o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
     QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError, SubgraphDeploymentId,
-    SubgraphDeploymentStore, Subscription, SubscriptionResultFuture,
+    SubgraphDeploymentStore, Subscription, SubscriptionError, SubscriptionResultFuture,
 };
 
 use lazy_static::lazy_static;
@@ -23,6 +23,7 @@ use lazy_static::lazy_static;
 pub struct GraphQlRunner<S> {
     logger: Logger,
     store: Arc<S>,
+    expensive: HashMap<u64, Arc<q::Document>>,
 }
 
 lazy_static! {
@@ -53,10 +54,15 @@ where
     S: Store + SubgraphDeploymentStore,
 {
     /// Creates a new query runner.
-    pub fn new(logger: &Logger, store: Arc<S>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<S>, expensive: &Vec<Arc<q::Document>>) -> Self {
+        let expensive = expensive
+            .into_iter()
+            .map(|doc| (shape_hash(&doc), doc.clone()))
+            .collect::<HashMap<_, _>>();
         GraphQlRunner {
             logger: logger.new(o!("component" => "GraphQlRunner")),
             store,
+            expensive,
         }
     }
 
@@ -138,6 +144,14 @@ where
             Ok(QueryResult::new(Some(q::Value::Object(values))))
         }
     }
+
+    pub fn check_too_expensive(&self, query: &Query) -> Result<(), Vec<QueryExecutionError>> {
+        if self.expensive.contains_key(&shape_hash(&query.document)) {
+            Err(vec![QueryExecutionError::TooExpensive])
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
@@ -160,14 +174,19 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> QueryResultFuture {
-        let result = match self.execute(query, max_complexity, max_depth, max_first) {
-            Ok(result) => result,
-            Err(e) => QueryResult::from(e),
-        };
+        let result = self
+            .check_too_expensive(&query)
+            .and_then(|_| self.execute(query, max_complexity, max_depth, max_first))
+            .unwrap_or_else(|e| QueryResult::from(e));
         Box::new(future::ok(result))
     }
 
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
+        if let Err(errs) = self.check_too_expensive(&subscription.query) {
+            let err = SubscriptionError::GraphQLError(errs);
+            return Box::new(future::result(Err(err)));
+        }
+
         let query = match crate::execution::Query::new(
             subscription.query,
             *GRAPHQL_MAX_COMPLEXITY,

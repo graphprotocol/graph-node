@@ -230,7 +230,7 @@ fn execute_query_document_with_variables(
     query: q::Document,
     variables: Option<QueryVariables>,
 ) -> QueryResult {
-    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone());
+    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone(), &vec![]);
     let query = Query::new(Arc::new(api_test_schema()), query, variables);
 
     return_err!(runner.execute(query, None, None, None))

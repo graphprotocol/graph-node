@@ -5,6 +5,8 @@ use lazy_static::lazy_static;
 use prometheus::Registry;
 use std::collections::HashMap;
 use std::env;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -34,6 +36,7 @@ use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, Store as DieselStore, StoreConfig,
     SubscriptionManager,
 };
+use graphql_parser::query as q;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -66,6 +69,33 @@ enum ConnectionType {
     IPC,
     RPC,
     WS,
+}
+
+fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
+    // A file with a list of expensive queries, one query per line
+    // Attempts to run these queries will return a
+    // QueryExecutionError::TooExpensive to clients
+    const EXPENSIVE_QUERIES: &str = "/etc/graph-node/expensive-queries.txt";
+    let path = Path::new(EXPENSIVE_QUERIES);
+    let mut queries = Vec::new();
+    if path.exists() {
+        let file = std::fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            let line = line?;
+            let query = graphql_parser::parse_query(&line).map_err(|e| {
+                let msg = format!(
+                    "invalid GraphQL query in {}: {}\n{}",
+                    EXPENSIVE_QUERIES,
+                    e.to_string(),
+                    line
+                );
+                std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
+            })?;
+            queries.push(Arc::new(query));
+        }
+    }
+    Ok(queries)
 }
 
 // Saturating the blocking threads can cause all sorts of issues, so set a large maximum.
@@ -523,6 +553,8 @@ async fn main() {
         )))
     };
 
+    let expensive_queries = read_expensive_queries().unwrap();
+
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_adapters.into_iter().map(
             |(network_name, eth_adapter)| {
@@ -570,7 +602,11 @@ async fn main() {
         .and_then(move |stores| {
             let generic_store = stores.values().next().expect("error creating stores");
 
-            let graphql_runner = Arc::new(GraphQlRunner::new(&logger, generic_store.clone()));
+            let graphql_runner = Arc::new(GraphQlRunner::new(
+                &logger,
+                generic_store.clone(),
+                &expensive_queries,
+            ));
             let mut graphql_server = GraphQLQueryServer::new(
                 &logger_factory,
                 graphql_metrics_registry,
