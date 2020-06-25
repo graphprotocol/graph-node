@@ -709,7 +709,10 @@ impl Store {
 
         self.with_conn(move |conn, cancel_handle| {
             registry
-                .global_counter(format!("{}_get_entity_conn_secs", &subgraph))
+                .global_counter(
+                    format!("{}_get_entity_conn_secs", &subgraph),
+                    "total time spent getting an entity connection".to_string(),
+                )
                 .map_err(Into::<Error>::into)?
                 .inc_by(start.elapsed().as_secs_f64());
 
@@ -741,7 +744,10 @@ impl Store {
         let start = Instant::now();
         let conn = self.get_conn()?;
         self.registry
-            .global_counter(format!("{}_get_entity_conn_secs", subgraph))?
+            .global_counter(
+                format!("{}_get_entity_conn_secs", subgraph),
+                "total time spent getting an entity connection".to_string(),
+            )?
             .inc_by(start.elapsed().as_secs_f64());
         let storage = self.storage(&conn, subgraph)?;
         let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;

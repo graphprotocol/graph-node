@@ -9,7 +9,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-struct ErrorHandler(Logger, Box<Counter>);
+struct ErrorHandler(Logger, Counter);
 
 impl Debug for ErrorHandler {
     fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
@@ -99,10 +99,9 @@ pub fn create_connection_pool(
     let logger_store = logger.new(o!("component" => "Store"));
     let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
     let error_counter = registry
-        .new_counter(
+        .global_counter(
             String::from("store_connection_error_count"),
             String::from("The number of Postgres connections errors"),
-            HashMap::new(),
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));

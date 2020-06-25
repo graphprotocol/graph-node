@@ -202,12 +202,11 @@ impl MetricsRegistryTrait for MetricsRegistry {
         Ok(counter)
     }
 
-    fn global_counter(&self, name: String) -> Result<Counter, PrometheusError> {
+    fn global_counter(&self, name: String, help: String) -> Result<Counter, PrometheusError> {
         let maybe_counter = self.global_counters.read().unwrap().get(&name).cloned();
         if let Some(counter) = maybe_counter {
             Ok(counter.clone())
         } else {
-            let help = "global counter".to_owned();
             let counter = *self.new_counter(name.clone(), help, HashMap::new())?;
             self.global_counters
                 .write()
