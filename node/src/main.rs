@@ -289,12 +289,6 @@ async fn main() {
                 .value_name("URL")
                 .help("HTTP endpoint for 3box profiles"),
         )
-        .arg(
-            Arg::with_name("readonly-db")
-                .takes_value(false)
-                .long("readonly-db")
-                .help("Run against a readonly db (no subscriptions etc.)"),
-        )
         .get_matches();
 
     // Set up logger
@@ -532,26 +526,16 @@ async fn main() {
         connection_pool_registry,
     );
 
-    let readonly_db = matches.is_present("readonly-db");
+    let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
+        &logger,
+        stores_metrics_registry.clone(),
+        postgres_url.clone(),
+    ));
 
-    let chain_head_update_listener = if readonly_db {
-        None
-    } else {
-        Some(Arc::new(PostgresChainHeadUpdateListener::new(
-            &logger,
-            stores_metrics_registry.clone(),
-            postgres_url.clone(),
-        )))
-    };
-
-    let subscriptions = if readonly_db {
-        None
-    } else {
-        Some(Arc::new(SubscriptionManager::new(
-            logger.clone(),
-            postgres_url.clone(),
-        )))
-    };
+    let subscriptions = Arc::new(SubscriptionManager::new(
+        logger.clone(),
+        postgres_url.clone(),
+    ));
 
     let expensive_queries = read_expensive_queries().unwrap();
 
@@ -613,19 +597,11 @@ async fn main() {
                 generic_store.clone(),
                 node_id.clone(),
             );
-
-            // Disable the subscriptions server when running against a read-only
-            // database
-            if !readonly_db {
-                let subscription_server = GraphQLSubscriptionServer::new(
-                    &logger,
-                    graphql_runner.clone(),
-                    generic_store.clone(),
-                );
-
-                // Serve GraphQL subscriptions over WebSockets
-                graph::spawn(subscription_server.serve(ws_port));
-            }
+            let subscription_server = GraphQLSubscriptionServer::new(
+                &logger,
+                graphql_runner.clone(),
+                generic_store.clone(),
+            );
 
             let mut index_node_server = IndexNodeServer::new(
                 &logger_factory,
@@ -634,181 +610,177 @@ async fn main() {
                 node_id.clone(),
             );
 
-            if !readonly_db {
-                // Spawn Ethereum network indexers for all networks that are to be indexed
-                if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
-                    network_subgraphs
-                        .into_iter()
-                        .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
-                        .for_each(|network_subgraph| {
-                            let network_name = network_subgraph.replace("ethereum/", "");
-                            let mut indexer = network_indexer::NetworkIndexer::new(
-                                &logger,
-                                eth_adapters
-                                    .get(&network_name)
-                                    .expect("adapter for network")
-                                    .clone(),
-                                stores
-                                    .get(&network_name)
-                                    .expect("store for network")
-                                    .clone(),
-                                metrics_registry.clone(),
-                                format!("network/{}", network_subgraph).into(),
-                                None,
-                            );
-                            graph::spawn(
-                                indexer
-                                    .take_event_stream()
-                                    .unwrap()
-                                    .for_each(|_| {
-                                        // For now we simply ignore these events; we may later use them
-                                        // to drive subgraph indexing
-                                        Ok(())
-                                    })
-                                    .compat(),
-                            );
-                        })
+            // Spawn Ethereum network indexers for all networks that are to be indexed
+            if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
+                network_subgraphs
+                    .into_iter()
+                    .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
+                    .for_each(|network_subgraph| {
+                        let network_name = network_subgraph.replace("ethereum/", "");
+                        let mut indexer = network_indexer::NetworkIndexer::new(
+                            &logger,
+                            eth_adapters
+                                .get(&network_name)
+                                .expect("adapter for network")
+                                .clone(),
+                            stores
+                                .get(&network_name)
+                                .expect("store for network")
+                                .clone(),
+                            metrics_registry.clone(),
+                            format!("network/{}", network_subgraph).into(),
+                            None,
+                        );
+                        graph::spawn(
+                            indexer
+                                .take_event_stream()
+                                .unwrap()
+                                .for_each(|_| {
+                                    // For now we simply ignore these events; we may later use them
+                                    // to drive subgraph indexing
+                                    Ok(())
+                                })
+                                .compat(),
+                        );
+                    })
+            };
+
+            if !disable_block_ingestor {
+                // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
+                // otherwise BlockStream will not work properly.
+                // BlockStream expects the blocks after the reorg threshold to be present in the
+                // database.
+                assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
+
+                info!(logger, "Starting block ingestors");
+
+                // Create Ethereum block ingestors and spawn a thread to run each
+                eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
+                    info!(
+                        logger,
+                        "Starting block ingestor for network";
+                        "network_name" => &network_name
+                    );
+
+                    let block_ingestor = BlockIngestor::new(
+                        stores.get(network_name).expect("network with name").clone(),
+                        eth_adapter.clone(),
+                        *ANCESTOR_COUNT,
+                        network_name.to_string(),
+                        &logger_factory,
+                        block_polling_interval,
+                    )
+                    .expect("failed to create Ethereum block ingestor");
+
+                    // Run the Ethereum block ingestor in the background
+                    graph::spawn(block_ingestor.into_polling_stream());
+                });
+            }
+
+            let block_stream_builder = BlockStreamBuilder::new(
+                generic_store.clone(),
+                stores.clone(),
+                eth_adapters.clone(),
+                node_id.clone(),
+                *REORG_THRESHOLD,
+                metrics_registry.clone(),
+            );
+            let runtime_host_builder = WASMRuntimeHostBuilder::new(
+                eth_adapters.clone(),
+                link_resolver.clone(),
+                stores.clone(),
+                arweave_adapter,
+                three_box_adapter,
+            );
+
+            let subgraph_instance_manager = SubgraphInstanceManager::new(
+                &logger_factory,
+                stores.clone(),
+                eth_adapters.clone(),
+                runtime_host_builder,
+                block_stream_builder,
+                metrics_registry.clone(),
+                graphql_runner.cheap_clone(),
+            );
+
+            // Create IPFS-based subgraph provider
+            let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
+                &logger_factory,
+                link_resolver.clone(),
+                generic_store.clone(),
+                graphql_runner.clone(),
+            );
+
+            // Forward subgraph events from the subgraph provider to the subgraph instance manager
+            graph::spawn(
+                forward(&mut subgraph_provider, &subgraph_instance_manager)
+                    .unwrap()
+                    .compat(),
+            );
+
+            // Check version switching mode environment variable
+            let version_switching_mode = SubgraphVersionSwitchingMode::parse(
+                env::var_os("EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE")
+                    .unwrap_or_else(|| "instant".into())
+                    .to_str()
+                    .expect("invalid version switching mode"),
+            );
+
+            // Create named subgraph provider for resolving subgraph name->ID mappings
+            let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
+                &logger_factory,
+                link_resolver,
+                Arc::new(subgraph_provider),
+                generic_store.clone(),
+                stores,
+                eth_adapters.clone(),
+                node_id.clone(),
+                version_switching_mode,
+            ));
+            graph::spawn(
+                subgraph_registrar
+                    .start()
+                    .map_err(|e| panic!("failed to initialize subgraph provider {}", e))
+                    .compat(),
+            );
+
+            // Start admin JSON-RPC server.
+            let json_rpc_server = JsonRpcServer::serve(
+                json_rpc_port,
+                http_port,
+                ws_port,
+                subgraph_registrar.clone(),
+                node_id.clone(),
+                logger.clone(),
+            )
+            .expect("failed to start JSON-RPC admin server");
+
+            // Let the server run forever.
+            std::mem::forget(json_rpc_server);
+
+            // Add the CLI subgraph with a REST request to the admin server.
+            if let Some(subgraph) = subgraph {
+                let (name, hash) = if subgraph.contains(':') {
+                    let mut split = subgraph.split(':');
+                    (split.next().unwrap(), split.next().unwrap().to_owned())
+                } else {
+                    ("cli", subgraph)
                 };
 
-                if !disable_block_ingestor {
-                    // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
-                    // otherwise BlockStream will not work properly.
-                    // BlockStream expects the blocks after the reorg threshold to be present in the
-                    // database.
-                    assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
+                let name = SubgraphName::new(name)
+                    .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
+                let subgraph_id = SubgraphDeploymentId::new(hash)
+                    .expect("Subgraph hash must be a valid IPFS hash");
 
-                    info!(logger, "Starting block ingestors");
-
-                    // Create Ethereum block ingestors and spawn a thread to run each
-                    eth_adapters.iter().for_each(|(network_name, eth_adapter)| {
-                        info!(
-                            logger,
-                            "Starting block ingestor for network";
-                            "network_name" => &network_name
-                        );
-
-                        let block_ingestor = BlockIngestor::new(
-                            stores.get(network_name).expect("network with name").clone(),
-                            eth_adapter.clone(),
-                            *ANCESTOR_COUNT,
-                            network_name.to_string(),
-                            &logger_factory,
-                            block_polling_interval,
-                        )
-                        .expect("failed to create Ethereum block ingestor");
-
-                        // Run the Ethereum block ingestor in the background
-                        graph::spawn(block_ingestor.into_polling_stream());
-                    });
-                }
-
-                let block_stream_builder = BlockStreamBuilder::new(
-                    generic_store.clone(),
-                    stores.clone(),
-                    eth_adapters.clone(),
-                    node_id.clone(),
-                    *REORG_THRESHOLD,
-                    metrics_registry.clone(),
-                );
-                let runtime_host_builder = WASMRuntimeHostBuilder::new(
-                    eth_adapters.clone(),
-                    link_resolver.clone(),
-                    stores.clone(),
-                    arweave_adapter,
-                    three_box_adapter,
-                );
-
-                let subgraph_instance_manager = SubgraphInstanceManager::new(
-                    &logger_factory,
-                    stores.clone(),
-                    eth_adapters.clone(),
-                    runtime_host_builder,
-                    block_stream_builder,
-                    metrics_registry.clone(),
-                    graphql_runner.cheap_clone(),
-                );
-
-                // Create IPFS-based subgraph provider
-                let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
-                    &logger_factory,
-                    link_resolver.clone(),
-                    generic_store.clone(),
-                    graphql_runner.clone(),
-                );
-
-                // Forward subgraph events from the subgraph provider to the subgraph instance manager
                 graph::spawn(
-                    forward(&mut subgraph_provider, &subgraph_instance_manager)
-                        .unwrap()
-                        .compat(),
+                    async move {
+                        subgraph_registrar.create_subgraph(name.clone()).await?;
+                        subgraph_registrar
+                            .create_subgraph_version(name, subgraph_id, node_id)
+                            .await
+                    }
+                    .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
                 );
-
-                // Check version switching mode environment variable
-                let version_switching_mode = SubgraphVersionSwitchingMode::parse(
-                    env::var_os("EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE")
-                        .unwrap_or_else(|| "instant".into())
-                        .to_str()
-                        .expect("invalid version switching mode"),
-                );
-
-                // Create named subgraph provider for resolving subgraph name->ID mappings
-                let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
-                    &logger_factory,
-                    link_resolver,
-                    Arc::new(subgraph_provider),
-                    generic_store.clone(),
-                    stores,
-                    eth_adapters.clone(),
-                    node_id.clone(),
-                    version_switching_mode,
-                ));
-                graph::spawn(
-                    subgraph_registrar
-                        .start()
-                        .map_err(|e| panic!("failed to initialize subgraph provider {}", e))
-                        .compat(),
-                );
-
-                // Start admin JSON-RPC server.
-                let json_rpc_server = JsonRpcServer::serve(
-                    json_rpc_port,
-                    http_port,
-                    ws_port,
-                    subgraph_registrar.clone(),
-                    node_id.clone(),
-                    logger.clone(),
-                )
-                .expect("failed to start JSON-RPC admin server");
-
-                // Let the server run forever.
-                std::mem::forget(json_rpc_server);
-
-                // Add the CLI subgraph with a REST request to the admin server.
-                if let Some(subgraph) = subgraph {
-                    let (name, hash) = if subgraph.contains(':') {
-                        let mut split = subgraph.split(':');
-                        (split.next().unwrap(), split.next().unwrap().to_owned())
-                    } else {
-                        ("cli", subgraph)
-                    };
-
-                    let name = SubgraphName::new(name)
-                        .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
-                    let subgraph_id = SubgraphDeploymentId::new(hash)
-                        .expect("Subgraph hash must be a valid IPFS hash");
-
-                    graph::spawn(
-                        async move {
-                            subgraph_registrar.create_subgraph(name.clone()).await?;
-                            subgraph_registrar
-                                .create_subgraph_version(name, subgraph_id, node_id)
-                                .await
-                        }
-                        .map_err(|e| {
-                            panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)
-                        }),
-                    );
-                }
             }
 
             // Serve GraphQL queries over HTTP
@@ -818,6 +790,9 @@ async fn main() {
                     .expect("Failed to start GraphQL query server")
                     .compat(),
             );
+
+            // Serve GraphQL subscriptions over WebSockets
+            graph::spawn(subscription_server.serve(ws_port));
 
             // Run the index node server
             graph::spawn(
