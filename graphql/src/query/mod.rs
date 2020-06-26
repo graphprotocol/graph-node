@@ -5,6 +5,8 @@ use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Instant;
 use uuid::Uuid;
 
+use graph::data::graphql::effort::QueryEffort;
+
 use crate::execution::*;
 use crate::schema::ast as sast;
 
@@ -30,6 +32,8 @@ where
 
     /// Maximum value for the `first` argument.
     pub max_first: u32,
+
+    pub effort: Arc<QueryEffort>,
 }
 
 /// Executes a query and returns a result.
@@ -74,13 +78,15 @@ where
     // Execute top-level `query { ... }` and `{ ... }` expressions.
     let start = Instant::now();
     let result = execute_root_selection_set(&ctx, selection_set, query_type, block_ptr);
+    let elapsed = start.elapsed();
+    options.effort.add(query.shape_hash, elapsed);
     if *graph::log::LOG_GQL_TIMING {
         info!(
             query_logger,
             "Query timing (GraphQL)";
             "query" => &query.query_text,
             "variables" => &query.variables_text,
-            "query_time_ms" => start.elapsed().as_millis(),
+            "query_time_ms" => elapsed.as_millis(),
             "cached" => ctx.cached.load(std::sync::atomic::Ordering::SeqCst),
             "block" => block_ptr.map(|b| b.number).unwrap_or(0),
             "complexity" => &query.complexity

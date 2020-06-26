@@ -11,6 +11,7 @@ use crate::prelude::{
 };
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
+use graph::data::graphql::effort::QueryEffort;
 use graph::prelude::{
     o, shape_hash, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
     QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError, SubgraphDeploymentId,
@@ -24,6 +25,7 @@ pub struct GraphQlRunner<S> {
     logger: Logger,
     store: Arc<S>,
     expensive: HashMap<u64, Arc<q::Document>>,
+    effort: Arc<QueryEffort>,
 }
 
 lazy_static! {
@@ -47,6 +49,8 @@ lazy_static! {
         .map(|s| u32::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_FIRST")))
         .unwrap_or(1000);
+    static ref WINDOW_SIZE: Duration = Duration::from_secs(300);
+    static ref BIN_SIZE: Duration = Duration::from_secs(1);
 }
 
 impl<S> GraphQlRunner<S>
@@ -63,6 +67,7 @@ where
             logger: logger.new(o!("component" => "GraphQlRunner")),
             store,
             expensive,
+            effort: Arc::new(QueryEffort::new(*WINDOW_SIZE, *BIN_SIZE)),
         }
     }
 
@@ -132,6 +137,7 @@ where
                     resolver,
                     deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
+                    effort: self.effort.clone(),
                 },
             ) {
                 Err(errs) => errors.extend(errs),
@@ -209,5 +215,9 @@ where
         );
 
         Box::new(future::result(result))
+    }
+
+    fn effort(&self) -> Arc<QueryEffort> {
+        self.effort.clone()
     }
 }

@@ -2,6 +2,7 @@
 extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
+use graph::data::graphql::effort::QueryEffort;
 use graph::log;
 use graph::prelude::{Store as _, *};
 use graph_graphql::prelude::{
@@ -383,6 +384,7 @@ fn execute_subgraph_query_internal(
 ) -> QueryResult {
     let logger = Logger::root(slog::Discard, o!());
     let query = return_err!(PreparedQuery::new(query, max_complexity, 100));
+    //let effort =
     let mut values = std::collections::BTreeMap::new();
     let mut errors = Vec::new();
     for (bc, selection_set) in return_err!(query.block_constraint()) {
@@ -402,6 +404,10 @@ fn execute_subgraph_query_internal(
                 resolver,
                 deadline,
                 max_first: std::u32::MAX,
+                effort: Arc::new(QueryEffort::new(
+                    Duration::from_millis(0),
+                    Duration::from_millis(0),
+                )),
             },
         ) {
             Err(errs) => errors.extend(errs),

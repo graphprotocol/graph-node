@@ -475,6 +475,7 @@ mod tests {
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
 
+    use graph::data::graphql::effort::QueryEffort;
     use graph::prelude::*;
     use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
     use graphql_parser::query as q;
@@ -512,6 +513,10 @@ mod tests {
 
         fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
             unreachable!();
+        }
+
+        fn effort(&self) -> Arc<QueryEffort> {
+            unimplemented!()
         }
     }
 

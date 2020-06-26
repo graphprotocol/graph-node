@@ -4,7 +4,9 @@ extern crate pretty_assertions;
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
+use graph::data::graphql::effort::QueryEffort;
 use graph::prelude::{
     o, slog, Logger, Query, QueryExecutionError, QueryResult, Schema, SubgraphDeploymentId,
 };
@@ -558,6 +560,10 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         resolver: MockResolver,
         deadline: None,
         max_first: std::u32::MAX,
+        effort: Arc::new(QueryEffort::new(
+            Duration::from_millis(0),
+            Duration::from_millis(0),
+        )),
     };
 
     let result = PreparedQuery::new(query, None, 100)

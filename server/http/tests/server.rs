@@ -4,6 +4,7 @@ use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use graph::data::graphql::effort::QueryEffort;
 use graph::prelude::*;
 
 use graph_server_http::test_utils;
@@ -59,6 +60,10 @@ impl GraphQlRunner for TestGraphQlRunner {
 
     fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
         unreachable!();
+    }
+
+    fn effort(&self) -> Arc<QueryEffort> {
+        unimplemented!()
     }
 }
 

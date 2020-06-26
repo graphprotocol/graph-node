@@ -1,5 +1,6 @@
 use futures::prelude::*;
 
+use crate::data::graphql::effort::QueryEffort;
 use crate::data::query::{Query, QueryError, QueryResult};
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 
@@ -8,6 +9,7 @@ use failure::format_err;
 use failure::Error;
 use futures03::compat::Future01CompatExt;
 use graphql_parser::query as q;
+use std::sync::Arc;
 
 /// Future for query results.
 pub type QueryResultFuture = Box<dyn Future<Item = QueryResult, Error = QueryError> + Send>;
@@ -47,4 +49,6 @@ pub trait GraphQlRunner: Send + Sync + 'static {
                 }
             })
     }
+
+    fn effort(&self) -> Arc<QueryEffort>;
 }

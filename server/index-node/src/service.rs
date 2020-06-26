@@ -109,6 +109,7 @@ where
             .and_then(move |query| {
                 let logger = logger.clone();
                 let graphql_runner = graphql_runner.clone();
+                let effort = graphql_runner.effort();
 
                 // Run the query using the index node resolver
                 tokio::task::block_in_place(|| {
@@ -117,6 +118,7 @@ where
                         resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
                         deadline: None,
                         max_first: std::u32::MAX,
+                        effort,
                     };
                     let result = PreparedQuery::new(query, None, 100)
                         .and_then(|query| execute_query(query, None, None, options));
