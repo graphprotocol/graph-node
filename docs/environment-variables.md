@@ -112,3 +112,8 @@ those.
   Due to implementation details, this value may not be strictly adhered to. Defaults to 10.
 - `GRAPH_LOG_POI_EVENTS`: Logs Proof of Indexing events deterministically.
   This may be useful for debugging.
+- `GRAPH_LOAD_WINDOW_SIZE`, `GRAPH_LOAD_BIN_SIZE`: Load can be
+  automatically throttled if load measurements over a time period of
+  `GRAPH_LOAD_WINDOW_SIZE` seconds exceed a threshold. Measurements within
+  each window are binned into bins of `GRAPH_LOAD_BIN_SIZE` seconds. The
+  variables default to 300s and 1s

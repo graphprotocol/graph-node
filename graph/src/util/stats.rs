@@ -1,5 +1,34 @@
 use std::collections::VecDeque;
+use std::env;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    pub static ref WINDOW_SIZE: Duration = {
+        let window_size = env::var("GRAPH_LOAD_WINDOW_SIZE")
+            .ok()
+            .map(|s| {
+                u64::from_str(&s).unwrap_or_else(|_| {
+                    panic!("GRAPH_LOAD_WINDOW_SIZE must be a number, but is `{}`", s)
+                })
+            })
+            .unwrap_or(300);
+        Duration::from_secs(window_size)
+    };
+    pub static ref BIN_SIZE: Duration = {
+        let bin_size = env::var("GRAPH_LOAD_BIN_SIZE")
+            .ok()
+            .map(|s| {
+                u64::from_str(&s).unwrap_or_else(|_| {
+                    panic!("GRAPH_LOAD_BIN_SIZE must be a number but is `{}`", s)
+                })
+            })
+            .unwrap_or(1);
+        Duration::from_secs(bin_size)
+    };
+}
 
 /// One bin of durations. The bin starts at time `start`, and we've added `count`
 /// entries to it whose durations add up to `duration`
@@ -59,6 +88,14 @@ pub struct MovingStats {
     /// Sum over the values in `elements` The `start` of this bin
     /// is meaningless
     total: Bin,
+}
+
+/// Create `MovingStats` that use the window and bin sizes configured in
+/// the environment
+impl Default for MovingStats {
+    fn default() -> Self {
+        Self::new(*WINDOW_SIZE, *BIN_SIZE)
+    }
 }
 
 impl MovingStats {

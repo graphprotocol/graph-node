@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use crate::util::stats::MovingStats;
+use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 pub struct QueryEffort {
     inner: Arc<RwLock<QueryEffortInner>>,
@@ -17,6 +17,14 @@ struct QueryEffortInner {
     bin_size: Duration,
     effort: HashMap<u64, MovingStats>,
     total: MovingStats,
+}
+
+/// Create a `QueryEffort` that uses the window and bin sizes configured in
+/// the environment
+impl Default for QueryEffort {
+    fn default() -> Self {
+        Self::new(*WINDOW_SIZE, *BIN_SIZE)
+    }
 }
 
 impl QueryEffort {

@@ -49,8 +49,6 @@ lazy_static! {
         .map(|s| u32::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_FIRST")))
         .unwrap_or(1000);
-    static ref WINDOW_SIZE: Duration = Duration::from_secs(300);
-    static ref BIN_SIZE: Duration = Duration::from_secs(1);
 }
 
 impl<S> GraphQlRunner<S>
@@ -67,7 +65,7 @@ where
             logger: logger.new(o!("component" => "GraphQlRunner")),
             store,
             expensive,
-            effort: Arc::new(QueryEffort::new(*WINDOW_SIZE, *BIN_SIZE)),
+            effort: Arc::new(QueryEffort::default()),
         }
     }
 
