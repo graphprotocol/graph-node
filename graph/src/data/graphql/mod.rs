@@ -19,3 +19,5 @@ pub use self::values::{
     // Trait for plucking typed values out of a GraphQL value maps.
     ValueMap,
 };
+
+pub mod shape_hash;

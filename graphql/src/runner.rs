@@ -9,10 +9,10 @@ use std::time::{Duration, Instant};
 use crate::prelude::{
     object, object_value, QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions,
 };
-use crate::query::{execute_query, shape_hash::shape_hash};
+use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::prelude::{
-    o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
+    o, shape_hash, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
     QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError, SubgraphDeploymentId,
     SubgraphDeploymentStore, Subscription, SubscriptionError, SubscriptionResultFuture,
 };

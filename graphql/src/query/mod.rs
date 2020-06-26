@@ -14,9 +14,6 @@ pub mod ast;
 /// Extension traits
 pub mod ext;
 
-/// Hashing the 'shape' of a query
-pub mod shape_hash;
-
 /// Options available for query execution.
 pub struct QueryExecutionOptions<R>
 where

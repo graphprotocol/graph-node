@@ -113,7 +113,9 @@ pub mod prelude {
     pub use crate::components::{EventConsumer, EventProducer};
 
     pub use crate::cheap_clone::CheapClone;
-    pub use crate::data::graphql::{SerializableValue, TryFromValue, ValueMap};
+    pub use crate::data::graphql::{
+        shape_hash::shape_hash, SerializableValue, TryFromValue, ValueMap,
+    };
     pub use crate::data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
     };
