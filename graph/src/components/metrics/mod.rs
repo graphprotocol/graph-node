@@ -36,6 +36,8 @@ pub trait MetricsRegistry: Send + Sync + 'static {
 
     fn global_counter(&self, name: String, help: String) -> Result<Counter, PrometheusError>;
 
+    fn global_gauge(&self, name: String, help: String) -> Result<Gauge, PrometheusError>;
+
     fn new_counter_vec(
         &self,
         name: String,
