@@ -67,6 +67,11 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
         Counter::with_opts(opts)
     }
 
+    fn global_gauge(&self, name: String, help: String) -> Result<Gauge, PrometheusError> {
+        let opts = Opts::new(name, help);
+        Gauge::with_opts(opts)
+    }
+
     fn new_counter_vec(
         &self,
         name: String,

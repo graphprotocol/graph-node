@@ -13,6 +13,7 @@ pub struct MetricsRegistry {
 
     /// Global metrics are are lazily initialized and identified by name.
     global_counters: Arc<RwLock<HashMap<String, Counter>>>,
+    global_gauges: Arc<RwLock<HashMap<String, Gauge>>>,
 }
 
 impl MetricsRegistry {
@@ -32,6 +33,7 @@ impl MetricsRegistry {
             unregister_errors,
             registered_metrics,
             global_counters: Arc::new(RwLock::new(HashMap::new())),
+            global_gauges: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -135,6 +137,7 @@ impl Clone for MetricsRegistry {
             unregister_errors: self.unregister_errors.clone(),
             registered_metrics: self.registered_metrics.clone(),
             global_counters: self.global_counters.clone(),
+            global_gauges: self.global_gauges.clone(),
         };
     }
 }
@@ -213,6 +216,20 @@ impl MetricsRegistryTrait for MetricsRegistry {
                 .unwrap()
                 .insert(name.clone(), counter.clone());
             Ok(counter)
+        }
+    }
+
+    fn global_gauge(&self, name: String, help: String) -> Result<Gauge, PrometheusError> {
+        let maybe_gauge = self.global_gauges.read().unwrap().get(&name).cloned();
+        if let Some(gauge) = maybe_gauge {
+            Ok(gauge.clone())
+        } else {
+            let gauge = *self.new_gauge(name.clone(), help, HashMap::new())?;
+            self.global_gauges
+                .write()
+                .unwrap()
+                .insert(name.clone(), gauge.clone());
+            Ok(gauge)
         }
     }
 

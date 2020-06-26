@@ -4,7 +4,6 @@ use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 use graph::prelude::*;
 use graph::util::security::SafeDisplay;
 
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,25 +25,23 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
 
 struct EventHandler {
     logger: Logger,
-    count_gauge: Box<Gauge>,
-    wait_gauge: Box<Gauge>,
+    count_gauge: Gauge,
+    wait_gauge: Gauge,
     wait_stats: PoolWaitStats,
 }
 
 impl EventHandler {
     fn new(logger: Logger, registry: Arc<dyn MetricsRegistry>, wait_stats: PoolWaitStats) -> Self {
         let count_gauge = registry
-            .new_gauge(
+            .global_gauge(
                 String::from("store_connection_checkout_count"),
                 String::from("The number of Postgres connections currently checked out"),
-                HashMap::new(),
             )
             .expect("failed to create `store_connection_checkout_count` counter");
         let wait_gauge = registry
-            .new_gauge(
+            .global_gauge(
                 String::from("store_connection_wait_time_ms"),
                 String::from("Average connection wait time"),
-                HashMap::new(),
             )
             .expect("failed to create `store_connection_wait_time_ms` counter");
         EventHandler {
