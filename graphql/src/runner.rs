@@ -146,7 +146,7 @@ where
     }
 
     pub fn check_too_expensive(&self, query: &Query) -> Result<(), Vec<QueryExecutionError>> {
-        if self.expensive.contains_key(&shape_hash(&query.document)) {
+        if self.expensive.contains_key(&query.shape_hash) {
             Err(vec![QueryExecutionError::TooExpensive])
         } else {
             Ok(())

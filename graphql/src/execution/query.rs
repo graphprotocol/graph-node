@@ -35,6 +35,9 @@ pub struct Query {
     pub variables: HashMap<q::Name, q::Value>,
     /// The root selection set of the query
     pub selection_set: q::SelectionSet,
+    /// The ShapeHash of the original query
+    pub shape_hash: u64,
+
     pub(crate) fragments: HashMap<String, q::FragmentDefinition>,
     kind: Kind,
 
@@ -106,6 +109,7 @@ impl Query {
             variables,
             fragments,
             selection_set,
+            shape_hash: query.shape_hash,
             kind,
             query_text,
             variables_text,
@@ -160,6 +164,7 @@ impl Query {
             variables: self.variables.clone(),
             fragments: self.fragments.clone(),
             selection_set: self.selection_set.clone(),
+            shape_hash: self.shape_hash,
             kind: self.kind,
             query_text: self.query_text.clone(),
             variables_text: self.variables_text.clone(),

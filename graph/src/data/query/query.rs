@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
+use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::schema::Schema;
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
@@ -109,6 +110,7 @@ pub struct Query {
     pub schema: Arc<Schema>,
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
+    pub shape_hash: u64,
     _force_use_of_new: (),
 }
 
@@ -118,10 +120,12 @@ impl Query {
         document: q::Document,
         variables: Option<QueryVariables>,
     ) -> Self {
+        let shape_hash = shape_hash(&document);
         Query {
             schema,
             document,
             variables,
+            shape_hash,
             _force_use_of_new: (),
         }
     }
