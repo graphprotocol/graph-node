@@ -10,3 +10,5 @@ pub mod security;
 pub mod lfu_cache;
 
 pub mod error;
+
+pub mod stats;
