@@ -1,6 +1,6 @@
 use futures01::future;
 use graphql_parser::query as q;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -25,7 +25,6 @@ use lazy_static::lazy_static;
 pub struct GraphQlRunner<S> {
     logger: Logger,
     store: Arc<S>,
-    expensive: HashMap<u64, Arc<q::Document>>,
     load_manager: Arc<LoadManager>,
 }
 
@@ -65,13 +64,12 @@ where
     ) -> Self {
         let expensive = expensive
             .into_iter()
-            .map(|doc| (shape_hash(&doc), doc.clone()))
-            .collect::<HashMap<_, _>>();
+            .map(|doc| shape_hash(&doc))
+            .collect::<Vec<_>>();
         GraphQlRunner {
             logger: logger.new(o!("component" => "GraphQlRunner")),
             store,
-            expensive,
-            load_manager: Arc::new(LoadManager::new(store_wait_stats)),
+            load_manager: Arc::new(LoadManager::new(store_wait_stats, expensive)),
         }
     }
 
@@ -156,7 +154,7 @@ where
     }
 
     pub fn check_too_expensive(&self, query: &Query) -> Result<(), Vec<QueryExecutionError>> {
-        if self.expensive.contains_key(&query.shape_hash) {
+        if self.load_manager.decline(query.shape_hash) {
             Err(vec![QueryExecutionError::TooExpensive])
         } else {
             Ok(())

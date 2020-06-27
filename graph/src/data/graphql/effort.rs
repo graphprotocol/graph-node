@@ -66,17 +66,25 @@ impl QueryEffortInner {
 pub struct LoadManager {
     effort: QueryEffort,
     store_wait_stats: PoolWaitStats,
+    blocked_queries: Vec<u64>,
 }
 
 impl LoadManager {
-    pub fn new(store_wait_stats: PoolWaitStats) -> Self {
+    pub fn new(store_wait_stats: PoolWaitStats, blocked_queries: Vec<u64>) -> Self {
         Self {
             effort: QueryEffort::default(),
             store_wait_stats,
+            blocked_queries,
         }
     }
 
     pub fn add_query(&self, shape_hash: u64, duration: Duration) {
         self.effort.add(shape_hash, duration);
+    }
+
+    /// Return `true` if we should decline running the query with this
+    /// `ShapeHash`
+    pub fn decline(&self, shape_hash: u64) -> bool {
+        self.blocked_queries.contains(&shape_hash)
     }
 }
