@@ -117,3 +117,11 @@ those.
   `GRAPH_LOAD_WINDOW_SIZE` seconds exceed a threshold. Measurements within
   each window are binned into bins of `GRAPH_LOAD_BIN_SIZE` seconds. The
   variables default to 300s and 1s
+- `GRAPH_LOAD_THRESHOLD`: If wait times for getting database connections go
+  above this threshold, throttle queries until the wait times fall below
+  the threshold. Value is in milliseconds, and defaults to 0 which
+  turns throttling off and any associated statistics collection off.
+- `GRAPH_LOAD_JAIL_THRESHOLD`: When the system is overloaded, any query
+  that causes more than this fraction of the effort will be rejected for as
+  long as the process is running (i.e., even after the overload situation
+  is resolved) Defaults to 0.1
