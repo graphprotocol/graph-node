@@ -6,7 +6,7 @@ use graph::util::security::SafeDisplay;
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 // Log connection checkouts that take longer than this many millis
@@ -30,10 +30,11 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
 struct EventHandler {
     logger: Logger,
     gauge: Box<Gauge>,
+    wait_stats: PoolWaitStats,
 }
 
 impl EventHandler {
-    fn new(logger: Logger, registry: Arc<dyn MetricsRegistry>) -> Self {
+    fn new(logger: Logger, registry: Arc<dyn MetricsRegistry>, wait_stats: PoolWaitStats) -> Self {
         let gauge = registry
             .new_gauge(
                 String::from("store_connection_checkout_count"),
@@ -41,7 +42,15 @@ impl EventHandler {
                 HashMap::new(),
             )
             .expect("failed to create `store_connection_checkout_count` counter");
-        EventHandler { logger, gauge }
+        EventHandler {
+            logger,
+            gauge,
+            wait_stats,
+        }
+    }
+
+    fn add_wait_time(&self, duration: Duration) {
+        self.wait_stats.write().unwrap().add(duration);
     }
 }
 
@@ -56,12 +65,14 @@ impl HandleEvent for EventHandler {
     fn handle_release(&self, _: e::ReleaseEvent) {}
     fn handle_checkout(&self, event: e::CheckoutEvent) {
         self.gauge.inc();
+        self.add_wait_time(event.duration());
         if event.duration() > Duration::from_millis(CONTENTION_LOG_THRESHOLD) {
             warn!(self.logger, "Excessive wait time on checkout";
                   "wait_ms" => event.duration().as_millis())
         }
     }
     fn handle_timeout(&self, event: e::TimeoutEvent) {
+        self.add_wait_time(event.timeout());
         error!(self.logger, "Connection checkout timed out";
                "wait_ms" => event.timeout().as_millis())
     }
@@ -75,6 +86,7 @@ pub fn create_connection_pool(
     pool_size: u32,
     logger: &Logger,
     registry: Arc<dyn MetricsRegistry>,
+    wait_time: Arc<RwLock<MovingStats>>,
 ) -> Pool<ConnectionManager<PgConnection>> {
     let logger_store = logger.new(o!("component" => "Store"));
     let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
@@ -86,7 +98,7 @@ pub fn create_connection_pool(
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
-    let event_handler = Box::new(EventHandler::new(logger_pool.clone(), registry));
+    let event_handler = Box::new(EventHandler::new(logger_pool.clone(), registry, wait_time));
 
     // Connect to Postgres
     let conn_manager = ConnectionManager::new(postgres_url.clone());

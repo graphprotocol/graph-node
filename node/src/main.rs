@@ -8,6 +8,7 @@ use std::env;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::RwLock;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -518,12 +519,14 @@ async fn main() {
     let stores_error_logger = logger.clone();
     let stores_eth_adapters = eth_adapters.clone();
     let contention_logger = logger.clone();
+    let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
 
     let postgres_conn_pool = create_connection_pool(
         postgres_url.clone(),
         store_conn_pool_size,
         &logger,
         connection_pool_registry,
+        wait_stats.clone(),
     );
 
     let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
@@ -589,6 +592,7 @@ async fn main() {
                 &logger,
                 generic_store.clone(),
                 &expensive_queries,
+                wait_stats.clone(),
             ));
             let mut graphql_server = GraphQLQueryServer::new(
                 &logger_factory,

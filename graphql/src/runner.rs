@@ -11,11 +11,12 @@ use crate::prelude::{
 };
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
-use graph::data::graphql::effort::QueryEffort;
+use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
-    o, shape_hash, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
-    QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError, SubgraphDeploymentId,
-    SubgraphDeploymentStore, Subscription, SubscriptionError, SubscriptionResultFuture,
+    o, shape_hash, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger,
+    PoolWaitStats, Query, QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError,
+    SubgraphDeploymentId, SubgraphDeploymentStore, Subscription, SubscriptionError,
+    SubscriptionResultFuture,
 };
 
 use lazy_static::lazy_static;
@@ -25,7 +26,7 @@ pub struct GraphQlRunner<S> {
     logger: Logger,
     store: Arc<S>,
     expensive: HashMap<u64, Arc<q::Document>>,
-    effort: Arc<QueryEffort>,
+    load_manager: Arc<LoadManager>,
 }
 
 lazy_static! {
@@ -56,7 +57,12 @@ where
     S: Store + SubgraphDeploymentStore,
 {
     /// Creates a new query runner.
-    pub fn new(logger: &Logger, store: Arc<S>, expensive: &Vec<Arc<q::Document>>) -> Self {
+    pub fn new(
+        logger: &Logger,
+        store: Arc<S>,
+        expensive: &Vec<Arc<q::Document>>,
+        store_wait_stats: PoolWaitStats,
+    ) -> Self {
         let expensive = expensive
             .into_iter()
             .map(|doc| (shape_hash(&doc), doc.clone()))
@@ -65,7 +71,7 @@ where
             logger: logger.new(o!("component" => "GraphQlRunner")),
             store,
             expensive,
-            effort: Arc::new(QueryEffort::default()),
+            load_manager: Arc::new(LoadManager::new(store_wait_stats)),
         }
     }
 
@@ -135,7 +141,7 @@ where
                     resolver,
                     deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
-                    effort: self.effort.clone(),
+                    load_manager: self.load_manager.clone(),
                 },
             ) {
                 Err(errs) => errors.extend(errs),
@@ -215,7 +221,7 @@ where
         Box::new(future::result(result))
     }
 
-    fn effort(&self) -> Arc<QueryEffort> {
-        self.effort.clone()
+    fn load_manager(&self) -> Arc<LoadManager> {
+        self.load_manager.clone()
     }
 }

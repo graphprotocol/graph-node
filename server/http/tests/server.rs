@@ -4,7 +4,7 @@ use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use graph::data::graphql::effort::QueryEffort;
+use graph::data::graphql::effort::LoadManager;
 use graph::prelude::*;
 
 use graph_server_http::test_utils;
@@ -62,7 +62,7 @@ impl GraphQlRunner for TestGraphQlRunner {
         unreachable!();
     }
 
-    fn effort(&self) -> Arc<QueryEffort> {
+    fn load_manager(&self) -> Arc<LoadManager> {
         unimplemented!()
     }
 }

@@ -2,7 +2,7 @@
 extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
-use graph::data::graphql::effort::QueryEffort;
+use graph::data::graphql::effort::LoadManager;
 use graph::log;
 use graph::prelude::{Store as _, *};
 use graph_graphql::prelude::{
@@ -15,7 +15,7 @@ use graphql_parser::query as q;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 use web3::types::H256;
 
@@ -37,6 +37,10 @@ lazy_static! {
 
     pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(Builder::new().basic_scheduler().enable_all().build().unwrap());
 
+    pub static ref POOL_WAIT_STATS: PoolWaitStats = Arc::new(RwLock::new(MovingStats::default()));
+
+    pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(POOL_WAIT_STATS.clone()));
+
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<Store> = {
         // Use a separate thread to work around issues with recursive `block_on`.
@@ -55,6 +59,7 @@ lazy_static! {
                     conn_pool_size,
                     &logger,
                     Arc::new(MockMetricsRegistry::new()),
+                    POOL_WAIT_STATS.clone()
                 );
                 let registry = Arc::new(MockMetricsRegistry::new());
                 let chain_head_update_listener = Arc::new(ChainHeadUpdateListener::new(
@@ -404,10 +409,7 @@ fn execute_subgraph_query_internal(
                 resolver,
                 deadline,
                 max_first: std::u32::MAX,
-                effort: Arc::new(QueryEffort::new(
-                    Duration::from_millis(0),
-                    Duration::from_millis(0),
-                )),
+                load_manager: LOAD_MANAGER.clone(),
             },
         ) {
             Err(errs) => errors.extend(errs),

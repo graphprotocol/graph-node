@@ -1,6 +1,6 @@
 use futures::prelude::*;
 
-use crate::data::graphql::effort::QueryEffort;
+use crate::data::graphql::effort::LoadManager;
 use crate::data::query::{Query, QueryError, QueryResult};
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 
@@ -50,5 +50,5 @@ pub trait GraphQlRunner: Send + Sync + 'static {
             })
     }
 
-    fn effort(&self) -> Arc<QueryEffort>;
+    fn load_manager(&self) -> Arc<LoadManager>;
 }

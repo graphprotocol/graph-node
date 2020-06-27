@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use crate::components::store::PoolWaitStats;
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 pub struct QueryEffort {
@@ -59,5 +60,23 @@ impl QueryEffortInner {
             .or_insert_with(|| MovingStats::new(window_size, bin_size))
             .add_at(now, duration);
         self.total.add_at(now, duration);
+    }
+}
+
+pub struct LoadManager {
+    effort: QueryEffort,
+    store_wait_stats: PoolWaitStats,
+}
+
+impl LoadManager {
+    pub fn new(store_wait_stats: PoolWaitStats) -> Self {
+        Self {
+            effort: QueryEffort::default(),
+            store_wait_stats,
+        }
+    }
+
+    pub fn add_query(&self, shape_hash: u64, duration: Duration) {
+        self.effort.add(shape_hash, duration);
     }
 }

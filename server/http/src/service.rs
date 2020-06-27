@@ -475,7 +475,7 @@ mod tests {
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
 
-    use graph::data::graphql::effort::QueryEffort;
+    use graph::data::graphql::effort::LoadManager;
     use graph::prelude::*;
     use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
     use graphql_parser::query as q;
@@ -515,7 +515,7 @@ mod tests {
             unreachable!();
         }
 
-        fn effort(&self) -> Arc<QueryEffort> {
+        fn load_manager(&self) -> Arc<LoadManager> {
             unimplemented!()
         }
     }

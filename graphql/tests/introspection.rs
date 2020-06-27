@@ -4,9 +4,7 @@ extern crate pretty_assertions;
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
-use graph::data::graphql::effort::QueryEffort;
 use graph::prelude::{
     o, slog, Logger, Query, QueryExecutionError, QueryResult, Schema, SubgraphDeploymentId,
 };
@@ -14,6 +12,7 @@ use graph_graphql::prelude::{
     api_schema, execute_query, object, object_value, ExecutionContext, ObjectOrInterface,
     Query as PreparedQuery, QueryExecutionOptions, Resolver,
 };
+use test_store::LOAD_MANAGER;
 
 /// Mock resolver used in tests that don't need a resolver.
 #[derive(Clone)]
@@ -560,10 +559,7 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         resolver: MockResolver,
         deadline: None,
         max_first: std::u32::MAX,
-        effort: Arc::new(QueryEffort::new(
-            Duration::from_millis(0),
-            Duration::from_millis(0),
-        )),
+        load_manager: LOAD_MANAGER.clone(),
     };
 
     let result = PreparedQuery::new(query, None, 100)

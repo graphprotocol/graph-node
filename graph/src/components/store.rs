@@ -11,7 +11,7 @@ use std::env;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use web3::types::{Address, H256};
 
@@ -1213,6 +1213,10 @@ mock! {
         ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError>;
     }
 }
+
+// The type that the connection pool uses to track wait times for
+// connection checkouts
+pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 impl Store for MockStore {
