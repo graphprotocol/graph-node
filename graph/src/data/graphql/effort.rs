@@ -1,7 +1,7 @@
 //! Utilities to keep moving statistics about queries
 
 use rand::{prelude::Rng, thread_rng};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
@@ -142,22 +142,22 @@ pub struct LoadManager {
     store_wait_stats: PoolWaitStats,
     /// List of query shapes that have been statically blocked through
     /// configuration
-    blocked_queries: Vec<u64>,
+    blocked_queries: HashSet<u64>,
     /// List of query shapes that have caused more than `JAIL_THRESHOLD`
     /// proportion of the work while the system was overloaded. Currently,
     /// there is no way for a query to get out of jail other than
     /// restarting the process
-    jailed_queries: RwLock<Vec<u64>>,
+    jailed_queries: RwLock<HashSet<u64>>,
     kill_state: RwLock<KillState>,
 }
 
 impl LoadManager {
-    pub fn new(store_wait_stats: PoolWaitStats, blocked_queries: Vec<u64>) -> Self {
+    pub fn new(store_wait_stats: PoolWaitStats, blocked_queries: HashSet<u64>) -> Self {
         Self {
             effort: QueryEffort::default(),
             store_wait_stats,
             blocked_queries,
-            jailed_queries: RwLock::new(Vec::new()),
+            jailed_queries: RwLock::new(HashSet::new()),
             kill_state: RwLock::new(KillState::new()),
         }
     }
@@ -250,7 +250,7 @@ impl LoadManager {
         if known_query && query_effort / total_effort > *JAIL_THRESHOLD {
             // Any single query that causes at least JAIL_THRESHOLD of the
             // effort in an overload situation gets killed
-            self.jailed_queries.write().unwrap().push(shape_hash);
+            self.jailed_queries.write().unwrap().insert(shape_hash);
             return true;
         }
 

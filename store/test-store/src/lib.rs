@@ -14,6 +14,7 @@ use graph_store_postgres::{ChainHeadUpdateListener, Store, StoreConfig, Subscrip
 use graphql_parser::query as q;
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::collections::HashSet;
 use std::env;
 use std::sync::{Mutex, RwLock};
 use std::time::Instant;
@@ -39,7 +40,7 @@ lazy_static! {
 
     pub static ref POOL_WAIT_STATS: PoolWaitStats = Arc::new(RwLock::new(MovingStats::default()));
 
-    pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(POOL_WAIT_STATS.clone(), vec![]));
+    pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(POOL_WAIT_STATS.clone(), HashSet::default()));
 
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<Store> = {

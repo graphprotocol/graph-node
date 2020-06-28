@@ -1,6 +1,6 @@
 use futures01::future;
 use graphql_parser::query as q;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -65,7 +65,7 @@ where
         let expensive = expensive
             .into_iter()
             .map(|doc| shape_hash(&doc))
-            .collect::<Vec<_>>();
+            .collect::<HashSet<_>>();
         GraphQlRunner {
             logger: logger.new(o!("component" => "GraphQlRunner")),
             store,
