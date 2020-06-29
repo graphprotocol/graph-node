@@ -127,10 +127,10 @@ async fn main() {
                 .use_delimiter(true)
                 .long("postgres-secondary-hosts")
                 .value_name("URL,")
-                .env("GRAPH_PG_SECONDARY_HOSTS")
+                .env("GRAPH_POSTGRES_SECONDARY_HOSTS")
                 .help(
-                    "Comma-separated urls for read-only Postgres replicas, \
-                       which will share the load with the primary server.",
+                    "Comma-separated URLs for read-only Postgres replicas, \
+                       which will share the load with the primary server",
                 ),
         )
         .arg(
