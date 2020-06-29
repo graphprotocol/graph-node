@@ -1,5 +1,7 @@
 //! Utilities to keep moving statistics about queries
 
+use graphql_parser::query as q;
+use lazy_static::lazy_static;
 use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -7,10 +9,9 @@ use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use lazy_static::lazy_static;
-
 use crate::components::store::PoolWaitStats;
-use crate::prelude::{info, warn, Logger};
+use crate::data::graphql::shape_hash::shape_hash;
+use crate::prelude::{info, o, warn, Logger};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 lazy_static! {
@@ -198,10 +199,15 @@ pub struct LoadManager {
 
 impl LoadManager {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         store_wait_stats: PoolWaitStats,
-        blocked_queries: HashSet<u64>,
+        blocked_queries: Vec<Arc<q::Document>>,
     ) -> Self {
+        let logger = logger.new(o!("component" => "LoadManager"));
+        let blocked_queries = blocked_queries
+            .into_iter()
+            .map(|doc| shape_hash(&doc))
+            .collect::<HashSet<_>>();
         info!(
             logger,
             "Creating LoadManager with disabled={}", *LOAD_MANAGEMENT_DISABLED,

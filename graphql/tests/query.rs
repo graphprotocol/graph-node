@@ -8,6 +8,7 @@ use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
     futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o, slog, tokio,
     Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension, Logger, MovingStats,
@@ -231,7 +232,8 @@ fn execute_query_document_with_variables(
     variables: Option<QueryVariables>,
 ) -> QueryResult {
     let stats = Arc::new(RwLock::new(MovingStats::default()));
-    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone(), &vec![], stats);
+    let load_manager = Arc::new(LoadManager::new(&*LOGGER, stats, vec![]));
+    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone(), load_manager);
     let query = Query::new(Arc::new(api_test_schema()), query, variables);
 
     return_err!(runner.execute(query, None, None, None))

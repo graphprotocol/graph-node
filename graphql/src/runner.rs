@@ -1,6 +1,6 @@
 use futures01::future;
 use graphql_parser::query as q;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -13,10 +13,9 @@ use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
-    o, shape_hash, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger,
-    PoolWaitStats, Query, QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError,
-    SubgraphDeploymentId, SubgraphDeploymentStore, Subscription, SubscriptionError,
-    SubscriptionResultFuture,
+    o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
+    QueryExecutionError, QueryResult, QueryResultFuture, Store, StoreError, SubgraphDeploymentId,
+    SubgraphDeploymentStore, Subscription, SubscriptionError, SubscriptionResultFuture,
 };
 
 use lazy_static::lazy_static;
@@ -56,22 +55,12 @@ where
     S: Store + SubgraphDeploymentStore,
 {
     /// Creates a new query runner.
-    pub fn new(
-        logger: &Logger,
-        store: Arc<S>,
-        expensive: &Vec<Arc<q::Document>>,
-        store_wait_stats: PoolWaitStats,
-    ) -> Self {
-        let expensive = expensive
-            .into_iter()
-            .map(|doc| shape_hash(&doc))
-            .collect::<HashSet<_>>();
+    pub fn new(logger: &Logger, store: Arc<S>, load_manager: Arc<LoadManager>) -> Self {
         let logger = logger.new(o!("component" => "GraphQlRunner"));
-        let load_logger = logger.new(o!("component" => "LoadManager"));
         GraphQlRunner {
             logger,
             store,
-            load_manager: Arc::new(LoadManager::new(load_logger, store_wait_stats, expensive)),
+            load_manager,
         }
     }
 

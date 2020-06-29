@@ -13,6 +13,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use graph::components::forward;
+use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
 use graph::prelude::{
     EthereumAdapter as EthereumAdapterTrait, IndexNodeServer as _, JsonRpcServer as _, *,
@@ -588,11 +589,15 @@ async fn main() {
         .and_then(move |stores| {
             let generic_store = stores.values().next().expect("error creating stores");
 
+            let load_manager = Arc::new(LoadManager::new(
+                &logger,
+                wait_stats.clone(),
+                expensive_queries,
+            ));
             let graphql_runner = Arc::new(GraphQlRunner::new(
                 &logger,
                 generic_store.clone(),
-                &expensive_queries,
-                wait_stats.clone(),
+                load_manager,
             ));
             let mut graphql_server = GraphQLQueryServer::new(
                 &logger_factory,
