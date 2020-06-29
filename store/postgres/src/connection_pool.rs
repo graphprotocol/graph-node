@@ -7,10 +7,7 @@ use graph::util::security::SafeDisplay;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
-
-// Log connection checkouts that take longer than this many millis
-const CONTENTION_LOG_THRESHOLD: u64 = 100;
+use std::time::{Duration, Instant};
 
 struct ErrorHandler(Logger, Box<Counter>);
 
@@ -31,6 +28,7 @@ struct EventHandler {
     logger: Logger,
     gauge: Box<Gauge>,
     wait_stats: PoolWaitStats,
+    last_log: RwLock<Instant>,
 }
 
 impl EventHandler {
@@ -46,11 +44,34 @@ impl EventHandler {
             logger,
             gauge,
             wait_stats,
+            last_log: RwLock::new(Instant::now()),
         }
     }
 
     fn add_wait_time(&self, duration: Duration) {
-        self.wait_stats.write().unwrap().add(duration);
+        let should_log = {
+            // Log average wait time, but at most every 10s
+            let mut last_log = self.last_log.write().unwrap();
+            if last_log.elapsed() > Duration::from_secs(10) {
+                *last_log = Instant::now();
+                true
+            } else {
+                false
+            }
+        };
+        let wait_avg = {
+            let mut wait_stats = self.wait_stats.write().unwrap();
+            wait_stats.add(duration);
+            if should_log {
+                wait_stats.average()
+            } else {
+                None
+            }
+        };
+        if let Some(wait_avg) = wait_avg {
+            info!(self.logger, "Average connection wait time";
+                "wait_ms" => wait_avg.as_millis());
+        }
     }
 }
 
@@ -66,10 +87,6 @@ impl HandleEvent for EventHandler {
     fn handle_checkout(&self, event: e::CheckoutEvent) {
         self.gauge.inc();
         self.add_wait_time(event.duration());
-        if event.duration() > Duration::from_millis(CONTENTION_LOG_THRESHOLD) {
-            warn!(self.logger, "Excessive wait time on checkout";
-                  "wait_ms" => event.duration().as_millis())
-        }
     }
     fn handle_timeout(&self, event: e::TimeoutEvent) {
         self.add_wait_time(event.timeout());
