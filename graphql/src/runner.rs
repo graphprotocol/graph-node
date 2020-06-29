@@ -127,6 +127,14 @@ where
     ) -> Result<QueryResult, Vec<QueryExecutionError>> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
+
+        if self
+            .load_manager
+            .decline(query.shape_hash, query.query_text.as_ref())
+        {
+            return Err(vec![QueryExecutionError::TooExpensive]);
+        }
+
         let mut values = BTreeMap::new();
         let mut errors = Vec::new();
         for (bc, selection_set) in query.block_constraint()? {
@@ -154,14 +162,6 @@ where
             Ok(QueryResult::new(Some(q::Value::Object(values))))
         }
     }
-
-    pub fn check_too_expensive(&self, query: &Query) -> Result<(), Vec<QueryExecutionError>> {
-        if self.load_manager.decline(query.shape_hash) {
-            Err(vec![QueryExecutionError::TooExpensive])
-        } else {
-            Ok(())
-        }
-    }
 }
 
 impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
@@ -185,18 +185,12 @@ where
         max_first: Option<u32>,
     ) -> QueryResultFuture {
         let result = self
-            .check_too_expensive(&query)
-            .and_then(|_| self.execute(query, max_complexity, max_depth, max_first))
+            .execute(query, max_complexity, max_depth, max_first)
             .unwrap_or_else(|e| QueryResult::from(e));
         Box::new(future::ok(result))
     }
 
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
-        if let Err(errs) = self.check_too_expensive(&subscription.query) {
-            let err = SubscriptionError::GraphQLError(errs);
-            return Box::new(future::result(Err(err)));
-        }
-
         let query = match crate::execution::Query::new(
             subscription.query,
             *GRAPHQL_MAX_COMPLEXITY,
@@ -205,6 +199,14 @@ where
             Ok(query) => query,
             Err(e) => return Box::new(future::err(e.into())),
         };
+
+        if self
+            .load_manager
+            .decline(query.shape_hash, query.query_text.as_ref())
+        {
+            let err = SubscriptionError::GraphQLError(vec![QueryExecutionError::TooExpensive]);
+            return Box::new(future::result(Err(err)));
+        }
 
         let result = execute_prepared_subscription(
             query,

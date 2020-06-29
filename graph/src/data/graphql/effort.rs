@@ -268,7 +268,7 @@ impl LoadManager {
     /// case, we also do not take any locks when asked to update statistics,
     /// or to check whether we are overloaded; these operations amount to
     /// noops.
-    pub fn decline(&self, shape_hash: u64) -> bool {
+    pub fn decline(&self, shape_hash: u64, query: &str) -> bool {
         if self.blocked_queries.contains(&shape_hash) {
             return true;
         }
@@ -304,6 +304,10 @@ impl LoadManager {
         if known_query && query_effort / total_effort > *JAIL_THRESHOLD {
             // Any single query that causes at least JAIL_THRESHOLD of the
             // effort in an overload situation gets killed
+            warn!(self.logger, "Jailing query";
+                "query" => query,
+                "query_effort_ms" => query_effort,
+                "total_effort_ms" => total_effort);
             self.jailed_queries.write().unwrap().insert(shape_hash);
             return true;
         }
