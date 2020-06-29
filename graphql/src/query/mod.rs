@@ -1,9 +1,10 @@
 use graph::prelude::{info, o, EthereumBlockPointer, Logger, QueryExecutionError};
 use graphql_parser::query as q;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Instant;
-use uuid::Uuid;
 
 use graph::data::graphql::effort::LoadManager;
 
@@ -46,7 +47,12 @@ pub fn execute_query<R>(
 where
     R: Resolver,
 {
-    let query_id = Uuid::new_v4().to_string();
+    let query_hash = {
+        let mut hasher = DefaultHasher::new();
+        query.query_text.hash(&mut hasher);
+        hasher.finish()
+    };
+    let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
     let query_logger = options.logger.new(o!(
         "subgraph_id" => (*query.schema.id).clone(),
         "query_id" => query_id
