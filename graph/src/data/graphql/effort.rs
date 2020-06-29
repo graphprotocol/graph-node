@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use lazy_static::lazy_static;
 
 use crate::components::store::PoolWaitStats;
+use crate::prelude::{info, warn, Logger};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 lazy_static! {
@@ -123,21 +124,65 @@ impl QueryEffortInner {
 // The size of any individual step when we adjust the kill_rate
 const KILL_RATE_STEP: f64 = 0.1;
 
+/// What to log about the state we are currently in
+enum KillStateLogEvent {
+    /// Overload is starting right now
+    Start,
+    /// Overload has been going on for the duration
+    Ongoing(Duration),
+    /// Overload was resolved after duration time
+    Resolved(Duration),
+    /// Don't log anything right now
+    Skip,
+}
+
 struct KillState {
+    // A value between 0 and 1, where 0 means 'respond to all queries'
+    // and 1 means 'do not respond to any queries'
     kill_rate: f64,
+    // We adjust the `kill_rate` at most every `KILL_RATE_UPDATE_INTERVAL`
     last_update: Instant,
+    // When the current overload situation started
+    overload_start: Option<Instant>,
+    // Throttle logging while we are overloaded to no more often than
+    // once every 30s
+    last_overload_log: Instant,
 }
 
 impl KillState {
     fn new() -> Self {
+        let long_ago = Duration::from_secs(86400);
         Self {
             kill_rate: 0.0,
-            last_update: Instant::now() - Duration::from_secs(86400),
+            last_update: Instant::now() - long_ago,
+            overload_start: None,
+            last_overload_log: Instant::now() - long_ago,
+        }
+    }
+
+    fn log_event(&mut self, now: Instant, overloaded: bool) -> KillStateLogEvent {
+        use KillStateLogEvent::*;
+
+        if let Some(overload_start) = self.overload_start {
+            if !overloaded {
+                self.overload_start = None;
+                Resolved(overload_start.elapsed())
+            } else if now.saturating_duration_since(self.last_overload_log)
+                > Duration::from_secs(30)
+            {
+                self.last_overload_log = now;
+                Ongoing(overload_start.elapsed())
+            } else {
+                Skip
+            }
+        } else {
+            Start
         }
     }
 }
 
 pub struct LoadManager {
+    logger: Logger,
     effort: QueryEffort,
     store_wait_stats: PoolWaitStats,
     /// List of query shapes that have been statically blocked through
@@ -152,8 +197,17 @@ pub struct LoadManager {
 }
 
 impl LoadManager {
-    pub fn new(store_wait_stats: PoolWaitStats, blocked_queries: HashSet<u64>) -> Self {
+    pub fn new(
+        logger: Logger,
+        store_wait_stats: PoolWaitStats,
+        blocked_queries: HashSet<u64>,
+    ) -> Self {
+        info!(
+            logger,
+            "Creating LoadManager with disabled={}", *LOAD_MANAGEMENT_DISABLED,
+        );
         Self {
+            logger,
             effort: QueryEffort::default(),
             store_wait_stats,
             blocked_queries,
@@ -226,7 +280,7 @@ impl LoadManager {
             return true;
         }
 
-        let overloaded = self.overloaded();
+        let (overloaded, wait_ms) = self.overloaded();
         let (kill_rate, last_update) = self.kill_state();
         if !overloaded && kill_rate == 0.0 {
             return false;
@@ -256,13 +310,17 @@ impl LoadManager {
 
         // Kill random queries in case we have no queries, or not enough queries
         // that cause at least 20% of the effort
-        let kill_rate = self.update_kill_rate(kill_rate, last_update, overloaded);
+        let kill_rate = self.update_kill_rate(kill_rate, last_update, overloaded, wait_ms);
         thread_rng().gen_bool(kill_rate * query_effort / total_effort)
     }
 
-    fn overloaded(&self) -> bool {
+    fn overloaded(&self) -> (bool, Duration) {
         let stats = self.store_wait_stats.read().unwrap();
-        stats.average_gt(*LOAD_THRESHOLD)
+        let average = stats.average();
+        let overloaded = average
+            .map(|average| average > *LOAD_THRESHOLD)
+            .unwrap_or(false);
+        (overloaded, average.unwrap_or(*ZERO_DURATION))
     }
 
     fn kill_state(&self) -> (f64, Instant) {
@@ -270,18 +328,53 @@ impl LoadManager {
         (state.kill_rate, state.last_update)
     }
 
-    fn update_kill_rate(&self, mut kill_rate: f64, last_update: Instant, overloaded: bool) -> f64 {
+    fn update_kill_rate(
+        &self,
+        mut kill_rate: f64,
+        last_update: Instant,
+        overloaded: bool,
+        wait_ms: Duration,
+    ) -> f64 {
+        assert!(overloaded || kill_rate > 0.0);
+
         let now = Instant::now();
         if now.saturating_duration_since(last_update) > *KILL_RATE_UPDATE_INTERVAL {
+            // Update the kill_rate
             if overloaded {
                 kill_rate = kill_rate + KILL_RATE_STEP * (1.0 - kill_rate);
             } else {
                 kill_rate = (kill_rate - KILL_RATE_STEP).max(0.0);
             }
-            // FIXME: Log the new kill_rate
-            let mut state = self.kill_state.write().unwrap();
-            state.kill_rate = kill_rate;
-            state.last_update = now;
+            let event = {
+                let mut state = self.kill_state.write().unwrap();
+                state.kill_rate = kill_rate;
+                state.last_update = now;
+                state.log_event(now, overloaded)
+            };
+            // Log information about what's happening after we've released the
+            // lock on self.kill_state
+            use KillStateLogEvent::*;
+            match event {
+                Resolved(duration) => {
+                    info!(self.logger, "Query overload resolved";
+                        "duration_ms" => duration.as_millis(),
+                        "wait_ms" => wait_ms.as_millis(),
+                        "event" => "resolved");
+                }
+                Ongoing(duration) => {
+                    info!(self.logger, "Query overload still happening";
+                        "duration_ms" => duration.as_millis(),
+                        "wait_ms" => wait_ms.as_millis(),
+                        "kill_rate" => kill_rate,
+                        "event" => "ongoing");
+                }
+                Start => {
+                    warn!(self.logger, "Query overload";
+                    "wait_ms" => wait_ms.as_millis(),
+                    "event" => "start");
+                }
+                Skip => { /* do nothing */ }
+            }
         }
         kill_rate
     }

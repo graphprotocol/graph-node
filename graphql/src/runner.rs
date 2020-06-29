@@ -66,10 +66,12 @@ where
             .into_iter()
             .map(|doc| shape_hash(&doc))
             .collect::<HashSet<_>>();
+        let logger = logger.new(o!("component" => "GraphQlRunner"));
+        let load_logger = logger.new(o!("component" => "LoadManager"));
         GraphQlRunner {
-            logger: logger.new(o!("component" => "GraphQlRunner")),
+            logger,
             store,
-            load_manager: Arc::new(LoadManager::new(store_wait_stats, expensive)),
+            load_manager: Arc::new(LoadManager::new(load_logger, store_wait_stats, expensive)),
         }
     }
 
