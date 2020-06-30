@@ -13,36 +13,24 @@ use crate::schema::ast as sast;
 use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 
 /// A resolver that fetches entities from a `Store`.
-pub struct StoreResolver<S> {
+#[derive(Clone)]
+pub struct StoreResolver {
     logger: Logger,
-    pub(crate) store: Arc<S>,
+    pub(crate) store: Arc<dyn QueryStore>,
     pub(crate) block: BlockNumber,
 }
 
-impl<S> Clone for StoreResolver<S> {
-    fn clone(&self) -> Self {
-        StoreResolver {
-            logger: self.logger.cheap_clone(),
-            store: self.store.cheap_clone(),
-            block: self.block,
-        }
-    }
-}
+impl CheapClone for StoreResolver {}
 
-impl<S> CheapClone for StoreResolver<S> {}
-
-impl<S> StoreResolver<S>
-where
-    S: Store + SubgraphDeploymentStore,
-{
+impl StoreResolver {
     /// Create a resolver that looks up entities at whatever block is the
     /// latest when the query is run. That means that multiple calls to find
     /// entities into this resolver might return entities from different
     /// blocks
-    pub fn new(logger: &Logger, store: Arc<S>) -> Self {
+    pub fn for_subscription(logger: &Logger, store: Arc<impl Store>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
-            store,
+            store: store.query_store(true),
             block: BLOCK_NUMBER_MAX,
         }
     }
@@ -54,21 +42,21 @@ where
     /// created
     pub fn at_block(
         logger: &Logger,
-        store: Arc<S>,
+        store: Arc<impl Store + SubgraphDeploymentStore>,
         bc: BlockConstraint,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<(Self, EthereumBlockPointer), QueryExecutionError> {
         let block_ptr = Self::locate_block(store.as_ref(), bc, subgraph)?;
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
-            store,
+            store: store.query_store(false),
             block: block_ptr.number as i32,
         };
         Ok((resolver, block_ptr))
     }
 
     fn locate_block(
-        store: &S,
+        store: &(impl Store + SubgraphDeploymentStore),
         bc: BlockConstraint,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {
@@ -148,10 +136,7 @@ where
     }
 }
 
-impl<S> Resolver for StoreResolver<S>
-where
-    S: Store + SubgraphDeploymentStore,
-{
+impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
 
     fn prefetch(

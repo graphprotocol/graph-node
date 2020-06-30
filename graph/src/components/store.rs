@@ -556,7 +556,7 @@ where
     pub fn throttle_while_syncing(
         self,
         logger: &Logger,
-        store: Arc<impl Store>,
+        store: Arc<dyn QueryStore>,
         deployment: SubgraphDeploymentId,
         interval: Duration,
     ) -> StoreEventStreamBox {
@@ -570,7 +570,7 @@ where
         // Check whether a deployment is marked as synced in the store. The
         // special 'subgraphs' subgraph is never considered synced so that
         // we always throttle it
-        let check_synced = |store: &dyn Store, deployment: &SubgraphDeploymentId| {
+        let check_synced = |store: &dyn QueryStore, deployment: &SubgraphDeploymentId| {
             deployment != &*SUBGRAPHS_ID
                 && store
                     .is_deployment_synced(deployment.clone())
@@ -825,11 +825,6 @@ pub trait Store: Send + Sync + 'static {
 
     /// Queries the store for entities that match the store query.
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;
-
-    fn find_query_values(
-        &self,
-        query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError>;
 
     /// Queries the store for a single entity matching the store query.
     fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError>;
@@ -1202,6 +1197,12 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
         block_hash: H256,
     ) -> Result<Option<BlockNumber>, StoreError>;
+
+    /// Get a new `QueryStore`. A `QueryStore` is tied to a DB replica, so if Graph Node is
+    /// configured to use secondary DB servers the queries will be distributed between servers.
+    ///
+    /// If `for_subscription` is true, the main replica will always be used.
+    fn query_store(self: Arc<Self>, for_subscription: bool) -> Arc<dyn QueryStore + Send + Sync>;
 }
 
 mock! {
@@ -1256,13 +1257,6 @@ impl Store for MockStore {
     }
 
     fn find(&self, _query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        unimplemented!()
-    }
-
-    fn find_query_values(
-        &self,
-        _: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError> {
         unimplemented!()
     }
 
@@ -1343,6 +1337,10 @@ impl Store for MockStore {
         _subgraph_id: &SubgraphDeploymentId,
         _block_hash: H256,
     ) -> Result<Option<BlockNumber>, StoreError> {
+        unimplemented!()
+    }
+
+    fn query_store(self: Arc<Self>, _: bool) -> Arc<dyn QueryStore + Send + Sync> {
         unimplemented!()
     }
 }
@@ -1462,6 +1460,18 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         block: EthereumBlockPointer,
         return_value: &[u8],
     ) -> Result<(), Error>;
+}
+
+/// Store operations used when serving queries
+pub trait QueryStore: Send + Sync {
+    fn find_query_values(
+        &self,
+        query: EntityQuery,
+    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError>;
+
+    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
+
+    fn is_deployment_synced(&self, id: SubgraphDeploymentId) -> Result<bool, Error>;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to

@@ -61,7 +61,7 @@ impl<'a> ObjectOrInterface<'a> {
 }
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
-pub trait Resolver: Sized + Send + Sync {
+pub trait Resolver: Send + Sync + Sized {
     const CACHEABLE: bool;
 
     /// Prepare for executing a query by prefetching as much data as possible

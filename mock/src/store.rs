@@ -96,13 +96,6 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn find_query_values(
-        &self,
-        _: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError> {
-        unimplemented!()
-    }
-
     fn find_one(&self, _query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
         unimplemented!()
     }
@@ -180,6 +173,10 @@ impl Store for MockStore {
         _subgraph_id: &SubgraphDeploymentId,
         _block_hash: H256,
     ) -> Result<Option<BlockNumber>, StoreError> {
+        unimplemented!()
+    }
+
+    fn query_store(self: Arc<Self>, _: bool) -> Arc<dyn QueryStore + Send + Sync> {
         unimplemented!()
     }
 }
