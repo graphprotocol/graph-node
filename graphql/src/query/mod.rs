@@ -102,5 +102,5 @@ where
             "complexity" => &query.complexity
         );
     }
-    result.to_inner()
+    result
 }
