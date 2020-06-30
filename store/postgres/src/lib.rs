@@ -33,6 +33,7 @@ mod jsonb;
 mod jsonb_queries;
 mod metadata;
 mod notification_listener;
+pub mod query_store;
 pub mod relational;
 mod relational_queries;
 mod sql_value;

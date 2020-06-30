@@ -11,7 +11,7 @@ use std::time::Instant;
 use graph::data::graphql::ext::ObjectTypeExt;
 use graph::prelude::{
     BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink, EntityOrder,
-    EntityWindow, Logger, ParentLink, QueryExecutionError, Schema, Store, Value as StoreValue,
+    EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore, Schema, Value as StoreValue,
     WindowAttribute,
 };
 
@@ -478,7 +478,7 @@ impl<'a> Join<'a> {
 /// multiple values for what should be a relationship to a single object in
 /// @derivedFrom fields
 pub fn run(
-    resolver: &StoreResolver<impl Store>,
+    resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
@@ -496,7 +496,7 @@ pub fn run(
 
 /// Executes the root selection set of a query.
 fn execute_root_selection_set(
-    resolver: &StoreResolver<impl Store>,
+    resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
@@ -564,7 +564,7 @@ fn object_or_interface_by_name<'a>(
 }
 
 fn execute_selection_set<'a>(
-    resolver: &StoreResolver<impl Store>,
+    resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
     selection_sets: Vec<&'a q::SelectionSet>,
@@ -791,7 +791,7 @@ fn collect_fields<'a>(
 
 /// Executes a field.
 fn execute_field(
-    resolver: &StoreResolver<impl Store>,
+    resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &ObjectOrInterface<'_>,
     parents: &Vec<Node>,
@@ -847,9 +847,9 @@ fn execute_field(
 /// Query child entities for `parents` from the store. The `join` indicates
 /// in which child field to look for the parent's id/join field. When
 /// `is_single` is `true`, there is at most one child per parent.
-fn fetch<S: Store>(
+fn fetch(
     logger: Logger,
-    store: &S,
+    store: &(impl QueryStore + ?Sized),
     parents: &Vec<Node>,
     join: &Join<'_>,
     arguments: HashMap<&q::Name, q::Value>,
