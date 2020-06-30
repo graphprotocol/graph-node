@@ -215,10 +215,6 @@ async fn execute_subscription_event(
         execute_root_selection_set(&ctx, &ctx.query.selection_set, &subscription_type, None)
     })
     .await
-    // Performance: Taking the low road here for expediency. Ideally
-    // we save the cached value for as long as is possible, avoiding
-    // any possible clone that happens here.
-    .map(|x| x.to_inner())
     .map_err(|e| vec![QueryExecutionError::Panic(e.to_string())])
     .and_then(|x| x);
 

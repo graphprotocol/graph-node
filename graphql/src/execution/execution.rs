@@ -1,4 +1,4 @@
-use super::cache::{CachedResponse, QueryCache};
+use super::cache::QueryCache;
 use graph::prelude::CheapClone;
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
@@ -9,7 +9,6 @@ use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 use std::time::Instant;
@@ -33,7 +32,7 @@ struct CacheByBlock {
     block: EthereumBlockPointer,
     max_weight: usize,
     weight: usize,
-    cache: HashMap<QueryHash, CachedResponse<QueryResponse>>,
+    cache: HashMap<QueryHash, QueryResponse>,
 }
 
 impl CacheByBlock {
@@ -47,14 +46,13 @@ impl CacheByBlock {
     }
 
     /// Returns `true` if the insert was successful or `false` if the cache was full.
-    fn insert(&mut self, key: QueryHash, value: &CachedResponse<QueryResponse>) -> bool {
+    fn insert(&mut self, key: QueryHash, value: QueryResponse) -> bool {
         // Unwrap: We never try to insert errors into this cache.
-        let weight = value.deref().as_ref().ok().unwrap().weight();
-
+        let weight = value.as_ref().unwrap().weight();
         let fits_in_cache = self.weight + weight <= self.max_weight;
         if fits_in_cache {
             self.weight += weight;
-            self.cache.insert(key, value.cheap_clone());
+            self.cache.insert(key, value);
         }
         fits_in_cache
     }
@@ -98,21 +96,6 @@ lazy_static! {
     // This `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_CACHE: RwLock<VecDeque<CacheByBlock>> = RwLock::new(VecDeque::new());
     static ref QUERY_HERD_CACHE: QueryCache<QueryResponse> = QueryCache::new();
-}
-
-pub enum MaybeCached<T> {
-    NotCached(T),
-    Cached(CachedResponse<T>),
-}
-
-impl<T: Clone> MaybeCached<T> {
-    // Note that this drops any handle to the cache that may exist.
-    pub fn to_inner(self) -> T {
-        match self {
-            MaybeCached::NotCached(t) => t,
-            MaybeCached::Cached(t) => t.deref().clone(),
-        }
-    }
 }
 
 struct HashableQuery<'a> {
@@ -317,7 +300,7 @@ pub fn execute_root_selection_set(
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
     block_ptr: Option<EthereumBlockPointer>,
-) -> MaybeCached<QueryResponse> {
+) -> QueryResponse {
     // Cache the cache key to not have to calculate it twice - once for lookup
     // and once for insert.
     let mut key: Option<QueryHash> = None;
@@ -337,7 +320,7 @@ pub fn execute_root_selection_set(
                 // Iterate from the most recent block looking for a block that matches.
                 if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
                     if let Some(response) = cache_by_block.cache.get(&cache_key) {
-                        return MaybeCached::Cached(response.cheap_clone());
+                        return response.clone();
                     }
                 }
 
@@ -347,51 +330,47 @@ pub fn execute_root_selection_set(
     }
 
     let result = if let Some(key) = key {
-        let cached = QUERY_HERD_CACHE.cached_query(key, || {
+        QUERY_HERD_CACHE.cached_query(key, || {
             execute_root_selection_set_uncached(ctx, selection_set, root_type)
-        });
-        MaybeCached::Cached(cached)
+        })
     } else {
-        let not_cached = execute_root_selection_set_uncached(ctx, selection_set, root_type);
-        MaybeCached::NotCached(not_cached)
+        execute_root_selection_set_uncached(ctx, selection_set, root_type)
     };
 
     // Check if this query should be cached.
-    if let (MaybeCached::Cached(cached), Some(key), Some(block_ptr)) = (&result, key, block_ptr) {
-        // Share errors from the herd cache, but don't store them in generational cache.
-        // In particular, there is a problem where asking for a block pointer beyond the chain
-        // head can cause the legitimate cache to be thrown out.
-        if cached.is_ok() {
-            let mut cache = QUERY_CACHE.write().unwrap();
+    // Share errors from the herd cache, but don't store them in generational cache.
+    // In particular, there is a problem where asking for a block pointer beyond the chain
+    // head can cause the legitimate cache to be thrown out.
+    if let (Ok(_), Some(key), Some(block_ptr)) = (&result, key, block_ptr) {
+        let mut cache = QUERY_CACHE.write().unwrap();
 
-            // If there is already a cache by the block of this query, just add it there.
-            if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-                let cache_insert = cache_by_block.insert(key, cached);
-                ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
-            } else if *QUERY_CACHE_BLOCKS > 0 {
-                // We're creating a new `CacheByBlock` if:
-                // - There are none yet, this is the first query being cached, or
-                // - `block_ptr` is of higher or equal number than the most recent block in the cache.
-                // Otherwise this is a historical query which will not be cached.
-                let should_insert = match cache.iter().next() {
-                    None => true,
-                    Some(highest) if highest.block.number <= block_ptr.number => true,
-                    Some(_) => false,
-                };
+        // If there is already a cache by the block of this query, just add it there.
+        if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
+            let cache_insert = cache_by_block.insert(key, result.clone());
+            ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
+        } else if *QUERY_CACHE_BLOCKS > 0 {
+            // We're creating a new `CacheByBlock` if:
+            // - There are none yet, this is the first query being cached, or
+            // - `block_ptr` is of higher or equal number than the most recent block in the cache.
+            // Otherwise this is a historical query which will not be cached.
+            let should_insert = match cache.iter().next() {
+                None => true,
+                Some(highest) if highest.block.number <= block_ptr.number => true,
+                Some(_) => false,
+            };
 
-                if should_insert {
-                    if cache.len() == *QUERY_CACHE_BLOCKS {
-                        // At capacity, so pop the oldest block.
-                        cache.pop_back();
-                    }
-
-                    // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
-                    let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
-                    let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
-                    let cache_insert = cache_by_block.insert(key, cached);
-                    ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
-                    cache.push_front(cache_by_block);
+            if should_insert {
+                if cache.len() == *QUERY_CACHE_BLOCKS {
+                    // At capacity, so pop the oldest block.
+                    cache.pop_back();
                 }
+
+                // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
+                let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
+                let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
+                let cache_insert = cache_by_block.insert(key, result.clone());
+                ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
+                cache.push_front(cache_by_block);
             }
         }
     }

@@ -1418,6 +1418,7 @@ name = "graph-graphql"
 version = "0.18.0"
 dependencies = [
  "Inflector",
+ "defer",
  "futures 0.1.29",
  "graph",
  "graphql-parser",
