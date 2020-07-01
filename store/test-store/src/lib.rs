@@ -39,7 +39,11 @@ lazy_static! {
 
     pub static ref POOL_WAIT_STATS: PoolWaitStats = Arc::new(RwLock::new(MovingStats::default()));
 
-    pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(&*LOGGER, POOL_WAIT_STATS.clone(), Vec::new()));
+    pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(
+        LoadManager::new(&*LOGGER,
+                         POOL_WAIT_STATS.clone(),
+                         Vec::new(),
+                         Arc::new(MockMetricsRegistry::new())));
 
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<Store> = {

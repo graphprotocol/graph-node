@@ -9,6 +9,7 @@ use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use crate::components::metrics::{Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::prelude::{info, o, warn, Logger};
@@ -78,9 +79,10 @@ impl QueryEffort {
         }
     }
 
-    pub fn add(&self, shape_hash: u64, duration: Duration) {
+    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Box<Gauge>) {
         let mut inner = self.inner.write().unwrap();
         inner.add(shape_hash, duration);
+        gauge.set(inner.total.average().unwrap_or(*ZERO_DURATION).as_millis() as f64);
     }
 
     /// Return what we know right now about the effort for the query
@@ -195,6 +197,7 @@ pub struct LoadManager {
     /// restarting the process
     jailed_queries: RwLock<HashSet<u64>>,
     kill_state: RwLock<KillState>,
+    effort_gauge: Box<Gauge>,
 }
 
 impl LoadManager {
@@ -202,6 +205,7 @@ impl LoadManager {
         logger: &Logger,
         store_wait_stats: PoolWaitStats,
         blocked_queries: Vec<Arc<q::Document>>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "LoadManager"));
         let blocked_queries = blocked_queries
@@ -212,6 +216,13 @@ impl LoadManager {
             logger,
             "Creating LoadManager with disabled={}", *LOAD_MANAGEMENT_DISABLED,
         );
+        let effort_gauge = registry
+            .new_gauge(
+                String::from("query_effort_ms"),
+                String::from("Moving average of time spent running queries"),
+                HashMap::new(),
+            )
+            .expect("failed to create `query_effort_ms` counter");
         Self {
             logger,
             effort: QueryEffort::default(),
@@ -219,12 +230,13 @@ impl LoadManager {
             blocked_queries,
             jailed_queries: RwLock::new(HashSet::new()),
             kill_state: RwLock::new(KillState::new()),
+            effort_gauge,
         }
     }
 
     pub fn add_query(&self, shape_hash: u64, duration: Duration) {
         if !*LOAD_MANAGEMENT_DISABLED {
-            self.effort.add(shape_hash, duration);
+            self.effort.add(shape_hash, duration, &self.effort_gauge);
         }
     }
 

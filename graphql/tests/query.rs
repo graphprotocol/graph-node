@@ -5,21 +5,20 @@ use graphql_parser::{query as q, Pos};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::iter::FromIterator;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
     futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o, slog, tokio,
-    Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension, Logger, MovingStats,
-    Query, QueryError, QueryExecutionError, QueryResult, QueryVariables, Schema, Store,
+    Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension, Logger, Query,
+    QueryError, QueryExecutionError, QueryResult, QueryVariables, Schema, Store,
     SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
     Subscription, SubscriptionError, Value,
 };
 use graph_graphql::prelude::*;
 use test_store::{
     execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline, return_err,
-    transact_entity_operations, BLOCK_ONE, GENESIS_PTR, LOGGER, STORE,
+    transact_entity_operations, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER, STORE,
 };
 
 lazy_static! {
@@ -231,9 +230,7 @@ fn execute_query_document_with_variables(
     query: q::Document,
     variables: Option<QueryVariables>,
 ) -> QueryResult {
-    let stats = Arc::new(RwLock::new(MovingStats::default()));
-    let load_manager = Arc::new(LoadManager::new(&*LOGGER, stats, vec![]));
-    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone(), load_manager);
+    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone(), LOAD_MANAGER.clone());
     let query = Query::new(Arc::new(api_test_schema()), query, variables);
 
     return_err!(runner.execute(query, None, None, None))

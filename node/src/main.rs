@@ -516,6 +516,7 @@ async fn main() {
     let connection_pool_registry = metrics_registry.clone();
     let stores_metrics_registry = metrics_registry.clone();
     let graphql_metrics_registry = metrics_registry.clone();
+
     let stores_logger = logger.clone();
     let stores_error_logger = logger.clone();
     let stores_eth_adapters = eth_adapters.clone();
@@ -593,6 +594,7 @@ async fn main() {
                 &logger,
                 wait_stats.clone(),
                 expensive_queries,
+                metrics_registry.clone(),
             ));
             let graphql_runner = Arc::new(GraphQlRunner::new(
                 &logger,
