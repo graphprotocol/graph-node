@@ -26,23 +26,32 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
 
 struct EventHandler {
     logger: Logger,
-    gauge: Box<Gauge>,
+    count_gauge: Box<Gauge>,
+    wait_gauge: Box<Gauge>,
     wait_stats: PoolWaitStats,
     last_log: RwLock<Instant>,
 }
 
 impl EventHandler {
     fn new(logger: Logger, registry: Arc<dyn MetricsRegistry>, wait_stats: PoolWaitStats) -> Self {
-        let gauge = registry
+        let count_gauge = registry
             .new_gauge(
                 String::from("store_connection_checkout_count"),
                 String::from("The number of Postgres connections currently checked out"),
                 HashMap::new(),
             )
             .expect("failed to create `store_connection_checkout_count` counter");
+        let wait_gauge = registry
+            .new_gauge(
+                String::from("store_connection_wait_time_ms"),
+                String::from("Average connection wait time"),
+                HashMap::new(),
+            )
+            .expect("failed to create `store_connection_wait_time_ms` counter");
         EventHandler {
             logger,
-            gauge,
+            count_gauge,
+            wait_gauge,
             wait_stats,
             last_log: RwLock::new(Instant::now()),
         }
@@ -62,15 +71,13 @@ impl EventHandler {
         let wait_avg = {
             let mut wait_stats = self.wait_stats.write().unwrap();
             wait_stats.add(duration);
-            if should_log {
-                wait_stats.average()
-            } else {
-                None
-            }
+            wait_stats.average()
         };
-        if let Some(wait_avg) = wait_avg {
+        let wait_avg = wait_avg.map(|wait_avg| wait_avg.as_millis()).unwrap_or(0);
+        self.wait_gauge.set(wait_avg as f64);
+        if should_log {
             info!(self.logger, "Average connection wait time";
-                "wait_ms" => wait_avg.as_millis());
+                    "wait_ms" => wait_avg);
         }
     }
 }
@@ -85,7 +92,7 @@ impl HandleEvent for EventHandler {
     fn handle_acquire(&self, _: e::AcquireEvent) {}
     fn handle_release(&self, _: e::ReleaseEvent) {}
     fn handle_checkout(&self, event: e::CheckoutEvent) {
-        self.gauge.inc();
+        self.count_gauge.inc();
         self.add_wait_time(event.duration());
     }
     fn handle_timeout(&self, event: e::TimeoutEvent) {
@@ -94,7 +101,7 @@ impl HandleEvent for EventHandler {
                "wait_ms" => event.timeout().as_millis())
     }
     fn handle_checkin(&self, _: e::CheckinEvent) {
-        self.gauge.dec();
+        self.count_gauge.dec();
     }
 }
 
