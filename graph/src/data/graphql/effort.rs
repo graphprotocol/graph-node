@@ -337,7 +337,7 @@ impl LoadManager {
         // Kill random queries in case we have no queries, or not enough queries
         // that cause at least 20% of the effort
         let kill_rate = self.update_kill_rate(kill_rate, last_update, overloaded, wait_ms);
-        thread_rng().gen_bool(kill_rate * query_effort / total_effort)
+        thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0))
     }
 
     fn overloaded(&self) -> (bool, Duration) {
@@ -367,8 +367,8 @@ impl LoadManager {
         if now.saturating_duration_since(last_update) > *KILL_RATE_UPDATE_INTERVAL {
             // Update the kill_rate
             if overloaded {
-                kill_rate = kill_rate + KILL_RATE_STEP * (1.0 - kill_rate);
-            } else {
+                kill_rate = (kill_rate + KILL_RATE_STEP * (1.0 - kill_rate)).min(1.0);
+            } else if kill_rate > KILL_RATE_STEP {
                 kill_rate = (kill_rate - KILL_RATE_STEP).max(0.0);
             }
             let event = {
