@@ -178,8 +178,12 @@ impl KillState {
             } else {
                 Skip
             }
-        } else {
+        } else if overloaded {
+            self.overload_start = Some(now);
+            self.last_overload_log = now;
             Start
+        } else {
+            Skip
         }
     }
 }
