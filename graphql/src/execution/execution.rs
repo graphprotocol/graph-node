@@ -9,9 +9,10 @@ use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 use std::time::Instant;
+use std::fmt;
+use crossbeam::atomic::AtomicCell;
 
 use graph::prelude::*;
 
@@ -170,6 +171,39 @@ fn cache_key(
     stable_hash::<SetHasher, _>(&query)
 }
 
+/// Used for checking if a response hit the cache.
+#[derive(Copy, Clone)]
+pub(crate) enum CacheStatus {
+    /// Hit is a hit in the generational cache.
+    Hit,
+
+    /// Shared is a hit in the herd cache.
+    Shared,
+
+    /// Insert is a miss that inserted in the generational cache.
+    Insert,
+
+    /// A miss is none of the above.
+    Miss,
+}
+
+impl Default for CacheStatus {
+    fn default() -> Self {
+        CacheStatus::Miss
+    }
+}
+
+impl fmt::Display for CacheStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CacheStatus::Hit => f.write_str("hit"),
+            CacheStatus::Shared => f.write_str("shared"),
+            CacheStatus::Insert => f.write_str("insert"),
+            CacheStatus::Miss => f.write_str("miss")
+        }
+    }
+}
+
 /// Contextual information passed around during query execution.
 pub struct ExecutionContext<R>
 where
@@ -190,15 +224,8 @@ where
     /// Max value for `first`.
     pub max_first: u32,
 
-    /// Will be `true` if the response was pulled from cache. The mechanism by
-    /// which this is set is actually to start at `true` and then be set to
-    /// `false` if the query is executed.
-    ///
-    /// Used for logging.
-    pub cached: AtomicBool,
-
-    /// Set to `true` if the response was inserted in the cache. Used for logging.
-    pub cache_insert: AtomicBool,
+    /// Records whether this was a cache hit, used for logging.
+    pub(crate) cache_status: AtomicCell<CacheStatus>,
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
@@ -235,8 +262,7 @@ where
             query: self.query.as_introspection_query(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
-            cached: AtomicBool::new(true),
-            cache_insert: AtomicBool::new(false),
+            cache_status: AtomicCell::new(CacheStatus::Miss),
         }
     }
 }
@@ -246,8 +272,6 @@ pub fn execute_root_selection_set_uncached(
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
 ) -> QueryResponse {
-    ctx.cached.store(false, std::sync::atomic::Ordering::SeqCst);
-
     // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = q::SelectionSet {
@@ -321,7 +345,8 @@ pub fn execute_root_selection_set<R: Resolver>(
                 // Iterate from the most recent block looking for a block that matches.
                 if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
                     if let Some(response) = cache_by_block.cache.get(&cache_key) {
-                        return response.clone();
+                        ctx.cache_status.store(CacheStatus::Hit);
+                        return response.cheap_clone();
                     }
                 }
 
@@ -330,33 +355,39 @@ pub fn execute_root_selection_set<R: Resolver>(
         }
     }
 
-    let result = if let Some(key) = key {
-        QUERY_HERD_CACHE.cached_query(key, || {
-            Arc::new(QueryResult::from(execute_root_selection_set_uncached(
-                ctx,
-                selection_set,
-                root_type,
-            )))
-        })
-    } else {
+    let mut herd_hit = true;
+    let mut run_query = || {
+        herd_hit = false;
         Arc::new(QueryResult::from(execute_root_selection_set_uncached(
             ctx,
             selection_set,
             root_type,
         )))
     };
+    let result = if let Some(key) = key {
+        QUERY_HERD_CACHE.cached_query(key, run_query)
+    } else {
+        run_query()
+    };
+    if herd_hit {
+        ctx.cache_status.store(CacheStatus::Shared);
+    }
 
     // Check if this query should be cached.
     // Share errors from the herd cache, but don't store them in generational cache.
     // In particular, there is a problem where asking for a block pointer beyond the chain
     // head can cause the legitimate cache to be thrown out.
-    if let (false, Some(key), Some(block_ptr)) = (result.has_errors(), key, block_ptr) {
+    // It would be redundant to insert herd cache hits.
+    let no_cache = herd_hit || result.has_errors();
+    if let (false, Some(key), Some(block_ptr)) = (no_cache, key, block_ptr) {
         let mut cache = QUERY_CACHE.write().unwrap();
 
         // If there is already a cache by the block of this query, just add it there.
         if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
             let cache_insert = cache_by_block.insert(key, result.cheap_clone());
-            ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
+            if cache_insert {
+                ctx.cache_status.store(CacheStatus::Insert);
+            }
         } else if *QUERY_CACHE_BLOCKS > 0 {
             // We're creating a new `CacheByBlock` if:
             // - There are none yet, this is the first query being cached, or
@@ -378,7 +409,9 @@ pub fn execute_root_selection_set<R: Resolver>(
                 let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
                 let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
                 let cache_insert = cache_by_block.insert(key, result.cheap_clone());
-                ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
+                if cache_insert {
+                    ctx.cache_status.store(CacheStatus::Insert);
+                }
                 cache.push_front(cache_by_block);
             }
         }
