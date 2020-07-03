@@ -1,4 +1,5 @@
 use super::cache::QueryCache;
+use crossbeam::atomic::AtomicCell;
 use graph::prelude::CheapClone;
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
@@ -8,11 +9,10 @@ use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::fmt;
 use std::iter;
 use std::sync::RwLock;
 use std::time::Instant;
-use std::fmt;
-use crossbeam::atomic::AtomicCell;
 
 use graph::prelude::*;
 
@@ -25,8 +25,6 @@ use crate::schema::ast as sast;
 use crate::values::coercion;
 
 type QueryHash = <SetHasher as StableHasher>::Out;
-
-pub(crate) type QueryResponse = Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>;
 
 #[derive(Debug)]
 struct CacheByBlock {
@@ -199,7 +197,7 @@ impl fmt::Display for CacheStatus {
             CacheStatus::Hit => f.write_str("hit"),
             CacheStatus::Shared => f.write_str("shared"),
             CacheStatus::Insert => f.write_str("insert"),
-            CacheStatus::Miss => f.write_str("miss")
+            CacheStatus::Miss => f.write_str("miss"),
         }
     }
 }
@@ -271,7 +269,7 @@ pub fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
-) -> QueryResponse {
+) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = q::SelectionSet {
@@ -442,7 +440,7 @@ fn execute_selection_set_to_map<'a>(
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     object_type: &s::ObjectType,
     prefetched_value: Option<q::Value>,
-) -> QueryResponse {
+) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
     let mut prefetched_object = match prefetched_value {
         Some(q::Value::Object(object)) => Some(object),
         Some(_) => unreachable!(),

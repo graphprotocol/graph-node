@@ -62,7 +62,7 @@ where
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
-        cache_status: Default::default()
+        cache_status: Default::default(),
     };
 
     if !query.is_query() {
