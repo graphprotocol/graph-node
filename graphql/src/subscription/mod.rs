@@ -81,7 +81,7 @@ where
         query: query.clone(),
         deadline: None,
         max_first: options.max_first,
-        cache_status: Default::default()
+        cache_status: Default::default(),
     };
 
     if !query.is_subscription() {
@@ -198,7 +198,7 @@ async fn execute_subscription_event(
         query,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
-        cache_status: Default::default()
+        cache_status: Default::default(),
     };
 
     // We have established that this exists earlier in the subscription execution
