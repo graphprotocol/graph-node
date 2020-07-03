@@ -2,7 +2,7 @@ use graph::prelude::{info, o, EthereumBlockPointer, Logger, QueryExecutionError,
 use graphql_parser::query as q;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::Arc;
 use std::time::Instant;
 
 use graph::data::graphql::effort::LoadManager;
@@ -62,8 +62,7 @@ where
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
-        cached: AtomicBool::new(true),
-        cache_insert: AtomicBool::new(false),
+        cache_status: Default::default()
     };
 
     if !query.is_query() {
@@ -91,7 +90,7 @@ where
             "query" => &query.query_text,
             "variables" => &query.variables_text,
             "query_time_ms" => elapsed.as_millis(),
-            "cached" => ctx.cached.load(std::sync::atomic::Ordering::SeqCst),
+            "cached" => ctx.cache_status.load().to_string(),
             "block" => block_ptr.map(|b| b.number).unwrap_or(0),
             "complexity" => &query.complexity
         );
