@@ -58,7 +58,7 @@ pub fn execute_subscription<R>(
     options: SubscriptionExecutionOptions<R>,
 ) -> Result<SubscriptionResult, SubscriptionError>
 where
-    R: Resolver + 'static,
+    R: Resolver + CheapClone + 'static,
 {
     let query = crate::execution::Query::new(
         subscription.query,
@@ -73,12 +73,12 @@ pub(crate) fn execute_prepared_subscription<R>(
     options: SubscriptionExecutionOptions<R>,
 ) -> Result<SubscriptionResult, SubscriptionError>
 where
-    R: Resolver + 'static,
+    R: Resolver + CheapClone + 'static,
 {
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: options.logger,
-        resolver: Arc::new(options.resolver),
+        resolver: options.resolver,
         query: query.clone(),
         deadline: None,
         max_first: options.max_first,
@@ -143,12 +143,12 @@ fn resolve_field_stream(
 }
 
 fn map_source_to_response_stream(
-    ctx: &ExecutionContext<impl Resolver + 'static>,
+    ctx: &ExecutionContext<impl Resolver + CheapClone + 'static>,
     source_stream: StoreEventStreamBox,
     timeout: Option<Duration>,
 ) -> QueryResultStream {
-    let logger = ctx.logger.clone();
-    let resolver = ctx.resolver.clone();
+    let logger = ctx.logger.cheap_clone();
+    let resolver = ctx.resolver.cheap_clone();
     let query = ctx.query.cheap_clone();
     let max_first = ctx.max_first;
 
@@ -167,11 +167,12 @@ fn map_source_to_response_stream(
             .chain(source_stream.compat())
             .then(move |res| match res {
                 Err(()) => {
-                    futures03::future::ready(QueryExecutionError::EventStreamError.into()).boxed()
+                    futures03::future::ready(Arc::new(QueryExecutionError::EventStreamError.into()))
+                        .boxed()
                 }
                 Ok(event) => execute_subscription_event(
                     logger.clone(),
-                    resolver.clone(),
+                    resolver.cheap_clone(),
                     query.clone(),
                     event,
                     timeout,
@@ -184,12 +185,12 @@ fn map_source_to_response_stream(
 
 async fn execute_subscription_event(
     logger: Logger,
-    resolver: Arc<impl Resolver + 'static>,
+    resolver: impl Resolver + 'static,
     query: Arc<crate::execution::Query>,
     event: Arc<StoreEvent>,
     timeout: Option<Duration>,
     max_first: u32,
-) -> QueryResult {
+) -> Arc<QueryResult> {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
 
     // Create a fresh execution context with deadline.
@@ -211,15 +212,14 @@ async fn execute_subscription_event(
     // Use a semaphore to prevent subscription queries, which can be numerous and might query all at
     // once, from flooding the blocking thread pool and the DB connection pool.
     let _permit = SUBSCRIPTION_QUERY_SEMAPHORE.acquire();
-    let result = graph::spawn_blocking_allow_panic(async move {
+    match graph::spawn_blocking_allow_panic(async move {
         execute_root_selection_set(&ctx, &ctx.query.selection_set, &subscription_type, None)
     })
     .await
-    .map_err(|e| vec![QueryExecutionError::Panic(e.to_string())])
-    .and_then(|x| x);
-
-    match result {
-        Ok(value) => QueryResult::new(Some(q::Value::Object(value))),
-        Err(e) => QueryResult::from(e),
+    {
+        Ok(result) => result,
+        Err(panic) => Arc::new(QueryResult::from(QueryExecutionError::Panic(
+            panic.to_string(),
+        ))),
     }
 }

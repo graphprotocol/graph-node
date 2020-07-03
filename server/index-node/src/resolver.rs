@@ -380,6 +380,9 @@ where
             .wait()
             .expect("error querying subgraph deployments");
 
+        // Metadata queries are not cached.
+        let result = Arc::try_unwrap(result).unwrap();
+
         let data = match result.data {
             Some(data) => data,
             None => {
@@ -456,6 +459,9 @@ where
             .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
             .wait()
             .expect("error querying subgraph deployments");
+
+        // Metadata queries are not cached.
+        let result = Arc::try_unwrap(result).unwrap();
 
         let data = match result.data {
             Some(data) => data,
@@ -615,6 +621,9 @@ where
             .wait()
             .expect("error querying subgraph deployments");
 
+        // Metadata queries are not cached.
+        let result = Arc::try_unwrap(result).unwrap();
+
         let data = match result.data {
             Some(data) => data,
             None => {
@@ -695,6 +704,8 @@ where
     R: GraphQlRunner,
     S: Store + SubgraphDeploymentStore,
 {
+    const CACHEABLE: bool = false;
+
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,

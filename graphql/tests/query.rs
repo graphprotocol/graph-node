@@ -234,6 +234,8 @@ fn execute_query_document_with_variables(
     let query = Query::new(Arc::new(api_test_schema()), query, variables);
 
     return_err!(runner.execute(query, None, None, None))
+        .as_ref()
+        .clone()
 }
 
 #[test]

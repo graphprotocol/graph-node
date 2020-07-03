@@ -12,7 +12,7 @@ use graphql_parser::query as q;
 use std::sync::Arc;
 
 /// Future for query results.
-pub type QueryResultFuture = Box<dyn Future<Item = QueryResult, Error = QueryError> + Send>;
+pub type QueryResultFuture = Box<dyn Future<Item = Arc<QueryResult>, Error = QueryError> + Send>;
 
 /// Future for subscription results.
 pub type SubscriptionResultFuture =
@@ -42,6 +42,8 @@ pub trait GraphQlRunner: Send + Sync + 'static {
             .await
             .map_err(move |e| format_err!("Failed to query metadata: {}", e))
             .and_then(move |result| {
+                // Metadata queries are not cached.
+                let result = Arc::try_unwrap(result).unwrap();
                 if result.errors.is_some() {
                     Err(format_err!("Failed to query metadata: {:?}", result.errors))
                 } else {

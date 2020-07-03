@@ -120,8 +120,10 @@ where
                         max_first: std::u32::MAX,
                         load_manager,
                     };
-                    let result = PreparedQuery::new(query, None, 100)
-                        .and_then(|query| execute_query(query, None, None, options));
+                    let result = PreparedQuery::new(query, None, 100).map(|query| {
+                        // Index status queries are not cacheable, so we may unwrap this.
+                        Arc::try_unwrap(execute_query(query, None, None, options)).unwrap()
+                    });
 
                     futures03::future::ok(QueryResult::from(result))
                 })

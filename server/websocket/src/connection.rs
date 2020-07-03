@@ -12,7 +12,6 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
 
-use graph::prelude::serde_json;
 use graph::prelude::*;
 
 lazy_static! {
@@ -58,13 +57,21 @@ impl IncomingMessage {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum OutgoingMessage {
     ConnectionAck,
-    Error { id: String, payload: String },
-    Data { id: String, payload: QueryResult },
-    Complete { id: String },
+    Error {
+        id: String,
+        payload: String,
+    },
+    Data {
+        id: String,
+        payload: Arc<QueryResult>,
+    },
+    Complete {
+        id: String,
+    },
 }
 
 impl OutgoingMessage {
-    pub fn from_query_result(id: String, result: QueryResult) -> Self {
+    pub fn from_query_result(id: String, result: Arc<QueryResult>) -> Self {
         OutgoingMessage::Data {
             id: id,
             payload: result,
@@ -318,7 +325,7 @@ where
                             // Send errors back to the client as GQL_DATA
                             match e {
                                 SubscriptionError::GraphQLError(e) => {
-                                    let result = QueryResult::from(e);
+                                    let result = Arc::new(QueryResult::from(e));
                                     let msg =
                                         OutgoingMessage::from_query_result(err_id.clone(), result);
                                     error_sink.unbounded_send(msg.into()).unwrap();

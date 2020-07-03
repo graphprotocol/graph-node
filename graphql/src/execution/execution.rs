@@ -25,14 +25,14 @@ use crate::values::coercion;
 
 type QueryHash = <SetHasher as StableHasher>::Out;
 
-type QueryResponse = Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>;
+pub(crate) type QueryResponse = Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>;
 
 #[derive(Debug)]
 struct CacheByBlock {
     block: EthereumBlockPointer,
     max_weight: usize,
     weight: usize,
-    cache: HashMap<QueryHash, QueryResponse>,
+    cache: HashMap<QueryHash, Arc<QueryResult>>,
 }
 
 impl CacheByBlock {
@@ -46,9 +46,10 @@ impl CacheByBlock {
     }
 
     /// Returns `true` if the insert was successful or `false` if the cache was full.
-    fn insert(&mut self, key: QueryHash, value: QueryResponse) -> bool {
-        // Unwrap: We never try to insert errors into this cache.
-        let weight = value.as_ref().unwrap().weight();
+    fn insert(&mut self, key: QueryHash, value: Arc<QueryResult>) -> bool {
+        // We never try to insert errors into this cache, and always resolve some value.
+        assert!(value.errors.is_none());
+        let weight = value.data.as_ref().unwrap().weight();
         let fits_in_cache = self.weight + weight <= self.max_weight;
         if fits_in_cache {
             self.weight += weight;
@@ -95,7 +96,7 @@ lazy_static! {
 
     // This `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_CACHE: RwLock<VecDeque<CacheByBlock>> = RwLock::new(VecDeque::new());
-    static ref QUERY_HERD_CACHE: QueryCache<QueryResponse> = QueryCache::new();
+    static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new();
 }
 
 struct HashableQuery<'a> {
@@ -181,7 +182,7 @@ where
     pub query: Arc<crate::execution::Query>,
 
     /// The resolver to use.
-    pub resolver: Arc<R>,
+    pub resolver: R,
 
     /// Time at which the query times out.
     pub deadline: Option<Instant>,
@@ -230,7 +231,7 @@ where
 
         ExecutionContext {
             logger: self.logger.cheap_clone(),
-            resolver: Arc::new(introspection_resolver),
+            resolver: introspection_resolver,
             query: self.query.as_introspection_query(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
@@ -295,17 +296,17 @@ pub fn execute_root_selection_set_uncached(
 }
 
 /// Executes the root selection set of a query.
-pub fn execute_root_selection_set(
-    ctx: &ExecutionContext<impl Resolver>,
+pub fn execute_root_selection_set<R: Resolver>(
+    ctx: &ExecutionContext<R>,
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
     block_ptr: Option<EthereumBlockPointer>,
-) -> QueryResponse {
+) -> Arc<QueryResult> {
     // Cache the cache key to not have to calculate it twice - once for lookup
     // and once for insert.
     let mut key: Option<QueryHash> = None;
 
-    if *CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id) {
+    if R::CACHEABLE && (*CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id)) {
         if let Some(block_ptr) = block_ptr {
             // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
             // - Metadata queries are not cacheable.
@@ -331,22 +332,30 @@ pub fn execute_root_selection_set(
 
     let result = if let Some(key) = key {
         QUERY_HERD_CACHE.cached_query(key, || {
-            execute_root_selection_set_uncached(ctx, selection_set, root_type)
+            Arc::new(QueryResult::from(execute_root_selection_set_uncached(
+                ctx,
+                selection_set,
+                root_type,
+            )))
         })
     } else {
-        execute_root_selection_set_uncached(ctx, selection_set, root_type)
+        Arc::new(QueryResult::from(execute_root_selection_set_uncached(
+            ctx,
+            selection_set,
+            root_type,
+        )))
     };
 
     // Check if this query should be cached.
     // Share errors from the herd cache, but don't store them in generational cache.
     // In particular, there is a problem where asking for a block pointer beyond the chain
     // head can cause the legitimate cache to be thrown out.
-    if let (Ok(_), Some(key), Some(block_ptr)) = (&result, key, block_ptr) {
+    if let (false, Some(key), Some(block_ptr)) = (result.has_errors(), key, block_ptr) {
         let mut cache = QUERY_CACHE.write().unwrap();
 
         // If there is already a cache by the block of this query, just add it there.
         if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-            let cache_insert = cache_by_block.insert(key, result.clone());
+            let cache_insert = cache_by_block.insert(key, result.cheap_clone());
             ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
         } else if *QUERY_CACHE_BLOCKS > 0 {
             // We're creating a new `CacheByBlock` if:
@@ -368,7 +377,7 @@ pub fn execute_root_selection_set(
                 // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
                 let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
                 let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
-                let cache_insert = cache_by_block.insert(key, result.clone());
+                let cache_insert = cache_by_block.insert(key, result.cheap_clone());
                 ctx.cache_insert.store(cache_insert, Ordering::SeqCst);
                 cache.push_front(cache_by_block);
             }

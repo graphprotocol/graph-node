@@ -13,7 +13,7 @@ where
 }
 
 /// The result of running a query, if successful.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct QueryResult {
     #[serde(
         skip_serializing_if = "Option::is_none",
@@ -30,6 +30,15 @@ pub struct QueryResult {
 }
 
 impl QueryResult {
+    /// A result with an empty object as the data.
+    pub fn empty() -> Self {
+        QueryResult {
+            data: Some(q::Value::Object(BTreeMap::new())),
+            errors: None,
+            extensions: None,
+        }
+    }
+
     pub fn new(data: Option<q::Value>) -> Self {
         QueryResult {
             data,
@@ -37,9 +46,37 @@ impl QueryResult {
             extensions: None,
         }
     }
+
     pub fn with_extensions(mut self, extensions: BTreeMap<q::Name, q::Value>) -> Self {
         self.extensions = Some(q::Value::Object(extensions));
         self
+    }
+
+    pub fn has_errors(&self) -> bool {
+        return self.errors.is_some();
+    }
+
+    pub fn append(&mut self, mut other: QueryResult) {
+        match (&mut self.data, &mut other.data) {
+            (Some(q::Value::Object(ours)), Some(q::Value::Object(other))) => ours.append(other),
+
+            // Subgraph queries always return objects.
+            (Some(_), Some(_)) => unreachable!(),
+
+            // Only one side has data, use that.
+            _ => self.data = self.data.take().or(other.data),
+        }
+
+        match (&mut self.errors, &mut other.errors) {
+            (Some(ours), Some(other)) => ours.append(other),
+
+            // Only one side has errors, use that.
+            _ => self.errors = self.errors.take().or(other.errors),
+        }
+
+        // Currently we don't used extensions, the desired behaviour for merging them is tbd.
+        assert!(self.extensions.is_none());
+        assert!(other.extensions.is_none());
     }
 }
 
@@ -61,20 +98,17 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
     }
 }
 
-impl From<Result<q::Value, Vec<QueryExecutionError>>> for QueryResult {
-    fn from(result: Result<q::Value, Vec<QueryExecutionError>>) -> Self {
-        match result {
-            Ok(v) => QueryResult::new(Some(v)),
-            Err(errors) => QueryResult::from(errors),
-        }
+impl From<BTreeMap<String, q::Value>> for QueryResult {
+    fn from(val: BTreeMap<String, q::Value>) -> Self {
+        QueryResult::new(Some(q::Value::Object(val)))
     }
 }
 
-impl From<Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>> for QueryResult {
-    fn from(result: Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>) -> Self {
+impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryResult {
+    fn from(result: Result<V, E>) -> Self {
         match result {
-            Ok(v) => QueryResult::new(Some(q::Value::Object(v))),
-            Err(errors) => QueryResult::from(errors),
+            Ok(v) => v.into(),
+            Err(e) => e.into(),
         }
     }
 }

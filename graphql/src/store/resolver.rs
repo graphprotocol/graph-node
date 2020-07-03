@@ -19,18 +19,17 @@ pub struct StoreResolver<S> {
     pub(crate) block: BlockNumber,
 }
 
-impl<S> Clone for StoreResolver<S>
-where
-    S: Store,
-{
+impl<S> Clone for StoreResolver<S> {
     fn clone(&self) -> Self {
         StoreResolver {
-            logger: self.logger.clone(),
-            store: self.store.clone(),
-            block: self.block.clone(),
+            logger: self.logger.cheap_clone(),
+            store: self.store.cheap_clone(),
+            block: self.block,
         }
     }
 }
+
+impl<S> CheapClone for StoreResolver<S> {}
 
 impl<S> StoreResolver<S>
 where
@@ -153,6 +152,8 @@ impl<S> Resolver for StoreResolver<S>
 where
     S: Store + SubgraphDeploymentStore,
 {
+    const CACHEABLE: bool = true;
+
     fn prefetch(
         &self,
         ctx: &ExecutionContext<Self>,
