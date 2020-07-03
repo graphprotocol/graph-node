@@ -141,7 +141,7 @@ impl<R: CheapClone> QueryCache<R> {
             }
         };
 
-        defer::defer(|| {
+        let _remove_guard = defer::defer(|| {
             // Remove this from the list of in-flight work.
             self.cache.lock().unwrap().remove(&hash);
         });
