@@ -96,8 +96,7 @@ impl QueryEffort {
         let query_effort = inner
             .effort
             .get(&shape_hash)
-            .map(|stats| stats.average())
-            .flatten();
+            .and_then(|stats| stats.average());
         (query_effort, total_effort)
     }
 }

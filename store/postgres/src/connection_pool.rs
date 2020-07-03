@@ -6,7 +6,7 @@ use graph::util::security::SafeDisplay;
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 struct ErrorHandler(Logger, Box<Counter>);
@@ -29,7 +29,7 @@ struct EventHandler {
     count_gauge: Box<Gauge>,
     wait_gauge: Box<Gauge>,
     wait_stats: PoolWaitStats,
-    last_log: RwLock<Instant>,
+    last_log: Mutex<Instant>,
 }
 
 impl EventHandler {
@@ -53,14 +53,14 @@ impl EventHandler {
             count_gauge,
             wait_gauge,
             wait_stats,
-            last_log: RwLock::new(Instant::now()),
+            last_log: Mutex::new(Instant::now()),
         }
     }
 
     fn add_wait_time(&self, duration: Duration) {
         let should_log = {
             // Log average wait time, but at most every 10s
-            let mut last_log = self.last_log.write().unwrap();
+            let mut last_log = self.last_log.lock().unwrap();
             if last_log.elapsed() > Duration::from_secs(10) {
                 *last_log = Instant::now();
                 true
@@ -110,7 +110,7 @@ pub fn create_connection_pool(
     pool_size: u32,
     logger: &Logger,
     registry: Arc<dyn MetricsRegistry>,
-    wait_time: Arc<RwLock<MovingStats>>,
+    wait_time: PoolWaitStats,
 ) -> Pool<ConnectionManager<PgConnection>> {
     let logger_store = logger.new(o!("component" => "Store"));
     let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));

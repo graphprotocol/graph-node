@@ -393,7 +393,6 @@ fn execute_subgraph_query_internal(
 ) -> QueryResult {
     let logger = Logger::root(slog::Discard, o!());
     let query = return_err!(PreparedQuery::new(query, max_complexity, 100));
-    //let effort =
     let mut values = std::collections::BTreeMap::new();
     let mut errors = Vec::new();
     for (bc, selection_set) in return_err!(query.block_constraint()) {

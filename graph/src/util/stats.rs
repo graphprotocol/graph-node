@@ -65,7 +65,7 @@ impl Bin {
     fn average_gt(&self, duration: Duration) -> bool {
         // Compute self.duration / self.count > duration as
         // self.duration > duration * self.count. If the RHS
-        // oveflows, we assume the average would have been smaller
+        // overflows, we assume the average would have been smaller
         // than any duration
         duration
             .checked_mul(self.count)
@@ -99,12 +99,20 @@ impl Default for MovingStats {
 }
 
 impl MovingStats {
+    /// Track moving statistics over a window of `window_size` duration
+    /// and keep the measurements in bins of `bin_size` each.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `window_size` or `bin_size` is `0`, or if `bin_size` >=
+    /// `window_size`
     pub fn new(window_size: Duration, bin_size: Duration) -> Self {
-        let capacity = if bin_size.as_millis() > 0 {
-            window_size.as_millis() as usize / bin_size.as_millis() as usize
-        } else {
-            1
-        };
+        assert!(window_size.as_millis() > 0);
+        assert!(bin_size.as_millis() > 0);
+        assert!(window_size > bin_size);
+
+        let capacity = window_size.as_millis() as usize / bin_size.as_millis() as usize;
+
         MovingStats {
             window_size,
             bin_size,

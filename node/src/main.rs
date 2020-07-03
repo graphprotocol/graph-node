@@ -528,7 +528,7 @@ async fn main() {
         store_conn_pool_size,
         &logger,
         connection_pool_registry,
-        wait_stats.clone(),
+        wait_stats.cheap_clone(),
     );
 
     let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
