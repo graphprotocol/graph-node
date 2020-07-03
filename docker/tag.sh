@@ -5,12 +5,12 @@
 tag_and_push() {
     tag=$1
     docker tag gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA \
-           lutter/graph-node:$tag
-    docker push lutter/graph-node:$tag
+           graphprotocol/graph-node:$tag
+    docker push graphprotocol/graph-node:$tag
 
     docker tag gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA \
-           lutter/graph-node-debug:$tag
-    docker push lutter/graph-node-debug:$tag
+           graphprotocol/graph-node-debug:$tag
+    docker push graphprotocol/graph-node-debug:$tag
 }
 
 echo "Logging into Docker Hub"
