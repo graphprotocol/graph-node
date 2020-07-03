@@ -113,23 +113,18 @@ where
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
-    ) -> Result<QueryResult, Vec<QueryExecutionError>> {
+    ) -> Result<Arc<QueryResult>, QueryResult> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
-
         if self
             .load_manager
             .decline(query.shape_hash, query.query_text.as_ref())
         {
-            return Err(vec![QueryExecutionError::TooExpensive]);
+            return Err(QueryExecutionError::TooExpensive.into());
         }
 
-        let mut values = BTreeMap::new();
-        let mut errors = Vec::new();
-        for (bc, selection_set) in query.block_constraint()? {
-            let (resolver, block_ptr) =
-                StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
-            match execute_query(
+        let execute = |selection_set, block_ptr, resolver| {
+            execute_query(
                 query.clone(),
                 Some(&selection_set),
                 Some(block_ptr),
@@ -140,15 +135,37 @@ where
                     max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
                     load_manager: self.load_manager.clone(),
                 },
-            ) {
-                Err(errs) => errors.extend(errs),
-                Ok(mut vals) => values.append(&mut vals),
+            )
+        };
+        let by_block_constraint = query.block_constraint()?;
+
+        // We want to optimize for the common case of a single block constraint,
+        // where we can avoid cloning the result.
+        match by_block_constraint.len() {
+            0 => Ok(Arc::new(QueryResult::empty())),
+            1 => {
+                let (bc, selection_set) = by_block_constraint.into_iter().next().unwrap();
+                let (resolver, block_ptr) = StoreResolver::at_block(
+                    &self.logger,
+                    self.store.clone(),
+                    bc,
+                    &query.schema.id,
+                )?;
+                Ok(execute(selection_set, block_ptr, resolver))
             }
-        }
-        if !errors.is_empty() {
-            Err(errors)
-        } else {
-            Ok(QueryResult::new(Some(q::Value::Object(values))))
+            _ => {
+                let mut result = QueryResult::empty();
+                for (bc, selection_set) in query.block_constraint()? {
+                    let (resolver, block_ptr) = StoreResolver::at_block(
+                        &self.logger,
+                        self.store.clone(),
+                        bc,
+                        &query.schema.id,
+                    )?;
+                    result.append(execute(selection_set, block_ptr, resolver).as_ref().clone());
+                }
+                Ok(Arc::new(result))
+            }
         }
     }
 }
@@ -173,10 +190,10 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> QueryResultFuture {
-        let result = self
-            .execute(query, max_complexity, max_depth, max_first)
-            .unwrap_or_else(|e| QueryResult::from(e));
-        Box::new(future::ok(result))
+        Box::new(future::ok(
+            self.execute(query, max_complexity, max_depth, max_first)
+                .unwrap_or_else(|e| Arc::new(e)),
+        ))
     }
 
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {

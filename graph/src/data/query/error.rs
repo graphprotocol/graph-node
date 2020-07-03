@@ -263,19 +263,23 @@ impl From<StoreError> for QueryExecutionError {
 #[derive(Debug)]
 pub enum QueryError {
     EncodingError(FromUtf8Error),
-    ParseError(q::ParseError),
+    ParseError(failure::Error),
     ExecutionError(QueryExecutionError),
+}
+
+impl Clone for QueryError {
+    fn clone(&self) -> Self {
+        match self {
+            QueryError::EncodingError(e) => QueryError::EncodingError(e.clone()),
+            QueryError::ParseError(e) => QueryError::ParseError(failure::err_msg(e.to_string())),
+            QueryError::ExecutionError(e) => QueryError::ExecutionError(e.clone()),
+        }
+    }
 }
 
 impl From<FromUtf8Error> for QueryError {
     fn from(e: FromUtf8Error) -> Self {
         QueryError::EncodingError(e)
-    }
-}
-
-impl From<q::ParseError> for QueryError {
-    fn from(e: q::ParseError) -> Self {
-        QueryError::ParseError(e)
     }
 }
 

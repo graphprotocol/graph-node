@@ -11,7 +11,6 @@ use graph_graphql::prelude::{
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{ChainHeadUpdateListener, Store, StoreConfig, SubscriptionManager};
-use graphql_parser::query as q;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
@@ -393,8 +392,7 @@ fn execute_subgraph_query_internal(
 ) -> QueryResult {
     let logger = Logger::root(slog::Discard, o!());
     let query = return_err!(PreparedQuery::new(query, max_complexity, 100));
-    let mut values = std::collections::BTreeMap::new();
-    let mut errors = Vec::new();
+    let mut result = QueryResult::empty();
     for (bc, selection_set) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
         let (resolver, _block_ptr) = return_err!(StoreResolver::at_block(
@@ -403,25 +401,22 @@ fn execute_subgraph_query_internal(
             bc,
             &query.schema.id
         ));
-        match execute_query(
-            query.clone(),
-            Some(&selection_set),
-            None,
-            QueryExecutionOptions {
-                logger,
-                resolver,
-                deadline,
-                max_first: std::u32::MAX,
-                load_manager: LOAD_MANAGER.clone(),
-            },
-        ) {
-            Err(errs) => errors.extend(errs),
-            Ok(mut vals) => values.append(&mut vals),
-        };
+        result.append(
+            execute_query(
+                query.clone(),
+                Some(&selection_set),
+                None,
+                QueryExecutionOptions {
+                    logger,
+                    resolver,
+                    deadline,
+                    load_manager: LOAD_MANAGER.clone(),
+                    max_first: std::u32::MAX,
+                },
+            )
+            .as_ref()
+            .clone(),
+        )
     }
-    if !errors.is_empty() {
-        QueryResult::from(errors)
-    } else {
-        QueryResult::new(Some(q::Value::Object(values)))
-    }
+    result
 }

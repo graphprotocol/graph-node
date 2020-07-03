@@ -1,12 +1,8 @@
-use graph::prelude::{info, o, EthereumBlockPointer, Logger, QueryExecutionError};
+use graph::prelude::{info, o, EthereumBlockPointer, Logger, QueryExecutionError, QueryResult};
 use graphql_parser::query as q;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Instant;
 
 use graph::data::graphql::effort::LoadManager;
@@ -21,10 +17,7 @@ pub mod ast;
 pub mod ext;
 
 /// Options available for query execution.
-pub struct QueryExecutionOptions<R>
-where
-    R: Resolver,
-{
+pub struct QueryExecutionOptions<R> {
     /// The logger to use during query execution.
     pub logger: Logger,
 
@@ -41,12 +34,13 @@ where
 }
 
 /// Executes a query and returns a result.
+/// If the query is not cacheable, the `Arc` may be unwrapped.
 pub fn execute_query<R>(
     query: Arc<Query>,
     selection_set: Option<&q::SelectionSet>,
     block_ptr: Option<EthereumBlockPointer>,
     options: QueryExecutionOptions<R>,
-) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>>
+) -> Arc<QueryResult>
 where
     R: Resolver,
 {
@@ -64,7 +58,7 @@ where
     // Create a fresh execution context
     let ctx = ExecutionContext {
         logger: query_logger.clone(),
-        resolver: Arc::new(options.resolver),
+        resolver: options.resolver,
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
@@ -73,16 +67,16 @@ where
     };
 
     if !query.is_query() {
-        return Err(vec![QueryExecutionError::NotSupported(
-            "Only queries are supported".to_string(),
-        )]);
+        return Arc::new(
+            QueryExecutionError::NotSupported("Only queries are supported".to_string()).into(),
+        );
     }
     let selection_set = selection_set.unwrap_or(&query.selection_set);
 
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
         Some(t) => t,
-        None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
+        None => return Arc::new(QueryExecutionError::NoRootQueryObjectType.into()),
     };
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.

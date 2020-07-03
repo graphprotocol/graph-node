@@ -27,34 +27,36 @@ impl GraphQlRunner for TestGraphQlRunner {
     }
 
     fn run_query(&self, query: Query) -> QueryResultFuture {
-        Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
-            if query.variables.is_some()
-                && query
-                    .variables
-                    .as_ref()
-                    .unwrap()
-                    .get(&String::from("equals"))
-                    .is_some()
-                && query
-                    .variables
-                    .unwrap()
-                    .get(&String::from("equals"))
-                    .unwrap()
-                    == &q::Value::String(String::from("John"))
-            {
-                BTreeMap::from_iter(
-                    vec![(String::from("name"), q::Value::String(String::from("John")))]
+        Box::new(future::ok(Arc::new(QueryResult::new(Some(
+            q::Value::Object(
+                if query.variables.is_some()
+                    && query
+                        .variables
+                        .as_ref()
+                        .unwrap()
+                        .get(&String::from("equals"))
+                        .is_some()
+                    && query
+                        .variables
+                        .unwrap()
+                        .get(&String::from("equals"))
+                        .unwrap()
+                        == &q::Value::String(String::from("John"))
+                {
+                    BTreeMap::from_iter(
+                        vec![(String::from("name"), q::Value::String(String::from("John")))]
+                            .into_iter(),
+                    )
+                } else {
+                    BTreeMap::from_iter(
+                        vec![(
+                            String::from("name"),
+                            q::Value::String(String::from("Jordi")),
+                        )]
                         .into_iter(),
-                )
-            } else {
-                BTreeMap::from_iter(
-                    vec![(
-                        String::from("name"),
-                        q::Value::String(String::from("Jordi")),
-                    )]
-                    .into_iter(),
-                )
-            },
+                    )
+                },
+            ),
         )))))
     }
 

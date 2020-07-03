@@ -500,14 +500,14 @@ mod tests {
         }
 
         fn run_query(&self, _query: Query) -> QueryResultFuture {
-            Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
-                BTreeMap::from_iter(
+            Box::new(future::ok(Arc::new(QueryResult::new(Some(
+                q::Value::Object(BTreeMap::from_iter(
                     vec![(
                         String::from("name"),
                         q::Value::String(String::from("Jordi")),
                     )]
                     .into_iter(),
-                ),
+                )),
             )))))
         }
 

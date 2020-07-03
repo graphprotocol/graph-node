@@ -348,6 +348,10 @@ impl<'a> IntrospectionResolver<'a> {
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 impl<'a> Resolver for IntrospectionResolver<'a> {
+    // `IntrospectionResolver` is not used as a "top level" resolver,
+    // see `fn as_introspection_context`, so this value is irrelevant.
+    const CACHEABLE: bool = false;
+
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,

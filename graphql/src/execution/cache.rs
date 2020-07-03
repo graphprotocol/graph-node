@@ -110,7 +110,7 @@ pub struct QueryCache<R> {
     cache: Arc<Mutex<HashMap<Hash, Arc<CacheEntryInner<R>>>>>,
 }
 
-impl<R: Clone> QueryCache<R> {
+impl<R: CheapClone> QueryCache<R> {
     pub fn new() -> Self {
         Self {
             cache: Arc::new(Mutex::new(HashMap::new())),
@@ -131,7 +131,7 @@ impl<R: Clone> QueryCache<R> {
                     // Another thread is doing the work, release the lock and wait for it.
                     let entry = entry.get().cheap_clone();
                     drop(cache);
-                    return entry.wait().clone();
+                    return entry.wait().cheap_clone();
                 }
                 Entry::Vacant(entry) => {
                     let uncached = CacheEntryInner::new(hash);
@@ -153,7 +153,7 @@ impl<R: Clone> QueryCache<R> {
 
         // Actually compute the value and then share it with waiters.
         let value = f();
-        work.set(value.clone());
+        work.set(value.cheap_clone());
         value
     }
 }

@@ -122,9 +122,8 @@ impl Query {
         Ok(Arc::new(query))
     }
 
-    /// Return the block constraint for the toplevel query field(s) Since,
-    /// syntactically, each toplevel field can have its own block constraint,
-    /// we check that they are all identical and report an error otherwise
+    /// Return the block constraint for the toplevel query field(s), merging the
+    /// selection sets of fields that have the same block constraint.
     pub fn block_constraint(
         &self,
     ) -> Result<HashMap<BlockConstraint, q::SelectionSet>, Vec<QueryExecutionError>> {

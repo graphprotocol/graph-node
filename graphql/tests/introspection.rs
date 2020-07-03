@@ -19,6 +19,8 @@ use test_store::LOAD_MANAGER;
 pub struct MockResolver;
 
 impl Resolver for MockResolver {
+    const CACHEABLE: bool = false;
+
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
@@ -563,7 +565,7 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     };
 
     let result = PreparedQuery::new(query, None, 100)
-        .and_then(|query| execute_query(query, None, None, options));
+        .map(|query| Arc::try_unwrap(execute_query(query, None, None, options)).unwrap());
     QueryResult::from(result)
 }
 

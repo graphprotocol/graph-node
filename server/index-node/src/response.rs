@@ -7,8 +7,6 @@ use graph::data::query::QueryResult;
 
 use graph::prelude::*;
 
-use serde_json;
-
 /// Future for HTTP responses to GraphQL query requests.
 pub struct IndexNodeResponse {
     result: Result<QueryResult, GraphQLServerError>,
