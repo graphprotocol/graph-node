@@ -320,7 +320,7 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
             size: self
                 .size
                 .map(|size| heap.asc_new(&BigInt::from_unsigned_u256(&size)))
-                .unwrap_or_else(|| AscPtr::null()),
+                .into(),
         }
     }
 }
@@ -344,7 +344,7 @@ impl ToAscObj<AscFullEthereumBlock> for FullEthereumBlockData {
             size: self
                 .size
                 .map(|size| heap.asc_new(&BigInt::from_unsigned_u256(&size)))
-                .unwrap_or_else(|| AscPtr::null()),
+                .into(),
             transactions: heap.asc_new(self.transactions.as_slice()),
         }
     }
@@ -369,7 +369,7 @@ impl ToAscObj<AscFullEthereumBlockWithReceipts> for FullEthereumBlockDataWithRec
             size: self
                 .size
                 .map(|size| heap.asc_new(&BigInt::from_unsigned_u256(&size)))
-                .unwrap_or_else(|| AscPtr::null()),
+                .into(),
             transaction_receipts: heap.asc_new(self.transaction_receipts.as_slice()),
         }
     }
@@ -386,26 +386,20 @@ impl ToAscObj<AscEthereumTransactionReceipt> for EthereumTransactionReceiptData 
             gas_used: self
                 .gas_used
                 .map(|gas_used| heap.asc_new(&BigInt::from_unsigned_u256(&gas_used)))
-                .unwrap_or_else(|| AscPtr::null()),
+                .into(),
             contract_address: self
                 .contract_address
                 .map(|contract_address| heap.asc_new(&contract_address))
-                .unwrap_or_else(|| AscPtr::null()),
+                .into(),
             status: self
                 .status
                 .map(|status| heap.asc_new(&BigInt::from(status)))
-                .unwrap_or_else(|| AscPtr::null()),
-            root: self
-                .root
-                .map(|root| heap.asc_new(&root))
-                .unwrap_or_else(|| AscPtr::null()),
+                .into(),
+            root: self.root.map(|root| heap.asc_new(&root)).into(),
 
             // // from txs
             from: heap.asc_new(&self.from),
-            to: self
-                .to
-                .map(|to| heap.asc_new(&to))
-                .unwrap_or_else(|| AscPtr::null()),
+            to: self.to.map(|to| heap.asc_new(&to)).into(),
             value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
             gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
             gas: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas)),
@@ -420,10 +414,7 @@ impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
             hash: heap.asc_new(&self.hash),
             index: heap.asc_new(&BigInt::from(self.index)),
             from: heap.asc_new(&self.from),
-            to: self
-                .to
-                .map(|to| heap.asc_new(&to))
-                .unwrap_or_else(|| AscPtr::null()),
+            to: self.to.map(|to| heap.asc_new(&to)).into(),
             value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
             gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
             gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
@@ -437,10 +428,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
             hash: heap.asc_new(&self.hash),
             index: heap.asc_new(&BigInt::from(self.index)),
             from: heap.asc_new(&self.from),
-            to: self
-                .to
-                .map(|to| heap.asc_new(&to))
-                .unwrap_or_else(|| AscPtr::null()),
+            to: self.to.map(|to| heap.asc_new(&to)).into(),
             value: heap.asc_new(&BigInt::from_unsigned_u256(&self.value)),
             gas_used: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_used)),
             gas_price: heap.asc_new(&BigInt::from_unsigned_u256(&self.gas_price)),
@@ -463,7 +451,7 @@ where
                 .log_type
                 .clone()
                 .map(|log_type| heap.asc_new(&log_type))
-                .unwrap_or_else(|| AscPtr::null()),
+                .into(),
             block: heap.asc_new(&self.block),
             transaction: heap.asc_new::<T, EthereumTransactionData>(&self.transaction),
             params: heap.asc_new(self.params.as_slice()),
