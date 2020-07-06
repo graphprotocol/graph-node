@@ -1026,7 +1026,7 @@ impl WriteOperations for EthereumBlockHandlerEntity {
         if let Some(filter_id) = filter_id {
             entity.set("filter", filter_id);
         }
-        entity.set("data", String::from(self.input));
+        entity.set("input", String::from(self.input));
         ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
@@ -1128,6 +1128,7 @@ impl FromStr for EthereumBlockHandlerData {
 
     fn from_str(s: &str) -> Result<EthereumBlockHandlerData, Error> {
         match s {
+            "FullBlockWithReceipts" => Ok(EthereumBlockHandlerData::FullBlockWithReceipts),
             "FullBlock" => Ok(EthereumBlockHandlerData::FullBlock),
             "Block" => Ok(EthereumBlockHandlerData::Block),
             _ => Err(format_err!(
