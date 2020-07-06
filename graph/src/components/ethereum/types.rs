@@ -382,72 +382,6 @@ pub struct FullEthereumBlockDataWithReceipts {
     pub transaction_receipts: Vec<EthereumTransactionReceiptData>,
 }
 
-impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockDataWithReceipts {
-    type Error = String;
-
-    fn try_from(
-        block: &'a EthereumBlockType,
-    ) -> Result<FullEthereumBlockDataWithReceipts, Self::Error> {
-        let fullblock = match block {
-            EthereumBlockType::FullWithReceipts(full_block) => full_block,
-            EthereumBlockType::Full(_) => return Err(format!(
-                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires a EthereumBlockType::FullWithReceipts()"
-            )),
-            EthereumBlockType::Light(_) => return Err(format!(
-                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires a EthereumBlockType::FullWithReceipts()"
-            ))
-        };
-        let block = &fullblock.block;
-        let transaction_receipts_data = block
-            .transactions
-            .iter()
-            .cloned()
-            .zip(fullblock.transaction_receipts.iter().cloned())
-            .map(|transaction_and_receipt| {
-                assert_eq!(
-                    transaction_and_receipt.0.hash,
-                    transaction_and_receipt.1.transaction_hash
-                );
-                EthereumTransactionReceiptData {
-                    hash: transaction_and_receipt.0.hash,
-                    index: transaction_and_receipt.1.transaction_index,
-                    cumulative_gas_used: transaction_and_receipt.1.cumulative_gas_used,
-                    gas_used: transaction_and_receipt.1.gas_used,
-                    contract_address: transaction_and_receipt.1.contract_address,
-                    status: transaction_and_receipt.1.status,
-                    root: transaction_and_receipt.1.root,
-
-                    // from txs
-                    from: transaction_and_receipt.0.from,
-                    to: transaction_and_receipt.0.to,
-                    value: transaction_and_receipt.0.value,
-                    gas_price: transaction_and_receipt.0.gas_price,
-                    gas: transaction_and_receipt.0.gas,
-                    input: transaction_and_receipt.0.input,
-                }
-            })
-            .collect::<Vec<EthereumTransactionReceiptData>>();
-
-        Ok(FullEthereumBlockDataWithReceipts {
-            hash: block.hash.unwrap(),
-            parent_hash: block.parent_hash,
-            uncles_hash: block.uncles_hash,
-            author: block.author,
-            state_root: block.state_root,
-            transactions_root: block.transactions_root,
-            receipts_root: block.receipts_root,
-            number: block.number.unwrap(),
-            gas_used: block.gas_used,
-            gas_limit: block.gas_limit,
-            timestamp: block.timestamp,
-            difficulty: block.difficulty,
-            total_difficulty: block.total_difficulty.unwrap_or_default(),
-            size: block.size,
-            transaction_receipts: transaction_receipts_data,
-        })
-    }
-}
-
 impl<'a> From<&'a EthereumBlock> for FullEthereumBlockDataWithReceipts {
     fn from(block: &'a EthereumBlock) -> FullEthereumBlockDataWithReceipts {
         let transaction_receipts_data = block
@@ -502,6 +436,25 @@ impl<'a> From<&'a EthereumBlock> for FullEthereumBlockDataWithReceipts {
     }
 }
 
+impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockDataWithReceipts {
+    type Error = anyhow::Error;
+
+    fn try_from(
+        block: &'a EthereumBlockType,
+    ) -> Result<FullEthereumBlockDataWithReceipts, Self::Error> {
+        let fullblock = match block {
+            EthereumBlockType::FullWithReceipts(full_block) => full_block,
+            EthereumBlockType::Full(_) => return Err(anyhow::anyhow!(
+                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires an EthereumBlockType::FullWithReceipts()"
+            )),
+            EthereumBlockType::Light(_) => return Err(anyhow::anyhow!(
+                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires an EthereumBlockType::FullWithReceipts()"
+            ))
+        };
+        Ok(fullblock.into())
+    }
+}
+
 /// Ethereum block data.
 #[derive(Clone, Debug, Default)]
 pub struct FullEthereumBlockData {
@@ -550,33 +503,8 @@ impl<'a> From<&'a LightEthereumBlock> for FullEthereumBlockData {
 
 impl<'a> From<&'a EthereumBlockType> for FullEthereumBlockData {
     fn from(block: &'a EthereumBlockType) -> FullEthereumBlockData {
-        let block = match block {
-            EthereumBlockType::FullWithReceipts(full_block) => &full_block.block,
-            EthereumBlockType::Full(block) => &block,
-            EthereumBlockType::Light(light_block) => light_block,
-        };
-
-        FullEthereumBlockData {
-            hash: block.hash.unwrap(),
-            parent_hash: block.parent_hash,
-            uncles_hash: block.uncles_hash,
-            author: block.author,
-            state_root: block.state_root,
-            transactions_root: block.transactions_root,
-            receipts_root: block.receipts_root,
-            number: block.number.unwrap(),
-            gas_used: block.gas_used,
-            gas_limit: block.gas_limit,
-            timestamp: block.timestamp,
-            difficulty: block.difficulty,
-            total_difficulty: block.total_difficulty.unwrap_or_default(),
-            size: block.size,
-            transactions: block
-                .transactions
-                .iter()
-                .map(|tx| EthereumTransactionData::from(tx))
-                .collect(),
-        }
+        let block = &LightEthereumBlock::from(block);
+        block.into()
     }
 }
 
@@ -622,11 +550,7 @@ impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData {
 
 impl<'a> From<&'a EthereumBlockType> for EthereumBlockData {
     fn from(block: &'a EthereumBlockType) -> EthereumBlockData {
-        let block = match block {
-            EthereumBlockType::FullWithReceipts(full_block) => &full_block.block,
-            EthereumBlockType::Full(full_block) => &full_block,
-            EthereumBlockType::Light(light_block) => light_block,
-        };
+        let block: LightEthereumBlock = block.into();
 
         EthereumBlockData {
             hash: block.hash.unwrap(),
@@ -816,12 +740,8 @@ impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
 }
 
 impl<'a> From<&'a EthereumBlockType> for EthereumBlockPointer {
-    fn from(b: &'a EthereumBlockType) -> EthereumBlockPointer {
-        match b {
-            EthereumBlockType::Light(block) => EthereumBlockPointer::from(block),
-            EthereumBlockType::Full(block) => EthereumBlockPointer::from(block),
-            EthereumBlockType::FullWithReceipts(block) => EthereumBlockPointer::from(block),
-        }
+    fn from(block_type: &'a EthereumBlockType) -> EthereumBlockPointer {
+        EthereumBlockPointer::from(LightEthereumBlock::from(block_type))
     }
 }
 
