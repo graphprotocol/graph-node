@@ -161,7 +161,7 @@ impl WasmInstance {
         mut self,
         handler_name: &str,
     ) -> Result<BlockState, anyhow::Error> {
-        let block = self.instance_ctx().ctx.block.clone();
+        let block: &Arc<EthereumBlockType> = &self.take_ctx().ctx.block;
 
         // Prepare an Ethereum Block for the WASM runtime
         let arg = match block.as_ref() {
