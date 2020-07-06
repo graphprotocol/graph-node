@@ -435,28 +435,14 @@ impl EthereumBlockFilter {
                     .iter()
                     .any(|block_handler| block_handler.filter.is_none());
 
-                let block_type = if data_source
+                let block_type = data_source
                     .mapping
                     .block_handlers
                     .iter()
-                    .any(|block_handler| match block_handler.input {
-                        BlockHandlerData::FullBlockWithReceipts => return true,
-                        _ => return false,
-                    }) {
-                    BlockType::FullWithReceipts
-                } else if data_source
-                    .mapping
-                    .block_handlers
-                    .iter()
-                    .any(|block_handler| match block_handler.input {
-                        BlockHandlerData::FullBlock => return true,
-                        _ => return false,
-                    })
-                {
-                    BlockType::Full
-                } else {
-                    BlockType::Light
-                };
+                    .map(|handler| &handler.input)
+                    .max()
+                    .unwrap_or(&EthereumBlockHandlerData::Block)
+                    .into();
 
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
@@ -478,14 +464,7 @@ impl EthereumBlockFilter {
 
     pub fn extend(&mut self, other: EthereumBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
-        self.block_type = match self.block_type {
-            BlockType::FullWithReceipts => BlockType::FullWithReceipts,
-            BlockType::Full => match other.block_type {
-                BlockType::FullWithReceipts => BlockType::FullWithReceipts,
-                _ => BlockType::Full,
-            },
-            BlockType::Light => other.block_type,
-        };
+        self.block_type = self.block_type.max(other.block_type);
 
         self.contract_addresses = self.contract_addresses.iter().cloned().fold(
             HashSet::new(),

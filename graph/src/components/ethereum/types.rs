@@ -244,7 +244,7 @@ impl Default for EthereumBlockType {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub enum BlockType {
     Light,
     Full,

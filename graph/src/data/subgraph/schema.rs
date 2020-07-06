@@ -1110,7 +1110,7 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Deserialize)]
 pub enum EthereumBlockHandlerData {
     Block,
     FullBlock,
