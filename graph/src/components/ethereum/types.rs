@@ -7,7 +7,9 @@ use std::convert::TryFrom;
 use std::fmt;
 use web3::types::*;
 
-use crate::prelude::{EntityKey, SubgraphDeploymentId, ToEntityKey};
+use crate::prelude::{
+    anyhow, EntityKey, EthereumBlockHandlerData, SubgraphDeploymentId, ToEntityKey,
+};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
@@ -255,6 +257,22 @@ impl Default for BlockType {
     fn default() -> BlockType {
         BlockType::Light
     }
+}
+
+impl<'a> From<&'a EthereumBlockHandlerData> for BlockType {
+    fn from(block: &'a EthereumBlockHandlerData) -> BlockType {
+        match block {
+            EthereumBlockHandlerData::Block => BlockType::Light,
+            EthereumBlockHandlerData::FullBlock => BlockType::Full,
+            EthereumBlockHandlerData::FullBlockWithReceipts => BlockType::FullWithReceipts,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EthereumBlockTrigger {
+    pub block_type: BlockType,
+    pub trigger_type: EthereumBlockTriggerType,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

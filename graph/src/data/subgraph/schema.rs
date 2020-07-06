@@ -1149,15 +1149,6 @@ impl From<EthereumBlockHandlerData> for String {
     }
 }
 
-impl From<super::BlockHandlerData> for EthereumBlockHandlerData {
-    fn from(data: BlockHandlerData) -> Self {
-        match data {
-            BlockHandlerData::FullBlock => EthereumBlockHandlerData::FullBlock,
-            _ => EthereumBlockHandlerData::Block,
-        }
-    }
-}
-
 impl From<EthereumBlockHandlerData> for q::Value {
     fn from(data: EthereumBlockHandlerData) -> q::Value {
         q::Value::Enum(data.into())

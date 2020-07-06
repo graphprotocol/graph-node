@@ -125,9 +125,11 @@ pub mod prelude {
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
         ToEntityId, ToEntityKey, TryIntoEntity, Value, ValueType,
     };
-    pub use crate::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
+    pub use crate::data::subgraph::schema::{
+        EthereumBlockHandlerData, SubgraphDeploymentEntity, TypedEntity,
+    };
     pub use crate::data::subgraph::{
-        BlockHandlerData, BlockHandlerFilter, CreateSubgraphResult, DataSource, DataSourceContext,
+        BlockHandlerFilter, CreateSubgraphResult, DataSource, DataSourceContext,
         DataSourceTemplate, Link, MappingABI, MappingBlockHandler, MappingCallHandler,
         MappingEventHandler, SubgraphAssignmentProviderError, SubgraphAssignmentProviderEvent,
         SubgraphDeploymentId, SubgraphManifest, SubgraphManifestResolveError,

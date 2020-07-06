@@ -515,26 +515,7 @@ impl UnresolvedMappingABI {
 pub struct MappingBlockHandler {
     pub handler: String,
     pub filter: Option<BlockHandlerFilter>,
-    pub input: BlockHandlerData,
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub enum BlockHandlerData {
-    Block,
-    FullBlock,
-    FullBlockWithReceipts,
-}
-
-impl From<EthereumBlockHandlerData> for BlockHandlerData {
-    fn from(data: EthereumBlockHandlerData) -> Self {
-        match data {
-            EthereumBlockHandlerData::FullBlockWithReceipts => {
-                BlockHandlerData::FullBlockWithReceipts
-            }
-            EthereumBlockHandlerData::FullBlock => BlockHandlerData::FullBlock,
-            EthereumBlockHandlerData::Block => BlockHandlerData::Block,
-        }
-    }
+    pub input: EthereumBlockHandlerData,
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -550,7 +531,7 @@ impl From<EthereumBlockHandlerEntity> for MappingBlockHandler {
         Self {
             handler: entity.handler,
             filter: None,
-            input: BlockHandlerData::from(entity.input),
+            input: entity.input,
         }
     }
 }

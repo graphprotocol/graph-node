@@ -14,7 +14,6 @@ use web3::types::*;
 
 use super::types::*;
 use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
-use crate::data::subgraph::BlockHandlerData;
 use crate::prelude::*;
 
 pub type EventSignature = H256;
