@@ -50,7 +50,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         &self,
         logger: &Logger,
         block: &Arc<EthereumBlockType>,
-        trigger_type: &EthereumBlockTriggerType,
+        trigger: &EthereumBlockTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error>;

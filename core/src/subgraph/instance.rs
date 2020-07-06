@@ -206,16 +206,16 @@ where
                         .await?;
                 }
             }
-            EthereumTrigger::Block(ptr, trigger_type) => {
+            EthereumTrigger::Block(ptr, block_trigger_) => {
                 let matching_hosts = hosts
                     .iter()
-                    .filter(|host| host.matches_block(&trigger_type, ptr.number));
+                    .filter(|host| host.matches_block(&block_trigger_.trigger_type, ptr.number));
                 for host in matching_hosts {
                     state = host
                         .process_block(
                             logger,
                             block,
-                            &trigger_type,
+                            &block_trigger_,
                             state,
                             proof_of_indexing.cheap_clone(),
                         )

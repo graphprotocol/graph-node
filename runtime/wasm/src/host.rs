@@ -285,13 +285,13 @@ impl RuntimeHost {
 
     fn matches_block_trigger(&self, block_trigger_type: &EthereumBlockTriggerType) -> bool {
         let source_address_matches = match block_trigger_type {
-            EthereumBlockTriggerType::WithCallTo(address, _block_type) => {
+            EthereumBlockTriggerType::WithCallTo(address) => {
                 self.data_source_contract
                     .address
                     // Do not match if this datasource has no address
                     .map_or(false, |addr| addr == *address)
             }
-            EthereumBlockTriggerType::Every(_) => true,
+            EthereumBlockTriggerType::Every => true,
         };
         source_address_matches && self.handler_for_block(block_trigger_type).is_ok()
     }
@@ -347,7 +347,7 @@ impl RuntimeHost {
         trigger_type: &EthereumBlockTriggerType,
     ) -> Result<MappingBlockHandler, anyhow::Error> {
         match trigger_type {
-            EthereumBlockTriggerType::Every(_block_type) => self
+            EthereumBlockTriggerType::Every => self
                 .data_source_block_handlers
                 .iter()
                 .find(move |handler| handler.filter == None)
@@ -359,7 +359,7 @@ impl RuntimeHost {
                         self.data_source_name,
                     )
                 }),
-            EthereumBlockTriggerType::WithCallTo(_address, _block_type) => self
+            EthereumBlockTriggerType::WithCallTo(_address) => self
                 .data_source_block_handlers
                 .iter()
                 .find(move |handler| {
@@ -571,13 +571,13 @@ impl RuntimeHostTrait for RuntimeHost {
         &self,
         logger: &Logger,
         block: &Arc<EthereumBlockType>,
-        trigger_type: &EthereumBlockTriggerType,
+        trigger: &EthereumBlockTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error> {
-        let block_handler = self.handler_for_block(trigger_type)?;
-        let mapping_block: EthereumBlockType = match trigger_type {
-            EthereumBlockTriggerType::Every(BlockType::FullWithReceipts) => match self
+        let block_handler = self.handler_for_block(&trigger.trigger_type)?;
+        let mapping_block: EthereumBlockType = match trigger.block_type {
+            BlockType::FullWithReceipts => match self
                 .host_exports
                 .ethereum_adapter
                 .load_full_block(logger, block.light_block().clone())
@@ -591,10 +591,8 @@ impl RuntimeHostTrait for RuntimeHost {
                     e
                 )),
             }?,
-            EthereumBlockTriggerType::Every(BlockType::Full) => {
-                EthereumBlockType::Full(block.light_block().clone())
-            }
-            _ => block.as_ref().clone(),
+            BlockType::Full => EthereumBlockType::Full(block.light_block().clone()),
+            BlockType::Light => block.as_ref().clone(),
         };
 
         self.send_mapping_request(

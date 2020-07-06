@@ -165,7 +165,7 @@ impl EthereumCall {
 
 #[derive(Clone, Debug)]
 pub enum EthereumTrigger {
-    Block(EthereumBlockPointer, EthereumBlockTriggerType),
+    Block(EthereumBlockPointer, EthereumBlockTrigger),
     Call(EthereumCall),
     Log(Log),
 }
@@ -259,8 +259,8 @@ impl Default for BlockType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EthereumBlockTriggerType {
-    Every(BlockType),
-    WithCallTo(Address, BlockType),
+    Every,
+    WithCallTo(Address),
 }
 
 impl EthereumTrigger {
@@ -873,7 +873,8 @@ impl ToEntityKey for EthereumBlockPointer {
 #[cfg(test)]
 mod test {
     use super::{
-        BlockType, EthereumBlockPointer, EthereumBlockTriggerType, EthereumCall, EthereumTrigger,
+        BlockType, EthereumBlockPointer, EthereumBlockTrigger, EthereumBlockTriggerType,
+        EthereumCall, EthereumTrigger,
     };
     use web3::types::*;
 
@@ -884,7 +885,10 @@ mod test {
                 number: 1,
                 hash: H256::random(),
             },
-            EthereumBlockTriggerType::Every(BlockType::Light),
+            EthereumBlockTrigger {
+                block_type: BlockType::Light,
+                trigger_type: EthereumBlockTriggerType::Every,
+            },
         );
 
         let block2 = EthereumTrigger::Block(
@@ -892,7 +896,10 @@ mod test {
                 number: 0,
                 hash: H256::random(),
             },
-            EthereumBlockTriggerType::WithCallTo(Address::random(), BlockType::Light),
+            EthereumBlockTrigger {
+                block_type: BlockType::Light,
+                trigger_type: EthereumBlockTriggerType::WithCallTo(Address::random()),
+            },
         );
 
         let mut call1 = EthereumCall::default();

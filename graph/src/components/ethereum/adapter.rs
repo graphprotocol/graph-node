@@ -845,16 +845,22 @@ fn parse_block_triggers(
             .map(move |call| {
                 EthereumTrigger::Block(
                     block_ptr,
-                    EthereumBlockTriggerType::WithCallTo(call.to, block_type),
+                    EthereumBlockTrigger {
+                        block_type,
+                        trigger_type: EthereumBlockTriggerType::WithCallTo(call.to),
+                    },
                 )
             })
             .collect::<Vec<EthereumTrigger>>()
     });
     if trigger_every_block {
-        triggers.push(dbg!(EthereumTrigger::Block(
+        triggers.push(EthereumTrigger::Block(
             block_ptr,
-            EthereumBlockTriggerType::Every(block_type),
-        )));
+            EthereumBlockTrigger {
+                block_type,
+                trigger_type: EthereumBlockTriggerType::Every,
+            },
+        ));
     }
     triggers
 }
@@ -961,7 +967,10 @@ pub fn blocks_with_triggers(
                         .map(|ptr| {
                             EthereumTrigger::Block(
                                 ptr,
-                                EthereumBlockTriggerType::Every(block_filter.block_type),
+                                EthereumBlockTrigger {
+                                    block_type: block_filter.block_type,
+                                    trigger_type: EthereumBlockTriggerType::Every,
+                                },
                             )
                         })
                         .collect()
@@ -971,14 +980,17 @@ pub fn blocks_with_triggers(
         // To determine which blocks include a call to addresses
         // in the block filter, transform the `block_filter` into
         // a `call_filter` and run `blocks_with_calls`
-        let block_type = block_filter.block_type.clone();
+        let block_type = block_filter.block_type;
         let call_filter = EthereumCallFilter::from(block_filter);
         trigger_futs.push(Box::new(
             eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
                 .map(move |call| {
                     EthereumTrigger::Block(
                         EthereumBlockPointer::from(&call),
-                        EthereumBlockTriggerType::WithCallTo(call.to, block_type.clone()),
+                        EthereumBlockTrigger {
+                            block_type,
+                            trigger_type: EthereumBlockTriggerType::WithCallTo(call.to),
+                        },
                     )
                 })
                 .collect(),
