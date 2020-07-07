@@ -1165,7 +1165,7 @@ impl StoreTrait for Store {
                 section.end();
 
                 let metadata_event =
-                    metadata::update_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
+                    metadata::forward_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
                 Ok((event, metadata_event, should_migrate))
             })?;
 
@@ -1234,7 +1234,7 @@ impl StoreTrait for Store {
                 Self::block_ptr_with_conn(&subgraph_id, &econn)?
             );
             let metadata_event =
-                metadata::update_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
+                metadata::revert_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
 
             let (event, count) = econn.revert_block(&block_ptr_from)?;
             econn.update_entity_count(count)?;

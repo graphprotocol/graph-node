@@ -1,7 +1,7 @@
 //! Utilities for dealing with subgraph metadata
+use diesel::dsl::{sql, update};
 use diesel::pg::PgConnection;
 use diesel::prelude::{ExpressionMethods, QueryDsl, RunQueryDsl};
-use diesel::update;
 
 use graph::data::subgraph::schema::{SubgraphManifestEntity, SUBGRAPHS_ID};
 use graph::prelude::{
@@ -170,7 +170,17 @@ pub fn subgraph_network(
         .map_err(|e| e.into())
 }
 
-pub fn update_block_ptr(
+fn block_ptr_store_event(id: &SubgraphDeploymentId) -> StoreEvent {
+    let change = EntityChange {
+        entity_type: SubgraphDeploymentEntity::TYPENAME.to_owned(),
+        entity_id: id.to_string(),
+        subgraph_id: SUBGRAPHS_ID.to_owned(),
+        operation: EntityChangeOperation::Set,
+    };
+    StoreEvent::new(vec![change])
+}
+
+pub fn forward_block_ptr(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     ptr: EthereumBlockPointer,
@@ -181,16 +191,29 @@ pub fn update_block_ptr(
         .set((
             d::latest_ethereum_block_number.eq(BigDecimal::from(ptr.number)),
             d::latest_ethereum_block_hash.eq(ptr.hash.as_bytes()),
+            d::current_reorg_depth.eq(0),
         ))
         .execute(conn)
-        .map(|_| {
-            let change = EntityChange {
-                entity_type: SubgraphDeploymentEntity::TYPENAME.to_owned(),
-                entity_id: id.to_string(),
-                subgraph_id: SUBGRAPHS_ID.to_owned(),
-                operation: EntityChangeOperation::Set,
-            };
-            StoreEvent::new(vec![change])
-        })
+        .map(|_| block_ptr_store_event(id))
+        .map_err(|e| e.into())
+}
+
+pub fn revert_block_ptr(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    ptr: EthereumBlockPointer,
+) -> Result<StoreEvent, StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::id.eq(id.as_str())))
+        .set((
+            d::latest_ethereum_block_number.eq(BigDecimal::from(ptr.number)),
+            d::latest_ethereum_block_hash.eq(ptr.hash.as_bytes()),
+            d::reorg_count.eq(d::reorg_count + 1),
+            d::current_reorg_depth.eq(d::current_reorg_depth + 1),
+            d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
+        ))
+        .execute(conn)
+        .map(|_| block_ptr_store_event(id))
         .map_err(|e| e.into())
 }
