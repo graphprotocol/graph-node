@@ -43,6 +43,12 @@ type SubgraphDeployment @entity {
     graftBase: SubgraphDeployment
     graftBlockHash: Bytes
     graftBlockNumber: BigInt
+
+    # Tracking of reorgs so that we can spot that a reorg
+    # happened while a query was being processed
+    reorgCount: Int
+    currentReorgDepth: Int
+    maxReorgDepth: Int
 }
 
 # This is not a real entity type. It is a view that can be queried, but

@@ -295,6 +295,9 @@ pub struct SubgraphDeploymentEntity {
     graft_base: Option<SubgraphDeploymentId>,
     graft_block_hash: Option<H256>,
     graft_block_number: Option<u64>,
+    reorg_count: i32,
+    current_reorg_depth: i32,
+    max_reorg_depth: i32,
 }
 
 impl TypedEntity for SubgraphDeploymentEntity {
@@ -322,6 +325,9 @@ impl SubgraphDeploymentEntity {
             graft_base: None,
             graft_block_hash: None,
             graft_block_number: None,
+            reorg_count: 0,
+            current_reorg_depth: 0,
+            max_reorg_depth: 0,
         }
     }
 
@@ -373,6 +379,9 @@ impl SubgraphDeploymentEntity {
             graft_base,
             graft_block_hash,
             graft_block_number,
+            reorg_count: _,
+            current_reorg_depth: _,
+            max_reorg_depth: _,
         } = self;
 
         // A fresh subgraph will not have any errors.
