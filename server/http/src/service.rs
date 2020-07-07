@@ -193,8 +193,8 @@ where
         })?;
 
         let store = self.store.cheap_clone();
-        let subgraph_id =
-            tokio::task::spawn_blocking(move || store.resolve_subgraph_name_to_id(subgraph_name))
+        let state =
+            tokio::task::spawn_blocking(move || store.deployment_state_from_name(subgraph_name))
                 .await
                 .unwrap() // Propagate panics.
                 .map_err(|e| {
@@ -202,14 +202,9 @@ where
                         "Error resolving subgraph name: {}",
                         e
                     ))
-                })
-                .and_then(|subgraph_id_opt| {
-                    subgraph_id_opt.ok_or(GraphQLServerError::ClientError(
-                        "Subgraph name not found".to_owned(),
-                    ))
                 })?;
 
-        self.handle_graphql_query(subgraph_id, request.into_body())
+        self.handle_graphql_query(state.id, request.into_body())
             .await
     }
 

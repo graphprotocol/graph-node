@@ -33,6 +33,19 @@ where
         store: Arc<S>,
         path: &str,
     ) -> Result<Option<SubgraphDeploymentId>, Error> {
+        fn id_from_name<S: SubgraphDeploymentStore + Store>(
+            store: Arc<S>,
+            name: String,
+        ) -> Option<SubgraphDeploymentId> {
+            SubgraphName::new(name)
+                .ok()
+                .map(|subgraph_name| store.deployment_state_from_name(subgraph_name))
+                .transpose()
+                .map(|state| state.map(|state| state.id))
+                .ok()
+                .flatten()
+        }
+
         let path_segments = {
             let mut segments = path.split("/");
 
@@ -49,20 +62,10 @@ where
             &["subgraphs"] => Ok(Some(SUBGRAPHS_ID.clone())),
             &["subgraphs", "id", subgraph_id] => Ok(SubgraphDeploymentId::new(subgraph_id).ok()),
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
-                let subgraph_name = path_segments[2..].join("/");
-
-                match SubgraphName::new(subgraph_name) {
-                    Err(()) => Ok(None),
-                    Ok(subgraph_name) => store.resolve_subgraph_name_to_id(subgraph_name),
-                }
+                Ok(id_from_name(store, path_segments[2..].join("/")))
             }
             &["subgraphs", "network", _, _] => {
-                let subgraph_name = path_segments[1..].join("/");
-
-                match SubgraphName::new(subgraph_name) {
-                    Err(()) => Ok(None),
-                    Ok(subgraph_name) => store.resolve_subgraph_name_to_id(subgraph_name),
-                }
+                Ok(id_from_name(store, path_segments[1..].join("/")))
             }
             _ => Ok(None),
         }
