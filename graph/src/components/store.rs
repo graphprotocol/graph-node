@@ -746,6 +746,11 @@ pub enum StoreError {
         _0, _1
     )]
     DuplicateBlockProcessing(SubgraphDeploymentId, u64),
+    /// An internal error where we expected the application logic to enforce
+    /// some constraint, e.g., that subgraph names are unique, but found that
+    /// constraint to not hold
+    #[fail(display = "internal constraint violated: {}", _0)]
+    ConstraintViolation(String),
 }
 
 impl From<TransactionAbortError> for StoreError {
@@ -883,6 +888,11 @@ pub trait Store: Send + Sync + 'static {
     ///
     /// Returns a stream of store events that match the input arguments.
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
+
+    /// Find the deployment for the current version of subgraph `name` and
+    /// return details about it needed for executing queries
+    fn deployment_state_from_name(&self, name: SubgraphName)
+        -> Result<DeploymentState, StoreError>;
 
     fn resolve_subgraph_name_to_id(
         &self,
@@ -1309,6 +1319,10 @@ impl Store for MockStore {
     }
 
     fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+        unimplemented!()
+    }
+
+    fn deployment_state_from_name(&self, _: SubgraphName) -> Result<DeploymentState, StoreError> {
         unimplemented!()
     }
 

@@ -24,13 +24,13 @@ use graph::data::subgraph::schema::{
 use graph::prelude::{
     debug, ethabi, format_err, futures03, info, o, serde_json, tiny_keccak, tokio, trace, warn,
     web3, ApiSchema, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
-    ChainHeadUpdateStream, ChainStore, CheapClone, DynTryFuture, Entity, EntityKey,
-    EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
+    ChainHeadUpdateStream, ChainStore, CheapClone, DeploymentState, DynTryFuture, Entity,
+    EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
     EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, Future, LightEthereumBlock,
     Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics,
     StoreError, StoreEvent, StoreEventStreamBox, Stream, SubgraphAssignmentProviderError,
-    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, TransactionAbortError,
-    Value, BLOCK_NUMBER_MAX,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName,
+    TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -1250,6 +1250,14 @@ impl StoreTrait for Store {
 
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
         self.subscriptions.subscribe(entities)
+    }
+
+    fn deployment_state_from_name(
+        &self,
+        name: SubgraphName,
+    ) -> Result<DeploymentState, StoreError> {
+        let conn = self.get_conn()?;
+        metadata::deployment_state_from_name(&conn, name)
     }
 
     fn create_subgraph_deployment(

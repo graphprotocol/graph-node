@@ -202,6 +202,10 @@ impl SubgraphName {
 
         Ok(SubgraphName(s))
     }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
 }
 
 impl fmt::Display for SubgraphName {
@@ -1249,4 +1253,11 @@ impl UnresolvedSubgraphManifest {
             templates,
         })
     }
+}
+
+/// Important details about the current state of a subgraph deployment
+/// used while executing queries against a deployment
+#[derive(Debug)]
+pub struct DeploymentState {
+    pub id: SubgraphDeploymentId,
 }

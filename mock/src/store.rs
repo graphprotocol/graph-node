@@ -142,6 +142,10 @@ impl Store for MockStore {
         unimplemented!()
     }
 
+    fn deployment_state_from_name(&self, _: SubgraphName) -> Result<DeploymentState, StoreError> {
+        unimplemented!()
+    }
+
     fn create_subgraph_deployment(
         &self,
         _schema: &Schema,

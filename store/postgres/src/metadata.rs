@@ -1,13 +1,15 @@
 //! Utilities for dealing with subgraph metadata
 use diesel::dsl::{sql, update};
 use diesel::pg::PgConnection;
-use diesel::prelude::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::prelude::{
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
+};
 
 use graph::data::subgraph::schema::{SubgraphManifestEntity, SUBGRAPHS_ID};
 use graph::prelude::{
-    bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, EntityChange,
-    EntityChangeOperation, EthereumBlockPointer, Schema, StoreError, StoreEvent,
-    SubgraphDeploymentEntity, SubgraphDeploymentId, TypedEntity,
+    bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, DeploymentState,
+    EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError, StoreEvent,
+    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName, TypedEntity,
 };
 
 // Diesel tables for some of the metadata
@@ -16,6 +18,29 @@ use graph::prelude::{
 // The definitions of the tables can be generated with
 //    cargo run -p graph-store-postgres --example layout -- \
 //      -g diesel store/postgres/src/subgraphs.graphql subgraphs
+table! {
+    subgraphs.subgraph (vid) {
+        vid -> BigInt,
+        id -> Text,
+        name -> Text,
+        current_version -> Nullable<Text>,
+        pending_version -> Nullable<Text>,
+        created_at -> Numeric,
+        block_range -> Range<Integer>,
+    }
+}
+
+table! {
+    subgraphs.subgraph_version (vid) {
+        vid -> BigInt,
+        id -> Text,
+        subgraph -> Text,
+        deployment -> Text,
+        created_at -> Numeric,
+        block_range -> Range<Integer>,
+    }
+}
+
 table! {
     subgraphs.subgraph_deployment (vid) {
         vid -> BigInt,
@@ -85,6 +110,8 @@ table! {
         block_range -> Range<Integer>,
     }
 }
+
+allow_tables_to_appear_in_same_query!(subgraph, subgraph_version, subgraph_deployment);
 
 /// Look up the graft point for the given subgraph in the database and
 /// return it
@@ -216,4 +243,58 @@ pub fn revert_block_ptr(
         .execute(conn)
         .map(|_| block_ptr_store_event(id))
         .map_err(|e| e.into())
+}
+
+pub fn deployment_state_from_name(
+    conn: &PgConnection,
+    name: SubgraphName,
+) -> Result<DeploymentState, StoreError> {
+    use subgraph as s;
+    use subgraph_deployment as d;
+    use subgraph_version as v;
+
+    let mut rows = s::table
+        .left_outer_join(v::table.on(s::current_version.eq(v::id.nullable())))
+        .left_outer_join(d::table.on(v::deployment.eq(d::id)))
+        .filter(s::name.eq(name.as_str()))
+        .select((s::id, v::id.nullable(), d::id.nullable()))
+        .load::<(String, Option<String>, Option<String>)>(conn)?;
+    if rows.len() == 0 {
+        Err(StoreError::QueryExecutionError(format!(
+            "Subgraph `{}` not found",
+            name.as_str()
+        )))
+    } else if rows.len() > 1 {
+        Err(StoreError::ConstraintViolation(format!(
+            "Multiple subgraphs with the name `{}` exist",
+            name.as_str()
+        )))
+    } else {
+        let (_, vid, did) = rows.pop().unwrap();
+        match (vid, did) {
+            (None, _) => Err(StoreError::QueryExecutionError(format!(
+                "The subgraph `{}` has no current version. \
+            The subgraph may have been created but not deployed yet. Make sure \
+            to run `graph deploy` to deploy the subgraph and have it start \
+            indexing.",
+                name.as_str()
+            ))),
+            (Some(vid), None) => Err(StoreError::ConstraintViolation(format!(
+                "The version `{}` of subgraph `{}` is missing a deployment",
+                vid,
+                name.as_str()
+            ))),
+            (Some(_), Some(did)) => {
+                let id = SubgraphDeploymentId::new(did).map_err(|s| {
+                    StoreError::ConstraintViolation(format!(
+                        "Illegal deployment id `{}` for current version of `{}`",
+                        s,
+                        name.as_str()
+                    ))
+                })?;
+
+                Ok(DeploymentState { id })
+            }
+        }
+    }
 }
