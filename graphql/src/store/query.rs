@@ -281,12 +281,12 @@ pub fn parse_subgraph_id<'a>(
                 .find(|(name, _)| name == &"id".to_string())
         })
         .and_then(|(_, value)| match value {
-            s::Value::String(id) => Some(id.clone()),
+            s::Value::String(id) => Some(id),
             _ => None,
         })
         .ok_or(())
-        .and_then(|id| SubgraphDeploymentId::new(id))
-        .map_err(|()| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
+        .and_then(|id| SubgraphDeploymentId::new(id).map_err(|_| ()))
+        .map_err(|_| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.

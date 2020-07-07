@@ -81,17 +81,20 @@ impl StableHash for SubgraphDeploymentId {
 impl_slog_value!(SubgraphDeploymentId);
 
 impl SubgraphDeploymentId {
-    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
+    /// Check that `s` is a valid `SubgraphDeploymentId` and create a new one.
+    /// If `s` is longer than 46 characters, or contains characters other than
+    /// alphanumeric characters or `_`, return s (as a `String`) as the error
+    pub fn new(s: impl Into<String>) -> Result<Self, String> {
         let s = s.into();
 
         // Enforce length limit
         if s.len() > 46 {
-            return Err(());
+            return Err(s);
         }
 
         // Check that the ID contains only allowed characters.
         if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            return Err(());
+            return Err(s);
         }
 
         Ok(SubgraphDeploymentId(s))
@@ -139,14 +142,15 @@ impl<'de> de::Deserialize<'de> for SubgraphDeploymentId {
         D: de::Deserializer<'de>,
     {
         let s: String = de::Deserialize::deserialize(deserializer)?;
-        SubgraphDeploymentId::new(s.clone())
-            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
+        SubgraphDeploymentId::new(s)
+            .map_err(|s| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
     }
 }
 
 impl TryFromValue for SubgraphDeploymentId {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        Self::new(String::try_from_value(value)?).map_err(|()| err_msg("Invalid subgraph ID"))
+        Self::new(String::try_from_value(value)?)
+            .map_err(|s| err_msg(format!("Invalid subgraph ID `{}`", s)))
     }
 }
 

@@ -173,9 +173,10 @@ where
                     trace!(logger, "Received assignment change";
                                    "entity_change" => format!("{:?}", entity_change));
                     let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
-                        .map_err(|()| {
+                        .map_err(|s| {
                             format_err!(
-                                "Invalid subgraph hash in assignment entity: {:#?}",
+                                "Invalid subgraph hash `{}` in assignment entity: {:#?}",
+                                s,
                                 entity_change.clone(),
                             )
                         })?;
@@ -248,8 +249,8 @@ where
                     .map(|assignment_entity| {
                         // Parse as subgraph hash
                         assignment_entity.id().and_then(|id| {
-                            SubgraphDeploymentId::new(id).map_err(|()| {
-                                format_err!("Invalid subgraph hash in assignment entity")
+                            SubgraphDeploymentId::new(id).map_err(|s| {
+                                format_err!("Invalid subgraph hash `{}` in assignment entity", s)
                             })
                         })
                     })

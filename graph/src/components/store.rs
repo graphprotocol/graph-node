@@ -942,7 +942,7 @@ pub trait Store: Send + Sync + 'static {
             .as_string()
             .ok_or_else(|| format_err!("SubgraphVersion entity has wrong type in `deployment`"))?;
         SubgraphDeploymentId::new(subgraph_id_str)
-            .map_err(|()| {
+            .map_err(|_| {
                 format_err!("SubgraphVersion entity has invalid subgraph ID in `deployment`")
             })
             .map(Some)

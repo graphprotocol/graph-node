@@ -219,7 +219,7 @@ where
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
         match SubgraphDeploymentId::new(id) {
-            Err(()) => self.handle_not_found(),
+            Err(_) => self.handle_not_found(),
             Ok(id) => self.handle_graphql_query(id, request.into_body()).boxed(),
         }
     }
