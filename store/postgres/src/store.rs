@@ -1164,15 +1164,8 @@ impl StoreTrait for Store {
                 self.apply_entity_modifications(&econn, mods, Some(&history_event), stopwatch)?;
                 section.end();
 
-                // Update the subgraph block pointer, without an event source; this way
-                // no entity history is recorded for the block pointer update itself
-                let block_ptr_ops =
-                    SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
-                        &subgraph_id,
-                        block_ptr_to,
-                    );
                 let metadata_event =
-                    self.apply_metadata_operations_with_conn(&econn, block_ptr_ops)?;
+                    metadata::update_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
                 Ok((event, metadata_event, should_migrate))
             })?;
 
@@ -1240,11 +1233,8 @@ impl StoreTrait for Store {
                 Some(block_ptr_from),
                 Self::block_ptr_with_conn(&subgraph_id, &econn)?
             );
-            let ops = SubgraphDeploymentEntity::update_ethereum_block_pointer_operations(
-                &subgraph_id,
-                block_ptr_to,
-            );
-            let metadata_event = self.apply_metadata_operations_with_conn(&econn, ops)?;
+            let metadata_event =
+                metadata::update_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
 
             let (event, count) = econn.revert_block(&block_ptr_from)?;
             econn.update_entity_count(count)?;

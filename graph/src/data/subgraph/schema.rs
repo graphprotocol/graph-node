@@ -418,22 +418,6 @@ impl SubgraphDeploymentEntity {
         ops
     }
 
-    pub fn update_ethereum_block_pointer_operations(
-        id: &SubgraphDeploymentId,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            latestEthereumBlockHash: block_ptr_to.hash,
-            latestEthereumBlockNumber: block_ptr_to.number
-        };
-
-        vec![update_metadata_operation(
-            Self::TYPENAME,
-            id.to_string(),
-            entity,
-        )]
-    }
-
     /// When starting the subgraph, we try to "unfail" it.
     pub fn unfail_operations(
         id: &SubgraphDeploymentId,

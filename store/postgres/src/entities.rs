@@ -309,7 +309,7 @@ pub(crate) fn make_storage_cache() -> StorageCache {
 /// been migrated
 #[derive(Constructor)]
 pub(crate) struct Connection<'a> {
-    conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
+    pub conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
     /// The storage of the subgraph we are dealing with; entities
     /// go into this
     storage: Arc<Storage>,

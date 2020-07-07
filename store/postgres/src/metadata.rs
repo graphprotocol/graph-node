@@ -1,11 +1,13 @@
 //! Utilities for dealing with subgraph metadata
 use diesel::pg::PgConnection;
 use diesel::prelude::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::update;
 
-use graph::data::subgraph::schema::SubgraphManifestEntity;
+use graph::data::subgraph::schema::{SubgraphManifestEntity, SUBGRAPHS_ID};
 use graph::prelude::{
-    bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, EthereumBlockPointer,
-    Schema, StoreError, SubgraphDeploymentId,
+    bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, EntityChange,
+    EntityChangeOperation, EthereumBlockPointer, Schema, StoreError, StoreEvent,
+    SubgraphDeploymentEntity, SubgraphDeploymentId, TypedEntity,
 };
 
 // Diesel tables for some of the metadata
@@ -165,5 +167,30 @@ pub fn subgraph_network(
         })
         .transpose()
         .map(|x| x.flatten())
+        .map_err(|e| e.into())
+}
+
+pub fn update_block_ptr(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    ptr: EthereumBlockPointer,
+) -> Result<StoreEvent, StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::id.eq(id.as_str())))
+        .set((
+            d::latest_ethereum_block_number.eq(BigDecimal::from(ptr.number)),
+            d::latest_ethereum_block_hash.eq(ptr.hash.as_bytes()),
+        ))
+        .execute(conn)
+        .map(|_| {
+            let change = EntityChange {
+                entity_type: SubgraphDeploymentEntity::TYPENAME.to_owned(),
+                entity_id: id.to_string(),
+                subgraph_id: SUBGRAPHS_ID.to_owned(),
+                operation: EntityChangeOperation::Set,
+            };
+            StoreEvent::new(vec![change])
+        })
         .map_err(|e| e.into())
 }
