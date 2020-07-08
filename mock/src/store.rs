@@ -150,12 +150,7 @@ impl Store for MockStore {
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {
-        Ok(DeploymentState {
-            id,
-            reorg_count: 0,
-            max_reorg_depth: 0,
-            latest_ethereum_block_number: 0,
-        })
+        Ok(DeploymentState { id })
     }
 
     fn create_subgraph_deployment(

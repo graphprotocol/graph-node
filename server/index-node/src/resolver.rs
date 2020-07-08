@@ -377,6 +377,7 @@ where
         // Execute the query. We are in a blocking context so we may just block.
         let result = graph::block_on(self.graphql_runner.cheap_clone().run_query_with_complexity(
             query,
+            DeploymentState::meta(),
             None,
             None,
             Some(std::u32::MAX),
@@ -460,6 +461,7 @@ where
         // Execute the query. We are in a blocking context so we may just block.
         let result = graph::block_on(self.graphql_runner.cheap_clone().run_query_with_complexity(
             query,
+            DeploymentState::meta(),
             None,
             None,
             Some(std::u32::MAX),
@@ -624,6 +626,7 @@ where
         // Execute the query. We are in a blocking context so we may just block.
         let result = graph::block_on(self.graphql_runner.cheap_clone().run_query_with_complexity(
             query,
+            DeploymentState::meta(),
             None,
             None,
             Some(std::u32::MAX),

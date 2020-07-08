@@ -20,6 +20,7 @@ impl GraphQlRunner for TestGraphQlRunner {
     async fn run_query_with_complexity(
         self: Arc<Self>,
         _query: Query,
+        _state: DeploymentState,
         _complexity: Option<u64>,
         _max_depth: Option<u8>,
         _max_first: Option<u32>,
@@ -28,7 +29,7 @@ impl GraphQlRunner for TestGraphQlRunner {
         unimplemented!();
     }
 
-    async fn run_query(self: Arc<Self>, query: Query) -> Arc<QueryResult> {
+    async fn run_query(self: Arc<Self>, query: Query, _state: DeploymentState) -> Arc<QueryResult> {
         Arc::new(QueryResult::new(Some(q::Value::Object(
             if query.variables.is_some()
                 && query

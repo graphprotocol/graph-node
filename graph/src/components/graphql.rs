@@ -2,6 +2,7 @@ use futures::prelude::*;
 
 use crate::data::graphql::effort::LoadManager;
 use crate::data::query::{CacheStatus, Query, QueryResult};
+use crate::data::subgraph::DeploymentState;
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 
 use async_trait::async_trait;
@@ -19,12 +20,13 @@ pub type SubscriptionResultFuture =
 #[async_trait]
 pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL query and returns its result.
-    async fn run_query(self: Arc<Self>, query: Query) -> Arc<QueryResult>;
+    async fn run_query(self: Arc<Self>, query: Query, state: DeploymentState) -> Arc<QueryResult>;
 
     /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
     async fn run_query_with_complexity(
         self: Arc<Self>,
         query: Query,
+        state: DeploymentState,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
@@ -37,9 +39,13 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         subscription: Subscription,
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
-    async fn query_metadata(self: Arc<Self>, query: Query) -> Result<q::Value, Error> {
+    async fn query_metadata(
+        self: Arc<Self>,
+        query: Query,
+        state: DeploymentState,
+    ) -> Result<q::Value, Error> {
         let result = self
-            .run_query_with_complexity(query, None, None, None, None)
+            .run_query_with_complexity(query, state, None, None, None, None)
             .await;
 
         // Metadata queries are not cached.

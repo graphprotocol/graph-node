@@ -11,11 +11,11 @@ use std::time::{Duration, Instant};
 use graph::data::query::CacheStatus;
 use graph::prelude::{
     async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o,
-    slog, tokio, ApiSchema, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
-    FutureExtension, GraphQlRunner as _, Logger, Query, QueryError, QueryExecutionError,
-    QueryLoadManager, QueryResult, QueryVariables, Schema, Store, SubgraphDeploymentEntity,
-    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest, Subscription,
-    SubscriptionError, Value,
+    slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
+    EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, Query, QueryError,
+    QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema, Store,
+    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
+    Subscription, SubscriptionError, Value,
 };
 use graph_graphql::prelude::*;
 use test_store::{
@@ -238,9 +238,12 @@ async fn execute_query_document_with_variables(
         LOAD_MANAGER.clone(),
     ));
     let query = Query::new(Arc::new(api_test_schema()), query, variables, None);
+    let state = DeploymentState {
+        id: query.schema.id().clone(),
+    };
 
     runner
-        .run_query_with_complexity(query, None, None, None, None)
+        .run_query_with_complexity(query, state, None, None, None, None)
         .await
         .as_ref()
         .clone()

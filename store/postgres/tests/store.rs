@@ -1215,9 +1215,6 @@ fn check_basic_revert(
             .deployment_state_from_id(subgraph_id.to_owned())
             .expect("can get deployment state");
         assert_eq!(subgraph_id, &state.id);
-        assert_eq!(0, state.reorg_count);
-        assert_eq!(0, state.max_reorg_depth);
-        assert_eq!(2, state.latest_ethereum_block_number);
     }
 
     // Revert block 3
@@ -1247,9 +1244,6 @@ fn check_basic_revert(
             .deployment_state_from_id(subgraph_id.to_owned())
             .expect("can get deployment state");
         assert_eq!(subgraph_id, &state.id);
-        assert_eq!(1, state.reorg_count);
-        assert_eq!(1, state.max_reorg_depth);
-        assert_eq!(1, state.latest_ethereum_block_number);
     }
 
     check_events(subscription, vec![expected])
