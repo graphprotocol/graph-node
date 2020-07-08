@@ -43,7 +43,7 @@ impl<T: CacheWeight, U: CacheWeight> CacheWeight for std::collections::HashMap<T
         self.iter()
             .map(|(key, value)| key.indirect_weight() + value.indirect_weight())
             .sum::<usize>()
-            + self.capacity() * mem::size_of::<T>()
+            + self.capacity() * mem::size_of::<(T, U, u64)>()
     }
 }
 
