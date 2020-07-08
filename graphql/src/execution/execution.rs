@@ -45,10 +45,9 @@ impl CacheByBlock {
     }
 
     /// Returns `true` if the insert was successful or `false` if the cache was full.
-    fn insert(&mut self, key: QueryHash, value: Arc<QueryResult>) -> bool {
+    fn insert(&mut self, key: QueryHash, value: Arc<QueryResult>, weight: usize) -> bool {
         // We never try to insert errors into this cache, and always resolve some value.
         assert!(value.errors.is_none());
-        let weight = value.data.as_ref().unwrap().weight();
         let fits_in_cache = self.weight + weight <= self.max_weight;
         if fits_in_cache {
             self.weight += weight;
@@ -378,11 +377,13 @@ pub fn execute_root_selection_set<R: Resolver>(
     // It would be redundant to insert herd cache hits.
     let no_cache = herd_hit || result.has_errors();
     if let (false, Some(key), Some(block_ptr)) = (no_cache, key, block_ptr) {
+        // Calculate the weight outside the lock.
+        let weight = result.data.as_ref().unwrap().weight();
         let mut cache = QUERY_CACHE.write().unwrap();
 
         // If there is already a cache by the block of this query, just add it there.
         if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-            let cache_insert = cache_by_block.insert(key, result.cheap_clone());
+            let cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
             if cache_insert {
                 ctx.cache_status.store(CacheStatus::Insert);
             }
@@ -406,7 +407,7 @@ pub fn execute_root_selection_set<R: Resolver>(
                 // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
                 let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
                 let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
-                let cache_insert = cache_by_block.insert(key, result.cheap_clone());
+                let cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
                 if cache_insert {
                     ctx.cache_status.store(CacheStatus::Insert);
                 }
