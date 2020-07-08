@@ -57,6 +57,10 @@ impl QueryResult {
     }
 
     pub fn append(&mut self, mut other: QueryResult) {
+        // Currently we don't used extensions, the desired behaviour for merging them is tbd.
+        assert!(self.extensions.is_none());
+        assert!(other.extensions.is_none());
+
         match (&mut self.data, &mut other.data) {
             (Some(q::Value::Object(ours)), Some(q::Value::Object(other))) => ours.append(other),
 
@@ -73,10 +77,6 @@ impl QueryResult {
             // Only one side has errors, use that.
             _ => self.errors = self.errors.take().or(other.errors),
         }
-
-        // Currently we don't used extensions, the desired behaviour for merging them is tbd.
-        assert!(self.extensions.is_none());
-        assert!(other.extensions.is_none());
     }
 }
 

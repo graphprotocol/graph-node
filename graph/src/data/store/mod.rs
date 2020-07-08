@@ -1,5 +1,5 @@
 use crate::data::subgraph::SubgraphDeploymentId;
-use crate::prelude::{format_err, EntityKey, QueryExecutionError};
+use crate::prelude::{format_err, CacheWeight, EntityKey, QueryExecutionError};
 use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
@@ -577,6 +577,12 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
         Entity::from(HashMap::from_iter(
             entries.into_iter().map(|(k, v)| (String::from(k), v)),
         ))
+    }
+}
+
+impl CacheWeight for Entity {
+    fn indirect_weight(&self) -> usize {
+        self.0.indirect_weight()
     }
 }
 

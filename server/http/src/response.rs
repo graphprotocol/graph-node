@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn generates_401_for_query_errors() {
         let parse_error = graphql_parser::parse_query("<>?><").unwrap_err();
-        let query_error = QueryError::ParseError(parse_error.into());
+        let query_error = QueryError::ParseError(Arc::new(parse_error.compat().into()));
         let future = GraphQLResponse::new(Err(GraphQLServerError::from(query_error)));
         let response = future.wait().expect("Should generate a response");
         test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
@@ -170,7 +170,7 @@ mod tests {
     fn generates_valid_json_for_query_error() {
         let parse_error =
             graphql_parser::parse_query("<><?").expect_err("Should fail parsing an invalid query");
-        let query_error = QueryError::ParseError(parse_error.into());
+        let query_error = QueryError::ParseError(Arc::new(parse_error.compat().into()));
         let err = GraphQLServerError::QueryError(query_error);
         let future = GraphQLResponse::new(Err(err));
         let response = future.wait().expect("Should generate a response");

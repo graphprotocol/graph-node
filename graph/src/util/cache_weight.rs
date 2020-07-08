@@ -1,11 +1,12 @@
-use crate::prelude::{BigDecimal, BigInt, Entity, Value};
+use crate::prelude::{BigDecimal, BigInt, Value};
+use std::mem;
 
 /// Estimate of how much memory a value consumes.
 /// Useful for measuring the size of caches.
 pub trait CacheWeight {
     /// Total weight of the value.
     fn weight(&self) -> usize {
-        std::mem::size_of_val(&self) + self.indirect_weight()
+        mem::size_of_val(&self) + self.indirect_weight()
     }
 
     /// The weight of values pointed to by this value but logically owned by it, which is not
@@ -24,7 +25,8 @@ impl<T: CacheWeight> CacheWeight for Option<T> {
 
 impl<T: CacheWeight> CacheWeight for Vec<T> {
     fn indirect_weight(&self) -> usize {
-        self.iter().map(CacheWeight::indirect_weight).sum()
+        self.iter().map(CacheWeight::indirect_weight).sum::<usize>()
+            + self.capacity() * mem::size_of::<T>()
     }
 }
 
@@ -36,15 +38,18 @@ impl<T: CacheWeight, U: CacheWeight> CacheWeight for std::collections::BTreeMap<
     }
 }
 
-impl CacheWeight for &'_ [u8] {
+impl<T: CacheWeight, U: CacheWeight> CacheWeight for std::collections::HashMap<T, U> {
     fn indirect_weight(&self) -> usize {
-        self.len()
+        self.iter()
+            .map(|(key, value)| key.indirect_weight() + value.indirect_weight())
+            .sum::<usize>()
+            + self.capacity() * mem::size_of::<T>()
     }
 }
 
 impl CacheWeight for String {
     fn indirect_weight(&self) -> usize {
-        self.len()
+        self.capacity()
     }
 }
 
@@ -60,24 +65,22 @@ impl CacheWeight for BigInt {
     }
 }
 
+impl CacheWeight for crate::data::store::scalar::Bytes {
+    fn indirect_weight(&self) -> usize {
+        self.as_slice().len()
+    }
+}
+
 impl CacheWeight for Value {
     fn indirect_weight(&self) -> usize {
         match self {
             Value::String(s) => s.indirect_weight(),
             Value::BigDecimal(d) => d.indirect_weight(),
             Value::List(values) => values.indirect_weight(),
-            Value::Bytes(bytes) => bytes.as_slice().indirect_weight(),
+            Value::Bytes(bytes) => bytes.indirect_weight(),
             Value::BigInt(n) => n.indirect_weight(),
             Value::Int(_) | Value::Bool(_) | Value::Null => 0,
         }
-    }
-}
-
-impl CacheWeight for Entity {
-    fn indirect_weight(&self) -> usize {
-        self.iter()
-            .map(|(key, value)| key.weight() + value.weight())
-            .sum()
     }
 }
 
