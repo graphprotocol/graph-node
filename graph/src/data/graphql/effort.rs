@@ -94,11 +94,8 @@ impl QueryEffort {
     /// for the query
     pub fn current_effort(&self, shape_hash: u64) -> (Option<Duration>, Duration) {
         let inner = self.inner.read().unwrap();
-        let total_effort = inner.total.average().unwrap_or(*ZERO_DURATION);
-        let query_effort = inner
-            .effort
-            .get(&shape_hash)
-            .and_then(|stats| stats.average());
+        let total_effort = inner.total.duration();
+        let query_effort = inner.effort.get(&shape_hash).map(|stats| stats.duration());
         (query_effort, total_effort)
     }
 }
@@ -330,7 +327,8 @@ impl LoadManager {
             warn!(self.logger, "Jailing query";
                 "query" => query,
                 "query_effort_ms" => query_effort,
-                "total_effort_ms" => total_effort);
+                "total_effort_ms" => total_effort,
+                "ratio" => format!("{:.4}", query_effort/total_effort));
             self.jailed_queries.write().unwrap().insert(shape_hash);
             return true;
         }
@@ -392,7 +390,7 @@ impl LoadManager {
                     info!(self.logger, "Query overload still happening";
                         "duration_ms" => duration.as_millis(),
                         "wait_ms" => wait_ms.as_millis(),
-                        "kill_rate" => kill_rate,
+                        "kill_rate" => format!("{:.4}", kill_rate),
                         "event" => "ongoing");
                 }
                 Start => {
