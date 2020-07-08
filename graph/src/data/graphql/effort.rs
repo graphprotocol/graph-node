@@ -28,6 +28,8 @@ lazy_static! {
         Duration::from_millis(threshold)
     };
 
+    static ref JAIL_QUERIES: bool = env::var("GRAPH_LOAD_JAIL_THRESHOLD").is_ok();
+
     static ref JAIL_THRESHOLD: f64 = {
         env::var("GRAPH_LOAD_JAIL_THRESHOLD")
             .ok()
@@ -36,7 +38,7 @@ lazy_static! {
                     panic!("GRAPH_LOAD_JAIL_THRESHOLD must be a number, but is `{}`", s)
                 })
             })
-            .unwrap_or(0.1)
+            .unwrap_or(1e9)
     };
 
     static ref WAIT_STAT_CHECK_INTERVAL: Duration = Duration::from_secs(1);
@@ -322,7 +324,7 @@ impl LoadManager {
         let query_effort = query_effort.unwrap_or_else(|| total_effort).as_millis() as f64;
         let total_effort = total_effort.as_millis() as f64;
 
-        if known_query && query_effort / total_effort > *JAIL_THRESHOLD {
+        if known_query && *JAIL_QUERIES && query_effort / total_effort > *JAIL_THRESHOLD {
             // Any single query that causes at least JAIL_THRESHOLD of the
             // effort in an overload situation gets killed
             warn!(self.logger, "Jailing query";

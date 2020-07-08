@@ -120,8 +120,10 @@ those.
 - `GRAPH_LOAD_THRESHOLD`: If wait times for getting database connections go
   above this threshold, throttle queries until the wait times fall below
   the threshold. Value is in milliseconds, and defaults to 0 which
-  turns throttling off and any associated statistics collection off.
+  turns throttling and any associated statistics collection off.
 - `GRAPH_LOAD_JAIL_THRESHOLD`: When the system is overloaded, any query
   that causes more than this fraction of the effort will be rejected for as
   long as the process is running (i.e., even after the overload situation
-  is resolved) Defaults to 0.1
+  is resolved) If this variable is not set, no queries will ever be jailed,
+  but they will still be subject to normal load management when the system
+  is overloaded.
