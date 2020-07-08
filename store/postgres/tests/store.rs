@@ -148,8 +148,8 @@ where
 
 /// Inserts test data into the store.
 ///
-/// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
-/// use.
+/// Inserts data in test blocks `GENESIS_PTR`, `TEST_BLOCK_1_PTR`, and
+/// `TEST_BLOCK_2_PTR`
 fn insert_test_data(store: Arc<DieselStore>) {
     let manifest = SubgraphManifest {
         id: TEST_SUBGRAPH_ID.clone(),
@@ -2247,6 +2247,127 @@ fn cleanup_cached_blocks() {
         // that should be removed is syntactically correct
         let cleaned = store.cleanup_cached_blocks(10).expect("cleanup succeeds");
         assert_eq!((0, 0), cleaned);
+        Ok(())
+    })
+}
+
+#[test]
+fn reorg_tracking() {
+    fn update_john(store: &Arc<DieselStore>, age: i32, block: &EthereumBlockPointer) {
+        let test_entity_1 = create_test_entity(
+            "1",
+            USER,
+            "Johnton",
+            "tonofjohn@email.com",
+            age,
+            184.4,
+            false,
+            None,
+        );
+        transact_entity_operations(
+            store,
+            TEST_SUBGRAPH_ID.clone(),
+            block.clone(),
+            vec![test_entity_1],
+        )
+        .unwrap();
+    }
+
+    macro_rules! check_state {
+        ($store:expr,
+         $reorg_count: expr,
+         $max_reorg_depth:expr,
+         $latest_ethereum_block_number:expr) => {
+            let subgraph_id = TEST_SUBGRAPH_ID.to_owned();
+            let state = &$store
+                .deployment_state_from_id(subgraph_id.clone())
+                .expect("can get deployment state");
+            dbg!(&state);
+            assert_eq!(&subgraph_id, &state.id, "subgraph_id");
+            assert_eq!($reorg_count, state.reorg_count, "reorg_count");
+            assert_eq!($max_reorg_depth, state.max_reorg_depth, "max_reorg_depth");
+            assert_eq!(
+                $latest_ethereum_block_number, state.latest_ethereum_block_number,
+                "latest_ethereum_block_number"
+            );
+        };
+    }
+
+    // Check that reorg_count, max_reorg_depth, and latest_ethereum_block_number
+    // are reported correctly in DeploymentState
+    run_test(|store| -> Result<(), ()> {
+        check_state!(store, 0, 0, 2);
+
+        // Jump to block 4
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            TEST_BLOCK_4_PTR.clone(),
+            vec![],
+        )
+        .unwrap();
+        check_state!(store, 0, 0, 4);
+
+        // Back to block 3
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
+            )
+            .unwrap();
+        check_state!(store, 1, 1, 3);
+
+        // Back to block 2
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
+            )
+            .unwrap();
+        check_state!(store, 2, 2, 2);
+
+        // Forward to block 3
+        update_john(&store, 70, &TEST_BLOCK_3_PTR);
+        check_state!(store, 2, 2, 3);
+
+        // Forward to block 4
+        update_john(&store, 71, &TEST_BLOCK_4_PTR);
+        check_state!(store, 2, 2, 4);
+
+        // Forward to block 5
+        update_john(&store, 72, &TEST_BLOCK_5_PTR);
+        check_state!(store, 2, 2, 5);
+
+        // Revert all the way back to block 2
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_5_PTR,
+                *TEST_BLOCK_4_PTR,
+            )
+            .unwrap();
+        check_state!(store, 3, 2, 4);
+
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
+            )
+            .unwrap();
+        check_state!(store, 4, 2, 3);
+
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
+            )
+            .unwrap();
+        check_state!(store, 5, 3, 2);
+
         Ok(())
     })
 }

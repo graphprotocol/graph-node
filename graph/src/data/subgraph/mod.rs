@@ -30,7 +30,7 @@ use crate::data::subgraph::schema::{
 };
 use crate::prelude::{
     anyhow::{self, Context},
-    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize,
+    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize, BLOCK_NUMBER_MAX,
 };
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
@@ -1257,16 +1257,33 @@ impl UnresolvedSubgraphManifest {
 
 /// Important details about the current state of a subgraph deployment
 /// used while executing queries against a deployment
+///
+/// The `reorg_count` and `max_reorg_depth` fields are maintained (in the
+/// database) by `store::metadata::forward_block_ptr` and
+/// `store::metadata::revert_block_ptr` which get called as part of transacting
+/// new entities into the store or reverting blocks.
 #[derive(Debug)]
 pub struct DeploymentState {
     pub id: SubgraphDeploymentId,
+    /// The number of blocks that were ever reverted in this subgraph. This
+    /// number increases monotonically every time a block is reverted
+    pub reorg_count: u32,
+    /// The maximum number of blocks we ever reorged without moving a block
+    /// forward in between
+    pub max_reorg_depth: u32,
+    /// The number of the last block that the subgraph has processed
+    pub latest_ethereum_block_number: BlockNumber,
 }
 
 impl DeploymentState {
     /// Return a `DeploymentState` suitable for querying the metadata subgraph
     pub fn meta() -> Self {
+        // The metadata subgraph is not subject to reverts
         DeploymentState {
             id: SUBGRAPHS_ID.clone(),
+            reorg_count: 0,
+            max_reorg_depth: 0,
+            latest_ethereum_block_number: BLOCK_NUMBER_MAX,
         }
     }
 }

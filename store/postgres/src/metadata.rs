@@ -5,12 +5,13 @@ use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
     RunQueryDsl,
 };
+use std::convert::TryFrom;
 
 use graph::data::subgraph::schema::{SubgraphManifestEntity, SUBGRAPHS_ID};
 use graph::prelude::{
-    bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, DeploymentState,
-    EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError, StoreEvent,
-    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName, TypedEntity,
+    bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, BlockNumber,
+    DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError,
+    StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName, TypedEntity,
 };
 
 // Diesel tables for some of the metadata
@@ -246,6 +247,33 @@ pub fn revert_block_ptr(
         .map_err(|e| e.into())
 }
 
+fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u32, StoreError> {
+    number
+        .ok_or_else(|| {
+            StoreError::ConstraintViolation(format!(
+                "missing {} for subgraph `{}`",
+                field, subgraph
+            ))
+        })
+        .and_then(|number| {
+            u32::try_from(number).map_err(|_| {
+                StoreError::ConstraintViolation(format!(
+                    "invalid value {:?} for {} in subgraph {}",
+                    number, field, subgraph
+                ))
+            })
+        })
+}
+
+fn to_block_number(number: Option<BigDecimal>, subgraph: &str) -> Result<BlockNumber, StoreError> {
+    number.and_then(|number| number.to_i32()).ok_or_else(|| {
+        StoreError::ConstraintViolation(format!(
+            "invalid latest_ethereum_block_number for subgraph `{}`",
+            subgraph
+        ))
+    })
+}
+
 pub fn deployment_state_from_name(
     conn: &PgConnection,
     name: SubgraphName,
@@ -258,8 +286,22 @@ pub fn deployment_state_from_name(
         .left_outer_join(v::table.on(s::current_version.eq(v::id.nullable())))
         .left_outer_join(d::table.on(v::deployment.eq(d::id)))
         .filter(s::name.eq(name.as_str()))
-        .select((s::id, v::id.nullable(), d::id.nullable()))
-        .load::<(String, Option<String>, Option<String>)>(conn)?;
+        .select((
+            s::id,
+            v::id.nullable(),
+            d::id.nullable(),
+            d::reorg_count.nullable(),
+            d::max_reorg_depth.nullable(),
+            d::latest_ethereum_block_number.nullable(),
+        ))
+        .load::<(
+            String,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<i32>,
+            Option<BigDecimal>,
+        )>(conn)?;
     if rows.len() == 0 {
         Err(StoreError::QueryExecutionError(format!(
             "Subgraph `{}` not found",
@@ -271,7 +313,8 @@ pub fn deployment_state_from_name(
             name.as_str()
         )))
     } else {
-        let (_, vid, did) = rows.pop().unwrap();
+        let (_, vid, did, reorg_count, max_reorg_depth, latest_ethereum_block_number) =
+            rows.pop().unwrap();
         match (vid, did) {
             (None, _) => Err(StoreError::QueryExecutionError(format!(
                 "The subgraph `{}` has no current version. \
@@ -293,8 +336,17 @@ pub fn deployment_state_from_name(
                         name.as_str()
                     ))
                 })?;
-
-                Ok(DeploymentState { id })
+                let reorg_count = convert_to_u32(reorg_count, "reorg_count", name.as_str())?;
+                let max_reorg_depth =
+                    convert_to_u32(max_reorg_depth, "max_reorg_depth", name.as_str())?;
+                let latest_ethereum_block_number =
+                    to_block_number(latest_ethereum_block_number, name.as_str())?;
+                Ok(DeploymentState {
+                    id,
+                    reorg_count,
+                    max_reorg_depth,
+                    latest_ethereum_block_number,
+                })
             }
         }
     }
@@ -308,14 +360,32 @@ pub fn deployment_state_from_id(
 
     match d::table
         .filter(d::id.eq(id.as_str()))
-        .select(d::id)
-        .first::<String>(conn)
+        .select((
+            d::id,
+            d::reorg_count,
+            d::max_reorg_depth,
+            d::latest_ethereum_block_number,
+        ))
+        .first::<(String, i32, i32, Option<BigDecimal>)>(conn)
         .optional()?
     {
         None => Err(StoreError::QueryExecutionError(format!(
             "No data found for subgraph {}",
             id
         ))),
-        Some(_) => Ok(DeploymentState { id }),
+        Some((_, reorg_count, max_reorg_depth, latest_ethereum_block_number)) => {
+            let reorg_count = convert_to_u32(Some(reorg_count), "reorg_count", id.as_str())?;
+            let max_reorg_depth =
+                convert_to_u32(Some(max_reorg_depth), "max_reorg_depth", id.as_str())?;
+            let latest_ethereum_block_number =
+                to_block_number(latest_ethereum_block_number, id.as_str())?;
+
+            Ok(DeploymentState {
+                id,
+                reorg_count,
+                max_reorg_depth,
+                latest_ethereum_block_number,
+            })
+        }
     }
 }
