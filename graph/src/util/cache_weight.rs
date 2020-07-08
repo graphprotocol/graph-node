@@ -55,7 +55,7 @@ impl CacheWeight for String {
 
 impl CacheWeight for BigDecimal {
     fn indirect_weight(&self) -> usize {
-        (self.digits() as f32).log2() as usize
+        ((self.digits() as f32 * std::f32::consts::LOG2_10) / 8.0).ceil() as usize
     }
 }
 
@@ -95,4 +95,13 @@ impl CacheWeight for graphql_parser::query::Value {
             q::Value::Object(o) => o.indirect_weight(),
         }
     }
+}
+
+#[test]
+fn big_decimal_cache_weight() {
+    use std::str::FromStr;
+
+    // 22.4548 has 18 bits as binary, so 3 bytes.
+    let n = BigDecimal::from_str("22.454800000000").unwrap();
+    assert_eq!(n.indirect_weight(), 3);
 }
