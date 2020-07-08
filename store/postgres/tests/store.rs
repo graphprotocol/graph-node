@@ -1210,6 +1210,15 @@ fn check_basic_revert(
         .desc("name");
 
     let subscription = subscribe_and_consume(store.clone(), subgraph_id, entity_type);
+    if !subgraph_id.is_meta() {
+        let state = store
+            .deployment_state_from_id(subgraph_id.to_owned())
+            .expect("can get deployment state");
+        assert_eq!(subgraph_id, &state.id);
+        assert_eq!(0, state.reorg_count);
+        assert_eq!(0, state.max_reorg_depth);
+        assert_eq!(2, state.latest_ethereum_block_number);
+    }
 
     // Revert block 3
     store
@@ -1232,6 +1241,16 @@ fn check_basic_revert(
     let test_value = Value::String("queensha@email.com".to_owned());
     assert!(returned_name.is_some());
     assert_eq!(&test_value, returned_name.unwrap());
+
+    if !subgraph_id.is_meta() {
+        let state = store
+            .deployment_state_from_id(subgraph_id.to_owned())
+            .expect("can get deployment state");
+        assert_eq!(subgraph_id, &state.id);
+        assert_eq!(1, state.reorg_count);
+        assert_eq!(1, state.max_reorg_depth);
+        assert_eq!(1, state.latest_ethereum_block_number);
+    }
 
     check_events(subscription, vec![expected])
 }

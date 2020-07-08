@@ -213,9 +213,14 @@ where
         id: String,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
-        match SubgraphDeploymentId::new(id) {
+        let res = SubgraphDeploymentId::new(id)
+            .map_err(|_| ())
+            .and_then(|id| self.store.deployment_state_from_id(id).map_err(|_| ()));
+        match res {
             Err(_) => self.handle_not_found(),
-            Ok(id) => self.handle_graphql_query(id, request.into_body()).boxed(),
+            Ok(state) => self
+                .handle_graphql_query(state.id, request.into_body())
+                .boxed(),
         }
     }
 

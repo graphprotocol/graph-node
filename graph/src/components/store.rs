@@ -894,6 +894,13 @@ pub trait Store: Send + Sync + 'static {
     fn deployment_state_from_name(&self, name: SubgraphName)
         -> Result<DeploymentState, StoreError>;
 
+    /// Find the deployment for the subgraph deployment `id` and
+    /// return details about it needed for executing queries
+    fn deployment_state_from_id(
+        &self,
+        id: SubgraphDeploymentId,
+    ) -> Result<DeploymentState, StoreError>;
+
     /// Read all version entities pointing to the specified deployment IDs and
     /// determine whether they are current or pending in order to produce
     /// `SubgraphVersionSummary`s.
@@ -1259,6 +1266,13 @@ impl Store for MockStore {
     }
 
     fn deployment_state_from_name(&self, _: SubgraphName) -> Result<DeploymentState, StoreError> {
+        unimplemented!()
+    }
+
+    fn deployment_state_from_id(
+        &self,
+        _: SubgraphDeploymentId,
+    ) -> Result<DeploymentState, StoreError> {
         unimplemented!()
     }
 

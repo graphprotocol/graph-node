@@ -2,7 +2,8 @@
 use diesel::dsl::{sql, update};
 use diesel::pg::PgConnection;
 use diesel::prelude::{
-    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
+    RunQueryDsl,
 };
 
 use graph::data::subgraph::schema::{SubgraphManifestEntity, SUBGRAPHS_ID};
@@ -296,5 +297,25 @@ pub fn deployment_state_from_name(
                 Ok(DeploymentState { id })
             }
         }
+    }
+}
+
+pub fn deployment_state_from_id(
+    conn: &PgConnection,
+    id: SubgraphDeploymentId,
+) -> Result<DeploymentState, StoreError> {
+    use subgraph_deployment as d;
+
+    match d::table
+        .filter(d::id.eq(id.as_str()))
+        .select(d::id)
+        .first::<String>(conn)
+        .optional()?
+    {
+        None => Err(StoreError::QueryExecutionError(format!(
+            "No data found for subgraph {}",
+            id
+        ))),
+        Some(_) => Ok(DeploymentState { id }),
     }
 }

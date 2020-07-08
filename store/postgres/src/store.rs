@@ -1260,6 +1260,18 @@ impl StoreTrait for Store {
         metadata::deployment_state_from_name(&conn, name)
     }
 
+    fn deployment_state_from_id(
+        &self,
+        id: SubgraphDeploymentId,
+    ) -> Result<DeploymentState, StoreError> {
+        if id.is_meta() {
+            Ok(DeploymentState::meta())
+        } else {
+            let conn = self.get_conn()?;
+            metadata::deployment_state_from_id(&conn, id)
+        }
+    }
+
     fn create_subgraph_deployment(
         &self,
         schema: &Schema,
