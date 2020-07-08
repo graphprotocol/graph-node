@@ -137,36 +137,32 @@ where
                 },
             )
         };
-        let by_block_constraint = query.block_constraint()?;
 
-        // We want to optimize for the common case of a single block constraint,
-        // where we can avoid cloning the result.
-        match by_block_constraint.len() {
-            0 => Ok(Arc::new(QueryResult::empty())),
-            1 => {
-                let (bc, selection_set) = by_block_constraint.into_iter().next().unwrap();
+        // Unwrap: There is always at least one block constraint, even if it
+        // is an implicit 'BlockContraint::Latest'.
+        let mut by_block_constraint = query.block_constraint()?.into_iter();
+        let (bc, selection_set) = by_block_constraint.next().unwrap();
+        let (resolver, block_ptr) =
+            StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
+        let mut result = execute(selection_set, block_ptr, resolver);
+
+        // We want to optimize for the common case of a single block constraint, where we can avoid
+        // cloning the result. If there are multiple constraints we have to clone.
+        if by_block_constraint.len() > 0 {
+            let mut partial_res = result.as_ref().clone();
+            for (bc, selection_set) in by_block_constraint {
                 let (resolver, block_ptr) = StoreResolver::at_block(
                     &self.logger,
                     self.store.clone(),
                     bc,
                     &query.schema.id,
                 )?;
-                Ok(execute(selection_set, block_ptr, resolver))
+                partial_res.append(execute(selection_set, block_ptr, resolver).as_ref().clone());
             }
-            _ => {
-                let mut result = QueryResult::empty();
-                for (bc, selection_set) in query.block_constraint()? {
-                    let (resolver, block_ptr) = StoreResolver::at_block(
-                        &self.logger,
-                        self.store.clone(),
-                        bc,
-                        &query.schema.id,
-                    )?;
-                    result.append(execute(selection_set, block_ptr, resolver).as_ref().clone());
-                }
-                Ok(Arc::new(result))
-            }
+            result = Arc::new(partial_res);
         }
+
+        Ok(result)
     }
 }
 

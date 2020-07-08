@@ -76,13 +76,18 @@ contract("Contract", (accounts) => {
     await waitForSubgraphToBeSynced();
   });
 
-  it("all overloads of the contract function are called", async () => {
+  it("test query", async () => {
+    // Also test that multiple block constraints do not result in a graphql error.
     let result = await fetchSubgraph({
-      query: `{ foos(orderBy: id) { id value } }`,
+      query: `{
+        foos_0: foos(orderBy: id, block: { number: 0 }) { id }
+        foos(orderBy: id) { id value }
+      }`,
     });
 
     expect(result.errors).to.be.undefined;
     expect(result.data).to.deep.equal({
+      foos_0: [],
       foos: [
         {
           id: "0",
