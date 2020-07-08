@@ -260,21 +260,11 @@ impl From<StoreError> for QueryExecutionError {
 }
 
 /// Error caused while processing a [Query](struct.Query.html) request.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum QueryError {
     EncodingError(FromUtf8Error),
-    ParseError(failure::Error),
+    ParseError(Arc<anyhow::Error>),
     ExecutionError(QueryExecutionError),
-}
-
-impl Clone for QueryError {
-    fn clone(&self) -> Self {
-        match self {
-            QueryError::EncodingError(e) => QueryError::EncodingError(e.clone()),
-            QueryError::ParseError(e) => QueryError::ParseError(failure::err_msg(e.to_string())),
-            QueryError::ExecutionError(e) => QueryError::ExecutionError(e.clone()),
-        }
-    }
 }
 
 impl From<FromUtf8Error> for QueryError {
