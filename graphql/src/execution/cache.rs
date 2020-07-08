@@ -9,11 +9,9 @@ use std::sync::{Arc, Condvar, Mutex};
 type Hash = <SetHasher as StableHasher>::Out;
 
 /// The 'true' cache entry that lives inside the Arc.
-/// When the last Arc is dropped, this is dropped,
-/// and the cache is removed.
+/// When the last Arc is dropped, this is dropped, and the cache is removed.
 #[derive(Debug)]
 struct CacheEntryInner<R> {
-    hash: Hash,
     // Considered using once_cell::sync::Lazy,
     // but that quickly becomes a mess of generics
     // or runs into the issue that Box<dyn FnOnce> can't be
@@ -26,9 +24,8 @@ struct CacheEntryInner<R> {
 }
 
 impl<R> CacheEntryInner<R> {
-    fn new(hash: Hash) -> Arc<Self> {
+    fn new() -> Arc<Self> {
         Arc::new(Self {
-            hash,
             result: OnceCell::new(),
             condvar: Condvar::new(),
             lock: Mutex::new(false),
@@ -134,7 +131,7 @@ impl<R: CheapClone> QueryCache<R> {
                     return entry.wait().cheap_clone();
                 }
                 Entry::Vacant(entry) => {
-                    let uncached = CacheEntryInner::new(hash);
+                    let uncached = CacheEntryInner::new();
                     entry.insert(uncached.clone());
                     uncached
                 }
