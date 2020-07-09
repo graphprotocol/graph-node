@@ -127,3 +127,7 @@ those.
   is resolved) If this variable is not set, no queries will ever be jailed,
   but they will still be subject to normal load management when the system
   is overloaded.
+- `GRAPH_LOAD_SIMULATE`: Perform all the steps that the load manager would
+  given the other load management configuration settings, but never
+  actually decline to run a query, instead log about load management
+  decisions. Set to `true` to turn simulation on, defaults to `false`

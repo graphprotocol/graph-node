@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use crate::components::metrics::{Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
-use crate::prelude::{info, o, warn, Logger};
+use crate::prelude::{debug, info, o, warn, Logger};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 const ZERO_DURATION: Duration = Duration::from_millis(0);
@@ -51,6 +51,8 @@ lazy_static! {
     static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == ZERO_DURATION;
 
     static ref KILL_RATE_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
+
+    static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
 }
 
 struct QueryEffort {
@@ -297,7 +299,7 @@ impl LoadManager {
         }
 
         if self.jailed_queries.read().unwrap().contains(&shape_hash) {
-            return true;
+            return !*SIMULATE;
         }
 
         let (overloaded, wait_ms) = self.overloaded();
@@ -326,17 +328,30 @@ impl LoadManager {
             // effort in an overload situation gets killed
             warn!(self.logger, "Jailing query";
                 "query" => query,
+                "wait_ms" => wait_ms.as_millis(),
                 "query_effort_ms" => query_effort,
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
             self.jailed_queries.write().unwrap().insert(shape_hash);
-            return true;
+            return !*SIMULATE;
         }
 
         // Kill random queries in case we have no queries, or not enough queries
         // that cause at least 20% of the effort
         let kill_rate = self.update_kill_rate(kill_rate, last_update, overloaded, wait_ms);
-        thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0))
+        let decline =
+            thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
+        if *SIMULATE && decline {
+            debug!(self.logger, "Declining query";
+                "query" => query,
+                "wait_ms" => wait_ms.as_millis(),
+                "query_effort_ms" => query_effort,
+                "total_effort_ms" => total_effort,
+                "kill_rate" => format!("{:.4}", query_effort/total_effort),
+            );
+            return false;
+        }
+        return decline;
     }
 
     fn overloaded(&self) -> (bool, Duration) {
