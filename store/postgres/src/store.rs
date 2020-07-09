@@ -125,10 +125,7 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConne
         // run, which is not easy to tell from the Diesel API, and reset the
         // query statistics since a schema change makes them not all that
         // useful. An error here is not serious and can be ignored.
-        let res = conn.batch_execute("select pg_stat_statements_reset()");
-        if let Err(e) = res {
-            trace!(logger, "Failed to reset query statistics ({})", e);
-        }
+        conn.batch_execute("select pg_stat_statements_reset()").ok();
     }
 }
 
@@ -781,7 +778,6 @@ impl Store {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }
-        trace!(self.logger, "schema cache miss"; "id" => subgraph_id.to_string());
 
         let conn = self.get_conn()?;
         let input_schema = metadata::subgraph_schema(&conn, subgraph_id.to_owned())?;
