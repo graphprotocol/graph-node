@@ -353,7 +353,7 @@ impl LoadManager {
                 "wait_ms" => wait_ms.as_millis(),
                 "query_effort_ms" => query_effort,
                 "total_effort_ms" => total_effort,
-                "kill_rate" => format!("{:.4}", query_effort/total_effort),
+                "kill_rate" => format!("{:.4}", kill_rate),
             );
             return false;
         }
@@ -388,7 +388,7 @@ impl LoadManager {
             // Update the kill_rate
             if overloaded {
                 kill_rate = (kill_rate + KILL_RATE_STEP * (1.0 - kill_rate)).min(1.0);
-            } else if kill_rate > KILL_RATE_STEP {
+            } else {
                 kill_rate = (kill_rate - KILL_RATE_STEP).max(0.0);
             }
             let event = {
