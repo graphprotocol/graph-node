@@ -325,10 +325,19 @@ where
                             // Send errors back to the client as GQL_DATA
                             match e {
                                 SubscriptionError::GraphQLError(e) => {
-                                    let result = Arc::new(QueryResult::from(e));
-                                    let msg =
-                                        OutgoingMessage::from_query_result(err_id.clone(), result);
-                                    error_sink.unbounded_send(msg.into()).unwrap();
+                                    // Don't bug clients with transient `TooExpensive` errors,
+                                    // simply skip updating them
+                                    if !e
+                                        .iter()
+                                        .any(|err| matches!(err, QueryExecutionError::TooExpensive))
+                                    {
+                                        let result = Arc::new(QueryResult::from(e));
+                                        let msg = OutgoingMessage::from_query_result(
+                                            err_id.clone(),
+                                            result,
+                                        );
+                                        error_sink.unbounded_send(msg.into()).unwrap();
+                                    }
                                 }
                             };
                         })
