@@ -6,8 +6,8 @@ use graph::util::security::SafeDisplay;
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 struct ErrorHandler(Logger, Box<Counter>);
 
@@ -29,7 +29,6 @@ struct EventHandler {
     count_gauge: Box<Gauge>,
     wait_gauge: Box<Gauge>,
     wait_stats: PoolWaitStats,
-    last_log: Mutex<Instant>,
 }
 
 impl EventHandler {
@@ -53,21 +52,10 @@ impl EventHandler {
             count_gauge,
             wait_gauge,
             wait_stats,
-            last_log: Mutex::new(Instant::now()),
         }
     }
 
     fn add_wait_time(&self, duration: Duration) {
-        let should_log = {
-            // Log average wait time, but at most every 10s
-            let mut last_log = self.last_log.lock().unwrap();
-            if last_log.elapsed() > Duration::from_secs(10) {
-                *last_log = Instant::now();
-                true
-            } else {
-                false
-            }
-        };
         let wait_avg = {
             let mut wait_stats = self.wait_stats.write().unwrap();
             wait_stats.add(duration);
@@ -75,10 +63,6 @@ impl EventHandler {
         };
         let wait_avg = wait_avg.map(|wait_avg| wait_avg.as_millis()).unwrap_or(0);
         self.wait_gauge.set(wait_avg as f64);
-        if should_log {
-            info!(self.logger, "Average connection wait time";
-                    "wait_ms" => wait_avg);
-        }
     }
 }
 
