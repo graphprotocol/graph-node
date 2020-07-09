@@ -32,24 +32,30 @@ pub fn assert_successful_response(
 pub fn assert_error_response(
     response: Response<Body>,
     expected_status: StatusCode,
+    graphql_response: bool,
 ) -> Vec<serde_json::Value> {
     assert_eq!(response.status(), expected_status);
 
-    futures03::executor::block_on(
-        hyper::body::to_bytes(response.into_body())
-            .map_ok(|chunk| {
-                let json: serde_json::Value =
-                    serde_json::from_slice(&chunk).expect("GraphQL response is not valid JSON");
-
-                json.as_object()
-                    .expect("GraphQL response must be an object")
-                    .get("errors")
-                    .expect("GraphQL error response must contain an \"errors\" field")
-                    .as_array()
-                    .expect("GraphQL \"errors\" field must be a vector")
-                    .clone()
-            })
-            .map_err(|e| panic!("Truncated response body {:?}", e)),
+    let body = String::from_utf8(
+        futures03::executor::block_on(hyper::body::to_bytes(response.into_body()))
+            .unwrap()
+            .to_vec(),
     )
-    .unwrap()
+    .unwrap();
+
+    // In case of a non-graphql response, return the body.
+    if !graphql_response {
+        return vec![serde_json::Value::String(body)];
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).expect("GraphQL response is not valid JSON");
+
+    json.as_object()
+        .expect("GraphQL response must be an object")
+        .get("errors")
+        .expect("GraphQL error response must contain an \"errors\" field")
+        .as_array()
+        .expect("GraphQL \"errors\" field must be a vector")
+        .clone()
 }

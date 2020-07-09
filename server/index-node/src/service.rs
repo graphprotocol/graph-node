@@ -104,7 +104,7 @@ where
         let start = Instant::now();
 
         hyper::body::to_bytes(request_body)
-            .map_err(|_| GraphQLServerError::from("Failed to read request body"))
+            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .and_then(move |body| IndexNodeRequest::new(body, schema).compat())
             .and_then(move |query| {
                 let logger = logger.clone();
@@ -161,7 +161,9 @@ where
     fn handle_temp_redirect(&self, destination: &str) -> IndexNodeServiceResponse {
         Box::pin(futures03::future::ready(
             header::HeaderValue::from_str(destination)
-                .map_err(|_| GraphQLServerError::from("invalid characters in redirect URL"))
+                .map_err(|_| {
+                    GraphQLServerError::ClientError("invalid characters in redirect URL".into())
+                })
                 .map(|loc_header_val| {
                     Response::builder()
                         .status(StatusCode::FOUND)
@@ -238,15 +240,6 @@ where
         // Instead, we generate a Response with an error code and return Ok
         Box::pin(self.handle_call(req).map(move |result| match result {
             Ok(response) => Ok(response),
-            Err(err @ GraphQLServerError::Canceled(_)) => {
-                error!(logger, "IndexNodeService call failed: {}", err);
-
-                Ok(Response::builder()
-                    .status(500)
-                    .header("Content-Type", "text/plain")
-                    .body(Body::from("Internal server error (operation canceled)"))
-                    .unwrap())
-            }
             Err(err @ GraphQLServerError::ClientError(_)) => {
                 debug!(logger, "IndexNodeService call failed: {}", err);
 
@@ -260,7 +253,7 @@ where
                 error!(logger, "IndexNodeService call failed: {}", err);
 
                 Ok(Response::builder()
-                    .status(500)
+                    .status(400)
                     .header("Content-Type", "text/plain")
                     .body(Body::from(format!("Query error: {}", err)))
                     .unwrap())

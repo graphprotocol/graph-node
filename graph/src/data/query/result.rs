@@ -78,6 +78,20 @@ impl QueryResult {
             _ => self.errors = self.errors.take().or(other.errors),
         }
     }
+
+    pub fn as_http_response<T: From<String>>(&self) -> http::Response<T> {
+        let status_code = http::StatusCode::OK;
+        let json =
+            serde_json::to_string(&self).expect("Failed to serialize GraphQL response to JSON");
+        http::Response::builder()
+            .status(status_code)
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Headers", "Content-Type, User-Agent")
+            .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
+            .header("Content-Type", "application/json")
+            .body(T::from(json))
+            .unwrap()
+    }
 }
 
 impl From<QueryExecutionError> for QueryResult {
@@ -85,6 +99,16 @@ impl From<QueryExecutionError> for QueryResult {
         let mut result = Self::new(None);
         result.errors = Some(vec![QueryError::from(e)]);
         result
+    }
+}
+
+impl From<QueryError> for QueryResult {
+    fn from(e: QueryError) -> Self {
+        QueryResult {
+            data: None,
+            errors: Some(vec![e]),
+            extensions: None,
+        }
     }
 }
 

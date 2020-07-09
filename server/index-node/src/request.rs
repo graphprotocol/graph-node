@@ -39,7 +39,7 @@ impl Future for IndexNodeRequest {
         // Ensure the JSON data has a "query" field
         let query_value = obj.get("query").ok_or_else(|| {
             GraphQLServerError::ClientError(String::from(
-                "The \"query\" field missing in request data",
+                "The \"query\" field is missing in request data",
             ))
         })?;
 
