@@ -38,7 +38,7 @@ impl ChainHeadUpdateListener {
             head_block_number: 0,
         };
         let (update_sender, update_receiver) = watch::channel(none_update);
-        Self::listen(logger, ingestor_metrics, &mut listener, update_sender);
+        Self::listen(ingestor_metrics, &mut listener, update_sender);
 
         ChainHeadUpdateListener {
             update_receiver,
@@ -51,13 +51,10 @@ impl ChainHeadUpdateListener {
     }
 
     fn listen(
-        logger: Logger,
         metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
         update_sender: watch::Sender<ChainHeadUpdate>,
     ) {
-        let logger = logger.clone();
-
         // Process chain head updates in a dedicated task
         graph::spawn(
             listener
@@ -83,14 +80,6 @@ impl ChainHeadUpdateListener {
                     futures03::future::ok(Some(update))
                 })
                 .try_for_each(move |update| {
-                    debug!(
-                        logger.clone(),
-                        "Received chain head update";
-                        "network" => &update.network_name,
-                        "head_block_hash" => format!("{}", update.head_block_hash),
-                        "head_block_number" => &update.head_block_number,
-                    );
-
                     futures03::future::ready(update_sender.broadcast(update).map_err(|_| ()))
                 }),
         );
