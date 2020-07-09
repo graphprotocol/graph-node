@@ -15,6 +15,8 @@ use crate::data::graphql::shape_hash::shape_hash;
 use crate::prelude::{info, o, warn, Logger};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
+const ZERO_DURATION: Duration = Duration::from_millis(0);
+
 lazy_static! {
     static ref LOAD_THRESHOLD: Duration = {
         let threshold = env::var("GRAPH_LOAD_THRESHOLD")
@@ -43,12 +45,10 @@ lazy_static! {
 
     static ref WAIT_STAT_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
-    static ref ZERO_DURATION: Duration = Duration::from_millis(0);
-
     // Load management can be disabled by setting the threshold to 0. This
     // makes sure in particular that we never take any of the locks
     // associated with it
-    static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == *ZERO_DURATION;
+    static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == ZERO_DURATION;
 
     static ref KILL_RATE_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
 }
@@ -84,7 +84,7 @@ impl QueryEffort {
     pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Box<Gauge>) {
         let mut inner = self.inner.write().unwrap();
         inner.add(shape_hash, duration);
-        gauge.set(inner.total.average().unwrap_or(*ZERO_DURATION).as_millis() as f64);
+        gauge.set(inner.total.average().unwrap_or(ZERO_DURATION).as_millis() as f64);
     }
 
     /// Return what we know right now about the effort for the query
@@ -309,7 +309,7 @@ impl LoadManager {
         let (query_effort, total_effort) = self.effort.current_effort(shape_hash);
         // When `total_effort` is `ZERO_DURATION`, we haven't done any work. All are
         // welcome
-        if total_effort == *ZERO_DURATION {
+        if total_effort == ZERO_DURATION {
             return false;
         }
 
@@ -345,7 +345,7 @@ impl LoadManager {
         let overloaded = average
             .map(|average| average > *LOAD_THRESHOLD)
             .unwrap_or(false);
-        (overloaded, average.unwrap_or(*ZERO_DURATION))
+        (overloaded, average.unwrap_or(ZERO_DURATION))
     }
 
     fn kill_state(&self) -> (f64, Instant) {
