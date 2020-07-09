@@ -216,10 +216,16 @@ impl LoadManager {
             .into_iter()
             .map(|doc| shape_hash(&doc))
             .collect::<HashSet<_>>();
-        info!(
-            logger,
-            "Creating LoadManager with disabled={}", *LOAD_MANAGEMENT_DISABLED,
-        );
+
+        let mode = if *LOAD_MANAGEMENT_DISABLED {
+            "disabled"
+        } else if *SIMULATE {
+            "simulation"
+        } else {
+            "enabled"
+        };
+        info!(logger, "Creating LoadManager in {} mode", mode,);
+
         let effort_gauge = registry
             .new_gauge(
                 String::from("query_effort_ms"),
