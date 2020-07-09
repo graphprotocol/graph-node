@@ -374,12 +374,13 @@ where
             None,
         );
 
-        // Execute the query
-        let result = self
-            .graphql_runner
-            .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
-            .wait()
-            .expect("error querying subgraph deployments");
+        // Execute the query. We are in a blocking context so we may just block.
+        let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
+            query,
+            None,
+            None,
+            Some(std::u32::MAX),
+        ));
 
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();
@@ -455,12 +456,13 @@ where
             None,
         );
 
-        // Execute the query
-        let result = self
-            .graphql_runner
-            .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
-            .wait()
-            .expect("error querying subgraph deployments");
+        // Execute the query. We are in a blocking context so we may just block.
+        let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
+            query,
+            None,
+            None,
+            Some(std::u32::MAX),
+        ));
 
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();
@@ -617,12 +619,13 @@ where
             None,
         );
 
-        // Execute the query
-        let result = self
-            .graphql_runner
-            .run_query_with_complexity(query, None, None, Some(std::u32::MAX))
-            .wait()
-            .expect("error querying subgraph deployments");
+        // Execute the query. We are in a blocking context so we may just block.
+        let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
+            query,
+            None,
+            None,
+            Some(std::u32::MAX),
+        ));
 
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();

@@ -1356,6 +1356,7 @@ dependencies = [
  "futures 0.3.4",
  "graphql-parser",
  "hex 0.4.2",
+ "http 0.2.1",
  "ipfs-api",
  "isatty",
  "lazy_static",

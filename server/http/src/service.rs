@@ -15,7 +15,6 @@ use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
 use crate::request::GraphQLRequest;
-use crate::response::GraphQLResponse;
 
 pub struct GraphQLServiceMetrics {
     query_execution_time: Box<HistogramVec>,
@@ -236,7 +235,6 @@ where
         request_body: Body,
     ) -> GraphQLServiceResult {
         let service = self.clone();
-        let logger = self.logger.clone();
         let service_metrics = self.metrics.clone();
         let sd_id = id.clone();
 
@@ -268,38 +266,23 @@ where
         };
 
         let start = Instant::now();
-        hyper::body::to_bytes(request_body)
-            .map_err(|_| GraphQLServerError::from("Failed to read request body"))
-            .and_then(move |body| GraphQLRequest::new(body, schema, network).compat())
-            .and_then(move |query| {
-                // Run the query using the query runner
-                tokio::task::block_in_place(|| {
-                    service
-                        .graphql_runner
-                        .run_query(query)
-                        .map_err(|e| GraphQLServerError::from(e))
-                        .compat()
-                })
-            })
-            .then(move |result| {
-                service_metrics.observe_query_execution_time(
-                    start.elapsed().as_secs_f64(),
-                    sd_id.deref().to_string(),
-                );
-                let elapsed = start.elapsed().as_millis();
-                if let Err(e) = &result {
-                    error!(
-                        logger,
-                        "GraphQL query failed";
-                        "subgraph_deployment" => sd_id.deref(),
-                        "error" => e.to_string(),
-                        "query_time_ms" => elapsed,
-                        "code" => LogCode::GraphQlQueryFailure,
-                    )
-                }
-                GraphQLResponse::new(result).compat()
-            })
-            .await
+        let body = hyper::body::to_bytes(request_body)
+            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
+            .await?;
+        let query = GraphQLRequest::new(body, schema, network).compat().await;
+
+        let result = match query {
+            Ok(query) => graph::spawn_blocking_allow_panic(service.graphql_runner.run_query(query))
+                .await
+                .unwrap(),
+            Err(GraphQLServerError::QueryError(e)) => Arc::new(QueryResult::from(e)),
+            Err(e) => return Err(e),
+        };
+
+        service_metrics
+            .observe_query_execution_time(start.elapsed().as_secs_f64(), sd_id.deref().to_string());
+
+        Ok(result.as_http_response())
     }
 
     // Handles OPTIONS requests
@@ -319,7 +302,9 @@ where
     /// Handles 302 redirects
     async fn handle_temp_redirect(self, destination: String) -> GraphQLServiceResult {
         header::HeaderValue::try_from(destination)
-            .map_err(|_| GraphQLServerError::from("invalid characters in redirect URL"))
+            .map_err(|_| {
+                GraphQLServerError::ClientError("invalid characters in redirect URL".into())
+            })
             .map(|loc_header_val| {
                 Response::builder()
                     .status(StatusCode::FOUND)
@@ -434,29 +419,16 @@ where
             let result = service.handle_call(req).await;
             match result {
                 Ok(response) => Ok(response),
-                Err(err @ GraphQLServerError::Canceled(_)) => {
-                    error!(logger, "GraphQLService call failed: {}", err);
-
-                    Ok(Response::builder()
-                        .status(500)
-                        .header("Content-Type", "text/plain")
-                        .body(Body::from("Internal server error (operation canceled)"))
-                        .unwrap())
-                }
-                Err(err @ GraphQLServerError::ClientError(_)) => {
-                    debug!(logger, "GraphQLService call failed: {}", err);
-
-                    Ok(Response::builder()
-                        .status(400)
-                        .header("Content-Type", "text/plain")
-                        .body(Body::from(format!("Invalid request: {}", err)))
-                        .unwrap())
-                }
+                Err(err @ GraphQLServerError::ClientError(_)) => Ok(Response::builder()
+                    .status(400)
+                    .header("Content-Type", "text/plain")
+                    .body(Body::from(err.to_string()))
+                    .unwrap()),
                 Err(err @ GraphQLServerError::QueryError(_)) => {
                     error!(logger, "GraphQLService call failed: {}", err);
 
                     Ok(Response::builder()
-                        .status(500)
+                        .status(400)
                         .header("Content-Type", "text/plain")
                         .body(Body::from(format!("Query error: {}", err)))
                         .unwrap())
@@ -495,27 +467,28 @@ mod tests {
     /// A simple stupid query runner for testing.
     pub struct TestGraphQlRunner;
 
+    #[async_trait]
     impl GraphQlRunner for TestGraphQlRunner {
-        fn run_query_with_complexity(
+        async fn run_query_with_complexity(
             &self,
             _query: Query,
             _complexity: Option<u64>,
             _max_depth: Option<u8>,
             _max_first: Option<u32>,
-        ) -> QueryResultFuture {
+        ) -> Arc<QueryResult> {
             unimplemented!();
         }
 
-        fn run_query(&self, _query: Query) -> QueryResultFuture {
-            Box::new(future::ok(Arc::new(QueryResult::new(Some(
-                q::Value::Object(BTreeMap::from_iter(
+        async fn run_query(self: Arc<Self>, _query: Query) -> Arc<QueryResult> {
+            Arc::new(QueryResult::new(Some(q::Value::Object(
+                BTreeMap::from_iter(
                     vec![(
                         String::from("name"),
                         q::Value::String(String::from("Jordi")),
                     )]
                     .into_iter(),
-                )),
-            )))))
+                ),
+            ))))
         }
 
         fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
@@ -550,19 +523,13 @@ mod tests {
 
         let response =
             futures03::executor::block_on(service.call(request)).expect("Should return a response");
-        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, false);
 
-        let message = errors[0]
-            .as_object()
-            .expect("Query error is not an object")
-            .get("message")
-            .expect("Error contains no message")
-            .as_str()
-            .expect("Error message is not a string");
+        let message = errors[0].as_str().expect("Error message is not a string");
 
         assert_eq!(
             message,
-            "GraphQL server error (client error): The \"query\" field missing in request data"
+            "GraphQL server error (client error): The \"query\" field is missing in request data"
         );
     }
 

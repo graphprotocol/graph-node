@@ -43,13 +43,13 @@ impl Future for GraphQLRequest {
         // Ensure the JSON data has a "query" field
         let query_value = obj.get("query").ok_or_else(|| {
             GraphQLServerError::ClientError(String::from(
-                "The \"query\" field missing in request data",
+                "The \"query\" field is missing in request data",
             ))
         })?;
 
         // Ensure the "query" field is a string
         let query_string = query_value.as_str().ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from("The\"query\" field is not a string"))
+            GraphQLServerError::ClientError(String::from("The \"query\" field is not a string"))
         })?;
 
         // Parse the "query" field of the JSON body

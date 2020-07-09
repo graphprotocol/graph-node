@@ -1,18 +1,14 @@
 use futures::prelude::*;
 
 use crate::data::graphql::effort::LoadManager;
-use crate::data::query::{Query, QueryError, QueryResult};
+use crate::data::query::{Query, QueryResult};
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 
 use async_trait::async_trait;
 use failure::format_err;
 use failure::Error;
-use futures03::compat::Future01CompatExt;
 use graphql_parser::query as q;
 use std::sync::Arc;
-
-/// Future for query results.
-pub type QueryResultFuture = Box<dyn Future<Item = Arc<QueryResult>, Error = QueryError> + Send>;
 
 /// Future for subscription results.
 pub type SubscriptionResultFuture =
@@ -22,34 +18,32 @@ pub type SubscriptionResultFuture =
 #[async_trait]
 pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL query and returns its result.
-    fn run_query(&self, query: Query) -> QueryResultFuture;
+    async fn run_query(self: Arc<Self>, query: Query) -> Arc<QueryResult>;
 
     /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
-    fn run_query_with_complexity(
+    async fn run_query_with_complexity(
         &self,
         query: Query,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
-    ) -> QueryResultFuture;
+    ) -> Arc<QueryResult>;
 
     /// Runs a GraphQL subscription and returns a stream of results.
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture;
 
     async fn query_metadata(&self, query: Query) -> Result<q::Value, Error> {
-        self.run_query_with_complexity(query, None, None, None)
-            .compat()
-            .await
-            .map_err(move |e| format_err!("Failed to query metadata: {}", e))
-            .and_then(move |result| {
-                // Metadata queries are not cached.
-                let result = Arc::try_unwrap(result).unwrap();
-                if result.errors.is_some() {
-                    Err(format_err!("Failed to query metadata: {:?}", result.errors))
-                } else {
-                    result.data.ok_or_else(|| format_err!("No metadata found"))
-                }
-            })
+        let result = self
+            .run_query_with_complexity(query, None, None, None)
+            .await;
+
+        // Metadata queries are not cached.
+        let result = Arc::try_unwrap(result).unwrap();
+        if result.errors.is_some() {
+            Err(format_err!("Failed to query metadata: {:?}", result.errors))
+        } else {
+            result.data.ok_or_else(|| format_err!("No metadata found"))
+        }
     }
 
     fn load_manager(&self) -> Arc<LoadManager>;

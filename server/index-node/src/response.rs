@@ -25,9 +25,7 @@ impl IndexNodeResponse {
             Err(GraphQLServerError::ClientError(_)) | Err(GraphQLServerError::QueryError(_)) => {
                 StatusCode::BAD_REQUEST
             }
-            Err(GraphQLServerError::Canceled(_)) | Err(GraphQLServerError::InternalError(_)) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            Err(GraphQLServerError::InternalError(_)) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

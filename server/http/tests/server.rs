@@ -15,49 +15,48 @@ use tokio::time::delay_for;
 /// A simple stupid query runner for testing.
 pub struct TestGraphQlRunner;
 
+#[async_trait]
 impl GraphQlRunner for TestGraphQlRunner {
-    fn run_query_with_complexity(
+    async fn run_query_with_complexity(
         &self,
         _query: Query,
         _complexity: Option<u64>,
         _max_depth: Option<u8>,
         _max_first: Option<u32>,
-    ) -> QueryResultFuture {
+    ) -> Arc<QueryResult> {
         unimplemented!();
     }
 
-    fn run_query(&self, query: Query) -> QueryResultFuture {
-        Box::new(future::ok(Arc::new(QueryResult::new(Some(
-            q::Value::Object(
-                if query.variables.is_some()
-                    && query
-                        .variables
-                        .as_ref()
-                        .unwrap()
-                        .get(&String::from("equals"))
-                        .is_some()
-                    && query
-                        .variables
-                        .unwrap()
-                        .get(&String::from("equals"))
-                        .unwrap()
-                        == &q::Value::String(String::from("John"))
-                {
-                    BTreeMap::from_iter(
-                        vec![(String::from("name"), q::Value::String(String::from("John")))]
-                            .into_iter(),
-                    )
-                } else {
-                    BTreeMap::from_iter(
-                        vec![(
-                            String::from("name"),
-                            q::Value::String(String::from("Jordi")),
-                        )]
+    async fn run_query(self: Arc<Self>, query: Query) -> Arc<QueryResult> {
+        Arc::new(QueryResult::new(Some(q::Value::Object(
+            if query.variables.is_some()
+                && query
+                    .variables
+                    .as_ref()
+                    .unwrap()
+                    .get(&String::from("equals"))
+                    .is_some()
+                && query
+                    .variables
+                    .unwrap()
+                    .get(&String::from("equals"))
+                    .unwrap()
+                    == &q::Value::String(String::from("John"))
+            {
+                BTreeMap::from_iter(
+                    vec![(String::from("name"), q::Value::String(String::from("John")))]
                         .into_iter(),
-                    )
-                },
-            ),
-        )))))
+                )
+            } else {
+                BTreeMap::from_iter(
+                    vec![(
+                        String::from("name"),
+                        q::Value::String(String::from("Jordi")),
+                    )]
+                    .into_iter(),
+                )
+            },
+        ))))
     }
 
     fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
@@ -107,16 +106,12 @@ mod test {
                     })
                     .map_ok(|response| {
                         let errors =
-                            test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+                            test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, false);
 
                         let message = errors[0]
-                            .as_object()
-                            .expect("Query error is not an object")
-                            .get("message")
-                            .expect("Error contains no message")
                             .as_str()
                             .expect("Error message is not a string");
-                        assert_eq!(message, "GraphQL server error (client error): The \"query\" field missing in request data");
+                        assert_eq!(message, "GraphQL server error (client error): The \"query\" field is missing in request data");
                     }).await.unwrap()
             })
     }
@@ -159,7 +154,7 @@ mod test {
                 })
                 .map_ok(|response| {
                     let errors =
-                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST);
+                        test_utils::assert_error_response(response, StatusCode::OK, true);
 
                     let message = errors[0]
                         .as_object()
