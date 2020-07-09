@@ -53,7 +53,6 @@ impl EventProducer<StoreEvent> for StoreEventListener {
 /// Manage subscriptions to the `StoreEvent` stream. Keep a list of
 /// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
-    logger: Logger,
     subscriptions: Arc<RwLock<HashMap<String, Sender<Arc<StoreEvent>>>>>,
 
     /// listen to StoreEvents generated when applying entity operations
@@ -68,7 +67,6 @@ impl SubscriptionManager {
             .expect("Failed to listen to entity change events in Postgres");
 
         let manager = SubscriptionManager {
-            logger,
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             listener: Mutex::new(listener),
         };
@@ -91,28 +89,24 @@ impl SubscriptionManager {
         &self,
         store_events: Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>,
     ) {
-        let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
         graph::spawn(
             store_events
                 .for_each(move |event| {
                     let senders = subscriptions.read().unwrap().clone();
-                    let logger = logger.clone();
                     let subscriptions = subscriptions.clone();
                     let event = Arc::new(event);
 
                     // Write change to all matching subscription streams; remove subscriptions
                     // whose receiving end has been dropped
                     stream::iter_ok::<_, ()>(senders).for_each(move |(id, sender)| {
-                        let logger = logger.clone();
                         let subscriptions = subscriptions.clone();
 
                         sender.send(event.cheap_clone()).then(move |result| {
                             match result {
                                 Err(_send_error) => {
                                     // Receiver was dropped
-                                    debug!(logger, "Unsubscribe"; "id" => &id);
                                     subscriptions.write().unwrap().remove(&id);
                                     Ok(())
                                 }
@@ -128,7 +122,6 @@ impl SubscriptionManager {
     fn periodically_clean_up_stale_subscriptions(&self) {
         use futures03::stream::StreamExt;
 
-        let logger = self.logger.clone();
         let subscriptions = self.subscriptions.clone();
 
         // Clean up stale subscriptions every 5s
@@ -147,7 +140,6 @@ impl SubscriptionManager {
 
                 // Remove all stale subscriptions
                 for id in stale_ids {
-                    debug!(logger, "Unsubscribe"; "id" => &id);
                     subscriptions.remove(&id);
                 }
 
@@ -164,10 +156,6 @@ impl SubscriptionManager {
         while subscriptions.read().unwrap().contains_key(&id) {
             id = Uuid::new_v4().to_string();
         }
-
-        debug!(self.logger, "Subscribe";
-               "id" => &id,
-               "entities" => format!("{:?}", entities));
 
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
