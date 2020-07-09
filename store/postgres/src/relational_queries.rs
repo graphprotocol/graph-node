@@ -1631,8 +1631,12 @@ impl<'a> FilterWindow<'a> {
         //      from unnest({parent_ids}) as p(id),
         //           children c
         //     where c.{parent_field} @> array[p.id]
+        //       and c.{parent_field} && {parent_ids}
         //       and .. other conditions on c ..
         //     limit {parent_ids.len} + 1
+        //
+        // The redundant `&&` clause helps Postgres to narrow down the
+        // rows it needs to pick from `children` to join with `p(id)`
 
         out.push_sql("\n/* child_type_a */ from unnest(");
         column.bind_ids(&self.ids, out)?;
@@ -1644,6 +1648,10 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
+        out.push_sql(" and c.");
+        out.push_identifier(column.name.as_str())?;
+        out.push_sql(" && ");
+        column.bind_ids(&self.ids, out)?;
         self.and_filter(out.reborrow())?;
         limit.single_limit(self.ids.len(), out);
         Ok(())
