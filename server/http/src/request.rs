@@ -9,12 +9,17 @@ use graph::prelude::*;
 pub struct GraphQLRequest {
     body: Bytes,
     schema: Arc<Schema>,
+    network: Option<String>,
 }
 
 impl GraphQLRequest {
     /// Creates a new GraphQLRequest future based on an HTTP request and a result sender.
-    pub fn new(body: Bytes, schema: Arc<Schema>) -> Self {
-        GraphQLRequest { body, schema }
+    pub fn new(body: Bytes, schema: Arc<Schema>, network: Option<String>) -> Self {
+        GraphQLRequest {
+            body,
+            schema,
+            network,
+        }
     }
 }
 
@@ -65,7 +70,12 @@ impl Future for GraphQLRequest {
             )),
         }?;
 
-        Ok(Async::Ready(Query::new(schema, document, variables)))
+        Ok(Async::Ready(Query::new(
+            schema,
+            document,
+            variables,
+            self.network.clone(),
+        )))
     }
 }
 
@@ -86,7 +96,8 @@ mod tests {
     fn rejects_invalid_json() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(hyper::body::Bytes::from("!@#)%"), Arc::new(schema));
+        let request =
+            GraphQLRequest::new(hyper::body::Bytes::from("!@#)%"), Arc::new(schema), None);
         request.wait().expect_err("Should reject invalid JSON");
     }
 
@@ -94,7 +105,7 @@ mod tests {
     fn rejects_json_without_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(hyper::body::Bytes::from("{}"), Arc::new(schema));
+        let request = GraphQLRequest::new(hyper::body::Bytes::from("{}"), Arc::new(schema), None);
         request
             .wait()
             .expect_err("Should reject JSON without query field");
@@ -104,8 +115,11 @@ mod tests {
     fn rejects_json_with_non_string_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request =
-            GraphQLRequest::new(hyper::body::Bytes::from("{\"query\": 5}"), Arc::new(schema));
+        let request = GraphQLRequest::new(
+            hyper::body::Bytes::from("{\"query\": 5}"),
+            Arc::new(schema),
+            None,
+        );
         request
             .wait()
             .expect_err("Should reject JSON with a non-string query field");
@@ -118,6 +132,7 @@ mod tests {
         let request = GraphQLRequest::new(
             hyper::body::Bytes::from("{\"query\": \"foo\"}"),
             Arc::new(schema),
+            None,
         );
         request.wait().expect_err("Should reject broken queries");
     }
@@ -129,6 +144,7 @@ mod tests {
         let request = GraphQLRequest::new(
             hyper::body::Bytes::from("{\"query\": \"{ user { name } }\"}"),
             Arc::new(schema),
+            None,
         );
         let query = request.wait().expect("Should accept valid queries");
         assert_eq!(
@@ -150,6 +166,7 @@ mod tests {
                  }",
             ),
             Arc::new(schema),
+            None,
         );
         let query = request.wait().expect("Should accept null variables");
 
@@ -171,6 +188,7 @@ mod tests {
                  }",
             ),
             Arc::new(schema),
+            None,
         );
         request.wait().expect_err("Should reject non-map variables");
     }
@@ -190,6 +208,7 @@ mod tests {
                  }",
             ),
             Arc::new(schema),
+            None,
         );
         let query = request.wait().expect("Should accept valid queries");
 

@@ -371,6 +371,7 @@ where
                 ]
                 .into_iter(),
             ))),
+            None,
         );
 
         // Execute the query
@@ -451,6 +452,7 @@ where
             Some(QueryVariables::new(HashMap::from_iter(
                 vec![("where".into(), where_filter)].into_iter(),
             ))),
+            None,
         );
 
         // Execute the query
@@ -612,6 +614,7 @@ where
                 ]
                 .into_iter(),
             ))),
+            None,
         );
 
         // Execute the query

@@ -299,7 +299,9 @@ where
 
                     // Construct a subscription
                     let subscription = Subscription {
-                        query: Query::new(schema.clone(), query, variables),
+                        // Subscriptions currently do not benefit from the generational cache
+                        // anyways, so don't bother passing a network.
+                        query: Query::new(schema.clone(), query, variables, None),
                     };
 
                     debug!(logger, "Start operation";

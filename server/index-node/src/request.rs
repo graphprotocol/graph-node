@@ -66,7 +66,7 @@ impl Future for IndexNodeRequest {
             )),
         }?;
 
-        Ok(Async::Ready(Query::new(schema, document, variables)))
+        Ok(Async::Ready(Query::new(schema, document, variables, None)))
     }
 }
 

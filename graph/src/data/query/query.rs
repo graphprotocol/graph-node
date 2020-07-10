@@ -111,14 +111,17 @@ pub struct Query {
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
     pub shape_hash: u64,
+    pub network: Option<String>,
     _force_use_of_new: (),
 }
 
 impl Query {
+    /// The `network` is currently used only for caching purposes, so it is not mandatory.
     pub fn new(
         schema: Arc<Schema>,
         document: q::Document,
         variables: Option<QueryVariables>,
+        network: Option<String>,
     ) -> Self {
         let shape_hash = shape_hash(&document);
         Query {
@@ -126,6 +129,7 @@ impl Query {
             document,
             variables,
             shape_hash,
+            network,
             _force_use_of_new: (),
         }
     }

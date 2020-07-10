@@ -260,10 +260,17 @@ where
             }
         };
 
+        let network = match self.store.network_name(&id) {
+            Ok(network) => network,
+            Err(e) => {
+                return Err(GraphQLServerError::InternalError(e.to_string()));
+            }
+        };
+
         let start = Instant::now();
         hyper::body::to_bytes(request_body)
             .map_err(|_| GraphQLServerError::from("Failed to read request body"))
-            .and_then(move |body| GraphQLRequest::new(body, schema).compat())
+            .and_then(move |body| GraphQLRequest::new(body, schema, network).compat())
             .and_then(move |query| {
                 // Run the query using the query runner
                 tokio::task::block_in_place(|| {

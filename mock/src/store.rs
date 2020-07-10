@@ -226,5 +226,7 @@ pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId
             Ok(Arc::new(schema))
         });
 
+    store.expect_network_name().returning(|_| Ok(None));
+
     (Arc::new(store), subgraph_id)
 }

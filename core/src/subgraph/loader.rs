@@ -94,7 +94,7 @@ where
             .into_iter(),
         )));
 
-        Ok(Query::new(schema, document, variables))
+        Ok(Query::new(schema, document, variables, None))
     }
 
     fn parse_data_sources(

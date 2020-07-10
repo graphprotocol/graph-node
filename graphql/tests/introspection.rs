@@ -553,6 +553,7 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         Arc::new(schema),
         graphql_parser::parse_query(query).unwrap(),
         None,
+        None,
     );
 
     // Execute it
