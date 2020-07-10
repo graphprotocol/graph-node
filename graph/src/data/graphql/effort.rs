@@ -133,6 +133,8 @@ enum KillStateLogEvent {
     Start,
     /// Overload has been going on for the duration
     Ongoing(Duration),
+    /// No longer overloaded, reducing the kill_rate
+    Settling,
     /// Overload was resolved after duration time
     Resolved(Duration),
     /// Don't log anything right now
@@ -163,13 +165,17 @@ impl KillState {
         }
     }
 
-    fn log_event(&mut self, now: Instant, overloaded: bool) -> KillStateLogEvent {
+    fn log_event(&mut self, now: Instant, kill_rate: f64, overloaded: bool) -> KillStateLogEvent {
         use KillStateLogEvent::*;
 
         if let Some(overload_start) = self.overload_start {
             if !overloaded {
-                self.overload_start = None;
-                Resolved(overload_start.elapsed())
+                if kill_rate == 0.0 {
+                    self.overload_start = None;
+                    Resolved(overload_start.elapsed())
+                } else {
+                    Settling
+                }
             } else if now.saturating_duration_since(self.last_overload_log)
                 > Duration::from_secs(30)
             {
@@ -351,8 +357,7 @@ impl LoadManager {
             debug!(self.logger, "Declining query";
                 "query" => query,
                 "wait_ms" => wait_ms.as_millis(),
-                "query_effort_ms" => query_effort,
-                "total_effort_ms" => total_effort,
+                "query_weight" => format!("{:.2}", query_effort / total_effort),
                 "kill_rate" => format!("{:.4}", kill_rate),
             );
             return false;
@@ -395,12 +400,18 @@ impl LoadManager {
                 let mut state = self.kill_state.write().unwrap();
                 state.kill_rate = kill_rate;
                 state.last_update = now;
-                state.log_event(now, overloaded)
+                state.log_event(now, kill_rate, overloaded)
             };
             // Log information about what's happening after we've released the
             // lock on self.kill_state
             use KillStateLogEvent::*;
             match event {
+                Settling => {
+                    info!(self.logger, "Query overload improving";
+                        "wait_ms" => wait_ms.as_millis(),
+                        "kill_rate" => format!("{:.4}", kill_rate),
+                        "event" => "settling");
+                }
                 Resolved(duration) => {
                     info!(self.logger, "Query overload resolved";
                         "duration_ms" => duration.as_millis(),
