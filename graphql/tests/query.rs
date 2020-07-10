@@ -231,7 +231,7 @@ fn execute_query_document_with_variables(
     variables: Option<QueryVariables>,
 ) -> QueryResult {
     let runner = GraphQlRunner::new(&*LOGGER, STORE.clone(), LOAD_MANAGER.clone());
-    let query = Query::new(Arc::new(api_test_schema()), query, variables);
+    let query = Query::new(Arc::new(api_test_schema()), query, variables, None);
 
     return_err!(runner.execute(query, None, None, None))
         .as_ref()
@@ -715,6 +715,7 @@ fn query_complexity() {
         )
         .unwrap(),
         None,
+        None,
     );
     let max_complexity = Some(1_010_100);
 
@@ -743,6 +744,7 @@ fn query_complexity() {
             }",
         )
         .unwrap(),
+        None,
         None,
     );
 
@@ -775,6 +777,7 @@ async fn query_complexity_subscriptions() {
             }",
         )
         .unwrap(),
+        None,
         None,
     );
     let max_complexity = Some(1_010_100);
@@ -813,6 +816,7 @@ async fn query_complexity_subscriptions() {
         )
         .unwrap(),
         None,
+        None,
     );
 
     let options = SubscriptionExecutionOptions {
@@ -840,6 +844,7 @@ fn instant_timeout() {
     let query = Query::new(
         Arc::new(api_test_schema()),
         graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
+        None,
         None,
     );
 
@@ -1139,6 +1144,7 @@ async fn subscription_gets_result_even_without_events() {
             }",
         )
         .unwrap(),
+        None,
         None,
     );
 

@@ -38,6 +38,7 @@ impl<S: SubgraphDeploymentStore, Q: GraphQlRunner> LazyMetadata<S, Q> {
                 Some(QueryVariables::new(HashMap::from_iter(
                     vec![(String::from("id"), q::Value::String(self.id.to_string()))].into_iter(),
                 ))),
+                None,
             ))
             .await?;
 
@@ -72,6 +73,7 @@ impl<S: SubgraphDeploymentStore, Q: GraphQlRunner> LazyMetadata<S, Q> {
                 Some(QueryVariables::new(HashMap::from_iter(
                     vec![(String::from("id"), q::Value::String(self.id.to_string()))].into_iter(),
                 ))),
+                None,
             ))
             .await?;
 

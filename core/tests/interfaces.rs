@@ -33,7 +33,12 @@ fn insert_and_query(
     )?;
 
     let document = graphql_parser::parse_query(query).unwrap();
-    let query = Query::new(STORE.api_schema(&subgraph_id).unwrap(), document, None);
+    let query = Query::new(
+        STORE.api_schema(&subgraph_id).unwrap(),
+        document,
+        None,
+        STORE.network_name(&subgraph_id).unwrap(),
+    );
     Ok(execute_subgraph_query(query))
 }
 
