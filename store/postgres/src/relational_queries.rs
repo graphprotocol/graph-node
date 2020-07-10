@@ -11,8 +11,10 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
+use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashSet};
 use std::convert::TryFrom;
+use std::env;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
@@ -30,6 +32,22 @@ use crate::entities::STRING_PREFIX_SIZE;
 use crate::filter::UnsupportedFilter;
 use crate::relational::{Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
+
+lazy_static! {
+    /// Use a variant of the query for child_type_a when we are looking up
+    /// fewer than this many entities. This variable is only here temporarily
+    /// until we can settle on the right batch size through experimentation
+    /// and should then just become an ordinary constant
+    static ref TYPEA_BATCH_SIZE: usize = {
+        env::var("TYPEA_BATCH_SIZE")
+            .ok()
+            .map(|s| {
+                usize::from_str(&s)
+                    .unwrap_or_else(|_| panic!("TYPE_BATCH_SIZE must be a number, but is `{}`", s))
+            })
+            .unwrap_or(0)
+    };
+}
 
 fn str_as_bytes(id: &str) -> QueryResult<scalar::Bytes> {
     scalar::Bytes::from_str(&id).map_err(|e| DieselError::SerializationError(Box::new(e)))
@@ -1631,9 +1649,13 @@ impl<'a> FilterWindow<'a> {
         //      from unnest({parent_ids}) as p(id),
         //           children c
         //     where c.{parent_field} @> array[p.id]
+        //       and c.{parent_field} && {parent_ids}
         //       and .. other conditions on c ..
         //     limit {parent_ids.len} + 1
-
+        //
+        // The redundant `&&` clause is only added when we have fewer than
+        // TYPEA_BATCH_SIZE children and helps Postgres to narrow down the
+        // rows it needs to pick from `children` to join with `p(id)`
         out.push_sql("\n/* child_type_a */ from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id), ");
@@ -1644,6 +1666,12 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
+        if self.ids.len() < *TYPEA_BATCH_SIZE {
+            out.push_sql(" and c.");
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(" && ");
+            column.bind_ids(&self.ids, out)?;
+        }
         self.and_filter(out.reborrow())?;
         limit.single_limit(self.ids.len(), out);
         Ok(())
