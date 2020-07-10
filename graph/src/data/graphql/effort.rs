@@ -394,7 +394,7 @@ impl LoadManager {
             if overloaded {
                 kill_rate = (kill_rate + KILL_RATE_STEP * (1.0 - kill_rate)).min(1.0);
             } else {
-                kill_rate = (kill_rate - KILL_RATE_STEP).max(0.0);
+                kill_rate = (kill_rate - 2.0 * KILL_RATE_STEP).max(0.0);
             }
             let event = {
                 let mut state = self.kill_state.write().unwrap();
