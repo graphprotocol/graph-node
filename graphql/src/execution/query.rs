@@ -38,6 +38,8 @@ pub struct Query {
     /// The ShapeHash of the original query
     pub shape_hash: u64,
 
+    pub network: Option<String>,
+
     pub(crate) fragments: HashMap<String, q::FragmentDefinition>,
     kind: Kind,
 
@@ -111,6 +113,7 @@ impl Query {
             selection_set,
             shape_hash: query.shape_hash,
             kind,
+            network: query.network,
             query_text,
             variables_text,
             complexity: 0,
@@ -165,6 +168,7 @@ impl Query {
             selection_set: self.selection_set.clone(),
             shape_hash: self.shape_hash,
             kind: self.kind,
+            network: self.network.clone(),
             query_text: self.query_text.clone(),
             variables_text: self.variables_text.clone(),
             complexity: self.complexity,

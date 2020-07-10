@@ -71,10 +71,10 @@ lazy_static! {
 
     static ref CACHE_ALL: bool = CACHED_SUBGRAPH_IDS.contains(&"*".to_string());
 
-    // How many blocks should be kept in the query cache. When the limit is reached, older blocks
-    // are evicted. This should be kept small since a lookup to the cache is O(n) on this value, and
-    // the cache memory usage also increases with larger number. Set to 0 to disable the cache.
-    // Defaults to 1.
+    // How many blocks per network should be kept in the query cache. When the limit is reached,
+    // older blocks are evicted. This should be kept small since a lookup to the cache is O(n) on
+    // this value, and the cache memory usage also increases with larger number. Set to 0 to disable
+    // the cache. Defaults to 1.
     static ref QUERY_CACHE_BLOCKS: usize = {
         std::env::var("GRAPH_QUERY_CACHE_BLOCKS")
         .unwrap_or("1".to_string())
@@ -92,8 +92,9 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_CACHE_MAX_MEM environment variable")
     };
 
-    // This `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
-    static ref QUERY_CACHE: RwLock<VecDeque<CacheByBlock>> = RwLock::new(VecDeque::new());
+    // Query cache by network.
+    // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
+    static ref QUERY_CACHE: RwLock<Vec<(String, VecDeque<CacheByBlock>)>> = RwLock::new(vec![]);
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new();
 }
 
@@ -328,7 +329,7 @@ pub fn execute_root_selection_set<R: Resolver>(
     let mut key: Option<QueryHash> = None;
 
     if R::CACHEABLE && (*CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id)) {
-        if let Some(block_ptr) = block_ptr {
+        if let (Some(block_ptr), Some(network)) = (block_ptr, &ctx.query.network) {
             // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
             // - Metadata queries are not cacheable.
             // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
@@ -338,15 +339,15 @@ pub fn execute_root_selection_set<R: Resolver>(
 
                 // Check if the response is cached.
                 let cache = QUERY_CACHE.read().unwrap();
-
-                // Iterate from the most recent block looking for a block that matches.
-                if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
-                    if let Some(response) = cache_by_block.cache.get(&cache_key) {
-                        ctx.cache_status.store(CacheStatus::Hit);
-                        return response.cheap_clone();
+                if let Some(cache) = cache.iter().find(|(n, _)| n == network).map(|(_, c)| c) {
+                    // Iterate from the most recent block looking for a block that matches.
+                    if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
+                        if let Some(response) = cache_by_block.cache.get(&cache_key) {
+                            ctx.cache_status.store(CacheStatus::Hit);
+                            return response.cheap_clone();
+                        }
                     }
                 }
-
                 key = Some(cache_key);
             }
         }
@@ -376,10 +377,21 @@ pub fn execute_root_selection_set<R: Resolver>(
     // head can cause the legitimate cache to be thrown out.
     // It would be redundant to insert herd cache hits.
     let no_cache = herd_hit || result.has_errors();
-    if let (false, Some(key), Some(block_ptr)) = (no_cache, key, block_ptr) {
+    if let (false, Some(key), Some(block_ptr), Some(network)) =
+        (no_cache, key, block_ptr, &ctx.query.network)
+    {
         // Calculate the weight outside the lock.
         let weight = result.data.as_ref().unwrap().weight();
         let mut cache = QUERY_CACHE.write().unwrap();
+
+        // Get or insert the cache for this network.
+        let cache = match cache.iter_mut().find(|(n, _)| n == network).map(|(_, c)| c) {
+            Some(c) => c,
+            None => {
+                cache.push((network.clone(), VecDeque::new()));
+                &mut cache.last_mut().unwrap().1
+            }
+        };
 
         // If there is already a cache by the block of this query, just add it there.
         if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
