@@ -347,13 +347,13 @@ impl PartialOrd for EthereumTrigger {
 
 pub struct EthereumTransactionReceiptData {
     // from receipts
+    // Geth nodes do not support `root` so it is not included
     pub hash: H256,
     pub index: Index,
     pub cumulative_gas_used: U256,
     pub gas_used: Option<U256>,
     pub contract_address: Option<H160>,
     pub status: Option<U64>,
-    pub root: Option<H256>,
 
     // from txs
     pub from: H160,
@@ -402,7 +402,6 @@ impl<'a> From<&'a EthereumBlock> for FullEthereumBlockDataWithReceipts {
                     gas_used: transaction_and_receipt.1.gas_used,
                     contract_address: transaction_and_receipt.1.contract_address,
                     status: transaction_and_receipt.1.status,
-                    root: transaction_and_receipt.1.root,
 
                     // from txs
                     from: transaction_and_receipt.0.from,

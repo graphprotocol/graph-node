@@ -395,7 +395,6 @@ impl ToAscObj<AscEthereumTransactionReceipt> for EthereumTransactionReceiptData 
                 .status
                 .map(|status| heap.asc_new(&BigInt::from(status)))
                 .into(),
-            root: self.root.map(|root| heap.asc_new(&root)).into(),
 
             // // from txs
             from: heap.asc_new(&self.from),

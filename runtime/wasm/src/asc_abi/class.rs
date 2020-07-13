@@ -479,7 +479,6 @@ pub(crate) struct AscEthereumTransactionReceipt {
     pub gas_used: AscPtr<AscBigInt>,
     pub contract_address: AscPtr<AscH160>,
     pub status: AscPtr<AscBigInt>,
-    pub root: AscPtr<AscH256>,
 
     pub from: AscPtr<AscH160>,
     pub to: AscPtr<AscH160>,
