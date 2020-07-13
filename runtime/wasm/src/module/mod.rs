@@ -161,13 +161,13 @@ impl WasmInstance {
         mut self,
         handler_name: &str,
     ) -> Result<BlockState, anyhow::Error> {
-        let block: &Arc<EthereumBlockType> = &self.take_ctx().ctx.block;
+        let context = self.take_ctx();
 
         // Prepare an Ethereum Block for the WASM runtime
-        let arg = match block.as_ref() {
+        let arg = match context.ctx.block.as_ref() {
             EthereumBlockType::FullWithReceipts(block) => self
                 .asc_new::<AscFullEthereumBlockWithReceipts, _>(
-                    &FullEthereumBlockDataWithReceipts::from(block),
+                    &FullEthereumBlockDataWithReceipts::try_from(block).unwrap(),
                 )
                 .erase(),
             EthereumBlockType::Full(block) => self
@@ -180,7 +180,7 @@ impl WasmInstance {
 
         self.invoke_handler(handler_name, arg)?;
 
-        Ok(self.take_ctx().ctx.state)
+        Ok(context.ctx.state)
     }
 
     pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext {
