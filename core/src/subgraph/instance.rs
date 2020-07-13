@@ -165,12 +165,11 @@ where
 
                 let transaction = block
                     .transaction_for_log(&log)
-                    .map(Arc::new)
+                    .map(|tx| Arc::new(tx.clone()))
                     .context("Found no transaction for event")?;
                 let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
                 // Process the log in each host in the same order the corresponding data
                 // sources appear in the subgraph manifest
-                let transaction = Arc::new(transaction);
                 for host in matching_hosts {
                     state = host
                         .process_log(
@@ -189,8 +188,8 @@ where
 
                 let transaction = block
                     .transaction_for_call(&call)
+                    .map(|tx| Arc::new(tx.clone()))
                     .context("Found no transaction for call")?;
-                let transaction = Arc::new(transaction);
                 let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
 
                 for host in matching_hosts {

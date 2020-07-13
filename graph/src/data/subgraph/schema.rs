@@ -1026,7 +1026,7 @@ impl WriteOperations for EthereumBlockHandlerEntity {
         if let Some(filter_id) = filter_id {
             entity.set("filter", filter_id);
         }
-        entity.set("input", String::from(self.input));
+        entity.set("input", self.input);
         ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
@@ -1110,7 +1110,7 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Deserialize)]
 pub enum EthereumBlockHandlerData {
     Block,
     FullBlock,
@@ -1149,9 +1149,9 @@ impl From<EthereumBlockHandlerData> for String {
     }
 }
 
-impl From<EthereumBlockHandlerData> for q::Value {
-    fn from(data: EthereumBlockHandlerData) -> q::Value {
-        q::Value::Enum(data.into())
+impl From<EthereumBlockHandlerData> for Value {
+    fn from(data: EthereumBlockHandlerData) -> Value {
+        Value::String(data.into())
     }
 }
 

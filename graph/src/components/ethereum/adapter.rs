@@ -438,9 +438,9 @@ impl EthereumBlockFilter {
                     .mapping
                     .block_handlers
                     .iter()
-                    .map(|handler| &handler.input)
+                    .map(|handler| handler.input)
                     .max()
-                    .unwrap_or(&EthereumBlockHandlerData::Block)
+                    .unwrap_or(EthereumBlockHandlerData::Block)
                     .into();
 
                 filter_opt.extend(Self {

@@ -200,6 +200,7 @@ pub enum EthereumBlockType {
 
     FullWithReceipts(EthereumBlock),
 }
+
 impl EthereumBlockType {
     pub fn light_block(&self) -> &LightEthereumBlock {
         match self {
@@ -217,26 +218,22 @@ impl EthereumBlockType {
         self.light_block().number.unwrap().as_u64()
     }
 
-    pub fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
-        log.transaction_hash
-            .and_then(|hash| {
-                self.light_block()
-                    .transactions
-                    .iter()
-                    .find(|tx| tx.hash == hash)
-            })
-            .cloned()
+    pub fn transaction_for_log(&self, log: &Log) -> Option<&Transaction> {
+        log.transaction_hash.and_then(|hash| {
+            self.light_block()
+                .transactions
+                .iter()
+                .find(|tx| tx.hash == hash)
+        })
     }
 
-    pub fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
-        call.transaction_hash
-            .and_then(|hash| {
-                self.light_block()
-                    .transactions
-                    .iter()
-                    .find(|tx| tx.hash == hash)
-            })
-            .cloned()
+    pub fn transaction_for_call(&self, call: &EthereumCall) -> Option<&Transaction> {
+        call.transaction_hash.and_then(|hash| {
+            self.light_block()
+                .transactions
+                .iter()
+                .find(|tx| tx.hash == hash)
+        })
     }
 }
 
@@ -259,8 +256,8 @@ impl Default for BlockType {
     }
 }
 
-impl<'a> From<&'a EthereumBlockHandlerData> for BlockType {
-    fn from(block: &'a EthereumBlockHandlerData) -> BlockType {
+impl From<EthereumBlockHandlerData> for BlockType {
+    fn from(block: EthereumBlockHandlerData) -> BlockType {
         match block {
             EthereumBlockHandlerData::Block => BlockType::Light,
             EthereumBlockHandlerData::FullBlock => BlockType::Full,
@@ -364,6 +361,7 @@ pub struct EthereumTransactionReceiptData {
     pub input: Bytes,
 }
 
+/// Ethereum block data with transactions and their receipts.
 pub struct FullEthereumBlockDataWithReceipts {
     pub hash: H256,
     pub parent_hash: H256,
@@ -443,18 +441,15 @@ impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockDataWithReceipts {
     ) -> Result<FullEthereumBlockDataWithReceipts, Self::Error> {
         let fullblock = match block {
             EthereumBlockType::FullWithReceipts(full_block) => full_block,
-            EthereumBlockType::Full(_) => return Err(anyhow::anyhow!(
+            EthereumBlockType::Full(_) | EthereumBlockType::Light(_)  => return Err(anyhow::anyhow!(
                 "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires an EthereumBlockType::FullWithReceipts()"
             )),
-            EthereumBlockType::Light(_) => return Err(anyhow::anyhow!(
-                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires an EthereumBlockType::FullWithReceipts()"
-            ))
         };
         Ok(fullblock.into())
     }
 }
 
-/// Ethereum block data.
+/// Ethereum block data with transactions.
 #[derive(Clone, Debug, Default)]
 pub struct FullEthereumBlockData {
     pub hash: H256,
