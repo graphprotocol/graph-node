@@ -3,7 +3,6 @@ use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use std::task::Context;
 use std::task::Poll;
-use std::time::Instant;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
@@ -11,7 +10,6 @@ use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecuti
 
 use crate::request::IndexNodeRequest;
 use crate::resolver::IndexNodeResolver;
-use crate::response::IndexNodeResponse;
 use crate::schema::SCHEMA;
 
 /// An asynchronous response to a GraphQL request.
@@ -95,13 +93,10 @@ where
     fn handle_graphql_query(&self, request_body: Body) -> IndexNodeServiceResponse {
         let logger = self.logger.clone();
         let store = self.store.clone();
-        let result_logger = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
 
         // Obtain the schema for the index node GraphQL API
         let schema = SCHEMA.clone();
-
-        let start = Instant::now();
 
         hyper::body::to_bytes(request_body)
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
@@ -128,18 +123,8 @@ where
                     futures03::future::ok(QueryResult::from(result))
                 })
             })
-            .then(move |result| {
-                let elapsed = start.elapsed().as_millis();
-                if let Err(e) = &result {
-                    error!(
-                        result_logger,
-                        "GraphQL query failed";
-                        "error" => e.to_string(),
-                        "query_time_ms" => elapsed,
-                        "code" => LogCode::GraphQlQueryFailure,
-                    )
-                }
-                IndexNodeResponse::new(result).compat()
+            .map_ok(|result| {
+                result.as_http_response()
             })
             .boxed()
     }

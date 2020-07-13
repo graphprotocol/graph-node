@@ -1,6 +1,5 @@
 use crate::data::query::QueryError;
 use futures::prelude::*;
-use serde::ser::*;
 use std::error::Error;
 use std::fmt;
 
@@ -44,22 +43,6 @@ impl Error for GraphQLServerError {
             GraphQLServerError::ClientError(_) => None,
             GraphQLServerError::QueryError(ref e) => Some(e),
             GraphQLServerError::InternalError(_) => None,
-        }
-    }
-}
-
-impl Serialize for GraphQLServerError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        if let GraphQLServerError::QueryError(ref e) = *self {
-            serializer.serialize_some(e)
-        } else {
-            let mut map = serializer.serialize_map(Some(1))?;
-            let msg = format!("{}", self);
-            map.serialize_entry("message", msg.as_str())?;
-            map.end()
         }
     }
 }
