@@ -50,8 +50,6 @@ lazy_static! {
     // associated with it
     static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == ZERO_DURATION;
 
-    static ref KILL_RATE_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
-
     static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
 }
 
@@ -123,9 +121,6 @@ impl QueryEffortInner {
         self.total.add_at(now, duration);
     }
 }
-
-// The size of any individual step when we adjust the kill_rate
-const KILL_RATE_STEP: f64 = 0.1;
 
 /// What to log about the state we are currently in
 enum KillStateLogEvent {
@@ -386,15 +381,35 @@ impl LoadManager {
         overloaded: bool,
         wait_ms: Duration,
     ) -> f64 {
+        // The rates by which we increase and decrease the `kill_rate`; when
+        // we increase the `kill_rate`, we do that in a way so that we do drop
+        // fewer queries as the `kill_rate` approaches 1.0. After `n`
+        // consecutive steps of increasing the `kill_rate`, it will
+        // be `1 - (1-KILL_RATE_STEP_UP)^n`
+        //
+        // When we step down, we do that in fixed size steps to move away from
+        // dropping queries fairly quickly so that after `n` steps of reducing
+        // the `kill_rate`, it is at most `1 - n * KILL_RATE_STEP_DOWN`
+        //
+        // The idea behind this is that we want to be conservative when we drop
+        // queries, but aggressive when we reduce the amount of queries we drop
+        // to disrupt traffic for as little as possible.
+        const KILL_RATE_STEP_UP: f64 = 0.1;
+        const KILL_RATE_STEP_DOWN: f64 = 2.0 * KILL_RATE_STEP_UP;
+
+        lazy_static! {
+            static ref KILL_RATE_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
+        }
+
         assert!(overloaded || kill_rate > 0.0);
 
         let now = Instant::now();
         if now.saturating_duration_since(last_update) > *KILL_RATE_UPDATE_INTERVAL {
             // Update the kill_rate
             if overloaded {
-                kill_rate = (kill_rate + KILL_RATE_STEP * (1.0 - kill_rate)).min(1.0);
+                kill_rate = (kill_rate + KILL_RATE_STEP_UP * (1.0 - kill_rate)).min(1.0);
             } else {
-                kill_rate = (kill_rate - 2.0 * KILL_RATE_STEP).max(0.0);
+                kill_rate = (kill_rate - KILL_RATE_STEP_DOWN).max(0.0);
             }
             let event = {
                 let mut state = self.kill_state.write().unwrap();
