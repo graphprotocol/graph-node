@@ -100,6 +100,9 @@ those.
 - `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`: maximum number of GraphQL
   operations per WebSocket connection. Any operation created after the limit
   will return an error to the client. Default: unlimited.
+- `GRAPH_SQL_STATEMENT_TIMEOUT`: the maximum number of seconds an
+  individual SQL query is allowed to take during GraphQL
+  execution. Default: unlimited
 
 ## Miscellaneous
 
