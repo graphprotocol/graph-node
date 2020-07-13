@@ -153,8 +153,7 @@ mod test {
                     client.request(request)
                 })
                 .map_ok(|response| {
-                    let errors =
-                        test_utils::assert_error_response(response, StatusCode::OK, true);
+                    let errors = test_utils::assert_error_response(response, StatusCode::OK, true);
 
                     let message = errors[0]
                         .as_object()

@@ -35,6 +35,8 @@ impl<Q, S> Clone for IndexNodeService<Q, S> {
     }
 }
 
+impl<Q, S> CheapClone for IndexNodeService<Q, S> {}
+
 impl<Q, S> IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
@@ -50,47 +52,33 @@ where
         }
     }
 
-    fn graphiql_html(&self) -> String {
-        include_str!("../assets/index.html").into()
+    fn graphiql_html() -> &'static str {
+        include_str!("../assets/index.html")
     }
 
     /// Serves a static file.
-    fn serve_file(&self, contents: &'static str) -> IndexNodeServiceResponse {
-        async move {
-            Ok(Response::builder()
-                .status(200)
-                .body(Body::from(contents))
-                .unwrap())
-        }
-        .boxed()
+    fn serve_file(contents: &'static str) -> Response<Body> {
+        Response::builder()
+            .status(200)
+            .body(Body::from(contents))
+            .unwrap()
     }
 
-    /// Serves a dynamically created file.
-    fn serve_dynamic_file(&self, contents: String) -> IndexNodeServiceResponse {
-        async {
-            Ok(Response::builder()
-                .status(200)
-                .body(Body::from(contents))
-                .unwrap())
-        }
-        .boxed()
+    fn index() -> Response<Body> {
+        Response::builder()
+            .status(200)
+            .body(Body::from("OK"))
+            .unwrap()
     }
 
-    fn index(&self) -> IndexNodeServiceResponse {
-        async {
-            Ok(Response::builder()
-                .status(200)
-                .body(Body::from("OK"))
-                .unwrap())
-        }
-        .boxed()
+    fn handle_graphiql() -> Response<Body> {
+        Self::serve_file(Self::graphiql_html())
     }
 
-    fn handle_graphiql(&self) -> IndexNodeServiceResponse {
-        self.serve_dynamic_file(self.graphiql_html())
-    }
-
-    fn handle_graphql_query(&self, request_body: Body) -> IndexNodeServiceResponse {
+    async fn handle_graphql_query(
+        &self,
+        request_body: Body,
+    ) -> Result<Response<Body>, GraphQLServerError> {
         let logger = self.logger.clone();
         let store = self.store.clone();
         let graphql_runner = self.graphql_runner.clone();
@@ -98,78 +86,70 @@ where
         // Obtain the schema for the index node GraphQL API
         let schema = SCHEMA.clone();
 
-        hyper::body::to_bytes(request_body)
+        let body = hyper::body::to_bytes(request_body)
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
-            .and_then(move |body| IndexNodeRequest::new(body, schema).compat())
-            .and_then(move |query| {
-                let logger = logger.clone();
-                let graphql_runner = graphql_runner.clone();
-                let load_manager = graphql_runner.load_manager();
+            .await?;
 
-                // Run the query using the index node resolver
-                tokio::task::block_in_place(|| {
-                    let options = QueryExecutionOptions {
-                        logger: logger.clone(),
-                        resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
-                        deadline: None,
-                        max_first: std::u32::MAX,
-                        load_manager,
-                    };
-                    let result = PreparedQuery::new(query, None, 100).map(|query| {
-                        // Index status queries are not cacheable, so we may unwrap this.
-                        Arc::try_unwrap(execute_query(query, None, None, options)).unwrap()
-                    });
+        let query = IndexNodeRequest::new(body, schema).compat().await?;
 
-                    futures03::future::ok(QueryResult::from(result))
-                })
-            })
-            .map_ok(|result| {
-                result.as_http_response()
-            })
-            .boxed()
+        let logger = logger.clone();
+        let graphql_runner = graphql_runner.clone();
+        let load_manager = graphql_runner.load_manager();
+
+        // Run the query using the index node resolver
+        let result = tokio::task::spawn_blocking(move || {
+            let options = QueryExecutionOptions {
+                logger: logger.clone(),
+                resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
+                deadline: None,
+                max_first: std::u32::MAX,
+                load_manager,
+            };
+            QueryResult::from(PreparedQuery::new(query, None, 100).map(|query| {
+                // Index status queries are not cacheable, so we may unwrap this.
+                Arc::try_unwrap(execute_query(query, None, None, options)).unwrap()
+            }))
+        })
+        .await
+        .unwrap();
+        Ok(result.as_http_response())
     }
 
     // Handles OPTIONS requests
-    fn handle_graphql_options(&self, _request: Request<Body>) -> IndexNodeServiceResponse {
-        Box::pin(async {
-            Ok(Response::builder()
-                .status(200)
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Access-Control-Allow-Headers", "Content-Type, User-Agent")
-                .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
-                .body(Body::from(""))
-                .unwrap())
-        })
+    fn handle_graphql_options(_request: Request<Body>) -> Response<Body> {
+        Response::builder()
+            .status(200)
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Headers", "Content-Type, User-Agent")
+            .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
+            .body(Body::from(""))
+            .unwrap()
     }
 
     /// Handles 302 redirects
-    fn handle_temp_redirect(&self, destination: &str) -> IndexNodeServiceResponse {
-        Box::pin(futures03::future::ready(
-            header::HeaderValue::from_str(destination)
-                .map_err(|_| {
-                    GraphQLServerError::ClientError("invalid characters in redirect URL".into())
-                })
-                .map(|loc_header_val| {
-                    Response::builder()
-                        .status(StatusCode::FOUND)
-                        .header(header::LOCATION, loc_header_val)
-                        .body(Body::from("Redirecting..."))
-                        .unwrap()
-                }),
-        ))
+    fn handle_temp_redirect(destination: &str) -> Result<Response<Body>, GraphQLServerError> {
+        header::HeaderValue::from_str(destination)
+            .map_err(|_| {
+                GraphQLServerError::ClientError("invalid characters in redirect URL".into())
+            })
+            .map(|loc_header_val| {
+                Response::builder()
+                    .status(StatusCode::FOUND)
+                    .header(header::LOCATION, loc_header_val)
+                    .body(Body::from("Redirecting..."))
+                    .unwrap()
+            })
     }
 
     /// Handles 404s.
-    fn handle_not_found(&self) -> IndexNodeServiceResponse {
-        Box::pin(futures03::future::ok(
-            Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("Not found"))
-                .unwrap(),
-        ))
+    fn handle_not_found() -> Response<Body> {
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("Not found"))
+            .unwrap()
     }
 
-    fn handle_call(&mut self, req: Request<Body>) -> IndexNodeServiceResponse {
+    async fn handle_call(self, req: Request<Body>) -> Result<Response<Body>, GraphQLServerError> {
         let method = req.method().clone();
 
         let path = req.uri().path().to_owned();
@@ -183,24 +163,24 @@ where
         };
 
         match (method, path_segments.as_slice()) {
-            (Method::GET, [""]) => self.index(),
+            (Method::GET, [""]) => Ok(Self::index()),
             (Method::GET, ["graphiql.css"]) => {
-                self.serve_file(include_str!("../assets/graphiql.css"))
+                Ok(Self::serve_file(include_str!("../assets/graphiql.css")))
             }
             (Method::GET, ["graphiql.min.js"]) => {
-                self.serve_file(include_str!("../assets/graphiql.min.js"))
+                Ok(Self::serve_file(include_str!("../assets/graphiql.min.js")))
             }
 
             (Method::GET, path @ ["graphql"]) => {
                 let dest = format!("/{}/playground", path.join("/"));
-                self.handle_temp_redirect(&dest)
+                Self::handle_temp_redirect(&dest)
             }
-            (Method::GET, ["graphql", "playground"]) => self.handle_graphiql(),
+            (Method::GET, ["graphql", "playground"]) => Ok(Self::handle_graphiql()),
 
-            (Method::POST, ["graphql"]) => self.handle_graphql_query(req.into_body()),
-            (Method::OPTIONS, ["graphql"]) => self.handle_graphql_options(req),
+            (Method::POST, ["graphql"]) => self.handle_graphql_query(req.into_body()).await,
+            (Method::OPTIONS, ["graphql"]) => Ok(Self::handle_graphql_options(req)),
 
-            _ => self.handle_not_found(),
+            _ => Ok(Self::handle_not_found()),
         }
     }
 }
@@ -223,35 +203,39 @@ where
 
         // Returning Err here will prevent the client from receiving any response.
         // Instead, we generate a Response with an error code and return Ok
-        Box::pin(self.handle_call(req).map(move |result| match result {
-            Ok(response) => Ok(response),
-            Err(err @ GraphQLServerError::ClientError(_)) => {
-                debug!(logger, "IndexNodeService call failed: {}", err);
+        Box::pin(
+            self.cheap_clone()
+                .handle_call(req)
+                .map(move |result| match result {
+                    Ok(response) => Ok(response),
+                    Err(err @ GraphQLServerError::ClientError(_)) => {
+                        debug!(logger, "IndexNodeService call failed: {}", err);
 
-                Ok(Response::builder()
-                    .status(400)
-                    .header("Content-Type", "text/plain")
-                    .body(Body::from(format!("Invalid request: {}", err)))
-                    .unwrap())
-            }
-            Err(err @ GraphQLServerError::QueryError(_)) => {
-                error!(logger, "IndexNodeService call failed: {}", err);
+                        Ok(Response::builder()
+                            .status(400)
+                            .header("Content-Type", "text/plain")
+                            .body(Body::from(format!("Invalid request: {}", err)))
+                            .unwrap())
+                    }
+                    Err(err @ GraphQLServerError::QueryError(_)) => {
+                        error!(logger, "IndexNodeService call failed: {}", err);
 
-                Ok(Response::builder()
-                    .status(400)
-                    .header("Content-Type", "text/plain")
-                    .body(Body::from(format!("Query error: {}", err)))
-                    .unwrap())
-            }
-            Err(err @ GraphQLServerError::InternalError(_)) => {
-                error!(logger, "IndexNodeService call failed: {}", err);
+                        Ok(Response::builder()
+                            .status(400)
+                            .header("Content-Type", "text/plain")
+                            .body(Body::from(format!("Query error: {}", err)))
+                            .unwrap())
+                    }
+                    Err(err @ GraphQLServerError::InternalError(_)) => {
+                        error!(logger, "IndexNodeService call failed: {}", err);
 
-                Ok(Response::builder()
-                    .status(500)
-                    .header("Content-Type", "text/plain")
-                    .body(Body::from(format!("Internal server error: {}", err)))
-                    .unwrap())
-            }
-        }))
+                        Ok(Response::builder()
+                            .status(500)
+                            .header("Content-Type", "text/plain")
+                            .body(Body::from(format!("Internal server error: {}", err)))
+                            .unwrap())
+                    }
+                }),
+        )
     }
 }
