@@ -79,7 +79,6 @@ where
         &self,
         request_body: Body,
     ) -> Result<Response<Body>, GraphQLServerError> {
-        let logger = self.logger.clone();
         let store = self.store.clone();
         let graphql_runner = self.graphql_runner.clone();
 
@@ -91,28 +90,59 @@ where
             .await?;
 
         let query = IndexNodeRequest::new(body, schema).compat().await?;
+        let query = match PreparedQuery::new(query, None, 100) {
+            Ok(query) => query,
+            Err(e) => return Ok(QueryResult::from(e).as_http_response()),
+        };
 
-        let logger = logger.clone();
         let graphql_runner = graphql_runner.clone();
         let load_manager = graphql_runner.load_manager();
 
         // Run the query using the index node resolver
+        let query_clone = query.cheap_clone();
+        let logger = self.logger.cheap_clone();
         let result = tokio::task::spawn_blocking(move || {
             let options = QueryExecutionOptions {
-                logger: logger.clone(),
                 resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
+                logger,
                 deadline: None,
                 max_first: std::u32::MAX,
                 load_manager,
             };
-            QueryResult::from(PreparedQuery::new(query, None, 100).map(|query| {
+            QueryResult::from(
                 // Index status queries are not cacheable, so we may unwrap this.
-                Arc::try_unwrap(execute_query(query, None, None, options)).unwrap()
-            }))
+                Arc::try_unwrap(execute_query(query_clone, None, None, options)).unwrap(),
+            )
         })
-        .await
-        .unwrap();
-        Ok(result.as_http_response())
+        .await;
+
+        let query_result = match result {
+            Ok(res) => res,
+
+            // `JoinError` means a panic.
+            Err(e) => {
+                let e = e.into_panic();
+                let e = match e
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or(e.downcast_ref::<&'static str>().map(|&s| s))
+                {
+                    Some(e) => e.to_string(),
+                    None => "panic is not a string".to_string(),
+                };
+                let err = QueryExecutionError::Panic(e);
+                error!(
+                    self.logger,
+                    "panic when processing graphql query";
+                    "panic" => err.to_string(),
+                    "query" => &query.query_text,
+                    "variables" => &query.variables_text,
+                );
+                QueryResult::from(err)
+            }
+        };
+
+        Ok(query_result.as_http_response())
     }
 
     // Handles OPTIONS requests

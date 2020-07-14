@@ -1,11 +1,11 @@
-use graphql_parser::{query as q, schema as s, Style};
+use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::data::graphql::ext::TypeExt;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::Schema;
-use graph::prelude::{serde_json, QueryExecutionError};
+use graph::prelude::QueryExecutionError;
 
 use crate::execution::{get_field, get_named_type};
 use crate::introspection::introspection_schema;
@@ -45,8 +45,8 @@ pub struct Query {
 
     /// Used only for logging; if logging is configured off, these will
     /// have dummy values
-    pub(crate) query_text: Arc<String>,
-    pub(crate) variables_text: Arc<String>,
+    pub query_text: Arc<String>,
+    pub variables_text: Arc<String>,
     pub(crate) complexity: u64,
 }
 
@@ -60,16 +60,9 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        let (query_text, variables_text) = if *graph::log::LOG_GQL_TIMING {
-            (
-                query
-                    .document
-                    .format(&Style::default().indent(0))
-                    .replace('\n', " "),
-                serde_json::to_string(&query.variables).unwrap_or_default(),
-            )
-        } else {
-            ("(gql logging turned off)".to_owned(), "".to_owned())
+        let (query_text, variables_text) = match *graph::log::LOG_GQL_TIMING {
+            true => (query.query_text(), query.variables_text()),
+            false => ("(gql logging turned off)".to_owned(), "".to_owned()),
         };
         let query_text = Arc::new(query_text);
         let variables_text = Arc::new(variables_text);

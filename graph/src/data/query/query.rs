@@ -133,4 +133,14 @@ impl Query {
             _force_use_of_new: (),
         }
     }
+
+    pub fn query_text(&self) -> String {
+        self.document
+            .format(&graphql_parser::Style::default().indent(0))
+            .replace('\n', " ")
+    }
+
+    pub fn variables_text(&self) -> String {
+        serde_json::to_string(&self.variables).unwrap_or_default()
+    }
 }
