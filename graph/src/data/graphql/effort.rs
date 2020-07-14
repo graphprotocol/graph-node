@@ -43,8 +43,6 @@ lazy_static! {
             .unwrap_or(1e9)
     };
 
-    static ref WAIT_STAT_CHECK_INTERVAL: Duration = Duration::from_secs(1);
-
     // Load management can be disabled by setting the threshold to 0. This
     // makes sure in particular that we never take any of the locks
     // associated with it
@@ -396,15 +394,12 @@ impl LoadManager {
         // to disrupt traffic for as little as possible.
         const KILL_RATE_STEP_UP: f64 = 0.1;
         const KILL_RATE_STEP_DOWN: f64 = 2.0 * KILL_RATE_STEP_UP;
-
-        lazy_static! {
-            static ref KILL_RATE_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
-        }
+        const KILL_RATE_UPDATE_INTERVAL: Duration = Duration::from_millis(1000);
 
         assert!(overloaded || kill_rate > 0.0);
 
         let now = Instant::now();
-        if now.saturating_duration_since(last_update) > *KILL_RATE_UPDATE_INTERVAL {
+        if now.saturating_duration_since(last_update) > KILL_RATE_UPDATE_INTERVAL {
             // Update the kill_rate
             if overloaded {
                 kill_rate = (kill_rate + KILL_RATE_STEP_UP * (1.0 - kill_rate)).min(1.0);
