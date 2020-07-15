@@ -273,9 +273,8 @@ where
 
         let result = match query {
             Ok(query) => {
-                // Not great that we serialize the query here only for the panic case.
-                let query_text = query.query_text();
-                let variables_text = query.variables_text();
+                let query_text = query.query_text.cheap_clone();
+                let variables_text = query.variables_text.cheap_clone();
 
                 let result =
                     graph::spawn_blocking_allow_panic(service.graphql_runner.run_query(query))
@@ -284,7 +283,7 @@ where
                 match result {
                     Ok(res) => res,
 
-                    // `JoinError` means a panic.
+                    // `Err(JoinError)` means a panic.
                     Err(e) => {
                         let e = e.into_panic();
                         let e = match e

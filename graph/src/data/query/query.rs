@@ -112,6 +112,8 @@ pub struct Query {
     pub variables: Option<QueryVariables>,
     pub shape_hash: u64,
     pub network: Option<String>,
+    pub query_text: Arc<String>,
+    pub variables_text: Arc<String>,
     _force_use_of_new: (),
 }
 
@@ -124,23 +126,27 @@ impl Query {
         network: Option<String>,
     ) -> Self {
         let shape_hash = shape_hash(&document);
+
+        let (query_text, variables_text) = if *crate::log::LOG_GQL_TIMING {
+            (
+                document
+                    .format(&graphql_parser::Style::default().indent(0))
+                    .replace('\n', " "),
+                serde_json::to_string(&variables).unwrap_or_default(),
+            )
+        } else {
+            ("(gql logging turned off)".to_owned(), "".to_owned())
+        };
+
         Query {
             schema,
             document,
             variables,
             shape_hash,
             network,
+            query_text: Arc::new(query_text),
+            variables_text: Arc::new(variables_text),
             _force_use_of_new: (),
         }
-    }
-
-    pub fn query_text(&self) -> String {
-        self.document
-            .format(&graphql_parser::Style::default().indent(0))
-            .replace('\n', " ")
-    }
-
-    pub fn variables_text(&self) -> String {
-        serde_json::to_string(&self.variables).unwrap_or_default()
     }
 }
