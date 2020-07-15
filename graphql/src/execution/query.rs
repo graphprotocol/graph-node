@@ -5,7 +5,7 @@ use std::sync::Arc;
 use graph::data::graphql::ext::TypeExt;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::Schema;
-use graph::prelude::QueryExecutionError;
+use graph::prelude::{CheapClone, QueryExecutionError};
 
 use crate::execution::{get_field, get_named_type};
 use crate::introspection::introspection_schema;
@@ -60,13 +60,6 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        let (query_text, variables_text) = match *graph::log::LOG_GQL_TIMING {
-            true => (query.query_text(), query.variables_text()),
-            false => ("(gql logging turned off)".to_owned(), "".to_owned()),
-        };
-        let query_text = Arc::new(query_text);
-        let variables_text = Arc::new(variables_text);
-
         let mut operation = None;
         let mut fragments = HashMap::new();
         for defn in query.document.definitions.into_iter() {
@@ -107,8 +100,8 @@ impl Query {
             shape_hash: query.shape_hash,
             kind,
             network: query.network,
-            query_text,
-            variables_text,
+            query_text: query.query_text.cheap_clone(),
+            variables_text: query.variables_text.cheap_clone(),
             complexity: 0,
         };
 

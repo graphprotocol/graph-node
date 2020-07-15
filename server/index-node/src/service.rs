@@ -119,7 +119,7 @@ where
         let query_result = match result {
             Ok(res) => res,
 
-            // `JoinError` means a panic.
+            // `Err(JoinError)` means a panic.
             Err(e) => {
                 let e = e.into_panic();
                 let e = match e
