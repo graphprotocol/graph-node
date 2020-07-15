@@ -145,6 +145,7 @@ async fn main() {
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
                 .long("ethereum-ws")
                 .value_name("NETWORK_NAME:URL")
+                .env("ETHEREUM_WS")
                 .help(
                     "Ethereum network name (e.g. 'mainnet') and \
                      Ethereum WebSocket URL, separated by a ':'",
@@ -159,6 +160,7 @@ async fn main() {
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
                 .long("ethereum-ipc")
                 .value_name("NETWORK_NAME:FILE")
+                .env("ETHEREUM_IPC")
                 .help(
                     "Ethereum network name (e.g. 'mainnet') and \
                      Ethereum IPC pipe, separated by a ':'",
@@ -171,6 +173,7 @@ async fn main() {
                 .long("ipfs")
                 .multiple(true)
                 .value_name("HOST:PORT")
+                .env("IPFS")
                 .help("HTTP addresses of IPFS nodes"),
         )
         .arg(
