@@ -109,6 +109,7 @@ async fn main() {
                 .takes_value(true)
                 .long("subgraph")
                 .value_name("[NAME:]IPFS_HASH")
+                .env("SUBGRAPH")
                 .help("name and IPFS hash of the subgraph manifest"),
         )
         .arg(
@@ -117,6 +118,7 @@ async fn main() {
                 .required(true)
                 .long("postgres-url")
                 .value_name("URL")
+                .env("POSTGRES_URL")
                 .help("Location of the Postgres database used for storing entities"),
         )
         .arg(
@@ -128,6 +130,7 @@ async fn main() {
                 .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
                 .long("ethereum-rpc")
                 .value_name("NETWORK_NAME:URL")
+                .env("ETHEREUM_RPC")
                 .help(
                     "Ethereum network name (e.g. 'mainnet') and \
                      Ethereum RPC URL, separated by a ':'",
