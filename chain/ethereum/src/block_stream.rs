@@ -934,7 +934,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
             }
         };
 
-        mem::replace(&mut *state_lock, state);
+        *state_lock = state;
 
         result
     }
