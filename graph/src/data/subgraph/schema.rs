@@ -1009,7 +1009,7 @@ impl TryFromValue for EthereumContractAbiEntity {
 pub struct EthereumBlockHandlerEntity {
     pub handler: String,
     pub filter: Option<EthereumBlockHandlerFilterEntity>,
-    pub input: EthereumBlockHandlerData,
+    pub block_format: EthereumBlockHandlerData,
 }
 
 impl WriteOperations for EthereumBlockHandlerEntity {
@@ -1026,7 +1026,7 @@ impl WriteOperations for EthereumBlockHandlerEntity {
         if let Some(filter_id) = filter_id {
             entity.set("filter", filter_id);
         }
-        entity.set("input", self.input);
+        entity.set("input", self.block_format);
         ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
@@ -1050,7 +1050,7 @@ impl From<super::MappingBlockHandler> for EthereumBlockHandlerEntity {
         EthereumBlockHandlerEntity {
             handler: block_handler.handler,
             filter,
-            input: EthereumBlockHandlerData::from(block_handler.input),
+            block_format: EthereumBlockHandlerData::from(block_handler.block_format),
         }
     }
 }
@@ -1068,7 +1068,7 @@ impl TryFromValue for EthereumBlockHandlerEntity {
         Ok(EthereumBlockHandlerEntity {
             handler: map.get_required("handler")?,
             filter: map.get_optional("filter")?,
-            input: map.get_optional("input")?.unwrap_or_default(),
+            block_format: map.get_optional("blockFormat")?.unwrap_or_default(),
         })
     }
 }

@@ -515,7 +515,7 @@ impl UnresolvedMappingABI {
 pub struct MappingBlockHandler {
     pub handler: String,
     pub filter: Option<BlockHandlerFilter>,
-    pub input: EthereumBlockHandlerData,
+    pub block_format: EthereumBlockHandlerData,
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -531,7 +531,7 @@ impl From<EthereumBlockHandlerEntity> for MappingBlockHandler {
         Self {
             handler: entity.handler,
             filter: None,
-            input: entity.input,
+            block_format: entity.block_format,
         }
     }
 }
