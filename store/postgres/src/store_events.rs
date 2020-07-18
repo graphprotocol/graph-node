@@ -91,7 +91,9 @@ impl SubscriptionManager {
     ) {
         let subscriptions = self.subscriptions.clone();
 
-        graph::spawn(
+        // This channel is constantly receiving things and there are locks involved,
+        // so it's best to use a blocking task.
+        graph::spawn_blocking(
             store_events
                 .for_each(move |event| {
                     let senders = subscriptions.read().unwrap().clone();
@@ -149,20 +151,13 @@ impl SubscriptionManager {
     }
 
     pub fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
-        let subscriptions = self.subscriptions.clone();
-
-        // Generate a new (unique) UUID; we're looping just to be sure we avoid collisions
-        let mut id = Uuid::new_v4().to_string();
-        while subscriptions.read().unwrap().contains_key(&id) {
-            id = Uuid::new_v4().to_string();
-        }
+        let id = Uuid::new_v4().to_string();
 
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
 
         // Add the new subscription
-        let mut subscriptions = subscriptions.write().unwrap();
-        subscriptions.insert(id, sender);
+        self.subscriptions.write().unwrap().insert(id, sender);
 
         // Return the subscription ID and entity change stream
         StoreEventStream::new(Box::new(receiver)).filter_by_entities(entities)

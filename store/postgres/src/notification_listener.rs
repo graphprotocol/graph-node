@@ -112,7 +112,7 @@ impl NotificationListener {
         let worker_barrier = barrier.clone();
 
         // Create a channel for notifications
-        let (sender, receiver) = channel(1024);
+        let (sender, receiver) = channel(100);
 
         let worker_handle = thread::spawn(move || {
             // We exit the process on panic so unwind safety is irrelevant.
