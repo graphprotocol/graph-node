@@ -34,5 +34,5 @@ clap = "2.33.1"
 graphql-parser = "0.2.3"
 hex = "0.4.2"
 test-store = { path = "../test-store" }
-hex-literal = "0.2"
+hex-literal = "0.3"
 graph-mock = { path = "../../mock" }
