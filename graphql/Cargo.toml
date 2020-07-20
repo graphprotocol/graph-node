@@ -8,7 +8,7 @@ crossbeam = "0.7"
 futures01 = { package="futures", version="0.1.29" }
 graph = { path = "../graph" }
 graphql-parser = "0.2.3"
-indexmap = "1.4"
+indexmap = "1.5"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"
 uuid = { version = "0.8.1", features = ["v4"] }
