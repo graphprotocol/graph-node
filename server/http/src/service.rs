@@ -191,28 +191,26 @@ where
         subgraph_name: String,
         request: Request<Body>,
     ) -> GraphQLServiceResult {
-        let subgraph_id = SubgraphName::new(subgraph_name.as_str())
-            .map_err(|()| {
-                GraphQLServerError::ClientError(format!(
-                    "Invalid subgraph name {:?}",
-                    subgraph_name
-                ))
-            })
-            .and_then(|subgraph_name| {
-                self.store
-                    .resolve_subgraph_name_to_id(subgraph_name)
-                    .map_err(|e| {
-                        GraphQLServerError::InternalError(format!(
-                            "Error resolving subgraph name: {}",
-                            e
-                        ))
-                    })
-            })
-            .and_then(|subgraph_id_opt| {
-                subgraph_id_opt.ok_or(GraphQLServerError::ClientError(
-                    "Subgraph name not found".to_owned(),
-                ))
-            })?;
+        let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|()| {
+            GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
+        })?;
+
+        let store = self.store.cheap_clone();
+        let subgraph_id =
+            tokio::task::spawn_blocking(move || store.resolve_subgraph_name_to_id(subgraph_name))
+                .await
+                .unwrap() // Propagate panics.
+                .map_err(|e| {
+                    GraphQLServerError::InternalError(format!(
+                        "Error resolving subgraph name: {}",
+                        e
+                    ))
+                })
+                .and_then(|subgraph_id_opt| {
+                    subgraph_id_opt.ok_or(GraphQLServerError::ClientError(
+                        "Subgraph name not found".to_owned(),
+                    ))
+                })?;
 
         self.handle_graphql_query(subgraph_id, request.into_body())
             .await
