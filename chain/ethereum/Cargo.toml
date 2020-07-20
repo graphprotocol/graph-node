@@ -11,7 +11,7 @@ jsonrpc-core = "14.2.0"
 graph = { path = "../../graph" }
 mock = { package = "graph-mock", path = "../../mock" }
 lazy_static = "1.2.0"
-hex-literal = "0.2"
+hex-literal = "0.3"
 state_machine_future = "0.2"
 
 [dev-dependencies]
