@@ -309,7 +309,6 @@ where
                            "id" => &id);
 
                     // Execute the GraphQL subscription
-                    let graphql_runner = graphql_runner.clone();
                     let error_sink = msg_sink.clone();
                     let result_sink = msg_sink.clone();
                     let result_id = id.clone();
@@ -317,7 +316,9 @@ where
                     let err_connection_id = connection_id.clone();
                     let err_logger = logger.clone();
                     let run_subscription = graphql_runner
+                        .cheap_clone()
                         .run_subscription(subscription)
+                        .compat()
                         .map_err(move |e| {
                             debug!(err_logger, "Subscription error";
                                                "connection" => &err_connection_id,
