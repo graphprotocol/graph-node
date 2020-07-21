@@ -59,7 +59,10 @@ impl GraphQlRunner for TestGraphQlRunner {
         ))))
     }
 
-    fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
+    async fn run_subscription(
+        self: Arc<Self>,
+        _subscription: Subscription,
+    ) -> Result<SubscriptionResult, SubscriptionError> {
         unreachable!();
     }
 

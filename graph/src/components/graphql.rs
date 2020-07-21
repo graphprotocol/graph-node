@@ -30,7 +30,10 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     ) -> Arc<QueryResult>;
 
     /// Runs a GraphQL subscription and returns a stream of results.
-    fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture;
+    async fn run_subscription(
+        self: Arc<Self>,
+        subscription: Subscription,
+    ) -> Result<SubscriptionResult, SubscriptionError>;
 
     async fn query_metadata(&self, query: Query) -> Result<q::Value, Error> {
         let result = self
