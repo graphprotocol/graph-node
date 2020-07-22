@@ -8,6 +8,7 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use graph::data::query::CacheStatus;
 use graph::prelude::{
     async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o,
     slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension,
@@ -252,7 +253,7 @@ impl QueryLoadManager for MockQueryLoadManager {
         self.0.clone().acquire_owned().await
     }
 
-    fn add_query(&self, _shape_hash: u64, _duration: Duration) {}
+    fn record_work(&self, _shape_hash: u64, _duration: Duration, _cache_status: CacheStatus) {}
 }
 
 fn mock_query_load_manager() -> Arc<MockQueryLoadManager> {
@@ -285,7 +286,8 @@ async fn can_query_one_to_one_relationship() {
             ",
         )
         .expect("Invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -382,7 +384,8 @@ async fn can_query_one_to_many_relationships_in_both_directions() {
         ",
         )
         .expect("Invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -479,7 +482,8 @@ async fn can_query_many_to_many_relationship() {
             ",
         )
         .expect("Invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -563,7 +567,8 @@ async fn query_variables_are_used() {
             )]
             .into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     assert_eq!(
         result.data,
@@ -597,7 +602,8 @@ async fn skip_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("skip"), q::Value::Boolean(true))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that only names are returned
     assert_eq!(
@@ -619,7 +625,8 @@ async fn skip_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("skip"), q::Value::Boolean(false))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that IDs and names are returned
     assert_eq!(
@@ -668,7 +675,8 @@ async fn include_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("include"), q::Value::Boolean(true))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that IDs and names are returned
     assert_eq!(
@@ -702,7 +710,8 @@ async fn include_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("include"), q::Value::Boolean(false))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that only names are returned
     assert_eq!(
@@ -743,7 +752,11 @@ async fn query_complexity() {
     let max_complexity = Some(1_010_100);
 
     // This query is exactly at the maximum complexity.
-    let result = execute_subgraph_query_with_complexity(query, max_complexity);
+    let result = graph::spawn_blocking_allow_panic(move || {
+        execute_subgraph_query_with_complexity(query, max_complexity)
+    })
+    .await
+    .unwrap();
     assert!(result.errors.is_none());
 
     let query = Query::new(
@@ -772,7 +785,11 @@ async fn query_complexity() {
     );
 
     // The extra introspection causes the complexity to go over.
-    let result = execute_subgraph_query_with_complexity(query, max_complexity);
+    let result = graph::spawn_blocking_allow_panic(move || {
+        execute_subgraph_query_with_complexity(query, max_complexity)
+    })
+    .await
+    .unwrap();
     match result.errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
         _ => panic!("did not catch complexity"),
@@ -875,9 +892,13 @@ async fn instant_timeout() {
         None,
     );
 
-    match execute_subgraph_query_with_deadline(query, Some(Instant::now()))
-        .errors
-        .unwrap()[0]
+    match graph::spawn_blocking_allow_panic(move || {
+        execute_subgraph_query_with_deadline(query, Some(Instant::now()))
+    })
+    .await
+    .unwrap()
+    .errors
+    .unwrap()[0]
     {
         QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
         _ => panic!("did not time out"),
@@ -919,7 +940,8 @@ async fn variable_defaults() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("orderDir"), q::Value::Null)].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     assert!(result.errors.is_none());
     assert_eq!(
@@ -1010,7 +1032,8 @@ async fn nested_variable() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("name"), q::Value::String("Lisa".to_string()))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     assert!(result.errors.is_none());
     assert_eq!(
@@ -1085,7 +1108,8 @@ async fn can_filter_by_relationship_fields() {
         ",
         )
         .expect("invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -1138,7 +1162,8 @@ async fn cannot_filter_by_derved_relationship_fields() {
         ",
         )
         .expect("invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(result.errors.is_some());
     match &result.errors.unwrap()[0] {
@@ -1228,7 +1253,8 @@ async fn can_use_nested_filter() {
         ",
         )
         .expect("invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert_eq!(
         result.data.unwrap(),
@@ -1267,7 +1293,7 @@ async fn can_use_nested_filter() {
     )
 }
 
-fn check_musicians_at(
+async fn check_musicians_at(
     query: &str,
     block_var: Option<(&str, q::Value)>,
     expected: Result<Vec<&str>, &str>,
@@ -1280,7 +1306,7 @@ fn check_musicians_at(
         QueryVariables::new(map)
     });
 
-    let result = execute_query_document_with_variables(query, vars);
+    let result = execute_query_document_with_variables(query, vars).await;
 
     match (
         STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap(),
@@ -1331,13 +1357,13 @@ fn check_musicians_at(
     }
 }
 
-#[test]
-fn query_at_block() {
+#[tokio::test]
+async fn query_at_block() {
     use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
     async fn musicians_at(block: &str, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
-        check_musicians_at(&query, None, expected, qid);
+        check_musicians_at(&query, None, expected, qid).await;
     }
 
     fn hash(block: &FakeBlock) -> String {
@@ -1358,16 +1384,16 @@ fn query_at_block() {
     musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3").await;
 }
 
-#[test]
-fn query_at_block_with_vars() {
+#[tokio::test]
+async fn query_at_block_with_vars() {
     use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
-    fn musicians_at_nr(block: i32, expected: Result<Vec<&str>, &str>, qid: &str) {
+    async fn musicians_at_nr(block: i32, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
         let number = q::Value::Int(q::Number::from(block));
         let var = Some(("block", number.clone()));
 
-        check_musicians_at(query, var, expected.clone(), qid);
+        check_musicians_at(query, var, expected.clone(), qid).await;
 
         let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
         let mut map = BTreeMap::new();
@@ -1375,28 +1401,28 @@ fn query_at_block_with_vars() {
         let block = q::Value::Object(map);
         let var = Some(("block", block));
 
-        check_musicians_at(query, var, expected, qid);
+        check_musicians_at(query, var, expected, qid).await;
     }
 
-    fn musicians_at_hash(block: &FakeBlock, expected: Result<Vec<&str>, &str>, qid: &str) {
+    async fn musicians_at_hash(block: &FakeBlock, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = "query by_hash($block: String!) { musicians(block: { hash: $block }) { id } }";
         let var = Some(("block", q::Value::String(block.hash.to_owned())));
 
-        check_musicians_at(query, var, expected, qid);
+        check_musicians_at(query, var, expected, qid).await;
     }
 
     const BLOCK_NOT_INDEXED: &str = "subgraph graphqlTestsQuery has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
-    musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
-    musicians_at_nr(0, Ok(vec!["m1", "m2"]), "n0");
-    musicians_at_nr(1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
+    musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
+    musicians_at_nr(0, Ok(vec!["m1", "m2"]), "n0").await;
+    musicians_at_nr(1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
 
-    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0");
-    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at_hash(&BLOCK_TWO, Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
-    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0").await;
+    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1").await;
+    musicians_at_hash(&BLOCK_TWO, Ok(vec!["m1", "m2", "m3", "m4"]), "h2").await;
+    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3").await;
 }
 
 /// Check that the `extensions` field in the query result has the correct format

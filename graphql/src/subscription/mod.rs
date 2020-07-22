@@ -5,28 +5,9 @@ use std::result::Result;
 use std::time::{Duration, Instant};
 
 use graph::prelude::*;
-use tokio::sync::Semaphore;
 
 use crate::execution::*;
 use crate::schema::ast as sast;
-
-use lazy_static::lazy_static;
-
-lazy_static! {
-    static ref SUBSCRIPTION_QUERY_SEMAPHORE: Semaphore = {
-        // This is duplicating the logic in main.rs to get the connection pool size, which is
-        // unfortunate. But because this module has no share state otherwise, it's not simple to
-        // refactor so that the semaphore isn't a global.
-        // See also 82d5dad6-b633-4350-86d9-70c8b2e65805
-        let db_conn_pool_size = std::env::var("STORE_CONNECTION_POOL_SIZE")
-            .unwrap_or("10".into())
-            .parse::<usize>()
-            .expect("invalid STORE_CONNECTION_POOL_SIZE");
-
-        // Limit the amount of connections that can be taken up by subscription queries.
-        Semaphore::new((0.7 * db_conn_pool_size as f64).ceil() as usize)
-    };
-}
 
 /// Options available for subscription execution.
 pub struct SubscriptionExecutionOptions<R>
@@ -50,6 +31,8 @@ where
 
     /// Maximum value for the `first` argument.
     pub max_first: u32,
+
+    pub load_manager: Arc<dyn QueryLoadManager>,
 }
 
 pub fn execute_subscription<R>(
@@ -83,6 +66,7 @@ where
         deadline: None,
         max_first: options.max_first,
         cache_status: Default::default(),
+        load_manager: options.load_manager,
     };
 
     if !query.is_subscription() {
@@ -150,6 +134,7 @@ fn map_source_to_response_stream(
     let resolver = ctx.resolver.cheap_clone();
     let query = ctx.query.cheap_clone();
     let max_first = ctx.max_first;
+    let load_manager = ctx.load_manager.cheap_clone();
 
     // Create a stream with a single empty event. By chaining this in front
     // of the real events, we trick the subscription into executing its query
@@ -176,6 +161,7 @@ fn map_source_to_response_stream(
                     event,
                     timeout,
                     max_first,
+                    load_manager.cheap_clone(),
                 )
                 .boxed(),
             }),
@@ -189,8 +175,11 @@ async fn execute_subscription_event(
     event: Arc<StoreEvent>,
     timeout: Option<Duration>,
     max_first: u32,
+    load_manager: Arc<dyn QueryLoadManager>,
 ) -> Arc<QueryResult> {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
+
+    let _permit = load_manager.query_permit().await;
 
     // Create a fresh execution context with deadline.
     let ctx = ExecutionContext {
@@ -200,6 +189,7 @@ async fn execute_subscription_event(
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
         cache_status: Default::default(),
+        load_manager,
     };
 
     // We have established that this exists earlier in the subscription execution

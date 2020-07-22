@@ -679,6 +679,7 @@ async fn main() {
                 wait_stats.clone(),
                 expensive_queries,
                 metrics_registry.clone(),
+                store_conn_pool_size as usize,
             ));
             let graphql_runner = Arc::new(GraphQlRunner::new(
                 &logger,

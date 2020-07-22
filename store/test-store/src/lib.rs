@@ -28,6 +28,8 @@ pub fn postgres_test_url() -> String {
 pub const NETWORK_NAME: &str = "fake_network";
 pub const NETWORK_VERSION: &str = "graph test suite";
 
+const CONN_POOL_SIZE: usize = 20;
+
 lazy_static! {
     pub static ref LOGGER:Logger = match env::var_os("GRAPH_LOG") {
         Some(_) => log::logger(false),
@@ -42,7 +44,8 @@ lazy_static! {
         LoadManager::new(&*LOGGER,
                          POOL_WAIT_STATS.clone(),
                          Vec::new(),
-                         Arc::new(MockMetricsRegistry::new())));
+                         Arc::new(MockMetricsRegistry::new()),
+                         CONN_POOL_SIZE));
 
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<Store> = {
@@ -56,11 +59,10 @@ lazy_static! {
                     net_version: NETWORK_VERSION.to_owned(),
                     genesis_block_hash: GENESIS_PTR.hash,
                 };
-                let conn_pool_size: u32 = 20;
                 let postgres_conn_pool = create_connection_pool(
                     "test",
                     postgres_url.clone(),
-                    conn_pool_size,
+                    CONN_POOL_SIZE as u32,
                     &logger,
                     Arc::new(MockMetricsRegistry::new()),
                     POOL_WAIT_STATS.clone()
