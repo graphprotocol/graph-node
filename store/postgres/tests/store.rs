@@ -2282,7 +2282,6 @@ fn reorg_tracking() {
             let state = &$store
                 .deployment_state_from_id(subgraph_id.clone())
                 .expect("can get deployment state");
-            dbg!(&state);
             assert_eq!(&subgraph_id, &state.id, "subgraph_id");
             assert_eq!($reorg_count, state.reorg_count, "reorg_count");
             assert_eq!($max_reorg_depth, state.max_reorg_depth, "max_reorg_depth");
