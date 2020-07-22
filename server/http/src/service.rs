@@ -196,12 +196,7 @@ where
             tokio::task::spawn_blocking(move || store.deployment_state_from_name(subgraph_name))
                 .await
                 .unwrap() // Propagate panics.
-                .map_err(|e| {
-                    GraphQLServerError::InternalError(format!(
-                        "Error resolving subgraph name: {}",
-                        e
-                    ))
-                })?;
+                .map_err(|e| GraphQLServerError::from(e))?;
 
         self.handle_graphql_query(state, request.into_body()).await
     }
@@ -212,8 +207,12 @@ where
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
         let res = SubgraphDeploymentId::new(id)
-            .map_err(|_| ())
-            .and_then(|id| self.store.deployment_state_from_id(id).map_err(|_| ()));
+            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)))
+            .and_then(|id| {
+                self.store
+                    .deployment_state_from_id(id)
+                    .map_err(|e| GraphQLServerError::from(e))
+            });
         match res {
             Err(_) => self.handle_not_found(),
             Ok(state) => self
