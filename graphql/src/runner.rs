@@ -53,6 +53,13 @@ lazy_static! {
         .map(|s| u32::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_SKIP")))
         .unwrap_or(std::u32::MAX);
+    // Allow skipping the check whether a deployment has changed while
+    // we were running a query. Once we are sure that the check mechanism
+    // is reliable, this variable should be removed
+    static ref GRAPHQL_ALLOW_DEPLOYMENT_CHANGE: bool = env::var("GRAPHQL_ALLOW_DEPLOYMENT_CHANGE")
+        .ok()
+        .map(|s| s == "true")
+        .unwrap_or(false);
 }
 
 impl<S> GraphQlRunner<S>
@@ -121,6 +128,9 @@ where
         state: DeploymentState,
         latest_block: u64,
     ) -> Result<(), QueryExecutionError> {
+        if *GRAPHQL_ALLOW_DEPLOYMENT_CHANGE {
+            return Ok(());
+        }
         let new_state = self.store.deployment_state_from_id(state.id.clone())?;
         if state.reorg_count != new_state.reorg_count {
             if latest_block
