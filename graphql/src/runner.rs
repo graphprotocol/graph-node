@@ -10,6 +10,7 @@ use crate::prelude::{
 };
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
+use graph::components::graphql::QueryLoadManager;
 use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
     async_trait, error, o, CheapClone, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait,
@@ -186,6 +187,11 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> Arc<QueryResult> {
+        // Limiting the cuncurrent queries prevents an increase in resource usage when the DB is
+        // contended. The request will wait for a permit before spawing blocking tasks and
+        // requesting DB connections, so waiting requests will consume less resources.
+        let _permit = self.load_manager.query_permit().await;
+
         let logger = self.logger.cheap_clone();
         let query_text = query.query_text.cheap_clone();
         let variables_text = query.variables_text.cheap_clone();
@@ -249,6 +255,7 @@ where
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,
                 max_first: *GRAPHQL_MAX_FIRST,
+                load_manager: self.load_manager.cheap_clone(),
             },
         )
     }

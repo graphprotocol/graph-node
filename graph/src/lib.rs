@@ -82,7 +82,9 @@ pub mod prelude {
         EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
         LightEthereumBlockExt, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     };
-    pub use crate::components::graphql::{GraphQlRunner, SubscriptionResultFuture};
+    pub use crate::components::graphql::{
+        GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
+    };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{
         aggregate::Aggregate, stopwatch::StopwatchMetrics, Collector, Counter, CounterVec, Gauge,

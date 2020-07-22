@@ -297,6 +297,8 @@ where
 
     /// Records whether this was a cache hit, used for logging.
     pub(crate) cache_status: AtomicCell<CacheStatus>,
+
+    pub load_manager: Arc<dyn QueryLoadManager>,
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
@@ -333,7 +335,10 @@ where
             query: self.query.as_introspection_query(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
+
+            // `cache_status` and `load_manager` are dead values for the introspection context.
             cache_status: AtomicCell::new(CacheStatus::Miss),
+            load_manager: self.load_manager.cheap_clone(),
         }
     }
 }

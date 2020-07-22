@@ -3,6 +3,7 @@ use graphql_parser::query as q;
 use std::sync::Arc;
 use std::time::Instant;
 
+use graph::cheap_clone::CheapClone;
 use graph::data::graphql::effort::LoadManager;
 
 use crate::execution::*;
@@ -47,6 +48,7 @@ where
         deadline: options.deadline,
         max_first: options.max_first,
         cache_status: Default::default(),
+        load_manager: options.load_manager.cheap_clone(),
     };
 
     if !query.is_query() {
