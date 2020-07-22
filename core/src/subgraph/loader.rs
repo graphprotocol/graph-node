@@ -189,11 +189,10 @@ where
         loop {
             let skip = data_sources.len() as i32;
             let query = self.dynamic_data_sources_query(&deployment_id, skip)?;
-            let state = self.store.deployment_state_from_id(deployment_id.clone())?;
             let query_result = self
                 .graphql_runner
                 .cheap_clone()
-                .query_metadata(query, state)
+                .query_metadata(query)
                 .await?;
             let unresolved_data_sources = self.parse_data_sources(&deployment_id, query_result)?;
             let next_data_sources = self

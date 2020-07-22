@@ -22,31 +22,26 @@ pub struct LazyMetadata<S, Q> {
 
 impl<S: SubgraphDeploymentStore + Store, Q: GraphQlRunner> LazyMetadata<S, Q> {
     pub async fn health(&self) -> Result<SubgraphHealth, Error> {
-        let state = self.store.deployment_state_from_id(self.id.clone())?;
         let value = self
             .graphql_runner
             .cheap_clone()
-            .query_metadata(
-                Query::new(
-                    self.store.api_schema(&SUBGRAPHS_ID).unwrap(),
-                    parse_query(
-                        r#"
+            .query_metadata(Query::new(
+                self.store.api_schema(&SUBGRAPHS_ID).unwrap(),
+                parse_query(
+                    r#"
                         query deployment($id: ID!) {
                             subgraphDeployment(id: $id) {
                                 health
                             }
                         }
                     "#,
-                    )
-                    .unwrap(),
-                    Some(QueryVariables::new(HashMap::from_iter(
-                        vec![(String::from("id"), q::Value::String(self.id.to_string()))]
-                            .into_iter(),
-                    ))),
-                    None,
-                ),
-                state,
-            )
+                )
+                .unwrap(),
+                Some(QueryVariables::new(HashMap::from_iter(
+                    vec![(String::from("id"), q::Value::String(self.id.to_string()))].into_iter(),
+                ))),
+                None,
+            ))
             .await?;
 
         let deployment = match &value {
@@ -61,15 +56,13 @@ impl<S: SubgraphDeploymentStore + Store, Q: GraphQlRunner> LazyMetadata<S, Q> {
     }
 
     pub async fn has_non_fatal_errors(&self) -> Result<bool, Error> {
-        let state = self.store.deployment_state_from_id(self.id.clone())?;
         let value = self
             .graphql_runner
             .cheap_clone()
-            .query_metadata(
-                Query::new(
-                    self.store.api_schema(&SUBGRAPHS_ID).unwrap(),
-                    parse_query(
-                        r#"
+            .query_metadata(Query::new(
+                self.store.api_schema(&SUBGRAPHS_ID).unwrap(),
+                parse_query(
+                    r#"
                         query deployment($id: ID!) {
                             subgraphDeployment(id: $id) {
                                 nonFatalErrors(limit: 1) {
@@ -78,16 +71,13 @@ impl<S: SubgraphDeploymentStore + Store, Q: GraphQlRunner> LazyMetadata<S, Q> {
                             }
                         }
                     "#,
-                    )
-                    .unwrap(),
-                    Some(QueryVariables::new(HashMap::from_iter(
-                        vec![(String::from("id"), q::Value::String(self.id.to_string()))]
-                            .into_iter(),
-                    ))),
-                    None,
-                ),
-                state,
-            )
+                )
+                .unwrap(),
+                Some(QueryVariables::new(HashMap::from_iter(
+                    vec![(String::from("id"), q::Value::String(self.id.to_string()))].into_iter(),
+                ))),
+                None,
+            ))
             .await?;
 
         let deployment = match &value {

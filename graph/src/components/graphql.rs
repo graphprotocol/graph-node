@@ -39,11 +39,8 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         subscription: Subscription,
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
-    async fn query_metadata(
-        self: Arc<Self>,
-        query: Query,
-        state: DeploymentState,
-    ) -> Result<q::Value, Error> {
+    async fn query_metadata(self: Arc<Self>, query: Query) -> Result<q::Value, Error> {
+        let state = DeploymentState::meta();
         let result = self
             .run_query_with_complexity(query, state, None, None, None, None)
             .await;
