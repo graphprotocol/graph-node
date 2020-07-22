@@ -12,8 +12,8 @@ use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
-    async_trait, o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
-    QueryExecutionError, QueryResult, Store, StoreError, SubgraphDeploymentId,
+    async_trait, error, o, CheapClone, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait,
+    Logger, Query, QueryExecutionError, QueryResult, Store, StoreError, SubgraphDeploymentId,
     SubgraphDeploymentStore, Subscription, SubscriptionError, SubscriptionResult,
 };
 
@@ -180,14 +180,45 @@ where
     }
 
     async fn run_query_with_complexity(
-        &self,
+        self: Arc<Self>,
         query: Query,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> Arc<QueryResult> {
-        self.execute(query, max_complexity, max_depth, max_first)
-            .unwrap_or_else(|e| Arc::new(e))
+        let logger = self.logger.cheap_clone();
+        let query_text = query.query_text.cheap_clone();
+        let variables_text = query.variables_text.cheap_clone();
+
+        match graph::spawn_blocking_allow_panic(move || {
+            self.execute(query, max_complexity, max_depth, max_first)
+                .unwrap_or_else(|e| Arc::new(e))
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                let e = e.into_panic();
+                let e = match e
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or(e.downcast_ref::<&'static str>().map(|&s| s))
+                {
+                    Some(e) => e.to_string(),
+                    None => "panic is not a string".to_string(),
+                };
+
+                error!(
+                    logger,
+                    "panic when processing graphql query";
+                    "panic" => e.to_string(),
+                    "query" => query_text,
+                    "variables" => variables_text,
+                );
+
+                Arc::new(QueryResult::from(QueryExecutionError::Panic(e)))
+            }
+        }
     }
 
     async fn run_subscription(

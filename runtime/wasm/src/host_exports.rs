@@ -660,7 +660,7 @@ fn block_on<I, ER>(future: impl Future<Item = I, Error = ER> + Send) -> Result<I
 }
 
 fn block_on03<T>(future: impl futures03::Future<Output = T> + Send) -> T {
-    graph::block_on_allow_panic(future)
+    graph::block_on(future)
 }
 
 #[test]

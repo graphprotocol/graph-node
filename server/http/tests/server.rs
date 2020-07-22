@@ -18,7 +18,7 @@ pub struct TestGraphQlRunner;
 #[async_trait]
 impl GraphQlRunner for TestGraphQlRunner {
     async fn run_query_with_complexity(
-        &self,
+        self: Arc<Self>,
         _query: Query,
         _complexity: Option<u64>,
         _max_depth: Option<u8>,
