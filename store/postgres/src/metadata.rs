@@ -271,13 +271,27 @@ fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u3
         })
 }
 
-fn to_block_number(number: Option<BigDecimal>, subgraph: &str) -> Result<BlockNumber, StoreError> {
-    number.and_then(|number| number.to_i32()).ok_or_else(|| {
-        StoreError::ConstraintViolation(format!(
-            "invalid latest_ethereum_block_number for subgraph `{}`",
+/// Translate `latest` into a `BlockNumber`. If `latest` is `None` or does
+/// not represent an `i32`, return an error
+fn latest_as_block_number(
+    latest: Option<BigDecimal>,
+    subgraph: &str,
+) -> Result<BlockNumber, StoreError> {
+    match latest {
+        None => Err(StoreError::QueryExecutionError(format!(
+            "Subgraph `{}` has not started syncing yet. Wait for it to ingest \
+             a few blocks before querying it",
             subgraph
-        ))
-    })
+        ))),
+        Some(latest) => latest.to_i32().ok_or_else(|| {
+            StoreError::ConstraintViolation(format!(
+                "Subgraph `{}` has an \
+                 invalid latest_ethereum_block_number `{:?}` that can not be \
+                 represented as an i32",
+                subgraph, latest
+            ))
+        }),
+    }
 }
 
 pub fn deployment_state_from_name(
@@ -346,7 +360,7 @@ pub fn deployment_state_from_name(
                 let max_reorg_depth =
                     convert_to_u32(max_reorg_depth, "max_reorg_depth", name.as_str())?;
                 let latest_ethereum_block_number =
-                    to_block_number(latest_ethereum_block_number, name.as_str())?;
+                    latest_as_block_number(latest_ethereum_block_number, name.as_str())?;
                 Ok(DeploymentState {
                     id,
                     reorg_count,
@@ -384,7 +398,7 @@ pub fn deployment_state_from_id(
             let max_reorg_depth =
                 convert_to_u32(Some(max_reorg_depth), "max_reorg_depth", id.as_str())?;
             let latest_ethereum_block_number =
-                to_block_number(latest_ethereum_block_number, id.as_str())?;
+                latest_as_block_number(latest_ethereum_block_number, id.as_str())?;
 
             Ok(DeploymentState {
                 id,
