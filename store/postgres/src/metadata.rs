@@ -216,9 +216,12 @@ pub fn forward_block_ptr(
 ) -> Result<StoreEvent, StoreError> {
     use subgraph_deployment as d;
 
+    // Work around a Diesel issue with serializing BigDecimals to numeric
+    let number = format!("{}::numeric", ptr.number);
+
     update(d::table.filter(d::id.eq(id.as_str())))
         .set((
-            d::latest_ethereum_block_number.eq(BigDecimal::from(ptr.number)),
+            d::latest_ethereum_block_number.eq(sql(&number)),
             d::latest_ethereum_block_hash.eq(ptr.hash.as_bytes()),
             d::current_reorg_depth.eq(0),
         ))
@@ -234,9 +237,12 @@ pub fn revert_block_ptr(
 ) -> Result<StoreEvent, StoreError> {
     use subgraph_deployment as d;
 
+    // Work around a Diesel issue with serializing BigDecimals to numeric
+    let number = format!("{}::numeric", ptr.number);
+
     update(d::table.filter(d::id.eq(id.as_str())))
         .set((
-            d::latest_ethereum_block_number.eq(BigDecimal::from(ptr.number)),
+            d::latest_ethereum_block_number.eq(sql(&number)),
             d::latest_ethereum_block_hash.eq(ptr.hash.as_bytes()),
             d::reorg_count.eq(d::reorg_count + 1),
             d::current_reorg_depth.eq(d::current_reorg_depth + 1),
