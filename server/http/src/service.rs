@@ -267,40 +267,7 @@ where
         let query = GraphQLRequest::new(body, schema, network).compat().await;
 
         let result = match query {
-            Ok(query) => {
-                let query_text = query.query_text.cheap_clone();
-                let variables_text = query.variables_text.cheap_clone();
-
-                let result =
-                    graph::spawn_blocking_allow_panic(service.graphql_runner.run_query(query))
-                        .await;
-
-                match result {
-                    Ok(res) => res,
-
-                    // `Err(JoinError)` means a panic.
-                    Err(e) => {
-                        let e = e.into_panic();
-                        let e = match e
-                            .downcast_ref::<String>()
-                            .map(|s| s.as_str())
-                            .or(e.downcast_ref::<&'static str>().map(|&s| s))
-                        {
-                            Some(e) => e.to_string(),
-                            None => "panic is not a string".to_string(),
-                        };
-                        let err = QueryExecutionError::Panic(e);
-                        error!(
-                            self.logger,
-                            "panic when processing graphql query";
-                            "panic" => err.to_string(),
-                            "query" => query_text,
-                            "variables" => variables_text,
-                        );
-                        Arc::new(QueryResult::from(err))
-                    }
-                }
-            }
+            Ok(query) => service.graphql_runner.run_query(query).await,
             Err(GraphQLServerError::QueryError(e)) => Arc::new(QueryResult::from(e)),
             Err(e) => return Err(e),
         };
@@ -496,7 +463,7 @@ mod tests {
     #[async_trait]
     impl GraphQlRunner for TestGraphQlRunner {
         async fn run_query_with_complexity(
-            &self,
+            self: Arc<Self>,
             _query: Query,
             _complexity: Option<u64>,
             _max_depth: Option<u8>,

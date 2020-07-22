@@ -25,8 +25,7 @@ pub mod mock {
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
-    block_on_allow_panic, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic,
-    spawn_blocking_async_allow_panic,
+    block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic,
 };
 
 pub use bytes;

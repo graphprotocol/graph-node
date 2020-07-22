@@ -375,12 +375,14 @@ where
         );
 
         // Execute the query. We are in a blocking context so we may just block.
-        let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
-            query,
-            None,
-            None,
-            Some(std::u32::MAX),
-        ));
+        let result = graph::block_on(
+            self.graphql_runner.cheap_clone().run_query_with_complexity(
+                query,
+                None,
+                None,
+                Some(std::u32::MAX),
+            ),
+        );
 
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();
@@ -457,12 +459,14 @@ where
         );
 
         // Execute the query. We are in a blocking context so we may just block.
-        let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
-            query,
-            None,
-            None,
-            Some(std::u32::MAX),
-        ));
+        let result = graph::block_on(
+            self.graphql_runner.cheap_clone().run_query_with_complexity(
+                query,
+                None,
+                None,
+                Some(std::u32::MAX),
+            ),
+        );
 
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();
@@ -620,12 +624,14 @@ where
         );
 
         // Execute the query. We are in a blocking context so we may just block.
-        let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
-            query,
-            None,
-            None,
-            Some(std::u32::MAX),
-        ));
+        let result = graph::block_on(
+            self.graphql_runner.cheap_clone().run_query_with_complexity(
+                query,
+                None,
+                None,
+                Some(std::u32::MAX),
+            ),
+        );
 
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();

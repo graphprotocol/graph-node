@@ -207,10 +207,7 @@ async fn execute_subscription_event(
         .unwrap()
         .clone();
 
-    // Use a semaphore to prevent subscription queries, which can be numerous and might query all at
-    // once, from flooding the blocking thread pool and the DB connection pool.
-    let _permit = SUBSCRIPTION_QUERY_SEMAPHORE.acquire();
-    match graph::spawn_blocking_allow_panic(async move {
+    match graph::spawn_blocking_allow_panic(move || {
         execute_root_selection_set(&ctx, &ctx.query.selection_set, &subscription_type, None)
     })
     .await

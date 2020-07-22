@@ -9,11 +9,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use graph::prelude::{
-    futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o, slog, tokio,
-    Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension, GraphQlRunner as _,
-    Logger, Query, QueryError, QueryExecutionError, QueryResult, QueryVariables, Schema, Store,
-    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
-    Subscription, SubscriptionError, Value,
+    async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o,
+    slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension,
+    GraphQlRunner as _, Logger, Query, QueryError, QueryExecutionError, QueryLoadManager,
+    QueryResult, QueryVariables, Schema, Store, SubgraphDeploymentEntity, SubgraphDeploymentId,
+    SubgraphDeploymentStore, SubgraphManifest, Subscription, SubscriptionError, Value,
 };
 use graph_graphql::prelude::*;
 use test_store::{
@@ -222,26 +222,47 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
     insert_at(entities1, id.clone(), BLOCK_ONE.clone());
 }
 
-fn execute_query_document(query: q::Document) -> QueryResult {
-    execute_query_document_with_variables(query, None)
+async fn execute_query_document(query: q::Document) -> QueryResult {
+    execute_query_document_with_variables(query, None).await
 }
 
-fn execute_query_document_with_variables(
+async fn execute_query_document_with_variables(
     query: q::Document,
     variables: Option<QueryVariables>,
 ) -> QueryResult {
-    let runner = GraphQlRunner::new(&*LOGGER, STORE.clone(), LOAD_MANAGER.clone());
+    let runner = Arc::new(GraphQlRunner::new(
+        &*LOGGER,
+        STORE.clone(),
+        LOAD_MANAGER.clone(),
+    ));
     let query = Query::new(Arc::new(api_test_schema()), query, variables, None);
 
-    graph::prelude::futures03::executor::block_on(
-        runner.run_query_with_complexity(query, None, None, None),
-    )
-    .as_ref()
-    .clone()
+    runner
+        .run_query_with_complexity(query, None, None, None)
+        .await
+        .as_ref()
+        .clone()
 }
 
-#[test]
-fn can_query_one_to_one_relationship() {
+struct MockQueryLoadManager(Arc<tokio::sync::Semaphore>);
+
+#[async_trait]
+impl QueryLoadManager for MockQueryLoadManager {
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.0.clone().acquire_owned().await
+    }
+
+    fn add_query(&self, _shape_hash: u64, _duration: Duration) {}
+}
+
+fn mock_query_load_manager() -> Arc<MockQueryLoadManager> {
+    Arc::new(MockQueryLoadManager(Arc::new(tokio::sync::Semaphore::new(
+        10,
+    ))))
+}
+
+#[tokio::test]
+async fn can_query_one_to_one_relationship() {
     let result = execute_query_document(
         graphql_parser::parse_query(
             "
@@ -264,7 +285,7 @@ fn can_query_one_to_one_relationship() {
             ",
         )
         .expect("Invalid test query"),
-    );
+    ).await;
 
     assert!(
         result.errors.is_none(),
@@ -344,8 +365,8 @@ fn can_query_one_to_one_relationship() {
     )
 }
 
-#[test]
-fn can_query_one_to_many_relationships_in_both_directions() {
+#[tokio::test]
+async fn can_query_one_to_many_relationships_in_both_directions() {
     let result = execute_query_document(
         graphql_parser::parse_query(
             "
@@ -361,7 +382,7 @@ fn can_query_one_to_many_relationships_in_both_directions() {
         ",
         )
         .expect("Invalid test query"),
-    );
+    ).await;
 
     assert!(
         result.errors.is_none(),
@@ -439,8 +460,8 @@ fn can_query_one_to_many_relationships_in_both_directions() {
     )
 }
 
-#[test]
-fn can_query_many_to_many_relationship() {
+#[tokio::test]
+async fn can_query_many_to_many_relationship() {
     let result = execute_query_document(
         graphql_parser::parse_query(
             "
@@ -458,7 +479,7 @@ fn can_query_many_to_many_relationship() {
             ",
         )
         .expect("Invalid test query"),
-    );
+    ).await;
 
     assert!(
         result.errors.is_none(),
@@ -520,8 +541,8 @@ fn can_query_many_to_many_relationship() {
     );
 }
 
-#[test]
-fn query_variables_are_used() {
+#[tokio::test]
+async fn query_variables_are_used() {
     let query = graphql_parser::parse_query(
         "
         query musicians($where: Musician_filter!) {
@@ -542,7 +563,7 @@ fn query_variables_are_used() {
             )]
             .into_iter(),
         ))),
-    );
+    ).await;
 
     assert_eq!(
         result.data,
@@ -556,8 +577,8 @@ fn query_variables_are_used() {
     );
 }
 
-#[test]
-fn skip_directive_works_with_query_variables() {
+#[tokio::test]
+async fn skip_directive_works_with_query_variables() {
     let query = graphql_parser::parse_query(
         "
         query musicians($skip: Boolean!) {
@@ -576,7 +597,7 @@ fn skip_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("skip"), q::Value::Boolean(true))].into_iter(),
         ))),
-    );
+    ).await;
 
     // Assert that only names are returned
     assert_eq!(
@@ -598,7 +619,7 @@ fn skip_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("skip"), q::Value::Boolean(false))].into_iter(),
         ))),
-    );
+    ).await;
 
     // Assert that IDs and names are returned
     assert_eq!(
@@ -627,8 +648,8 @@ fn skip_directive_works_with_query_variables() {
     );
 }
 
-#[test]
-fn include_directive_works_with_query_variables() {
+#[tokio::test]
+async fn include_directive_works_with_query_variables() {
     let query = graphql_parser::parse_query(
         "
         query musicians($include: Boolean!) {
@@ -647,7 +668,7 @@ fn include_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("include"), q::Value::Boolean(true))].into_iter(),
         ))),
-    );
+    ).await;
 
     // Assert that IDs and names are returned
     assert_eq!(
@@ -681,7 +702,7 @@ fn include_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("include"), q::Value::Boolean(false))].into_iter(),
         ))),
-    );
+    ).await;
 
     // Assert that only names are returned
     assert_eq!(
@@ -698,8 +719,8 @@ fn include_directive_works_with_query_variables() {
     );
 }
 
-#[test]
-fn query_complexity() {
+#[tokio::test]
+async fn query_complexity() {
     let query = Query::new(
         Arc::new(api_test_schema()),
         graphql_parser::parse_query(
@@ -790,6 +811,7 @@ async fn query_complexity_subscriptions() {
         max_complexity,
         max_depth: 100,
         max_first: std::u32::MAX,
+        load_manager: mock_query_load_manager(),
     };
 
     // This query is exactly at the maximum complexity.
@@ -830,6 +852,7 @@ async fn query_complexity_subscriptions() {
         max_complexity,
         max_depth: 100,
         max_first: std::u32::MAX,
+        load_manager: mock_query_load_manager(),
     };
 
     // The extra introspection causes the complexity to go over.
@@ -843,8 +866,8 @@ async fn query_complexity_subscriptions() {
     }
 }
 
-#[test]
-fn instant_timeout() {
+#[tokio::test]
+async fn instant_timeout() {
     let query = Query::new(
         Arc::new(api_test_schema()),
         graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
@@ -861,8 +884,8 @@ fn instant_timeout() {
     };
 }
 
-#[test]
-fn variable_defaults() {
+#[tokio::test]
+async fn variable_defaults() {
     let query = graphql_parser::parse_query(
         "
         query musicians($orderDir: OrderDirection = desc) {
@@ -876,7 +899,7 @@ fn variable_defaults() {
 
     // Assert that missing variables are defaulted.
     let result =
-        execute_query_document_with_variables(query.clone(), Some(QueryVariables::default()));
+        execute_query_document_with_variables(query.clone(), Some(QueryVariables::default())).await;
 
     assert!(result.errors.is_none());
     assert_eq!(
@@ -896,7 +919,7 @@ fn variable_defaults() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("orderDir"), q::Value::Null)].into_iter(),
         ))),
-    );
+    ).await;
 
     assert!(result.errors.is_none());
     assert_eq!(
@@ -911,8 +934,8 @@ fn variable_defaults() {
     );
 }
 
-#[test]
-fn skip_is_nullable() {
+#[tokio::test]
+async fn skip_is_nullable() {
     let query = graphql_parser::parse_query(
         "
         query musicians {
@@ -924,7 +947,7 @@ fn skip_is_nullable() {
     )
     .expect("invalid test query");
 
-    let result = execute_query_document_with_variables(query, None);
+    let result = execute_query_document_with_variables(query, None).await;
 
     assert_eq!(
         result.data,
@@ -940,8 +963,8 @@ fn skip_is_nullable() {
     );
 }
 
-#[test]
-fn first_is_nullable() {
+#[tokio::test]
+async fn first_is_nullable() {
     let query = graphql_parser::parse_query(
         "
         query musicians {
@@ -953,7 +976,7 @@ fn first_is_nullable() {
     )
     .expect("invalid test query");
 
-    let result = execute_query_document_with_variables(query, None);
+    let result = execute_query_document_with_variables(query, None).await;
 
     assert_eq!(
         result.data,
@@ -969,8 +992,8 @@ fn first_is_nullable() {
     );
 }
 
-#[test]
-fn nested_variable() {
+#[tokio::test]
+async fn nested_variable() {
     let query = graphql_parser::parse_query(
         "
         query musicians($name: String) {
@@ -987,7 +1010,7 @@ fn nested_variable() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("name"), q::Value::String("Lisa".to_string()))].into_iter(),
         ))),
-    );
+    ).await;
 
     assert!(result.errors.is_none());
     assert_eq!(
@@ -1002,8 +1025,8 @@ fn nested_variable() {
     );
 }
 
-#[test]
-fn ambiguous_derived_from_result() {
+#[tokio::test]
+async fn ambiguous_derived_from_result() {
     let query = graphql_parser::parse_query(
         "
         {
@@ -1016,7 +1039,7 @@ fn ambiguous_derived_from_result() {
     )
     .expect("invalid test query");
 
-    let result = execute_query_document_with_variables(query, None);
+    let result = execute_query_document_with_variables(query, None).await;
 
     assert!(result.errors.is_some());
     match &result.errors.unwrap()[0] {
@@ -1044,8 +1067,8 @@ fn ambiguous_derived_from_result() {
     }
 }
 
-#[test]
-fn can_filter_by_relationship_fields() {
+#[tokio::test]
+async fn can_filter_by_relationship_fields() {
     let result = execute_query_document(
         graphql_parser::parse_query(
             "
@@ -1062,7 +1085,7 @@ fn can_filter_by_relationship_fields() {
         ",
         )
         .expect("invalid test query"),
-    );
+    ).await;
 
     assert!(
         result.errors.is_none(),
@@ -1101,8 +1124,8 @@ fn can_filter_by_relationship_fields() {
     );
 }
 
-#[test]
-fn cannot_filter_by_derved_relationship_fields() {
+#[tokio::test]
+async fn cannot_filter_by_derved_relationship_fields() {
     let result = execute_query_document(
         graphql_parser::parse_query(
             "
@@ -1115,7 +1138,7 @@ fn cannot_filter_by_derved_relationship_fields() {
         ",
         )
         .expect("invalid test query"),
-    );
+    ).await;
 
     assert!(result.errors.is_some());
     match &result.errors.unwrap()[0] {
@@ -1159,6 +1182,7 @@ async fn subscription_gets_result_even_without_events() {
         max_complexity: None,
         max_depth: 100,
         max_first: std::u32::MAX,
+        load_manager: mock_query_load_manager(),
     };
 
     // Execute the subscription and expect at least one result to be
@@ -1190,8 +1214,8 @@ async fn subscription_gets_result_even_without_events() {
     );
 }
 
-#[test]
-fn can_use_nested_filter() {
+#[tokio::test]
+async fn can_use_nested_filter() {
     let result = execute_query_document(
         graphql_parser::parse_query(
             "
@@ -1204,7 +1228,7 @@ fn can_use_nested_filter() {
         ",
         )
         .expect("invalid test query"),
-    );
+    ).await;
 
     assert_eq!(
         result.data.unwrap(),
@@ -1311,7 +1335,7 @@ fn check_musicians_at(
 fn query_at_block() {
     use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
-    fn musicians_at(block: &str, expected: Result<Vec<&str>, &str>, qid: &str) {
+    async fn musicians_at(block: &str, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
         check_musicians_at(&query, None, expected, qid);
     }
@@ -1324,14 +1348,14 @@ fn query_at_block() {
          up to block number 1 and data for block number 7000 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
-    musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
-    musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
-    musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
+    musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000").await;
+    musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0").await;
+    musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
 
-    musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
-    musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
-    musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0").await;
+    musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1").await;
+    musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2").await;
+    musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3").await;
 }
 
 #[test]
@@ -1376,13 +1400,13 @@ fn query_at_block_with_vars() {
 }
 
 /// Check that the `extensions` field in the query result has the correct format
-#[test]
+#[tokio::test]
 #[ignore]
-fn block_extension() {
+async fn block_extension() {
     let query = format!("query {{ musicians(block: {{ number: 0 }}) {{ id }} }}");
     let query = graphql_parser::parse_query(&query).expect("invalid test query");
 
-    let result = execute_query_document(query);
+    let result = execute_query_document(query).await;
 
     if STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap() {
         let ext = object! {

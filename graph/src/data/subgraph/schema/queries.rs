@@ -5,6 +5,7 @@ use crate::data::graphql::ValueMap;
 use crate::data::query::{Query, QueryVariables};
 use crate::data::subgraph::schema::SUBGRAPHS_ID;
 use crate::data::subgraph::SubgraphDeploymentId;
+use crate::prelude::CheapClone;
 use failure::Error;
 use graphql_parser::parse_query;
 use graphql_parser::query as q;
@@ -23,6 +24,7 @@ impl<S: SubgraphDeploymentStore, Q: GraphQlRunner> LazyMetadata<S, Q> {
     pub async fn health(&self) -> Result<SubgraphHealth, Error> {
         let value = self
             .graphql_runner
+            .cheap_clone()
             .query_metadata(Query::new(
                 self.store.api_schema(&SUBGRAPHS_ID).unwrap(),
                 parse_query(
@@ -56,6 +58,7 @@ impl<S: SubgraphDeploymentStore, Q: GraphQlRunner> LazyMetadata<S, Q> {
     pub async fn has_non_fatal_errors(&self) -> Result<bool, Error> {
         let value = self
             .graphql_runner
+            .cheap_clone()
             .query_metadata(Query::new(
                 self.store.api_schema(&SUBGRAPHS_ID).unwrap(),
                 parse_query(

@@ -22,7 +22,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
 
     /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
     async fn run_query_with_complexity(
-        &self,
+        self: Arc<Self>,
         query: Query,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
@@ -35,7 +35,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         subscription: Subscription,
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
-    async fn query_metadata(&self, query: Query) -> Result<q::Value, Error> {
+    async fn query_metadata(self: Arc<Self>, query: Query) -> Result<q::Value, Error> {
         let result = self
             .run_query_with_complexity(query, None, None, None)
             .await;
