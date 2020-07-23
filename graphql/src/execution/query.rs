@@ -123,7 +123,7 @@ impl Query {
             q::Selection::Field(f) => Some(f),
             _ => None,
         }) {
-            match field.block_constraint() {
+            match field.block_constraint(&self.variables) {
                 Ok(bc) => {
                     let selection_set = bcs.entry(bc).or_insert(q::SelectionSet {
                         span: self.selection_set.span.clone(),

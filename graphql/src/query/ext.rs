@@ -2,7 +2,7 @@
 
 use graphql_parser::query as q;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 
 use graph::data::graphql::TryFromValue;
@@ -45,17 +45,36 @@ impl Default for BlockConstraint {
 }
 
 pub trait FieldExt {
-    fn block_constraint<'a>(&self) -> Result<BlockConstraint, QueryExecutionError>;
+    fn block_constraint<'a>(
+        &self,
+        vars: &HashMap<q::Name, q::Value>,
+    ) -> Result<BlockConstraint, QueryExecutionError>;
 }
 
 impl FieldExt for q::Field {
-    fn block_constraint<'a>(&self) -> Result<BlockConstraint, QueryExecutionError> {
+    fn block_constraint<'a>(
+        &self,
+        vars: &HashMap<q::Name, q::Value>,
+    ) -> Result<BlockConstraint, QueryExecutionError> {
         fn invalid_argument(arg: &str, field: &q::Field, value: &q::Value) -> QueryExecutionError {
             QueryExecutionError::InvalidArgumentError(
                 field.position.clone(),
                 arg.to_owned(),
                 value.clone(),
             )
+        }
+
+        fn lookup<'a>(
+            field: &q::Field,
+            value: &'a q::Value,
+            vars: &'a HashMap<q::Name, q::Value>,
+        ) -> Result<&'a q::Value, QueryExecutionError> {
+            match value {
+                q::Value::Variable(name) => vars.get(name).ok_or_else(|| {
+                    QueryExecutionError::MissingVariableError(field.position, name.to_owned())
+                }),
+                _ => Ok(value),
+            }
         }
 
         let value =
@@ -69,15 +88,18 @@ impl FieldExt for q::Field {
                 },
             );
         if let Some(value) = value {
+            let value = lookup(self, value, vars)?;
             if let q::Value::Object(map) = value {
                 if map.len() != 1 {
                     return Err(invalid_argument("block", self, value));
                 }
                 if let Some(hash) = map.get("hash") {
+                    let hash = lookup(self, hash, vars)?;
                     TryFromValue::try_from_value(hash)
                         .map_err(|_| invalid_argument("block.hash", self, value))
                         .map(|hash| BlockConstraint::Hash(hash))
                 } else if let Some(number_value) = map.get("number") {
+                    let number_value = lookup(self, number_value, vars)?;
                     TryFromValue::try_from_value(number_value)
                         .map_err(|_| invalid_argument("block.number", self, number_value))
                         .and_then(|number: u64| {
