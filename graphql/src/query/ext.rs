@@ -70,23 +70,23 @@ impl FieldExt for q::Field {
             );
         if let Some(value) = value {
             if let q::Value::Object(map) = value {
-                let hash = map.get("hash");
-                let number = map.get("number");
-                if map.len() != 1 || (hash.is_none() && number.is_none()) {
+                if map.len() != 1 {
                     return Err(invalid_argument("block", self, value));
                 }
-                match (hash, number) {
-                    (Some(hash), _) => TryFromValue::try_from_value(hash)
+                if let Some(hash) = map.get("hash") {
+                    TryFromValue::try_from_value(hash)
                         .map_err(|_| invalid_argument("block.hash", self, value))
-                        .map(|hash| BlockConstraint::Hash(hash)),
-                    (_, Some(number_value)) => TryFromValue::try_from_value(number_value)
+                        .map(|hash| BlockConstraint::Hash(hash))
+                } else if let Some(number_value) = map.get("number") {
+                    TryFromValue::try_from_value(number_value)
                         .map_err(|_| invalid_argument("block.number", self, number_value))
                         .and_then(|number: u64| {
                             TryFrom::try_from(number)
                                 .map_err(|_| invalid_argument("block.number", self, number_value))
                         })
-                        .map(|number| BlockConstraint::Number(number)),
-                    _ => unreachable!("We already checked that there is a hash or number entry"),
+                        .map(|number| BlockConstraint::Number(number))
+                } else {
+                    Err(invalid_argument("block", self, value))
                 }
             } else {
                 Err(invalid_argument("block", self, value))
