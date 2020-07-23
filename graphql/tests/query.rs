@@ -3,7 +3,7 @@ extern crate pretty_assertions;
 
 use graphql_parser::{query as q, Pos};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -1241,63 +1241,77 @@ fn can_use_nested_filter() {
     )
 }
 
+fn check_musicians_at(
+    query: &str,
+    block_var: Option<(&str, q::Value)>,
+    expected: Result<Vec<&str>, &str>,
+    qid: &str,
+) {
+    let query = graphql_parser::parse_query(query).expect("invalid test query");
+    let vars = block_var.map(|(name, value)| {
+        let mut map = HashMap::new();
+        map.insert(name.to_owned(), value);
+        QueryVariables::new(map)
+    });
+
+    let result = execute_query_document_with_variables(query, vars);
+
+    match (
+        STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap(),
+        expected,
+    ) {
+        (true, Ok(ids)) => {
+            let ids: Vec<_> = ids
+                .into_iter()
+                .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
+                .collect();
+            let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
+            assert!(
+                result.errors.is_none(),
+                "unexpected error: {:?} ({})\n",
+                result.errors,
+                qid
+            );
+            assert_eq!(result.data, expected, "failed query: ({})", qid);
+        }
+        (true, Err(msg)) => {
+            assert!(
+                result.errors.is_some(),
+                "expected error `{}` but got successful result ({})",
+                msg,
+                qid
+            );
+            let errors = result.errors.unwrap();
+            let actual = errors
+                .first()
+                .expect("we expect one error message")
+                .to_string();
+
+            assert!(
+                actual.contains(msg),
+                "expected error message `{}` but got {:?} ({})",
+                msg,
+                errors,
+                qid
+            );
+        }
+        (false, _) => {
+            assert!(
+                result.errors.is_some(),
+                "JSONB does not support time travel: {}",
+                qid
+            );
+        }
+    }
+}
+
 #[test]
 fn query_at_block() {
     use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
     fn musicians_at(block: &str, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
-        let query = graphql_parser::parse_query(&query).expect("invalid test query");
-
-        let result = execute_query_document(query);
-
-        match (
-            STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap(),
-            expected,
-        ) {
-            (true, Ok(ids)) => {
-                let ids: Vec<_> = ids
-                    .into_iter()
-                    .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
-                    .collect();
-                let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
-                assert!(
-                    result.errors.is_none(),
-                    "unexpected error: {:?} ({})\n",
-                    result.errors,
-                    qid
-                );
-                assert_eq!(result.data, expected, "failed query: ({})", qid);
-            }
-            (true, Err(msg)) => {
-                assert!(
-                    result.errors.is_some(),
-                    "expected error `{}` but got successful result ({})",
-                    msg,
-                    qid
-                );
-                let errors = result.errors.unwrap();
-                let actual = errors
-                    .first()
-                    .expect("we expect one error message")
-                    .to_string();
-
-                assert!(
-                    actual.contains(msg),
-                    "expected error message `{}` but got {:?} ({})",
-                    msg,
-                    errors,
-                    qid
-                );
-            }
-            (false, _) => {
-                assert!(
-                    result.errors.is_some(),
-                    "JSONB does not support time travel: {}",
-                    qid
-                );
-            }
-        }
+        check_musicians_at(&query, None, expected, qid);
     }
 
     fn hash(block: &FakeBlock) -> String {
@@ -1316,6 +1330,47 @@ fn query_at_block() {
     musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
     musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
     musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
+}
+
+#[test]
+fn query_at_block_with_vars() {
+    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
+
+    fn musicians_at_nr(block: i32, expected: Result<Vec<&str>, &str>, qid: &str) {
+        let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
+        let number = q::Value::Int(q::Number::from(block));
+        let var = Some(("block", number.clone()));
+
+        check_musicians_at(query, var, expected.clone(), qid);
+
+        let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
+        let mut map = BTreeMap::new();
+        map.insert("number".to_owned(), number);
+        let block = q::Value::Object(map);
+        let var = Some(("block", block));
+
+        check_musicians_at(query, var, expected, qid);
+    }
+
+    fn musicians_at_hash(block: &FakeBlock, expected: Result<Vec<&str>, &str>, qid: &str) {
+        let query = "query by_hash($block: String!) { musicians(block: { hash: $block }) { id } }";
+        let var = Some(("block", q::Value::String(block.hash.to_owned())));
+
+        check_musicians_at(query, var, expected, qid);
+    }
+
+    const BLOCK_NOT_INDEXED: &str = "subgraph graphqlTestsQuery has only indexed \
+         up to block number 1 and data for block number 7000 is therefore not yet available";
+    const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
+
+    musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
+    musicians_at_nr(0, Ok(vec!["m1", "m2"]), "n0");
+    musicians_at_nr(1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
+
+    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0");
+    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at_hash(&BLOCK_TWO, Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
 
 /// Check that the `extensions` field in the query result has the correct format
