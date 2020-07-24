@@ -51,12 +51,18 @@ impl LinkResolverTrait for TextResolver {
 
 const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
 
+const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
+
+const MAPPING: &str = "export function handleGet(call: getCall): void {}";
+
 async fn resolve_manifest(text: &str) -> SubgraphManifest {
     let mut resolver = TextResolver::default();
     let link = Link::from("/ipfs/Qmmanifest".to_owned());
 
     resolver.add(link.link.as_str(), text);
     resolver.add("/ipfs/Qmschema", GQL_SCHEMA);
+    resolver.add("/ipfs/Qmabi", ABI);
+    resolver.add("/ipfs/Qmmapping", MAPPING);
 
     SubgraphManifest::resolve(link, &resolver, &LOGGER)
         .await
@@ -171,4 +177,42 @@ specVersion: 0.0.1
             msg
         );
     })
+}
+
+#[tokio::test]
+async fn parse_call_handlers() {
+    const YAML: &str = "
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      callHandlers:
+        - function: get(address)
+          handler: handleget
+schema:
+  file:
+    /: /ipfs/Qmschema
+specVersion: 0.0.1
+";
+
+    let manifest = resolve_manifest(YAML).await;
+    let requires_traces = manifest.requires_traces();
+
+    assert_eq!("Qmmanifest", manifest.id.as_str());
+    assert_eq!(true, requires_traces);
 }
