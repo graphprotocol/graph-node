@@ -1,6 +1,6 @@
 //! Extension traits for graphql_parser::query structs
 
-use graphql_parser::query as q;
+use graphql_parser::{query as q, Pos};
 
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
@@ -10,9 +10,20 @@ use graph::data::query::QueryExecutionError;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
 
-pub trait ValueExt {
+pub trait ValueExt: Sized {
     fn as_object(&self) -> &BTreeMap<q::Name, q::Value>;
     fn as_string(&self) -> &str;
+
+    /// If `self` is a variable reference, look it up in `vars` and return
+    /// that. Otherwise, just return `self`.
+    ///
+    /// If `self` is a variable reference, but has no entry in `vars` return
+    /// an error
+    fn lookup<'a>(
+        &'a self,
+        vars: &'a HashMap<q::Name, Self>,
+        pos: Pos,
+    ) -> Result<&'a Self, QueryExecutionError>;
 }
 
 impl ValueExt for q::Value {
@@ -27,6 +38,19 @@ impl ValueExt for q::Value {
         match self {
             q::Value::String(string) => string,
             _ => panic!("expected a Value::String"),
+        }
+    }
+
+    fn lookup<'a>(
+        &'a self,
+        vars: &'a HashMap<q::Name, q::Value>,
+        pos: Pos,
+    ) -> Result<&'a q::Value, QueryExecutionError> {
+        match self {
+            q::Value::Variable(name) => vars
+                .get(name)
+                .ok_or_else(|| QueryExecutionError::MissingVariableError(pos, name.to_owned())),
+            _ => Ok(self),
         }
     }
 }
@@ -64,19 +88,6 @@ impl FieldExt for q::Field {
             )
         }
 
-        fn lookup<'a>(
-            field: &q::Field,
-            value: &'a q::Value,
-            vars: &'a HashMap<q::Name, q::Value>,
-        ) -> Result<&'a q::Value, QueryExecutionError> {
-            match value {
-                q::Value::Variable(name) => vars.get(name).ok_or_else(|| {
-                    QueryExecutionError::MissingVariableError(field.position, name.to_owned())
-                }),
-                _ => Ok(value),
-            }
-        }
-
         let value =
             self.arguments.iter().find_map(
                 |(name, value)| {
@@ -88,18 +99,18 @@ impl FieldExt for q::Field {
                 },
             );
         if let Some(value) = value {
-            let value = lookup(self, value, vars)?;
+            let value = value.lookup(vars, self.position)?;
             if let q::Value::Object(map) = value {
                 if map.len() != 1 {
                     return Err(invalid_argument("block", self, value));
                 }
                 if let Some(hash) = map.get("hash") {
-                    let hash = lookup(self, hash, vars)?;
+                    let hash = hash.lookup(vars, self.position)?;
                     TryFromValue::try_from_value(hash)
                         .map_err(|_| invalid_argument("block.hash", self, value))
                         .map(|hash| BlockConstraint::Hash(hash))
                 } else if let Some(number_value) = map.get("number") {
-                    let number_value = lookup(self, number_value, vars)?;
+                    let number_value = number_value.lookup(vars, self.position)?;
                     TryFromValue::try_from_value(number_value)
                         .map_err(|_| invalid_argument("block.number", self, number_value))
                         .and_then(|number: u64| {
