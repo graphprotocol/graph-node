@@ -1519,7 +1519,6 @@ dependencies = [
  "hex 0.4.2",
  "ipfs-api",
  "lazy_static",
- "maybe-owned",
  "pwasm-utils",
  "semver 0.10.0",
  "strum",
@@ -2209,8 +2208,9 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
 name = "maybe-owned"
-version = "0.3.3"
-source = "git+https://github.com/rustonaut/maybe-owned#471652f18671340fa03b9e47a2abf77723593866"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
 
 [[package]]
 name = "maybe-uninit"
