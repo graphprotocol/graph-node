@@ -149,9 +149,19 @@ struct KillState {
 
 impl KillState {
     fn new() -> Self {
-        let long_ago = Duration::from_secs(60);
-        let now = Instant::now();
-        let before = now.checked_sub(long_ago).unwrap_or(now);
+        // Set before to an instant long enough ago so that we don't
+        // immediately log or adjust the kill rate if the node is already
+        // under load. Unfortunately, on OSX, `Instant` measures time from
+        // the last boot, and if that was less than 60s ago, we can't
+        // subtract 60s from `now`. Since the worst that can happen if
+        // we set `before` to `now` is that we might log more than strictly
+        // necessary, and adjust the kill rate one time too often right after
+        // node start, it is acceptable to fall back to `now`
+        let before = {
+            let long_ago = Duration::from_secs(60);
+            let now = Instant::now();
+            now.checked_sub(long_ago).unwrap_or(now)
+        };
         Self {
             kill_rate: 0.0,
             last_update: before,
