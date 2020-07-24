@@ -12,6 +12,7 @@ use serde::ser;
 use serde_yaml;
 use slog::{info, Logger};
 use stable_hash::prelude::*;
+use wasmparser;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
@@ -34,6 +35,7 @@ use crate::prelude::{
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
 
+use crate::components::ethereum::NetworkCapability;
 use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
@@ -604,6 +606,43 @@ pub struct Mapping {
     pub link: Link,
 }
 
+impl Mapping {
+    pub fn calls_host_fn(&self, host_fn: &str) -> bool {
+        use wasmparser::Payload;
+
+        let runtime = self.runtime.as_ref().as_ref();
+
+        for payload in wasmparser::Parser::new(0).parse_all(runtime) {
+            match payload.unwrap() {
+                Payload::ImportSection(s) => {
+                    for import in s {
+                        let import = import.unwrap();
+                        if import.field == Some(host_fn) {
+                            return true;
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        return false;
+    }
+
+    pub fn has_call_handler(&self) -> bool {
+        !self.call_handlers.is_empty()
+    }
+
+    pub fn has_block_handler_with_call_filter(&self) -> bool {
+        self.block_handlers
+            .iter()
+            .any(|handler| match handler.filter {
+                Some(BlockHandlerFilter::Call) => true,
+                _ => false,
+            })
+    }
+}
+
 impl UnresolvedMapping {
     pub async fn resolve(
         self,
@@ -844,22 +883,6 @@ impl UnresolvedDataSourceTemplate {
             source,
             mapping: mapping.resolve(resolver, logger).await?,
         })
-    }
-}
-
-impl DataSourceTemplate {
-    pub fn has_call_handler(&self) -> bool {
-        !self.mapping.call_handlers.is_empty()
-    }
-
-    pub fn has_block_handler_with_call_filter(&self) -> bool {
-        self.mapping
-            .block_handlers
-            .iter()
-            .any(|handler| match handler.filter {
-                Some(BlockHandlerFilter::Call) => true,
-                _ => false,
-            })
     }
 }
 

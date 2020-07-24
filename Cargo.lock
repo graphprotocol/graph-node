@@ -543,7 +543,7 @@ dependencies = [
  "log 0.4.8",
  "serde 1.0.114",
  "thiserror",
- "wasmparser",
+ "wasmparser 0.57.0",
 ]
 
 [[package]]
@@ -1395,6 +1395,7 @@ dependencies = [
  "tokio-retry",
  "url 2.1.1",
  "uuid 0.8.1",
+ "wasmparser 0.59.0",
  "web3",
 ]
 
@@ -4737,6 +4738,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32fddd575d477c6e9702484139cf9f23dcd554b06d185ed0f56c857dd3a47aa6"
 
 [[package]]
+name = "wasmparser"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a950e6a618f62147fd514ff445b2a0b53120d382751960797f85f058c7eda9b9"
+
+[[package]]
 name = "wasmtime"
 version = "0.18.0"
 source = "git+https://github.com/graphprotocol/wasmtime#ba7bb10e4510020557eeadb10627d949adc3394a"
@@ -4750,7 +4757,7 @@ dependencies = [
  "region",
  "rustc-demangle",
  "target-lexicon",
- "wasmparser",
+ "wasmparser 0.57.0",
  "wasmtime-environ",
  "wasmtime-jit",
  "wasmtime-profiling",
@@ -4770,7 +4777,7 @@ dependencies = [
  "object",
  "target-lexicon",
  "thiserror",
- "wasmparser",
+ "wasmparser 0.57.0",
  "wasmtime-environ",
 ]
 
@@ -4797,7 +4804,7 @@ dependencies = [
  "sha2 0.8.1",
  "thiserror",
  "toml",
- "wasmparser",
+ "wasmparser 0.57.0",
  "winapi 0.3.8",
  "zstd",
 ]
@@ -4820,7 +4827,7 @@ dependencies = [
  "region",
  "target-lexicon",
  "thiserror",
- "wasmparser",
+ "wasmparser 0.57.0",
  "wasmtime-debug",
  "wasmtime-environ",
  "wasmtime-profiling",
