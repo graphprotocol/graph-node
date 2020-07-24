@@ -760,19 +760,6 @@ impl Store {
         self.read_only_pools[idx].get().map_err(Error::from)
     }
 
-    /// Gets a ReplicaId, which may be the main one or a read-only one, choosing by round-robin.
-    pub(crate) fn pick_replica(&self) -> ReplicaId {
-        use std::sync::atomic::Ordering;
-
-        // Pick an index by round-robin. Index 0 is the main pool.
-        let pools_count = 1 + self.read_only_pools.len();
-        let round_robin = self.conn_round_robin_counter.fetch_add(1, Ordering::SeqCst);
-        match round_robin % pools_count {
-            0 => ReplicaId::Main,
-            n => ReplicaId::ReadOnly(n - 1),
-        }
-    }
-
     // Duplicated logic - this function may eventually go away.
     // See also 220c1ae9-3e8a-42d3-bcc5-b1244a69b8a9
     /// Deprecated. Use `with_entity_conn` instead
@@ -1346,7 +1333,28 @@ impl StoreTrait for Store {
         self: Arc<Self>,
         for_subscription: bool,
     ) -> Arc<(dyn QueryStore + Send + Sync + 'static)> {
-        Arc::new(crate::query_store::QueryStore::new(self, for_subscription))
+        use std::sync::atomic::Ordering;
+
+        let replica_id = match for_subscription {
+            // Pick a ReplicaId by round-robin, which may be the main one or a read-only one.
+            false => {
+                // Index 0 is the main pool.
+                let pools_count = 1 + self.read_only_pools.len();
+                let round_robin = self.conn_round_robin_counter.fetch_add(1, Ordering::SeqCst);
+                match round_robin % pools_count {
+                    0 => ReplicaId::Main,
+                    n => ReplicaId::ReadOnly(n - 1),
+                }
+            }
+            // Subscriptions always go to the main replica.
+            true => ReplicaId::Main,
+        };
+
+        Arc::new(crate::query_store::QueryStore::new(
+            self,
+            for_subscription,
+            replica_id,
+        ))
     }
 }
 

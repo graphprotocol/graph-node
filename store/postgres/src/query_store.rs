@@ -11,12 +11,11 @@ pub(crate) struct QueryStore {
 }
 
 impl QueryStore {
-    pub(crate) fn new(store: Arc<crate::Store>, for_subscription: bool) -> Self {
-        // Subscriptions always go to the main replica.
-        let replica_id = match for_subscription {
-            false => store.pick_replica(),
-            true => ReplicaId::Main,
-        };
+    pub(crate) fn new(
+        store: Arc<crate::Store>,
+        for_subscription: bool,
+        replica_id: ReplicaId,
+    ) -> Self {
         QueryStore {
             replica_id,
             store,
@@ -24,6 +23,7 @@ impl QueryStore {
         }
     }
 }
+
 impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
