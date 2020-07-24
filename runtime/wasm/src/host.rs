@@ -40,7 +40,7 @@ struct RuntimeHostConfig {
 }
 
 pub struct RuntimeHostBuilder<S> {
-    ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+    ethereum_networks: EthereumNetworks,
     link_resolver: Arc<dyn LinkResolver>,
     stores: HashMap<String, Arc<S>>,
     arweave_adapter: Arc<dyn ArweaveAdapter>,
@@ -53,7 +53,7 @@ where
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapters: self.ethereum_adapters.clone(),
+            ethereum_networks: self.ethereum_networks.clone(),
             link_resolver: self.link_resolver.clone(),
             stores: self.stores.clone(),
             arweave_adapter: self.arweave_adapter.cheap_clone(),
@@ -67,14 +67,14 @@ where
     S: Store + SubgraphDeploymentStore + EthereumCallCache,
 {
     pub fn new(
-        ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+        ethereum_networks: EthereumNetworks,
         link_resolver: Arc<dyn LinkResolver>,
         stores: HashMap<String, Arc<S>>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         RuntimeHostBuilder {
-            ethereum_adapters,
+            ethereum_networks,
             link_resolver,
             stores,
             arweave_adapter,
@@ -127,12 +127,14 @@ where
             )
         })?;
 
-        let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or_else(|| {
-            format_err!(
-                "No Ethereum adapter found that matches subgraph network: \"{}\"",
-                &network_name
-            )
-        })?;
+        let required_capabilities = match data_source.mapping.calls_host_fn("ethereum.call") {
+            true => vec![NetworkCapability::Archive],
+            false => vec![NetworkCapability::cheapest()],
+        };
+
+        let ethereum_adapter = self
+            .ethereum_networks
+            .get_adapter_with_requirements(network_name.clone(), &required_capabilities)?;
 
         // Detect whether the subgraph uses templates in data sources, which are
         // deprecated, or the top-level templates field.

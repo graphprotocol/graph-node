@@ -5,6 +5,7 @@ use std::{env, iter};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
+use graph::components::ethereum::EthereumNetworks;
 use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
     SubgraphEntity, SubgraphVersionEntity, TypedEntity,
@@ -31,7 +32,7 @@ pub struct SubgraphRegistrar<L, P, S, CS> {
     provider: Arc<P>,
     store: Arc<S>,
     chain_stores: HashMap<String, Arc<CS>>,
-    ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+    ethereum_networks: EthereumNetworks,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
@@ -50,7 +51,7 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         chain_stores: HashMap<String, Arc<CS>>,
-        ethereum_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+        ethereum_networks: EthereumNetworks,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
@@ -70,7 +71,7 @@ where
             provider,
             store,
             chain_stores,
-            ethereum_adapters,
+            ethereum_networks,
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
@@ -318,9 +319,18 @@ where
         let chain_store = self.chain_stores.get(&network_name).ok_or(
             SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
         )?;
-        let ethereum_adapter = self.ethereum_adapters.get(&network_name).ok_or(
-            SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-        )?;
+
+        let subgraph_eth_requirements = manifest.all_eth_requirements();
+
+        let ethereum_adapter = self
+            .ethereum_networks
+            .get_adapter_with_requirements(network_name.clone(), &subgraph_eth_requirements)
+            .map_err(|_| {
+                SubgraphRegistrarError::SubgraphNetworkRequirementsNotSupported(
+                    network_name,
+                    subgraph_eth_requirements,
+                )
+            })?;
 
         let manifest_id = manifest.id.clone();
         create_subgraph_version(

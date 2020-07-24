@@ -4,7 +4,9 @@ use std::mem;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use graph::components::ethereum::{blocks_with_triggers, triggers_in_block};
+use graph::components::ethereum::{
+    blocks_with_triggers, triggers_in_block, EthereumNetworks, NetworkCapability,
+};
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
 };
@@ -104,7 +106,7 @@ struct BlockStreamContext<S, C> {
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
     start_blocks: Vec<u64>,
-    templates_use_calls: bool,
+    include_calls_in_blocks: bool,
     logger: Logger,
     metrics: Arc<BlockStreamMetrics>,
     previous_triggers_per_block: f64,
@@ -124,7 +126,7 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
             call_filter: self.call_filter.clone(),
             block_filter: self.block_filter.clone(),
             start_blocks: self.start_blocks.clone(),
-            templates_use_calls: self.templates_use_calls,
+            include_calls_in_blocks: self.include_calls_in_blocks,
             logger: self.logger.clone(),
             metrics: self.metrics.clone(),
             previous_triggers_per_block: self.previous_triggers_per_block,
@@ -162,7 +164,7 @@ where
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
         start_blocks: Vec<u64>,
-        templates_use_calls: bool,
+        include_calls_in_blocks: bool,
         reorg_threshold: u64,
         logger: Logger,
         metrics: Arc<BlockStreamMetrics>,
@@ -183,7 +185,7 @@ where
                 call_filter,
                 block_filter,
                 start_blocks,
-                templates_use_calls,
+                include_calls_in_blocks,
                 metrics,
 
                 // A high number here forces a slow start, with a range of 1.
@@ -199,14 +201,6 @@ where
     S: Store,
     C: ChainStore,
 {
-    /// Analyze the trigger filters to determine if we need to query the blocks calls
-    /// and populate them in the blocks
-    fn include_calls_in_blocks(&self) -> bool {
-        self.templates_use_calls
-            || !self.call_filter.is_empty()
-            || self.block_filter.contract_addresses.len() > 0
-    }
-
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     fn next_blocks(&self) -> Box<dyn Future<Item = NextBlocks, Error = Error> + Send> {
         let ctx = self.clone();
@@ -497,7 +491,7 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let eth_adapter = self.eth_adapter.clone();
 
-                        let block_with_calls = if !self.include_calls_in_blocks() {
+                        let block_with_calls = if !self.include_calls_in_blocks {
                             Box::new(future::ok(EthereumBlockWithCalls {
                                 ethereum_block: head_ancestor,
                                 calls: None,
@@ -943,7 +937,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
 pub struct BlockStreamBuilder<S, C, M> {
     subgraph_store: Arc<S>,
     chain_stores: HashMap<String, Arc<C>>,
-    eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+    eth_networks: EthereumNetworks,
     node_id: NodeId,
     reorg_threshold: u64,
     metrics_registry: Arc<M>,
@@ -954,7 +948,7 @@ impl<S, C, M> Clone for BlockStreamBuilder<S, C, M> {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
             chain_stores: self.chain_stores.clone(),
-            eth_adapters: self.eth_adapters.clone(),
+            eth_networks: self.eth_networks.clone(),
             node_id: self.node_id.clone(),
             reorg_threshold: self.reorg_threshold,
             metrics_registry: self.metrics_registry.clone(),
@@ -971,7 +965,7 @@ where
     pub fn new(
         subgraph_store: Arc<S>,
         chain_stores: HashMap<String, Arc<C>>,
-        eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+        eth_networks: EthereumNetworks,
         node_id: NodeId,
         reorg_threshold: u64,
         metrics_registry: Arc<M>,
@@ -979,7 +973,7 @@ where
         BlockStreamBuilder {
             subgraph_store,
             chain_stores,
-            eth_adapters,
+            eth_networks,
             node_id,
             reorg_threshold,
             metrics_registry,
@@ -1004,7 +998,7 @@ where
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
-        templates_use_calls: bool,
+        include_calls_in_blocks: bool,
         metrics: Arc<BlockStreamMetrics>,
     ) -> Self::Stream {
         let logger = logger.new(o!(
@@ -1019,27 +1013,32 @@ where
                 &network_name
             ))
             .clone();
+
+        let requirements = match include_calls_in_blocks {
+            true => NetworkCapability::Traces,
+            false => NetworkCapability::Full,
+        };
+
         let eth_adapter = self
-            .eth_adapters
-            .get(&network_name)
+            .eth_networks
+            .get_adapter_with_requirements(network_name.clone(), &vec![requirements])
             .expect(&format!(
-                "no eth adapter that supports network: {}",
-                &network_name
-            ))
-            .clone();
+                "no eth adapter that supports network: {} with {:?}",
+                &network_name, &requirements
+            ));
 
         // Create the actual subgraph-specific block stream
         BlockStream::new(
             self.subgraph_store.clone(),
             chain_store,
-            eth_adapter,
+            eth_adapter.clone(),
             self.node_id.clone(),
             deployment_id,
             log_filter,
             call_filter,
             block_filter,
             start_blocks,
-            templates_use_calls,
+            include_calls_in_blocks,
             self.reorg_threshold,
             logger,
             metrics,

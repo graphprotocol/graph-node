@@ -1,5 +1,6 @@
 mod adapter;
 mod listener;
+mod network;
 mod stream;
 mod types;
 
@@ -11,6 +12,7 @@ pub use self::adapter::{
     MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
+pub use self::network::{EthereumNetworkAdapters, EthereumNetworks, NetworkCapability};
 pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
 pub use self::types::{
     BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockPointer,

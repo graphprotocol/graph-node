@@ -273,6 +273,11 @@ pub enum SubgraphRegistrarError {
     NameNotFound(String),
     #[fail(display = "Ethereum network not supported by registrar: {}", _0)]
     NetworkNotSupported(String),
+    #[fail(
+        display = "Ethereum network {} not found with capabilities: {:?}",
+        _0, _1
+    )]
+    SubgraphNetworkRequirementsNotSupported(String, Vec<NetworkCapability>),
     #[fail(display = "deployment not found: {}", _0)]
     DeploymentNotFound(String),
     #[fail(display = "deployment assignment unchanged: {}", _0)]
@@ -1132,6 +1137,41 @@ impl SubgraphManifest {
             .iter()
             .map(|data_source| data_source.source.start_block)
             .collect()
+    }
+
+    pub fn all_mappings(&self) -> Vec<Mapping> {
+        self.templates
+            .iter()
+            .map(|template| template.mapping.clone())
+            .chain(
+                self.data_sources
+                    .iter()
+                    .map(|source| source.mapping.clone()),
+            )
+            .collect()
+    }
+
+    pub fn requires_traces(&self) -> bool {
+        self.all_mappings().iter().any(|mapping| {
+            dbg!(mapping.has_call_handler()) || dbg!(mapping.has_block_handler_with_call_filter())
+        })
+    }
+
+    pub fn requires_archive(&self) -> bool {
+        self.all_mappings()
+            .iter()
+            .any(|mapping| mapping.calls_host_fn("ethereum.call"))
+    }
+
+    pub fn all_eth_requirements(&self) -> Vec<NetworkCapability> {
+        let mut caps = Vec::new();
+        if self.requires_traces() {
+            caps.push(NetworkCapability::Traces)
+        }
+        if self.requires_archive() {
+            caps.push(NetworkCapability::Archive)
+        }
+        caps
     }
 }
 
