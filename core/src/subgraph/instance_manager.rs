@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use graph::components::ethereum::triggers_in_block;
+use graph::components::ethereum::{triggers_in_block, EthereumNetworks, NetworkCapability};
 use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{ProofOfIndexing, SharedProofOfIndexing};
 use graph::data::store::scalar::Bytes;
@@ -37,7 +37,7 @@ struct IndexingInputs<B, S> {
     store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     stream_builder: B,
-    templates_use_calls: bool,
+    include_calls_in_blocks: bool,
     top_level_templates: Arc<Vec<DataSourceTemplate>>,
 }
 
@@ -184,7 +184,7 @@ impl SubgraphInstanceManager {
     pub fn new<B, S, M>(
         logger_factory: &LoggerFactory,
         stores: HashMap<String, Arc<S>>,
-        eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+        eth_networks: EthereumNetworks,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
@@ -206,7 +206,7 @@ impl SubgraphInstanceManager {
             logger_factory,
             subgraph_receiver,
             stores,
-            eth_adapters,
+            eth_networks,
             host_builder,
             block_stream_builder,
             metrics_registry.clone(),
@@ -224,7 +224,7 @@ impl SubgraphInstanceManager {
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         stores: HashMap<String, Arc<S>>,
-        eth_adapters: HashMap<String, Arc<dyn EthereumAdapter>>,
+        eth_networks: EthereumNetworks,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
@@ -258,6 +258,10 @@ impl SubgraphInstanceManager {
                             "data_sources" => manifest.data_sources.len()
                         );
                         let network = manifest.network_name();
+                        let required_capabilities = match manifest.requires_archive() {
+                            true => NetworkCapability::Archive,
+                            false => NetworkCapability::Full,
+                        };
                         match Self::start_subgraph(
                             logger.clone(),
                             instances.clone(),
@@ -270,12 +274,14 @@ impl SubgraphInstanceManager {
                                     &network
                                 ))
                                 .clone(),
-                            eth_adapters
-                                .get(&network)
+                            eth_networks
+                                .get_adapter_with_requirements(
+                                    network.clone(),
+                                    &vec![required_capabilities])
                                 .expect(&format!(
-                                    "expected eth adapter that matches subgraph network: {}",
-                                    &network
-                                ))
+                                    "expected eth adapter that matches subgraph network {} with required capabilities: {:?}",
+                                    &network,
+                                    &required_capabilities))
                                 .clone(),
                             manifest,
                             metrics_registry_for_subgraph.clone(),
@@ -358,13 +364,10 @@ impl SubgraphInstanceManager {
         let block_filter = EthereumBlockFilter::from_data_sources(&manifest.data_sources);
         let start_blocks = manifest.start_blocks();
 
-        // Identify whether there are templates with call handlers or
+        // Identify whether there are mappings with call handlers or
         // block handlers with call filters; in this case, we need to
-        // include calls in all blocks so we cen reprocess the block
-        // when new dynamic data sources are being created
-        let templates_use_calls = templates.iter().any(|template| {
-            template.has_call_handler() || template.has_block_handler_with_call_filter()
-        });
+        // include calls in all blocks
+        let include_calls_in_blocks = manifest.requires_traces();
 
         let top_level_templates = Arc::new(manifest.templates.clone());
 
@@ -404,7 +407,7 @@ impl SubgraphInstanceManager {
                 store,
                 eth_adapter,
                 stream_builder,
-                templates_use_calls,
+                include_calls_in_blocks,
                 top_level_templates,
             },
             state: IndexingState {
@@ -486,7 +489,7 @@ where
                 ctx.state.log_filter.clone(),
                 ctx.state.call_filter.clone(),
                 ctx.state.block_filter.clone(),
-                ctx.inputs.templates_use_calls,
+                ctx.inputs.include_calls_in_blocks,
                 ctx.block_stream_metrics.clone(),
             )
             .from_err()
