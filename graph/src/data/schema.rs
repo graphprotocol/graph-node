@@ -4,6 +4,7 @@ use crate::data::store::ValueType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::Fail;
 
+use anyhow::Context;
 use failure::Error;
 use graphql_parser;
 use graphql_parser::{
@@ -352,6 +353,58 @@ impl SchemaReference {
             },
             _ => None,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ApiSchema {
+    pub schema: Schema,
+
+    // Root types for the api schema.
+    pub query_type: Arc<ObjectType>,
+    pub subscription_type: Option<Arc<ObjectType>>,
+}
+
+impl ApiSchema {
+    /// `api_schema` will typically come from `fn api_schema` in the graphql crate.
+    pub fn from_api_schema(api_schema: Schema) -> Result<Self, anyhow::Error> {
+        let query_type = api_schema
+            .document
+            .get_root_query_type()
+            .context("no root `Query` in the schema")?
+            .clone();
+        let subscription_type = api_schema
+            .document
+            .get_root_subscription_type()
+            .cloned()
+            .map(Arc::new);
+
+        Ok(Self {
+            schema: api_schema,
+            query_type: Arc::new(query_type),
+            subscription_type,
+        })
+    }
+
+    pub fn document(&self) -> &schema::Document {
+        &self.schema.document
+    }
+
+    pub fn id(&self) -> &SubgraphDeploymentId {
+        &self.schema.id
+    }
+
+    pub fn schema(&self) -> &Schema {
+        &self.schema
+    }
+
+    pub fn types_for_interface(&self) -> &BTreeMap<Name, Vec<ObjectType>> {
+        &self.schema.types_for_interface
+    }
+
+    /// Returns `None` if the type implements no interfaces.
+    pub fn interfaces_for_type(&self, type_name: &Name) -> Option<&Vec<InterfaceType>> {
+        self.schema.interfaces_for_type(type_name)
     }
 }
 

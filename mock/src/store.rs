@@ -16,7 +16,7 @@ mock! {
     trait SubgraphDeploymentStore: Send + Sync + 'static {
         fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
 
-        fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+        fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error>;
 
         fn uses_relational_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<bool, Error>;
 
@@ -220,7 +220,7 @@ pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId
                 .expect("failed to parse users schema");
             schema.document =
                 api_schema(&schema.document).expect("failed to generate users API schema");
-            Ok(Arc::new(schema))
+            Ok(Arc::new(ApiSchema::from_api_schema(schema).unwrap()))
         });
 
     store.expect_network_name().returning(|_| Ok(None));

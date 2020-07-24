@@ -305,7 +305,6 @@ async fn main() {
                 .default_value("false")
                 .help("Ensures that the block ingestor component does not execute"),
         )
-        // See also 82d5dad6-b633-4350-86d9-70c8b2e65805
         .arg(
             Arg::with_name("store-connection-pool-size")
                 .long("store-connection-pool-size")

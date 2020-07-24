@@ -1850,7 +1850,7 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
             .api_schema(&TEST_SUBGRAPH_ID)
             .expect("test subgraph should have a schema");
         for typedef in schema
-            .document
+            .document()
             .definitions
             .iter()
             .filter_map(|def| match def {

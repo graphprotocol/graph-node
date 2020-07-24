@@ -9,12 +9,12 @@ use serde_json;
 /// Future for a query parsed from an HTTP request.
 pub struct IndexNodeRequest {
     body: Bytes,
-    schema: Arc<Schema>,
+    schema: Arc<ApiSchema>,
 }
 
 impl IndexNodeRequest {
     /// Creates a new IndexNodeRequest future based on an HTTP request and a result sender.
-    pub fn new(body: Bytes, schema: Arc<Schema>) -> Self {
+    pub fn new(body: Bytes, schema: Arc<ApiSchema>) -> Self {
         IndexNodeRequest { body, schema }
     }
 }
@@ -87,7 +87,10 @@ mod tests {
     fn rejects_invalid_json() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = IndexNodeRequest::new(hyper::body::Bytes::from("!@#)%"), Arc::new(schema));
+        let request = IndexNodeRequest::new(
+            hyper::body::Bytes::from("!@#)%"),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
+        );
         request.wait().expect_err("Should reject invalid JSON");
     }
 
@@ -95,7 +98,10 @@ mod tests {
     fn rejects_json_without_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = IndexNodeRequest::new(hyper::body::Bytes::from("{}"), Arc::new(schema));
+        let request = IndexNodeRequest::new(
+            hyper::body::Bytes::from("{}"),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
+        );
         request
             .wait()
             .expect_err("Should reject JSON without query field");
@@ -105,8 +111,10 @@ mod tests {
     fn rejects_json_with_non_string_query_field() {
         let schema =
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request =
-            IndexNodeRequest::new(hyper::body::Bytes::from("{\"query\": 5}"), Arc::new(schema));
+        let request = IndexNodeRequest::new(
+            hyper::body::Bytes::from("{\"query\": 5}"),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
+        );
         request
             .wait()
             .expect_err("Should reject JSON with a non-string query field");
@@ -118,7 +126,7 @@ mod tests {
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = IndexNodeRequest::new(
             hyper::body::Bytes::from("{\"query\": \"foo\"}"),
-            Arc::new(schema),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
         );
         request.wait().expect_err("Should reject broken queries");
     }
@@ -129,7 +137,7 @@ mod tests {
             Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
         let request = IndexNodeRequest::new(
             hyper::body::Bytes::from("{\"query\": \"{ user { name } }\"}"),
-            Arc::new(schema),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
         );
         let query = request.wait().expect("Should accept valid queries");
         assert_eq!(
@@ -150,7 +158,7 @@ mod tests {
                  \"variables\": null \
                  }",
             ),
-            Arc::new(schema),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
         );
         let query = request.wait().expect("Should accept null variables");
 
@@ -171,7 +179,7 @@ mod tests {
                  \"variables\": 5 \
                  }",
             ),
-            Arc::new(schema),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
         );
         request.wait().expect_err("Should reject non-map variables");
     }
@@ -190,7 +198,7 @@ mod tests {
                  } \
                  }",
             ),
-            Arc::new(schema),
+            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
         );
         let query = request.wait().expect("Should accept valid queries");
 

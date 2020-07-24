@@ -40,13 +40,19 @@ impl StoreResolver {
     /// of that block. Note that if `bc` is `BlockConstraint::Latest` we use
     /// whatever the latest block for the subgraph was when the resolver was
     /// created
-    pub fn at_block(
+    pub async fn at_block(
         logger: &Logger,
         store: Arc<impl Store + SubgraphDeploymentStore>,
         bc: BlockConstraint,
-        subgraph: &SubgraphDeploymentId,
+        subgraph: SubgraphDeploymentId,
     ) -> Result<(Self, EthereumBlockPointer), QueryExecutionError> {
-        let block_ptr = Self::locate_block(store.as_ref(), bc, subgraph)?;
+        let store_clone = store.cheap_clone();
+        let block_ptr = graph::spawn_blocking_allow_panic(move || {
+            Self::locate_block(store_clone.as_ref(), bc, subgraph)
+        })
+        .await
+        .map_err(|e| QueryExecutionError::Panic(e.to_string()))
+        .and_then(|x| x)?; // Propagate panics.
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store: store.query_store(false),
@@ -58,10 +64,10 @@ impl StoreResolver {
     fn locate_block(
         store: &(impl Store + SubgraphDeploymentStore),
         bc: BlockConstraint,
-        subgraph: &SubgraphDeploymentId,
+        subgraph: SubgraphDeploymentId,
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {
         if store
-            .uses_relational_schema(subgraph)
+            .uses_relational_schema(&subgraph)
             .map_err(StoreError::from)?
             && !subgraph.is_meta()
         {
@@ -96,7 +102,7 @@ impl StoreResolver {
                         }
                     }),
                 BlockConstraint::Hash(hash) => store
-                    .block_number(subgraph, hash)
+                    .block_number(&subgraph, hash)
                     .map_err(|e| e.into())
                     .and_then(|number| {
                         number

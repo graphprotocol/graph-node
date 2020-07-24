@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use crate::data::graphql::shape_hash::shape_hash;
-use crate::data::schema::Schema;
+use crate::data::schema::ApiSchema;
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
 where
@@ -107,7 +107,7 @@ impl serde::ser::Serialize for QueryVariables {
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
 #[derive(Clone, Debug)]
 pub struct Query {
-    pub schema: Arc<Schema>,
+    pub schema: Arc<ApiSchema>,
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
     pub shape_hash: u64,
@@ -120,7 +120,7 @@ pub struct Query {
 impl Query {
     /// The `network` is currently used only for caching purposes, so it is not mandatory.
     pub fn new(
-        schema: Arc<Schema>,
+        schema: Arc<ApiSchema>,
         document: q::Document,
         variables: Option<QueryVariables>,
         network: Option<String>,

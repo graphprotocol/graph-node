@@ -1,110 +1,25 @@
-use graph::prelude::CheapClone;
-use once_cell::sync::OnceCell;
+use futures03::future::FutureExt;
+use futures03::future::Shared;
+use graph::prelude::{futures03, CheapClone};
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::sync::{Arc, Condvar, Mutex};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 type Hash = <SetHasher as StableHasher>::Out;
 
-/// The 'true' cache entry that lives inside the Arc.
-/// When the last Arc is dropped, this is dropped, and the cache is removed.
-#[derive(Debug)]
-struct CacheEntryInner<R> {
-    // Considered using once_cell::sync::Lazy,
-    // but that quickly becomes a mess of generics
-    // or runs into the issue that Box<dyn FnOnce> can't be
-    // called at all, so doesn't impl FnOnce as Lazy requires.
-    result: OnceCell<Option<R>>,
-
-    // Temporary to implement OnceCell.wait
-    condvar: Condvar,
-    lock: Mutex<bool>,
-}
-
-impl<R> CacheEntryInner<R> {
-    fn new() -> Arc<Self> {
-        Arc::new(Self {
-            result: OnceCell::new(),
-            condvar: Condvar::new(),
-            lock: Mutex::new(false),
-        })
-    }
-
-    fn set_inner(&self, value: Option<R>) {
-        // Store the cached value
-        self.result
-            .set(value)
-            .unwrap_or_else(|_| panic!("Cache set should only be called once"));
-        // Wakeup consumers of the cache
-        let mut is_set = self.lock.lock().unwrap();
-        *is_set = true;
-        self.condvar.notify_all();
-    }
-
-    fn set(&self, value: R) {
-        self.set_inner(Some(value));
-    }
-
-    fn set_panic(&self) {
-        self.set_inner(None);
-    }
-
-    fn wait(&self) -> &R {
-        // Happy path - already cached.
-        if let Some(r) = self.result.get() {
-            match r.as_ref() {
-                Some(r) => r,
-                // TODO: Instead of having an Option,
-                // retain panic information and propagate it.
-                None => panic!("Query panicked"),
-            }
-        } else {
-            // Wait for the item to be placed in the cache.
-            let mut is_set = self.lock.lock().unwrap();
-            while !*is_set {
-                is_set = self.condvar.wait(is_set).unwrap();
-            }
-
-            self.wait()
-        }
-    }
-}
-
-/// On drop, call set_panic on self.value,
-/// unless set was called.
-struct PanicHelper<R> {
-    value: Option<Arc<CacheEntryInner<R>>>,
-}
-
-impl<R> Drop for PanicHelper<R> {
-    fn drop(&mut self) {
-        if let Some(inner) = self.value.take() {
-            inner.set_panic();
-        }
-    }
-}
-
-impl<R> PanicHelper<R> {
-    fn new(value: Arc<CacheEntryInner<R>>) -> Self {
-        Self { value: Some(value) }
-    }
-    fn set(mut self, r: R) -> Arc<CacheEntryInner<R>> {
-        let value = self.value.take().unwrap();
-        value.set(r);
-        value
-    }
-}
-
+type PinFut<R> = Pin<Box<dyn Future<Output = R> + 'static + Send>>;
 /// Cache that keeps a result around as long as it is still being processed.
 /// The cache ensures that the query is not re-entrant, so multiple consumers
 /// of identical queries will not execute them in parallel.
 ///
 /// This has a lot in common with AsyncCache in the network-services repo,
-/// but is sync instead of async, and more specialized.
+/// but more specialized.
 pub struct QueryCache<R> {
-    cache: Arc<Mutex<HashMap<Hash, Arc<CacheEntryInner<R>>>>>,
+    cache: Arc<Mutex<HashMap<Hash, Shared<PinFut<R>>>>>,
 }
 
 impl<R: CheapClone> QueryCache<R> {
@@ -116,41 +31,43 @@ impl<R: CheapClone> QueryCache<R> {
 
     /// Assumption: Whatever F is passed in consistently returns the same
     /// value for any input - for all values of F used with this Cache.
-    pub fn cached_query<F: FnOnce() -> R>(&self, hash: Hash, f: F) -> R {
-        let work = {
+    ///
+    /// Returns `(value, cached)`, where `cached` is true if the value was
+    /// already in the cache and false otherwise.
+    pub async fn cached_query<F: Future<Output = R> + Send + 'static>(
+        &self,
+        hash: Hash,
+        f: F,
+    ) -> (R, bool) {
+        let f = f.boxed();
+
+        let (work, cached) = {
             let mut cache = self.cache.lock().unwrap();
 
-            // Try to pull the item out of the cache and return it.
-            // If we get past this expr, it means this thread will do
-            // the work and fullfil that 'promise' in this work variable.
             match cache.entry(hash) {
                 Entry::Occupied(entry) => {
-                    // Another thread is doing the work, release the lock and wait for it.
+                    // This is already being worked on.
                     let entry = entry.get().cheap_clone();
-                    drop(cache);
-                    return entry.wait().cheap_clone();
+                    (entry, true)
                 }
                 Entry::Vacant(entry) => {
-                    let uncached = CacheEntryInner::new();
+                    // New work, put it in the in-flight list.
+                    let uncached = f.shared();
                     entry.insert(uncached.clone());
-                    uncached
+                    (uncached, false)
                 }
             }
         };
 
-        let _remove_guard = defer::defer(|| {
-            // Remove this from the list of in-flight work.
-            self.cache.lock().unwrap().remove(&hash);
-        });
+        let _remove_guard = if !cached {
+            // Make sure to remove this from the in-flight list, even if `poll` panics.
+            Some(defer::defer(|| {
+                self.cache.lock().unwrap().remove(&hash);
+            }))
+        } else {
+            None
+        };
 
-        // Now that we have taken on the responsibility, propagate panics to
-        // make sure that no threads wait forever on a result that will never
-        // come.
-        let work = PanicHelper::new(work);
-
-        // Actually compute the value and then share it with waiters.
-        let value = f();
-        work.set(value.cheap_clone());
-        value
+        (work.await, cached)
     }
 }

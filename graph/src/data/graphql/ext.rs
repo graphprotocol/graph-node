@@ -34,6 +34,10 @@ pub trait DocumentExt {
     fn find_interface(&self, name: &str) -> Option<&InterfaceType>;
 
     fn get_fulltext_directives<'a>(&'a self) -> Vec<&'a Directive>;
+
+    fn get_root_query_type(&self) -> Option<&ObjectType>;
+
+    fn get_root_subscription_type(&self) -> Option<&ObjectType>;
 }
 
 impl DocumentExt for Document {
@@ -92,6 +96,35 @@ impl DocumentExt for Document {
                     .filter(|directives| directives.name.eq("fulltext"))
                     .collect()
             })
+    }
+
+    /// Returns the root query type (if there is one).
+    fn get_root_query_type(&self) -> Option<&ObjectType> {
+        self.definitions
+            .iter()
+            .filter_map(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => {
+                    Some(t)
+                }
+                _ => None,
+            })
+            .peekable()
+            .next()
+    }
+
+    fn get_root_subscription_type(&self) -> Option<&ObjectType> {
+        self.definitions
+            .iter()
+            .filter_map(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Object(t))
+                    if t.name == "Subscription" =>
+                {
+                    Some(t)
+                }
+                _ => None,
+            })
+            .peekable()
+            .next()
     }
 }
 

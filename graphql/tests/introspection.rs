@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::prelude::{
-    o, slog, Logger, Query, QueryExecutionError, QueryResult, Schema, SubgraphDeploymentId,
+    o, slog, tokio, ApiSchema, Logger, Query, QueryExecutionError, QueryResult, Schema,
+    SubgraphDeploymentId,
 };
 use graph_graphql::prelude::{
     api_schema, execute_query, object, object_value, ExecutionContext, ObjectOrInterface,
@@ -547,10 +548,10 @@ fn expected_mock_schema_introspection() -> q::Value {
 }
 
 /// Execute an introspection query.
-fn introspection_query(schema: Schema, query: &str) -> QueryResult {
+async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
     let query = Query::new(
-        Arc::new(schema),
+        Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
         graphql_parser::parse_query(query).unwrap(),
         None,
         None,
@@ -565,16 +566,15 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         load_manager: LOAD_MANAGER.clone(),
     };
 
-    let result = PreparedQuery::new(&logger, query, None, 100).map(|query| {
-        let result = Arc::try_unwrap(execute_query(query.clone(), None, None, options)).unwrap();
-        query.log_execution(0);
-        result
-    });
+    let result = match PreparedQuery::new(&logger, query, None, 100) {
+        Ok(query) => Ok(Arc::try_unwrap(execute_query(query, None, None, options).await).unwrap()),
+        Err(e) => Err(e),
+    };
     QueryResult::from(result)
 }
 
-#[test]
-fn satisfies_graphiql_introspection_query_without_fragments() {
+#[tokio::test]
+async fn satisfies_graphiql_introspection_query_without_fragments() {
     let result = introspection_query(
         mock_schema(),
         "
@@ -815,14 +815,15 @@ fn satisfies_graphiql_introspection_query_without_fragments() {
         }
       }
     ",
-    );
+    )
+    .await;
 
     let data = result.data.expect("Introspection query returned no result");
     assert_eq!(data, expected_mock_schema_introspection());
 }
 
-#[test]
-fn satisfies_graphiql_introspection_query_with_fragments() {
+#[tokio::test]
+async fn satisfies_graphiql_introspection_query_with_fragments() {
     let result = introspection_query(
         mock_schema(),
         "
@@ -918,7 +919,8 @@ fn satisfies_graphiql_introspection_query_with_fragments() {
         }
       }
     ",
-    );
+    )
+    .await;
 
     let data = result.data.expect("Introspection query returned no result");
     assert_eq!(data, expected_mock_schema_introspection());
@@ -1113,8 +1115,8 @@ type Parameter @entity {
 }
 ";
 
-#[test]
-fn successfully_runs_introspection_query_against_complex_schema() {
+#[tokio::test]
+async fn successfully_runs_introspection_query_against_complex_schema() {
     let mut schema = Schema::parse(
         COMPLEX_SCHEMA,
         SubgraphDeploymentId::new("complexschema").unwrap(),
@@ -1217,13 +1219,14 @@ fn successfully_runs_introspection_query_against_complex_schema() {
           }
         }
     ",
-    );
+    )
+    .await;
 
     assert!(result.errors.is_none(), format!("{:#?}", result.errors));
 }
 
-#[test]
-fn introspection_possible_types() {
+#[tokio::test]
+async fn introspection_possible_types() {
     let mut schema = Schema::parse(
         COMPLEX_SCHEMA,
         SubgraphDeploymentId::new("complexschema").unwrap(),
@@ -1243,6 +1246,7 @@ fn introspection_possible_types() {
           }
         }",
     )
+    .await
     .data
     .unwrap();
 

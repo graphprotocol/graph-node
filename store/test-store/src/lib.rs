@@ -395,21 +395,27 @@ fn execute_subgraph_query_internal(
     max_complexity: Option<u64>,
     deadline: Option<Instant>,
 ) -> QueryResult {
+    let mut rt = tokio::runtime::Builder::new()
+        .basic_scheduler()
+        .enable_io()
+        .enable_time()
+        .build()
+        .unwrap();
     let logger = Logger::root(slog::Discard, o!());
     let query = return_err!(PreparedQuery::new(&logger, query, max_complexity, 100));
     let mut result = QueryResult::empty();
     for (bc, selection_set) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
-        let (resolver, _block_ptr) = return_err!(StoreResolver::at_block(
+        let (resolver, _block_ptr) = return_err!(rt.block_on(StoreResolver::at_block(
             &logger,
             STORE.clone(),
             bc,
-            &query.schema.id
-        ));
+            query.schema.id().clone()
+        )));
         result.append(
-            execute_query(
+            rt.block_on(execute_query(
                 query.clone(),
-                Some(&selection_set),
+                Some(selection_set),
                 None,
                 QueryExecutionOptions {
                     resolver,
@@ -417,7 +423,7 @@ fn execute_subgraph_query_internal(
                     load_manager: LOAD_MANAGER.clone(),
                     max_first: std::u32::MAX,
                 },
-            )
+            ))
             .as_ref()
             .clone(),
         )
