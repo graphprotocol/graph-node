@@ -20,10 +20,6 @@ uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.18.0"
 strum_macros = "0.18.0"
 bytes = "0.5"
-# TODO: Go back to the crates.io published version once the MaybeOwnedMut
-# PR is merged. https://github.com/rustonaut/maybe-owned/pull/9
-# See also 92cd8019-0136-4011-96a0-40b3eec37f73
-maybe-owned = { git = "https://github.com/rustonaut/maybe-owned", branch = "master" }
 
 # We need patch in order to be able to call host exports when initializing globals.
 #
