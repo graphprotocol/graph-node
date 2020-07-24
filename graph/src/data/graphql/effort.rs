@@ -149,12 +149,14 @@ struct KillState {
 
 impl KillState {
     fn new() -> Self {
-        let long_ago = Duration::from_secs(86400);
+        let long_ago = Duration::from_secs(60);
+        let now = Instant::now();
+        let before = now.checked_sub(long_ago).unwrap_or(now);
         Self {
             kill_rate: 0.0,
-            last_update: Instant::now() - long_ago,
+            last_update: before,
             overload_start: None,
-            last_overload_log: Instant::now() - long_ago,
+            last_overload_log: before,
         }
     }
 
