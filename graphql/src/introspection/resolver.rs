@@ -295,15 +295,14 @@ fn input_value(
 }
 
 #[derive(Clone)]
-pub struct IntrospectionResolver<'a> {
+pub struct IntrospectionResolver {
     logger: Logger,
-    schema: &'a Schema,
     type_objects: TypeObjectsMap,
     directives: q::Value,
 }
 
-impl<'a> IntrospectionResolver<'a> {
-    pub fn new(logger: &Logger, schema: &'a Schema) -> Self {
+impl IntrospectionResolver {
+    pub fn new(logger: &Logger, schema: &Schema) -> Self {
         let logger = logger.new(o!("component" => "IntrospectionResolver"));
 
         // Generate queryable objects for all types in the schema
@@ -314,7 +313,6 @@ impl<'a> IntrospectionResolver<'a> {
 
         IntrospectionResolver {
             logger,
-            schema,
             type_objects,
             directives,
         }
@@ -347,7 +345,7 @@ impl<'a> IntrospectionResolver<'a> {
 }
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
-impl<'a> Resolver for IntrospectionResolver<'a> {
+impl Resolver for IntrospectionResolver {
     // `IntrospectionResolver` is not used as a "top level" resolver,
     // see `fn as_introspection_context`, so this value is irrelevant.
     const CACHEABLE: bool = false;

@@ -49,19 +49,6 @@ pub(crate) fn parse_field_as_filter(key: &Name) -> (Name, FilterOp) {
     (key.trim_end_matches(suffix).to_owned(), op)
 }
 
-/// Returns the root query type (if there is one).
-pub fn get_root_query_type(schema: &Document) -> Option<&ObjectType> {
-    schema
-        .definitions
-        .iter()
-        .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => Some(t),
-            _ => None,
-        })
-        .peekable()
-        .next()
-}
-
 pub fn get_root_query_type_def(schema: &Document) -> Option<&TypeDefinition> {
     schema.definitions.iter().find_map(|d| match d {
         Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
@@ -70,21 +57,6 @@ pub fn get_root_query_type_def(schema: &Document) -> Option<&TypeDefinition> {
         },
         _ => None,
     })
-}
-
-/// Returns the root subscription type (if there is one).
-pub fn get_root_subscription_type(schema: &Document) -> Option<&ObjectType> {
-    schema
-        .definitions
-        .iter()
-        .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Subscription" => {
-                Some(t)
-            }
-            _ => None,
-        })
-        .peekable()
-        .next()
 }
 
 /// Returns all type definitions in the schema.

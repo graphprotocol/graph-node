@@ -23,7 +23,7 @@ use graph::data::subgraph::schema::{
 };
 use graph::prelude::{
     debug, ethabi, format_err, futures03, info, o, serde_json, tiny_keccak, tokio, trace, warn,
-    web3, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
+    web3, ApiSchema, AttributeIndexDefinition, BigInt, BlockNumber, ChainHeadUpdateListener as _,
     ChainHeadUpdateStream, ChainStore, CheapClone, DynTryFuture, Entity, EntityKey,
     EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlock,
     EthereumBlockPointer, EthereumCallCache, EthereumNetworkIdentifier, Future, LightEthereumBlock,
@@ -44,13 +44,8 @@ use crate::metadata;
 use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
 
-// TODO: Integrate with https://github.com/graphprotocol/graph-node/pull/1522/files
 lazy_static! {
     static ref CONNECTION_LIMITER: Semaphore = {
-        // TODO: Consolidate access to db. There are 3 places right now where connections
-        // are limited. Move everything to use the `with_connection` API and remove the
-        // other limiters
-        // See also 82d5dad6-b633-4350-86d9-70c8b2e65805
         let db_conn_pool_size = std::env::var("STORE_CONNECTION_POOL_SIZE")
             .unwrap_or("10".into())
             .parse::<usize>()
@@ -153,7 +148,7 @@ struct SubgraphInfo {
     /// The schema as supplied by the user
     input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
-    api: Arc<Schema>,
+    api: Arc<ApiSchema>,
     /// The name of the network from which the subgraph is syncing
     network: Option<String>,
     /// The block number at which this subgraph was grafted onto
@@ -858,12 +853,19 @@ impl Store {
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
+
+        // Leo do amanha:
+        // Voce parou bem aqui. Agora voce quer colocar esse
+        // `schema` em um novo `ApiSchema`, feshow?
         schema.document = api_schema(&schema.document)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
-            api: Arc::new(schema),
+            api: Arc::new(
+                ApiSchema::from_api_schema(schema)
+                    .map_err(|e| Error::from_boxed_compat(Box::from(e)))?,
+            ),
             network,
             graft_block,
         };
@@ -1388,7 +1390,7 @@ impl SubgraphDeploymentStore for Store {
         Ok(self.subgraph_info(subgraph_id)?.input)
     }
 
-    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error> {
         Ok(self.subgraph_info(subgraph_id)?.api)
     }
 

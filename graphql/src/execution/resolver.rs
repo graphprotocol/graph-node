@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::prelude::*;
 use crate::schema::ast::get_named_type;
-use graph::prelude::{QueryExecutionError, Schema, StoreEventStreamBox};
+use graph::prelude::{ApiSchema, QueryExecutionError, StoreEventStreamBox};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -49,7 +49,7 @@ impl<'a> ObjectOrInterface<'a> {
         self.fields().iter().find(|field| &field.name == name)
     }
 
-    pub fn object_types(&'a self, schema: &'a Schema) -> Option<Vec<&'a s::ObjectType>> {
+    pub fn object_types(&'a self, schema: &'a ApiSchema) -> Option<Vec<&'a s::ObjectType>> {
         match self {
             ObjectOrInterface::Object(object) => Some(vec![object]),
             ObjectOrInterface::Interface(interface) => schema
@@ -61,7 +61,7 @@ impl<'a> ObjectOrInterface<'a> {
 }
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
-pub trait Resolver: Send + Sync + Sized {
+pub trait Resolver: Sized + Send + Sync + 'static {
     const CACHEABLE: bool;
 
     /// Prepare for executing a query by prefetching as much data as possible

@@ -101,49 +101,22 @@ where
         // Run the query using the index node resolver
         let query_clone = query.cheap_clone();
         let logger = self.logger.cheap_clone();
-        let result = tokio::task::spawn_blocking(move || {
+        let result = {
             let options = QueryExecutionOptions {
                 resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
                 deadline: None,
                 max_first: std::u32::MAX,
                 load_manager,
             };
-            let result = execute_query(query_clone.cheap_clone(), None, None, options);
+            let result = execute_query(query_clone.cheap_clone(), None, None, options).await;
             query_clone.log_execution(0);
             QueryResult::from(
                 // Index status queries are not cacheable, so we may unwrap this.
                 Arc::try_unwrap(result).unwrap(),
             )
-        })
-        .await;
-
-        let query_result = match result {
-            Ok(res) => res,
-
-            // `Err(JoinError)` means a panic.
-            Err(e) => {
-                let e = e.into_panic();
-                let e = match e
-                    .downcast_ref::<String>()
-                    .map(|s| s.as_str())
-                    .or(e.downcast_ref::<&'static str>().map(|&s| s))
-                {
-                    Some(e) => e.to_string(),
-                    None => "panic is not a string".to_string(),
-                };
-                let err = QueryExecutionError::Panic(e);
-                error!(
-                    self.logger,
-                    "panic when processing graphql query";
-                    "panic" => err.to_string(),
-                    "query" => &query.query_text,
-                    "variables" => &query.variables_text,
-                );
-                QueryResult::from(err)
-            }
         };
 
-        Ok(query_result.as_http_response())
+        Ok(result.as_http_response())
     }
 
     // Handles OPTIONS requests

@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use graph::data::graphql::ext::TypeExt;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
-use graph::data::schema::Schema;
+use graph::data::schema::ApiSchema;
 use graph::prelude::{info, o, CheapClone, Logger, QueryExecutionError};
 
 use crate::execution::{get_field, get_named_type};
@@ -34,34 +34,31 @@ enum Kind {
 /// uses ',' to separate key/value pairs.
 /// If `SelectionSet` is `None`, log `*` to indicate that the query was
 /// for the entire selection set of the query
-struct SelectedFields<'a>(Option<&'a q::SelectionSet>);
+struct SelectedFields<'a>(&'a q::SelectionSet);
 
 impl<'a> std::fmt::Display for SelectedFields<'a> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        if let Some(selection_set) = self.0 {
-            let mut first = true;
-            for item in &selection_set.items {
-                match item {
-                    q::Selection::Field(field) => {
-                        if !first {
-                            write!(fmt, ";")?;
-                        }
-                        first = false;
-                        write!(fmt, "{}", field.alias.as_ref().unwrap_or(&field.name))?
+        let mut first = true;
+        for item in &self.0.items {
+            match item {
+                q::Selection::Field(field) => {
+                    if !first {
+                        write!(fmt, ";")?;
                     }
-                    q::Selection::FragmentSpread(_) | q::Selection::InlineFragment(_) => {
-                        /* nothing */
-                    }
+                    first = false;
+                    write!(fmt, "{}", field.alias.as_ref().unwrap_or(&field.name))?
+                }
+                q::Selection::FragmentSpread(_) | q::Selection::InlineFragment(_) => {
+                    /* nothing */
                 }
             }
-            if first {
-                // There wasn't a single `q::Selection::Field` in the set. That
-                // seems impossible, but log '-' to be on the safe side
-                write!(fmt, "-")?;
-            }
-        } else {
-            write!(fmt, "*")?;
         }
+        if first {
+            // There wasn't a single `q::Selection::Field` in the set. That
+            // seems impossible, but log '-' to be on the safe side
+            write!(fmt, "-")?;
+        }
+
         Ok(())
     }
 }
@@ -71,11 +68,11 @@ impl<'a> std::fmt::Display for SelectedFields<'a> {
 /// desired, checking the query's complexity
 pub struct Query {
     /// The schema against which to execute the query
-    pub schema: Arc<Schema>,
+    pub schema: Arc<ApiSchema>,
     /// The variables for the query, coerced into proper values
     pub variables: HashMap<q::Name, q::Value>,
     /// The root selection set of the query
-    pub selection_set: q::SelectionSet,
+    pub selection_set: Arc<q::SelectionSet>,
     /// The ShapeHash of the original query
     pub shape_hash: u64,
 
@@ -145,7 +142,7 @@ impl Query {
         };
         let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
         let logger = logger.new(o!(
-            "subgraph_id" => (*query.schema.id).clone(),
+            "subgraph_id" => query.schema.id().clone(),
             "query_id" => query_id
         ));
 
@@ -153,7 +150,7 @@ impl Query {
             schema: query.schema,
             variables,
             fragments,
-            selection_set,
+            selection_set: Arc::new(selection_set),
             shape_hash: query.shape_hash,
             kind,
             network: query.network,
@@ -204,7 +201,7 @@ impl Query {
 
     /// Return this query, but use the introspection schema as its schema
     pub fn as_introspection_query(&self) -> Arc<Self> {
-        let introspection_schema = introspection_schema(self.schema.id.clone());
+        let introspection_schema = introspection_schema(self.schema.id().clone());
 
         Arc::new(Self {
             schema: Arc::new(introspection_schema),
@@ -261,7 +258,7 @@ impl Query {
     /// `selection_set` was cached
     pub fn log_cache_status(
         &self,
-        selection_set: Option<&q::SelectionSet>,
+        selection_set: &q::SelectionSet,
         block: u64,
         start: Instant,
         cache_status: String,
@@ -301,7 +298,7 @@ impl Query {
     /// If the query is invalid, returns `Ok(0)` so that execution proceeds and
     /// gives a proper error.
     fn complexity(&self, max_depth: u8) -> Result<u64, QueryExecutionError> {
-        let root_type = sast::get_root_query_type_def(&self.schema.document).unwrap();
+        let root_type = sast::get_root_query_type_def(self.schema.document()).unwrap();
 
         match self.complexity_inner(root_type, &self.selection_set, max_depth, 0) {
             Ok(complexity) => Ok(complexity),
@@ -314,7 +311,7 @@ impl Query {
     }
 
     fn validate_fields(&self) -> Result<(), Vec<QueryExecutionError>> {
-        let root_type = sast::get_root_query_type_def(&self.schema.document).unwrap();
+        let root_type = sast::get_root_query_type_def(self.schema.document()).unwrap();
 
         let errors =
             self.validate_fields_inner(&"Query".to_owned(), root_type, &self.selection_set);
@@ -332,7 +329,7 @@ impl Query {
         ty: &s::TypeDefinition,
         selection_set: &q::SelectionSet,
     ) -> Vec<QueryExecutionError> {
-        let schema = &self.schema.document;
+        let schema = self.schema.document();
         selection_set
             .items
             .iter()
@@ -434,7 +431,7 @@ impl Query {
             .items
             .iter()
             .try_fold(0, |total_complexity, selection| {
-                let schema = &self.schema.document;
+                let schema = self.schema.document();
                 match selection {
                     q::Selection::Field(field) => {
                         // Empty selection sets are the base case.
@@ -506,7 +503,7 @@ impl Query {
 
 /// Coerces variable values for an operation.
 pub fn coerce_variables(
-    schema: &Schema,
+    schema: &ApiSchema,
     operation: &q::OperationDefinition,
     mut variables: Option<QueryVariables>,
 ) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
@@ -518,7 +515,7 @@ pub fn coerce_variables(
         .flatten()
     {
         // Skip variable if it has an invalid type
-        if !sast::is_input_type(&schema.document, &variable_def.var_type) {
+        if !sast::is_input_type(schema.document(), &variable_def.var_type) {
             errors.push(QueryExecutionError::InvalidVariableTypeError(
                 variable_def.position,
                 variable_def.name.to_owned(),
@@ -560,13 +557,13 @@ pub fn coerce_variables(
 }
 
 fn coerce_variable(
-    schema: &Schema,
+    schema: &ApiSchema,
     variable_def: &q::VariableDefinition,
     value: q::Value,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
-    let resolver = |name: &q::Name| sast::get_named_type(&schema.document, name);
+    let resolver = |name: &q::Name| sast::get_named_type(schema.document(), name);
 
     coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(

@@ -266,7 +266,7 @@ fn cache_key(
     // It is very important that all data used for the query is included.
     // Otherwise, incorrect results may be returned.
     let query = HashableQuery {
-        query_schema_id: &ctx.query.schema.id,
+        query_schema_id: ctx.query.schema.id(),
         query_variables: &ctx.query.variables,
         query_fragments: &ctx.query.fragments,
         selection_set,
@@ -315,7 +315,7 @@ pub(crate) fn get_field<'a>(
     name: &Name,
 ) -> Option<s::Field> {
     if name == "__schema" || name == "__type" {
-        let object_type = sast::get_root_query_type(&INTROSPECTION_DOCUMENT).unwrap();
+        let object_type = *INTROSPECTION_QUERY_TYPE;
         sast::get_field(object_type, name).cloned()
     } else {
         sast::get_field(object_type, name).cloned()
@@ -327,7 +327,8 @@ where
     R: Resolver,
 {
     pub fn as_introspection_context(&self) -> ExecutionContext<IntrospectionResolver> {
-        let introspection_resolver = IntrospectionResolver::new(&self.logger, &self.query.schema);
+        let introspection_resolver =
+            IntrospectionResolver::new(&self.logger, self.query.schema.schema());
 
         ExecutionContext {
             logger: self.logger.cheap_clone(),
@@ -396,24 +397,24 @@ pub fn execute_root_selection_set_uncached(
 }
 
 /// Executes the root selection set of a query.
-pub fn execute_root_selection_set<R: Resolver>(
-    ctx: &ExecutionContext<R>,
-    selection_set: &q::SelectionSet,
-    root_type: &s::ObjectType,
+pub async fn execute_root_selection_set<R: Resolver>(
+    ctx: Arc<ExecutionContext<R>>,
+    selection_set: Arc<q::SelectionSet>,
+    root_type: Arc<s::ObjectType>,
     block_ptr: Option<EthereumBlockPointer>,
 ) -> Arc<QueryResult> {
     // Cache the cache key to not have to calculate it twice - once for lookup
     // and once for insert.
     let mut key: Option<QueryHash> = None;
 
-    if R::CACHEABLE && (*CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(&ctx.query.schema.id)) {
+    if R::CACHEABLE && (*CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(ctx.query.schema.id())) {
         if let (Some(block_ptr), Some(network)) = (block_ptr, &ctx.query.network) {
             // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
             // - Metadata queries are not cacheable.
             // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
             if block_ptr.number != BLOCK_NUMBER_MAX as u64 {
                 // Calculate the hash outside of the lock
-                let cache_key = cache_key(ctx, selection_set, &block_ptr);
+                let cache_key = cache_key(&ctx, &selection_set, &block_ptr);
 
                 // Check if the response is cached, first in the recent blocks cache,
                 // and then in the LfuCache for historical queries
@@ -437,19 +438,54 @@ pub fn execute_root_selection_set<R: Resolver>(
         }
     }
 
-    let mut herd_hit = true;
-    let mut run_query = || {
-        herd_hit = false;
-        Arc::new(QueryResult::from(execute_root_selection_set_uncached(
-            ctx,
-            selection_set,
-            root_type,
-        )))
+    let execute_ctx = ctx.cheap_clone();
+    let execute_selection_set = selection_set.cheap_clone();
+    let execute_root_type = root_type.cheap_clone();
+    let run_query = async move {
+        // Limiting the cuncurrent queries prevents increase in resource usage when the DB is
+        // contended and queries start queing up. This semaphore organizes the queueing so that
+        // waiting queries consume few resources.
+        let _permit = execute_ctx.load_manager.query_permit().await;
+
+        let logger = execute_ctx.logger.clone();
+        let query_text = execute_ctx.query.query_text.cheap_clone();
+        let variables_text = execute_ctx.query.variables_text.cheap_clone();
+        match graph::spawn_blocking_allow_panic(move || {
+            Arc::new(QueryResult::from(execute_root_selection_set_uncached(
+                &execute_ctx,
+                &execute_selection_set,
+                &execute_root_type,
+            )))
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                let e = e.into_panic();
+                let e = match e
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or(e.downcast_ref::<&'static str>().map(|&s| s))
+                {
+                    Some(e) => e.to_string(),
+                    None => "panic is not a string".to_string(),
+                };
+                error!(
+                    logger,
+                    "panic when processing graphql query";
+                    "panic" => e.to_string(),
+                    "query" => query_text,
+                    "variables" => variables_text,
+                );
+                Arc::new(QueryResult::from(QueryExecutionError::Panic(e)))
+            }
+        }
     };
-    let result = if let Some(key) = key {
-        QUERY_HERD_CACHE.cached_query(key, run_query)
+
+    let (result, herd_hit) = if let Some(key) = key {
+        QUERY_HERD_CACHE.cached_query(key, run_query).await
     } else {
-        run_query()
+        (run_query.await, false)
     };
     if herd_hit {
         ctx.cache_status.store(CacheStatus::Shared);
@@ -708,7 +744,7 @@ fn does_fragment_type_apply(
     let q::TypeCondition::On(ref name) = fragment_type;
 
     // Resolve the type the fragment applies to based on its name
-    let named_type = sast::get_named_type(&ctx.query.schema.document, name);
+    let named_type = sast::get_named_type(ctx.query.schema.document(), name);
 
     match named_type {
         // The fragment applies to the object type if its type is the same object type
@@ -807,7 +843,7 @@ fn resolve_field_value_for_named_type(
     argument_values: &HashMap<&q::Name, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
-    let named_type = sast::get_named_type(&ctx.query.schema.document, type_name)
+    let named_type = sast::get_named_type(ctx.query.schema.document(), type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
     match named_type {
         // Let the resolver decide how the field (with the given object type) is resolved
@@ -867,7 +903,7 @@ fn resolve_field_value_for_list_type(
         ),
 
         s::Type::NamedType(ref type_name) => {
-            let named_type = sast::get_named_type(&ctx.query.schema.document, type_name)
+            let named_type = sast::get_named_type(ctx.query.schema.document(), type_name)
                 .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
             match named_type {
@@ -983,7 +1019,7 @@ fn complete_value(
         }
 
         s::Type::NamedType(name) => {
-            let named_type = sast::get_named_type(&ctx.query.schema.document, name).unwrap();
+            let named_type = sast::get_named_type(ctx.query.schema.document(), name).unwrap();
 
             match named_type {
                 // Complete scalar values
@@ -1064,7 +1100,7 @@ fn resolve_abstract_type<'a>(
     // Let the resolver handle the type resolution, return an error if the resolution
     // yields nothing
     ctx.resolver
-        .resolve_abstract_type(&ctx.query.schema.document, abstract_type, object_value)
+        .resolve_abstract_type(ctx.query.schema.document(), abstract_type, object_value)
         .ok_or_else(|| {
             vec![QueryExecutionError::AbstractTypeError(
                 sast::get_type_name(abstract_type).to_string(),
@@ -1081,7 +1117,7 @@ pub fn coerce_argument_values<'a>(
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &Name| sast::get_named_type(&ctx.query.schema.document, name);
+    let resolver = |name: &Name| sast::get_named_type(ctx.query.schema.document(), name);
 
     for argument_def in sast::get_argument_definitions(object_type, &field.name)
         .into_iter()

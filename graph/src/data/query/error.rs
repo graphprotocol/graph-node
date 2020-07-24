@@ -34,7 +34,6 @@ pub enum QueryExecutionError {
     OperationNameRequired,
     OperationNotFound(String),
     NotSupported(String),
-    NoRootQueryObjectType,
     NoRootSubscriptionObjectType,
     NonNullError(Pos, String),
     ListValueError(Pos, String),
@@ -100,9 +99,6 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "Operation name not found `{}`", s)
             }
             NotSupported(s) => write!(f, "Not supported: {}", s),
-            NoRootQueryObjectType => {
-                write!(f, "No root Query type defined in the schema")
-            }
             NoRootSubscriptionObjectType => {
                 write!(f, "No root Subscription type defined in the schema")
             }

@@ -10,9 +10,9 @@ use std::time::Instant;
 
 use graph::data::graphql::ext::ObjectTypeExt;
 use graph::prelude::{
-    BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink, EntityOrder,
-    EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore, Schema, Value as StoreValue,
-    WindowAttribute,
+    ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
+    EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore,
+    Value as StoreValue, WindowAttribute,
 };
 
 use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
@@ -61,7 +61,7 @@ impl TypeCondition {
     fn matching_type<'a>(
         &self,
         schema: &'a s::Document,
-        object_type: &'a ObjectOrInterface<'a>,
+        object_type: ObjectOrInterface<'a>,
     ) -> Option<ObjectOrInterface<'a>> {
         use TypeCondition::*;
 
@@ -347,7 +347,7 @@ struct Join<'a> {
 impl<'a> Join<'a> {
     /// Construct a `Join` based on the parent field pointing to the child
     fn new(
-        schema: &'a Schema,
+        schema: &'a ApiSchema,
         parent_type: &'a ObjectOrInterface<'a>,
         child_type: &'a ObjectOrInterface<'a>,
         field_name: &s::Name,
@@ -501,10 +501,7 @@ fn execute_root_selection_set(
     selection_set: &q::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
-    let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
-        Some(t) => t,
-        None => return Err(vec![QueryExecutionError::NoRootQueryObjectType]),
-    };
+    let query_type = &ctx.query.schema.query_type;
 
     // Split the toplevel fields into introspection fields and
     // 'normal' data fields
@@ -513,7 +510,9 @@ fn execute_root_selection_set(
         items: Vec::new(),
     };
 
-    for (_, type_fields) in collect_fields(ctx, &query_type.into(), vec![selection_set], None) {
+    for (_, type_fields) in
+        collect_fields(ctx, query_type.as_ref().into(), vec![selection_set], None)
+    {
         let fields = match type_fields.get(&TypeCondition::Any) {
             None => return Ok(vec![]),
             Some(fields) => fields,
@@ -526,7 +525,7 @@ fn execute_root_selection_set(
         // See if this is an introspection or data field. We don't worry about
         // nonexistant fields; those will cause an error later when we execute
         // the query in `execution::execute_root_selection_set`
-        if sast::get_field(query_type, &name).is_some() {
+        if sast::get_field(query_type.as_ref(), &name).is_some() {
             data_set.items.extend(selections)
         }
     }
@@ -537,7 +536,7 @@ fn execute_root_selection_set(
         ctx,
         make_root_node(),
         vec![&data_set],
-        &query_type.into(),
+        query_type.as_ref().into(),
     )
 }
 
@@ -568,7 +567,7 @@ fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
     selection_sets: Vec<&'a q::SelectionSet>,
-    object_type: &ObjectOrInterface,
+    object_type: ObjectOrInterface,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
@@ -591,12 +590,12 @@ fn execute_selection_set<'a>(
             }
 
             let concrete_type = type_cond
-                .matching_type(&ctx.query.schema.document, object_type)
+                .matching_type(ctx.query.schema.document(), object_type)
                 .expect("collect_fields does not create type conditions for nonexistent types");
 
             if let Some(ref field) = concrete_type.field(&fields[0].name) {
                 let child_type =
-                    object_or_interface_from_type(&ctx.query.schema.document, &field.field_type)
+                    object_or_interface_from_type(ctx.query.schema.document(), &field.field_type)
                         .expect("we only collect fields that are objects or interfaces");
 
                 let join = Join::new(
@@ -617,7 +616,7 @@ fn execute_selection_set<'a>(
                 ) {
                     Ok(children) => {
                         let child_object_type = object_or_interface_from_type(
-                            &ctx.query.schema.document,
+                            &ctx.query.schema.document(),
                             &field.field_type,
                         )
                         .expect("type of child field is object or interface");
@@ -626,7 +625,7 @@ fn execute_selection_set<'a>(
                             ctx,
                             children,
                             fields.into_iter().map(|f| &f.selection_set).collect(),
-                            &child_object_type,
+                            child_object_type,
                         ) {
                             Ok(children) => Join::perform(&mut parents, children, response_key),
                             Err(mut e) => errors.append(&mut e),
@@ -663,7 +662,7 @@ fn execute_selection_set<'a>(
 /// of fragment spreads
 fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: &ObjectOrInterface,
+    object_type: ObjectOrInterface,
     selection_sets: Vec<&'a q::SelectionSet>,
     visited_fragments: Option<HashSet<&'a q::Name>>,
 ) -> HashMap<&'a String, HashMap<TypeCondition, Vec<&'a q::Field>>> {
@@ -680,7 +679,7 @@ fn collect_fields<'a>(
 
         fn is_reference_field(
             schema: &s::Document,
-            object_type: &ObjectOrInterface,
+            object_type: ObjectOrInterface,
             field: &q::Field,
         ) -> bool {
             object_type
@@ -699,7 +698,7 @@ fn collect_fields<'a>(
                 q::Selection::Field(ref field) => {
                     // Only consider fields that point to objects or interfaces, and
                     // ignore nonexistent fields
-                    if is_reference_field(&ctx.query.schema.document, object_type, field) {
+                    if is_reference_field(ctx.query.schema.document(), object_type, field) {
                         let response_key = qast::get_response_key(field);
 
                         // Create a field group for this response key and add the field
@@ -755,7 +754,7 @@ fn collect_fields<'a>(
                     // Fields for this fragment need to be looked up in the type
                     // mentioned in the condition
                     let fragment_type =
-                        fragment_cond.matching_type(&ctx.query.schema.document, object_type);
+                        fragment_cond.matching_type(ctx.query.schema.document(), object_type);
 
                     // The `None` case here indicates an error where the type condition
                     // mentions a nonexistent type; the overall query execution logic will catch
@@ -763,7 +762,7 @@ fn collect_fields<'a>(
                     if let Some(fragment_type) = fragment_type {
                         let fragment_grouped_field_set = collect_fields(
                             ctx,
-                            &fragment_type,
+                            fragment_type,
                             vec![&fragment.selection_set],
                             Some(visited_fragments.clone()),
                         );
@@ -809,7 +808,7 @@ fn execute_field(
             match ctx
                 .query
                 .schema
-                .types_for_interface
+                .types_for_interface()
                 .get(&interface_type.name)
                 .expect("interface type exists")
                 .first()

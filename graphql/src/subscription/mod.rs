@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 use graph::prelude::*;
 
 use crate::execution::*;
-use crate::schema::ast as sast;
 
 /// Options available for subscription execution.
 pub struct SubscriptionExecutionOptions<R>
@@ -89,13 +88,17 @@ where
 fn create_source_event_stream(
     ctx: &ExecutionContext<impl Resolver>,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
-    let subscription_type = sast::get_root_subscription_type(&ctx.query.schema.document)
+    let subscription_type = ctx
+        .query
+        .schema
+        .subscription_type
+        .as_ref()
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
     let grouped_field_set = collect_fields(
         ctx,
         &subscription_type,
-        iter::once(&ctx.query.selection_set),
+        iter::once(ctx.query.selection_set.as_ref()),
         None,
     );
 
@@ -109,9 +112,9 @@ fn create_source_event_stream(
 
     let fields = grouped_field_set.get_index(0).unwrap();
     let field = fields.1[0];
-    let argument_values = coerce_argument_values(&ctx, subscription_type, field)?;
+    let argument_values = coerce_argument_values(&ctx, &subscription_type, field)?;
 
-    resolve_field_stream(ctx, subscription_type, field, argument_values)
+    resolve_field_stream(ctx, &subscription_type, field, argument_values)
 }
 
 fn resolve_field_stream(
@@ -121,7 +124,7 @@ fn resolve_field_stream(
     _argument_values: HashMap<&q::Name, q::Value>,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
     ctx.resolver
-        .resolve_field_stream(&ctx.query.schema.document, object_type, field)
+        .resolve_field_stream(&ctx.query.schema.document(), object_type, field)
         .map_err(SubscriptionError::from)
 }
 
@@ -179,10 +182,8 @@ async fn execute_subscription_event(
 ) -> Arc<QueryResult> {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
 
-    let _permit = load_manager.query_permit().await;
-
     // Create a fresh execution context with deadline.
-    let ctx = ExecutionContext {
+    let ctx = Arc::new(ExecutionContext {
         logger,
         resolver,
         query,
@@ -190,21 +191,18 @@ async fn execute_subscription_event(
         max_first,
         cache_status: Default::default(),
         load_manager,
+    });
+
+    let subscription_type = match ctx.query.schema.subscription_type.as_ref() {
+        Some(t) => t.cheap_clone(),
+        None => return Arc::new(QueryExecutionError::NoRootSubscriptionObjectType.into()),
     };
 
-    // We have established that this exists earlier in the subscription execution
-    let subscription_type = sast::get_root_subscription_type(&ctx.query.schema.document)
-        .unwrap()
-        .clone();
-
-    match graph::spawn_blocking_allow_panic(move || {
-        execute_root_selection_set(&ctx, &ctx.query.selection_set, &subscription_type, None)
-    })
+    execute_root_selection_set(
+        ctx.cheap_clone(),
+        ctx.query.selection_set.cheap_clone(),
+        subscription_type,
+        None,
+    )
     .await
-    {
-        Ok(result) => result,
-        Err(panic) => Arc::new(QueryResult::from(QueryExecutionError::Panic(
-            panic.to_string(),
-        ))),
-    }
 }

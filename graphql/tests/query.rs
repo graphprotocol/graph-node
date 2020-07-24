@@ -11,10 +11,11 @@ use std::time::{Duration, Instant};
 use graph::data::query::CacheStatus;
 use graph::prelude::{
     async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o,
-    slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension,
-    GraphQlRunner as _, Logger, Query, QueryError, QueryExecutionError, QueryLoadManager,
-    QueryResult, QueryVariables, Schema, Store, SubgraphDeploymentEntity, SubgraphDeploymentId,
-    SubgraphDeploymentStore, SubgraphManifest, Subscription, SubscriptionError, Value,
+    slog, tokio, ApiSchema, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
+    FutureExtension, GraphQlRunner as _, Logger, Query, QueryError, QueryExecutionError,
+    QueryLoadManager, QueryResult, QueryVariables, Schema, Store, SubgraphDeploymentEntity,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest, Subscription,
+    SubscriptionError, Value,
 };
 use graph_graphql::prelude::*;
 use test_store::{
@@ -74,11 +75,11 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
     .expect("Test schema invalid")
 }
 
-fn api_test_schema() -> Schema {
+fn api_test_schema() -> ApiSchema {
     let mut schema = test_schema(TEST_SUBGRAPH_ID.clone());
     schema.document = api_schema(&schema.document).expect("Failed to derive API schema");
     schema.add_subgraph_id_directives(TEST_SUBGRAPH_ID.clone());
-    schema
+    ApiSchema::from_api_schema(schema).unwrap()
 }
 
 fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {

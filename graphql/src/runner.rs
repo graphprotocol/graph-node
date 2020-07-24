@@ -10,11 +10,10 @@ use crate::prelude::{
 };
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
-use graph::components::graphql::QueryLoadManager;
 use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
-    async_trait, error, o, CheapClone, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait,
-    Logger, Query, QueryExecutionError, QueryResult, Store, StoreError, SubgraphDeploymentId,
+    async_trait, o, CheapClone, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger,
+    Query, QueryExecutionError, QueryResult, Store, StoreError, SubgraphDeploymentId,
     SubgraphDeploymentStore, Subscription, SubscriptionError, SubscriptionResult,
 };
 
@@ -107,7 +106,7 @@ where
         Ok(exts)
     }
 
-    fn execute(
+    async fn execute(
         &self,
         query: Query,
         max_complexity: Option<u64>,
@@ -123,7 +122,7 @@ where
         let execute = |selection_set, block_ptr, resolver| {
             execute_query(
                 query.clone(),
-                Some(&selection_set),
+                Some(selection_set),
                 Some(block_ptr),
                 QueryExecutionOptions {
                     resolver,
@@ -133,14 +132,15 @@ where
                 },
             )
         };
-
         // Unwrap: There is always at least one block constraint, even if it
         // is an implicit 'BlockContraint::Latest'.
         let mut by_block_constraint = query.block_constraint()?.into_iter();
         let (bc, selection_set) = by_block_constraint.next().unwrap();
+
+        let store = self.store.cheap_clone();
         let (resolver, block_ptr) =
-            StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
-        let mut result = execute(selection_set, block_ptr, resolver);
+            StoreResolver::at_block(&self.logger, store, bc, query.schema.id().clone()).await?;
+        let mut result = execute(selection_set, block_ptr, resolver).await;
 
         // We want to optimize for the common case of a single block constraint, where we can avoid
         // cloning the result. If there are multiple constraints we have to clone.
@@ -152,10 +152,16 @@ where
                     &self.logger,
                     self.store.clone(),
                     bc,
-                    &query.schema.id,
-                )?;
+                    query.schema.id().clone(),
+                )
+                .await?;
                 max_block = max_block.max(block_ptr.number);
-                partial_res.append(execute(selection_set, block_ptr, resolver).as_ref().clone());
+                partial_res.append(
+                    execute(selection_set, block_ptr, resolver)
+                        .await
+                        .as_ref()
+                        .clone(),
+                );
             }
             result = Arc::new(partial_res);
         }
@@ -187,44 +193,9 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> Arc<QueryResult> {
-        // Limiting the cuncurrent queries prevents an increase in resource usage when the DB is
-        // contended. The request will wait for a permit before spawing blocking tasks and
-        // requesting DB connections, so waiting requests will consume less resources.
-        let _permit = self.load_manager.query_permit().await;
-
-        let logger = self.logger.cheap_clone();
-        let query_text = query.query_text.cheap_clone();
-        let variables_text = query.variables_text.cheap_clone();
-
-        match graph::spawn_blocking_allow_panic(move || {
-            self.execute(query, max_complexity, max_depth, max_first)
-                .unwrap_or_else(|e| Arc::new(e))
-        })
-        .await
-        {
-            Ok(result) => result,
-            Err(e) => {
-                let e = e.into_panic();
-                let e = match e
-                    .downcast_ref::<String>()
-                    .map(|s| s.as_str())
-                    .or(e.downcast_ref::<&'static str>().map(|&s| s))
-                {
-                    Some(e) => e.to_string(),
-                    None => "panic is not a string".to_string(),
-                };
-
-                error!(
-                    logger,
-                    "panic when processing graphql query";
-                    "panic" => e.to_string(),
-                    "query" => query_text,
-                    "variables" => variables_text,
-                );
-
-                Arc::new(QueryResult::from(QueryExecutionError::Panic(e)))
-            }
-        }
+        self.execute(query, max_complexity, max_depth, max_first)
+            .await
+            .unwrap_or_else(|e| Arc::new(e))
     }
 
     async fn run_subscription(

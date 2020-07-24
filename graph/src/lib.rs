@@ -118,7 +118,7 @@ pub mod prelude {
     pub use crate::data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
     };
-    pub use crate::data::schema::Schema;
+    pub use crate::data::schema::{ApiSchema, Schema};
     pub use crate::data::store::ethereum::*;
     pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
