@@ -1273,20 +1273,30 @@ impl Table {
             .filter(|col| !(col.is_list() && col.is_enum()))
             .enumerate()
         {
-            // Attributes that are plain strings are indexed with a BTree; but
-            // they can be too large for Postgres' limit on values that can go
-            // into a BTree. For those attributes, only index the first
-            // STRING_PREFIX_SIZE characters
-            let index_expr = if column.is_text() {
-                format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+            let (method, index_expr) = if column.is_reference() && !column.is_list() {
+                // For foreign keys, index the key together with the block range
+                // since we almost always also have a block_range clause in
+                // queries that look for specific foreign keys
+                let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
+                ("gist", index_expr)
             } else {
-                column.name.quoted()
-            };
+                // Attributes that are plain strings are indexed with a BTree; but
+                // they can be too large for Postgres' limit on values that can go
+                // into a BTree. For those attributes, only index the first
+                // STRING_PREFIX_SIZE characters
+                let index_expr = if column.is_text() {
+                    format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+                } else {
+                    column.name.quoted()
+                };
 
-            let method = if column.is_list() || column.is_fulltext() {
-                "gin"
-            } else {
-                "btree"
+                let method = if column.is_list() || column.is_fulltext() {
+                    "gin"
+                } else {
+                    "btree"
+                };
+
+                (method, index_expr)
             };
             write!(
                 out,
@@ -1503,7 +1513,7 @@ create index brin_thing
 create index attr_0_0_thing_id
     on rel.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_big_thing
-    on rel.\"thing\" using btree(\"big_thing\");
+    on rel.\"thing\" using gist(\"big_thing\", block_range);
 
 create table rel.\"scalar\" (
         \"id\"                 text not null,
@@ -1586,7 +1596,7 @@ create index attr_0_0_musician_id
 create index attr_0_1_musician_name
     on rel.\"musician\" using btree(left(\"name\", 256));
 create index attr_0_2_musician_main_band
-    on rel.\"musician\" using btree(\"main_band\");
+    on rel.\"musician\" using gist(\"main_band\", block_range);
 create index attr_0_3_musician_bands
     on rel.\"musician\" using gin(\"bands\");
 
@@ -1626,7 +1636,7 @@ create index attr_2_0_song_id
 create index attr_2_1_song_title
     on rel.\"song\" using btree(left(\"title\", 256));
 create index attr_2_2_song_written_by
-    on rel.\"song\" using btree(\"written_by\");
+    on rel.\"song\" using gist(\"written_by\", block_range);
 
 create table rel.\"song_stat\" (
         \"id\"                 text not null,
@@ -1681,7 +1691,7 @@ create index brin_animal
 create index attr_0_0_animal_id
     on rel.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_forest
-    on rel.\"animal\" using btree(\"forest\");
+    on rel.\"animal\" using gist(\"forest\", block_range);
 
 create table rel.\"forest\" (
         \"id\"                 text not null,
@@ -1711,7 +1721,7 @@ create index brin_habitat
 create index attr_2_0_habitat_id
     on rel.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
-    on rel.\"habitat\" using btree(\"most_common\");
+    on rel.\"habitat\" using gist(\"most_common\", block_range);
 create index attr_2_2_habitat_dwellers
     on rel.\"habitat\" using gin(\"dwellers\");
 
@@ -1768,7 +1778,7 @@ create index attr_0_1_animal_name
 create index attr_0_2_animal_species
     on rel.\"animal\" using btree(left(\"species\", 256));
 create index attr_0_3_animal_forest
-    on rel.\"animal\" using btree(\"forest\");
+    on rel.\"animal\" using gist(\"forest\", block_range);
 create index attr_0_4_animal_search
     on rel.\"animal\" using gin(\"search\");
 
@@ -1800,7 +1810,7 @@ create index brin_habitat
 create index attr_2_0_habitat_id
     on rel.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
-    on rel.\"habitat\" using btree(\"most_common\");
+    on rel.\"habitat\" using gist(\"most_common\", block_range);
 create index attr_2_2_habitat_dwellers
     on rel.\"habitat\" using gin(\"dwellers\");
 
