@@ -135,6 +135,8 @@ pub fn contract_function_with_signature<'a>(
         arguments.push_str(")");
         // `operation(address,uint256,bool)`
         let actual_signature = vec![function.name.clone(), arguments].join("(");
-        !function.constant && target_signature == actual_signature
+        function.state_mutability == ethabi::StateMutability::Payable
+            || function.state_mutability == ethabi::StateMutability::NonPayable
+                && target_signature == actual_signature
     })
 }
