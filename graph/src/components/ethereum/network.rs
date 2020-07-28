@@ -1,4 +1,5 @@
 use failure::{format_err, Error};
+use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -6,20 +7,34 @@ use std::sync::Arc;
 use crate::components::ethereum::EthereumAdapter;
 pub use crate::impl_slog_value;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapabilities {
     pub archive: bool,
     pub traces: bool,
 }
 
-impl NodeCapabilities {
-    pub fn sufficient_capability(network: &NodeCapabilities, required: &NodeCapabilities) -> bool {
-        //TODO: Use impl of cmp:ORD for this comparison
-        network.archive >= required.archive && network.traces >= required.traces
+impl Ord for NodeCapabilities {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (
+            self.archive.cmp(&other.archive),
+            self.traces.cmp(&other.traces),
+        ) {
+            (Ordering::Greater, Ordering::Greater) => Ordering::Greater,
+            (Ordering::Greater, Ordering::Equal) => Ordering::Greater,
+            (Ordering::Equal, Ordering::Greater) => Ordering::Greater,
+            (Ordering::Equal, Ordering::Equal) => Ordering::Equal,
+            (Ordering::Less, _) => Ordering::Less,
+            (_, Ordering::Less) => Ordering::Less,
+        }
     }
 }
 
-//TODO: Use the struct keys instead of this long impl..?
+impl PartialOrd for NodeCapabilities {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl fmt::Display for NodeCapabilities {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -64,12 +79,7 @@ impl EthereumNetworkAdapters {
         let sufficient_adapters: Vec<&EthereumNetworkAdapter> = self
             .adapters
             .iter()
-            .filter(|adapter| {
-                NodeCapabilities::sufficient_capability(
-                    &adapter.capabilities,
-                    required_capabilities,
-                )
-            })
+            .filter(|adapter| &adapter.capabilities >= required_capabilities)
             .collect();
         if sufficient_adapters.is_empty() {
             return Err(format_err!(
@@ -184,106 +194,34 @@ mod tests {
         };
 
         // Test all real combinations of capability comparisons
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&full, &archive)
-        );
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&full, &traces)
-        );
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&full, &archive_traces)
-        );
-        assert_eq!(true, NodeCapabilities::sufficient_capability(&full, &full));
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&full, &full_traces)
-        );
+        assert_eq!(false, &full >= &archive);
+        assert_eq!(false, &full >= &traces);
+        assert_eq!(false, &full >= &archive_traces);
+        assert_eq!(true, &full >= &full);
+        assert_eq!(false, &full >= &full_traces);
 
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&archive, &archive)
-        );
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&archive, &traces)
-        );
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&archive, &archive_traces)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&archive, &full)
-        );
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&archive, &full_traces)
-        );
+        assert_eq!(true, &archive >= &archive);
+        assert_eq!(false, &archive >= &traces);
+        assert_eq!(false, &archive >= &archive_traces);
+        assert_eq!(true, &archive >= &full);
+        assert_eq!(false, &archive >= &full_traces);
 
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&traces, &archive)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&traces, &traces)
-        );
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&traces, &archive_traces)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&traces, &full)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&traces, &full_traces)
-        );
+        assert_eq!(false, &traces >= &archive);
+        assert_eq!(true, &traces >= &traces);
+        assert_eq!(false, &traces >= &archive_traces);
+        assert_eq!(true, &traces >= &full);
+        assert_eq!(true, &traces >= &full_traces);
 
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&archive_traces, &archive)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&archive_traces, &traces)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&archive_traces, &archive_traces)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&archive_traces, &full)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&archive_traces, &full_traces)
-        );
+        assert_eq!(true, &archive_traces >= &archive);
+        assert_eq!(true, &archive_traces >= &traces);
+        assert_eq!(true, &archive_traces >= &archive_traces);
+        assert_eq!(true, &archive_traces >= &full);
+        assert_eq!(true, &archive_traces >= &full_traces);
 
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&full_traces, &archive)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&full_traces, &traces)
-        );
-        assert_eq!(
-            false,
-            NodeCapabilities::sufficient_capability(&full_traces, &archive_traces)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&full_traces, &full)
-        );
-        assert_eq!(
-            true,
-            NodeCapabilities::sufficient_capability(&full_traces, &full_traces)
-        );
+        assert_eq!(false, &full_traces >= &archive);
+        assert_eq!(true, &full_traces >= &traces);
+        assert_eq!(false, &full_traces >= &archive_traces);
+        assert_eq!(true, &full_traces >= &full);
+        assert_eq!(true, &full_traces >= &full_traces);
     }
 }
