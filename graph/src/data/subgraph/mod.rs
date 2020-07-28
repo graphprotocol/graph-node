@@ -35,7 +35,7 @@ use crate::prelude::{
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
 
-use crate::components::ethereum::NetworkCapability;
+use crate::components::ethereum::NodeCapabilities;
 use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
@@ -274,10 +274,10 @@ pub enum SubgraphRegistrarError {
     #[fail(display = "Ethereum network not supported by registrar: {}", _0)]
     NetworkNotSupported(String),
     #[fail(
-        display = "Ethereum network {} not found with capabilities: {:?}",
+        display = "Ethereum nodes for network {} are missing the following capabilities: {}",
         _0, _1
     )]
-    SubgraphNetworkRequirementsNotSupported(String, Vec<NetworkCapability>),
+    SubgraphNetworkRequirementsNotSupported(String, NodeCapabilities),
     #[fail(display = "deployment not found: {}", _0)]
     DeploymentNotFound(String),
     #[fail(display = "deployment assignment unchanged: {}", _0)]
@@ -1139,7 +1139,7 @@ impl SubgraphManifest {
             .collect()
     }
 
-    pub fn all_mappings(&self) -> Vec<Mapping> {
+    pub fn mappings(&self) -> Vec<Mapping> {
         self.templates
             .iter()
             .map(|template| template.mapping.clone())
@@ -1152,26 +1152,27 @@ impl SubgraphManifest {
     }
 
     pub fn requires_traces(&self) -> bool {
-        self.all_mappings().iter().any(|mapping| {
-            dbg!(mapping.has_call_handler()) || dbg!(mapping.has_block_handler_with_call_filter())
+        self.mappings().iter().any(|mapping| {
+            mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
         })
     }
 
     pub fn requires_archive(&self) -> bool {
-        self.all_mappings()
+        self.mappings()
             .iter()
             .any(|mapping| mapping.calls_host_fn("ethereum.call"))
     }
 
-    pub fn all_eth_requirements(&self) -> Vec<NetworkCapability> {
-        let mut caps = Vec::new();
-        if self.requires_traces() {
-            caps.push(NetworkCapability::Traces)
+    pub fn required_ethereum_capabilities(&self) -> NodeCapabilities {
+        let mappings = self.mappings();
+        NodeCapabilities {
+            archive: mappings
+                .iter()
+                .any(|mapping| mapping.calls_host_fn("ethereum.call")),
+            traces: mappings.iter().any(|mapping| {
+                mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
+            }),
         }
-        if self.requires_archive() {
-            caps.push(NetworkCapability::Archive)
-        }
-        caps
     }
 }
 

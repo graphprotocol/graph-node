@@ -12,7 +12,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-use graph::components::ethereum::{EthereumNetworks, NetworkCapability};
+use graph::components::ethereum::{EthereumNetworks, NodeCapabilities};
 use graph::components::forward;
 use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
@@ -584,16 +584,14 @@ async fn main() {
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_networks.flatten().into_iter().map(
             |(network_name, capabilities, eth_adapter)| {
-                let capabilities_string = format!("{:?}", &capabilities);
                 info!(
                     logger, "Connecting to Ethereum...";
                     "network" => &network_name,
-                    "capabilities" => capabilities_string
-
+                    "capabilities" => &capabilities
                 );
                 eth_adapter
                     .net_identifiers(&logger)
-                    .map(|network_identifier| (network_name, capabilities, network_identifier))
+                    .map(move |network_identifier| (network_name, capabilities, network_identifier))
                     .compat()
             },
         ))
@@ -603,13 +601,12 @@ async fn main() {
             panic!("Failed to connect to Ethereum node: {}", e);
         })
         .map(move |(network_name, capabilities, network_identifier)| {
-            let capabilities_string = format!("{:?}", &capabilities);
             info!(
                 stores_logger,
                 "Connected to Ethereum";
                 "network" => &network_name,
                 "network_version" => &network_identifier.net_version,
-                "capabilities" => capabilities_string
+                "capabilities" => &capabilities
             );
             (
                 network_name.to_string(),
@@ -674,9 +671,12 @@ async fn main() {
                         let mut indexer = network_indexer::NetworkIndexer::new(
                             &logger,
                             eth_networks
-                                .get_adapter_with_requirements(
+                                .adapter_with_capabilities(
                                     network_name.clone(),
-                                    &vec![NetworkCapability::Full],
+                                    &NodeCapabilities {
+                                        archive: false,
+                                        traces: false,
+                                    },
                                 )
                                 .expect(&*format!("adapter for network, {}", network_name))
                                 .clone(),
@@ -950,27 +950,39 @@ fn parse_ethereum_networks(
                 );
             })?;
 
-            let (network_capabilities_str, url) = rest.split_at(http_split_at);
-            let network_capabilities: Vec<NetworkCapability> = match network_capabilities_str.len()
-            {
-                0 => vec![NetworkCapability::Archive, NetworkCapability::Traces],
-                length => {
-                    network_capabilities_str[..length - 1].split(',')
-                        .map(|capability_str| {
-                            Ok(NetworkCapability::from_str(dbg!(capability_str))?)
-                        })
-                        .collect::<Result<Vec<NetworkCapability>, Error>>()?
-                }
-            };
+            let (network_capabilities_str, url_str) = rest.split_at(url_split_at);
+            let (url, network_capabilities) =
+                if vec!["http", "https", "ws", "wss"].contains(&network_capabilities_str) {
+                    (
+                        rest,
+                        NodeCapabilities {
+                            archive: true,
+                            traces: true,
+                        },
+                    )
+                } else {
+                    let capabilities = network_capabilities_str.split(',').collect::<Vec<&str>>();
+                    let invalid_capabilities: Vec<&&str> = capabilities
+                        .iter()
+                        .filter(|capability| !vec!["archive", "traces"].contains(capability))
+                        .collect();
+                    if !invalid_capabilities.is_empty() {
+                        return Err(format_err!(
+                            "Invalid Ethereum node capability supplied: {:?}",
+                            invalid_capabilities
+                        ));
+                    }
+                    (
+                        &url_str[1..],
+                        NodeCapabilities {
+                            archive: capabilities.contains(&&"archive"),
+                            traces: capabilities.contains(&&"traces"),
+                        },
+                    )
+                };
 
-            println!("caps: {:?}", network_capabilities);
-
-            if rest.is_empty() || url.is_empty() {
+            if rest.is_empty() {
                 return Err(format_err!("Ethereum node URL cannot be an empty string"));
-            }
-
-            if network_capabilities.len() > 2 {
-                return Err(format_err!("Maximum number of Ethereum Capabilities exceeded: {}", network_capabilities.len()));
             }
 
             info!(
@@ -978,7 +990,7 @@ fn parse_ethereum_networks(
                 "Creating transport";
                 "network" => &name,
                 "url" => &url,
-                "capabilities" => network_capabilities_str
+                "capabilities" => network_capabilities
             );
 
             let (transport_event_loop, transport) = match connection_type {
@@ -1014,7 +1026,7 @@ mod test {
     use super::parse_ethereum_networks;
     use crate::ConnectionType;
     use clap::{App, Arg};
-    use graph::components::ethereum::NetworkCapability;
+    use graph::components::ethereum::NodeCapabilities;
     use graph::log::logger;
     use graph_core::MetricsRegistry;
     use prometheus::Registry;
@@ -1051,17 +1063,25 @@ mod test {
         let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();
         network_names.sort();
 
+        let traces = NodeCapabilities {
+            archive: false,
+            traces: true,
+        };
+        let archive = NodeCapabilities {
+            archive: true,
+            traces: false,
+        };
         let has_mainnet_with_traces = ethereum_networks
-            .get_adapter_with_requirements("mainnet".to_string(), &vec![NetworkCapability::Traces])
+            .adapter_with_capabilities("mainnet".to_string(), &traces)
             .is_ok();
         let has_goerli_with_archive = ethereum_networks
-            .get_adapter_with_requirements("goerli".to_string(), &vec![NetworkCapability::Archive])
+            .adapter_with_capabilities("goerli".to_string(), &archive)
             .is_ok();
         let has_mainnet_with_archive = ethereum_networks
-            .get_adapter_with_requirements("mainnet".to_string(), &vec![NetworkCapability::Archive])
+            .adapter_with_capabilities("mainnet".to_string(), &archive)
             .is_ok();
         let has_goerli_with_traces = ethereum_networks
-            .get_adapter_with_requirements("goerli".to_string(), &vec![NetworkCapability::Traces])
+            .adapter_with_capabilities("goerli".to_string(), &traces)
             .is_ok();
 
         assert_eq!(has_mainnet_with_traces, true);
@@ -1074,22 +1094,24 @@ mod test {
             .get("goerli")
             .unwrap()
             .adapters
-            .keys()
+            .iter()
             .next()
-            .unwrap();
+            .unwrap()
+            .capabilities;
         let mainnet_capability = ethereum_networks
             .networks
             .get("mainnet")
             .unwrap()
             .adapters
-            .keys()
+            .iter()
             .next()
-            .unwrap();
+            .unwrap()
+            .capabilities;
         assert_eq!(
             network_names,
             vec![&"goerli".to_string(), &"mainnet".to_string()]
         );
-        assert_eq!(goerli_capability, &vec![NetworkCapability::Archive]);
-        assert_eq!(mainnet_capability, &vec![NetworkCapability::Traces]);
+        assert_eq!(goerli_capability, archive);
+        assert_eq!(mainnet_capability, traces);
     }
 }

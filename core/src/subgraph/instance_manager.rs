@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use graph::components::ethereum::{triggers_in_block, EthereumNetworks, NetworkCapability};
+use graph::components::ethereum::{triggers_in_block, EthereumNetworks};
 use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{ProofOfIndexing, SharedProofOfIndexing};
 use graph::data::store::scalar::Bytes;
@@ -258,10 +258,8 @@ impl SubgraphInstanceManager {
                             "data_sources" => manifest.data_sources.len()
                         );
                         let network = manifest.network_name();
-                        let required_capabilities = match manifest.requires_archive() {
-                            true => NetworkCapability::Archive,
-                            false => NetworkCapability::Full,
-                        };
+                        let required_capabilities = manifest.required_ethereum_capabilities();
+
                         match Self::start_subgraph(
                             logger.clone(),
                             instances.clone(),
@@ -275,9 +273,9 @@ impl SubgraphInstanceManager {
                                 ))
                                 .clone(),
                             eth_networks
-                                .get_adapter_with_requirements(
+                                .adapter_with_capabilities(
                                     network.clone(),
-                                    &vec![required_capabilities])
+                                    &required_capabilities)
                                 .expect(&format!(
                                     "expected eth adapter that matches subgraph network {} with required capabilities: {:?}",
                                     &network,

@@ -127,14 +127,15 @@ where
             )
         })?;
 
-        let required_capabilities = match data_source.mapping.calls_host_fn("ethereum.call") {
-            true => vec![NetworkCapability::Archive],
-            false => vec![NetworkCapability::cheapest()],
+        let required_capabilities = NodeCapabilities {
+            traces: data_source.mapping.calls_host_fn("ethereum.call"),
+            archive: data_source.mapping.has_block_handler_with_call_filter()
+                || data_source.mapping.has_call_handler(),
         };
 
         let ethereum_adapter = self
             .ethereum_networks
-            .get_adapter_with_requirements(network_name.clone(), &required_capabilities)?;
+            .adapter_with_capabilities(network_name.clone(), &required_capabilities)?;
 
         // Detect whether the subgraph uses templates in data sources, which are
         // deprecated, or the top-level templates field.
