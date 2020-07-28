@@ -1023,7 +1023,7 @@ where
             .eth_networks
             .get_adapter_with_requirements(network_name.clone(), &vec![requirements])
             .expect(&format!(
-                "no eth adapter that supports network: {} with {:?}",
+                "no eth adapter that supports network: {} with {}",
                 &network_name, &requirements
             ));
 

@@ -943,10 +943,10 @@ fn parse_ethereum_networks(
                 ));
             }
 
-            let http_split_at = rest.find("http").ok_or_else(|| {
+            let url_split_at = rest.find(":").ok_or_else(|| {
                 return format_err!(
-                    "An Ethereum node location must be provided along with the name and capabilities (optional). \
-                         Try e.g. 'mainnet:URL'."
+                    "A network name must be provided alongside the \
+                         Ethereum node location. Try e.g. 'mainnet:URL'."
                 );
             })?;
 
