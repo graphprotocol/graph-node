@@ -24,7 +24,7 @@ fn node_fails_to_start_with_invalid_network_capability() {
         .fails()
         .and()
         .stderr()
-        .contains("Failed to parse Ethereum networks and create Ethereum adapters: invalid network capability provided: everything:works")
+        .contains("Failed to parse Ethereum networks and create Ethereum adapters: Invalid Ethereum node capability supplied: [\"everything\"]")
         .unwrap()
 }
 
