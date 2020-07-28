@@ -320,11 +320,11 @@ where
             SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
         )?;
 
-        let subgraph_eth_requirements = manifest.all_eth_requirements();
+        let subgraph_eth_requirements = manifest.required_ethereum_capabilities();
 
         let ethereum_adapter = self
             .ethereum_networks
-            .get_adapter_with_requirements(network_name.clone(), &subgraph_eth_requirements)
+            .adapter_with_capabilities(network_name.clone(), &subgraph_eth_requirements)
             .map_err(|_| {
                 SubgraphRegistrarError::SubgraphNetworkRequirementsNotSupported(
                     network_name,

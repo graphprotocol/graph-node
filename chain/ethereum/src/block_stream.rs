@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use graph::components::ethereum::{
-    blocks_with_triggers, triggers_in_block, EthereumNetworks, NetworkCapability,
+    blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities,
 };
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
@@ -1014,14 +1014,14 @@ where
             ))
             .clone();
 
-        let requirements = match include_calls_in_blocks {
-            true => NetworkCapability::Traces,
-            false => NetworkCapability::Full,
+        let requirements = NodeCapabilities {
+            archive: false,
+            traces: include_calls_in_blocks,
         };
 
         let eth_adapter = self
             .eth_networks
-            .get_adapter_with_requirements(network_name.clone(), &vec![requirements])
+            .adapter_with_capabilities(network_name.clone(), &requirements)
             .expect(&format!(
                 "no eth adapter that supports network: {} with {}",
                 &network_name, &requirements

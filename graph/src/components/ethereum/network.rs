@@ -1,97 +1,91 @@
 use failure::{format_err, Error};
-use std::cmp::Ord;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::components::ethereum::EthereumAdapter;
 pub use crate::impl_slog_value;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum NetworkCapability {
-    Full,
-    Archive,
-    Traces,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NodeCapabilities {
+    pub archive: bool,
+    pub traces: bool,
 }
 
-impl FromStr for NetworkCapability {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "full" => NetworkCapability::Full,
-            "archive" => NetworkCapability::Archive,
-            "traces" => NetworkCapability::Traces,
-            s => return Err(format_err!("invalid network capability provided: {}", s)),
-        })
+impl NodeCapabilities {
+    pub fn sufficient_capability(network: &NodeCapabilities, required: &NodeCapabilities) -> bool {
+        //TODO: Use impl of cmp:ORD for this comparison
+        network.archive >= required.archive && network.traces >= required.traces
     }
 }
 
-impl fmt::Display for NetworkCapability {
+//TODO: Use the struct keys instead of this long impl..?
+impl fmt::Display for NodeCapabilities {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            NetworkCapability::Full => write!(f, "full"),
-            NetworkCapability::Archive => write!(f, "archive"),
-            NetworkCapability::Traces => write!(f, "traces"),
+            NodeCapabilities {
+                archive: true,
+                traces: true,
+            } => write!(f, "archive, trace"),
+            NodeCapabilities {
+                archive: false,
+                traces: true,
+            } => write!(f, "full, trace"),
+            NodeCapabilities {
+                archive: false,
+                traces: false,
+            } => write!(f, "full"),
+            NodeCapabilities {
+                archive: true,
+                traces: false,
+            } => write!(f, "archive"),
         }
     }
 }
 
-impl NetworkCapability {
-    pub fn sufficient_capability(
-        network: &Vec<NetworkCapability>,
-        required: &Vec<NetworkCapability>,
-    ) -> bool {
-        match required[..] {
-            [NetworkCapability::Full] => true,
-            [NetworkCapability::Traces] => network.contains(&NetworkCapability::Traces),
-            [NetworkCapability::Full, NetworkCapability::Traces] => {
-                network.contains(&NetworkCapability::Traces)
-            }
-            [NetworkCapability::Archive] => network.contains(&NetworkCapability::Archive),
-            [NetworkCapability::Archive, NetworkCapability::Traces] => {
-                network == &vec![NetworkCapability::Archive, NetworkCapability::Traces]
-            }
-            _ => false,
-        }
-    }
+impl_slog_value!(NodeCapabilities, "{:?}");
 
-    pub fn cheapest() -> Self {
-        NetworkCapability::Full
-    }
+#[derive(Clone)]
+pub struct EthereumNetworkAdapter {
+    pub capabilities: NodeCapabilities,
+    adapter: Arc<dyn EthereumAdapter>,
 }
-
-impl_slog_value!(NetworkCapability, "{:?}");
 
 #[derive(Clone)]
 pub struct EthereumNetworkAdapters {
-    pub adapters: BTreeMap<Vec<NetworkCapability>, Arc<dyn EthereumAdapter>>,
+    pub adapters: Vec<EthereumNetworkAdapter>,
 }
 
 impl EthereumNetworkAdapters {
     pub fn cheapest_with(
         &self,
-        required_capabilities: &Vec<NetworkCapability>,
+        required_capabilities: &NodeCapabilities,
     ) -> Result<&Arc<dyn EthereumAdapter>, Error> {
-        let sufficient_adapters: BTreeMap<&Vec<NetworkCapability>, &Arc<dyn EthereumAdapter>> =
-            self.adapters
-                .iter()
-                .filter(|(capabilities, _adapter)| {
-                    NetworkCapability::sufficient_capability(capabilities, required_capabilities)
-                })
-                .collect();
-        if sufficient_adapters.len() == 0 {
+        let sufficient_adapters: Vec<&EthereumNetworkAdapter> = self
+            .adapters
+            .iter()
+            .filter(|adapter| {
+                NodeCapabilities::sufficient_capability(
+                    &adapter.capabilities,
+                    required_capabilities,
+                )
+            })
+            .collect();
+        if sufficient_adapters.is_empty() {
             return Err(format_err!(
                 "A matching Ethereum network with {:?} was not found.",
                 required_capabilities
             ));
         }
-        Ok(sufficient_adapters.values().next().unwrap())
+        // TODO: Randomly choose between capable nodes
+        Ok(&sufficient_adapters.iter().next().unwrap().adapter)
     }
 
     pub fn cheapest(&self) -> Option<&Arc<dyn EthereumAdapter>> {
-        self.adapters.values().next()
+        self.adapters
+            .iter()
+            .next()
+            .map(|ethereum_network_adapter| &ethereum_network_adapter.adapter)
     }
 }
 
@@ -110,164 +104,186 @@ impl EthereumNetworks {
     pub fn insert_or_update(
         &mut self,
         name: String,
-        capabilities: Vec<NetworkCapability>,
+        capabilities: NodeCapabilities,
         adapter: Arc<dyn EthereumAdapter>,
     ) {
-        let network = self
+        let network_adapters = self
             .networks
             .entry(name)
             .or_insert(EthereumNetworkAdapters {
-                adapters: [(capabilities.clone(), adapter.clone())]
-                    .iter()
-                    .cloned()
-                    .collect(),
+                adapters: vec![EthereumNetworkAdapter {
+                    capabilities,
+                    adapter: adapter.clone(),
+                }],
             });
-        network.adapters.insert(capabilities, adapter.clone());
+        network_adapters.adapters.push(EthereumNetworkAdapter {
+            capabilities,
+            adapter: adapter.clone(),
+        });
     }
 
     pub fn extend(&mut self, other_networks: EthereumNetworks) {
         self.networks.extend(other_networks.networks);
     }
 
-    pub fn flatten(&self) -> Vec<(String, Vec<NetworkCapability>, Arc<dyn EthereumAdapter>)> {
+    pub fn flatten(&self) -> Vec<(String, NodeCapabilities, Arc<dyn EthereumAdapter>)> {
         self.networks
             .iter()
-            .flat_map(|(network_name, network)| {
-                network.adapters.iter().map(move |(capabilities, adapter)| {
-                    (network_name.clone(), capabilities.clone(), adapter.clone())
-                })
+            .flat_map(|(network_name, network_adapters)| {
+                network_adapters
+                    .adapters
+                    .iter()
+                    .map(move |network_adapter| {
+                        (
+                            network_name.clone(),
+                            network_adapter.capabilities.clone(),
+                            network_adapter.adapter.clone(),
+                        )
+                    })
             })
             .collect()
     }
 
-    pub fn get_adapter_with_requirements(
+    pub fn adapter_with_capabilities(
         &self,
         network_name: String,
-        requirements: &Vec<NetworkCapability>,
+        requirements: &NodeCapabilities,
     ) -> Result<&Arc<dyn EthereumAdapter>, Error> {
         self.networks
             .get(&network_name)
             .ok_or(format_err!("network not supported: {}", &network_name))
-            .and_then(|adapters| {
-                println!("{:?}", adapters.adapters.clone().keys());
-                adapters.cheapest_with(requirements)
-            })
+            .and_then(|adapters| adapters.cheapest_with(requirements))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::NetworkCapability;
+    use super::NodeCapabilities;
 
     #[test]
     fn ethereum_capabilities_comparison() {
-        let archive = vec![NetworkCapability::Archive];
-        let traces = vec![NetworkCapability::Traces];
-        let archive_traces = vec![NetworkCapability::Archive, NetworkCapability::Traces];
-        let full = vec![NetworkCapability::Full];
-        let full_traces = vec![NetworkCapability::Full, NetworkCapability::Traces];
+        let archive = NodeCapabilities {
+            archive: true,
+            traces: false,
+        };
+        let traces = NodeCapabilities {
+            archive: false,
+            traces: true,
+        };
+        let archive_traces = NodeCapabilities {
+            archive: true,
+            traces: true,
+        };
+        let full = NodeCapabilities {
+            archive: false,
+            traces: false,
+        };
+        let full_traces = NodeCapabilities {
+            archive: false,
+            traces: true,
+        };
 
         // Test all real combinations of capability comparisons
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&full, &archive)
+            NodeCapabilities::sufficient_capability(&full, &archive)
         );
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&full, &traces)
+            NodeCapabilities::sufficient_capability(&full, &traces)
         );
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&full, &archive_traces)
+            NodeCapabilities::sufficient_capability(&full, &archive_traces)
         );
-        assert_eq!(true, NetworkCapability::sufficient_capability(&full, &full));
+        assert_eq!(true, NodeCapabilities::sufficient_capability(&full, &full));
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&full, &full_traces)
+            NodeCapabilities::sufficient_capability(&full, &full_traces)
         );
 
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&archive, &archive)
+            NodeCapabilities::sufficient_capability(&archive, &archive)
         );
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&archive, &traces)
+            NodeCapabilities::sufficient_capability(&archive, &traces)
         );
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&archive, &archive_traces)
+            NodeCapabilities::sufficient_capability(&archive, &archive_traces)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&archive, &full)
+            NodeCapabilities::sufficient_capability(&archive, &full)
         );
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&archive, &full_traces)
+            NodeCapabilities::sufficient_capability(&archive, &full_traces)
         );
 
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&traces, &archive)
+            NodeCapabilities::sufficient_capability(&traces, &archive)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&traces, &traces)
+            NodeCapabilities::sufficient_capability(&traces, &traces)
         );
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&traces, &archive_traces)
+            NodeCapabilities::sufficient_capability(&traces, &archive_traces)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&traces, &full)
+            NodeCapabilities::sufficient_capability(&traces, &full)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&traces, &full_traces)
+            NodeCapabilities::sufficient_capability(&traces, &full_traces)
         );
 
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&archive_traces, &archive)
+            NodeCapabilities::sufficient_capability(&archive_traces, &archive)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&archive_traces, &traces)
+            NodeCapabilities::sufficient_capability(&archive_traces, &traces)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&archive_traces, &archive_traces)
+            NodeCapabilities::sufficient_capability(&archive_traces, &archive_traces)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&archive_traces, &full)
+            NodeCapabilities::sufficient_capability(&archive_traces, &full)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&archive_traces, &full_traces)
+            NodeCapabilities::sufficient_capability(&archive_traces, &full_traces)
         );
 
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&full_traces, &archive)
+            NodeCapabilities::sufficient_capability(&full_traces, &archive)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&full_traces, &traces)
+            NodeCapabilities::sufficient_capability(&full_traces, &traces)
         );
         assert_eq!(
             false,
-            NetworkCapability::sufficient_capability(&full_traces, &archive_traces)
+            NodeCapabilities::sufficient_capability(&full_traces, &archive_traces)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&full_traces, &full)
+            NodeCapabilities::sufficient_capability(&full_traces, &full)
         );
         assert_eq!(
             true,
-            NetworkCapability::sufficient_capability(&full_traces, &full_traces)
+            NodeCapabilities::sufficient_capability(&full_traces, &full_traces)
         );
     }
 }
