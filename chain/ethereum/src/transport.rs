@@ -23,8 +23,10 @@ where
     let mut headers = HeaderMap::new();
     for (k, v) in kvs.into_iter() {
         headers.insert(
-            k.parse::<HeaderName>().expect("invalid HTTP header name"),
-            v.parse::<HeaderValue>().expect("invalid HTTP header value"),
+            k.parse::<HeaderName>()
+                .expect(&format!("invalid HTTP header name: {}", k)),
+            v.parse::<HeaderValue>()
+                .expect(&format!("knvalid HTTP header value: {}: {}", k, v)),
         );
     }
     Ok(headers)
