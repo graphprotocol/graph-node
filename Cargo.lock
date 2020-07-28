@@ -1394,12 +1394,15 @@ dependencies = [
  "graph-mock",
  "graph-store-postgres",
  "hex-literal",
+ "hyper 0.12.35",
  "jsonrpc-core",
  "lazy_static",
  "mockall",
  "pretty_assertions",
+ "serde",
  "state_machine_future",
  "test-store",
+ "toml",
 ]
 
 [[package]]
@@ -4791,7 +4794,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.10.0"
-source = "git+https://github.com/graphprotocol/rust-web3#40f9cb5c9f363543a21bd98524081c82115e3f85"
+source = "git+https://github.com/graphprotocol/rust-web3?branch=jannis/custom-headers#9837d776aef68f1240e3ee3681d251eb044ce659"
 dependencies = [
  "arrayvec",
  "base64 0.12.1",
