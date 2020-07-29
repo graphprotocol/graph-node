@@ -4896,7 +4896,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.10.0"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=jannis/custom-headers#9837d776aef68f1240e3ee3681d251eb044ce659"
+source = "git+https://github.com/graphprotocol/rust-web3#88bab872b88fc1de9aff67d2a34384bd9f08ec89"
 dependencies = [
  "arrayvec",
  "base64 0.12.1",
