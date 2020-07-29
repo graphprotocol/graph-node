@@ -360,7 +360,7 @@ pub fn execute_root_selection_set_uncached(
         items: Vec::new(),
     };
 
-    for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set), None) {
+    for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set)) {
         let name = fields[0].name.clone();
         let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
         // See if this is an introspection or data field. We don't worry about
@@ -557,7 +557,7 @@ fn execute_selection_set_to_map<'a>(
     let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
 
     // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = collect_fields(ctx, object_type, selection_sets, None);
+    let grouped_field_set = collect_fields(ctx, object_type, selection_sets);
 
     // Gather fields that appear more than once with the same response key.
     let multiple_response_keys = {
@@ -634,11 +634,25 @@ pub fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    visited_fragments: Option<HashSet<&'a q::Name>>,
 ) -> IndexMap<&'a String, Vec<&'a q::Field>> {
-    let mut visited_fragments = visited_fragments.unwrap_or_default();
-    let mut grouped_fields: IndexMap<_, Vec<_>> = IndexMap::new();
+    let mut grouped_fields = IndexMap::new();
+    collect_fields_inner(
+        ctx,
+        object_type,
+        selection_sets,
+        &mut HashSet::new(),
+        &mut grouped_fields,
+    );
+    grouped_fields
+}
 
+pub fn collect_fields_inner<'a>(
+    ctx: &'a ExecutionContext<impl Resolver>,
+    object_type: &s::ObjectType,
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
+    visited_fragments: &mut HashSet<&'a q::Name>,
+    output: &mut IndexMap<&'a String, Vec<&'a q::Field>>,
+) {
     for selection_set in selection_sets {
         // Only consider selections that are not skipped and should be included
         let selections = selection_set
@@ -650,58 +664,27 @@ pub fn collect_fields<'a>(
         for selection in selections {
             match selection {
                 q::Selection::Field(ref field) => {
-                    // Obtain the response key for the field
                     let response_key = qast::get_response_key(field);
-
-                    // Create a field group for this response key on demand and
-                    // append the selection field to this group.
-                    grouped_fields.entry(response_key).or_default().push(field);
+                    output.entry(response_key).or_default().push(field);
                 }
 
                 q::Selection::FragmentSpread(spread) => {
                     // Only consider the fragment if it hasn't already been included,
                     // as would be the case if the same fragment spread ...Foo appeared
                     // twice in the same selection set
-                    if !visited_fragments.contains(&spread.fragment_name) {
-                        visited_fragments.insert(&spread.fragment_name);
-
-                        // Resolve the fragment using its name and, if it applies, collect
-                        // fields for the fragment and group them
-                        ctx.query
-                            .get_fragment(&spread.fragment_name)
-                            .and_then(|fragment| {
-                                // We have a fragment, only pass it on if it applies to the
-                                // current object type
-                                if does_fragment_type_apply(
-                                    ctx,
-                                    object_type,
-                                    &fragment.type_condition,
-                                ) {
-                                    Some(fragment)
-                                } else {
-                                    None
-                                }
-                            })
-                            .map(|fragment| {
-                                // We have a fragment that applies to the current object type,
-                                // collect its fields into response key groups
-                                let fragment_grouped_field_set = collect_fields(
-                                    ctx,
-                                    object_type,
-                                    iter::once(&fragment.selection_set),
-                                    Some(visited_fragments.clone()),
-                                );
-
-                                // Add all items from each fragments group to the field group
-                                // with the corresponding response key
-                                for (response_key, mut fragment_group) in fragment_grouped_field_set
-                                {
-                                    grouped_fields
-                                        .entry(response_key)
-                                        .or_default()
-                                        .append(&mut fragment_group);
-                                }
-                            });
+                    if visited_fragments.insert(&spread.fragment_name) {
+                        let fragment = ctx.query.get_fragment(&spread.fragment_name);
+                        if does_fragment_type_apply(ctx, object_type, &fragment.type_condition) {
+                            // We have a fragment that applies to the current object type,
+                            // collect fields recursively
+                            collect_fields_inner(
+                                ctx,
+                                object_type,
+                                iter::once(&fragment.selection_set),
+                                visited_fragments,
+                                output,
+                            );
+                        }
                     }
                 }
 
@@ -712,26 +695,18 @@ pub fn collect_fields<'a>(
                     };
 
                     if applies {
-                        let fragment_grouped_field_set = collect_fields(
+                        collect_fields_inner(
                             ctx,
                             object_type,
                             iter::once(&fragment.selection_set),
-                            Some(visited_fragments.clone()),
-                        );
-
-                        for (response_key, mut fragment_group) in fragment_grouped_field_set {
-                            grouped_fields
-                                .entry(response_key)
-                                .or_default()
-                                .append(&mut fragment_group);
-                        }
+                            visited_fragments,
+                            output,
+                        )
                     }
                 }
             };
         }
     }
-
-    grouped_fields
 }
 
 /// Determines whether a fragment is applicable to the given object type.

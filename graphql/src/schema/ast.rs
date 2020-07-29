@@ -169,7 +169,7 @@ pub fn get_field_name(field_type: &Type) -> Name {
 }
 
 /// Returns the type with the given name.
-pub fn get_named_type<'a>(schema: &'a Document, name: &Name) -> Option<&'a TypeDefinition> {
+pub fn get_named_type<'a>(schema: &'a Document, name: &str) -> Option<&'a TypeDefinition> {
     schema
         .definitions
         .iter()
