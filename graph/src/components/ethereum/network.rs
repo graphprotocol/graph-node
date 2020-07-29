@@ -107,8 +107,9 @@ impl EthereumNetworkAdapters {
                 required_capabilities
             ));
         }
+
+        // Select from the matching adapters randomly
         let mut rng = rand::thread_rng();
-        // TODO: Randomly choose between capable nodes
         Ok(&sufficient_adapters.iter().choose(&mut rng).unwrap().adapter)
     }
 
