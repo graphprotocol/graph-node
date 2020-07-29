@@ -52,9 +52,6 @@ lazy_static! {
         if format!("{}", config.cache) == "{}" {
             return EthereumConfig::default()
         } else {
-            // Silently ignore errors because they are also
-            // thrown when _no_ config file is present.
-            // That would beeird.
             match config.try_into() {
                 Ok(config) => config,
                 Err(e) => {
