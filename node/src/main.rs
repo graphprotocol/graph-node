@@ -923,9 +923,9 @@ fn parse_ethereum_networks(
                 );
             })?;
 
-            let (network_capabilities_str, url_str) = rest.split_at(url_split_at);
-            let (url, network_capabilities) =
-                if vec!["http", "https", "ws", "wss"].contains(&network_capabilities_str) {
+            let (capabilities_str, url_str) = rest.split_at(url_split_at);
+            let (url, capabilities) =
+                if vec!["http", "https", "ws", "wss"].contains(&capabilities_str) {
                     (
                         rest,
                         NodeCapabilities {
@@ -934,7 +934,7 @@ fn parse_ethereum_networks(
                         },
                     )
                 } else {
-                    (&url_str[1..], network_capabilities_str.parse()?)
+                    (&url_str[1..], capabilities_str.parse()?)
                 };
 
             if rest.is_empty() {
@@ -946,7 +946,7 @@ fn parse_ethereum_networks(
                 "Creating transport";
                 "network" => &name,
                 "url" => &url,
-                "capabilities" => network_capabilities
+                "capabilities" => capabilities
             );
 
             let (transport_event_loop, transport) = match connection_type {
@@ -961,7 +961,7 @@ fn parse_ethereum_networks(
 
             networks.insert(
                 name.to_string(),
-                network_capabilities,
+                capabilities,
                 Arc::new(graph_chain_ethereum::EthereumAdapter::new(
                     transport,
                     eth_rpc_metrics.clone(),
