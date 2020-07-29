@@ -499,7 +499,7 @@ async fn main() {
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     // Ethereum clients
-    let eth_networks = [
+    let mut eth_networks = [
         (ConnectionType::RPC, ethereum_rpc),
         (ConnectionType::IPC, ethereum_ipc),
         (ConnectionType::WS, ethereum_ws),
@@ -527,6 +527,8 @@ async fn main() {
             }
         },
     );
+    eth_networks.sort();
+    let eth_networks = eth_networks;
 
     // Set up Store
     info!(
@@ -911,12 +913,12 @@ async fn main() {
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
 fn parse_ethereum_networks(
     logger: Logger,
-    networks: clap::Values,
+    mut networks: clap::Values,
     connection_type: ConnectionType,
     registry: Arc<MetricsRegistry>,
 ) -> Result<EthereumNetworks, Error> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
-    networks.fold(Ok(EthereumNetworks::new()), |networks, network_arg| {
+    networks.try_fold(EthereumNetworks::new(), |mut networks, network_arg| {
         if network_arg.starts_with("wss://")
             || network_arg.starts_with("http://")
             || network_arg.starts_with("https://")
@@ -961,24 +963,7 @@ fn parse_ethereum_networks(
                         },
                     )
                 } else {
-                    let capabilities = network_capabilities_str.split(',').collect::<Vec<&str>>();
-                    let invalid_capabilities: Vec<&&str> = capabilities
-                        .iter()
-                        .filter(|capability| !vec!["archive", "traces"].contains(capability))
-                        .collect();
-                    if !invalid_capabilities.is_empty() {
-                        return Err(format_err!(
-                            "Invalid Ethereum node capability supplied: {:?}",
-                            invalid_capabilities
-                        ));
-                    }
-                    (
-                        &url_str[1..],
-                        NodeCapabilities {
-                            archive: capabilities.contains(&&"archive"),
-                            traces: capabilities.contains(&&"traces"),
-                        },
-                    )
+                    (&url_str[1..], network_capabilities_str.parse()?)
                 };
 
             if rest.is_empty() {
@@ -1003,20 +988,15 @@ fn parse_ethereum_networks(
             // For now it's fine to just leak it.
             std::mem::forget(transport_event_loop);
 
-            match networks {
-                Ok(mut networks) => {
-                    networks.insert_or_update(
-                        name.to_string(),
-                        network_capabilities,
-                        Arc::new(graph_chain_ethereum::EthereumAdapter::new(
-                            transport,
-                            eth_rpc_metrics.clone(),
-                        )) as Arc<dyn EthereumAdapter>,
-                    );
-                    Ok(networks)
-                }
-                Err(_) => networks,
-            }
+            networks.insert(
+                name.to_string(),
+                network_capabilities,
+                Arc::new(graph_chain_ethereum::EthereumAdapter::new(
+                    transport,
+                    eth_rpc_metrics.clone(),
+                )) as Arc<dyn EthereumAdapter>,
+            );
+            Ok(networks)
         }
     })
 }

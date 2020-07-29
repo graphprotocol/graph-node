@@ -1,4 +1,5 @@
 use failure::{format_err, Error};
+use rand::seq::IteratorRandom;
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::HashMap;
 use std::fmt;
@@ -6,6 +7,7 @@ use std::sync::Arc;
 
 use crate::components::ethereum::EthereumAdapter;
 pub use crate::impl_slog_value;
+use std::str::FromStr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapabilities {
@@ -13,6 +15,9 @@ pub struct NodeCapabilities {
     pub traces: bool,
 }
 
+// Take all NodeCapabilities fields into account when ordering
+// A NodeCapabilities instance is considered equal or greater than another
+// if all of its fields are equal or greater than the other
 impl Ord for NodeCapabilities {
     fn cmp(&self, other: &Self) -> Ordering {
         match (
@@ -32,6 +37,21 @@ impl Ord for NodeCapabilities {
 impl PartialOrd for NodeCapabilities {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl FromStr for NodeCapabilities {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let capabilities: Vec<&str> = s.split(",").collect();
+        Ok(NodeCapabilities {
+            archive: capabilities
+                .iter()
+                .find(|cap| cap.eq(&&"archive"))
+                .is_some(),
+            traces: capabilities.iter().find(|cap| cap.eq(&&"traces")).is_some(),
+        })
     }
 }
 
@@ -58,7 +78,7 @@ impl fmt::Display for NodeCapabilities {
     }
 }
 
-impl_slog_value!(NodeCapabilities, "{:?}");
+impl_slog_value!(NodeCapabilities, "{}");
 
 #[derive(Clone)]
 pub struct EthereumNetworkAdapter {
@@ -87,11 +107,14 @@ impl EthereumNetworkAdapters {
                 required_capabilities
             ));
         }
+        let mut rng = rand::thread_rng();
         // TODO: Randomly choose between capable nodes
-        Ok(&sufficient_adapters.iter().next().unwrap().adapter)
+        Ok(&sufficient_adapters.iter().choose(&mut rng).unwrap().adapter)
     }
 
     pub fn cheapest(&self) -> Option<&Arc<dyn EthereumAdapter>> {
+        // EthereumAdapters are sorted by their NodeCapabilities when the EthereumNetworks
+        // struct is instantiated so they do not need to be sorted here
         self.adapters
             .iter()
             .next()
@@ -111,7 +134,7 @@ impl EthereumNetworks {
         }
     }
 
-    pub fn insert_or_update(
+    pub fn insert(
         &mut self,
         name: String,
         capabilities: NodeCapabilities,
@@ -120,12 +143,7 @@ impl EthereumNetworks {
         let network_adapters = self
             .networks
             .entry(name)
-            .or_insert(EthereumNetworkAdapters {
-                adapters: vec![EthereumNetworkAdapter {
-                    capabilities,
-                    adapter: adapter.clone(),
-                }],
-            });
+            .or_insert(EthereumNetworkAdapters { adapters: vec![] });
         network_adapters.adapters.push(EthereumNetworkAdapter {
             capabilities,
             adapter: adapter.clone(),
@@ -152,6 +170,14 @@ impl EthereumNetworks {
                     })
             })
             .collect()
+    }
+
+    pub fn sort(&mut self) {
+        for adapters in self.networks.values_mut() {
+            adapters
+                .adapters
+                .sort_by_key(|adapter| adapter.capabilities)
+        }
     }
 
     pub fn adapter_with_capabilities(

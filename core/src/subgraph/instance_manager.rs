@@ -277,7 +277,7 @@ impl SubgraphInstanceManager {
                                     network.clone(),
                                     &required_capabilities)
                                 .expect(&format!(
-                                    "expected eth adapter that matches subgraph network {} with required capabilities: {:?}",
+                                    "expected eth adapter that matches subgraph network {} with required capabilities: {}",
                                     &network,
                                     &required_capabilities))
                                 .clone(),
