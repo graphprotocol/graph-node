@@ -625,7 +625,7 @@ where
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
         let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
 
-        if head_ptr_opt.is_none() || subgraph_ptr.is_none() || head_ptr_opt != subgraph_ptr {
+        if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
             // Not synced yet
             Ok(())
         } else {

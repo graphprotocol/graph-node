@@ -224,7 +224,7 @@ impl fmt::Display for QueryExecutionError {
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
             TooExpensive => write!(f, "query is too expensive"),
             Throttled=> write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
-            DeploymentReverted => write!(f, "the subgraph deployment was reverted while executing the query"),
+            DeploymentReverted => write!(f, "the chain was reorganized while executing the query"),
         }
     }
 }
