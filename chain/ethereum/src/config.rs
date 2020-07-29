@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use config::{Config, File};
 use hyper::header::{HeaderMap, HeaderName, HeaderValue};
@@ -33,14 +32,6 @@ pub struct EthereumRpcConfig {
 #[derive(Debug, Default, Deserialize)]
 pub struct EthereumConfig {
     pub rpc: HashMap<String, EthereumRpcConfig>,
-}
-
-impl FromStr for EthereumConfig {
-    type Err = toml::de::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        toml::from_str(s)
-    }
 }
 
 lazy_static! {
