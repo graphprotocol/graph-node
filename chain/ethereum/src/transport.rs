@@ -1,71 +1,14 @@
-use graph::prelude::*;
-use hyper::header::{HeaderMap, HeaderName, HeaderValue};
 use jsonrpc_core::types::Call;
-use serde::{Deserialize, Deserializer};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::env;
-use std::fs;
-use std::ops::Deref;
-use std::str::FromStr;
 
-use toml;
+pub use web3::transports::EventLoopHandle;
 use web3::transports::{http, ipc, ws};
 use web3::RequestId;
 
-pub use web3::transports::EventLoopHandle;
+use graph::prelude::*;
 
-fn deserialize_http_headers<'de, D>(deserializer: D) -> Result<HeaderMap, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let kvs: HashMap<String, String> = Deserialize::deserialize(deserializer)?;
-    let mut headers = HeaderMap::new();
-    for (k, v) in kvs.into_iter() {
-        headers.insert(
-            k.parse::<HeaderName>()
-                .expect(&format!("invalid HTTP header name: {}", k)),
-            v.parse::<HeaderValue>()
-                .expect(&format!("knvalid HTTP header value: {}: {}", k, v)),
-        );
-    }
-    Ok(headers)
-}
-
-#[derive(Deserialize, Debug)]
-struct EthereumNodeConfig {
-    #[serde(deserialize_with = "deserialize_http_headers")]
-    http_headers: HeaderMap,
-}
-
-#[derive(Deserialize, Debug)]
-struct EthereumNodeConfigs(HashMap<String, EthereumNodeConfig>);
-
-impl FromStr for EthereumNodeConfigs {
-    type Err = toml::de::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(toml::from_str(s)?))
-    }
-}
-
-impl Deref for EthereumNodeConfigs {
-    type Target = HashMap<String, EthereumNodeConfig>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-lazy_static! {
-    static ref ETHEREUM_NODE_CONFIGS: Option<EthereumNodeConfigs> =
-        std::env::var("GRAPH_EXPERIMENTAL_ETHEREUM_NODE_CONFIGS")
-            .ok()
-            .map(|s| fs::read_to_string(s)
-                .expect("Failed to read Ethereum node config file")
-                .parse()
-                .expect("Failed to parse Ethereum node config file (must be a .toml file)"));
-}
+use super::config::ETHEREUM_CONFIG;
 
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]
@@ -99,10 +42,8 @@ impl Transport {
             .map(|s| s.to_str().unwrap().parse().unwrap())
             .unwrap_or(64);
 
-        let node_config = ETHEREUM_NODE_CONFIGS.as_ref().and_then(|m| m.get(rpc));
-        let headers = node_config
-            .map(|cfg| cfg.http_headers.clone())
-            .unwrap_or_default();
+        let cfg = ETHEREUM_CONFIG.rpc.get(rpc);
+        let headers = cfg.map(|cfg| cfg.http_headers.clone()).unwrap_or_default();
 
         http::Http::with_max_parallel_and_headers(rpc, max_parallel_http, headers)
             .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))
