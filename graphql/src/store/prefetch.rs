@@ -29,57 +29,7 @@ lazy_static! {
 /// Similar to the TypeCondition from graphql_parser, but with
 /// derives that make it possible to use it as the key in a HashMap
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum TypeCondition {
-    Any,
-    On(q::Name),
-}
-
-impl TypeCondition {
-    /// Return a `TypeCondition` that matches when `self` and `other` match
-    /// simultaneously. If the two conditions can never match at the same time,
-    /// return `None`
-    fn and(&self, other: &Self) -> Option<Self> {
-        use TypeCondition::*;
-        match (self, other) {
-            (Any, _) => Some(other.clone()),
-            (_, Any) => Some(self.clone()),
-            (On(name1), On(name2)) if name1 == name2 => Some(self.clone()),
-            _ => None,
-        }
-    }
-
-    /// Return `true` if any of the entities matches this type condition
-    fn matches(&self, entities: &Vec<Node>) -> bool {
-        use TypeCondition::*;
-        match self {
-            Any => true,
-            On(name) => entities.iter().any(|entity| entity.typename() == name),
-        }
-    }
-
-    /// Return the type that matches this condition; for `Any`, use `object_type`
-    fn matching_type<'a>(
-        &self,
-        schema: &'a s::Document,
-        object_type: ObjectOrInterface<'a>,
-    ) -> Option<ObjectOrInterface<'a>> {
-        use TypeCondition::*;
-
-        match self {
-            Any => Some(object_type.to_owned()),
-            On(name) => object_or_interface_by_name(schema, name),
-        }
-    }
-}
-
-impl From<Option<q::TypeCondition>> for TypeCondition {
-    fn from(cond: Option<q::TypeCondition>) -> Self {
-        match cond {
-            None => TypeCondition::Any,
-            Some(q::TypeCondition::On(name)) => TypeCondition::On(name),
-        }
-    }
-}
+struct TypeCondition<'a>(&'a str);
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -503,39 +453,12 @@ fn execute_root_selection_set(
     // Obtain the root Query type and fail if there isn't one
     let query_type = &ctx.query.schema.query_type;
 
-    // Split the toplevel fields into introspection fields and
-    // 'normal' data fields
-    let mut data_set = q::SelectionSet {
-        span: selection_set.span.clone(),
-        items: Vec::new(),
-    };
-
-    for (_, type_fields) in
-        collect_fields(ctx, query_type.as_ref().into(), vec![selection_set], None)
-    {
-        let fields = match type_fields.get(&TypeCondition::Any) {
-            None => return Ok(vec![]),
-            Some(fields) => fields,
-        };
-
-        let name = fields[0].name.clone();
-        let selections = fields
-            .into_iter()
-            .map(|f| q::Selection::Field((*f).clone()));
-        // See if this is an introspection or data field. We don't worry about
-        // nonexistant fields; those will cause an error later when we execute
-        // the query in `execution::execute_root_selection_set`
-        if sast::get_field(query_type.as_ref(), &name).is_some() {
-            data_set.items.extend(selections)
-        }
-    }
-
     // Execute the root selection set against the root query type
     execute_selection_set(
         resolver,
         ctx,
         make_root_node(),
-        vec![&data_set],
+        vec![&selection_set],
         query_type.as_ref().into(),
     )
 }
@@ -553,7 +476,7 @@ fn object_or_interface_from_type<'a>(
 
 fn object_or_interface_by_name<'a>(
     schema: &'a s::Document,
-    name: &s::Name,
+    name: &str,
 ) -> Option<ObjectOrInterface<'a>> {
     match sast::get_named_type(schema, name) {
         Some(s::TypeDefinition::Object(t)) => Some(t.into()),
@@ -572,26 +495,31 @@ fn execute_selection_set<'a>(
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
     // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = collect_fields(ctx, object_type, selection_sets, None);
+    let grouped_field_set = {
+        // Skip dead fragments as an optimization
+        let relevant_concrete_types = if parents.is_empty() || parents[0].entity.is_empty() {
+            None
+        } else {
+            Some(parents.iter().map(|entity| entity.typename()).collect())
+        };
+
+        collect_fields(ctx, object_type, selection_sets, &relevant_concrete_types)?
+    };
 
     // Process all field groups in order
     for (response_key, type_map) in grouped_field_set {
-        match ctx.deadline {
-            Some(deadline) if deadline < Instant::now() => {
-                errors.push(QueryExecutionError::Timeout);
-                break;
-            }
-            _ => (),
-        }
-
         for (type_cond, fields) in type_map {
-            if !type_cond.matches(&parents) {
-                continue;
+            match ctx.deadline {
+                Some(deadline) if deadline < Instant::now() => {
+                    errors.push(QueryExecutionError::Timeout);
+                    break;
+                }
+                _ => (),
             }
 
-            let concrete_type = type_cond
-                .matching_type(ctx.query.schema.document(), object_type)
-                .expect("collect_fields does not create type conditions for nonexistent types");
+            let concrete_type =
+                object_or_interface_by_name(&ctx.query.schema.document(), type_cond.0)
+                    .expect("collect_fields does not create type conditions for nonexistent types");
 
             if let Some(ref field) = concrete_type.field(&fields[0].name) {
                 let child_type =
@@ -662,12 +590,44 @@ fn execute_selection_set<'a>(
 /// of fragment spreads
 fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: ObjectOrInterface,
+    parent_ty: ObjectOrInterface<'a>,
     selection_sets: Vec<&'a q::SelectionSet>,
-    visited_fragments: Option<HashSet<&'a q::Name>>,
-) -> HashMap<&'a String, HashMap<TypeCondition, Vec<&'a q::Field>>> {
-    let mut visited_fragments = visited_fragments.unwrap_or_default();
-    let mut grouped_fields: HashMap<_, HashMap<_, Vec<_>>> = HashMap::new();
+    relevant_concrete_types: &Option<HashSet<&str>>,
+) -> Result<HashMap<&'a String, HashMap<TypeCondition<'a>, Vec<&'a q::Field>>>, QueryExecutionError>
+{
+    let mut grouped_fields = HashMap::new();
+    collect_fields_inner(
+        ctx,
+        parent_ty,
+        selection_sets,
+        relevant_concrete_types,
+        &mut HashSet::new(),
+        &mut grouped_fields,
+    )?;
+    Ok(grouped_fields)
+}
+
+// When querying an object type, `type_condition` will always be that object type, even if it passes
+// through fragments for interfaces which that type implements.
+//
+// When querying an interface, `type_condition` will start as the interface itself at the root, and
+// change to an implementing object type if it passes to a fragment with a concrete type condition.
+fn collect_fields_inner<'a>(
+    ctx: &'a ExecutionContext<impl Resolver>,
+    mut type_condition: ObjectOrInterface<'a>,
+    selection_sets: Vec<&'a q::SelectionSet>,
+    relevant_concrete_types: &Option<HashSet<&str>>,
+    visited_fragments: &mut HashSet<&'a q::Name>,
+    output: &mut HashMap<&'a String, HashMap<TypeCondition<'a>, Vec<&'a q::Field>>>,
+) -> Result<(), QueryExecutionError> {
+    // Filter out selections on irrelevant types.
+    if let Some(relevant_concrete_types) = relevant_concrete_types {
+        if type_condition.is_object() && !relevant_concrete_types.contains(type_condition.name()) {
+            return Ok(());
+        }
+    }
+
+    let schema = &ctx.query.schema.document();
 
     for selection_set in selection_sets {
         // Only consider selections that are not skipped and should be included
@@ -698,15 +658,15 @@ fn collect_fields<'a>(
                 q::Selection::Field(ref field) => {
                     // Only consider fields that point to objects or interfaces, and
                     // ignore nonexistent fields
-                    if is_reference_field(ctx.query.schema.document(), object_type, field) {
+                    if is_reference_field(schema, type_condition, field) {
                         let response_key = qast::get_response_key(field);
 
                         // Create a field group for this response key and add the field
                         // with no type condition
-                        grouped_fields
+                        output
                             .entry(response_key)
                             .or_default()
-                            .entry(TypeCondition::Any)
+                            .entry(TypeCondition(type_condition.name()))
                             .or_default()
                             .push(field);
                     }
@@ -716,76 +676,59 @@ fn collect_fields<'a>(
                     // Only consider the fragment if it hasn't already been included,
                     // as would be the case if the same fragment spread ...Foo appeared
                     // twice in the same selection set
-                    if !visited_fragments.contains(&spread.fragment_name) {
-                        visited_fragments.insert(&spread.fragment_name);
+                    if visited_fragments.insert(&spread.fragment_name) {
+                        let fragment = ctx.query.get_fragment(&spread.fragment_name);
+                        let fragment_ty = {
+                            let q::TypeCondition::On(ty_name) = &fragment.type_condition;
+                            object_or_interface_by_name(schema, ty_name).ok_or_else(|| {
+                                QueryExecutionError::NamedTypeError(ty_name.clone())
+                            })?
+                        };
 
-                        ctx.query
-                            .get_fragment(&spread.fragment_name)
-                            .map(|fragment| {
-                                let fragment_grouped_field_set = collect_fields(
-                                    ctx,
-                                    object_type,
-                                    vec![&fragment.selection_set],
-                                    Some(visited_fragments.clone()),
-                                );
+                        if fragment_ty.is_object() {
+                            type_condition = fragment_ty
+                        };
 
-                                // Add all items from each fragments group to the field group
-                                // with the corresponding response key
-                                let fragment_cond =
-                                    TypeCondition::from(Some(fragment.type_condition.clone()));
-                                for (response_key, type_fields) in fragment_grouped_field_set {
-                                    for (type_cond, mut group) in type_fields {
-                                        if let Some(cond) = fragment_cond.and(&type_cond) {
-                                            grouped_fields
-                                                .entry(response_key)
-                                                .or_default()
-                                                .entry(cond)
-                                                .or_default()
-                                                .append(&mut group);
-                                        }
-                                    }
-                                }
-                            });
+                        collect_fields_inner(
+                            ctx,
+                            fragment_ty,
+                            vec![&fragment.selection_set],
+                            relevant_concrete_types,
+                            visited_fragments,
+                            output,
+                        )?;
                     }
                 }
 
                 q::Selection::InlineFragment(fragment) => {
-                    let fragment_cond = TypeCondition::from(fragment.type_condition.clone());
-                    // Fields for this fragment need to be looked up in the type
-                    // mentioned in the condition
-                    let fragment_type =
-                        fragment_cond.matching_type(ctx.query.schema.document(), object_type);
-
-                    // The `None` case here indicates an error where the type condition
-                    // mentions a nonexistent type; the overall query execution logic will catch
-                    // that
-                    if let Some(fragment_type) = fragment_type {
-                        let fragment_grouped_field_set = collect_fields(
-                            ctx,
-                            fragment_type,
-                            vec![&fragment.selection_set],
-                            Some(visited_fragments.clone()),
-                        );
-
-                        for (response_key, type_fields) in fragment_grouped_field_set {
-                            for (type_cond, mut group) in type_fields {
-                                if let Some(cond) = fragment_cond.and(&type_cond) {
-                                    grouped_fields
-                                        .entry(response_key)
-                                        .or_default()
-                                        .entry(cond)
-                                        .or_default()
-                                        .append(&mut group);
-                                }
+                    let fragment_ty = {
+                        match &fragment.type_condition {
+                            Some(q::TypeCondition::On(ty_name)) => {
+                                object_or_interface_by_name(schema, &ty_name).ok_or_else(|| {
+                                    QueryExecutionError::NamedTypeError(ty_name.clone())
+                                })?
                             }
+                            None => type_condition,
                         }
-                    }
+                    };
+
+                    if fragment_ty.is_object() {
+                        type_condition = fragment_ty
+                    };
+
+                    collect_fields_inner(
+                        ctx,
+                        fragment_ty,
+                        vec![&fragment.selection_set],
+                        relevant_concrete_types,
+                        visited_fragments,
+                        output,
+                    )?;
                 }
-            };
+            }
         }
     }
-
-    grouped_fields
+    Ok(())
 }
 
 /// Executes a field.

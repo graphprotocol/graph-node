@@ -219,8 +219,10 @@ impl Query {
         })
     }
 
-    pub fn get_fragment(&self, name: &q::Name) -> Option<&q::FragmentDefinition> {
-        self.fragments.get(name)
+    /// Should only be called for fragments that exist in the query, and therefore have been
+    /// validated to exist. Panics otherwise.
+    pub fn get_fragment(&self, name: &q::Name) -> &q::FragmentDefinition {
+        self.fragments.get(name).unwrap()
     }
 
     /// Return `true` if this is a query, and not a subscription or
@@ -372,7 +374,7 @@ impl Query {
                         }
                     }
                     q::Selection::FragmentSpread(fragment) => {
-                        match self.get_fragment(&fragment.fragment_name) {
+                        match self.fragments.get(&fragment.fragment_name) {
                             Some(frag) => {
                                 let q::TypeCondition::On(type_name) = &frag.type_condition;
                                 match get_named_type(schema, type_name) {
@@ -481,7 +483,7 @@ impl Query {
                             .ok_or(Overflow)
                     }
                     q::Selection::FragmentSpread(fragment) => {
-                        let def = self.get_fragment(&fragment.fragment_name).ok_or(Invalid)?;
+                        let def = self.get_fragment(&fragment.fragment_name);
                         let q::TypeCondition::On(type_name) = &def.type_condition;
                         let ty = get_named_type(schema, &type_name).ok_or(Invalid)?;
                         self.complexity_inner(&ty, &def.selection_set, max_depth, depth + 1)

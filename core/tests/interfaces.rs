@@ -2,6 +2,7 @@
 
 use graph::prelude::*;
 use graph_graphql::prelude::object;
+use graphql_parser::query as q;
 use test_store::*;
 
 // `entities` is `(entity, type)`.
@@ -613,6 +614,144 @@ fn alias() {
                     __typename: "Animal"
                 }
             }
+        }
+    )
+}
+
+#[test]
+fn fragments_dont_panic() {
+    let subgraph_id = "FragmentsDontPanic";
+    let schema = "
+      type Parent @entity {
+        id: ID!
+        child: Child
+      }
+
+      type Child @entity {
+        id: ID!
+      }
+    ";
+
+    let query = "
+        query {
+            parents {
+                ...on Parent {
+                    child {
+                        id
+                    }
+                }
+                ...Frag
+                child {
+                    id
+                }
+            }
+        }
+
+        fragment Frag on Parent {
+            child {
+                id
+            }
+        }
+    ";
+
+    // The panic manifests if two parents exist.
+    let parent = (
+        Entity::from(vec![("id", Value::from("p")), ("child", Value::from("c"))]),
+        "Parent",
+    );
+    let parent2 = (
+        Entity::from(vec![("id", Value::from("p2")), ("child", Value::Null)]),
+        "Parent",
+    );
+    let child = (Entity::from(vec![("id", Value::from("c"))]), "Child");
+
+    let res = insert_and_query(subgraph_id, schema, vec![parent, parent2, child], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            parents: vec![
+                object! {
+                    child: object! {
+                        id: "c",
+                    }
+                },
+                object! {
+                    child: q::Value::Null
+                }
+            ]
+        }
+    )
+}
+
+// See issue #1816
+#[test]
+fn fragments_dont_duplicate_data() {
+    let subgraph_id = "FragmentsDupe";
+    let schema = "
+      type Parent @entity {
+        id: ID!
+        children: [Child!]!
+      }
+
+      type Child @entity {
+        id: ID!
+      }
+    ";
+
+    let query = "
+        query {
+            parents {
+                ...Frag
+                children {
+                    id
+                }
+            }
+        }
+
+        fragment Frag on Parent {
+            children {
+                id
+            }
+        }
+    ";
+
+    // This bug manifests if two parents exist.
+    let parent = (
+        entity!(
+            id: "p",
+            children: vec!["c"]
+        ),
+        "Parent",
+    );
+    let parent2 = (
+        entity!(
+            id: "b",
+            children: Vec::<String>::new()
+        ),
+        "Parent",
+    );
+    let child = (Entity::from(vec![("id", Value::from("c"))]), "Child");
+
+    let res = insert_and_query(subgraph_id, schema, vec![parent, parent2, child], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            parents: vec![
+                object! {
+                    children: Vec::<q::Value>::new()
+                },
+                object! {
+                    children: vec![
+                        object! {
+                            id: "c",
+                        }
+                    ]
+                }
+            ]
         }
     )
 }

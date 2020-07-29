@@ -99,7 +99,6 @@ fn create_source_event_stream(
         ctx,
         &subscription_type,
         iter::once(ctx.query.selection_set.as_ref()),
-        None,
     );
 
     if grouped_field_set.is_empty() {

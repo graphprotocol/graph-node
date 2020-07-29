@@ -24,6 +24,13 @@ impl<'a> From<&'a s::InterfaceType> for ObjectOrInterface<'a> {
 }
 
 impl<'a> ObjectOrInterface<'a> {
+    pub fn is_object(self) -> bool {
+        match self {
+            ObjectOrInterface::Object(_) => true,
+            ObjectOrInterface::Interface(_) => false,
+        }
+    }
+
     pub fn name(self) -> &'a str {
         match self {
             ObjectOrInterface::Object(object) => &object.name,
