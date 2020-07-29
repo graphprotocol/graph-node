@@ -3,6 +3,7 @@ extern crate lazy_static;
 
 mod block_ingestor;
 mod block_stream;
+mod config;
 mod ethereum_adapter;
 pub mod network_indexer;
 mod transport;
