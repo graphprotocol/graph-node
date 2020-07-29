@@ -11,38 +11,20 @@ fn node_fails_to_start_without_postgres_url() {
 }
 
 #[test]
-fn node_fails_to_start_with_invalid_network_capability() {
-    assert_cli::Assert::main_binary()
-        .with_args(&[
-            "--postgres-url",
-            "postgresql://user:pass@localhost:5432/test",
-            "--ethereum-rpc",
-            "mainnet:everything:works:https://localhost:8545/",
-            "--ipfs",
-            "http://localhost:5001/",
-        ])
-        .fails()
-        .and()
-        .stderr()
-        .contains("Failed to parse Ethereum networks and create Ethereum adapters: Invalid Ethereum node capability supplied: [\"everything\"]")
-        .unwrap()
-}
-
-#[test]
 fn node_fails_to_start_with_unnamed_ethereum_network() {
     assert_cli::Assert::main_binary()
         .with_args(&[
             "--postgres-url",
             "postgresql://user:pass@localhost:5432/test",
             "--ethereum-rpc",
-            "https://localhost:8545/",
+            "http://localhost:8545/",
             "--ipfs",
             "http://localhost:5001/",
         ])
         .fails()
         .and()
         .stderr()
-        .contains("Failed to parse Ethereum networks and create Ethereum adapters: Is your Ethereum node string missing a network name? Try 'mainnet:' + the Ethereum node URL.")
+        .contains("Failed to parse Ethereum networks: Is your Ethereum node string missing a network name? Try 'mainnet:' + the Ethereum node URL.")
         .unwrap()
 }
 
@@ -53,13 +35,13 @@ fn node_fails_to_start_with_invalid_ipfs() {
             "--postgres-url",
             "postgresql://user:pass@localhost:5432/test",
             "--ethereum-rpc",
-            "mainnet:https://localhost:8545/",
+            "mainnet:http://localhost:8545/",
             "--ipfs",
             "http://my-node",
         ])
         .fails()
         .and()
         .stderr()
-        .contains("Failed to connect to IPFS: json parse error 'expected value at line 1 column 1")
+        .contains("Failed to connect to IPFS:")
         .unwrap()
 }

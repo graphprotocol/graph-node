@@ -520,10 +520,7 @@ async fn main() {
                 eth_networks
             }
             Err(e) => {
-                panic!(
-                    "Failed to parse Ethereum networks and create Ethereum adapters: {}",
-                    e
-                );
+                panic!("Failed to parse Ethereum networks: {}", e);
             }
         },
     );
