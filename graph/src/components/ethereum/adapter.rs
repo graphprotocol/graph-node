@@ -614,7 +614,7 @@ impl BlockStreamMetrics {
 /// or a remote node over RPC.
 #[automock]
 pub trait EthereumAdapter: Send + Sync + 'static {
-    fn url(&self) -> &str;
+    fn url_hostname(&self) -> &str;
 
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
@@ -958,7 +958,7 @@ pub fn blocks_with_triggers(
                         Ok(n) => n.ok_or_else(|| {
                             warn!(logger2,
                                     "Ethereum endpoint is behind";
-                                    "url" => eth_clone.url()
+                                    "url" => eth_clone.url_hostname()
                             );
                             format_err!("Block {} not found in the chain", to)
                         }),
