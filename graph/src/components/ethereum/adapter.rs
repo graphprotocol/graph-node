@@ -946,12 +946,17 @@ pub fn blocks_with_triggers(
     Box::new(
         trigger_futs
             .concat2()
-            .join(adapter.clone().block_hash_by_block_number(
-                &logger,
-                chain_store.clone(),
-                to,
-                true,
-            ))
+            .join(
+                adapter
+                    .clone()
+                    .block_hash_by_block_number(&logger, chain_store.clone(), to, true)
+                    .then(move |to_hash| match to_hash {
+                        Ok(n) => {
+                            n.ok_or_else(|| format_err!("Block {} not found in the chain", to))
+                        }
+                        Err(e) => Err(e),
+                    }),
+            )
             .map(move |(triggers, to_hash)| {
                 let mut block_hashes: HashSet<H256> =
                     triggers.iter().map(EthereumTrigger::block_hash).collect();
@@ -964,7 +969,7 @@ pub fn blocks_with_triggers(
                 debug!(logger, "Found {} relevant block(s)", block_hashes.len());
 
                 // Make sure `to` is included, even if empty.
-                block_hashes.insert(to_hash.unwrap());
+                block_hashes.insert(to_hash);
                 triggers_by_block.entry(to).or_insert(Vec::new());
 
                 (block_hashes, triggers_by_block)
