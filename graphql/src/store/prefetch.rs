@@ -6,6 +6,7 @@ use graphql_parser::schema as s;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::iter::once;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -460,15 +461,17 @@ fn execute_root_selection_set(
     selection_set: &q::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
-    let query_type = &ctx.query.schema.query_type;
+    let query_type = ctx.query.schema.query_type.as_ref().into();
+
+    let grouped_field_set = collect_fields(ctx, query_type, once(selection_set))?;
 
     // Execute the root selection set against the root query type
     execute_selection_set(
         resolver,
         ctx,
         make_root_node(),
-        vec![&selection_set],
-        query_type.as_ref().into(),
+        query_type,
+        grouped_field_set,
     )
 }
 
@@ -498,21 +501,20 @@ fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
-    selection_sets: Vec<&'a q::SelectionSet>,
     object_type: ObjectOrInterface,
+    grouped_field_set: IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
-    // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = {
-        // Skip dead fragments as an optimization
-        let relevant_concrete_types = if parents.is_empty() || parents[0].entity.is_empty() {
-            None
-        } else {
-            Some(parents.iter().map(|entity| entity.typename()).collect())
-        };
+    if parents.is_empty() {
+        return Ok(Vec::new());
+    }
 
-        collect_fields(ctx, object_type, selection_sets, &relevant_concrete_types)?
+    // Skip dead fragments as an optimization
+    let relevant_concrete_types: Option<HashSet<String>> = if parents[0].entity.is_empty() {
+        None
+    } else {
+        Some(parents.iter().map(|e| e.typename().to_owned()).collect())
     };
 
     // Process all field groups in order
@@ -527,6 +529,10 @@ fn execute_selection_set<'a>(
             collected_fields
                 .concrete_types
                 .into_iter()
+                .filter(|(c, _)| match &relevant_concrete_types {
+                    None => true,
+                    Some(relevant_set) => relevant_set.contains(c.0.name.as_str()),
+                })
                 .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
         ) {
             if let Some(deadline) = ctx.deadline {
@@ -548,21 +554,20 @@ fn execute_selection_set<'a>(
                     &field.name,
                 );
 
+                // Group fields with the same response key, so we can execute them together
+                let grouped_field_set =
+                    collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set))?;
+
                 match execute_field(
                     resolver, &ctx, type_cond, &parents, &join, &fields[0], field,
                 ) {
                     Ok(children) => {
-                        let child_object_type = object_or_interface_from_type(
-                            &ctx.query.schema.document(),
-                            &field.field_type,
-                        )
-                        .expect("type of child field is object or interface");
                         match execute_selection_set(
                             resolver,
                             ctx,
                             children,
-                            fields.into_iter().map(|f| &f.selection_set).collect(),
-                            child_object_type,
+                            child_type,
+                            grouped_field_set,
                         ) {
                             Ok(children) => Join::perform(&mut parents, children, response_key),
                             Err(mut e) => errors.append(&mut e),
@@ -624,15 +629,13 @@ impl<'a> CollectedResponseKey<'a> {
 fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     parent_ty: ObjectOrInterface<'a>,
-    selection_sets: Vec<&'a q::SelectionSet>,
-    relevant_concrete_types: &Option<HashSet<&str>>,
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
 ) -> Result<IndexMap<&'a String, CollectedResponseKey<'a>>, QueryExecutionError> {
     let mut grouped_fields = IndexMap::new();
     collect_fields_inner(
         ctx,
         parent_ty,
         selection_sets,
-        relevant_concrete_types,
         &mut HashSet::new(),
         &mut grouped_fields,
     )?;
@@ -658,18 +661,10 @@ fn collect_fields<'a>(
 fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     mut type_condition: ObjectOrInterface<'a>,
-    selection_sets: Vec<&'a q::SelectionSet>,
-    relevant_concrete_types: &Option<HashSet<&str>>,
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     visited_fragments: &mut HashSet<&'a q::Name>,
     output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) -> Result<(), QueryExecutionError> {
-    // Filter out selections on irrelevant types.
-    if let Some(relevant_concrete_types) = relevant_concrete_types {
-        if type_condition.is_object() && !relevant_concrete_types.contains(type_condition.name()) {
-            return Ok(());
-        }
-    }
-
     let schema = &ctx.query.schema.document();
 
     for selection_set in selection_sets {
@@ -730,8 +725,7 @@ fn collect_fields_inner<'a>(
                         collect_fields_inner(
                             ctx,
                             fragment_ty,
-                            vec![&fragment.selection_set],
-                            relevant_concrete_types,
+                            once(&fragment.selection_set),
                             visited_fragments,
                             output,
                         )?;
@@ -757,8 +751,7 @@ fn collect_fields_inner<'a>(
                     collect_fields_inner(
                         ctx,
                         fragment_ty,
-                        vec![&fragment.selection_set],
-                        relevant_concrete_types,
+                        once(&fragment.selection_set),
                         visited_fragments,
                         output,
                     )?;
