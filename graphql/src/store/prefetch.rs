@@ -3,6 +3,7 @@
 
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
+use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
@@ -26,10 +27,22 @@ lazy_static! {
     static ref ARG_ID: String = String::from("id");
 }
 
-/// Similar to the TypeCondition from graphql_parser, but with
-/// derives that make it possible to use it as the key in a HashMap
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct TypeCondition<'a>(&'a str);
+#[derive(Clone, Debug)]
+struct ObjectCondition<'a>(&'a s::ObjectType);
+
+impl std::hash::Hash for ObjectCondition<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.name.hash(state)
+    }
+}
+
+impl PartialEq for ObjectCondition<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.name.eq(&other.0.name)
+    }
+}
+
+impl Eq for ObjectCondition<'_> {}
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -298,8 +311,8 @@ impl<'a> Join<'a> {
     /// Construct a `Join` based on the parent field pointing to the child
     fn new(
         schema: &'a ApiSchema,
-        parent_type: &'a ObjectOrInterface<'a>,
-        child_type: &'a ObjectOrInterface<'a>,
+        parent_type: ObjectOrInterface<'a>,
+        child_type: ObjectOrInterface<'a>,
         field_name: &s::Name,
     ) -> Self {
         let parent_types = parent_type
@@ -319,10 +332,7 @@ impl<'a> Join<'a> {
             })
             .collect();
 
-        Join {
-            child_type: child_type.clone(),
-            conds,
-        }
+        Join { child_type, conds }
     }
 
     /// Perform the join. The child nodes are distributed into the parent nodes
@@ -361,24 +371,23 @@ impl<'a> Join<'a> {
         for parent in parents.iter_mut() {
             // Set the `response_key` field in `parent`. Make sure that even
             // if `parent` has no matching `children`, the field gets set (to
-            // an empty `Vec`)
+            // an empty `Vec`).
+            //
             // This is complicated by the fact that, if there was a type
             // condition, we should only change parents that meet the type
             // condition; we set it for all parents regardless, as that does
-            // not cause problems in later processing, but make sure that we
-            // do not clobber an entry under this `response_key` that might
-            // have been set by a previous join by appending values rather
-            // than using straight insert into the parent
-            let mut values = parent
+            // not cause problems in later processing.
+            //
+            // This `insert` will overwrite in the case where the response key occurs both at the
+            // interface level and in concrete types. The interface is always joined first, and may
+            // then be overwritten by the merged selection set under. the concrete type condition.
+            // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+            let values = parent
                 .id()
                 .ok()
                 .and_then(|id| grouped.get(&*id).map(|values| values.clone()))
                 .unwrap_or(vec![]);
-            parent
-                .children
-                .entry(response_key.to_owned())
-                .or_default()
-                .append(&mut values);
+            parent.children.insert(response_key.to_owned(), values);
         }
     }
 
@@ -507,40 +516,40 @@ fn execute_selection_set<'a>(
     };
 
     // Process all field groups in order
-    for (response_key, type_map) in grouped_field_set {
-        for (type_cond, fields) in type_map {
-            match ctx.deadline {
-                Some(deadline) if deadline < Instant::now() => {
+    for (response_key, collected_fields) in grouped_field_set {
+        // Make sure the interface fields are processed first.
+        // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+        let interface_fields = collected_fields.interface_fields;
+        let interface = collected_fields
+            .interface_cond
+            .map(|cond| (ObjectOrInterface::Interface(cond), interface_fields));
+        for (type_cond, fields) in interface.into_iter().chain(
+            collected_fields
+                .concrete_types
+                .into_iter()
+                .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
+        ) {
+            if let Some(deadline) = ctx.deadline {
+                if deadline < Instant::now() {
                     errors.push(QueryExecutionError::Timeout);
                     break;
                 }
-                _ => (),
             }
 
-            let concrete_type =
-                object_or_interface_by_name(&ctx.query.schema.document(), type_cond.0)
-                    .expect("collect_fields does not create type conditions for nonexistent types");
-
-            if let Some(ref field) = concrete_type.field(&fields[0].name) {
+            if let Some(ref field) = type_cond.field(&fields[0].name) {
                 let child_type =
                     object_or_interface_from_type(ctx.query.schema.document(), &field.field_type)
                         .expect("we only collect fields that are objects or interfaces");
 
                 let join = Join::new(
                     ctx.query.schema.as_ref(),
-                    &concrete_type,
-                    &child_type,
+                    type_cond,
+                    child_type,
                     &field.name,
                 );
 
                 match execute_field(
-                    resolver,
-                    &ctx,
-                    &concrete_type,
-                    &parents,
-                    &join,
-                    &fields[0],
-                    field,
+                    resolver, &ctx, type_cond, &parents, &join, &fields[0], field,
                 ) {
                     Ok(children) => {
                         let child_object_type = object_or_interface_from_type(
@@ -585,6 +594,30 @@ fn execute_selection_set<'a>(
     }
 }
 
+#[derive(Default)]
+struct CollectedResponseKey<'a> {
+    interface_cond: Option<&'a s::InterfaceType>,
+    interface_fields: Vec<&'a q::Field>,
+    concrete_types: IndexMap<ObjectCondition<'a>, Vec<&'a q::Field>>,
+}
+
+impl<'a> CollectedResponseKey<'a> {
+    fn collect_field(&mut self, type_condition: ObjectOrInterface<'a>, field: &'a q::Field) {
+        match type_condition {
+            ObjectOrInterface::Interface(i) => {
+                self.interface_cond = Some(i);
+                self.interface_fields.push(field);
+            }
+            ObjectOrInterface::Object(o) => {
+                self.concrete_types
+                    .entry(ObjectCondition(o))
+                    .or_default()
+                    .push(field);
+            }
+        }
+    }
+}
+
 /// Collects fields of a selection set. The resulting map indicates for each
 /// response key from which types to fetch what fields to express the effect
 /// of fragment spreads
@@ -593,9 +626,8 @@ fn collect_fields<'a>(
     parent_ty: ObjectOrInterface<'a>,
     selection_sets: Vec<&'a q::SelectionSet>,
     relevant_concrete_types: &Option<HashSet<&str>>,
-) -> Result<HashMap<&'a String, HashMap<TypeCondition<'a>, Vec<&'a q::Field>>>, QueryExecutionError>
-{
-    let mut grouped_fields = HashMap::new();
+) -> Result<IndexMap<&'a String, CollectedResponseKey<'a>>, QueryExecutionError> {
+    let mut grouped_fields = IndexMap::new();
     collect_fields_inner(
         ctx,
         parent_ty,
@@ -604,6 +636,17 @@ fn collect_fields<'a>(
         &mut HashSet::new(),
         &mut grouped_fields,
     )?;
+
+    // For interfaces, if a response key occurs both under the interface and under concrete types,
+    // we want to add the fields selected at the interface level to the selections in the specific
+    // concrete types, effectively merging the selection sets.
+    // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+    for collected_response_key in grouped_fields.values_mut() {
+        for concrete_type_fields in collected_response_key.concrete_types.values_mut() {
+            concrete_type_fields.extend_from_slice(&collected_response_key.interface_fields)
+        }
+    }
+
     Ok(grouped_fields)
 }
 
@@ -618,7 +661,7 @@ fn collect_fields_inner<'a>(
     selection_sets: Vec<&'a q::SelectionSet>,
     relevant_concrete_types: &Option<HashSet<&str>>,
     visited_fragments: &mut HashSet<&'a q::Name>,
-    output: &mut HashMap<&'a String, HashMap<TypeCondition<'a>, Vec<&'a q::Field>>>,
+    output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) -> Result<(), QueryExecutionError> {
     // Filter out selections on irrelevant types.
     if let Some(relevant_concrete_types) = relevant_concrete_types {
@@ -660,15 +703,10 @@ fn collect_fields_inner<'a>(
                     // ignore nonexistent fields
                     if is_reference_field(schema, type_condition, field) {
                         let response_key = qast::get_response_key(field);
-
-                        // Create a field group for this response key and add the field
-                        // with no type condition
                         output
                             .entry(response_key)
                             .or_default()
-                            .entry(TypeCondition(type_condition.name()))
-                            .or_default()
-                            .push(field);
+                            .collect_field(type_condition, field);
                     }
                 }
 
@@ -735,7 +773,7 @@ fn collect_fields_inner<'a>(
 fn execute_field(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &ObjectOrInterface<'_>,
+    object_type: ObjectOrInterface<'_>,
     parents: &Vec<Node>,
     join: &Join<'_>,
     field: &q::Field,
