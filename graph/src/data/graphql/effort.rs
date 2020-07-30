@@ -335,7 +335,7 @@ impl LoadManager {
         use Decision::*;
 
         if self.blocked_queries.contains(&shape_hash) {
-            return Proceed;
+            return TooExpensive;
         }
         if *LOAD_MANAGEMENT_DISABLED {
             return Proceed;
