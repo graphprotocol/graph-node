@@ -21,6 +21,7 @@ use web3::types::{Filter, *};
 
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
+    url: Arc<String>,
     web3: Arc<Web3<T>>,
     metrics: Arc<ProviderEthRpcMetrics>,
 }
@@ -66,6 +67,7 @@ lazy_static! {
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
     fn cheap_clone(&self) -> Self {
         Self {
+            url: self.url.cheap_clone(),
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
         }
@@ -78,8 +80,9 @@ where
     T::Batch: Send,
     T::Out: Send,
 {
-    pub fn new(transport: T, provider_metrics: Arc<ProviderEthRpcMetrics>) -> Self {
+    pub fn new(url: String, transport: T, provider_metrics: Arc<ProviderEthRpcMetrics>) -> Self {
         EthereumAdapter {
+            url: Arc::new(url),
             web3: Arc::new(Web3::new(transport)),
             metrics: provider_metrics,
         }
@@ -601,6 +604,10 @@ where
     T::Batch: Send,
     T::Out: Send,
 {
+    fn url(&self) -> &str {
+        &self.url
+    }
+
     fn net_identifiers(
         &self,
         logger: &Logger,

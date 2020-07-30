@@ -989,6 +989,7 @@ fn parse_ethereum_networks(
                 name.to_string(),
                 capabilities,
                 Arc::new(graph_chain_ethereum::EthereumAdapter::new(
+                    url.to_string(),
                     transport,
                     eth_rpc_metrics.clone(),
                 )) as Arc<dyn EthereumAdapter>,
