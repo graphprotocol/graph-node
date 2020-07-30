@@ -755,3 +755,54 @@ fn fragments_dont_duplicate_data() {
         }
     )
 }
+
+// See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+#[test]
+fn redundant_fields() {
+    let subgraph_id = "RedundantFields";
+    let schema = "interface Legged { id: ID!, parent: Legged }
+                  type Animal implements Legged @entity {
+                    id: ID!
+                    parent: Legged
+                  }";
+
+    let query = "query {
+                    leggeds {
+                        parent { id }
+                        ...on Animal {
+                            parent { id }
+                        }
+                    }
+            }";
+
+    let parent = (
+        Entity::from(vec![("id", Value::from("parent")), ("parent", Value::Null)]),
+        "Animal",
+    );
+    let child = (
+        Entity::from(vec![
+            ("id", Value::from("child")),
+            ("parent", Value::String("parent".into())),
+        ]),
+        "Animal",
+    );
+
+    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            leggeds: vec![
+                object! {
+                    parent: object! {
+                        id: "parent",
+                    },
+                },
+                object! {
+                    parent: q::Value::Null
+                }
+            ]
+        }
+    )
+}

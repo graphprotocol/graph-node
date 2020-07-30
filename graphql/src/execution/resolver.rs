@@ -56,7 +56,7 @@ impl<'a> ObjectOrInterface<'a> {
         self.fields().iter().find(|field| &field.name == name)
     }
 
-    pub fn object_types(&'a self, schema: &'a ApiSchema) -> Option<Vec<&'a s::ObjectType>> {
+    pub fn object_types(self, schema: &'a ApiSchema) -> Option<Vec<&'a s::ObjectType>> {
         match self {
             ObjectOrInterface::Object(object) => Some(vec![object]),
             ObjectOrInterface::Interface(interface) => schema
