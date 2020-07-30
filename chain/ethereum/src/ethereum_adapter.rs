@@ -21,7 +21,7 @@ use web3::types::{Filter, *};
 
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
-    url: Arc<String>,
+    url_hostname: Arc<String>,
     web3: Arc<Web3<T>>,
     metrics: Arc<ProviderEthRpcMetrics>,
 }
@@ -67,7 +67,7 @@ lazy_static! {
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
     fn cheap_clone(&self) -> Self {
         Self {
-            url: self.url.cheap_clone(),
+            url_hostname: self.url_hostname.cheap_clone(),
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
         }
@@ -80,9 +80,15 @@ where
     T::Batch: Send,
     T::Out: Send,
 {
-    pub fn new(url: String, transport: T, provider_metrics: Arc<ProviderEthRpcMetrics>) -> Self {
+    pub fn new(url: &str, transport: T, provider_metrics: Arc<ProviderEthRpcMetrics>) -> Self {
+        // Unwrap: The transport was constructed with this url, so it is valid and has a host.
+        let hostname = graph::url::Url::parse(url)
+            .unwrap()
+            .host_str()
+            .unwrap()
+            .to_string();
         EthereumAdapter {
-            url: Arc::new(url),
+            url_hostname: Arc::new(hostname),
             web3: Arc::new(Web3::new(transport)),
             metrics: provider_metrics,
         }
@@ -604,8 +610,8 @@ where
     T::Batch: Send,
     T::Out: Send,
 {
-    fn url(&self) -> &str {
-        &self.url
+    fn url_hostname(&self) -> &str {
+        &self.url_hostname
     }
 
     fn net_identifiers(
