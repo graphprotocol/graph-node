@@ -614,6 +614,8 @@ impl BlockStreamMetrics {
 /// or a remote node over RPC.
 #[automock]
 pub trait EthereumAdapter: Send + Sync + 'static {
+    fn url(&self) -> &str;
+
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
     fn net_identifiers(
@@ -942,7 +944,9 @@ pub fn blocks_with_triggers(
         ));
     }
 
-    let logger1 = logger.clone();
+    let logger1 = logger.cheap_clone();
+    let logger2 = logger.cheap_clone();
+    let eth_clone = eth.cheap_clone();
     Box::new(
         trigger_futs
             .concat2()
@@ -951,9 +955,13 @@ pub fn blocks_with_triggers(
                     .clone()
                     .block_hash_by_block_number(&logger, chain_store.clone(), to, true)
                     .then(move |to_hash| match to_hash {
-                        Ok(n) => {
-                            n.ok_or_else(|| format_err!("Block {} not found in the chain", to))
-                        }
+                        Ok(n) => n.ok_or_else(|| {
+                            warn!(logger2,
+                                    "Ethereum endpoint is behind";
+                                    "url" => eth_clone.url()
+                            );
+                            format_err!("Block {} not found in the chain", to)
+                        }),
                         Err(e) => Err(e),
                     }),
             )
