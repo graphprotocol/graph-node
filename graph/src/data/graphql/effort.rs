@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use crate::components::metrics::{Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
+use crate::data::query::QueryExecutionError;
 use crate::prelude::{debug, info, o, warn, Logger};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
@@ -199,6 +200,29 @@ impl KillState {
     }
 }
 
+/// Indicate what the load manager wants query execution to do with a query
+#[derive(Debug, Clone, Copy)]
+pub enum Decision {
+    /// Proceed with executing the query
+    Proceed,
+    /// The query is too expensive and should not be executed
+    TooExpensive,
+    /// The service is overloaded, and we should not execute the query
+    /// right now
+    Throttle,
+}
+
+impl Decision {
+    pub fn to_result(self) -> Result<(), QueryExecutionError> {
+        use Decision::*;
+        match self {
+            Proceed => Ok(()),
+            TooExpensive => Err(QueryExecutionError::TooExpensive),
+            Throttle => Err(QueryExecutionError::Throttled),
+        }
+    }
+}
+
 pub struct LoadManager {
     logger: Logger,
     effort: QueryEffort,
@@ -261,7 +285,7 @@ impl LoadManager {
         }
     }
 
-    /// Return `true` if we should decline running the query with this
+    /// Decide whether we should decline to run the query with this
     /// `ShapeHash`. This is the heart of reacting to overload situations.
     ///
     /// The decision to decline a query is geared towards mitigating two
@@ -307,29 +331,31 @@ impl LoadManager {
     /// case, we also do not take any locks when asked to update statistics,
     /// or to check whether we are overloaded; these operations amount to
     /// noops.
-    pub fn decline(&self, shape_hash: u64, query: &str) -> bool {
+    pub fn decide(&self, shape_hash: u64, query: &str) -> Decision {
+        use Decision::*;
+
         if self.blocked_queries.contains(&shape_hash) {
-            return true;
+            return Proceed;
         }
         if *LOAD_MANAGEMENT_DISABLED {
-            return false;
+            return Proceed;
         }
 
         if self.jailed_queries.read().unwrap().contains(&shape_hash) {
-            return !*SIMULATE;
+            return if *SIMULATE { Proceed } else { TooExpensive };
         }
 
         let (overloaded, wait_ms) = self.overloaded();
         let (kill_rate, last_update) = self.kill_state();
         if !overloaded && kill_rate == 0.0 {
-            return false;
+            return Proceed;
         }
 
         let (query_effort, total_effort) = self.effort.current_effort(shape_hash);
         // When `total_effort` is `ZERO_DURATION`, we haven't done any work. All are
         // welcome
         if total_effort == ZERO_DURATION {
-            return false;
+            return Proceed;
         }
 
         // If `query_effort` is `None`, we haven't seen the query. Since we
@@ -350,7 +376,7 @@ impl LoadManager {
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
             self.jailed_queries.write().unwrap().insert(shape_hash);
-            return !*SIMULATE;
+            return if *SIMULATE { Proceed } else { TooExpensive };
         }
 
         // Kill random queries in case we have no queries, or not enough queries
@@ -358,16 +384,20 @@ impl LoadManager {
         let kill_rate = self.update_kill_rate(kill_rate, last_update, overloaded, wait_ms);
         let decline =
             thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
-        if *SIMULATE && decline {
-            debug!(self.logger, "Declining query";
-                "query" => query,
-                "wait_ms" => wait_ms.as_millis(),
-                "query_weight" => format!("{:.2}", query_effort / total_effort),
-                "kill_rate" => format!("{:.4}", kill_rate),
-            );
-            return false;
+        if decline {
+            if *SIMULATE {
+                debug!(self.logger, "Declining query";
+                    "query" => query,
+                    "wait_ms" => wait_ms.as_millis(),
+                    "query_weight" => format!("{:.2}", query_effort / total_effort),
+                    "kill_rate" => format!("{:.4}", kill_rate),
+                );
+                return Proceed;
+            } else {
+                return Throttle;
+            }
         }
-        return decline;
+        Proceed
     }
 
     fn overloaded(&self) -> (bool, Duration) {

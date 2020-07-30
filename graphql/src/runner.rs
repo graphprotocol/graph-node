@@ -116,12 +116,9 @@ where
     ) -> Result<Arc<QueryResult>, QueryResult> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
-        if self
-            .load_manager
-            .decline(query.shape_hash, query.query_text.as_ref())
-        {
-            return Err(QueryExecutionError::TooExpensive.into());
-        }
+        self.load_manager
+            .decide(query.shape_hash, query.query_text.as_ref())
+            .to_result()?;
 
         let execute = |selection_set, block_ptr, resolver| {
             execute_query(
@@ -202,11 +199,12 @@ where
             Err(e) => return Box::new(future::err(e.into())),
         };
 
-        if self
+        if let Err(err) = self
             .load_manager
-            .decline(query.shape_hash, query.query_text.as_ref())
+            .decide(query.shape_hash, query.query_text.as_ref())
+            .to_result()
         {
-            let err = SubscriptionError::GraphQLError(vec![QueryExecutionError::TooExpensive]);
+            let err = SubscriptionError::GraphQLError(vec![err]);
             return Box::new(future::result(Err(err)));
         }
 

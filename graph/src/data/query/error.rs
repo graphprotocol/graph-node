@@ -71,6 +71,7 @@ pub enum QueryExecutionError {
     TooComplex(u64, u64), // (complexity, max_complexity)
     TooDeep(u8),          // max_depth
     TooExpensive,
+    Throttled,
     UndefinedFragment(String),
     // Using slow and prefetch query resolution yield different results
     IncorrectPrefetchResult { slow: q::Value, prefetch: q::Value },
@@ -224,7 +225,8 @@ impl fmt::Display for QueryExecutionError {
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
-            TooExpensive => write!(f, "query is too expensive")
+            TooExpensive => write!(f, "query is too expensive"),
+            Throttled=> write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes")
         }
     }
 }
