@@ -117,13 +117,13 @@ trait ForeignKeyClauses {
         self.bind_id(id, out)
     }
 
-    /// Generate a clause `id = any($ids)` using the right types to bind `$ids`
-    /// into `out`
+    /// Generate a clause
+    ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
+    /// using the right types to bind `$ids` into `out`
     fn is_in(&self, ids: &Vec<&str>, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql(self.name());
-        out.push_sql(" = any(");
+        out.push_sql("exists (select 1 from unnest(");
         self.bind_ids(ids, out)?;
-        out.push_sql(")");
+        out.push_sql(") as p(g$id) where id = p.g$id)");
         Ok(())
     }
 
@@ -1117,10 +1117,10 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
 
         // Generate
         //    select $object0 as entity, to_jsonb(e.*) as data
-        //      from schema.<table0> e where id = any($ids0)
+        //      from schema.<table0> e where {id.is_in($ids0)}
         //    union all
         //    select $object1 as entity, to_jsonb(e.*) as data
-        //      from schema.<table1> e where id = any($ids1)
+        //      from schema.<table1> e where {id.is_in($ids1))
         //    union all
         //    ...
         for (i, table) in self.tables.iter().enumerate() {
