@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -72,23 +71,24 @@ impl fmt::Debug for HostMetrics {
 impl HostMetrics {
     pub fn new(
         registry: Arc<impl MetricsRegistry>,
-        subgraph_hash: String,
+        subgraph: String,
         stopwatch: StopwatchMetrics,
     ) -> Self {
+        let const_labels = registry.subgraph_labels(&subgraph);
         let handler_execution_time = registry
             .new_histogram_vec(
-                format!("subgraph_handler_execution_time_{}", subgraph_hash),
-                String::from("Measures the execution time for handlers"),
-                HashMap::new(),
+                "subgraph_handler_execution_time",
+                "Measures the execution time for handlers",
+                const_labels.clone(),
                 vec![String::from("handler")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `subgraph_handler_execution_time` histogram");
         let host_fn_execution_time = registry
             .new_histogram_vec(
-                format!("subgraph_host_fn_execution_time_{}", subgraph_hash),
-                String::from("Measures the execution time for host functions"),
-                HashMap::new(),
+                "subgraph_host_fn_execution_time",
+                "Measures the execution time for host functions",
+                const_labels.clone(),
                 vec![String::from("host_fn_name")],
                 vec![0.025, 0.05, 0.2, 2.0, 8.0, 20.0],
             )

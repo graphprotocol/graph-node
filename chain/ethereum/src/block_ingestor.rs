@@ -21,8 +21,8 @@ impl BlockIngestorMetrics {
         Self {
             chain_head_number: registry
                 .new_gauge_vec(
-                    String::from("ethereum_chain_head_number"),
-                    String::from("Block number of the most recent block synced from Ethereum"),
+                    "ethereum_chain_head_number",
+                    "Block number of the most recent block synced from Ethereum",
                     HashMap::new(),
                     vec![String::from("network")],
                 )

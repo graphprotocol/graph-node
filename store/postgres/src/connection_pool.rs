@@ -40,16 +40,16 @@ impl EventHandler {
     ) -> Self {
         let count_gauge = registry
             .global_gauge(
-                String::from("store_connection_checkout_count"),
-                String::from("The number of Postgres connections currently checked out"),
+                "store_connection_checkout_count",
+                "The number of Postgres connections currently checked out",
                 const_labels.clone(),
             )
             .expect("failed to create `store_connection_checkout_count` counter");
         let wait_gauge = registry
             .global_gauge(
-                String::from("store_connection_wait_time_ms"),
-                String::from("Average connection wait time"),
-                const_labels,
+                "store_connection_wait_time_ms",
+                "Average connection wait time",
+                const_labels.clone(),
             )
             .expect("failed to create `store_connection_wait_time_ms` counter");
         EventHandler {
@@ -111,8 +111,8 @@ pub fn create_connection_pool(
     };
     let error_counter = registry
         .global_counter(
-            String::from("store_connection_error_count"),
-            String::from("The number of Postgres connections errors"),
+            "store_connection_error_count",
+            "The number of Postgres connections errors",
             const_labels.clone(),
         )
         .expect("failed to create `store_connection_error_count` counter");

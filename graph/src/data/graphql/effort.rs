@@ -263,8 +263,8 @@ impl LoadManager {
 
         let effort_gauge = registry
             .new_gauge(
-                String::from("query_effort_ms"),
-                String::from("Moving average of time spent running queries"),
+                "query_effort_ms",
+                "Moving average of time spent running queries",
                 HashMap::new(),
             )
             .expect("failed to create `query_effort_ms` counter");

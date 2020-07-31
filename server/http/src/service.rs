@@ -31,8 +31,8 @@ impl GraphQLServiceMetrics {
     pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
         let query_execution_time = registry
             .new_histogram_vec(
-                format!("subgraph_query_execution_time"),
-                String::from("Execution time for GraphQL queries"),
+                "subgraph_query_execution_time",
+                "Execution time for GraphQL queries",
                 HashMap::new(),
                 vec![String::from("subgraph_deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
@@ -41,8 +41,8 @@ impl GraphQLServiceMetrics {
 
         let failed_query_execution_time = registry
             .new_histogram_vec(
-                format!("subgraph_failed_query_execution_time"),
-                String::from("Execution time for failed GraphQL queries"),
+                "subgraph_failed_query_execution_time",
+                "Execution time for failed GraphQL queries",
                 HashMap::new(),
                 vec![String::from("subgraph_deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],

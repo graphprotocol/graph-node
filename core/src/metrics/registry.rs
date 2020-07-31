@@ -78,7 +78,7 @@ impl MetricsRegistry {
         gauge
     }
 
-    pub fn register(&self, name: String, c: Box<dyn Collector>) {
+    pub fn register(&self, name: &str, c: Box<dyn Collector>) {
         let err = match self.registry.register(c).err() {
             None => {
                 self.registered_metrics.inc();
@@ -145,8 +145,8 @@ impl Clone for MetricsRegistry {
 impl MetricsRegistryTrait for MetricsRegistry {
     fn new_gauge(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Gauge>, PrometheusError> {
         let labels: HashMap<String, String> = self
@@ -163,8 +163,8 @@ impl MetricsRegistryTrait for MetricsRegistry {
 
     fn new_gauge_vec(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
     ) -> Result<Box<GaugeVec>, PrometheusError> {
@@ -189,8 +189,8 @@ impl MetricsRegistryTrait for MetricsRegistry {
 
     fn new_counter(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Counter>, PrometheusError> {
         let labels: HashMap<String, String> = self
@@ -207,46 +207,46 @@ impl MetricsRegistryTrait for MetricsRegistry {
 
     fn global_counter(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Counter, PrometheusError> {
-        let maybe_counter = self.global_counters.read().unwrap().get(&name).cloned();
+        let maybe_counter = self.global_counters.read().unwrap().get(name).cloned();
         if let Some(counter) = maybe_counter {
             Ok(counter.clone())
         } else {
-            let counter = *self.new_counter(name.clone(), help, const_labels)?;
+            let counter = *self.new_counter(&name, &help, const_labels)?;
             self.global_counters
                 .write()
                 .unwrap()
-                .insert(name.clone(), counter.clone());
+                .insert(name.to_owned(), counter.clone());
             Ok(counter)
         }
     }
 
     fn global_gauge(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Gauge, PrometheusError> {
-        let maybe_gauge = self.global_gauges.read().unwrap().get(&name).cloned();
+        let maybe_gauge = self.global_gauges.read().unwrap().get(name).cloned();
         if let Some(gauge) = maybe_gauge {
             Ok(gauge.clone())
         } else {
-            let gauge = *self.new_gauge(name.clone(), help, const_labels)?;
+            let gauge = *self.new_gauge(name, help, const_labels)?;
             self.global_gauges
                 .write()
                 .unwrap()
-                .insert(name.clone(), gauge.clone());
+                .insert(name.to_owned(), gauge.clone());
             Ok(gauge)
         }
     }
 
     fn new_counter_vec(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
     ) -> Result<Box<CounterVec>, PrometheusError> {
@@ -271,8 +271,8 @@ impl MetricsRegistryTrait for MetricsRegistry {
 
     fn new_histogram(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         buckets: Vec<f64>,
     ) -> Result<Box<Histogram>, PrometheusError> {
@@ -292,8 +292,8 @@ impl MetricsRegistryTrait for MetricsRegistry {
 
     fn new_histogram_vec(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
         buckets: Vec<f64>,

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::prelude::*;
@@ -18,44 +17,33 @@ pub struct Aggregate {
 }
 
 impl Aggregate {
-    pub fn new(name: String, help: &str, registry: Arc<dyn MetricsRegistry>) -> Self {
-        let count = registry
-            .new_gauge(
-                format!("{}_count", name),
-                format!("{} (count)", help),
-                HashMap::new(),
-            )
-            .expect(format!("failed to register metric `{}_count`", name).as_str());
-
-        let sum = registry
-            .new_gauge(
-                format!("{}_sum", name),
-                format!("{} (sum)", help),
-                HashMap::new(),
-            )
-            .expect(format!("failed to register metric `{}_sum`", name).as_str());
-
-        let avg = registry
-            .new_gauge(
-                format!("{}_avg", name),
-                format!("{} (avg)", help),
-                HashMap::new(),
-            )
-            .expect(format!("failed to register metric `{}_avg`", name).as_str());
-
-        let cur = registry
-            .new_gauge(
-                format!("{}_cur", name),
-                format!("{} (cur)", help),
-                HashMap::new(),
-            )
-            .expect(format!("failed to register metric `{}_cur`", name).as_str());
+    pub fn new(
+        name: &str,
+        subgraph: String,
+        help: &str,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
+        let make_gauge = |suffix: &str| {
+            registry
+                .new_gauge(
+                    &format!("{}_{}", name, suffix),
+                    &format!("{} ({})", help, suffix),
+                    registry.subgraph_labels(&subgraph),
+                )
+                .expect(
+                    format!(
+                        "failed to register metric `{}_{}` for {}",
+                        name, suffix, &subgraph
+                    )
+                    .as_str(),
+                )
+        };
 
         Aggregate {
-            count,
-            sum,
-            avg,
-            cur,
+            count: make_gauge("count"),
+            sum: make_gauge("sum"),
+            avg: make_gauge("avg"),
+            cur: make_gauge("cur"),
         }
     }
 

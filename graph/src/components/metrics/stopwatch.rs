@@ -46,14 +46,18 @@ impl StopwatchMetrics {
         subgraph_id: SubgraphDeploymentId,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
+        let const_labels = registry.subgraph_labels(subgraph_id.as_str());
         let mut inner = StopwatchInner {
             total_counter: *registry
                 .new_counter(
-                    format!("{}_sync_total_secs", subgraph_id),
-                    format!("total time spent syncing"),
-                    HashMap::new(),
+                    "subgraph_sync_total_secs",
+                    "total time spent syncing",
+                    const_labels.clone(),
                 )
-                .expect("failed to register total_secs prometheus counter"),
+                .expect(&format!(
+                    "failed to register subgraph_sync_total_secs prometheus counter for {}",
+                    subgraph_id
+                )),
             logger,
             subgraph_id,
             registry,
@@ -126,7 +130,7 @@ impl StopwatchInner {
             } else {
                 let name = format!("{}_{}_secs", self.subgraph_id, section);
                 let help = format!("section {}", section);
-                match self.registry.new_counter(name, help, HashMap::new()) {
+                match self.registry.new_counter(&name, &help, HashMap::new()) {
                     Ok(counter) => {
                         self.counters.insert(section.clone(), (*counter).clone());
                         *counter

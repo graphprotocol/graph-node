@@ -23,8 +23,8 @@ impl Clone for MockMetricsRegistry {
 impl MetricsRegistryTrait for MockMetricsRegistry {
     fn new_gauge(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Gauge>, PrometheusError> {
         let opts = Opts::new(name, help).const_labels(const_labels);
@@ -34,8 +34,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
 
     fn new_gauge_vec(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
     ) -> Result<Box<GaugeVec>, PrometheusError> {
@@ -53,8 +53,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
 
     fn new_counter(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Counter>, PrometheusError> {
         let opts = Opts::new(name, help).const_labels(const_labels);
@@ -64,8 +64,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
 
     fn global_counter(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Counter, PrometheusError> {
         let opts = Opts::new(name, help).const_labels(const_labels);
@@ -74,8 +74,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
 
     fn global_gauge(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Gauge, PrometheusError> {
         let opts = Opts::new(name, help).const_labels(const_labels);
@@ -84,8 +84,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
 
     fn new_counter_vec(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
     ) -> Result<Box<CounterVec>, PrometheusError> {
@@ -103,8 +103,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
 
     fn new_histogram(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         buckets: Vec<f64>,
     ) -> Result<Box<Histogram>, PrometheusError> {
@@ -117,8 +117,8 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
 
     fn new_histogram_vec(
         &self,
-        name: String,
-        help: String,
+        name: &str,
+        help: &str,
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
         buckets: Vec<f64>,

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::prelude::{
@@ -53,242 +52,148 @@ impl NetworkIndexerMetrics {
         stopwatch: StopwatchMetrics,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
+        let const_labels = registry.subgraph_labels(subgraph_id.as_ref());
+
+        let make_gauge = |name: &str, help: &str| {
+            registry.new_gauge(name, help, const_labels.clone()).expect(
+                format!("failed to register metric `{}` for {}", name, subgraph_id).as_str(),
+            )
+        };
+
+        let make_counter = |name: &str, help: &str| {
+            registry
+                .new_counter(name, help, const_labels.clone())
+                .expect(
+                    format!("failed to register metric `{}` for {}", name, subgraph_id).as_str(),
+                )
+        };
+
         Self {
             stopwatch,
 
-            chain_head: registry
-                .new_gauge(
-                    format!("{}_chain_head", subgraph_id),
-                    "The current chain head block".into(),
-                    HashMap::new(),
-                )
-                .expect(format!("failed to register metric `{}_chain_head`", subgraph_id).as_str()),
+            chain_head: make_gauge("subgraph_chain_head", "The current chain head block"),
 
-            local_head: registry
-                .new_gauge(
-                    format!("{}_local_head", subgraph_id),
-                    "The current local head block".into(),
-                    HashMap::new(),
-                )
-                .expect(format!("failed to register metric `{}_local_head`", subgraph_id).as_str()),
+            local_head: make_gauge("subgraph_local_head", "The current local head block"),
 
-            reorg_count: registry
-                .new_counter(
-                    format!("{}_reorg_count", subgraph_id),
-                    "The number of reorgs handled".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!("failed to register metric `{}_reorg_count`", subgraph_id).as_str(),
-                ),
+            reorg_count: make_counter("subgraph_reorg_count", "The number of reorgs handled"),
 
-            reorg_cancel_count: registry
-                .new_counter(
-                    format!("{}_reorg_cancel_count", subgraph_id),
-                    "The number of reorgs that had to be canceled / restarted".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to register metric `{}_reorg_cancel_count`",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            reorg_cancel_count: make_counter(
+                "subgraph_reorg_cancel_count",
+                "The number of reorgs that had to be canceled / restarted",
+            ),
 
             reorg_depth: Aggregate::new(
-                format!("{}_reorg_depth", subgraph_id),
+                "subgraph_reorg_depth",
+                subgraph_id.to_string(),
                 "The depth of reorgs over time",
                 registry.clone(),
             ),
 
             poll_chain_head: Aggregate::new(
-                format!("{}_poll_chain_head", subgraph_id),
+                "subgraph_poll_chain_head",
+                subgraph_id.to_string(),
                 "Polling the network's chain head",
                 registry.clone(),
             ),
 
             fetch_block_by_number: Aggregate::new(
-                format!("{}_fetch_block_by_number", subgraph_id),
+                "subgraph_fetch_block_by_number",
+                subgraph_id.to_string(),
                 "Fetching a block using a block number",
                 registry.clone(),
             ),
 
             fetch_block_by_hash: Aggregate::new(
-                format!("{}_fetch_block_by_hash", subgraph_id),
+                "subgraph_fetch_block_by_hash",
+                subgraph_id.to_string(),
                 "Fetching a block using a block hash",
                 registry.clone(),
             ),
 
             fetch_full_block: Aggregate::new(
-                format!("{}_fetch_full_block", subgraph_id),
+                "subgraph_fetch_full_block",
+                subgraph_id.to_string(),
                 "Fetching a full block",
                 registry.clone(),
             ),
 
             fetch_ommers: Aggregate::new(
-                format!("{}_fetch_ommers", subgraph_id),
+                "subgraph_fetch_ommers",
+                subgraph_id.to_string(),
                 "Fetching the ommers of a block",
                 registry.clone(),
             ),
 
             load_local_head: Aggregate::new(
-                format!("{}_load_local_head", subgraph_id),
+                "subgraph_load_local_head",
+                subgraph_id.to_string(),
                 "Load the local head block from the store",
                 registry.clone(),
             ),
 
             revert_local_head: Aggregate::new(
-                format!("{}_revert_local_head", subgraph_id),
+                "subgraph_id_revert_local_head",
+                subgraph_id.to_string(),
                 "Revert the local head block in the store",
                 registry.clone(),
             ),
 
             write_block: Aggregate::new(
-                format!("{}_write_block", subgraph_id),
+                "subgraph_write_block",
+                subgraph_id.to_string(),
                 "Write a block to the store",
                 registry.clone(),
             ),
 
-            poll_chain_head_problems: registry
-                .new_gauge(
-                    format!("{}_poll_chain_head_problems", subgraph_id),
-                    "Problems polling the chain head".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_poll_chain_head_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            poll_chain_head_problems: make_gauge(
+                "subgraph_poll_chain_head_problems",
+                "Problems polling the chain head",
+            ),
 
-            fetch_block_by_number_problems: registry
-                .new_gauge(
-                    format!("{}_fetch_block_by_number_problems", subgraph_id),
-                    "Problems fetching a block by number".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_fetch_block_by_number_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            fetch_block_by_number_problems: make_gauge(
+                "subgraph_fetch_block_by_number_problems",
+                "Problems fetching a block by number",
+            ),
 
-            fetch_block_by_hash_problems: registry
-                .new_gauge(
-                    format!("{}_fetch_block_by_hash_problems", subgraph_id),
-                    "Problems fetching a block by hash".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_fetch_block_by_hash_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            fetch_block_by_hash_problems: make_gauge(
+                "subgraph_fetch_block_by_hash_problems",
+                "Problems fetching a block by hash",
+            ),
 
-            fetch_full_block_problems: registry
-                .new_gauge(
-                    format!("{}_fetch_full_block_problems", subgraph_id),
-                    "Problems fetching a full block".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_fetch_full_block_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            fetch_full_block_problems: make_gauge(
+                "subgraph_fetch_full_block_problems",
+                "Problems fetching a full block",
+            ),
 
-            fetch_ommers_problems: registry
-                .new_gauge(
-                    format!("{}_fetch_ommers_problems", subgraph_id),
-                    "Problems fetching ommers of a block".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_fetch_ommers_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            fetch_ommers_problems: make_gauge(
+                "subgraph_fetch_ommers_problems",
+                "Problems fetching ommers of a block",
+            ),
 
-            load_local_head_problems: registry
-                .new_gauge(
-                    format!("{}_load_local_head_problems", subgraph_id),
-                    "Problems loading the local head block".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_load_local_head_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            load_local_head_problems: make_gauge(
+                "subgraph_load_local_head_problems",
+                "Problems loading the local head block",
+            ),
 
-            revert_local_head_problems: registry
-                .new_gauge(
-                    format!("{}_revert_local_head_problems", subgraph_id),
-                    "Problems reverting the local head block during a reorg".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_revert_local_head_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            revert_local_head_problems: make_gauge(
+                "subgraph_revert_local_head_problems",
+                "Problems reverting the local head block during a reorg",
+            ),
 
-            write_block_problems: registry
-                .new_gauge(
-                    format!("{}_write_block_problems", subgraph_id),
-                    "Problems writing a block to the store".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_write_block_problems",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            write_block_problems: make_gauge(
+                "subgraph_write_block_problems",
+                "Problems writing a block to the store",
+            ),
 
-            last_new_chain_head_time: registry
-                .new_gauge(
-                    format!("{}_last_new_chain_head_time", subgraph_id),
-                    "The last time a chain head was received that was different from before".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_last_written_block_time",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            last_new_chain_head_time: make_gauge(
+                "subgraph_last_new_chain_head_time",
+                "The last time a chain head was received that was different from before",
+            ),
 
-            last_written_block_time: registry
-                .new_gauge(
-                    format!("{}_last_written_block_time", subgraph_id),
-                    "The last time a block was written to the store".into(),
-                    HashMap::new(),
-                )
-                .expect(
-                    format!(
-                        "failed to create metric `{}_last_written_block_time",
-                        subgraph_id
-                    )
-                    .as_str(),
-                ),
+            last_written_block_time: make_gauge(
+                "subgraph_last_written_block_time",
+                "The last time a block was written to the store",
+            ),
         }
     }
 }
