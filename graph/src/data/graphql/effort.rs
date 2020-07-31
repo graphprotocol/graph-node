@@ -51,6 +51,19 @@ lazy_static! {
     static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == ZERO_DURATION;
 
     static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
+
+    // There is typically no need to configure this. But this can be used to effectivey disable the
+    // semaphore by setting it to a high number.
+    static ref EXTRA_QUERY_PERMITS: usize = {
+        env::var("GRAPH_EXTRA_QUERY_PERMITS")
+            .ok()
+            .map(|s| {
+                usize::from_str(&s).unwrap_or_else(|_| {
+                    panic!("GRAPH_EXTRA_QUERY_PERMITS must be a number, but is `{}`", s)
+                })
+            })
+            .unwrap_or(0)
+    };
 }
 
 struct QueryEffort {
@@ -301,7 +314,7 @@ impl LoadManager {
         // A query is always consuming a CPU core, or a DB connection, or both.
         // So if more than `store_conn_pool_size + num_cpus::get()` queries are executing,
         // there will be contention for resources.
-        let max_concurrent_queries = store_conn_pool_size + num_cpus::get();
+        let max_concurrent_queries = store_conn_pool_size + num_cpus::get() + *EXTRA_QUERY_PERMITS;
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         Self {
             logger,
@@ -539,8 +552,9 @@ impl LoadManager {
             wait_stats.add(duration);
             wait_stats.average()
         };
-        let wait_avg = wait_avg.map(|wait_avg| wait_avg.as_millis()).unwrap_or(0);
-        self.semaphore_wait_gauge.set(wait_avg as f64);
+        if let Some(wait_avg) = wait_avg.map(|wait_avg| wait_avg.as_millis()) {
+            self.semaphore_wait_gauge.set(wait_avg as f64);
+        }
     }
 }
 
