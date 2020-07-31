@@ -519,6 +519,13 @@ fn execute_selection_set<'a>(
 
     // Process all field groups in order
     for (response_key, collected_fields) in grouped_field_set {
+        if let Some(deadline) = ctx.deadline {
+            if deadline < Instant::now() {
+                errors.push(QueryExecutionError::Timeout);
+                break;
+            }
+        }
+
         // Make sure the interface fields are processed first.
         // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
         let interface_fields = collected_fields.interface_fields;
@@ -535,13 +542,6 @@ fn execute_selection_set<'a>(
                 })
                 .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
         ) {
-            if let Some(deadline) = ctx.deadline {
-                if deadline < Instant::now() {
-                    errors.push(QueryExecutionError::Timeout);
-                    break;
-                }
-            }
-
             if let Some(ref field) = type_cond.field(&fields[0].name) {
                 let child_type =
                     object_or_interface_from_type(ctx.query.schema.document(), &field.field_type)
