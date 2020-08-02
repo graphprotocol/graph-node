@@ -499,7 +499,6 @@ impl ProviderEthRpcMetrics {
             .new_histogram_vec(
                 "eth_rpc_request_duration",
                 "Measures eth rpc request duration",
-                HashMap::new(),
                 vec![String::from("method")],
                 vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
             )
@@ -508,7 +507,6 @@ impl ProviderEthRpcMetrics {
             .new_counter_vec(
                 "eth_rpc_errors",
                 "Counts eth rpc request errors",
-                HashMap::new(),
                 vec![String::from("method")],
             )
             .unwrap();
@@ -537,20 +535,19 @@ pub struct SubgraphEthRpcMetrics {
 
 impl SubgraphEthRpcMetrics {
     pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
-        let const_labels = registry.subgraph_labels(&subgraph_hash);
         let request_duration = registry
-            .new_gauge_vec(
+            .new_subgraph_gauge_vec(
                 "subgraph_eth_rpc_request_duration",
                 "Measures eth rpc request duration for a subgraph deployment",
-                const_labels.clone(),
+                &subgraph_hash,
                 vec![String::from("method")],
             )
             .unwrap();
         let errors = registry
-            .new_counter_vec(
+            .new_subgraph_counter_vec(
                 "subgraph_eth_rpc_errors",
                 "Counts eth rpc request errors for a subgraph deployment",
-                const_labels.clone(),
+                &subgraph_hash,
                 vec![String::from("method")],
             )
             .unwrap();
@@ -586,19 +583,18 @@ impl BlockStreamMetrics {
         deployment_id: SubgraphDeploymentId,
         stopwatch: StopwatchMetrics,
     ) -> Self {
-        let const_labels = registry.subgraph_labels(deployment_id.as_str());
         let blocks_behind = registry
-            .new_gauge(
+            .new_subgraph_gauge(
                 "subgraph_blocks_behind",
                 "Track the number of blocks a subgraph deployment is behind the HEAD block",
-                const_labels.clone(),
+                deployment_id.as_str(),
             )
             .expect("failed to create `subgraph_blocks_behind` gauge");
         let reverted_blocks = registry
-            .new_gauge(
+            .new_subgraph_gauge(
                 "subgraph_reverted_blocks",
                 "Track the last reverted block for a subgraph deployment",
-                const_labels,
+                deployment_id.as_str(),
             )
             .expect("Failed to create `subgraph_reverted_blocks` gauge");
         Self {

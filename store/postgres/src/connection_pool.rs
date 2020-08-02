@@ -113,7 +113,7 @@ pub fn create_connection_pool(
         .global_counter(
             "store_connection_error_count",
             "The number of Postgres connections errors",
-            const_labels.clone(),
+            HashMap::new(),
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));

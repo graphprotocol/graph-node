@@ -1,5 +1,4 @@
 use lazy_static;
-use std::collections::HashMap;
 use std::time::Duration;
 
 use graph::prelude::*;
@@ -23,7 +22,6 @@ impl BlockIngestorMetrics {
                 .new_gauge_vec(
                     "ethereum_chain_head_number",
                     "Block number of the most recent block synced from Ethereum",
-                    HashMap::new(),
                     vec![String::from("network")],
                 )
                 .unwrap(),

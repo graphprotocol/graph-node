@@ -25,10 +25,10 @@ impl Aggregate {
     ) -> Self {
         let make_gauge = |suffix: &str| {
             registry
-                .new_gauge(
+                .new_subgraph_gauge(
                     &format!("{}_{}", name, suffix),
                     &format!("{} ({})", help, suffix),
-                    registry.subgraph_labels(&subgraph),
+                    &subgraph,
                 )
                 .expect(
                     format!(

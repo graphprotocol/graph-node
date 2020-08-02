@@ -119,40 +119,36 @@ struct SubgraphInstanceMetrics {
 
 impl SubgraphInstanceMetrics {
     pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
-        let const_labels = [(String::from("subgraph"), subgraph_hash)]
-            .iter()
-            .cloned()
-            .collect::<HashMap<_, _>>();
         let block_trigger_count = registry
-            .new_histogram(
+            .new_subgraph_histogram(
                 "subgraph_block_trigger_count",
                 "Measures the number of triggers in each block for a subgraph deployment",
-                const_labels.clone(),
+                &subgraph_hash,
                 vec![1.0, 5.0, 10.0, 20.0, 50.0],
             )
             .expect("failed to create `subgraph_block_trigger_count` histogram");
         let trigger_processing_duration = registry
-            .new_histogram_vec(
+            .new_subgraph_histogram_vec(
                 "subgraph_trigger_processing_duration",
                 "Measures duration of trigger processing for a subgraph deployment",
-                const_labels.clone(),
+                &subgraph_hash,
                 vec![String::from("trigger_type")],
                 vec![0.01, 0.05, 0.1, 0.5, 1.5, 5.0, 10.0, 30.0, 120.0],
             )
             .expect("failed to create `subgraph_trigger_processing_duration` histogram");
         let block_processing_duration = registry
-            .new_histogram(
+            .new_subgraph_histogram(
                 "subgraph_block_processing_duration",
                 "Measures duration of block processing for a subgraph deployment",
-                const_labels.clone(),
+                &subgraph_hash,
                 vec![0.05, 0.2, 0.7, 1.5, 4.0, 10.0, 60.0, 120.0, 240.0],
             )
             .expect("failed to create `subgraph_block_processing_duration` histogram");
         let block_ops_transaction_duration = registry
-            .new_histogram(
+            .new_subgraph_histogram(
                 "subgraph_transact_block_operations_duration",
                 "Measures duration of commiting all the entity operations in a block and updating the subgraph pointer",
-                const_labels.clone(),
+                &subgraph_hash,
                 vec![0.01, 0.05, 0.1, 0.3, 0.7, 2.0],
             )
             .expect("failed to create `subgraph_transact_block_operations_duration_{}");

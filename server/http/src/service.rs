@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::ops::Deref;
@@ -33,7 +32,6 @@ impl GraphQLServiceMetrics {
             .new_histogram_vec(
                 "subgraph_query_execution_time",
                 "Execution time for GraphQL queries",
-                HashMap::new(),
                 vec![String::from("subgraph_deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
@@ -43,7 +41,6 @@ impl GraphQLServiceMetrics {
             .new_histogram_vec(
                 "subgraph_failed_query_execution_time",
                 "Execution time for failed GraphQL queries",
-                HashMap::new(),
                 vec![String::from("subgraph_deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )

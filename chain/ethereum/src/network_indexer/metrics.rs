@@ -52,17 +52,17 @@ impl NetworkIndexerMetrics {
         stopwatch: StopwatchMetrics,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
-        let const_labels = registry.subgraph_labels(subgraph_id.as_ref());
-
         let make_gauge = |name: &str, help: &str| {
-            registry.new_gauge(name, help, const_labels.clone()).expect(
-                format!("failed to register metric `{}` for {}", name, subgraph_id).as_str(),
-            )
+            registry
+                .new_subgraph_gauge(name, help, subgraph_id.as_str())
+                .expect(
+                    format!("failed to register metric `{}` for {}", name, subgraph_id).as_str(),
+                )
         };
 
         let make_counter = |name: &str, help: &str| {
             registry
-                .new_counter(name, help, const_labels.clone())
+                .new_subgraph_counter(name, help, subgraph_id.as_str())
                 .expect(
                     format!("failed to register metric `{}` for {}", name, subgraph_id).as_str(),
                 )

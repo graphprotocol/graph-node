@@ -135,7 +135,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         if let Some(counter) = maybe_counter {
             Ok(counter.clone())
         } else {
-            let counter = *self.new_counter(&name, &help, const_labels)?;
+            let counter = *self.new_counter_with_labels(&name, &help, const_labels)?;
             self.global_counters
                 .write()
                 .unwrap()
