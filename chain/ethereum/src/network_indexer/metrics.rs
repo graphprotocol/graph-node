@@ -84,63 +84,63 @@ impl NetworkIndexerMetrics {
 
             reorg_depth: Aggregate::new(
                 "subgraph_reorg_depth",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "The depth of reorgs over time",
                 registry.clone(),
             ),
 
             poll_chain_head: Aggregate::new(
                 "subgraph_poll_chain_head",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Polling the network's chain head",
                 registry.clone(),
             ),
 
             fetch_block_by_number: Aggregate::new(
                 "subgraph_fetch_block_by_number",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Fetching a block using a block number",
                 registry.clone(),
             ),
 
             fetch_block_by_hash: Aggregate::new(
                 "subgraph_fetch_block_by_hash",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Fetching a block using a block hash",
                 registry.clone(),
             ),
 
             fetch_full_block: Aggregate::new(
                 "subgraph_fetch_full_block",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Fetching a full block",
                 registry.clone(),
             ),
 
             fetch_ommers: Aggregate::new(
                 "subgraph_fetch_ommers",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Fetching the ommers of a block",
                 registry.clone(),
             ),
 
             load_local_head: Aggregate::new(
                 "subgraph_load_local_head",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Load the local head block from the store",
                 registry.clone(),
             ),
 
             revert_local_head: Aggregate::new(
                 "subgraph_id_revert_local_head",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Revert the local head block in the store",
                 registry.clone(),
             ),
 
             write_block: Aggregate::new(
                 "subgraph_write_block",
-                subgraph_id.to_string(),
+                subgraph_id.as_str(),
                 "Write a block to the store",
                 registry.clone(),
             ),

@@ -22,7 +22,7 @@ impl BlockWriterMetrics {
     ) -> Self {
         let transaction = Aggregate::new(
             "subgraph_transaction",
-            subgraph_id.to_string(),
+            subgraph_id.as_str(),
             "Transactions to the store",
             registry.clone(),
         );
