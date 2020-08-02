@@ -51,7 +51,7 @@ fn test_valid_module_and_store(
     );
     let host_metrics = Arc::new(HostMetrics::new(
         metrics_registry,
-        deployment_id.to_string(),
+        deployment_id.as_str(),
         stopwatch_metrics,
     ));
 

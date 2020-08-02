@@ -48,7 +48,7 @@ pub struct NetworkIndexerMetrics {
 
 impl NetworkIndexerMetrics {
     pub fn new(
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: &SubgraphDeploymentId,
         stopwatch: StopwatchMetrics,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {

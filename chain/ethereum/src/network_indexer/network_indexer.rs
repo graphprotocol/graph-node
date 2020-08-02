@@ -1145,7 +1145,7 @@ impl NetworkIndexer {
         );
 
         let metrics = Arc::new(NetworkIndexerMetrics::new(
-            subgraph_id.clone(),
+            &subgraph_id,
             stopwatch.clone(),
             metrics_registry.clone(),
         ));

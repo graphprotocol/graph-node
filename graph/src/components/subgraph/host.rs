@@ -71,14 +71,14 @@ impl fmt::Debug for HostMetrics {
 impl HostMetrics {
     pub fn new(
         registry: Arc<impl MetricsRegistry>,
-        subgraph: String,
+        subgraph: &str,
         stopwatch: StopwatchMetrics,
     ) -> Self {
         let handler_execution_time = registry
             .new_subgraph_histogram_vec(
                 "subgraph_handler_execution_time",
                 "Measures the execution time for handlers",
-                &subgraph,
+                subgraph,
                 vec![String::from("handler")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
@@ -87,7 +87,7 @@ impl HostMetrics {
             .new_subgraph_histogram_vec(
                 "subgraph_host_fn_execution_time",
                 "Measures the execution time for host functions",
-                &subgraph,
+                subgraph,
                 vec![String::from("host_fn_name")],
                 vec![0.025, 0.05, 0.2, 2.0, 8.0, 20.0],
             )
