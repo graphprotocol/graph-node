@@ -176,18 +176,6 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         Ok(counters)
     }
 
-    fn new_histogram(
-        &self,
-        name: &str,
-        help: &str,
-        buckets: Vec<f64>,
-    ) -> Result<Box<Histogram>, PrometheusError> {
-        let opts = HistogramOpts::new(name.clone(), help).buckets(buckets);
-        let histogram = Box::new(Histogram::with_opts(opts)?);
-        self.register(name, histogram.clone());
-        Ok(histogram)
-    }
-
     fn new_subgraph_histogram(
         &self,
         name: &str,
