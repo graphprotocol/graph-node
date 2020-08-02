@@ -7,7 +7,6 @@ use graph::prelude::{MetricsRegistry as MetricsRegistryTrait, *};
 pub struct MetricsRegistry {
     logger: Logger,
     registry: Arc<Registry>,
-    const_labels: HashMap<String, String>,
     register_errors: Box<Counter>,
     unregister_errors: Box<Counter>,
     registered_metrics: Box<Gauge>,
@@ -19,8 +18,6 @@ pub struct MetricsRegistry {
 
 impl MetricsRegistry {
     pub fn new(logger: Logger, registry: Arc<Registry>) -> Self {
-        let const_labels = HashMap::new();
-
         // Generate internal metrics
         let register_errors = Self::gen_register_errors_counter(registry.clone());
         let unregister_errors = Self::gen_unregister_errors_counter(registry.clone());
@@ -29,7 +26,6 @@ impl MetricsRegistry {
         MetricsRegistry {
             logger: logger.new(o!("component" => String::from("MetricsRegistry"))),
             registry,
-            const_labels,
             register_errors,
             unregister_errors,
             registered_metrics,
@@ -135,13 +131,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Gauge>, PrometheusError> {
-        let labels: HashMap<String, String> = self
-            .const_labels
-            .clone()
-            .into_iter()
-            .chain(const_labels)
-            .collect();
-        let opts = Opts::new(name.clone(), help).const_labels(labels);
+        let opts = Opts::new(name.clone(), help).const_labels(const_labels);
         let gauge = Box::new(Gauge::with_opts(opts)?);
         self.register(name, gauge.clone());
         Ok(gauge)
@@ -154,13 +144,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
     ) -> Result<Box<GaugeVec>, PrometheusError> {
-        let labels: HashMap<String, String> = self
-            .const_labels
-            .clone()
-            .into_iter()
-            .chain(const_labels)
-            .collect();
-        let opts = Opts::new(name.clone(), help).const_labels(labels);
+        let opts = Opts::new(name.clone(), help).const_labels(const_labels);
         let gauges = Box::new(GaugeVec::new(
             opts,
             variable_labels
@@ -179,13 +163,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Counter>, PrometheusError> {
-        let labels: HashMap<String, String> = self
-            .const_labels
-            .clone()
-            .into_iter()
-            .chain(const_labels)
-            .collect();
-        let opts = Opts::new(name.clone(), help).const_labels(labels);
+        let opts = Opts::new(name.clone(), help).const_labels(const_labels);
         let counter = Box::new(Counter::with_opts(opts)?);
         self.register(name, counter.clone());
         Ok(counter)
@@ -236,13 +214,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         const_labels: HashMap<String, String>,
         variable_labels: Vec<String>,
     ) -> Result<Box<CounterVec>, PrometheusError> {
-        let labels: HashMap<String, String> = self
-            .const_labels
-            .clone()
-            .into_iter()
-            .chain(const_labels)
-            .collect();
-        let opts = Opts::new(name.clone(), help).const_labels(labels);
+        let opts = Opts::new(name.clone(), help).const_labels(const_labels);
         let counters = Box::new(CounterVec::new(
             opts,
             variable_labels
@@ -262,14 +234,8 @@ impl MetricsRegistryTrait for MetricsRegistry {
         const_labels: HashMap<String, String>,
         buckets: Vec<f64>,
     ) -> Result<Box<Histogram>, PrometheusError> {
-        let labels: HashMap<String, String> = self
-            .const_labels
-            .clone()
-            .into_iter()
-            .chain(const_labels)
-            .collect();
         let opts = HistogramOpts::new(name.clone(), help)
-            .const_labels(labels)
+            .const_labels(const_labels)
             .buckets(buckets);
         let histogram = Box::new(Histogram::with_opts(opts)?);
         self.register(name, histogram.clone());
@@ -284,13 +250,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         variable_labels: Vec<String>,
         buckets: Vec<f64>,
     ) -> Result<Box<HistogramVec>, PrometheusError> {
-        let labels: HashMap<String, String> = self
-            .const_labels
-            .clone()
-            .into_iter()
-            .chain(const_labels)
-            .collect();
-        let opts = Opts::new(name.clone(), help).const_labels(labels);
+        let opts = Opts::new(name.clone(), help).const_labels(const_labels);
         let histograms = Box::new(HistogramVec::new(
             HistogramOpts {
                 common_opts: opts,
