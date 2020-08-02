@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use graph::prelude::{MetricsRegistry as MetricsRegistryTrait, *};
 
+#[derive(Clone)]
 pub struct MetricsRegistry {
     logger: Logger,
     registry: Arc<Registry>,
@@ -123,21 +124,6 @@ impl MetricsRegistry {
                     "registering metric [{}] failed due to protobuf error: {}", name, err
                 );
             }
-        };
-    }
-}
-
-impl Clone for MetricsRegistry {
-    fn clone(&self) -> Self {
-        return Self {
-            logger: self.logger.clone(),
-            registry: self.registry.clone(),
-            const_labels: self.const_labels.clone(),
-            register_errors: self.register_errors.clone(),
-            unregister_errors: self.unregister_errors.clone(),
-            registered_metrics: self.registered_metrics.clone(),
-            global_counters: self.global_counters.clone(),
-            global_gauges: self.global_gauges.clone(),
         };
     }
 }
