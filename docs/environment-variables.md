@@ -63,6 +63,13 @@ those.
 - `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of files that are cached in the
   `ipfs.cat` cache (defaults to 1MiB)
 - `GRAPH_ENTITY_CACHE_SIZE`: Size of the entity cache, in kilobytes. Defaults to 10000 which is 10MB.
+- `GRAPH_QUERY_CACHE_BLOCKS`: How many recent blocks per network should be kept
+   in the query cache. This should be kept small since the lookup time and the
+   cache memory usage are proportional to this value. Set to 0 to disable the cache.
+   Defaults to 1.
+- `GRAPH_QUERY_CACHE_MAX_MEM`: Maximum total memory to be used by the query cache.
+   The default is plenty for most loads, particularly if `GRAPH_QUERY_CACHE_BLOCKS` is kept small.
+   Defaults to 1GB.
 
 ## GraphQL
 
