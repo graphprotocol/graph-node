@@ -1395,7 +1395,7 @@ dependencies = [
  "tokio-retry",
  "url 2.1.1",
  "uuid 0.8.1",
- "wasmparser 0.59.0",
+ "wasmparser 0.61.0",
  "web3",
 ]
 
@@ -4739,9 +4739,9 @@ checksum = "32fddd575d477c6e9702484139cf9f23dcd554b06d185ed0f56c857dd3a47aa6"
 
 [[package]]
 name = "wasmparser"
-version = "0.59.0"
+version = "0.61.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a950e6a618f62147fd514ff445b2a0b53120d382751960797f85f058c7eda9b9"
+checksum = "fa9a757f1eca9446ed0f9541924a0cf3adbfdd4793d287db4647186ffc6a2c8d"
 
 [[package]]
 name = "wasmtime"
