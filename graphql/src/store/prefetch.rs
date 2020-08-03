@@ -590,11 +590,6 @@ fn execute_selection_set<'a>(
     if errors.is_empty() {
         Ok(parents)
     } else {
-        if errors.is_empty() {
-            errors.push(QueryExecutionError::EmptySelectionSet(
-                object_type.name().to_owned(),
-            ));
-        }
         Err(errors)
     }
 }
