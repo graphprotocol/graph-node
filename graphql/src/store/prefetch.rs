@@ -466,13 +466,7 @@ fn execute_root_selection_set(
     let grouped_field_set = collect_fields(ctx, query_type, once(selection_set))?;
 
     // Execute the root selection set against the root query type
-    execute_selection_set(
-        resolver,
-        ctx,
-        make_root_node(),
-        query_type,
-        grouped_field_set,
-    )
+    execute_selection_set(resolver, ctx, make_root_node(), grouped_field_set)
 }
 
 fn object_or_interface_from_type<'a>(
@@ -501,7 +495,6 @@ fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
-    object_type: ObjectOrInterface,
     grouped_field_set: IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let mut errors: Vec<QueryExecutionError> = Vec::new();
@@ -542,48 +535,36 @@ fn execute_selection_set<'a>(
                 })
                 .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
         ) {
-            if let Some(ref field) = type_cond.field(&fields[0].name) {
-                let child_type =
-                    object_or_interface_from_type(ctx.query.schema.document(), &field.field_type)
-                        .expect("we only collect fields that are objects or interfaces");
+            // Unwrap: The query was validated to contain only valid fields.
+            let field = type_cond.field(&fields[0].name).unwrap();
+            let child_type =
+                object_or_interface_from_type(&ctx.query.schema.document(), &field.field_type)
+                    .expect("we only collect fields that are objects or interfaces");
 
-                let join = Join::new(
-                    ctx.query.schema.as_ref(),
-                    type_cond,
-                    child_type,
-                    &field.name,
-                );
+            let join = Join::new(
+                ctx.query.schema.as_ref(),
+                type_cond,
+                child_type,
+                &field.name,
+            );
 
-                // Group fields with the same response key, so we can execute them together
-                let grouped_field_set =
-                    collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set))?;
+            // Group fields with the same response key, so we can execute them together
+            let grouped_field_set =
+                collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set))?;
 
-                match execute_field(
-                    resolver, &ctx, type_cond, &parents, &join, &fields[0], field,
-                ) {
-                    Ok(children) => {
-                        match execute_selection_set(
-                            resolver,
-                            ctx,
-                            children,
-                            child_type,
-                            grouped_field_set,
-                        ) {
-                            Ok(children) => Join::perform(&mut parents, children, response_key),
-                            Err(mut e) => errors.append(&mut e),
-                        }
+            match execute_field(
+                resolver, &ctx, type_cond, &parents, &join, &fields[0], field,
+            ) {
+                Ok(children) => {
+                    match execute_selection_set(resolver, ctx, children, grouped_field_set) {
+                        Ok(children) => Join::perform(&mut parents, children, response_key),
+                        Err(mut e) => errors.append(&mut e),
                     }
-                    Err(mut e) => {
-                        errors.append(&mut e);
-                    }
-                };
-            } else {
-                errors.push(QueryExecutionError::UnknownField(
-                    fields[0].position,
-                    object_type.name().to_owned(),
-                    fields[0].name.clone(),
-                ))
-            }
+                }
+                Err(mut e) => {
+                    errors.append(&mut e);
+                }
+            };
         }
     }
 

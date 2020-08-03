@@ -212,15 +212,6 @@ impl Resolver for StoreResolver {
         object_type: &'a s::ObjectType,
         field: &'b q::Field,
     ) -> result::Result<StoreEventStreamBox, QueryExecutionError> {
-        // Fail if the field does not exist on the object type
-        if sast::get_field(object_type, &field.name).is_none() {
-            return Err(QueryExecutionError::UnknownField(
-                field.position,
-                object_type.name.clone(),
-                field.name.clone(),
-            ));
-        }
-
         // Collect all entities involved in the query field
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
