@@ -581,39 +581,33 @@ fn execute_selection_set_to_map<'a>(
             _ => (),
         }
 
-        // If the field exists on the object, execute it and add its result to the result map
-        if let Some(ref field) = sast::get_field(object_type, &fields[0].name) {
-            // Check if we have the value already.
-            let field_value = prefetched_object
-                .as_mut()
-                .map(|o| {
-                    // Prefetched objects are associated to `prefetch:response_key`.
-                    if let Some(val) = o.remove(&format!("prefetch:{}", response_key)) {
-                        return Some(val);
-                    }
+        // Unwrap: The query was validated to contain only valid fields.
+        let field = sast::get_field(object_type, &fields[0].name).unwrap();
 
-                    // Scalars and scalar lists are associated to the field name.
-                    // If the field has more than one response key, we have to clone.
-                    match multiple_response_keys.contains(fields[0].name.as_str()) {
-                        false => o.remove(&fields[0].name),
-                        true => o.get(&fields[0].name).cloned(),
-                    }
-                })
-                .flatten();
-            match execute_field(&ctx, object_type, field_value, &fields[0], field, fields) {
-                Ok(v) => {
-                    result_map.insert(response_key.to_owned(), v);
+        // Check if we have the value already.
+        let field_value = prefetched_object
+            .as_mut()
+            .map(|o| {
+                // Prefetched objects are associated to `prefetch:response_key`.
+                if let Some(val) = o.remove(&format!("prefetch:{}", response_key)) {
+                    return Some(val);
                 }
-                Err(mut e) => {
-                    errors.append(&mut e);
+
+                // Scalars and scalar lists are associated to the field name.
+                // If the field has more than one response key, we have to clone.
+                match multiple_response_keys.contains(fields[0].name.as_str()) {
+                    false => o.remove(&fields[0].name),
+                    true => o.get(&fields[0].name).cloned(),
                 }
+            })
+            .flatten();
+        match execute_field(&ctx, object_type, field_value, &fields[0], field, fields) {
+            Ok(v) => {
+                result_map.insert(response_key.to_owned(), v);
             }
-        } else {
-            errors.push(QueryExecutionError::UnknownField(
-                fields[0].position,
-                object_type.name.clone(),
-                fields[0].name.clone(),
-            ))
+            Err(mut e) => {
+                errors.append(&mut e);
+            }
         }
     }
 
