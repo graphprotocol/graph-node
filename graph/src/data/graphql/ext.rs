@@ -4,6 +4,8 @@ use graphql_parser::schema::{
     TypeDefinition, Value,
 };
 
+use super::ObjectOrInterface;
+
 use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {
@@ -38,6 +40,10 @@ pub trait DocumentExt {
     fn get_root_query_type(&self) -> Option<&ObjectType>;
 
     fn get_root_subscription_type(&self) -> Option<&ObjectType>;
+
+    fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>>;
+
+    fn get_named_type(&self, name: &str) -> Option<&TypeDefinition>;
 }
 
 impl DocumentExt for Document {
@@ -125,6 +131,31 @@ impl DocumentExt for Document {
             })
             .peekable()
             .next()
+    }
+
+    fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>> {
+        match self.get_named_type(name) {
+            Some(TypeDefinition::Object(t)) => Some(t.into()),
+            Some(TypeDefinition::Interface(t)) => Some(t.into()),
+            _ => None,
+        }
+    }
+
+    fn get_named_type(&self, name: &str) -> Option<&TypeDefinition> {
+        self.definitions
+            .iter()
+            .filter_map(|def| match def {
+                Definition::TypeDefinition(typedef) => Some(typedef),
+                _ => None,
+            })
+            .find(|typedef| match typedef {
+                TypeDefinition::Object(t) => &t.name == name,
+                TypeDefinition::Enum(t) => &t.name == name,
+                TypeDefinition::InputObject(t) => &t.name == name,
+                TypeDefinition::Interface(t) => &t.name == name,
+                TypeDefinition::Scalar(t) => &t.name == name,
+                TypeDefinition::Union(t) => &t.name == name,
+            })
     }
 }
 

@@ -4,6 +4,7 @@ use std::result;
 use std::sync::Arc;
 
 use graph::components::store::*;
+use graph::data::graphql::ObjectOrInterface;
 use graph::prelude::*;
 
 use crate::prelude::*;

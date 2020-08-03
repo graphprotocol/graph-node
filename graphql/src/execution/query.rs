@@ -5,12 +5,15 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
 
-use graph::data::graphql::ext::TypeExt;
+use graph::data::graphql::{
+    ext::{DocumentExt, TypeExt},
+    ObjectOrInterface,
+};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::prelude::{info, o, CheapClone, Logger, QueryExecutionError};
 
-use crate::execution::{get_field, get_named_type};
+use crate::execution::{get_field, get_named_type, object_or_interface};
 use crate::introspection::introspection_schema;
 use crate::query::{ast as qast, ext::BlockConstraint, ext::FieldExt};
 use crate::schema::ast as sast;
@@ -313,10 +316,10 @@ impl Query {
     }
 
     fn validate_fields(&self) -> Result<(), Vec<QueryExecutionError>> {
-        let root_type = sast::get_root_query_type_def(self.schema.document()).unwrap();
+        let root_type = self.schema.document().get_root_query_type().unwrap();
 
         let errors =
-            self.validate_fields_inner(&"Query".to_owned(), root_type, &self.selection_set);
+            self.validate_fields_inner(&"Query".to_owned(), root_type.into(), &self.selection_set);
         if errors.len() == 0 {
             Ok(())
         } else {
@@ -328,59 +331,45 @@ impl Query {
     fn validate_fields_inner(
         &self,
         type_name: &q::Name,
-        ty: &s::TypeDefinition,
+        ty: ObjectOrInterface<'_>,
         selection_set: &q::SelectionSet,
     ) -> Vec<QueryExecutionError> {
         let schema = self.schema.document();
+        if selection_set.items.is_empty() {
+            return vec![QueryExecutionError::EmptySelectionSet(ty.name().to_owned())];
+        }
         selection_set
             .items
             .iter()
             .fold(vec![], |mut errors, selection| {
                 match selection {
-                    q::Selection::Field(field) => {
-                        // Get field type to determine if this is a collection query.
-                        let s_field = match ty {
-                            s::TypeDefinition::Object(t) => get_field(t, &field.name),
-                            s::TypeDefinition::Interface(t) => get_field(t, &field.name),
-
-                            // `Scalar` and `Enum` cannot have selection sets.
-                            // `InputObject` can't appear in a selection.
-                            // `Union` is not yet supported.
-                            s::TypeDefinition::Scalar(_)
-                            | s::TypeDefinition::Enum(_)
-                            | s::TypeDefinition::InputObject(_)
-                            | s::TypeDefinition::Union(_) => None,
-                        };
-
-                        match s_field {
-                            Some(s_field) => {
-                                let base_type = s_field.field_type.get_base_type();
-                                match get_named_type(schema, base_type) {
-                                    Some(ty) => errors.extend(self.validate_fields_inner(
-                                        base_type,
-                                        &ty,
-                                        &field.selection_set,
-                                    )),
-                                    None => errors.push(QueryExecutionError::NamedTypeError(
-                                        base_type.clone(),
-                                    )),
-                                }
+                    q::Selection::Field(field) => match get_field(ty, &field.name) {
+                        Some(s_field) => {
+                            let base_type = s_field.field_type.get_base_type();
+                            if get_named_type(schema, base_type).is_none() {
+                                errors.push(QueryExecutionError::NamedTypeError(base_type.clone()));
+                            } else if let Some(ty) = object_or_interface(schema, base_type) {
+                                errors.extend(self.validate_fields_inner(
+                                    base_type,
+                                    ty,
+                                    &field.selection_set,
+                                ))
                             }
-                            None => errors.push(QueryExecutionError::UnknownField(
-                                field.position,
-                                type_name.clone(),
-                                field.name.clone(),
-                            )),
                         }
-                    }
+                        None => errors.push(QueryExecutionError::UnknownField(
+                            field.position,
+                            type_name.clone(),
+                            field.name.clone(),
+                        )),
+                    },
                     q::Selection::FragmentSpread(fragment) => {
                         match self.fragments.get(&fragment.fragment_name) {
                             Some(frag) => {
                                 let q::TypeCondition::On(type_name) = &frag.type_condition;
-                                match get_named_type(schema, type_name) {
+                                match object_or_interface(schema, type_name) {
                                     Some(ty) => errors.extend(self.validate_fields_inner(
                                         type_name,
-                                        &ty,
+                                        ty,
                                         &frag.selection_set,
                                     )),
                                     None => errors.push(QueryExecutionError::NamedTypeError(
@@ -395,10 +384,10 @@ impl Query {
                     }
                     q::Selection::InlineFragment(fragment) => match &fragment.type_condition {
                         Some(q::TypeCondition::On(type_name)) => {
-                            match get_named_type(schema, type_name) {
+                            match object_or_interface(schema, type_name) {
                                 Some(ty) => errors.extend(self.validate_fields_inner(
                                     type_name,
-                                    &ty,
+                                    ty,
                                     &fragment.selection_set,
                                 )),
                                 None => errors

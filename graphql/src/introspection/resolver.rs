@@ -1,6 +1,7 @@
 use graphql_parser::{query as q, schema as s, Pos};
 use std::collections::{BTreeMap, HashMap};
 
+use graph::data::graphql::ObjectOrInterface;
 use graph::prelude::*;
 
 use crate::prelude::*;

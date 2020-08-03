@@ -7,4 +7,4 @@ mod resolver;
 
 pub use self::execution::*;
 pub use self::query::Query;
-pub use self::resolver::{ObjectOrInterface, Resolver};
+pub use self::resolver::Resolver;
