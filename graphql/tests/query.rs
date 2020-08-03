@@ -1056,7 +1056,9 @@ async fn ambiguous_derived_from_result() {
         {
           songs(first: 100, orderBy: id) {
             id
-            band
+            band {
+              id
+            }
           }
         }
         ",

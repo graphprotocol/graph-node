@@ -2,9 +2,9 @@ use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
+use graph::data::graphql::ObjectOrInterface;
 use graph::prelude::*;
 
-use crate::execution::ObjectOrInterface;
 use crate::schema::ast as sast;
 
 #[derive(Debug)]

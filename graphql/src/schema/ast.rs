@@ -4,8 +4,8 @@ use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
 
-use crate::execution::ObjectOrInterface;
 use crate::query::ast as qast;
+use graph::data::graphql::ObjectOrInterface;
 use graph::data::store;
 use graph::prelude::*;
 

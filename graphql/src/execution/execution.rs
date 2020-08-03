@@ -13,6 +13,7 @@ use std::iter;
 use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 
+use graph::data::graphql::*;
 use graph::data::query::CacheStatus;
 use graph::prelude::*;
 use graph::util::lfu_cache::LfuCache;
@@ -322,6 +323,17 @@ pub(crate) fn get_field<'a>(
     }
 }
 
+pub(crate) fn object_or_interface<'a>(
+    schema: &'a s::Document,
+    name: &Name,
+) -> Option<ObjectOrInterface<'a>> {
+    if name.starts_with("__") {
+        INTROSPECTION_DOCUMENT.object_or_interface(name)
+    } else {
+        schema.object_or_interface(name)
+    }
+}
+
 impl<R> ExecutionContext<R>
 where
     R: Resolver,
@@ -611,14 +623,9 @@ fn execute_selection_set_to_map<'a>(
         }
     }
 
-    if errors.is_empty() && !result_map.is_empty() {
+    if errors.is_empty() {
         Ok(result_map)
     } else {
-        if errors.is_empty() {
-            errors.push(QueryExecutionError::EmptySelectionSet(
-                object_type.name.clone(),
-            ));
-        }
         Err(errors)
     }
 }

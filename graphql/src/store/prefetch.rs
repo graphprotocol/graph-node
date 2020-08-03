@@ -10,14 +10,14 @@ use std::iter::once;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::data::graphql::ext::ObjectTypeExt;
+use graph::data::graphql::*;
 use graph::prelude::{
     ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
     EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore,
     Value as StoreValue, WindowAttribute,
 };
 
-use crate::execution::{ExecutionContext, ObjectOrInterface, Resolver};
+use crate::execution::{ExecutionContext, Resolver};
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::store::{build_query, StoreResolver};
@@ -317,10 +317,10 @@ impl<'a> Join<'a> {
         field_name: &s::Name,
     ) -> Self {
         let parent_types = parent_type
-            .object_types(schema)
+            .object_types(schema.schema())
             .expect("the name of the parent type is valid");
         let child_types = child_type
-            .object_types(schema)
+            .object_types(schema.schema())
             .expect("the name of the child type is valid");
 
         let conds = parent_types
@@ -463,32 +463,10 @@ fn execute_root_selection_set(
     // Obtain the root Query type and fail if there isn't one
     let query_type = ctx.query.schema.query_type.as_ref().into();
 
-    let grouped_field_set = collect_fields(ctx, query_type, once(selection_set))?;
+    let grouped_field_set = collect_fields(ctx, query_type, once(selection_set));
 
     // Execute the root selection set against the root query type
     execute_selection_set(resolver, ctx, make_root_node(), grouped_field_set)
-}
-
-fn object_or_interface_from_type<'a>(
-    schema: &'a s::Document,
-    field_type: &'a s::Type,
-) -> Option<ObjectOrInterface<'a>> {
-    match field_type {
-        s::Type::NonNullType(inner_type) => object_or_interface_from_type(schema, inner_type),
-        s::Type::ListType(inner_type) => object_or_interface_from_type(schema, inner_type),
-        s::Type::NamedType(name) => object_or_interface_by_name(schema, name),
-    }
-}
-
-fn object_or_interface_by_name<'a>(
-    schema: &'a s::Document,
-    name: &str,
-) -> Option<ObjectOrInterface<'a>> {
-    match sast::get_named_type(schema, name) {
-        Some(s::TypeDefinition::Object(t)) => Some(t.into()),
-        Some(s::TypeDefinition::Interface(t)) => Some(t.into()),
-        _ => None,
-    }
 }
 
 fn execute_selection_set<'a>(
@@ -535,11 +513,15 @@ fn execute_selection_set<'a>(
                 })
                 .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
         ) {
-            // Unwrap: The query was validated to contain only valid fields.
+            // Unwrap: The query was validated to contain only valid fields,
+            // and `collect_fields` will skip introspection fields.
             let field = type_cond.field(&fields[0].name).unwrap();
-            let child_type =
-                object_or_interface_from_type(&ctx.query.schema.document(), &field.field_type)
-                    .expect("we only collect fields that are objects or interfaces");
+            let child_type = ctx
+                .query
+                .schema
+                .document()
+                .object_or_interface(field.field_type.get_base_type())
+                .expect("we only collect fields that are objects or interfaces");
 
             let join = Join::new(
                 ctx.query.schema.as_ref(),
@@ -550,7 +532,7 @@ fn execute_selection_set<'a>(
 
             // Group fields with the same response key, so we can execute them together
             let grouped_field_set =
-                collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set))?;
+                collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
 
             match execute_field(
                 resolver, &ctx, type_cond, &parents, &join, &fields[0], field,
@@ -606,7 +588,7 @@ fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     parent_ty: ObjectOrInterface<'a>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> Result<IndexMap<&'a String, CollectedResponseKey<'a>>, QueryExecutionError> {
+) -> IndexMap<&'a String, CollectedResponseKey<'a>> {
     let mut grouped_fields = IndexMap::new();
     collect_fields_inner(
         ctx,
@@ -614,7 +596,7 @@ fn collect_fields<'a>(
         selection_sets,
         &mut HashSet::new(),
         &mut grouped_fields,
-    )?;
+    );
 
     // For interfaces, if a response key occurs both under the interface and under concrete types,
     // we want to add the fields selected at the interface level to the selections in the specific
@@ -626,7 +608,7 @@ fn collect_fields<'a>(
         }
     }
 
-    Ok(grouped_fields)
+    grouped_fields
 }
 
 // When querying an object type, `type_condition` will always be that object type, even if it passes
@@ -640,8 +622,8 @@ fn collect_fields_inner<'a>(
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     visited_fragments: &mut HashSet<&'a q::Name>,
     output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
-) -> Result<(), QueryExecutionError> {
-    let schema = &ctx.query.schema.document();
+) {
+    let schema = ctx.query.schema.document();
 
     for selection_set in selection_sets {
         // Only consider selections that are not skipped and should be included
@@ -688,10 +670,9 @@ fn collect_fields_inner<'a>(
                     if visited_fragments.insert(&spread.fragment_name) {
                         let fragment = ctx.query.get_fragment(&spread.fragment_name);
                         let fragment_ty = {
+                            // Unwrap: Validation ensures this is an object or interface.
                             let q::TypeCondition::On(ty_name) = &fragment.type_condition;
-                            object_or_interface_by_name(schema, ty_name).ok_or_else(|| {
-                                QueryExecutionError::NamedTypeError(ty_name.clone())
-                            })?
+                            schema.object_or_interface(ty_name).unwrap()
                         };
 
                         if fragment_ty.is_object() {
@@ -704,7 +685,7 @@ fn collect_fields_inner<'a>(
                             once(&fragment.selection_set),
                             visited_fragments,
                             output,
-                        )?;
+                        );
                     }
                 }
 
@@ -712,9 +693,8 @@ fn collect_fields_inner<'a>(
                     let fragment_ty = {
                         match &fragment.type_condition {
                             Some(q::TypeCondition::On(ty_name)) => {
-                                object_or_interface_by_name(schema, &ty_name).ok_or_else(|| {
-                                    QueryExecutionError::NamedTypeError(ty_name.clone())
-                                })?
+                                // Unwrap: Validation ensures this is an object or interface.
+                                schema.object_or_interface(&ty_name).unwrap()
                             }
                             None => type_condition,
                         }
@@ -730,12 +710,11 @@ fn collect_fields_inner<'a>(
                         once(&fragment.selection_set),
                         visited_fragments,
                         output,
-                    )?;
+                    );
                 }
             }
         }
     }
-    Ok(())
 }
 
 /// Executes a field.
