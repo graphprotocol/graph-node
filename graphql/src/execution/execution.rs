@@ -82,12 +82,12 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_CACHE_BLOCKS environment variable")
     };
 
-    /// blocks, each block has a max size of `QUERY_CACHE_MAX_MEM` / `QUERY_CACHE_BLOCKS`.
-    /// The env var is in MB.
+    /// Maximum total memory to be used by the cache. Each block has a max size of
+    /// `QUERY_CACHE_MAX_MEM` / `QUERY_CACHE_BLOCKS`. The env var is in MB.
     static ref QUERY_CACHE_MAX_MEM: usize = {
         1_000_000 *
         std::env::var("GRAPH_QUERY_CACHE_MAX_MEM")
-        .unwrap_or("100".to_string())
+        .unwrap_or("1000".to_string())
         .parse::<usize>()
         .expect("Invalid value for GRAPH_QUERY_CACHE_MAX_MEM environment variable")
     };
