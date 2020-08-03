@@ -665,7 +665,10 @@ pub fn collect_fields_inner<'a>(
                 q::Selection::FragmentSpread(spread) => {
                     // Only consider the fragment if it hasn't already been included,
                     // as would be the case if the same fragment spread ...Foo appeared
-                    // twice in the same selection set
+                    // twice in the same selection set.
+                    //
+                    // Note: This will skip both duplicate fragments and will break cycles,
+                    // so we support fragments even though the GraphQL spec prohibits them.
                     if visited_fragments.insert(&spread.fragment_name) {
                         let fragment = ctx.query.get_fragment(&spread.fragment_name);
                         if does_fragment_type_apply(ctx, object_type, &fragment.type_condition) {
