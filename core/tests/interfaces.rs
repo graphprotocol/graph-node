@@ -658,14 +658,25 @@ fn fragments_dont_panic() {
 
     // The panic manifests if two parents exist.
     let parent = (
-        Entity::from(vec![("id", Value::from("p")), ("child", Value::from("c"))]),
+        entity!(
+            id: "p",
+            child: "c",
+        ),
         "Parent",
     );
     let parent2 = (
-        Entity::from(vec![("id", Value::from("p2")), ("child", Value::Null)]),
+        entity!(
+            id: "p2",
+            child: Value::Null,
+        ),
         "Parent",
     );
-    let child = (Entity::from(vec![("id", Value::from("c"))]), "Child");
+    let child = (
+        entity!(
+            id:"c"
+        ),
+        "Child",
+    );
 
     let res = insert_and_query(subgraph_id, schema, vec![parent, parent2, child], query).unwrap();
 
@@ -734,7 +745,12 @@ fn fragments_dont_duplicate_data() {
         ),
         "Parent",
     );
-    let child = (Entity::from(vec![("id", Value::from("c"))]), "Child");
+    let child = (
+        entity!(
+            id:"c"
+        ),
+        "Child",
+    );
 
     let res = insert_and_query(subgraph_id, schema, vec![parent, parent2, child], query).unwrap();
 
@@ -778,14 +794,17 @@ fn redundant_fields() {
             }";
 
     let parent = (
-        Entity::from(vec![("id", Value::from("parent")), ("parent", Value::Null)]),
+        entity!(
+            id: "parent",
+            parent: Value::Null,
+        ),
         "Animal",
     );
     let child = (
-        Entity::from(vec![
-            ("id", Value::from("child")),
-            ("parent", Value::String("parent".into())),
-        ]),
+        entity!(
+            id: "child",
+            parent: "parent",
+        ),
         "Animal",
     );
 
@@ -849,7 +868,10 @@ fn fragments_merge_selections() {
         "Parent",
     );
     let child = (
-        Entity::from(vec![("id", Value::from("c")), ("foo", Value::from(1))]),
+        entity!(
+            id: "c",
+            foo: 1,
+        ),
         "Child",
     );
 
@@ -1123,5 +1145,38 @@ fn nested_interface_fragments_overlapping() {
                 },
             ]
         }
-    )
+    );
+
+    // let query = "query {
+    //     i1Faces {
+    //         __typename
+    //         foo1 {
+    //             id
+    //         }
+    //         ...on I2face {
+    //             foo1 {
+    //                 id
+    //             }
+    //         }
+    //     }
+    // }";
+
+    // let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
+    // assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    // assert_eq!(
+    //     res.data.unwrap(),
+    //     object! {
+    //         i1Faces: vec![
+    //             object! {
+    //                 __typename: "One"
+    //             },
+    //             object! {
+    //                 __typename: "Two",
+    //                 foo1: object! {
+    //                     id: "foo",
+    //                 },
+    //             },
+    //         ]
+    //     }
+    // );
 }
