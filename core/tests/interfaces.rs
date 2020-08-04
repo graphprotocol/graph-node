@@ -806,3 +806,67 @@ fn redundant_fields() {
         }
     )
 }
+
+#[test]
+fn fragments_merge_selections() {
+    let subgraph_id = "FragmentsMergeSelections";
+    let schema = "
+      type Parent @entity {
+        id: ID!
+        children: [Child!]!
+      }
+
+      type Child @entity {
+        id: ID!
+        foo: Int!
+      }
+    ";
+
+    let query = "
+        query {
+            parents {
+                ...Frag
+                children {
+                    id
+                }
+            }
+        }
+
+        fragment Frag on Parent {
+            children {
+                foo
+            }
+        }
+    ";
+
+    let parent = (
+        entity!(
+            id: "p",
+            children: vec!["c"]
+        ),
+        "Parent",
+    );
+    let child = (
+        Entity::from(vec![("id", Value::from("c")), ("foo", Value::from(1))]),
+        "Child",
+    );
+
+    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            parents: vec![
+                object! {
+                    children: vec![
+                        object! {
+                            foo: 1,
+                            id: "c",
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+}
