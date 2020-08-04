@@ -1,5 +1,7 @@
 // Tests for graphql interfaces.
 
+use pretty_assertions::assert_eq;
+
 use graph::prelude::*;
 use graph_graphql::prelude::object;
 use graphql_parser::query as q;
@@ -934,6 +936,189 @@ fn merge_fields_not_in_interface() {
                     id: "fred",
                     friend: object! {
                         id: "cow",
+                    },
+                },
+            ]
+        }
+    )
+}
+
+#[test]
+fn nested_interface_fragments() {
+    let subgraph_id = "NestedInterfaceFragments";
+    let schema = "interface I1face { id: ID!, foo1: Foo! }
+                  interface I2face { id: ID!, foo2: Foo! }
+                  interface I3face { id: ID!, foo3: Foo! }
+                  type Foo @entity {
+                      id: ID!
+                  }
+                  type One implements I1face @entity {
+                    id: ID!
+                    foo1: Foo!
+                  }
+                  type Two implements I1face & I2face @entity {
+                    id: ID!
+                    foo1: Foo!
+                    foo2: Foo!
+                  }
+                  type Three implements I1face & I2face & I3face @entity {
+                    id: ID!
+                    foo1: Foo!
+                    foo2: Foo!
+                    foo3: Foo!
+                  }";
+
+    let query = "query {
+                    i1Faces {
+                        __typename
+                        foo1 {
+                            id
+                        }
+                        ...on I2face {
+                            foo2 {
+                                id
+                            }
+                        }
+                        ...on I3face {
+                            foo3 {
+                                id
+                            }
+                        }
+                    }
+            }";
+
+    let foo = (
+        entity!(
+            id: "foo",
+        ),
+        "Foo",
+    );
+    let one = (
+        entity!(
+            id: "1",
+            foo1: "foo",
+        ),
+        "One",
+    );
+    let two = (
+        entity!(
+            id: "2",
+            foo1: "foo",
+            foo2: "foo",
+        ),
+        "Two",
+    );
+    let three = (
+        entity!(
+            id: "3",
+            foo1: "foo",
+            foo2: "foo",
+            foo3: "foo"
+        ),
+        "Three",
+    );
+
+    let res = insert_and_query(subgraph_id, schema, vec![foo, one, two, three], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            i1Faces: vec![
+                object! {
+                    __typename: "One",
+                    foo1: object! {
+                        id: "foo",
+                    },
+                },
+                object! {
+                    __typename: "Two",
+                    foo1: object! {
+                        id: "foo",
+                    },
+                    foo2: object! {
+                        id: "foo",
+                    },
+                },
+                object! {
+                    __typename: "Three",
+                    foo1: object! {
+                        id: "foo",
+                    },
+                    foo2: object! {
+                        id: "foo",
+                    },
+                    foo3: object! {
+                        id: "foo",
+                    },
+                },
+            ]
+        }
+    )
+}
+
+#[test]
+fn nested_interface_fragments_overlapping() {
+    let subgraph_id = "NestedInterfaceFragmentsOverlapping";
+    let schema = "interface I1face { id: ID!, foo1: Foo! }
+                  interface I2face { id: ID!, foo1: Foo! }
+                  type Foo @entity {
+                      id: ID!
+                  }
+                  type One implements I1face @entity {
+                    id: ID!
+                    foo1: Foo!
+                  }
+                  type Two implements I1face & I2face @entity {
+                    id: ID!
+                    foo1: Foo!
+                  }";
+
+    let query = "query {
+                    i1Faces {
+                        __typename
+                        ...on I2face {
+                            foo1 {
+                                id
+                            }
+                        }
+                    }
+            }";
+
+    let foo = (
+        entity!(
+            id: "foo",
+        ),
+        "Foo",
+    );
+    let one = (
+        entity!(
+            id: "1",
+            foo1: "foo",
+        ),
+        "One",
+    );
+    let two = (
+        entity!(
+            id: "2",
+            foo1: "foo",
+        ),
+        "Two",
+    );
+    let res = insert_and_query(subgraph_id, schema, vec![foo, one, two], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            i1Faces: vec![
+                object! {
+                    __typename: "One"
+                },
+                object! {
+                    __typename: "Two",
+                    foo1: object! {
+                        id: "foo",
                     },
                 },
             ]

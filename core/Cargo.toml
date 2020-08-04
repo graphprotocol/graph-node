@@ -26,3 +26,4 @@ test-store = { path = "../store/test-store" }
 hex = "0.4.2"
 graphql-parser = "0.2.3"
 prometheus = "0.7"
+pretty_assertions = "0.6.1"
