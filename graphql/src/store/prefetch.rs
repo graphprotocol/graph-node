@@ -90,8 +90,8 @@ fn node_list_as_value(nodes: Vec<Rc<Node>>) -> q::Value {
 /// That distinguishes it from both the result of a query that matches
 /// nothing (an empty `Vec`), and a result that finds just one entity
 /// (the entity is not completely empty)
-fn is_root_node(nodes: &Vec<Node>) -> bool {
-    if let Some(node) = nodes.iter().next() {
+fn is_root_node<'a>(mut nodes: impl Iterator<Item = &'a Node>) -> bool {
+    if let Some(node) = nodes.next() {
         node.entity.is_empty()
     } else {
         false
@@ -344,7 +344,7 @@ impl<'a> Join<'a> {
     /// The `children` must contain the nodes in the correct order for each
     /// parent; we simply pick out matching children for each parent but
     /// otherwise maintain the order in `children`
-    fn perform(parents: &mut Vec<Node>, children: Vec<Node>, response_key: &str) {
+    fn perform(mut parents: Vec<&mut Node>, children: Vec<Node>, response_key: &str) {
         let children: Vec<_> = children.into_iter().map(|child| Rc::new(child)).collect();
 
         if parents.len() == 1 {
@@ -369,15 +369,10 @@ impl<'a> Join<'a> {
         }
 
         // Add appropriate children using grouped map
-        for parent in parents.iter_mut() {
+        for parent in parents {
             // Set the `response_key` field in `parent`. Make sure that even
             // if `parent` has no matching `children`, the field gets set (to
             // an empty `Vec`).
-            //
-            // This is complicated by the fact that, if there was a type
-            // condition, we should only change parents that meet the type
-            // condition; we set it for all parents regardless, as that does
-            // not cause problems in later processing.
             //
             // This `insert` will overwrite in the case where the response key occurs both at the
             // interface level and in concrete types. The interface is always joined first, and may
@@ -392,7 +387,11 @@ impl<'a> Join<'a> {
         }
     }
 
-    fn windows(&self, parents: &Vec<Node>, multiplicity: ChildMultiplicity) -> Vec<EntityWindow> {
+    fn windows(
+        &self,
+        parents: &Vec<&mut Node>,
+        multiplicity: ChildMultiplicity,
+    ) -> Vec<EntityWindow> {
         let mut windows = vec![];
 
         for cond in &self.conds {
@@ -401,7 +400,7 @@ impl<'a> Join<'a> {
             let mut parents_by_id = parents
                 .iter()
                 .filter(|parent| parent.typename() == cond.parent_type)
-                .filter_map(|parent| parent.id().ok().map(|id| (id, parent)))
+                .filter_map(|parent| parent.id().ok().map(|id| (id, &**parent)))
                 .collect::<Vec<_>>();
 
             if !parents_by_id.is_empty() {
@@ -475,18 +474,8 @@ fn execute_selection_set<'a>(
     mut parents: Vec<Node>,
     grouped_field_set: IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
+    let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
-
-    if parents.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Skip dead fragments as an optimization
-    let relevant_concrete_types: Option<HashSet<String>> = if parents[0].entity.is_empty() {
-        None
-    } else {
-        Some(parents.iter().map(|e| e.typename().to_owned()).collect())
-    };
 
     // Process all field groups in order
     for (response_key, collected_fields) in grouped_field_set {
@@ -507,18 +496,26 @@ fn execute_selection_set<'a>(
             collected_fields
                 .concrete_types
                 .into_iter()
-                .filter(|(c, _)| match &relevant_concrete_types {
-                    None => true,
-                    Some(relevant_set) => relevant_set.contains(c.0.name.as_str()),
-                })
                 .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
         ) {
+            // Filter out parents that do not match the type condition.
+            let parents: Vec<&mut Node> = if is_root_node(parents.iter()) {
+                parents.iter_mut().collect()
+            } else {
+                parents
+                    .iter_mut()
+                    .filter(|p| type_cond.matches(p.typename(), schema.types_for_interface()))
+                    .collect()
+            };
+
+            if parents.is_empty() {
+                continue;
+            }
+
             // Unwrap: The query was validated to contain only valid fields,
             // and `collect_fields` will skip introspection fields.
             let field = type_cond.field(&fields[0].name).unwrap();
-            let child_type = ctx
-                .query
-                .schema
+            let child_type = schema
                 .document()
                 .object_or_interface(field.field_type.get_base_type())
                 .expect("we only collect fields that are objects or interfaces");
@@ -539,7 +536,7 @@ fn execute_selection_set<'a>(
             ) {
                 Ok(children) => {
                     match execute_selection_set(resolver, ctx, children, grouped_field_set) {
-                        Ok(children) => Join::perform(&mut parents, children, response_key),
+                        Ok(children) => Join::perform(parents, children, response_key),
                         Err(mut e) => errors.append(&mut e),
                     }
                 }
@@ -722,7 +719,7 @@ fn execute_field(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     object_type: ObjectOrInterface<'_>,
-    parents: &Vec<Node>,
+    parents: &Vec<&mut Node>,
     join: &Join<'_>,
     field: &q::Field,
     field_definition: &s::Field,
@@ -761,7 +758,7 @@ fn execute_field(
     fetch(
         ctx.logger.clone(),
         resolver.store.as_ref(),
-        &parents,
+        parents,
         &join,
         argument_values,
         multiplicity,
@@ -778,7 +775,7 @@ fn execute_field(
 fn fetch(
     logger: Logger,
     store: &(impl QueryStore + ?Sized),
-    parents: &Vec<Node>,
+    parents: &Vec<&mut Node>,
     join: &Join<'_>,
     arguments: HashMap<&q::Name, q::Value>,
     multiplicity: ChildMultiplicity,
@@ -808,7 +805,7 @@ fn fetch(
         );
     }
 
-    if !is_root_node(parents) {
+    if !is_root_node(parents.iter().map(|p| &**p)) {
         // For anything but the root node, restrict the children we select
         // by the parent list
         let windows = join.windows(parents, multiplicity);

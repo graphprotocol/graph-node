@@ -1,5 +1,6 @@
 use crate::prelude::Schema;
 use graphql_parser::schema as s;
+use std::collections::BTreeMap;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -59,6 +60,21 @@ impl<'a> ObjectOrInterface<'a> {
                 .types_for_interface()
                 .get(&interface.name)
                 .map(|object_types| object_types.iter().collect()),
+        }
+    }
+
+    /// `typename` is the name of an object type. Matches if `self` is an object and has the same
+    /// name, or if self is an interface implemented by `typename`.
+    pub fn matches(
+        self,
+        typename: &str,
+        types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
+    ) -> bool {
+        match self {
+            ObjectOrInterface::Object(o) => o.name == typename,
+            ObjectOrInterface::Interface(i) => types_for_interface[&i.name]
+                .iter()
+                .any(|o| o.name == typename),
         }
     }
 }
