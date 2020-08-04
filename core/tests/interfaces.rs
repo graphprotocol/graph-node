@@ -870,3 +870,73 @@ fn fragments_merge_selections() {
         }
     )
 }
+
+#[test]
+fn merge_fields_not_in_interface() {
+    let subgraph_id = "MergeFieldsNotInInterface";
+    let schema = "interface Iface { id: ID! }
+                  type Animal implements Iface @entity {
+                    id: ID!
+                    human: Iface!
+                  }
+                  type Human implements Iface @entity {
+                    id: ID!
+                    animal: Iface!
+                  }
+                  ";
+
+    let query = "query {
+                    ifaces {
+                        ...on Animal {
+                            id
+                            friend: human {
+                              id
+                            }
+                        }
+                        ...on Human {
+                            id
+                            friend: animal {
+                              id
+                            }
+                        }
+                    }
+            }";
+
+    let animal = (
+        entity!(
+            id: "cow",
+            human: "fred",
+        ),
+        "Animal",
+    );
+    let human = (
+        entity!(
+            id: "fred",
+            animal: "cow",
+        ),
+        "Human",
+    );
+
+    let res = insert_and_query(subgraph_id, schema, vec![animal, human], query).unwrap();
+
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            ifaces: vec![
+                object! {
+                    id: "cow",
+                    friend: object! {
+                        id: "fred",
+                    },
+                },
+                object! {
+                    id: "fred",
+                    friend: object! {
+                        id: "cow",
+                    },
+                },
+            ]
+        }
+    )
+}
