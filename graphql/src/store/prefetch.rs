@@ -200,7 +200,6 @@ struct JoinCond<'a> {
     /// The (concrete) object type of the child, interfaces will have
     /// one `JoinCond` for each implementing type
     child_type: &'a str,
-    parent_field: JoinField<'a>,
     relation: JoinRelation<'a>,
 }
 
@@ -213,22 +212,15 @@ impl<'a> JoinCond<'a> {
         let field = parent_type
             .field(field_name)
             .expect("field_name is a valid field of parent_type");
-        let (relation, parent_field) =
+        let relation =
             if let Some(derived_from_field) = sast::get_derived_from_field(child_type, field) {
-                (
-                    JoinRelation::Direct(JoinField::new(derived_from_field)),
-                    JoinField::Scalar("id"),
-                )
+                JoinRelation::Direct(JoinField::new(derived_from_field))
             } else {
-                (
-                    JoinRelation::Derived(JoinField::new(field)),
-                    JoinField::new(field),
-                )
+                JoinRelation::Derived(JoinField::new(field))
             };
         JoinCond {
             parent_type: parent_type.name.as_str(),
             child_type: child_type.name.as_str(),
-            parent_field,
             relation,
         }
     }
@@ -395,8 +387,6 @@ impl<'a> Join<'a> {
         let mut windows = vec![];
 
         for cond in &self.conds {
-            // Get the cond.parent_field attributes from each parent that
-            // is of type cond.parent_type
             let mut parents_by_id = parents
                 .iter()
                 .filter(|parent| parent.typename() == cond.parent_type)
