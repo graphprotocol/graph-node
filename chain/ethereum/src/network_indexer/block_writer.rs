@@ -21,7 +21,7 @@ impl BlockWriterMetrics {
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let transaction = Aggregate::new(
-            "subgraph_transaction",
+            "deployment_transaction",
             subgraph_id.as_str(),
             "Transactions to the store",
             registry.clone(),

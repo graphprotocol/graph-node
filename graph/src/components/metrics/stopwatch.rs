@@ -47,8 +47,8 @@ impl StopwatchMetrics {
     ) -> Self {
         let mut inner = StopwatchInner {
             counter: *registry
-                .new_subgraph_counter_vec(
-                    "subgraph_sync_secs",
+                .new_deployment_counter_vec(
+                    "deployment_sync_secs",
                     "total time spent syncing",
                     subgraph_id.as_str(),
                     vec!["section".to_owned()],

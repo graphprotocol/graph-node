@@ -749,8 +749,8 @@ impl Store {
 
         self.with_conn(move |conn, cancel_handle| {
             registry
-                .global_subgraph_counter(
-                    "subgraph_get_entity_conn_secs",
+                .global_deployment_counter(
+                    "deployment_get_entity_conn_secs",
                     "total time spent getting an entity connection",
                     subgraph.as_str(),
                 )
@@ -800,8 +800,8 @@ impl Store {
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
         };
         self.registry
-            .global_subgraph_counter(
-                "subgraph_get_entity_conn_secs",
+            .global_deployment_counter(
+                "deployment_get_entity_conn_secs",
                 "total time spent getting an entity connection",
                 subgraph.as_str(),
             )?

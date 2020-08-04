@@ -20,7 +20,7 @@ impl Aggregate {
     pub fn new(name: &str, subgraph: &str, help: &str, registry: Arc<dyn MetricsRegistry>) -> Self {
         let make_gauge = |suffix: &str| {
             registry
-                .new_subgraph_gauge(
+                .new_deployment_gauge(
                     &format!("{}_{}", name, suffix),
                     &format!("{} ({})", help, suffix),
                     &subgraph,

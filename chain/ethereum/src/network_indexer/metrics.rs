@@ -54,7 +54,7 @@ impl NetworkIndexerMetrics {
     ) -> Self {
         let make_gauge = |name: &str, help: &str| {
             registry
-                .new_subgraph_gauge(name, help, subgraph_id.as_str())
+                .new_deployment_gauge(name, help, subgraph_id.as_str())
                 .expect(
                     format!("failed to register metric `{}` for {}", name, subgraph_id).as_str(),
                 )
@@ -62,7 +62,7 @@ impl NetworkIndexerMetrics {
 
         let make_counter = |name: &str, help: &str| {
             registry
-                .new_subgraph_counter(name, help, subgraph_id.as_str())
+                .new_deployment_counter(name, help, subgraph_id.as_str())
                 .expect(
                     format!("failed to register metric `{}` for {}", name, subgraph_id).as_str(),
                 )
@@ -71,127 +71,127 @@ impl NetworkIndexerMetrics {
         Self {
             stopwatch,
 
-            chain_head: make_gauge("subgraph_chain_head", "The current chain head block"),
+            chain_head: make_gauge("deployment_chain_head", "The current chain head block"),
 
-            local_head: make_gauge("subgraph_local_head", "The current local head block"),
+            local_head: make_gauge("deployment_local_head", "The current local head block"),
 
-            reorg_count: make_counter("subgraph_reorg_count", "The number of reorgs handled"),
+            reorg_count: make_counter("deployment_reorg_count", "The number of reorgs handled"),
 
             reorg_cancel_count: make_counter(
-                "subgraph_reorg_cancel_count",
+                "deployment_reorg_cancel_count",
                 "The number of reorgs that had to be canceled / restarted",
             ),
 
             reorg_depth: Aggregate::new(
-                "subgraph_reorg_depth",
+                "deployment_reorg_depth",
                 subgraph_id.as_str(),
                 "The depth of reorgs over time",
                 registry.clone(),
             ),
 
             poll_chain_head: Aggregate::new(
-                "subgraph_poll_chain_head",
+                "deployment_poll_chain_head",
                 subgraph_id.as_str(),
                 "Polling the network's chain head",
                 registry.clone(),
             ),
 
             fetch_block_by_number: Aggregate::new(
-                "subgraph_fetch_block_by_number",
+                "deployment_fetch_block_by_number",
                 subgraph_id.as_str(),
                 "Fetching a block using a block number",
                 registry.clone(),
             ),
 
             fetch_block_by_hash: Aggregate::new(
-                "subgraph_fetch_block_by_hash",
+                "deployment_fetch_block_by_hash",
                 subgraph_id.as_str(),
                 "Fetching a block using a block hash",
                 registry.clone(),
             ),
 
             fetch_full_block: Aggregate::new(
-                "subgraph_fetch_full_block",
+                "deployment_fetch_full_block",
                 subgraph_id.as_str(),
                 "Fetching a full block",
                 registry.clone(),
             ),
 
             fetch_ommers: Aggregate::new(
-                "subgraph_fetch_ommers",
+                "deployment_fetch_ommers",
                 subgraph_id.as_str(),
                 "Fetching the ommers of a block",
                 registry.clone(),
             ),
 
             load_local_head: Aggregate::new(
-                "subgraph_load_local_head",
+                "deployment_load_local_head",
                 subgraph_id.as_str(),
                 "Load the local head block from the store",
                 registry.clone(),
             ),
 
             revert_local_head: Aggregate::new(
-                "subgraph_id_revert_local_head",
+                "deployment_revert_local_head",
                 subgraph_id.as_str(),
                 "Revert the local head block in the store",
                 registry.clone(),
             ),
 
             write_block: Aggregate::new(
-                "subgraph_write_block",
+                "deployment_write_block",
                 subgraph_id.as_str(),
                 "Write a block to the store",
                 registry.clone(),
             ),
 
             poll_chain_head_problems: make_gauge(
-                "subgraph_poll_chain_head_problems",
+                "deployment_poll_chain_head_problems",
                 "Problems polling the chain head",
             ),
 
             fetch_block_by_number_problems: make_gauge(
-                "subgraph_fetch_block_by_number_problems",
+                "deployment_fetch_block_by_number_problems",
                 "Problems fetching a block by number",
             ),
 
             fetch_block_by_hash_problems: make_gauge(
-                "subgraph_fetch_block_by_hash_problems",
+                "deployment_fetch_block_by_hash_problems",
                 "Problems fetching a block by hash",
             ),
 
             fetch_full_block_problems: make_gauge(
-                "subgraph_fetch_full_block_problems",
+                "deployment_fetch_full_block_problems",
                 "Problems fetching a full block",
             ),
 
             fetch_ommers_problems: make_gauge(
-                "subgraph_fetch_ommers_problems",
+                "deployment_fetch_ommers_problems",
                 "Problems fetching ommers of a block",
             ),
 
             load_local_head_problems: make_gauge(
-                "subgraph_load_local_head_problems",
+                "deployment_load_local_head_problems",
                 "Problems loading the local head block",
             ),
 
             revert_local_head_problems: make_gauge(
-                "subgraph_revert_local_head_problems",
+                "deployment_revert_local_head_problems",
                 "Problems reverting the local head block during a reorg",
             ),
 
             write_block_problems: make_gauge(
-                "subgraph_write_block_problems",
+                "deployment_write_block_problems",
                 "Problems writing a block to the store",
             ),
 
             last_new_chain_head_time: make_gauge(
-                "subgraph_last_new_chain_head_time",
+                "deployment_last_new_chain_head_time",
                 "The last time a chain head was received that was different from before",
             ),
 
             last_written_block_time: make_gauge(
-                "subgraph_last_written_block_time",
+                "deployment_last_written_block_time",
                 "The last time a block was written to the store",
             ),
         }

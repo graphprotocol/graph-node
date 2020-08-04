@@ -75,23 +75,23 @@ impl HostMetrics {
         stopwatch: StopwatchMetrics,
     ) -> Self {
         let handler_execution_time = registry
-            .new_subgraph_histogram_vec(
-                "subgraph_handler_execution_time",
+            .new_deployment_histogram_vec(
+                "deployment_handler_execution_time",
                 "Measures the execution time for handlers",
                 subgraph,
                 vec![String::from("handler")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
-            .expect("failed to create `subgraph_handler_execution_time` histogram");
+            .expect("failed to create `deployment_handler_execution_time` histogram");
         let host_fn_execution_time = registry
-            .new_subgraph_histogram_vec(
-                "subgraph_host_fn_execution_time",
+            .new_deployment_histogram_vec(
+                "deployment_host_fn_execution_time",
                 "Measures the execution time for host functions",
                 subgraph,
                 vec![String::from("host_fn_name")],
                 vec![0.025, 0.05, 0.2, 2.0, 8.0, 20.0],
             )
-            .expect("failed to create `subgraph_host_fn_execution_time` histogram");
+            .expect("failed to create `deployment_host_fn_execution_time` histogram");
         Self {
             handler_execution_time,
             host_fn_execution_time,
