@@ -127,11 +127,7 @@ where
             )
         })?;
 
-        let required_capabilities = NodeCapabilities {
-            traces: data_source.mapping.calls_host_fn("ethereum.call"),
-            archive: data_source.mapping.has_block_handler_with_call_filter()
-                || data_source.mapping.has_call_handler(),
-        };
+        let required_capabilities = data_source.mapping.required_capabilities();
 
         let ethereum_adapter = self
             .ethereum_networks

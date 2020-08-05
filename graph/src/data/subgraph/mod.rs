@@ -634,17 +634,24 @@ impl Mapping {
         return false;
     }
 
-    pub fn has_call_handler(&self) -> bool {
+    fn has_call_handler(&self) -> bool {
         !self.call_handlers.is_empty()
     }
 
-    pub fn has_block_handler_with_call_filter(&self) -> bool {
+    fn has_block_handler_with_call_filter(&self) -> bool {
         self.block_handlers
             .iter()
             .any(|handler| match handler.filter {
                 Some(BlockHandlerFilter::Call) => true,
                 _ => false,
             })
+    }
+
+    pub fn required_capabilities(&self) -> NodeCapabilities {
+        NodeCapabilities {
+            traces: self.has_block_handler_with_call_filter() || self.has_call_handler(),
+            archive: self.calls_host_fn("ethereum.call"),
+        }
     }
 }
 
