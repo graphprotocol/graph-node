@@ -14,6 +14,7 @@ use super::block_writer::BlockWriter;
 use super::metrics::NetworkIndexerMetrics;
 use super::subgraph;
 use super::*;
+use graph::components::ethereum::EthereumNetworkAdapters;
 
 /// Terminology used in this component:
 ///
@@ -112,7 +113,7 @@ fn poll_chain_head(context: &Context) -> ChainHeadFuture {
             poll_chain_head,
             poll_chain_head_problems,
             context
-                .adapter
+                .adapters
                 .clone()
                 .latest_block(&context.logger)
                 .from_err()
@@ -123,7 +124,7 @@ fn poll_chain_head(context: &Context) -> ChainHeadFuture {
 
 fn fetch_ommers(
     logger: Logger,
-    adapter: Arc<dyn EthereumAdapter>,
+    adapters: EthereumNetworkAdapters,
     metrics: Arc<NetworkIndexerMetrics>,
     block: &EthereumBlock,
 ) -> OmmersFuture {
@@ -134,7 +135,7 @@ fn fetch_ommers(
         metrics,
         fetch_ommers,
         fetch_ommers_problems,
-        adapter
+        adapters
             .uncles(&logger, &block.block)
             .and_then(move |ommers| {
                 let (found, missing): (Vec<(usize, Option<_>)>, Vec<(usize, Option<_>)>) = ommers
@@ -168,17 +169,17 @@ fn fetch_ommers(
 
 fn fetch_block_and_ommers_by_number(
     logger: Logger,
-    adapter: Arc<dyn EthereumAdapter>,
+    adapters: EthereumNetworkAdapters,
     metrics: Arc<NetworkIndexerMetrics>,
     block_number: u64,
 ) -> BlockFuture {
     let logger_for_err = logger.clone();
 
     let logger_for_full_block = logger.clone();
-    let adapter_for_full_block = adapter.clone();
+    let adapters_for_full_block = adapters.clone();
 
     let logger_for_ommers = logger.clone();
-    let adapter_for_ommers = adapter.clone();
+    let adapters_for_ommers = adapters.clone();
 
     let metrics_for_full_block = metrics.clone();
     let metrics_for_ommers = metrics.clone();
@@ -190,7 +191,7 @@ fn fetch_block_and_ommers_by_number(
             metrics,
             fetch_block_by_number,
             fetch_block_by_number_problems,
-            adapter
+            adapters
                 .clone()
                 .block_by_number(&logger, block_number)
                 .from_err()
@@ -211,14 +212,14 @@ fn fetch_block_and_ommers_by_number(
                     metrics_for_full_block,
                     fetch_full_block,
                     fetch_full_block_problems,
-                    adapter_for_full_block
+                    adapters_for_full_block
                         .load_full_block(&logger_for_full_block, block)
                         .from_err()
                 )
                 .and_then(move |block| {
                     fetch_ommers(
                         logger_for_ommers.clone(),
-                        adapter_for_ommers,
+                        adapters_for_ommers,
                         metrics_for_ommers,
                         &block,
                     )
@@ -249,7 +250,7 @@ fn fetch_block_and_ommers_by_number(
 
 fn fetch_blocks(context: &Context, block_numbers: Range<u64>) -> BlockStream {
     let logger = context.logger.clone();
-    let adapter = context.adapter.clone();
+    let adapters = context.adapters.clone();
     let metrics = context.metrics.clone();
 
     Box::new(
@@ -257,7 +258,7 @@ fn fetch_blocks(context: &Context, block_numbers: Range<u64>) -> BlockStream {
             .map(move |block_number| {
                 fetch_block_and_ommers_by_number(
                     logger.clone(),
-                    adapter.clone(),
+                    adapters.clone(),
                     metrics.clone(),
                     block_number,
                 )
@@ -447,7 +448,7 @@ fn update_chain_and_local_head_metrics(
 /// Context for the network tracer.
 pub struct Context {
     logger: Logger,
-    adapter: Arc<dyn EthereumAdapter>,
+    adapters: EthereumNetworkAdapters,
     store: Arc<dyn NetworkStore>,
     metrics: Arc<NetworkIndexerMetrics>,
     block_writer: Arc<BlockWriter>,
@@ -1112,7 +1113,7 @@ pub struct NetworkIndexer {
 impl NetworkIndexer {
     pub fn new<S>(
         logger: &Logger,
-        adapter: Arc<dyn EthereumAdapter>,
+        adapters: EthereumNetworkAdapters,
         store: Arc<S>,
         metrics_registry: Arc<dyn MetricsRegistry>,
         subgraph_name: String,
@@ -1164,7 +1165,7 @@ impl NetworkIndexer {
         // Create state machine that emits block and revert events for the network
         let state_machine = StateMachine::start(Context {
             logger,
-            adapter,
+            adapters,
             store,
             metrics,
             block_writer,

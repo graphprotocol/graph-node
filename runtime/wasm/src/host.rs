@@ -133,9 +133,9 @@ where
                 || data_source.mapping.has_call_handler(),
         };
 
-        let ethereum_adapter = self
+        let ethereum_adapters = self
             .ethereum_networks
-            .adapter_with_capabilities(network_name.clone(), &required_capabilities)?;
+            .adapters_with_capabilities(network_name.clone(), &required_capabilities)?;
 
         // Detect whether the subgraph uses templates in data sources, which are
         // deprecated, or the top-level templates field.
@@ -145,7 +145,7 @@ where
         };
 
         RuntimeHost::new(
-            ethereum_adapter.clone(),
+            ethereum_adapters.clone(),
             self.link_resolver.clone(),
             store.clone(),
             store.clone(),
@@ -181,7 +181,7 @@ pub struct RuntimeHost {
 
 impl RuntimeHost {
     fn new(
-        ethereum_adapter: Arc<dyn EthereumAdapter>,
+        ethereum_adapters: EthereumNetworkAdapters,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
@@ -227,7 +227,7 @@ impl RuntimeHost {
             config.data_source_context,
             config.templates,
             config.mapping.abis,
-            ethereum_adapter,
+            ethereum_adapters,
             link_resolver,
             store,
             call_cache,

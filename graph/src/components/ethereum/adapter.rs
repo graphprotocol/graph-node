@@ -13,12 +13,14 @@ use tiny_keccak::keccak256;
 use web3::types::*;
 
 use super::types::*;
+use crate::components::ethereum::EthereumNetworkAdapters;
 use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
 use crate::prelude::*;
 
 pub type EventSignature = H256;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
+#[derive(Debug)]
 pub struct EthereumNetworkIdentifier {
     pub net_version: String,
     pub genesis_block_hash: H256,
@@ -68,6 +70,12 @@ pub enum EthereumContractCallError {
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
         EthereumContractCallError::ABIError(SyncFailure::new(e))
+    }
+}
+
+impl From<failure::Error> for EthereumContractCallError {
+    fn from(e: failure::Error) -> Self {
+        EthereumContractCallError::Timeout
     }
 }
 
@@ -825,7 +833,7 @@ fn parse_block_triggers(
 }
 
 pub async fn triggers_in_block(
-    adapter: Arc<dyn EthereumAdapter>,
+    adapter: EthereumNetworkAdapters,
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
@@ -882,7 +890,7 @@ pub async fn triggers_in_block(
 /// It is recommended that `to` be far behind the block number of latest block the Ethereum
 /// node is aware of.
 pub fn blocks_with_triggers(
-    adapter: Arc<dyn EthereumAdapter>,
+    adapter: EthereumNetworkAdapters,
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
@@ -946,7 +954,6 @@ pub fn blocks_with_triggers(
 
     let logger1 = logger.cheap_clone();
     let logger2 = logger.cheap_clone();
-    let eth_clone = eth.cheap_clone();
     Box::new(
         trigger_futs
             .concat2()
@@ -955,13 +962,9 @@ pub fn blocks_with_triggers(
                     .clone()
                     .block_hash_by_block_number(&logger, chain_store.clone(), to, true)
                     .then(move |to_hash| match to_hash {
-                        Ok(n) => n.ok_or_else(|| {
-                            warn!(logger2,
-                                    "Ethereum endpoint is behind";
-                                    "url" => eth_clone.url_hostname()
-                            );
-                            format_err!("Block {} not found in the chain", to)
-                        }),
+                        Ok(n) => {
+                            n.ok_or_else(|| format_err!("Block {} not found in the chain", to))
+                        }
                         Err(e) => Err(e),
                     }),
             )

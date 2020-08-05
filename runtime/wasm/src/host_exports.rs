@@ -34,7 +34,7 @@ pub(crate) struct HostExports {
     causality_region: String,
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<MappingABI>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    ethereum_adapters: EthereumNetworkAdapters,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
     store: Arc<dyn crate::RuntimeStore>,
@@ -59,7 +59,7 @@ impl HostExports {
         data_source_context: Option<DataSourceContext>,
         templates: Arc<Vec<DataSourceTemplate>>,
         abis: Vec<MappingABI>,
-        ethereum_adapter: Arc<dyn EthereumAdapter>,
+        ethereum_adapters: EthereumNetworkAdapters,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
@@ -78,7 +78,7 @@ impl HostExports {
             causality_region,
             templates,
             abis,
-            ethereum_adapter,
+            ethereum_adapters,
             link_resolver,
             call_cache,
             store,
@@ -293,11 +293,11 @@ impl HostExports {
         };
 
         // Run Ethereum call in tokio runtime
-        let eth_adapter = self.ethereum_adapter.clone();
+        let eth_adapters = self.ethereum_adapters.clone();
         let logger1 = logger.clone();
         let call_cache = self.call_cache.clone();
         let result = match block_on(future::lazy(move || {
-            eth_adapter.contract_call(&logger1, call, call_cache)
+            eth_adapters.contract_call(&logger1, call, call_cache)
         })) {
             Ok(tokens) => Ok(Some(tokens)),
             Err(EthereumContractCallError::Revert(reason)) => {

@@ -670,7 +670,7 @@ async fn main() {
                         let mut indexer = network_indexer::NetworkIndexer::new(
                             &logger,
                             eth_networks
-                                .adapter_with_capabilities(
+                                .adapters_with_capabilities(
                                     network_name.clone(),
                                     &NodeCapabilities {
                                         archive: false,
@@ -1050,16 +1050,16 @@ mod test {
             traces: false,
         };
         let has_mainnet_with_traces = ethereum_networks
-            .adapter_with_capabilities("mainnet".to_string(), &traces)
+            .adapters_with_capabilities("mainnet".to_string(), &traces)
             .is_ok();
         let has_goerli_with_archive = ethereum_networks
-            .adapter_with_capabilities("goerli".to_string(), &archive)
+            .adapters_with_capabilities("goerli".to_string(), &archive)
             .is_ok();
         let has_mainnet_with_archive = ethereum_networks
-            .adapter_with_capabilities("mainnet".to_string(), &archive)
+            .adapters_with_capabilities("mainnet".to_string(), &archive)
             .is_ok();
         let has_goerli_with_traces = ethereum_networks
-            .adapter_with_capabilities("goerli".to_string(), &traces)
+            .adapters_with_capabilities("goerli".to_string(), &traces)
             .is_ok();
 
         assert_eq!(has_mainnet_with_traces, true);

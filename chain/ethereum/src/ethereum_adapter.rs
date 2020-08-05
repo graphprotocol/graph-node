@@ -622,13 +622,14 @@ where
 
         let web3 = self.web3.clone();
         let net_version_future = retry("net_version RPC call", &logger)
-            .no_limit()
+            .limit(5)
             .timeout_secs(20)
             .run(move || web3.net().version().from_err());
 
         let web3 = self.web3.clone();
+        // TODO: Use an env var for the retry limit?
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
-            .no_limit()
+            .limit(5)
             .timeout_secs(30)
             .run(move || {
                 web3.eth()

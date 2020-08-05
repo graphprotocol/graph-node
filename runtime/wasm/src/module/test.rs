@@ -130,7 +130,17 @@ fn mock_host_exports(
     data_source: DataSource,
     store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) -> HostExports {
-    let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
+    let capabilities = NodeCapabilities { archive: true, traces: true};
+    let mut ethereum_networks = EthereumNetworks::new();
+    ethereum_networks.insert(
+        "test".into(),
+        capabilities,
+        Arc::new(MockEthereumAdapter::default()),
+    );
+    let ethereum_adapters = ethereum_networks
+        .adapters_with_capabilities("test".into(), &capabilities)
+        .unwrap();
+
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
 
@@ -143,7 +153,7 @@ fn mock_host_exports(
         data_source.context,
         Arc::new(data_source.templates),
         data_source.mapping.abis,
-        mock_ethereum_adapter,
+        ethereum_adapters,
         Arc::new(graph_core::LinkResolver::from(
             ipfs_api::IpfsClient::default(),
         )),

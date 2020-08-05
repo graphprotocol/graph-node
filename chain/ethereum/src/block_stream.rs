@@ -5,7 +5,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use graph::components::ethereum::{
-    blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities,
+    blocks_with_triggers, triggers_in_block, EthereumNetworkAdapters, EthereumNetworks,
+    NodeCapabilities,
 };
 use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
@@ -98,7 +99,7 @@ enum ReconciliationStepOutcome {
 struct BlockStreamContext<S, C> {
     subgraph_store: Arc<S>,
     chain_store: Arc<C>,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapters: EthereumNetworkAdapters,
     node_id: NodeId,
     subgraph_id: SubgraphDeploymentId,
     reorg_threshold: u64,
@@ -118,7 +119,7 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
         Self {
             subgraph_store: self.subgraph_store.clone(),
             chain_store: self.chain_store.clone(),
-            eth_adapter: self.eth_adapter.clone(),
+            eth_adapters: self.eth_adapters.clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
@@ -157,7 +158,7 @@ where
     pub fn new(
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
-        eth_adapter: Arc<dyn EthereumAdapter>,
+        eth_adapters: EthereumNetworkAdapters,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
         log_filter: EthereumLogFilter,
@@ -176,7 +177,7 @@ where
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,
-                eth_adapter,
+                eth_adapters,
                 node_id,
                 subgraph_id,
                 reorg_threshold,
@@ -333,7 +334,7 @@ where
                     .map_or(
                         Box::new(future::ok(true)) as Box<dyn Future<Item = _, Error = _> + Send>,
                         |ptr| {
-                            ctx.eth_adapter.is_on_main_chain(
+                            ctx.eth_adapters.is_on_main_chain(
                                 &ctx.logger,
                                 ctx.metrics.ethrpc_metrics.clone(),
                                 ctx.chain_store.clone(),
@@ -422,7 +423,7 @@ where
                             );
                             Box::new(
                                 blocks_with_triggers(
-                                    ctx.eth_adapter,
+                                    ctx.eth_adapters,
                                     ctx.logger.clone(),
                                     ctx.chain_store.clone(),
                                     ctx.metrics.ethrpc_metrics.clone(),
@@ -489,7 +490,7 @@ where
                         // due to the race conditions previously mentioned,
                         // so instead we will advance the subgraph ptr by one block.
                         // Note that head_ancestor is a child of subgraph_ptr.
-                        let eth_adapter = self.eth_adapter.clone();
+                        let eth_adapters = self.eth_adapters.clone();
 
                         let block_with_calls = if !self.include_calls_in_blocks {
                             Box::new(future::ok(EthereumBlockWithCalls {
@@ -499,7 +500,7 @@ where
                                 as Box<dyn Future<Item = _, Error = _> + Send>
                         } else {
                             Box::new(
-                                ctx.eth_adapter
+                                ctx.eth_adapters
                                     .calls_in_block(
                                         &logger,
                                         ctx.metrics.ethrpc_metrics.clone(),
@@ -517,7 +518,7 @@ where
                             block_with_calls
                                 .and_then(move |block| {
                                     triggers_in_block(
-                                        eth_adapter,
+                                        eth_adapters,
                                         logger,
                                         ctx.chain_store.clone(),
                                         ctx.metrics.ethrpc_metrics.clone(),
@@ -564,7 +565,7 @@ where
 
                 // First, load the block in order to get the parent hash.
                 Box::new(
-                    self.eth_adapter
+                    self.eth_adapters
                         .load_blocks(
                             ctx.logger.clone(),
                             ctx.chain_store.clone(),
@@ -1019,9 +1020,9 @@ where
             traces: include_calls_in_blocks,
         };
 
-        let eth_adapter = self
+        let eth_adapters = self
             .eth_networks
-            .adapter_with_capabilities(network_name.clone(), &requirements)
+            .adapters_with_capabilities(network_name.clone(), &requirements)
             .expect(&format!(
                 "no eth adapter that supports network: {} with {}",
                 &network_name, &requirements
@@ -1031,7 +1032,7 @@ where
         BlockStream::new(
             self.subgraph_store.clone(),
             chain_store,
-            eth_adapter.clone(),
+            eth_adapters.clone(),
             self.node_id.clone(),
             deployment_id,
             log_filter,
