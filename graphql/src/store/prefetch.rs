@@ -577,13 +577,16 @@ fn collect_fields<'a>(
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
 ) -> IndexMap<&'a String, CollectedResponseKey<'a>> {
     let mut grouped_fields = IndexMap::new();
-    collect_fields_inner(
-        ctx,
-        parent_ty,
-        selection_sets,
-        &mut HashSet::new(),
-        &mut grouped_fields,
-    );
+
+    for selection_set in selection_sets {
+        collect_fields_inner(
+            ctx,
+            parent_ty,
+            selection_set,
+            &mut HashSet::new(),
+            &mut grouped_fields,
+        );
+    }
 
     // For interfaces, if a response key occurs both under the interface and under concrete types,
     // we want to add the fields selected at the interface level to the selections in the specific
@@ -605,100 +608,128 @@ fn collect_fields<'a>(
 // change to an implementing object type if it passes to a fragment with a concrete type condition.
 fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    mut type_condition: ObjectOrInterface<'a>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
+    type_condition: ObjectOrInterface<'a>,
+    selection_set: &'a q::SelectionSet,
     visited_fragments: &mut HashSet<&'a q::Name>,
     output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) {
-    let schema = ctx.query.schema.document();
+    fn is_reference_field(
+        schema: &s::Document,
+        object_type: ObjectOrInterface,
+        field: &q::Field,
+    ) -> bool {
+        object_type
+            .field(&field.name)
+            .map(|field_def| sast::get_type_definition_from_field(schema, field_def))
+            .unwrap_or(None)
+            .map(|type_def| match type_def {
+                s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => true,
+                _ => false,
+            })
+            .unwrap_or(false)
+    }
 
-    for selection_set in selection_sets {
-        // Only consider selections that are not skipped and should be included
-        let selections = selection_set
-            .items
-            .iter()
-            .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
-            .filter(|selection| qast::include_selection(selection, &ctx.query.variables));
+    fn collect_fragment<'a>(
+        ctx: &'a ExecutionContext<impl Resolver>,
+        outer_type_condition: ObjectOrInterface<'a>,
+        frag_ty_condition: Option<&'a q::TypeCondition>,
+        frag_selection_set: &'a q::SelectionSet,
+        visited_fragments: &mut HashSet<&'a q::Name>,
+        output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
+    ) {
+        let schema = &ctx.query.schema.document();
+        let fragment_ty = match frag_ty_condition {
+            // Unwrap: Validation ensures this interface exists.
+            Some(q::TypeCondition::On(ty_name)) if outer_type_condition.is_interface() => {
+                schema.object_or_interface(ty_name).unwrap()
+            }
+            _ => outer_type_condition,
+        };
 
-        fn is_reference_field(
-            schema: &s::Document,
-            object_type: ObjectOrInterface,
-            field: &q::Field,
-        ) -> bool {
-            object_type
-                .field(&field.name)
-                .map(|field_def| sast::get_type_definition_from_field(schema, field_def))
-                .unwrap_or(None)
-                .map(|type_def| match type_def {
-                    s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => true,
-                    _ => false,
-                })
-                .unwrap_or(false)
+        // The check above makes any type condition on an outer object type redunant.
+        // A type condition on the same interface as the outer one is also redundant.
+        let redundant_condition = fragment_ty.name() == outer_type_condition.name();
+        if redundant_condition || fragment_ty.is_object() {
+            collect_fields_inner(
+                ctx,
+                fragment_ty,
+                &frag_selection_set,
+                visited_fragments,
+                output,
+            );
+        } else {
+            // This is an interface fragment in the root selection for an interface.
+            // We deal with this by expanding the fragment into one fragment for
+            // each type in the intersection between the root interface and the
+            // interface in the fragment type condition.
+            let types_for_interface = ctx.query.schema.types_for_interface();
+            let root_tys = &types_for_interface[outer_type_condition.name()];
+            let fragment_tys = &types_for_interface[fragment_ty.name()];
+            let intersection_tys = root_tys.iter().filter(|root_ty| {
+                fragment_tys
+                    .iter()
+                    .map(|t| &t.name)
+                    .any(|t| *t == root_ty.name)
+            });
+            for ty in intersection_tys {
+                collect_fields_inner(
+                    ctx,
+                    ty.into(),
+                    &frag_selection_set,
+                    visited_fragments,
+                    output,
+                );
+            }
         }
+    };
 
-        for selection in selections {
-            match selection {
-                q::Selection::Field(ref field) => {
-                    // Only consider fields that point to objects or interfaces, and
-                    // ignore nonexistent fields
-                    if is_reference_field(schema, type_condition, field) {
-                        let response_key = qast::get_response_key(field);
-                        output
-                            .entry(response_key)
-                            .or_default()
-                            .collect_field(type_condition, field);
-                    }
+    // Only consider selections that are not skipped and should be included
+    let selections = selection_set
+        .items
+        .iter()
+        .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
+        .filter(|selection| qast::include_selection(selection, &ctx.query.variables));
+
+    for selection in selections {
+        match selection {
+            q::Selection::Field(ref field) => {
+                // Only consider fields that point to objects or interfaces, and
+                // ignore nonexistent fields
+                if is_reference_field(&ctx.query.schema.document(), type_condition, field) {
+                    let response_key = qast::get_response_key(field);
+                    output
+                        .entry(response_key)
+                        .or_default()
+                        .collect_field(type_condition, field);
                 }
+            }
 
-                q::Selection::FragmentSpread(spread) => {
-                    // Only consider the fragment if it hasn't already been included,
-                    // as would be the case if the same fragment spread ...Foo appeared
-                    // twice in the same selection set
-                    if visited_fragments.insert(&spread.fragment_name) {
-                        let fragment = ctx.query.get_fragment(&spread.fragment_name);
-                        let fragment_ty = {
-                            // Unwrap: Validation ensures this is an object or interface.
-                            let q::TypeCondition::On(ty_name) = &fragment.type_condition;
-                            schema.object_or_interface(ty_name).unwrap()
-                        };
-
-                        if fragment_ty.is_object() {
-                            type_condition = fragment_ty
-                        };
-
-                        collect_fields_inner(
-                            ctx,
-                            fragment_ty,
-                            once(&fragment.selection_set),
-                            visited_fragments,
-                            output,
-                        );
-                    }
-                }
-
-                q::Selection::InlineFragment(fragment) => {
-                    let fragment_ty = {
-                        match &fragment.type_condition {
-                            Some(q::TypeCondition::On(ty_name)) => {
-                                // Unwrap: Validation ensures this is an object or interface.
-                                schema.object_or_interface(&ty_name).unwrap()
-                            }
-                            None => type_condition,
-                        }
-                    };
-
-                    if fragment_ty.is_object() {
-                        type_condition = fragment_ty
-                    };
-
-                    collect_fields_inner(
+            q::Selection::FragmentSpread(spread) => {
+                // Only consider the fragment if it hasn't already been included,
+                // as would be the case if the same fragment spread ...Foo appeared
+                // twice in the same selection set
+                if visited_fragments.insert(&spread.fragment_name) {
+                    let fragment = ctx.query.get_fragment(&spread.fragment_name);
+                    collect_fragment(
                         ctx,
-                        fragment_ty,
-                        once(&fragment.selection_set),
+                        type_condition,
+                        Some(&fragment.type_condition),
+                        &fragment.selection_set,
                         visited_fragments,
                         output,
                     );
                 }
+            }
+
+            q::Selection::InlineFragment(fragment) => {
+                collect_fragment(
+                    ctx,
+                    type_condition,
+                    fragment.type_condition.as_ref(),
+                    &fragment.selection_set,
+                    visited_fragments,
+                    output,
+                );
             }
         }
     }
