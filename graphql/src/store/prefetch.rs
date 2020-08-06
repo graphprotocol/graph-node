@@ -362,20 +362,17 @@ impl<'a> Join<'a> {
 
         // Add appropriate children using grouped map
         for parent in parents {
-            // Set the `response_key` field in `parent`. Make sure that even
-            // if `parent` has no matching `children`, the field gets set (to
-            // an empty `Vec`).
+            // Set the `response_key` field in `parent`. Make sure that even if `parent` has no
+            // matching `children`, the field gets set (to an empty `Vec`).
             //
             // This `insert` will overwrite in the case where the response key occurs both at the
-            // interface level and in concrete types. The interface is always joined first, and may
-            // then be overwritten by the merged selection set under. the concrete type condition.
-            // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-            let values = parent
-                .id()
-                .ok()
-                .and_then(|id| grouped.get(&*id).map(|values| values.clone()))
-                .unwrap_or(vec![]);
-            parent.children.insert(response_key.to_owned(), values);
+            // interface level and in nested object type conditions. The values for the interface
+            // query are always joined first, and may then be overwritten by the merged selection
+            // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+            let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
+            parent
+                .children
+                .insert(response_key.to_owned(), values.unwrap_or(vec![]));
         }
     }
 
