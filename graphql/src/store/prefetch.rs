@@ -28,6 +28,7 @@ lazy_static! {
     static ref ARG_ID: String = String::from("id");
 }
 
+/// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
 struct ObjectCondition<'a>(&'a s::ObjectType);
 
@@ -473,18 +474,7 @@ fn execute_selection_set<'a>(
             }
         }
 
-        // Make sure the interface fields are processed first.
-        // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-        let interface_fields = collected_fields.interface_fields;
-        let interface = collected_fields
-            .interface_cond
-            .map(|cond| (ObjectOrInterface::Interface(cond), interface_fields));
-        for (type_cond, fields) in interface.into_iter().chain(
-            collected_fields
-                .concrete_types
-                .into_iter()
-                .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
-        ) {
+        for (type_cond, fields) in collected_fields {
             // Filter out parents that do not match the type condition.
             let parents: Vec<&mut Node> = if is_root_node(parents.iter()) {
                 parents.iter_mut().collect()
@@ -543,25 +533,50 @@ fn execute_selection_set<'a>(
 
 #[derive(Default)]
 struct CollectedResponseKey<'a> {
-    interface_cond: Option<&'a s::InterfaceType>,
-    interface_fields: Vec<&'a q::Field>,
-    concrete_types: IndexMap<ObjectCondition<'a>, Vec<&'a q::Field>>,
+    iface_cond: Option<&'a s::InterfaceType>,
+    iface_fields: Vec<&'a q::Field>,
+    obj_types: IndexMap<ObjectCondition<'a>, Vec<&'a q::Field>>,
 }
 
 impl<'a> CollectedResponseKey<'a> {
     fn collect_field(&mut self, type_condition: ObjectOrInterface<'a>, field: &'a q::Field) {
         match type_condition {
             ObjectOrInterface::Interface(i) => {
-                self.interface_cond = Some(i);
-                self.interface_fields.push(field);
+                // `collect_fields` will never call this with two different interfaces types.
+                assert!(
+                    self.iface_cond.is_none() || self.iface_cond.map(|x| &x.name) == Some(&i.name)
+                );
+                self.iface_cond = Some(i);
+                self.iface_fields.push(field);
             }
             ObjectOrInterface::Object(o) => {
-                self.concrete_types
+                self.obj_types
                     .entry(ObjectCondition(o))
                     .or_default()
                     .push(field);
             }
         }
+    }
+}
+
+impl<'a> IntoIterator for CollectedResponseKey<'a> {
+    type Item = (ObjectOrInterface<'a>, Vec<&'a q::Field>);
+    type IntoIter = Box<dyn Iterator<Item = Self::Item> + 'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        // Make sure the interface fields are processed first.
+        // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+        let iface_fields = self.iface_fields;
+        Box::new(
+            self.iface_cond
+                .map(|cond| (ObjectOrInterface::Interface(cond), iface_fields))
+                .into_iter()
+                .chain(
+                    self.obj_types
+                        .into_iter()
+                        .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
+                ),
+        )
     }
 }
 
@@ -590,8 +605,8 @@ fn collect_fields<'a>(
     // concrete types, effectively merging the selection sets.
     // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
     for collected_response_key in grouped_fields.values_mut() {
-        for concrete_type_fields in collected_response_key.concrete_types.values_mut() {
-            concrete_type_fields.extend_from_slice(&collected_response_key.interface_fields)
+        for obj_type_fields in collected_response_key.obj_types.values_mut() {
+            obj_type_fields.extend_from_slice(&collected_response_key.iface_fields)
         }
     }
 
