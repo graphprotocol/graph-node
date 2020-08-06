@@ -630,7 +630,9 @@ fn execute_selection_set_to_map<'a>(
     }
 }
 
-/// Collects fields from selection sets.
+/// Collects fields from selection sets. Returns a map from response key to fields. There will
+/// typically be a single field for a response key. If there are multiple, the overall execution
+/// logic will effectively merged them into the output for the response key.
 pub fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
