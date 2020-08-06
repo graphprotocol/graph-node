@@ -17,11 +17,12 @@ To build and run this project you need to have the following installed on your s
 
 - Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
-- IPFS – [Installing IPFS](https://ipfs.io/docs/install/)
+- IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 
-For Ethereum network data, you can either run a local node or use Infura.io:
+For Ethereum network data, you can either run a local node or use an external provider:
 
-- Local node – [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
+- Local node – [Installing and running Ethereum node](https://docs.ethhub.io/using-ethereum/running-an-ethereum-node/)
+- Chainstack infra – [Chainstack](https://chainstack.com/ethereum/)
 - Infura infra – [Infura.io](https://infura.io/)
 
 ### Running a Local Graph Node
@@ -46,13 +47,16 @@ Once you have all the dependencies set up, you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
-  --ethereum-rpc mainnet:https://mainnet.infura.io/v3/[PROJECT_ID] \
+  --ethereum-rpc mainnet: \ETHERUM_NODE
   --ipfs 127.0.0.1:5001
 ```
 
 Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional. It depends on your setup.
 
-If you're using Infura you should [sign up](https://infura.io/register) to get a PROJECT_ID, it's free.
+In the `ETHEREUM_NODE`, provide the connection details depending on your provider:
+
+- Chainstack: `https://USERNAME:PASSWORD@RPC_ENDPOINT`. You can [sign up](https://console.chainstack.com/user/account/create) for a free Developer plan with free shared Ethereum nodes.
+- Infura: `https://mainnet.infura.io/v3/[PROJECT_ID]`. You can [sign up](https://infura.io/register) for a free Core plan.
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
@@ -166,7 +170,7 @@ Here's [a list of good first issues](https://github.com/graphprotocol/graph-node
 
 ## License
 
-Copyright &copy; 2018-2019 Graph Protocol, Inc. and contributors.
+Copyright &copy; 2018-2020 Graph Protocol, Inc. and contributors.
 
 The Graph is dual-licensed under the [MIT license](LICENSE-MIT) and the [Apache License, Version 2.0](LICENSE-APACHE).
 
