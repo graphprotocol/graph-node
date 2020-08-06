@@ -1147,36 +1147,39 @@ fn nested_interface_fragments_overlapping() {
         }
     );
 
-    // let query = "query {
-    //     i1Faces {
-    //         __typename
-    //         foo1 {
-    //             id
-    //         }
-    //         ...on I2face {
-    //             foo1 {
-    //                 id
-    //             }
-    //         }
-    //     }
-    // }";
+    let query = "query {
+        i1Faces {
+            __typename
+            foo1 {
+                id
+            }
+            ...on I2face {
+                foo1 {
+                    id
+                }
+            }
+        }
+    }";
 
-    // let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
-    // assert!(res.errors.is_none(), format!("{:#?}", res.errors));
-    // assert_eq!(
-    //     res.data.unwrap(),
-    //     object! {
-    //         i1Faces: vec![
-    //             object! {
-    //                 __typename: "One"
-    //             },
-    //             object! {
-    //                 __typename: "Two",
-    //                 foo1: object! {
-    //                     id: "foo",
-    //                 },
-    //             },
-    //         ]
-    //     }
-    // );
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
+    assert!(res.errors.is_none(), format!("{:#?}", res.errors));
+    assert_eq!(
+        res.data.unwrap(),
+        object! {
+            i1Faces: vec![
+                object! {
+                    __typename: "One",
+                    foo1: object! {
+                        id: "foo"
+                    }
+                },
+                object! {
+                    __typename: "Two",
+                    foo1: object! {
+                        id: "foo",
+                    },
+                },
+            ]
+        }
+    );
 }
