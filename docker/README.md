@@ -11,7 +11,8 @@ docker run -it \
   -e postgres_pass=<PASSWORD> \
   -e postgres_db=<DBNAME> \
   -e ipfs=<HOST>:<PORT> \
-  -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL>
+  -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL> \
+  graphprotocol/graph-node:latest
 ```
 
 ### Example usage
@@ -23,7 +24,8 @@ docker run -it \
   -e postgres_pass=oh-hello \
   -e postgres_db=graph-node \
   -e ipfs=host.docker.internal:5001 \
-  -e ethereum=mainnet:https://mainnet.infura.io
+  -e ethereum=mainnet:http://localhost:8545/ \
+  graphprotocol/graph-node:latest
 ```
 
 ## Docker Compose
