@@ -30,21 +30,21 @@ impl GraphQLServiceMetrics {
     pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
         let query_execution_time = registry
             .new_histogram_vec(
-                "subgraph_query_execution_time",
-                "Execution time for GraphQL queries",
-                vec![String::from("subgraph_deployment")],
+                "query_execution_time",
+                "Execution time for successful GraphQL queries",
+                vec![String::from("deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
-            .expect("failed to create `subgraph_query_execution_time` histogram");
+            .expect("failed to create `query_execution_time` histogram");
 
         let failed_query_execution_time = registry
             .new_histogram_vec(
-                "subgraph_failed_query_execution_time",
+                "query_failed_execution_time",
                 "Execution time for failed GraphQL queries",
-                vec![String::from("subgraph_deployment")],
+                vec![String::from("deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
-            .expect("failed to create `subgraph_failed_query_execution_time` histogram");
+            .expect("failed to create `query_failed_execution_time` histogram");
 
         Self {
             query_execution_time,
