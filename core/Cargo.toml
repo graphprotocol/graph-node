@@ -8,7 +8,7 @@ async-trait = "0.1.36"
 atomic_refcell = "0.1.6"
 bytes = "0.5"
 futures01 = { package="futures", version="0.1.29" }
-futures = { version="0.3.4", features=["compat"] }
+futures = { version="0.3", features=["compat"] }
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
 ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
