@@ -504,7 +504,13 @@ impl RuntimeHostTrait for RuntimeHost {
         // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
         let tokens = function_abi
             .decode_input(&call.input.0[4..])
-            .context("Generating function inputs for an Ethereum call failed")?;
+            .with_context(|| {
+                format!(
+                    "Generating function inputs for the call {:?} failed, raw input: {}",
+                    &function_abi,
+                    hex::encode(&call.input.0)
+                )
+            })?;
 
         ensure!(
             tokens.len() == function_abi.inputs.len(),
@@ -528,7 +534,13 @@ impl RuntimeHostTrait for RuntimeHost {
         // `function.outputs` to create a `Vec<LogParam>`.
         let tokens = function_abi
             .decode_output(&call.output.0)
-            .context("Generating function outputs for an Ethereum call failed")?;
+            .with_context(|| {
+                format!(
+                    "Decoding function outputs for the call {:?} failed, raw output: {}",
+                    &function_abi,
+                    hex::encode(&call.output.0)
+                )
+            })?;
 
         ensure!(
             tokens.len() == function_abi.outputs.len(),
