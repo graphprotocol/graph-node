@@ -42,7 +42,9 @@ impl Transport {
 }
 
 impl web3::Transport for Transport {
-    type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send + Unpin>;
+    type Out = Box<
+        dyn std::future::Future<Output = web3::error::Result<jsonrpc_core::Value>> + Send + Unpin,
+    >;
 
     fn prepare(&self, method: &str, params: Vec<Value>) -> (RequestId, Call) {
         match self {
@@ -61,8 +63,9 @@ impl web3::Transport for Transport {
 
 impl web3::BatchTransport for Transport {
     type Batch = Box<
-        dyn Future<Item = Vec<Result<Value, web3::error::Error>>, Error = web3::error::Error>
-            + Send
+        dyn std::future::Future<
+                Output = web3::error::Result<Vec<web3::error::Result<jsonrpc_core::Value>>>,
+            > + Send
             + Unpin,
     >;
 
