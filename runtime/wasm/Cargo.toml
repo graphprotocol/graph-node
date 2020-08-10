@@ -11,7 +11,6 @@ futures = "0.1.21"
 hex = "0.4.2"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-pwasm-utils = "0.11"
 bs58 = "0.3.1"
 graph-runtime-derive = { path = "../derive" }
 semver = "0.10.0"
