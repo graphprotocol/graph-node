@@ -459,12 +459,13 @@ impl LoadManager {
     }
 
     fn overloaded(&self) -> (bool, Duration) {
-        let stats = self.store_wait_stats.read().unwrap();
-        let average = stats.average();
-        let overloaded = average
+        let store_avg = self.store_wait_stats.read().unwrap().average();
+        let semaphore_avg = self.semaphore_wait_stats.read().unwrap().average();
+        let max_avg = store_avg.max(semaphore_avg);
+        let overloaded = max_avg
             .map(|average| average > *LOAD_THRESHOLD)
             .unwrap_or(false);
-        (overloaded, average.unwrap_or(ZERO_DURATION))
+        (overloaded, max_avg.unwrap_or(ZERO_DURATION))
     }
 
     fn kill_state(&self) -> (f64, Instant) {
