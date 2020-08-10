@@ -1421,7 +1421,7 @@ dependencies = [
  "graph-mock",
  "graph-store-postgres",
  "hex-literal",
- "hyper 0.12.35",
+ "hyper 0.13.7",
  "jsonrpc-core",
  "lazy_static",
  "mockall",
