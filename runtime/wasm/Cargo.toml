@@ -18,7 +18,7 @@ semver = "0.10.0"
 lazy_static = "1.4"
 uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.19.2"
-strum_macros = "0.18.0"
+strum_macros = "0.19.2"
 bytes = "0.5"
 
 # We need patch in order to be able to call host exports when initializing globals.
