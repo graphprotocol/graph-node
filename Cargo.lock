@@ -1548,7 +1548,6 @@ dependencies = [
  "hex 0.4.2",
  "ipfs-api",
  "lazy_static",
- "pwasm-utils",
  "semver 0.10.0",
  "strum",
  "strum_macros",
@@ -2646,12 +2645,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parity-wasm"
-version = "0.40.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e39faaa292a687ea15120b1ac31899b13586446521df6c149e46f1584671e0f"
-
-[[package]]
 name = "parking_lot"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2962,17 +2955,6 @@ name = "protobuf"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71964f34fd51cf04882d7ae3325fa0794d4cad66a03d0003f38d8ae4f63ba126"
-
-[[package]]
-name = "pwasm-utils"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d473123ba135028544926f7aa6f34058d8bc6f120c4fcd3777f84af724280b3"
-dependencies = [
- "byteorder",
- "log 0.4.8",
- "parity-wasm",
-]
 
 [[package]]
 name = "quick-error"
