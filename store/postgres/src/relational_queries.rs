@@ -45,7 +45,7 @@ lazy_static! {
                 usize::from_str(&s)
                     .unwrap_or_else(|_| panic!("TYPE_BATCH_SIZE must be a number, but is `{}`", s))
             })
-            .unwrap_or(0)
+            .unwrap_or(150)
     };
 }
 
