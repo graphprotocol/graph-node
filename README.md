@@ -19,7 +19,7 @@ To build and run this project you need to have the following installed on your s
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 
-For Ethereum network data, you can either run a local node or use an external provider:
+For Ethereum network data, you can either run a local node or use a node provider:
 
 - Local node – [Installing and running Ethereum node](https://docs.ethhub.io/using-ethereum/running-an-ethereum-node/)
 - Chainstack infra – [Chainstack](https://chainstack.com/ethereum/)
