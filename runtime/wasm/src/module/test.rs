@@ -130,7 +130,10 @@ fn mock_host_exports(
     data_source: DataSource,
     store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) -> HostExports {
-    let capabilities = NodeCapabilities { archive: true, traces: true};
+    let capabilities = NodeCapabilities {
+        archive: true,
+        traces: true,
+    };
     let mut ethereum_networks = EthereumNetworks::new();
     ethereum_networks.insert(
         "test".into(),

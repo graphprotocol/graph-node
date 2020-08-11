@@ -1,4 +1,4 @@
-use futures::{future, Future, Stream};
+use futures::{Future, Stream};
 use mockall::predicate::*;
 use rand::seq::IteratorRandom;
 use std::cmp::{Ord, Ordering, PartialOrd};
@@ -10,14 +10,17 @@ use std::sync::Arc;
 use crate::components::ethereum::{
     EthereumAdapter, EthereumAdapterError, EthereumBlock, EthereumBlockPointer, EthereumCall,
     EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumLogFilter,
-    EthereumNetworkIdentifier, EthereumTrigger, LightEthereumBlock, SubgraphEthRpcMetrics,
+    EthereumNetworkIdentifier, LightEthereumBlock, SubgraphEthRpcMetrics,
 };
 pub use crate::impl_slog_value;
 use crate::prelude::{
-    debug, err_msg, error, ethabi, format_err,
-    futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-    hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, CheapClone, DynTryFuture,
-    Error, EthereumCallCache, Logger, TimeoutError,
+    ethabi, format_err,
+    futures03::{
+        compat::Future01CompatExt, compat::Stream01CompatExt,
+        TryFutureExt, TryStreamExt,
+    },
+    retry, stream, web3, ChainStore, CheapClone,
+    Error, EthereumCallCache, Logger,
 };
 use ethabi::Token;
 use web3::types::{Block, Log, H256};
@@ -172,19 +175,20 @@ impl EthereumAdapter for EthereumNetworkAdapters {
         // }
         let logger = logger.clone();
         let adapters = self.adapters.clone();
-        let identifier_future = retry("NetworkAdapters: net_version RPC call", &logger)
-            .limit(adapters.len())
-            .timeout_secs(20)
-            .run(move || {
-                adapters
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .adapter
-                    .net_identifiers(&logger)
-            });
-
-        Box::new(identifier_future.from_err())
+        Box::new(
+            retry("NetworkAdapters: net_version RPC call", &logger)
+                .limit(adapters.len())
+                .timeout_secs(20)
+                .run(move || {
+                    adapters
+                        .iter()
+                        .next()
+                        .unwrap()
+                        .adapter
+                        .net_identifiers(&logger)
+                })
+                .from_err(),
+        )
     }
 
     fn latest_block_header(
@@ -193,7 +197,7 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
-        let latest_block_header = retry(
+        Box::new(retry(
             "NetworkAdapters: eth_getBlockByNumber(latest) no txs RPC call",
             &logger,
         )
@@ -214,8 +218,7 @@ impl EthereumAdapter for EthereumNetworkAdapters {
                 )
                 .into()
             })
-        });
-        Box::new(latest_block_header.from_err())
+        }))
     }
 
     fn latest_block(
@@ -424,7 +427,7 @@ impl EthereumAdapter for EthereumNetworkAdapters {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
         let block = block.clone();
-        let uncles = retry(
+        Box::new(retry(
             "NetworkAdapters: eth_getUncleByBlockHashAndIndex RPC call",
             &logger,
         )
@@ -438,8 +441,7 @@ impl EthereumAdapter for EthereumNetworkAdapters {
                 .adapter
                 .uncles(&logger, &block)
         })
-        .from_err();
-        Box::new(uncles)
+        .from_err())
     }
 
     fn is_on_main_chain(
@@ -499,31 +501,25 @@ impl EthereumAdapter for EthereumNetworkAdapters {
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> DynTryFuture<'static, Vec<Log>, Error> {
+    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
 
-        adapters.iter().next().unwrap().adapter.logs_in_block_range(
-            &logger,
-            subgraph_metrics,
-            from,
-            to,
-            log_filter,
+        Box::new(
+            retry("NetworkAdapters: calls in block", &logger)
+                .limit(adapters.len())
+                .timeout_secs(20)
+                .run(move || {
+                    adapters.iter().next().unwrap().adapter.logs_in_block_range(
+                        &logger,
+                        subgraph_metrics.cheap_clone(),
+                        from.clone(),
+                        to.clone(),
+                        log_filter.clone(),
+                    )
+                })
+                .from_err(),
         )
-        // let adapter = adapters.next().unwrap();
-        // Box::new(retry("NetworkAdapters: logs in block range", &logger)
-        //     .limit(adapters.len())
-        //     .timeout_secs(20)
-        //     .run(move || {
-        //         adapters.iter().next().unwrap().adapter.logs_in_block_range(
-        //             &logger,
-        //             subgraph_metrics,
-        //             from,
-        //             to,
-        //             log_filter,
-        //         ).map_ok(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect())
-        //             .compat()
-        //     }))
     }
 
     fn calls_in_block_range(
@@ -536,27 +532,32 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
-        adapters
-            .iter()
-            .next()
-            .unwrap()
-            .adapter
-            .calls_in_block_range(&logger, subgraph_metrics, from, to, call_filter)
 
-        //
-        // Box::new(stream::unfold(retry("NetworkAdapters: calls in block range", &logger)
-        //     .limit(adapters.len())
-        //     .timeout_secs(20)
-        //     .run(move || {
-        //         adapters
-        //             .iter()
-        //             .next()
-        //             .unwrap()
-        //             .adapter
-        //             .calls_in_block_range(&logger, subgraph_metrics, from, to, call_filter)
-        //             .map(EthereumTrigger::Call)
-        //             .collect()
-        //     })))
+        Box::new(
+            retry("NetworkAdapters: calls in block", &logger)
+                .limit(adapters.len())
+                .timeout_secs(20)
+                .run(move || {
+                    adapters
+                        .iter()
+                        .next()
+                        .unwrap()
+                        .adapter
+                        .calls_in_block_range(
+                            &logger,
+                            subgraph_metrics.clone(),
+                            from.clone(),
+                            to.clone(),
+                            call_filter.clone(),
+                        )
+                        .compat()
+                        .try_collect::<Vec<EthereumCall>>()
+                        .compat()
+                })
+                .map(|i: Vec<EthereumCall>| stream::iter_ok::<_, Error>(i))
+                .from_err()
+                .flatten_stream(),
+        )
     }
 
     fn contract_call(
@@ -572,12 +573,11 @@ impl EthereumAdapter for EthereumNetworkAdapters {
                 .limit(adapters.len())
                 .timeout_secs(20)
                 .run(move || {
-                    adapters
-                        .iter()
-                        .next()
-                        .unwrap()
-                        .adapter
-                        .contract_call(&logger, call.clone(), cache.clone())
+                    adapters.iter().next().unwrap().adapter.contract_call(
+                        &logger,
+                        call.clone(),
+                        cache.clone(),
+                    )
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
@@ -599,21 +599,26 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
-        adapters.iter().next().unwrap().adapter.load_blocks(
-                        logger,
-                        chain_store,
-                        block_hashes,
-                    )
-        // retry("NetworkAdapters: load blocks", &logger)
-        //     .limit(adapters.len())
-        //     .timeout_secs(20)
-        //     .run(move || {
-        //         adapters.iter().next().unwrap().adapter.load_blocks(
-        //             logger,
-        //             chain_store,
-        //             block_hashes,
-        //         )
-        //     })
+
+        Box::new(
+            retry("NetworkAdapters: load blocks", &logger)
+                .limit(adapters.len())
+                .timeout_secs(20)
+                .run(move || {
+                    adapters
+                        .iter()
+                        .next()
+                        .unwrap()
+                        .adapter
+                        .load_blocks(logger.clone(), chain_store.clone(), block_hashes.clone())
+                        .compat()
+                        .try_collect::<Vec<LightEthereumBlock>>()
+                        .compat()
+                })
+                .map(|i: Vec<LightEthereumBlock>| stream::iter_ok::<_, Error>(i))
+                .from_err()
+                .flatten_stream(),
+        )
     }
 
     /// Reorg safety: `to` must be a final block.
@@ -625,18 +630,18 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
-        Box::new(retry("NetworkAdapters: block range to ptrs", &logger)
-            .limit(adapters.len())
-            .timeout_secs(20)
-            .run(move || {
-                adapters
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .adapter
-                    .block_range_to_ptrs(logger.clone(), from.clone(), to.clone())
-            })
-            .from_err()
+        Box::new(
+            retry("NetworkAdapters: block range to ptrs", &logger)
+                .limit(adapters.len())
+                .timeout_secs(20)
+                .run(move || {
+                    adapters.iter().next().unwrap().adapter.block_range_to_ptrs(
+                        logger.clone(),
+                        from.clone(),
+                        to.clone(),
+                    )
+                })
+                .from_err(),
         )
     }
 }

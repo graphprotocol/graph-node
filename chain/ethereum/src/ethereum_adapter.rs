@@ -11,7 +11,9 @@ use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::{
     debug, err_msg, error, ethabi, format_err,
-    futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
+    futures03::{
+        self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
+    },
     hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, CheapClone, DynTryFuture,
     Error, EthereumCallCache, Logger, TimeoutError,
 };
@@ -1120,23 +1122,25 @@ where
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> DynTryFuture<'static, Vec<Log>, Error> {
+    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send> {
         let eth: Self = self.cheap_clone();
         let logger = logger.clone();
 
-        futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
-            eth.cheap_clone().log_stream(
-                logger.cheap_clone(),
-                subgraph_metrics.cheap_clone(),
-                from,
-                to,
-                filter,
-            )
-        }))
-        // Real limits on the number of parallel requests are imposed within the adapter.
-        .buffered(1000)
-        .try_concat()
-        .boxed()
+        Box::new(
+            futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
+                eth.cheap_clone().log_stream(
+                    logger.cheap_clone(),
+                    subgraph_metrics.cheap_clone(),
+                    from,
+                    to,
+                    filter,
+                )
+            }))
+            // Real limits on the number of parallel requests are imposed within the adapter.
+            .buffered(1000)
+            .try_concat()
+            .compat(),
+        )
     }
 
     fn calls_in_block_range(

@@ -17,7 +17,7 @@ use graph_core::MetricsRegistry;
 use graph_store_postgres::Store as DieselStore;
 use web3::types::{H2048, H256, H64, U256};
 
-use graph::components::ethereum::{EthereumNetworkAdapters, EthereumNetworks, NodeCapabilities};
+use graph::components::ethereum::{EthereumNetworks, NodeCapabilities};
 use test_store::*;
 
 // Helper macros to define indexer events.
@@ -64,13 +64,12 @@ fn run_network_indexer(
     let prometheus_registry = Arc::new(Registry::new());
     let metrics_registry = Arc::new(MetricsRegistry::new(logger.clone(), prometheus_registry));
 
-    let capabilities = NodeCapabilities { archive: true, traces: true};
+    let capabilities = NodeCapabilities {
+        archive: true,
+        traces: true,
+    };
     let mut ethereum_networks = EthereumNetworks::new();
-    ethereum_networks.insert(
-        "test".into(),
-        capabilities,
-        adapter,
-    );
+    ethereum_networks.insert("test".into(), capabilities, adapter);
     let ethereum_adapters = ethereum_networks
         .adapters_with_capabilities("test".into(), &capabilities)
         .unwrap();

@@ -1,7 +1,6 @@
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::SyncFailure;
 use futures::Future;
-use futures03::future::TryFutureExt;
 use mockall::predicate::*;
 use mockall::*;
 use petgraph::graphmap::GraphMap;
@@ -74,7 +73,7 @@ impl From<ABIError> for EthereumContractCallError {
 }
 
 impl From<failure::Error> for EthereumContractCallError {
-    fn from(e: failure::Error) -> Self {
+    fn from(_: failure::Error) -> Self {
         EthereumContractCallError::Timeout
     }
 }
@@ -756,7 +755,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> DynTryFuture<'static, Vec<Log>, Error>;
+    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send>;
 
     fn calls_in_block_range(
         &self,
@@ -912,8 +911,7 @@ pub fn blocks_with_triggers(
     if !log_filter.is_empty() {
         trigger_futs.push(Box::new(
             eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
-                .map_ok(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect())
-                .compat(),
+                .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
         ))
     }
 
@@ -953,7 +951,6 @@ pub fn blocks_with_triggers(
     }
 
     let logger1 = logger.cheap_clone();
-    let logger2 = logger.cheap_clone();
     Box::new(
         trigger_futs
             .concat2()
