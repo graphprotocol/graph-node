@@ -22,7 +22,7 @@ To build and run this project you need to have the following installed on your s
 For Ethereum network data, you can either run a local node or use a node provider:
 
 - Local node – [Installing and running Ethereum node](https://docs.ethhub.io/using-ethereum/running-an-ethereum-node/)
-- Chainstack infra – [Chainstack](https://chainstack.com/ethereum/)
+- Chainstack infra – [Chainstack](https://chainstack.com/build-better-with-ethereum/)
 - Infura infra – [Infura.io](https://infura.io/)
 
 ### Running a Local Graph Node
