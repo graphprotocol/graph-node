@@ -47,7 +47,7 @@ Once you have all the dependencies set up, you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
-  --ethereum-rpc mainnet: \ETHERUM_NODE
+  --ethereum-rpc mainnet:ETHEREUM_NODE \
   --ipfs 127.0.0.1:5001
 ```
 
