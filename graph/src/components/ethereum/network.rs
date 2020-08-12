@@ -158,10 +158,6 @@ impl EthereumNetworkAdapters {
 }
 
 impl EthereumAdapter for EthereumNetworkAdapters {
-    fn url_hostname(&self) -> &str {
-        unimplemented!()
-    }
-
     fn net_identifiers(
         &self,
         logger: &Logger,

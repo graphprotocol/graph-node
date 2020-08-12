@@ -13,7 +13,7 @@ use web3::types::*;
 
 use super::types::*;
 use crate::components::ethereum::EthereumNetworkAdapters;
-use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
+use crate::components::metrics::{CounterVec, HistogramVec};
 use crate::prelude::*;
 
 pub type EventSignature = H256;
@@ -505,7 +505,7 @@ impl ProviderEthRpcMetrics {
                 String::from("eth_rpc_request_duration"),
                 String::from("Measures eth rpc request duration"),
                 HashMap::new(),
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("hostname")],
                 vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
             )
             .unwrap();
@@ -523,9 +523,9 @@ impl ProviderEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, hostname: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(vec![method, hostname].as_slice())
             .observe(duration);
     }
 
@@ -536,18 +536,19 @@ impl ProviderEthRpcMetrics {
 
 #[derive(Clone)]
 pub struct SubgraphEthRpcMetrics {
-    request_duration: Box<GaugeVec>,
+    request_duration: Box<HistogramVec>,
     errors: Box<CounterVec>,
 }
 
 impl SubgraphEthRpcMetrics {
     pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
         let request_duration = registry
-            .new_gauge_vec(
+            .new_histogram_vec(
                 format!("subgraph_eth_rpc_request_duration_{}", subgraph_hash),
                 String::from("Measures eth rpc request duration for a subgraph deployment"),
                 HashMap::new(),
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("hostname")],
+                vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
             )
             .unwrap();
         let errors = registry
@@ -564,10 +565,10 @@ impl SubgraphEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, hostname: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
-            .set(duration);
+            .with_label_values(vec![method, hostname].as_slice())
+            .observe(duration);
     }
 
     pub fn add_error(&self, method: &str) {
@@ -621,8 +622,6 @@ impl BlockStreamMetrics {
 /// or a remote node over RPC.
 #[automock]
 pub trait EthereumAdapter: Send + Sync + 'static {
-    fn url_hostname(&self) -> &str;
-
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
     fn net_identifiers(

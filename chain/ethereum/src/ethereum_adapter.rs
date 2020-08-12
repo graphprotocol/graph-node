@@ -101,6 +101,10 @@ where
         }
     }
 
+    fn url_hostname(&self) -> &str {
+        &self.url_hostname
+    }
+
     fn traces(
         &self,
         logger: &Logger,
@@ -111,6 +115,7 @@ where
     ) -> impl Future<Item = Vec<Trace>, Error = Error> {
         let eth = self.clone();
         let logger = logger.to_owned();
+        let hostname = eth.url_hostname().to_owned();
 
         retry("trace_filter RPC call", &logger)
             .limit(*REQUEST_RETRIES)
@@ -133,6 +138,7 @@ where
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth.metrics.clone();
+                let hostname = hostname.clone();
                 eth.web3
                     .trace()
                     .filter(trace_filter)
@@ -160,8 +166,8 @@ where
                     .from_err()
                     .then(move |result| {
                         let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "trace_filter");
-                        subgraph_metrics.observe_request(elapsed, "trace_filter");
+                        provider_metrics.observe_request(elapsed, "trace_filter", &hostname);
+                        subgraph_metrics.observe_request(elapsed, "trace_filter", &hostname);
                         if result.is_err() {
                             provider_metrics.add_error("trace_filter");
                             subgraph_metrics.add_error("trace_filter");
@@ -198,6 +204,7 @@ where
         too_many_logs_fingerprints: &'static [&'static str],
     ) -> impl Future<Item = Vec<Log>, Error = TimeoutError<web3::error::Error>> {
         let eth_adapter = self.clone();
+        let hostname = eth_adapter.url_hostname().to_owned();
 
         retry("eth_getLogs RPC call", &logger)
             .when(move |res: &Result<_, web3::error::Error>| match res {
@@ -212,6 +219,7 @@ where
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth_adapter.metrics.clone();
+                let hostname = hostname.clone();
 
                 // Create a log filter
                 let log_filter: Filter = FilterBuilder::default()
@@ -224,8 +232,8 @@ where
                 // Request logs from client
                 eth_adapter.web3.eth().logs(log_filter).then(move |result| {
                     let elapsed = start.elapsed().as_secs_f64();
-                    provider_metrics.observe_request(elapsed, "eth_getLogs");
-                    subgraph_metrics.observe_request(elapsed, "eth_getLogs");
+                    provider_metrics.observe_request(elapsed, "eth_getLogs", &hostname);
+                    subgraph_metrics.observe_request(elapsed, "eth_getLogs", &hostname);
                     if result.is_err() {
                         provider_metrics.add_error("eth_getLogs");
                         subgraph_metrics.add_error("eth_getLogs");
@@ -387,7 +395,8 @@ where
         block_number_opt: Option<BlockNumber>,
     ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
         let block_number_opt = block_number_opt.map(Into::into);
-        let web3 = self.web3.clone();
+        let eth_adapter = self.clone();
+        let hostname = eth_adapter.url_hostname().to_owned();
         let logger = logger.clone();
 
         // Outer retry used only for 0-byte responses,
@@ -408,8 +417,10 @@ where
             .no_logging()
             .no_timeout()
             .run(move || {
-                let web3 = web3.clone();
+                let web3 = eth_adapter.web3.clone();
                 let call_data = call_data.clone();
+                let provider_metrics = eth_adapter.metrics.clone();
+                let hostname = hostname.clone();
 
                 retry("eth_call RPC call", &logger)
                     .when(|result| match result {
@@ -419,6 +430,10 @@ where
                     .no_limit()
                     .timeout_secs(*JSON_RPC_TIMEOUT)
                     .run(move || {
+                        let start = Instant::now();
+                        let provider_metrics = provider_metrics.clone();
+                        let hostname = hostname.clone();
+
                         let req = CallRequest {
                             from: None,
                             to: contract_address,
@@ -427,7 +442,10 @@ where
                             value: None,
                             data: Some(call_data.clone()),
                         };
-                        web3.eth().call(req, block_number_opt).then(|result| {
+                        web3.eth().call(req, block_number_opt).then(move |result| {
+                            let elapsed = start.elapsed().as_secs_f64();
+                            provider_metrics.observe_request(elapsed, "eth_call", &hostname);
+
                             // Try to check if the call was reverted. The JSON-RPC response for
                             // reverts is not standardized, the current situation for the tested
                             // clients is:
@@ -617,10 +635,6 @@ where
     T::Batch: Send,
     T::Out: Send,
 {
-    fn url_hostname(&self) -> &str {
-        &self.url_hostname
-    }
-
     fn net_identifiers(
         &self,
         logger: &Logger,
