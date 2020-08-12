@@ -414,7 +414,7 @@ where
                     Err(_) => false,
                 }
             })
-            .limit(16)
+            .limit(*PROVIDER_RETRIES)
             .no_logging()
             .no_timeout()
             .run(move || {
@@ -428,7 +428,7 @@ where
                         Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
                         Err(_) => true,
                     })
-                    .no_limit()
+                    .limit(*PROVIDER_RETRIES)
                     .timeout_secs(*JSON_RPC_TIMEOUT)
                     .run(move || {
                         let start = Instant::now();
@@ -641,6 +641,7 @@ where
         logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
         let logger = logger.clone();
+        let hostname = self.url_hostname().to_owned();
 
         let web3 = self.web3.clone();
         let net_version_future = retry("net_version RPC call", &logger)
@@ -676,9 +677,9 @@ where
                         genesis_block_hash,
                     },
                 )
-                .map_err(|e| {
+                .map_err(move |e| {
                     e.into_inner().unwrap_or_else(|| {
-                        format_err!("Ethereum node took too long to read network identifiers")
+                        format_err!("Ethereum node at '{}' took too long to read network identifiers", hostname.clone())
                     })
                 }),
         )
