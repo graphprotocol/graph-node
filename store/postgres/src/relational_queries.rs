@@ -1083,7 +1083,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql(" e\n where ");
         self.table.primary_key().eq(&self.id, &mut out)?;
         out.push_sql(" and ");
-        BlockRangeContainsClause::new("e.", self.block).walk_ast(out)
+        BlockRangeContainsClause::new(&self.table, "e.", self.block).walk_ast(out)
     }
 }
 
@@ -1137,7 +1137,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 .primary_key()
                 .is_in(&self.ids_for_type[table.object.as_str()], &mut out)?;
             out.push_sql(" and ");
-            BlockRangeContainsClause::new("e.", self.block).walk_ast(out.reborrow())?;
+            BlockRangeContainsClause::new(&table, "e.", self.block).walk_ast(out.reborrow())?;
         }
         Ok(())
     }
@@ -1625,7 +1625,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id) cross join lateral (select * from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
@@ -1661,7 +1661,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
@@ -1702,7 +1702,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id) cross join lateral (select * from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -1732,7 +1732,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -1769,7 +1769,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" cross join lateral (select * from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
         out.push_sql(" and c.id = any(p.child_ids)");
         self.and_filter(out.reborrow())?;
@@ -1798,7 +1798,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new("c.", block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
         out.push_sql(" and ");
         out.push_sql("c.id = p.child_id");
@@ -2179,7 +2179,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(table.qualified_name.as_str());
         out.push_sql(" c");
         out.push_sql("\n where ");
-        BlockRangeContainsClause::new("c.", self.block).walk_ast(out.reborrow())?;
+        BlockRangeContainsClause::new(&table, "c.", self.block).walk_ast(out.reborrow())?;
         if let Some(filter) = table_filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;

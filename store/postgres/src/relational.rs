@@ -13,8 +13,10 @@ use diesel::{
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use inflector::Inflector;
+use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom, TryInto};
+use std::env;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -41,6 +43,23 @@ use graph::prelude::{
 use crate::block_range::{BLOCK_RANGE_COLUMN, BLOCK_UNVERSIONED};
 pub use crate::catalog::Catalog;
 use crate::entities::STRING_PREFIX_SIZE;
+
+lazy_static! {
+    /// Experimental: a list of fully qualified table names that contain
+    /// entities that are like accounts in that they have a relatively small
+    /// number of entities, with a large number of change for each entity. It
+    /// is useful to treat such tables special in queries by changing the
+    /// clause that selects for a specific block range in a way that makes
+    /// the BRIN index on block_range usable
+    ///
+    /// Example: GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things
+    static ref ACCOUNT_TABLES: HashSet<String> = {
+        env::var("GRAPH_ACCOUNT_TABLES")
+            .ok()
+            .map(|v| v.split(",").map(|s| s.to_owned()).collect())
+            .unwrap_or(HashSet::new())
+    };
+}
 
 /// A string we use as a SQL name for a table or column. The important thing
 /// is that SQL names are snake cased. Using this type makes it easier to
@@ -334,6 +353,7 @@ impl Layout {
             /// is really only needed for the tests to make the names of indexes
             /// predictable
             position: position as u32,
+            is_account_like: false,
         }
     }
 
@@ -1124,6 +1144,12 @@ pub struct Table {
     pub qualified_name: SqlName,
 
     pub columns: Vec<Column>,
+
+    /// This kind of entity behaves like an account in that it has a low
+    /// ratio of distinct entities to overall number of rows because
+    /// entities are updated frequently on average
+    pub is_account_like: bool,
+
     /// The position of this table in all the tables for this layout; this
     /// is really only needed for the tests to make the names of indexes
     /// predictable
@@ -1149,11 +1175,13 @@ impl Table {
             .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
-
+        let is_account_like =
+            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.schema, table_name));
         let table = Table {
             object: defn.name.clone(),
             name: table_name.clone(),
             qualified_name: SqlName::qualified_name(&catalog.schema, &table_name),
+            is_account_like,
             columns,
             position,
         };

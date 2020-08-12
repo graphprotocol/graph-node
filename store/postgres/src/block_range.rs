@@ -4,12 +4,25 @@ use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::{Integer, Range};
+use lazy_static::lazy_static;
+use std::collections::HashSet;
+use std::env;
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use graph::prelude::BlockNumber;
+use graph::prelude::{BlockNumber, BLOCK_NUMBER_MAX};
 
 use crate::history_event::HistoryEvent;
+use crate::relational::Table;
+
+lazy_static! {
+    static ref USE_BLOCK_RANGE_BRIN_CLAUSE: HashSet<String> = {
+        env::var("GRAPH_ACCOUNT_TABLES")
+            .ok()
+            .map(|v| v.split(",").map(|s| s.to_owned()).collect())
+            .unwrap_or(HashSet::new())
+    };
+}
 
 /// The name of the column in which we store the block range
 pub(crate) const BLOCK_RANGE_COLUMN: &str = "block_range";
@@ -83,6 +96,7 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
 /// of an entity
 #[derive(Constructor)]
 pub struct BlockRangeContainsClause<'a> {
+    table: &'a Table,
     table_prefix: &'a str,
     block: BlockNumber,
 }
@@ -94,6 +108,22 @@ impl<'a> QueryFragment<Pg> for BlockRangeContainsClause<'a> {
         out.push_sql(self.table_prefix);
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(" @> ");
-        out.push_bind_param::<Integer, _>(&self.block)
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        if self.table.is_account_like && self.block < BLOCK_NUMBER_MAX {
+            // When block is BLOCK_NUMBER_MAX, these checks would be wrong; we
+            // don't worry about adding the equivalent in that case since
+            // we generally only see BLOCK_NUMBER_MAX here for metadata
+            // queries where block ranges don't matter anyway
+            out.push_sql(" and coalesce(upper(");
+            out.push_identifier(BLOCK_RANGE_COLUMN)?;
+            out.push_sql("), 2147483647) > ");
+            out.push_bind_param::<Integer, _>(&self.block)?;
+            out.push_sql(" and lower(");
+            out.push_identifier(BLOCK_RANGE_COLUMN)?;
+            out.push_sql(") <= ");
+            out.push_bind_param::<Integer, _>(&self.block)
+        } else {
+            Ok(())
+        }
     }
 }
