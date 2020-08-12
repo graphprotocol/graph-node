@@ -64,6 +64,11 @@ lazy_static! {
             .unwrap_or("10".into())
             .parse::<usize>()
             .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
+
+    static ref PROVIDER_RETRIES: usize = std::env::var("GRAPH_ETHEREUM_PROVIDER_RETRIES")
+        .unwrap_or("2".into())
+        .parse::<usize>()
+        .expect("invalid GRAPH_ETHEREUM_PROVIDER_RETRIES env var");
 }
 
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
@@ -624,14 +629,13 @@ where
 
         let web3 = self.web3.clone();
         let net_version_future = retry("net_version RPC call", &logger)
-            .limit(5)
+            .limit(*PROVIDER_RETRIES)
             .timeout_secs(20)
             .run(move || web3.net().version().from_err());
 
         let web3 = self.web3.clone();
-        // TODO: Use an env var for the retry limit?
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
-            .limit(5)
+            .limit(*PROVIDER_RETRIES)
             .timeout_secs(30)
             .run(move || {
                 web3.eth()
@@ -673,7 +677,7 @@ where
 
         Box::new(
             retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
-                .no_limit()
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -703,7 +707,7 @@ where
 
         Box::new(
             retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
-                .no_limit()
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -752,7 +756,7 @@ where
 
         Box::new(
             retry("eth_getBlockByHash RPC call", &logger)
-                .limit(*REQUEST_RETRIES)
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -777,7 +781,7 @@ where
 
         Box::new(
             retry("eth_getBlockByNumber RPC call", &logger)
-                .no_limit()
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -819,7 +823,7 @@ where
         // transaction never made it back into the main chain.
         Box::new(
             retry("batch eth_getTransactionReceipt RPC call", &logger)
-                .limit(16)
+                .limit(*PROVIDER_RETRIES)
                 .no_logging()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
@@ -985,7 +989,7 @@ where
         } else {
             Box::new(
                 retry("eth_getBlockByNumber RPC call", &logger)
-                    .no_limit()
+                    .limit(*PROVIDER_RETRIES)
                     .timeout_secs(*JSON_RPC_TIMEOUT)
                     .run(move || {
                         web3.eth()
@@ -1019,7 +1023,7 @@ where
                 let web3 = self.web3.clone();
 
                 retry("eth_getUncleByBlockHashAndIndex RPC call", &logger)
-                    .no_limit()
+                    .limit(*PROVIDER_RETRIES)
                     .timeout_secs(60)
                     .run(move || {
                         web3.eth()
