@@ -20,9 +20,7 @@ lazy_static! {
     // Setting this to anything will disable the expanded BlockRangeContainsClause
     static ref DISABLE_BRIN_BLOCK_RANGE: bool = {
         env::var("DISABLE_BRIN_BLOCK_RANGE")
-            .ok()
-            .map(|_| false)
-            .unwrap_or(true)
+            .ok().is_some()
     };
 }
 
