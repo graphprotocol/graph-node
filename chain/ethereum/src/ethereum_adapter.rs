@@ -334,6 +334,7 @@ where
             let filter = filter.cheap_clone();
             let eth = eth.cheap_clone();
             let subgraph_metrics = subgraph_metrics.cheap_clone();
+            let hostname = eth.url_hostname.clone();
 
             async move {
                 if start > to {
@@ -343,7 +344,7 @@ where
                 let end = (start + step).min(to);
                 debug!(
                     logger,
-                    "Requesting logs for blocks [{}, {}], {}", start, end, filter
+                    "Requesting logs for blocks [{}, {}], {} from {}", start, end, filter, hostname
                 );
                 let res = eth
                     .logs_with_sigs(
@@ -747,12 +748,14 @@ where
         logger: &Logger,
         block_hash: H256,
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send> {
+        let hostname = self.url_hostname().to_owned();
         Box::new(
             self.block_by_hash(&logger, block_hash)
                 .and_then(move |block_opt| {
                     block_opt.ok_or_else(move || {
                         format_err!(
-                            "Ethereum node could not find block with hash {}",
+                            "Ethereum node at '{}' could not find block with hash {}",
+                            hostname,
                             block_hash
                         )
                     })
@@ -792,6 +795,7 @@ where
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
+        let hostname = self.url_hostname().to_owned();
 
         Box::new(
             retry("eth_getBlockByNumber RPC call", &logger)
@@ -805,7 +809,8 @@ where
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
                         format_err!(
-                            "Ethereum node took too long to return block {}",
+                            "Ethereum node at '{}' took too long to return block {}",
+                            hostname,
                             block_number
                         )
                     })
@@ -939,6 +944,7 @@ where
         chain_store: Arc<dyn ChainStore>,
         block_number: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
+        let hostname = self.url_hostname().to_owned();
         Box::new(
             // When this method is called (from the subgraph registrar), we don't
             // know yet whether the block with the given number is final, it is
@@ -947,7 +953,8 @@ where
                 .and_then(move |block_hash_opt| {
                     block_hash_opt.ok_or_else(|| {
                         format_err!(
-                            "Ethereum node could not find start block hash by block number {}",
+                            "Ethereum node at '{}' could not find start block hash by block number {}",
+                            &hostname,
                             &block_number
                         )
                     })
@@ -1031,21 +1038,25 @@ where
     ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send> {
         let block_hash = block.hash.unwrap();
         let n = block.uncles.len();
+        let hostname = self.url_hostname().to_owned();
 
         Box::new(
             futures::stream::futures_ordered((0..n).map(move |index| {
                 let web3 = self.web3.clone();
+                let hostname = hostname.to_owned();
 
                 retry("eth_getUncleByBlockHashAndIndex RPC call", &logger)
                     .limit(*PROVIDER_RETRIES)
                     .timeout_secs(60)
                     .run(move || {
+                        let hostname = hostname.clone();
                         web3.eth()
                             .uncle(block_hash.clone().into(), index.into())
                             .map_err(move |e| {
                                 format_err!(
-                                    "could not get uncle {} for block {:?} ({} uncles): {}",
+                                    "could not get uncle {} from '{}' for block {:?} ({} uncles): {}",
                                     index,
+                                    &hostname,
                                     block_hash,
                                     n,
                                     e
@@ -1069,12 +1080,17 @@ where
         chain_store: Arc<dyn ChainStore>,
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
+        let hostname = self.url_hostname().to_owned();
         Box::new(
             self.block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt
                         .ok_or_else(|| {
-                            format_err!("Ethereum node is missing block #{}", block_ptr.number)
+                            format_err!(
+                                "Ethereum node '{}' is missing block #{}",
+                                hostname,
+                                block_ptr.number
+                            )
                         })
                         .map(|block_hash| block_hash == block_ptr.hash)
                 }),
@@ -1090,6 +1106,7 @@ where
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let eth = self.clone();
         let addresses = Vec::new();
+        let hostname = self.url_hostname().to_owned();
         let calls = eth
             .trace_stream(
                 &logger,
@@ -1105,9 +1122,10 @@ where
                 // If there are no traces something has gone wrong.
                 if traces.is_empty() {
                     return future::err(format_err!(
-                        "Trace stream returned no traces for block: number = `{}`, hash = `{}`",
+                        "Trace stream returned no traces for block: number = `{}`, hash = `{}`, hostname = '{}'",
                         block_number,
                         block_hash,
+                        hostname
                     ));
                 }
                 // Since we can only pull traces by block number and we have
@@ -1288,7 +1306,12 @@ where
         );
 
         // Return a stream that lazily loads batches of blocks.
-        debug!(logger, "Requesting {} block(s)", missing_blocks.len());
+        debug!(
+            logger,
+            "Requesting {} block(s), hostname: {}",
+            missing_blocks.len(),
+            self.url_hostname()
+        );
         Box::new(
             self.load_blocks_rpc(logger.clone(), missing_blocks.into_iter().collect())
                 .collect()
@@ -1313,7 +1336,13 @@ where
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         // Currently we can't go to the DB for this because there might be duplicate entries for
         // the same block number.
-        debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
+        debug!(
+            &logger,
+            "Requesting hashes for blocks [{}, {}], hostname: {}",
+            from,
+            to,
+            self.url_hostname()
+        );
         Box::new(
             self.load_block_ptrs_rpc(logger, (from..=to).collect())
                 .collect(),
