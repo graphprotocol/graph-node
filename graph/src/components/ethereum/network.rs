@@ -15,12 +15,8 @@ use crate::components::ethereum::{
 pub use crate::impl_slog_value;
 use crate::prelude::{
     ethabi, format_err,
-    futures03::{
-        compat::Future01CompatExt, compat::Stream01CompatExt,
-        TryFutureExt, TryStreamExt,
-    },
-    retry, stream, web3, ChainStore, CheapClone,
-    Error, EthereumCallCache, Logger,
+    futures03::{compat::Stream01CompatExt, TryFutureExt, TryStreamExt},
+    retry, stream, web3, ChainStore, CheapClone, Error, EthereumCallCache, Logger,
 };
 use ethabi::Token;
 use web3::types::{Block, Log, H256};
@@ -170,20 +166,19 @@ impl EthereumAdapter for EthereumNetworkAdapters {
         &self,
         logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
-        // for adapter in self.adapters.clone() {
-        //     adapter.
-        // }
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry("NetworkAdapters: net_version RPC call", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
+                    count += 1;
                     adapters
-                        .iter()
-                        .next()
-                        .unwrap()
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
                         .adapter
                         .net_identifiers(&logger)
                 })
@@ -197,28 +192,32 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
-        Box::new(retry(
-            "NetworkAdapters: eth_getBlockByNumber(latest) no txs RPC call",
-            &logger,
-        )
-        .limit(adapters.len())
-        .timeout_secs(20)
-        .run(move || {
-            adapters
-                .iter()
-                .next()
-                .unwrap()
-                .adapter
-                .latest_block_header(&logger)
-        })
-        .map_err(move |e| {
-            e.into_inner().unwrap_or_else(move || {
-                format_err!(
-                    "All compatible Ethereum nodes took too long to return latest block header"
-                )
-                .into()
+        let mut count = 0;
+
+        Box::new(
+            retry(
+                "NetworkAdapters: eth_getBlockByNumber(latest) no txs RPC call",
+                &logger,
+            )
+            .no_limit()
+            .timeout_secs(20)
+            .run(move || {
+                count += 1;
+                adapters
+                    .get(count % adapters.len())
+                    .expect("Ethereum adapters access index should never be out of range")
+                    .adapter
+                    .latest_block_header(&logger)
             })
-        }))
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    format_err!(
+                        "All compatible Ethereum nodes took too long to return latest block header"
+                    )
+                    .into()
+                })
+            }),
+        )
     }
 
     fn latest_block(
@@ -228,18 +227,20 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry(
                 "NetworkAdapters: eth_getBlockByNumber(latest) with txs RPC call",
                 &logger,
             )
-            .limit(adapters.len())
+            .no_limit()
             .timeout_secs(20)
             .run(move || {
+                count += 1;
                 adapters
-                    .iter()
-                    .next()
-                    .unwrap()
+                    .get(count % adapters.len())
+                    .expect("Ethereum adapters access index should never be out of range")
                     .adapter
                     .latest_block(&logger)
             })
@@ -261,18 +262,20 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry(
                 "NetworkAdapters: eth_getBlockByNumber(latest) with txs RPC call",
                 &logger,
             )
-            .limit(adapters.len())
+            .no_limit()
             .timeout_secs(20)
             .run(move || {
+                count += 1;
                 adapters
-                    .iter()
-                    .next()
-                    .unwrap()
+                    .get(count % adapters.len())
+                    .expect("Ethereum adapters access index should never be out of range")
                     .adapter
                     .load_block(&logger, block_hash)
             })
@@ -287,18 +290,20 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry(
                 "NetworkAdapters: eth_getBlockByNumber(latest) with txs RPC call",
                 &logger,
             )
-            .limit(adapters.len())
+            .no_limit()
             .timeout_secs(20)
             .run(move || {
+                count += 1;
                 adapters
-                    .iter()
-                    .next()
-                    .unwrap()
+                    .get(count % adapters.len())
+                    .expect("Ethereum adapters access index should never be out of range")
                     .adapter
                     .block_by_hash(&logger, block_hash)
             })
@@ -313,18 +318,20 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry(
                 "NetworkAdapters: eth_getBlockByNumber(latest) with txs RPC call",
                 &logger,
             )
-            .limit(adapters.len())
+            .no_limit()
             .timeout_secs(20)
             .run(move || {
+                count += 1;
                 adapters
-                    .iter()
-                    .next()
-                    .unwrap()
+                    .get(count % adapters.len())
+                    .expect("Ethereum adapters access index should never be out of range")
                     .adapter
                     .block_by_number(&logger, block_number)
             })
@@ -339,19 +346,21 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry(
                 "NetworkAdapters: batch eth_getTransactionReceipt RPC call",
                 &logger,
             )
-            .limit(adapters.len())
+            .no_limit()
             .timeout_secs(20)
             .run(move || {
                 let block = block.clone();
+                count += 1;
                 adapters
-                    .iter()
-                    .next()
-                    .unwrap()
+                    .get(count % adapters.len())
+                    .expect("Ethereum adapters access index should never be out of range")
                     .adapter
                     .load_full_block(&logger, block)
             })
@@ -372,21 +381,24 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
-        Box::new(retry("NetworkAdapters: block pointer from number", &logger)
-            .limit(adapters.len())
-            .timeout_secs(20)
-            .run(move || {
-                adapters
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .adapter
-                    .block_pointer_from_number(&logger, chain_store.clone(), block_number)
-            }).map_err(move |e| {
-            e.into_inner().unwrap_or_else(move || {
-                format_err!("All compatible Ethereum nodes took too long to return block pointer from number").into()
-            })
-        }))
+        let mut count = 0;
+
+        Box::new(
+            retry("NetworkAdapters: block pointer from number", &logger)
+                .no_limit()
+                    .timeout_secs(20)
+                    .run(move || {
+                        count += 1;
+                        adapters.get(count % adapters.len())
+                            .expect("Ethereum adapters access index should never be out of range")
+                            .adapter
+                            .block_pointer_from_number(&logger, chain_store.clone(), block_number)
+                    }).map_err(move |e| {
+                        e.into_inner().unwrap_or_else(move || {
+                            format_err!("All compatible Ethereum nodes took too long to return block pointer from number").into()
+                        })
+                    })
+        )
     }
 
     fn block_hash_by_block_number(
@@ -398,15 +410,16 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
         Box::new(
             retry("NetworkAdapters: block hash by block number", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
+                    count += 1;
                     adapters
-                        .iter()
-                        .next()
-                        .unwrap()
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
                         .adapter
                         .block_hash_by_block_number(
                             &logger,
@@ -427,21 +440,25 @@ impl EthereumAdapter for EthereumNetworkAdapters {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
         let block = block.clone();
-        Box::new(retry(
-            "NetworkAdapters: eth_getUncleByBlockHashAndIndex RPC call",
-            &logger,
+        let mut count = 0;
+
+        Box::new(
+            retry(
+                "NetworkAdapters: eth_getUncleByBlockHashAndIndex RPC call",
+                &logger,
+            )
+            .no_limit()
+            .timeout_secs(20)
+            .run(move || {
+                count += 1;
+                adapters
+                    .get(count % adapters.len())
+                    .expect("Ethereum adapters access index should never be out of range")
+                    .adapter
+                    .uncles(&logger, &block)
+            })
+            .from_err(),
         )
-        .limit(adapters.len())
-        .timeout_secs(20)
-        .run(move || {
-            adapters
-                .iter()
-                .next()
-                .unwrap()
-                .adapter
-                .uncles(&logger, &block)
-        })
-        .from_err())
     }
 
     fn is_on_main_chain(
@@ -453,17 +470,24 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry("NetworkAdapters: is on main chain", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
-                    adapters.iter().next().unwrap().adapter.is_on_main_chain(
-                        &logger,
-                        subgraph_metrics.clone(),
-                        chain_store.clone(),
-                        block_ptr.clone(),
-                    )
+                    count += 1;
+                    adapters
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
+                        .adapter
+                        .is_on_main_chain(
+                            &logger,
+                            subgraph_metrics.clone(),
+                            chain_store.clone(),
+                            block_ptr.clone(),
+                        )
                 })
                 .from_err(),
         )
@@ -478,17 +502,24 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry("NetworkAdapters: calls in block", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
-                    adapters.iter().next().unwrap().adapter.calls_in_block(
-                        &logger,
-                        subgraph_metrics.clone(),
-                        block_number.clone(),
-                        block_hash.clone(),
-                    )
+                    count += 1;
+                    adapters
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
+                        .adapter
+                        .calls_in_block(
+                            &logger,
+                            subgraph_metrics.clone(),
+                            block_number.clone(),
+                            block_hash.clone(),
+                        )
                 })
                 .from_err(),
         )
@@ -504,19 +535,25 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
 
         Box::new(
             retry("NetworkAdapters: calls in block", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
-                    adapters.iter().next().unwrap().adapter.logs_in_block_range(
-                        &logger,
-                        subgraph_metrics.cheap_clone(),
-                        from.clone(),
-                        to.clone(),
-                        log_filter.clone(),
-                    )
+                    count += 1;
+                    adapters
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
+                        .adapter
+                        .logs_in_block_range(
+                            &logger,
+                            subgraph_metrics.cheap_clone(),
+                            from.clone(),
+                            to.clone(),
+                            log_filter.clone(),
+                        )
                 })
                 .from_err(),
         )
@@ -532,16 +569,17 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
 
         Box::new(
             retry("NetworkAdapters: calls in block", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
+                    count += 1;
                     adapters
-                        .iter()
-                        .next()
-                        .unwrap()
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
                         .adapter
                         .calls_in_block_range(
                             &logger,
@@ -568,16 +606,19 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry("NetworkAdapters: contract call", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
-                    adapters.iter().next().unwrap().adapter.contract_call(
-                        &logger,
-                        call.clone(),
-                        cache.clone(),
-                    )
+                    count += 1;
+                    adapters
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
+                        .adapter
+                        .contract_call(&logger, call.clone(), cache.clone())
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
@@ -599,16 +640,17 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
 
         Box::new(
             retry("NetworkAdapters: load blocks", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
+                    count += 1;
                     adapters
-                        .iter()
-                        .next()
-                        .unwrap()
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
                         .adapter
                         .load_blocks(logger.clone(), chain_store.clone(), block_hashes.clone())
                         .compat()
@@ -630,16 +672,19 @@ impl EthereumAdapter for EthereumNetworkAdapters {
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         let logger = logger.clone();
         let adapters = self.adapters.clone();
+        let mut count = 0;
+
         Box::new(
             retry("NetworkAdapters: block range to ptrs", &logger)
-                .limit(adapters.len())
+                .no_limit()
                 .timeout_secs(20)
                 .run(move || {
-                    adapters.iter().next().unwrap().adapter.block_range_to_ptrs(
-                        logger.clone(),
-                        from.clone(),
-                        to.clone(),
-                    )
+                    count += 1;
+                    adapters
+                        .get(count % adapters.len())
+                        .expect("Ethereum adapters access index should never be out of range")
+                        .adapter
+                        .block_range_to_ptrs(logger.clone(), from.clone(), to.clone())
                 })
                 .from_err(),
         )
