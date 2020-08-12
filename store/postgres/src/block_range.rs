@@ -4,25 +4,12 @@ use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::{Integer, Range};
-use lazy_static::lazy_static;
-use std::env;
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use graph::prelude::{BlockNumber, BLOCK_NUMBER_MAX};
+use graph::prelude::BlockNumber;
 
 use crate::history_event::HistoryEvent;
-
-lazy_static! {
-    // Make it possible to turn off the expanded BlockRangeContainsClause
-    // if that causes problems in the hosted service. Remove this variable
-    // once we know that it does not lead to performance issues
-    // Setting this to anything will disable the expanded BlockRangeContainsClause
-    static ref DISABLE_BRIN_BLOCK_RANGE: bool = {
-        env::var("DISABLE_BRIN_BLOCK_RANGE")
-            .ok().is_some()
-    };
-}
 
 /// The name of the column in which we store the block range
 pub(crate) const BLOCK_RANGE_COLUMN: &str = "block_range";
@@ -104,42 +91,9 @@ impl<'a> QueryFragment<Pg> for BlockRangeContainsClause<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        // Generate
-        //
-        //       block_range @> {block}
-        //   and coalesce(upper(block_range), BLOCK_NUMBER_MAX) > {block}
-        //   and lower(block_range) <= {block}
-        //
-        // The last two (redundant) clauses are there to make the BRIN index
-        // on block_range usable for these queries
-
         out.push_sql(self.table_prefix);
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(" @> /* contains */ ");
-        out.push_bind_param::<Integer, _>(&self.block)?;
-        if !*DISABLE_BRIN_BLOCK_RANGE && self.block < BLOCK_NUMBER_MAX {
-            // When block is BLOCK_NUMBER_MAX, these checks would be wrong; we
-            // don't worry about adding the equivalent in that case since
-            // we generally only see BLOCK_NUMBER_MAX here for metadata
-            // queries where block ranges don't matter anyway
-            out.push_sql(" and coalesce(upper(");
-            out.push_identifier(BLOCK_RANGE_COLUMN)?;
-            out.push_sql("), 2147483647) > ");
-            out.push_bind_param::<Integer, _>(&self.block)?;
-            out.push_sql(" and lower(");
-            out.push_identifier(BLOCK_RANGE_COLUMN)?;
-            out.push_sql(") <= ");
-            out.push_bind_param::<Integer, _>(&self.block)
-        } else {
-            Ok(())
-        }
+        out.push_sql(" @> ");
+        out.push_bind_param::<Integer, _>(&self.block)
     }
-}
-
-#[test]
-fn block_number_max_is_i32_max() {
-    // The code in this file embeds i32::MAX aka BLOCK_NUMBER_MAX in strings
-    // for efficiency. This assertion makes sure that BLOCK_NUMBER_MAX still
-    // is what we think it is
-    assert_eq!(2147483647, BLOCK_NUMBER_MAX);
 }
