@@ -4,9 +4,6 @@ use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::{Integer, Range};
-use lazy_static::lazy_static;
-use std::collections::HashSet;
-use std::env;
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
@@ -14,15 +11,6 @@ use graph::prelude::{BlockNumber, BLOCK_NUMBER_MAX};
 
 use crate::history_event::HistoryEvent;
 use crate::relational::Table;
-
-lazy_static! {
-    static ref USE_BLOCK_RANGE_BRIN_CLAUSE: HashSet<String> = {
-        env::var("GRAPH_ACCOUNT_TABLES")
-            .ok()
-            .map(|v| v.split(",").map(|s| s.to_owned()).collect())
-            .unwrap_or(HashSet::new())
-    };
-}
 
 /// The name of the column in which we store the block range
 pub(crate) const BLOCK_RANGE_COLUMN: &str = "block_range";
@@ -126,4 +114,12 @@ impl<'a> QueryFragment<Pg> for BlockRangeContainsClause<'a> {
             Ok(())
         }
     }
+}
+
+#[test]
+fn block_number_max_is_i32_max() {
+    // The code in this file embeds i32::MAX aka BLOCK_NUMBER_MAX in strings
+    // for efficiency. This assertion makes sure that BLOCK_NUMBER_MAX still
+    // is what we think it is
+    assert_eq!(2147483647, BLOCK_NUMBER_MAX);
 }
