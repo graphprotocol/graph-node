@@ -11,6 +11,7 @@ use std::str::FromStr;
 use std::sync::RwLock;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use url::Url;
 
 use graph::components::ethereum::{EthereumNetworks, NodeCapabilities};
 use graph::components::forward;
@@ -91,6 +92,23 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
     Ok(queries)
 }
 
+/// Replace the host portion of `url` and return a new URL with `host`
+/// as the host portion
+///
+/// Panics if `url` is not a valid URL (which won't happen in our case since
+/// we would have paniced before getting here as `url` is the connection for
+/// the primary Postgres instance)
+fn replace_host(url: &str, host: &str) -> String {
+    let mut url = match Url::parse(url) {
+        Ok(url) => url,
+        Err(_) => panic!("Invalid Postgres URL {}", url),
+    };
+    if let Err(e) = url.set_host(Some(host)) {
+        panic!("Invalid Postgres url {}: {}", url, e.to_string());
+    }
+    url.into_string()
+}
+
 // Saturating the blocking threads can cause all sorts of issues, so set a large maximum.
 // Ideally we'd use semaphores to not use more blocking threads than DB connections,
 // but for now this is necessary.
@@ -128,7 +146,7 @@ async fn main() {
                 .value_name("URL,")
                 .env("GRAPH_POSTGRES_SECONDARY_HOSTS")
                 .help(
-                    "Comma-separated URLs for read-only Postgres replicas, \
+                    "Comma-separated list of host names/IP's for read-only Postgres replicas, \
                        which will share the load with the primary server",
                 ),
         )
@@ -556,9 +574,11 @@ async fn main() {
     let read_only_conn_pools: Vec<_> = pg_read_replicas
         .into_iter()
         .flatten()
-        .map(|url| {
+        .map(|host| {
+            info!(&logger, "Connecting to Postgres read replica at {}", host);
+            let url = replace_host(&postgres_url, host);
             create_connection_pool(
-                url.to_string(),
+                url,
                 store_conn_pool_size,
                 &logger,
                 connection_pool_registry.cheap_clone(),
