@@ -31,7 +31,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
 
 [dev-dependencies]
-clap = "2.33.2"
+clap = "2.33.3"
 graphql-parser = "0.2.3"
 hex = "0.4.2"
 test-store = { path = "../test-store" }
