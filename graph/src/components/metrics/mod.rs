@@ -34,9 +34,19 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Counter>, PrometheusError>;
 
-    fn global_counter(&self, name: String, help: String) -> Result<Counter, PrometheusError>;
+    fn global_counter(
+        &self,
+        name: String,
+        help: String,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Counter, PrometheusError>;
 
-    fn global_gauge(&self, name: String, help: String) -> Result<Gauge, PrometheusError>;
+    fn global_gauge(
+        &self,
+        name: String,
+        help: String,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Gauge, PrometheusError>;
 
     fn new_counter_vec(
         &self,

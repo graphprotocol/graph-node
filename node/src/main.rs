@@ -564,6 +564,7 @@ async fn main() {
     let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
 
     let postgres_conn_pool = create_connection_pool(
+        "main",
         postgres_url.clone(),
         store_conn_pool_size,
         &logger,
@@ -574,10 +575,12 @@ async fn main() {
     let read_only_conn_pools: Vec<_> = pg_read_replicas
         .into_iter()
         .flatten()
-        .map(|host| {
+        .enumerate()
+        .map(|(i, host)| {
             info!(&logger, "Connecting to Postgres read replica at {}", host);
             let url = replace_host(&postgres_url, host);
             create_connection_pool(
+                &format!("replica{}", i),
                 url,
                 store_conn_pool_size,
                 &logger,

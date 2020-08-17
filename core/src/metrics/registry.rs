@@ -205,12 +205,17 @@ impl MetricsRegistryTrait for MetricsRegistry {
         Ok(counter)
     }
 
-    fn global_counter(&self, name: String, help: String) -> Result<Counter, PrometheusError> {
+    fn global_counter(
+        &self,
+        name: String,
+        help: String,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Counter, PrometheusError> {
         let maybe_counter = self.global_counters.read().unwrap().get(&name).cloned();
         if let Some(counter) = maybe_counter {
             Ok(counter.clone())
         } else {
-            let counter = *self.new_counter(name.clone(), help, HashMap::new())?;
+            let counter = *self.new_counter(name.clone(), help, const_labels)?;
             self.global_counters
                 .write()
                 .unwrap()
@@ -219,12 +224,17 @@ impl MetricsRegistryTrait for MetricsRegistry {
         }
     }
 
-    fn global_gauge(&self, name: String, help: String) -> Result<Gauge, PrometheusError> {
+    fn global_gauge(
+        &self,
+        name: String,
+        help: String,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Gauge, PrometheusError> {
         let maybe_gauge = self.global_gauges.read().unwrap().get(&name).cloned();
         if let Some(gauge) = maybe_gauge {
             Ok(gauge.clone())
         } else {
-            let gauge = *self.new_gauge(name.clone(), help, HashMap::new())?;
+            let gauge = *self.new_gauge(name.clone(), help, const_labels)?;
             self.global_gauges
                 .write()
                 .unwrap()

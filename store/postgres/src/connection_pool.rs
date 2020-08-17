@@ -4,6 +4,7 @@ use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 use graph::prelude::*;
 use graph::util::security::SafeDisplay;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,17 +32,24 @@ struct EventHandler {
 }
 
 impl EventHandler {
-    fn new(logger: Logger, registry: Arc<dyn MetricsRegistry>, wait_stats: PoolWaitStats) -> Self {
+    fn new(
+        logger: Logger,
+        registry: Arc<dyn MetricsRegistry>,
+        wait_stats: PoolWaitStats,
+        const_labels: HashMap<String, String>,
+    ) -> Self {
         let count_gauge = registry
             .global_gauge(
                 String::from("store_connection_checkout_count"),
                 String::from("The number of Postgres connections currently checked out"),
+                const_labels.clone(),
             )
             .expect("failed to create `store_connection_checkout_count` counter");
         let wait_gauge = registry
             .global_gauge(
                 String::from("store_connection_wait_time_ms"),
                 String::from("Average connection wait time"),
+                const_labels,
             )
             .expect("failed to create `store_connection_wait_time_ms` counter");
         EventHandler {
@@ -87,6 +95,7 @@ impl HandleEvent for EventHandler {
 }
 
 pub fn create_connection_pool(
+    pool_name: &str,
     postgres_url: String,
     pool_size: u32,
     logger: &Logger,
@@ -95,14 +104,25 @@ pub fn create_connection_pool(
 ) -> Pool<ConnectionManager<PgConnection>> {
     let logger_store = logger.new(o!("component" => "Store"));
     let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
+    let const_labels = {
+        let mut map = HashMap::new();
+        map.insert("pool".to_owned(), pool_name.to_owned());
+        map
+    };
     let error_counter = registry
         .global_counter(
             String::from("store_connection_error_count"),
             String::from("The number of Postgres connections errors"),
+            const_labels.clone(),
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
-    let event_handler = Box::new(EventHandler::new(logger_pool.clone(), registry, wait_time));
+    let event_handler = Box::new(EventHandler::new(
+        logger_pool.clone(),
+        registry,
+        wait_time,
+        const_labels,
+    ));
 
     // Connect to Postgres
     let conn_manager = ConnectionManager::new(postgres_url.clone());
@@ -129,6 +149,7 @@ pub fn create_connection_pool(
     info!(
         logger_store,
         "Connected to Postgres";
+        "pool_name" => pool_name,
         "url" => SafeDisplay(postgres_url.as_str())
     );
     pool

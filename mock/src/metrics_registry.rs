@@ -62,13 +62,23 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
         Ok(counter)
     }
 
-    fn global_counter(&self, name: String, help: String) -> Result<Counter, PrometheusError> {
-        let opts = Opts::new(name, help);
+    fn global_counter(
+        &self,
+        name: String,
+        help: String,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Counter, PrometheusError> {
+        let opts = Opts::new(name, help).const_labels(const_labels);
         Counter::with_opts(opts)
     }
 
-    fn global_gauge(&self, name: String, help: String) -> Result<Gauge, PrometheusError> {
-        let opts = Opts::new(name, help);
+    fn global_gauge(
+        &self,
+        name: String,
+        help: String,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Gauge, PrometheusError> {
+        let opts = Opts::new(name, help).const_labels(const_labels);
         Gauge::with_opts(opts)
     }
 

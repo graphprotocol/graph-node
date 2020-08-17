@@ -58,6 +58,7 @@ lazy_static! {
                 };
                 let conn_pool_size: u32 = 20;
                 let postgres_conn_pool = create_connection_pool(
+                    "test",
                     postgres_url.clone(),
                     conn_pool_size,
                     &logger,
