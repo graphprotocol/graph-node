@@ -151,6 +151,20 @@ async fn main() {
                 ),
         )
         .arg(
+            Arg::with_name("postgres-host-weights")
+                .multiple(true)
+                .use_delimiter(true)
+                .long("postgres-host-weights")
+                .value_name("WEIGHT,")
+                .env("GRAPH_POSTGRES_HOST_WEIGHTS")
+                .help(
+                    "Comma-separated list of relative weights for selecting the main database \
+                and secondary databases. The list is in the order MAIN,REPLICA1,REPLICA2,...\
+                A host will receive approximately WEIGHT/SUM(WEIGHTS) fraction of total queries. \
+                Defaults to weight 1 for each host",
+                ),
+        )
+        .arg(
             Arg::with_name("ethereum-rpc")
                 .takes_value(true)
                 .multiple(true)
@@ -420,7 +434,18 @@ async fn main() {
         matches.value_of("3box-api").unwrap().to_string(),
     ));
 
-    let pg_read_replicas = matches.values_of("postgres-secondary-hosts");
+    let pg_read_replicas: Vec<_> = matches
+        .values_of("postgres-secondary-hosts")
+        .into_iter()
+        .flatten()
+        .collect();
+    let pg_host_weights: Vec<_> = matches
+        .values_of("postgres-host-weights")
+        .into_iter()
+        .flatten()
+        .map(|s| s.parse::<usize>())
+        .collect::<Result<_, _>>()
+        .expect("--postgres-host-weights must be a comma-separated list of integers");
 
     info!(logger, "Starting up");
 
@@ -574,7 +599,6 @@ async fn main() {
 
     let read_only_conn_pools: Vec<_> = pg_read_replicas
         .into_iter()
-        .flatten()
         .enumerate()
         .map(|(i, host)| {
             info!(&logger, "Connecting to Postgres read replica at {}", host);
@@ -643,6 +667,7 @@ async fn main() {
                     subscriptions.clone(),
                     postgres_conn_pool.clone(),
                     read_only_conn_pools.clone(),
+                    pg_host_weights.clone(),
                     stores_metrics_registry.clone(),
                 )),
             )

@@ -8,6 +8,7 @@ use graph::prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError};
 use graph::spawn_blocking_async_allow_panic;
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
+use rand::{seq::SliceRandom, thread_rng};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
@@ -170,6 +171,7 @@ pub struct StoreInner {
     genesis_block_ptr: EthereumBlockPointer,
     conn: Pool<ConnectionManager<PgConnection>>,
     read_only_pools: Vec<Pool<ConnectionManager<PgConnection>>>,
+    replica_order: Vec<ReplicaId>,
     conn_round_robin_counter: AtomicUsize,
 
     /// A cache of commonly needed data about a subgraph.
@@ -205,6 +207,7 @@ impl Store {
         subscriptions: Arc<SubscriptionManager>,
         pool: Pool<ConnectionManager<PgConnection>>,
         read_only_pools: Vec<Pool<ConnectionManager<PgConnection>>>,
+        mut pool_weights: Vec<usize>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         // Create a store-specific logger
@@ -212,6 +215,27 @@ impl Store {
 
         // Create the entities table (if necessary)
         initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
+
+        // Create a list of replicas with repetitions according to the weights
+        // and shuffle the resulting list. Any missing weights in the list
+        // default to 1
+        pool_weights.resize(read_only_pools.len() + 1, 1);
+        let mut replica_order: Vec<_> = pool_weights
+            .iter()
+            .enumerate()
+            .map(|(i, weight)| {
+                let replica = if i == 0 {
+                    ReplicaId::Main
+                } else {
+                    ReplicaId::ReadOnly(i - 1)
+                };
+                vec![replica; *weight]
+            })
+            .flatten()
+            .collect();
+        let mut rng = thread_rng();
+        replica_order.shuffle(&mut rng);
+        debug!(logger, "Using postgres host order {:?}", replica_order);
 
         // Create the store
         let store = StoreInner {
@@ -222,6 +246,7 @@ impl Store {
             genesis_block_ptr: (net_identifiers.genesis_block_hash, 0 as u64).into(),
             conn: pool,
             read_only_pools,
+            replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
             storage_cache: e::make_storage_cache(),
@@ -1338,15 +1363,13 @@ impl StoreTrait for Store {
         use std::sync::atomic::Ordering;
 
         let replica_id = match for_subscription {
-            // Pick a ReplicaId by round-robin, which may be the main one or a read-only one.
+            // Pick a weighted ReplicaId. `replica_order` contains a list of
+            // replicas with repetitions according to their weight
             false => {
-                // Index 0 is the main pool.
-                let pools_count = 1 + self.read_only_pools.len();
-                let round_robin = self.conn_round_robin_counter.fetch_add(1, Ordering::SeqCst);
-                match round_robin % pools_count {
-                    0 => ReplicaId::Main,
-                    n => ReplicaId::ReadOnly(n - 1),
-                }
+                let weights_count = self.replica_order.len();
+                let index =
+                    self.conn_round_robin_counter.fetch_add(1, Ordering::SeqCst) % weights_count;
+                *self.replica_order.get(index).unwrap()
             }
             // Subscriptions always go to the main replica.
             true => ReplicaId::Main,

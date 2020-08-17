@@ -1652,6 +1652,7 @@ dependencies = [
  "lru_time_cache 0.9.0",
  "maybe-owned",
  "postgres",
+ "rand 0.6.5",
  "serde 1.0.114",
  "stable-hash",
  "test-store",

@@ -86,6 +86,7 @@ lazy_static! {
                     subscriptions,
                     postgres_conn_pool,
                     Vec::new(),
+                    Vec::new(),
                     registry.clone(),
                 ))
             })
