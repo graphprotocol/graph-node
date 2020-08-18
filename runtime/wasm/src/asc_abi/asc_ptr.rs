@@ -74,6 +74,15 @@ impl<C: AscType> AscPtr<C> {
     }
 }
 
+impl<C: AscType> From<Option<AscPtr<C>>> for AscPtr<C> {
+    fn from(option: Option<AscPtr<C>>) -> Self {
+        match option {
+            Some(ptr) => ptr,
+            None => AscPtr::null(),
+        }
+    }
+}
+
 impl<C> From<u32> for AscPtr<C> {
     fn from(ptr: u32) -> Self {
         AscPtr(ptr, PhantomData)

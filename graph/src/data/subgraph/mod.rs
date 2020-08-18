@@ -23,10 +23,10 @@ use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
 use crate::data::subgraph::schema::{
-    EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
-    EthereumContractDataSourceTemplateEntity, EthereumContractDataSourceTemplateSourceEntity,
-    EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
-    EthereumContractSourceEntity, SUBGRAPHS_ID,
+    EthereumBlockHandlerData, EthereumBlockHandlerEntity, EthereumCallHandlerEntity,
+    EthereumContractAbiEntity, EthereumContractDataSourceTemplateEntity,
+    EthereumContractDataSourceTemplateSourceEntity, EthereumContractEventHandlerEntity,
+    EthereumContractMappingEntity, EthereumContractSourceEntity, SUBGRAPHS_ID,
 };
 use crate::prelude::{
     anyhow::{self, Context},
@@ -522,6 +522,7 @@ impl UnresolvedMappingABI {
 pub struct MappingBlockHandler {
     pub handler: String,
     pub filter: Option<BlockHandlerFilter>,
+    pub block_format: EthereumBlockHandlerData,
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -537,6 +538,7 @@ impl From<EthereumBlockHandlerEntity> for MappingBlockHandler {
         Self {
             handler: entity.handler,
             filter: None,
+            block_format: entity.block_format,
         }
     }
 }

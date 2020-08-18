@@ -34,7 +34,7 @@ pub(crate) struct HostExports {
     causality_region: String,
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<MappingABI>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    pub(crate) ethereum_adapter: Arc<dyn EthereumAdapter>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
     store: Arc<dyn crate::RuntimeStore>,

@@ -3,17 +3,18 @@ use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt;
 use web3::types::*;
 
-use crate::prelude::{EntityKey, SubgraphDeploymentId, ToEntityKey};
+use crate::prelude::{
+    anyhow, EntityKey, EthereumBlockHandlerData, SubgraphDeploymentId, ToEntityKey,
+};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> u64;
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
     fn format(&self) -> String;
 }
@@ -21,18 +22,6 @@ pub trait LightEthereumBlockExt {
 impl LightEthereumBlockExt for LightEthereumBlock {
     fn number(&self) -> u64 {
         self.number.unwrap().as_u64()
-    }
-
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
-        log.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
-    }
-
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
-        call.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
     }
 
     fn parent_ptr(&self) -> Option<EthereumBlockPointer> {
@@ -53,6 +42,16 @@ impl LightEthereumBlockExt for LightEthereumBlock {
             self.hash
                 .map_or(String::from("-"), |hash| format!("{:x}", hash))
         )
+    }
+}
+
+impl<'a> From<&'a EthereumBlockType> for LightEthereumBlock {
+    fn from(block: &'a EthereumBlockType) -> LightEthereumBlock {
+        match block {
+            EthereumBlockType::FullWithReceipts(block) => block.block.clone(),
+            EthereumBlockType::Full(block) => block.clone(),
+            EthereumBlockType::Light(block) => block.clone(),
+        }
     }
 }
 
@@ -168,7 +167,7 @@ impl EthereumCall {
 
 #[derive(Clone, Debug)]
 pub enum EthereumTrigger {
-    Block(EthereumBlockPointer, EthereumBlockTriggerType),
+    Block(EthereumBlockPointer, EthereumBlockTrigger),
     Call(EthereumCall),
     Log(Log),
 }
@@ -192,6 +191,86 @@ impl PartialEq for EthereumTrigger {
 }
 
 impl Eq for EthereumTrigger {}
+
+#[derive(Clone, Debug)]
+pub enum EthereumBlockType {
+    Light(LightEthereumBlock),
+
+    Full(LightEthereumBlock),
+
+    FullWithReceipts(EthereumBlock),
+}
+
+impl EthereumBlockType {
+    pub fn light_block(&self) -> &LightEthereumBlock {
+        match self {
+            EthereumBlockType::Light(block) => block,
+            EthereumBlockType::Full(block) => block,
+            EthereumBlockType::FullWithReceipts(block) => &block.block,
+        }
+    }
+
+    pub fn hash(&self) -> H256 {
+        self.light_block().hash.unwrap()
+    }
+
+    pub fn number(&self) -> u64 {
+        self.light_block().number.unwrap().as_u64()
+    }
+
+    pub fn transaction_for_log(&self, log: &Log) -> Option<&Transaction> {
+        log.transaction_hash.and_then(|hash| {
+            self.light_block()
+                .transactions
+                .iter()
+                .find(|tx| tx.hash == hash)
+        })
+    }
+
+    pub fn transaction_for_call(&self, call: &EthereumCall) -> Option<&Transaction> {
+        call.transaction_hash.and_then(|hash| {
+            self.light_block()
+                .transactions
+                .iter()
+                .find(|tx| tx.hash == hash)
+        })
+    }
+}
+
+impl Default for EthereumBlockType {
+    fn default() -> Self {
+        EthereumBlockType::Light(LightEthereumBlock::default())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
+pub enum BlockType {
+    Light,
+    Full,
+    FullWithReceipts,
+}
+
+impl Default for BlockType {
+    fn default() -> BlockType {
+        BlockType::Light
+    }
+}
+
+impl From<EthereumBlockHandlerData> for BlockType {
+    fn from(block: EthereumBlockHandlerData) -> BlockType {
+        match block {
+            EthereumBlockHandlerData::Block => BlockType::Light,
+            EthereumBlockHandlerData::FullBlock => BlockType::Full,
+            EthereumBlockHandlerData::FullBlockWithReceipts => BlockType::FullWithReceipts,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EthereumBlockTrigger {
+    pub block_type: BlockType,
+    pub trigger_type: EthereumBlockTriggerType,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EthereumBlockTriggerType {
@@ -263,6 +342,166 @@ impl PartialOrd for EthereumTrigger {
     }
 }
 
+pub struct EthereumTransactionReceiptData {
+    // from receipts
+    // Geth nodes do not support `root` so it is not included
+    pub hash: H256,
+    pub index: Index,
+    pub cumulative_gas_used: U256,
+    pub gas_used: Option<U256>,
+    pub contract_address: Option<H160>,
+    pub status: Option<U64>,
+
+    // from txs
+    pub from: H160,
+    pub to: Option<H160>,
+    pub value: U256,
+    pub gas_price: U256,
+    pub gas: U256,
+    pub input: Bytes,
+}
+
+/// Ethereum block data with transactions and their receipts.
+pub struct FullEthereumBlockDataWithReceipts {
+    pub hash: H256,
+    pub parent_hash: H256,
+    pub uncles_hash: H256,
+    pub author: H160,
+    pub state_root: H256,
+    pub transactions_root: H256,
+    pub receipts_root: H256,
+    pub number: U64,
+    pub gas_used: U256,
+    pub gas_limit: U256,
+    pub timestamp: U256,
+    pub difficulty: U256,
+    pub total_difficulty: U256,
+    pub size: Option<U256>,
+    pub transaction_receipts: Vec<EthereumTransactionReceiptData>,
+}
+
+impl<'a> From<&'a EthereumBlock> for FullEthereumBlockDataWithReceipts {
+    fn from(block: &'a EthereumBlock) -> FullEthereumBlockDataWithReceipts {
+        let transaction_receipts_data = block
+            .block
+            .transactions
+            .iter()
+            .cloned()
+            .zip(block.transaction_receipts.iter().cloned())
+            .map(|transaction_and_receipt| {
+                assert_eq!(
+                    transaction_and_receipt.0.hash,
+                    transaction_and_receipt.1.transaction_hash
+                );
+                EthereumTransactionReceiptData {
+                    hash: transaction_and_receipt.0.hash,
+                    index: transaction_and_receipt.1.transaction_index,
+                    cumulative_gas_used: transaction_and_receipt.1.cumulative_gas_used,
+                    gas_used: transaction_and_receipt.1.gas_used,
+                    contract_address: transaction_and_receipt.1.contract_address,
+                    status: transaction_and_receipt.1.status,
+
+                    // from txs
+                    from: transaction_and_receipt.0.from,
+                    to: transaction_and_receipt.0.to,
+                    value: transaction_and_receipt.0.value,
+                    gas_price: transaction_and_receipt.0.gas_price,
+                    gas: transaction_and_receipt.0.gas,
+                    input: transaction_and_receipt.0.input,
+                }
+            })
+            .collect::<Vec<EthereumTransactionReceiptData>>();
+        let block = &block.block;
+
+        FullEthereumBlockDataWithReceipts {
+            hash: block.hash.unwrap(),
+            parent_hash: block.parent_hash,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number.unwrap(),
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty.unwrap_or_default(),
+            size: block.size,
+            transaction_receipts: transaction_receipts_data,
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a EthereumBlockType> for FullEthereumBlockDataWithReceipts {
+    type Error = anyhow::Error;
+
+    fn try_from(
+        block: &'a EthereumBlockType,
+    ) -> Result<FullEthereumBlockDataWithReceipts, Self::Error> {
+        let fullblock = match block {
+            EthereumBlockType::FullWithReceipts(full_block) => full_block,
+            EthereumBlockType::Full(_) | EthereumBlockType::Light(_)  => return Err(anyhow::anyhow!(
+                "Failed to convert EthereumBlockType to FullEthereumBlockDataWithReceipts, requires an EthereumBlockType::FullWithReceipts()"
+            )),
+        };
+        Ok(fullblock.into())
+    }
+}
+
+/// Ethereum block data with transactions.
+#[derive(Clone, Debug, Default)]
+pub struct FullEthereumBlockData {
+    pub hash: H256,
+    pub parent_hash: H256,
+    pub uncles_hash: H256,
+    pub author: H160,
+    pub state_root: H256,
+    pub transactions_root: H256,
+    pub receipts_root: H256,
+    pub number: U64,
+    pub gas_used: U256,
+    pub gas_limit: U256,
+    pub timestamp: U256,
+    pub difficulty: U256,
+    pub total_difficulty: U256,
+    pub size: Option<U256>,
+    pub transactions: Vec<EthereumTransactionData>,
+}
+
+impl<'a> From<&'a LightEthereumBlock> for FullEthereumBlockData {
+    fn from(block: &'a LightEthereumBlock) -> FullEthereumBlockData {
+        FullEthereumBlockData {
+            hash: block.hash.unwrap(),
+            parent_hash: block.parent_hash,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number.unwrap(),
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty.unwrap_or_default(),
+            size: block.size,
+            transactions: block
+                .transactions
+                .iter()
+                .map(|tx| EthereumTransactionData::from(tx))
+                .collect(),
+        }
+    }
+}
+
+impl<'a> From<&'a EthereumBlockType> for FullEthereumBlockData {
+    fn from(block: &'a EthereumBlockType) -> FullEthereumBlockData {
+        let block = &LightEthereumBlock::from(block);
+        block.into()
+    }
+}
+
 /// Ethereum block data.
 #[derive(Clone, Debug, Default)]
 pub struct EthereumBlockData {
@@ -282,8 +521,31 @@ pub struct EthereumBlockData {
     pub size: Option<U256>,
 }
 
-impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
-    fn from(block: &'a Block<T>) -> EthereumBlockData {
+impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData {
+    fn from(block: &'a LightEthereumBlock) -> EthereumBlockData {
+        EthereumBlockData {
+            hash: block.hash.unwrap(),
+            parent_hash: block.parent_hash,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number.unwrap(),
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty.unwrap_or_default(),
+            size: block.size,
+        }
+    }
+}
+
+impl<'a> From<&'a EthereumBlockType> for EthereumBlockData {
+    fn from(block: &'a EthereumBlockType) -> EthereumBlockData {
+        let block: LightEthereumBlock = block.into();
+
         EthereumBlockData {
             hash: block.hash.unwrap(),
             parent_hash: block.parent_hash,
@@ -471,6 +733,12 @@ impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
     }
 }
 
+impl<'a> From<&'a EthereumBlockType> for EthereumBlockPointer {
+    fn from(block_type: &'a EthereumBlockType) -> EthereumBlockPointer {
+        EthereumBlockPointer::from(LightEthereumBlock::from(block_type))
+    }
+}
+
 impl From<(H256, u64)> for EthereumBlockPointer {
     fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
         if number >= (1 << 63) {
@@ -536,7 +804,10 @@ impl ToEntityKey for EthereumBlockPointer {
 
 #[cfg(test)]
 mod test {
-    use super::{EthereumBlockPointer, EthereumBlockTriggerType, EthereumCall, EthereumTrigger};
+    use super::{
+        BlockType, EthereumBlockPointer, EthereumBlockTrigger, EthereumBlockTriggerType,
+        EthereumCall, EthereumTrigger,
+    };
     use web3::types::*;
 
     #[test]
@@ -546,7 +817,10 @@ mod test {
                 number: 1,
                 hash: H256::random(),
             },
-            EthereumBlockTriggerType::Every,
+            EthereumBlockTrigger {
+                block_type: BlockType::Light,
+                trigger_type: EthereumBlockTriggerType::Every,
+            },
         );
 
         let block2 = EthereumTrigger::Block(
@@ -554,7 +828,10 @@ mod test {
                 number: 0,
                 hash: H256::random(),
             },
-            EthereumBlockTriggerType::WithCallTo(Address::random()),
+            EthereumBlockTrigger {
+                block_type: BlockType::Light,
+                trigger_type: EthereumBlockTriggerType::WithCallTo(Address::random()),
+            },
         );
 
         let mut call1 = EthereumCall::default();

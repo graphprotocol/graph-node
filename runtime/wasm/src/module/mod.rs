@@ -161,14 +161,26 @@ impl WasmInstance {
         mut self,
         handler_name: &str,
     ) -> Result<BlockState, anyhow::Error> {
-        let block = EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref());
+        let context = self.take_ctx();
 
-        // Prepare an EthereumBlock for the WASM runtime
-        let arg = self.asc_new(&block);
+        // Prepare an Ethereum Block for the WASM runtime
+        let arg = match context.ctx.block.as_ref() {
+            EthereumBlockType::FullWithReceipts(block) => self
+                .asc_new::<AscFullEthereumBlockWithReceipts, _>(
+                    &FullEthereumBlockDataWithReceipts::try_from(block).unwrap(),
+                )
+                .erase(),
+            EthereumBlockType::Full(block) => self
+                .asc_new::<AscFullEthereumBlock, _>(&FullEthereumBlockData::from(block))
+                .erase(),
+            EthereumBlockType::Light(light_block) => self
+                .asc_new::<AscEthereumBlock, _>(&EthereumBlockData::from(light_block))
+                .erase(),
+        };
 
         self.invoke_handler(handler_name, arg)?;
 
-        Ok(self.take_ctx().ctx.state)
+        Ok(context.ctx.state)
     }
 
     pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext {
@@ -704,10 +716,11 @@ impl WasmInstanceContext {
         &mut self,
         call: UnresolvedContractCall,
     ) -> Result<AscEnumArray<EthereumValueKind>, Trap> {
-        let result =
-            self.ctx
-                .host_exports
-                .ethereum_call(&self.ctx.logger, &self.ctx.block, call)?;
+        let result = self.ctx.host_exports.ethereum_call(
+            &self.ctx.logger,
+            &LightEthereumBlock::from(self.ctx.block.as_ref()),
+            call,
+        )?;
         Ok(match result {
             Some(tokens) => self.asc_new(tokens.as_slice()),
             None => AscPtr::null(),

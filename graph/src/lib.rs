@@ -77,11 +77,12 @@ pub mod prelude {
         BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
         ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream, EthereumAdapter,
         EthereumAdapterError, EthereumBlock, EthereumBlockData, EthereumBlockFilter,
-        EthereumBlockPointer, EthereumBlockTriggerType, EthereumBlockWithCalls,
-        EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumCallFilter,
-        EthereumContractCall, EthereumContractCallError, EthereumEventData, EthereumLogFilter,
-        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
-        LightEthereumBlockExt, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+        EthereumBlockPointer, EthereumBlockTrigger, EthereumBlockTriggerType, EthereumBlockType,
+        EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall, EthereumCallData,
+        EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumEventData,
+        EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger,
+        FullEthereumBlockData, LightEthereumBlock, LightEthereumBlockExt, ProviderEthRpcMetrics,
+        SubgraphEthRpcMetrics,
     };
     pub use crate::components::graphql::{GraphQlRunner, SubscriptionResultFuture};
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
@@ -124,7 +125,9 @@ pub mod prelude {
         AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
         ToEntityId, ToEntityKey, TryIntoEntity, Value, ValueType,
     };
-    pub use crate::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
+    pub use crate::data::subgraph::schema::{
+        EthereumBlockHandlerData, SubgraphDeploymentEntity, TypedEntity,
+    };
     pub use crate::data::subgraph::{
         BlockHandlerFilter, CreateSubgraphResult, DataSource, DataSourceContext,
         DataSourceTemplate, Link, MappingABI, MappingBlockHandler, MappingCallHandler,

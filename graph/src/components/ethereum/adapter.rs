@@ -411,6 +411,7 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
 pub struct EthereumBlockFilter {
     pub contract_addresses: HashSet<(u64, Address)>,
     pub trigger_every_block: bool,
+    pub block_type: BlockType,
 }
 
 impl EthereumBlockFilter {
@@ -421,8 +422,7 @@ impl EthereumBlockFilter {
                 let has_block_handler_with_call_filter = data_source
                     .mapping
                     .block_handlers
-                    .clone()
-                    .into_iter()
+                    .iter()
                     .any(|block_handler| match block_handler.filter {
                         Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
                         _ => return false,
@@ -431,12 +431,21 @@ impl EthereumBlockFilter {
                 let has_block_handler_without_filter = data_source
                     .mapping
                     .block_handlers
-                    .clone()
-                    .into_iter()
+                    .iter()
                     .any(|block_handler| block_handler.filter.is_none());
+
+                let block_type = data_source
+                    .mapping
+                    .block_handlers
+                    .iter()
+                    .map(|handler| handler.block_format)
+                    .max()
+                    .unwrap_or(EthereumBlockHandlerData::Block)
+                    .into();
 
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
+                    block_type,
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(
                             data_source.source.start_block,
@@ -454,6 +463,8 @@ impl EthereumBlockFilter {
 
     pub fn extend(&mut self, other: EthereumBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
+        self.block_type = self.block_type.max(other.block_type);
+
         self.contract_addresses = self.contract_addresses.iter().cloned().fold(
             HashSet::new(),
             |mut addresses, (start_block, address)| {
@@ -805,20 +816,30 @@ fn parse_block_triggers(
 ) -> Vec<EthereumTrigger> {
     let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
     let trigger_every_block = block_filter.trigger_every_block;
+    let block_type = block_filter.block_type;
     let call_filter = EthereumCallFilter::from(block_filter);
     let mut triggers = block.calls.as_ref().map_or(vec![], |calls| {
         calls
             .iter()
             .filter(move |call| call_filter.matches(call))
             .map(move |call| {
-                EthereumTrigger::Block(block_ptr, EthereumBlockTriggerType::WithCallTo(call.to))
+                EthereumTrigger::Block(
+                    block_ptr,
+                    EthereumBlockTrigger {
+                        block_type,
+                        trigger_type: EthereumBlockTriggerType::WithCallTo(call.to),
+                    },
+                )
             })
             .collect::<Vec<EthereumTrigger>>()
     });
     if trigger_every_block {
         triggers.push(EthereumTrigger::Block(
             block_ptr,
-            EthereumBlockTriggerType::Every,
+            EthereumBlockTrigger {
+                block_type,
+                trigger_type: EthereumBlockTriggerType::Every,
+            },
         ));
     }
     triggers
@@ -923,7 +944,15 @@ pub fn blocks_with_triggers(
                 .block_range_to_ptrs(logger.clone(), from, to)
                 .map(move |ptrs| {
                     ptrs.into_iter()
-                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
+                        .map(|ptr| {
+                            EthereumTrigger::Block(
+                                ptr,
+                                EthereumBlockTrigger {
+                                    block_type: block_filter.block_type,
+                                    trigger_type: EthereumBlockTriggerType::Every,
+                                },
+                            )
+                        })
                         .collect()
                 }),
         ))
@@ -931,13 +960,17 @@ pub fn blocks_with_triggers(
         // To determine which blocks include a call to addresses
         // in the block filter, transform the `block_filter` into
         // a `call_filter` and run `blocks_with_calls`
+        let block_type = block_filter.block_type;
         let call_filter = EthereumCallFilter::from(block_filter);
         trigger_futs.push(Box::new(
             eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
-                .map(|call| {
+                .map(move |call| {
                     EthereumTrigger::Block(
                         EthereumBlockPointer::from(&call),
-                        EthereumBlockTriggerType::WithCallTo(call.to),
+                        EthereumBlockTrigger {
+                            block_type,
+                            trigger_type: EthereumBlockTriggerType::WithCallTo(call.to),
+                        },
                     )
                 })
                 .collect(),

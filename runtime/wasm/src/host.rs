@@ -385,7 +385,7 @@ impl RuntimeHost {
         state: BlockState,
         handler: &str,
         trigger: MappingTrigger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error> {
         let trigger_type = trigger.as_static();
@@ -473,7 +473,7 @@ impl RuntimeHostTrait for RuntimeHost {
     async fn process_call(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         transaction: &Arc<Transaction>,
         call: &Arc<EthereumCall>,
         state: BlockState,
@@ -581,24 +581,43 @@ impl RuntimeHostTrait for RuntimeHost {
     async fn process_block(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
-        trigger_type: &EthereumBlockTriggerType,
+        block: &Arc<EthereumBlockType>,
+        trigger: &EthereumBlockTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, anyhow::Error> {
-        let block_handler = self.handler_for_block(trigger_type)?;
+        let block_handler = self.handler_for_block(&trigger.trigger_type)?;
+        let mapping_block: EthereumBlockType = match trigger.block_type {
+            BlockType::FullWithReceipts => match self
+                .host_exports
+                .ethereum_adapter
+                .load_full_block(logger, block.light_block().clone())
+                .compat()
+                .await
+            {
+                Ok(block) => Ok(EthereumBlockType::FullWithReceipts(block)),
+                Err(e) => Err(anyhow::anyhow!(
+                    "Failed to load full block: {}, error: {}",
+                    &block.number().to_string(),
+                    e
+                )),
+            }?,
+            BlockType::Full => EthereumBlockType::Full(block.light_block().clone()),
+            BlockType::Light => block.as_ref().clone(),
+        };
+
         self.send_mapping_request(
             logger,
             o! {
-                "hash" => block.hash.unwrap().to_string(),
-                "number" => &block.number.unwrap().to_string(),
+                "hash" => block.hash().to_string(),
+                "number" => &block.number().to_string(),
             },
             state,
             &block_handler.handler,
             MappingTrigger::Block {
                 handler: block_handler.clone(),
             },
-            block,
+            &Arc::new(mapping_block),
             proof_of_indexing,
         )
         .await
@@ -607,7 +626,7 @@ impl RuntimeHostTrait for RuntimeHost {
     async fn process_log(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<EthereumBlockType>,
         transaction: &Arc<Transaction>,
         log: &Arc<Log>,
         state: BlockState,
