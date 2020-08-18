@@ -2574,6 +2574,7 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         //   where block_range @> $block
         //     and not block_range @> INTMAX
         //     and lower(block_range) <= $block
+        //     and coalesce(upper(block_range), INTMAX) > $block
         //     and coalesce(upper(block_range), INTMAX) < INTMAX
         //   returning id
         //
@@ -2596,6 +2597,10 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         out.push_sql(" and lower(");
         out.push_sql(BLOCK_RANGE_COLUMN);
         out.push_sql(") <= ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(" and coalesce(upper(");
+        out.push_sql(BLOCK_RANGE_COLUMN);
+        out.push_sql("), 2147483647) > ");
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql(" and coalesce(upper(");
         out.push_sql(BLOCK_RANGE_COLUMN);
