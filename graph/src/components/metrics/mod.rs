@@ -15,6 +15,26 @@ fn deployment_labels(subgraph: &str) -> HashMap<String, String> {
     labels! { String::from("deployment") => String::from(subgraph), }
 }
 
+/// Create an unregistered counter with labels
+pub fn counter_with_labels(
+    name: &str,
+    help: &str,
+    const_labels: HashMap<String, String>,
+) -> Result<Counter, PrometheusError> {
+    let opts = Opts::new(name.clone(), help).const_labels(const_labels);
+    Counter::with_opts(opts)
+}
+
+/// Create an unregistered gauge with labels
+pub fn gauge_with_labels(
+    name: &str,
+    help: &str,
+    const_labels: HashMap<String, String>,
+) -> Result<Gauge, PrometheusError> {
+    let opts = Opts::new(name.clone(), help).const_labels(const_labels);
+    Gauge::with_opts(opts)
+}
+
 pub trait MetricsRegistry: Send + Sync + 'static {
     fn register(&self, name: &str, c: Box<dyn Collector>);
 
@@ -119,8 +139,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Counter>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help).const_labels(const_labels);
-        let counter = Box::new(Counter::with_opts(opts)?);
+        let counter = Box::new(counter_with_labels(name, help, const_labels)?);
         self.register(name, counter.clone());
         Ok(counter)
     }
@@ -131,8 +150,11 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         help: &str,
         subgraph: &str,
     ) -> Result<Box<Counter>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help).const_labels(deployment_labels(subgraph));
-        let counter = Box::new(Counter::with_opts(opts)?);
+        let counter = Box::new(counter_with_labels(
+            name,
+            help,
+            deployment_labels(subgraph),
+        )?);
         self.register(name, counter.clone());
         Ok(counter)
     }
