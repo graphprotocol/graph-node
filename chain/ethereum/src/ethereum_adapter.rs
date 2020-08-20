@@ -637,10 +637,10 @@ where
                     .and_then(|gen_block_opt| {
                         future::result(
                             gen_block_opt
+                                .and_then(|gen_block| gen_block.hash)
                                 .ok_or_else(|| {
                                     format_err!("Ethereum node could not find genesis block")
-                                })
-                                .map(|gen_block| gen_block.hash.unwrap()),
+                                }),
                         )
                     })
             });
@@ -974,6 +974,12 @@ where
                             );
                         });
                 }
+            } else {
+                warn!(
+                    logger1,
+                    "Failed to fetch block hash for block number";
+                    "number" => block_number
+                );
             }
         };
 
@@ -988,7 +994,7 @@ where
                         web3.eth()
                             .block(BlockId::Number(block_number.into()))
                             .from_err()
-                            .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
+                            .map(|block_opt| block_opt.map(|block| block.hash).flatten())
                     })
                     .inspect(confirm_block_hash)
                     .map_err(move |e| {
@@ -1008,7 +1014,15 @@ where
         logger: &Logger,
         block: &LightEthereumBlock,
     ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send> {
-        let block_hash = block.hash.unwrap();
+        let block_hash = match block.hash {
+            Some(hash) => hash,
+            None => {
+                return Box::new(future::result(Err(format_err!(
+                    "could not get uncle for block '{}' because block has null hash",
+                    block.number.map(|num| num.to_string()).unwrap_or(String::from("null"))
+                ))))
+            }
+        };
         let n = block.uncles.len();
 
         Box::new(
