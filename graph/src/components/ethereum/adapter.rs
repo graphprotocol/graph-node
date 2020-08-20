@@ -57,6 +57,8 @@ pub enum EthereumContractCallError {
     /// `Token` is not of expected `ParamType`
     #[fail(display = "type mismatch, token {:?} is not of kind {:?}", _0, _1)]
     TypeError(Token, ParamType),
+    #[fail(display = "error encoding input call data: {}", _0)]
+    EncodingError(ethabi::Error),
     #[fail(display = "call error: {}", _0)]
     Web3Error(web3::Error),
     #[fail(display = "call reverted: {}", _0)]
