@@ -974,6 +974,12 @@ where
                             );
                         });
                 }
+            } else {
+                warn!(
+                    logger1,
+                    "Failed to fetch block hash for block number";
+                    "number" => block_number
+                );
             }
         };
 
@@ -988,7 +994,7 @@ where
                         web3.eth()
                             .block(BlockId::Number(block_number.into()))
                             .from_err()
-                            .map(|block_opt| block_opt.map(|block| block.hash.unwrap()))
+                            .map(|block_opt| block_opt.map(|block| block.hash).flatten())
                     })
                     .inspect(confirm_block_hash)
                     .map_err(move |e| {
