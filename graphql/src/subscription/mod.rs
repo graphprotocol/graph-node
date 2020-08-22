@@ -60,6 +60,7 @@ where
     R: Resolver + CheapClone + 'static,
 {
     let query = crate::execution::Query::new(
+        &options.logger,
         subscription.query,
         options.max_complexity,
         options.max_depth,

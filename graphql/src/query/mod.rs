@@ -1,7 +1,5 @@
-use graph::prelude::{info, o, EthereumBlockPointer, Logger, QueryExecutionError, QueryResult};
+use graph::prelude::{EthereumBlockPointer, Logger, QueryExecutionError, QueryResult};
 use graphql_parser::query as q;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -44,20 +42,9 @@ pub fn execute_query<R>(
 where
     R: Resolver,
 {
-    let query_hash = {
-        let mut hasher = DefaultHasher::new();
-        query.query_text.hash(&mut hasher);
-        hasher.finish()
-    };
-    let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
-    let query_logger = options.logger.new(o!(
-        "subgraph_id" => (*query.schema.id).clone(),
-        "query_id" => query_id
-    ));
-
     // Create a fresh execution context
     let ctx = ExecutionContext {
-        logger: query_logger.clone(),
+        logger: query.logger.clone(),
         resolver: options.resolver,
         query: query.clone(),
         deadline: options.deadline,
@@ -70,7 +57,6 @@ where
             QueryExecutionError::NotSupported("Only queries are supported".to_string()).into(),
         );
     }
-    let selection_set = selection_set.unwrap_or(&query.selection_set);
 
     // Obtain the root Query type and fail if there isn't one
     let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
@@ -80,20 +66,19 @@ where
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
     let start = Instant::now();
-    let result = execute_root_selection_set(&ctx, selection_set, query_type, block_ptr);
+    let result = execute_root_selection_set(
+        &ctx,
+        selection_set.unwrap_or(&query.selection_set),
+        query_type,
+        block_ptr,
+    );
     let elapsed = start.elapsed();
     options.load_manager.add_query(query.shape_hash, elapsed);
-    if *graph::log::LOG_GQL_TIMING {
-        info!(
-            query_logger,
-            "Query timing (GraphQL)";
-            "query" => &query.query_text,
-            "variables" => &query.variables_text,
-            "query_time_ms" => elapsed.as_millis(),
-            "cached" => ctx.cache_status.load().to_string(),
-            "block" => block_ptr.map(|b| b.number).unwrap_or(0),
-            "complexity" => &query.complexity
-        );
-    }
+    query.log_cache_status(
+        selection_set,
+        block_ptr.map(|b| b.number).unwrap_or(0),
+        start,
+        ctx.cache_status.load().to_string(),
+    );
     result
 }

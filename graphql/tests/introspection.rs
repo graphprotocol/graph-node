@@ -565,8 +565,11 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         load_manager: LOAD_MANAGER.clone(),
     };
 
-    let result = PreparedQuery::new(query, None, 100)
-        .map(|query| Arc::try_unwrap(execute_query(query, None, None, options)).unwrap());
+    let result = PreparedQuery::new(&options.logger, query, None, 100).map(|query| {
+        let result = Arc::try_unwrap(execute_query(query.clone(), None, None, options)).unwrap();
+        query.log_execution(0);
+        result
+    });
     QueryResult::from(result)
 }
 

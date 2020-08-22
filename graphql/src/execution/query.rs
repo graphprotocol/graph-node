@@ -1,11 +1,14 @@
 use graphql_parser::{query as q, schema as s};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::time::Instant;
 
 use graph::data::graphql::ext::TypeExt;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::Schema;
-use graph::prelude::{CheapClone, QueryExecutionError};
+use graph::prelude::{info, o, CheapClone, Logger, QueryExecutionError};
 
 use crate::execution::{get_field, get_named_type};
 use crate::introspection::introspection_schema;
@@ -25,6 +28,44 @@ enum Kind {
     Subscription,
 }
 
+/// Helper to log the fields in a `SelectionSet` without cloning. Writes
+/// a list of field names from the selection set separated by ';'. Using
+/// ';' as a separator makes parsing the log a little easier since slog
+/// uses ',' to separate key/value pairs.
+/// If `SelectionSet` is `None`, log `*` to indicate that the query was
+/// for the entire selection set of the query
+struct SelectedFields<'a>(Option<&'a q::SelectionSet>);
+
+impl<'a> std::fmt::Display for SelectedFields<'a> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        if let Some(selection_set) = self.0 {
+            let mut first = true;
+            for item in &selection_set.items {
+                match item {
+                    q::Selection::Field(field) => {
+                        if !first {
+                            write!(fmt, ";")?;
+                        }
+                        first = false;
+                        write!(fmt, "{}", field.alias.as_ref().unwrap_or(&field.name))?
+                    }
+                    q::Selection::FragmentSpread(_) | q::Selection::InlineFragment(_) => {
+                        /* nothing */
+                    }
+                }
+            }
+            if first {
+                // There wasn't a single `q::Selection::Field` in the set. That
+                // seems impossible, but log '-' to be on the safe side
+                write!(fmt, "-")?;
+            }
+        } else {
+            write!(fmt, "*")?;
+        }
+        Ok(())
+    }
+}
+
 /// A GraphQL query that has been preprocessed and checked and is ready
 /// for execution. Checking includes validating all query fields and, if
 /// desired, checking the query's complexity
@@ -39,6 +80,10 @@ pub struct Query {
     pub shape_hash: u64,
 
     pub network: Option<String>,
+
+    pub logger: Logger,
+
+    start: Instant,
 
     pub(crate) fragments: HashMap<String, q::FragmentDefinition>,
     kind: Kind,
@@ -56,6 +101,7 @@ impl Query {
     /// is given, also checked whether it is too complex. If validation fails,
     /// or the query is too complex, errors are returned
     pub fn new(
+        logger: &Logger,
         query: GraphDataQuery,
         max_complexity: Option<u64>,
         max_depth: u8,
@@ -92,6 +138,17 @@ impl Query {
             }
         };
 
+        let query_hash = {
+            let mut hasher = DefaultHasher::new();
+            query.query_text.hash(&mut hasher);
+            hasher.finish()
+        };
+        let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
+        let logger = logger.new(o!(
+            "subgraph_id" => (*query.schema.id).clone(),
+            "query_id" => query_id
+        ));
+
         let mut query = Self {
             schema: query.schema,
             variables,
@@ -100,6 +157,8 @@ impl Query {
             shape_hash: query.shape_hash,
             kind,
             network: query.network,
+            logger,
+            start: Instant::now(),
             query_text: query.query_text.cheap_clone(),
             variables_text: query.variables_text.cheap_clone(),
             complexity: 0,
@@ -155,6 +214,8 @@ impl Query {
             shape_hash: self.shape_hash,
             kind: self.kind,
             network: self.network.clone(),
+            logger: self.logger.clone(),
+            start: self.start,
             query_text: self.query_text.clone(),
             variables_text: self.variables_text.clone(),
             complexity: self.complexity,
@@ -179,6 +240,41 @@ impl Query {
         match self.kind {
             Kind::Subscription => true,
             Kind::Query => false,
+        }
+    }
+
+    /// Log details about the overall execution of the query
+    pub fn log_execution(&self, block: u64) {
+        if *graph::log::LOG_GQL_TIMING {
+            info!(
+                &self.logger,
+                "Query timing (GraphQL)";
+                "query" => &self.query_text,
+                "variables" => &self.variables_text,
+                "query_time_ms" => self.start.elapsed().as_millis(),
+                "block" => block,
+            );
+        }
+    }
+
+    /// Log details about how the part of the query corresponding to
+    /// `selection_set` was cached
+    pub fn log_cache_status(
+        &self,
+        selection_set: Option<&q::SelectionSet>,
+        block: u64,
+        start: Instant,
+        cache_status: String,
+    ) {
+        if *graph::log::LOG_GQL_TIMING {
+            info!(
+                &self.logger,
+                "Query caching";
+                "query_time_ms" => start.elapsed().as_millis(),
+                "cached" => cache_status,
+                "selection" => %SelectedFields(selection_set),
+                "block" => block,
+            );
         }
     }
 

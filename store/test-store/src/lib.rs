@@ -394,7 +394,7 @@ fn execute_subgraph_query_internal(
     deadline: Option<Instant>,
 ) -> QueryResult {
     let logger = Logger::root(slog::Discard, o!());
-    let query = return_err!(PreparedQuery::new(query, max_complexity, 100));
+    let query = return_err!(PreparedQuery::new(&logger, query, max_complexity, 100));
     let mut result = QueryResult::empty();
     for (bc, selection_set) in return_err!(query.block_constraint()) {
         let logger = logger.clone();

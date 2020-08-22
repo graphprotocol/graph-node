@@ -90,7 +90,7 @@ where
             .await?;
 
         let query = IndexNodeRequest::new(body, schema).compat().await?;
-        let query = match PreparedQuery::new(query, None, 100) {
+        let query = match PreparedQuery::new(&self.logger, query, None, 100) {
             Ok(query) => query,
             Err(e) => return Ok(QueryResult::from(e).as_http_response()),
         };
@@ -109,9 +109,11 @@ where
                 max_first: std::u32::MAX,
                 load_manager,
             };
+            let result = execute_query(query_clone.cheap_clone(), None, None, options);
+            query_clone.log_execution(0);
             QueryResult::from(
                 // Index status queries are not cacheable, so we may unwrap this.
-                Arc::try_unwrap(execute_query(query_clone, None, None, options)).unwrap(),
+                Arc::try_unwrap(result).unwrap(),
             )
         })
         .await;

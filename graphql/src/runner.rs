@@ -115,7 +115,7 @@ where
         max_first: Option<u32>,
     ) -> Result<Arc<QueryResult>, QueryResult> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
-        let query = crate::execution::Query::new(query, max_complexity, max_depth)?;
+        let query = crate::execution::Query::new(&self.logger, query, max_complexity, max_depth)?;
         self.load_manager
             .decide(query.shape_hash, query.query_text.as_ref())
             .to_result()?;
@@ -145,6 +145,7 @@ where
 
         // We want to optimize for the common case of a single block constraint, where we can avoid
         // cloning the result. If there are multiple constraints we have to clone.
+        let mut max_block = block_ptr.number;
         if by_block_constraint.len() > 0 {
             let mut partial_res = result.as_ref().clone();
             for (bc, selection_set) in by_block_constraint {
@@ -154,11 +155,13 @@ where
                     bc,
                     &query.schema.id,
                 )?;
+                max_block = max_block.max(block_ptr.number);
                 partial_res.append(execute(selection_set, block_ptr, resolver).as_ref().clone());
             }
             result = Arc::new(partial_res);
         }
 
+        query.log_execution(max_block);
         Ok(result)
     }
 }
@@ -191,6 +194,7 @@ where
 
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture {
         let query = match crate::execution::Query::new(
+            &self.logger,
             subscription.query,
             *GRAPHQL_MAX_COMPLEXITY,
             *GRAPHQL_MAX_DEPTH,
