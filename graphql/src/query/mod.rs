@@ -1,4 +1,4 @@
-use graph::prelude::{EthereumBlockPointer, Logger, QueryExecutionError, QueryResult};
+use graph::prelude::{EthereumBlockPointer, QueryExecutionError, QueryResult};
 use graphql_parser::query as q;
 use std::sync::Arc;
 use std::time::Instant;
@@ -16,9 +16,6 @@ pub mod ext;
 
 /// Options available for query execution.
 pub struct QueryExecutionOptions<R> {
-    /// The logger to use during query execution.
-    pub logger: Logger,
-
     /// The resolver to use.
     pub resolver: R,
 

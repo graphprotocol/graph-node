@@ -410,7 +410,6 @@ fn execute_subgraph_query_internal(
                 Some(&selection_set),
                 None,
                 QueryExecutionOptions {
-                    logger,
                     resolver,
                     deadline,
                     load_manager: LOAD_MANAGER.clone(),

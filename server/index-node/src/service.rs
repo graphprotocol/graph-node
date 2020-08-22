@@ -104,7 +104,6 @@ where
         let result = tokio::task::spawn_blocking(move || {
             let options = QueryExecutionOptions {
                 resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
-                logger,
                 deadline: None,
                 max_first: std::u32::MAX,
                 load_manager,

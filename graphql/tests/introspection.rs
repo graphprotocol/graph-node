@@ -557,15 +557,15 @@ fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     );
 
     // Execute it
+    let logger = Logger::root(slog::Discard, o!());
     let options = QueryExecutionOptions {
-        logger: Logger::root(slog::Discard, o!()),
         resolver: MockResolver,
         deadline: None,
         max_first: std::u32::MAX,
         load_manager: LOAD_MANAGER.clone(),
     };
 
-    let result = PreparedQuery::new(&options.logger, query, None, 100).map(|query| {
+    let result = PreparedQuery::new(&logger, query, None, 100).map(|query| {
         let result = Arc::try_unwrap(execute_query(query.clone(), None, None, options)).unwrap();
         query.log_execution(0);
         result
