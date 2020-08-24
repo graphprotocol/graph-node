@@ -57,6 +57,80 @@ impl CacheByBlock {
     }
 }
 
+struct QueryBlockCache(Vec<(String, VecDeque<CacheByBlock>)>);
+
+impl QueryBlockCache {
+    fn insert(
+        &mut self,
+        network: &str,
+        block_ptr: EthereumBlockPointer,
+        key: QueryHash,
+        result: Arc<QueryResult>,
+        weight: usize,
+    ) -> bool {
+        // Get or insert the cache for this network.
+        let cache = match self
+            .0
+            .iter_mut()
+            .find(|(n, _)| n == network)
+            .map(|(_, c)| c)
+        {
+            Some(c) => c,
+            None => {
+                self.0.push((network.to_owned(), VecDeque::new()));
+                &mut self.0.last_mut().unwrap().1
+            }
+        };
+
+        // If there is already a cache by the block of this query, just add it there.
+        let mut cache_insert = false;
+        if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
+            cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
+        } else if *QUERY_CACHE_BLOCKS > 0 {
+            // We're creating a new `CacheByBlock` if:
+            // - There are none yet, this is the first query being cached, or
+            // - `block_ptr` is of higher or equal number than the most recent block in the cache.
+            // Otherwise this is a historical query which will not be cached.
+            let should_insert = match cache.iter().next() {
+                None => true,
+                Some(highest) if highest.block.number <= block_ptr.number => true,
+                Some(_) => false,
+            };
+
+            if should_insert {
+                if cache.len() == *QUERY_CACHE_BLOCKS {
+                    // At capacity, so pop the oldest block.
+                    cache.pop_back();
+                }
+
+                // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
+                let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
+                let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
+                cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
+                cache.push_front(cache_by_block);
+            }
+        }
+        cache_insert
+    }
+
+    fn get(
+        &self,
+        network: &str,
+        block_ptr: &EthereumBlockPointer,
+        key: &QueryHash,
+    ) -> Option<Arc<QueryResult>> {
+        if let Some(cache) = self.0.iter().find(|(n, _)| n == network).map(|(_, c)| c) {
+            // Iterate from the most recent block looking for a block that matches.
+            if let Some(cache_by_block) = cache.iter().find(|c| &c.block == block_ptr) {
+                if let Some(response) = cache_by_block.cache.get(key) {
+                    return Some(response.cheap_clone());
+                }
+            }
+        }
+        None
+    }
+}
+
 lazy_static! {
     // Comma separated subgraph ids to cache queries for.
     // If `*` is present in the list, queries are cached for all subgraphs.
@@ -94,7 +168,7 @@ lazy_static! {
 
     // Cache query results for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
-    static ref QUERY_BLOCK_CACHE: RwLock<Vec<(String, VecDeque<CacheByBlock>)>> = RwLock::new(vec![]);
+    static ref QUERY_BLOCK_CACHE: RwLock<QueryBlockCache> = RwLock::new(QueryBlockCache(vec![]));
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new();
 }
 
@@ -339,14 +413,9 @@ pub fn execute_root_selection_set<R: Resolver>(
 
                 // Check if the response is cached.
                 let cache = QUERY_BLOCK_CACHE.read().unwrap();
-                if let Some(cache) = cache.iter().find(|(n, _)| n == network).map(|(_, c)| c) {
-                    // Iterate from the most recent block looking for a block that matches.
-                    if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
-                        if let Some(response) = cache_by_block.cache.get(&cache_key) {
-                            ctx.cache_status.store(CacheStatus::Hit);
-                            return response.cheap_clone();
-                        }
-                    }
+                if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
+                    ctx.cache_status.store(CacheStatus::Hit);
+                    return result;
                 }
                 key = Some(cache_key);
             }
@@ -385,46 +454,8 @@ pub fn execute_root_selection_set<R: Resolver>(
         let mut cache = QUERY_BLOCK_CACHE.write().unwrap();
 
         // Get or insert the cache for this network.
-        let cache = match cache.iter_mut().find(|(n, _)| n == network).map(|(_, c)| c) {
-            Some(c) => c,
-            None => {
-                cache.push((network.clone(), VecDeque::new()));
-                &mut cache.last_mut().unwrap().1
-            }
-        };
-
-        // If there is already a cache by the block of this query, just add it there.
-        if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-            let cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
-            if cache_insert {
-                ctx.cache_status.store(CacheStatus::Insert);
-            }
-        } else if *QUERY_CACHE_BLOCKS > 0 {
-            // We're creating a new `CacheByBlock` if:
-            // - There are none yet, this is the first query being cached, or
-            // - `block_ptr` is of higher or equal number than the most recent block in the cache.
-            // Otherwise this is a historical query which will not be cached.
-            let should_insert = match cache.iter().next() {
-                None => true,
-                Some(highest) if highest.block.number <= block_ptr.number => true,
-                Some(_) => false,
-            };
-
-            if should_insert {
-                if cache.len() == *QUERY_CACHE_BLOCKS {
-                    // At capacity, so pop the oldest block.
-                    cache.pop_back();
-                }
-
-                // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
-                let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
-                let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
-                let cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
-                if cache_insert {
-                    ctx.cache_status.store(CacheStatus::Insert);
-                }
-                cache.push_front(cache_by_block);
-            }
+        if cache.insert(network, block_ptr, key, result.cheap_clone(), weight) {
+            ctx.cache_status.store(CacheStatus::Insert);
         }
     }
 
