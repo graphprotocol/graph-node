@@ -11,10 +11,11 @@ use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::iter;
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 
 use graph::prelude::*;
+use graph::util::lfu_cache::LfuCache;
 
 use crate::introspection::{
     is_introspection_field, INTROSPECTION_DOCUMENT, INTROSPECTION_QUERY_TYPE,
@@ -54,6 +55,26 @@ impl CacheByBlock {
             self.cache.insert(key, value);
         }
         fits_in_cache
+    }
+}
+
+struct WeightedResult {
+    result: Arc<QueryResult>,
+    weight: usize,
+}
+
+impl CacheWeight for WeightedResult {
+    fn indirect_weight(&self) -> usize {
+        self.weight
+    }
+}
+
+impl Default for WeightedResult {
+    fn default() -> Self {
+        WeightedResult {
+            result: Arc::new(QueryResult::new(Some(q::Value::Null))),
+            weight: 0,
+        }
     }
 }
 
@@ -170,6 +191,7 @@ lazy_static! {
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: RwLock<QueryBlockCache> = RwLock::new(QueryBlockCache(vec![]));
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new();
+    static ref QUERY_LFU_CACHE: Mutex<LfuCache<QueryHash, WeightedResult>> = Mutex::new(LfuCache::new());
 }
 
 struct HashableQuery<'a> {
@@ -411,11 +433,22 @@ pub fn execute_root_selection_set<R: Resolver>(
                 // Calculate the hash outside of the lock
                 let cache_key = cache_key(ctx, selection_set, &block_ptr);
 
-                // Check if the response is cached.
-                let cache = QUERY_BLOCK_CACHE.read().unwrap();
-                if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
-                    ctx.cache_status.store(CacheStatus::Hit);
-                    return result;
+                // Check if the response is cached, first in the recent blocks cache,
+                // and then in the LfuCache for historical queries
+                // The blocks are used to delimit how long locks need to be held
+                {
+                    let cache = QUERY_BLOCK_CACHE.read().unwrap();
+                    if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
+                        ctx.cache_status.store(CacheStatus::Hit);
+                        return result;
+                    }
+                }
+                {
+                    let mut cache = QUERY_LFU_CACHE.lock().unwrap();
+                    if let Some(weighted) = cache.get(&cache_key) {
+                        ctx.cache_status.store(CacheStatus::Hit);
+                        return weighted.result.cheap_clone();
+                    }
                 }
                 key = Some(cache_key);
             }
@@ -455,6 +488,18 @@ pub fn execute_root_selection_set<R: Resolver>(
 
         // Get or insert the cache for this network.
         if cache.insert(network, block_ptr, key, result.cheap_clone(), weight) {
+            ctx.cache_status.store(CacheStatus::Insert);
+        } else {
+            // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
+            let mut cache = QUERY_LFU_CACHE.lock().unwrap();
+            cache.evict(*QUERY_CACHE_MAX_MEM);
+            cache.insert(
+                key,
+                WeightedResult {
+                    result: result.cheap_clone(),
+                    weight,
+                },
+            );
             ctx.cache_status.store(CacheStatus::Insert);
         }
     }

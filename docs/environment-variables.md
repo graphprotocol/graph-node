@@ -67,9 +67,13 @@ those.
    in the query cache. This should be kept small since the lookup time and the
    cache memory usage are proportional to this value. Set to 0 to disable the cache.
    Defaults to 1.
-- `GRAPH_QUERY_CACHE_MAX_MEM`: Maximum total memory to be used by the query cache, in MB.
-   The default is plenty for most loads, particularly if `GRAPH_QUERY_CACHE_BLOCKS` is kept small.
-   Defaults to 1000, which corresponds to 1GB.
+- `GRAPH_QUERY_CACHE_MAX_MEM`: Maximum total memory to be used by the query
+   cache, in MB. The total amount of memory used for caching will be twice
+   this value - once for recent blocks, divided evenly among the
+   `GRAPH_QUERY_CACHE_BLOCKS`, and once for frequent queries against older
+   blocks.  The default is plenty for most loads, particularly if
+   `GRAPH_QUERY_CACHE_BLOCKS` is kept small.  Defaults to 1000, which
+   corresponds to 1GB.
 
 ## GraphQL
 
