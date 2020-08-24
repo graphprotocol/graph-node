@@ -92,9 +92,9 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_CACHE_MAX_MEM environment variable")
     };
 
-    // Query cache by network.
+    // Cache query results for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
-    static ref QUERY_CACHE: RwLock<Vec<(String, VecDeque<CacheByBlock>)>> = RwLock::new(vec![]);
+    static ref QUERY_BLOCK_CACHE: RwLock<Vec<(String, VecDeque<CacheByBlock>)>> = RwLock::new(vec![]);
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new();
 }
 
@@ -338,7 +338,7 @@ pub fn execute_root_selection_set<R: Resolver>(
                 let cache_key = cache_key(ctx, selection_set, &block_ptr);
 
                 // Check if the response is cached.
-                let cache = QUERY_CACHE.read().unwrap();
+                let cache = QUERY_BLOCK_CACHE.read().unwrap();
                 if let Some(cache) = cache.iter().find(|(n, _)| n == network).map(|(_, c)| c) {
                     // Iterate from the most recent block looking for a block that matches.
                     if let Some(cache_by_block) = cache.iter().find(|c| c.block == block_ptr) {
@@ -382,7 +382,7 @@ pub fn execute_root_selection_set<R: Resolver>(
     {
         // Calculate the weight outside the lock.
         let weight = result.data.as_ref().unwrap().weight();
-        let mut cache = QUERY_CACHE.write().unwrap();
+        let mut cache = QUERY_BLOCK_CACHE.write().unwrap();
 
         // Get or insert the cache for this network.
         let cache = match cache.iter_mut().find(|(n, _)| n == network).map(|(_, c)| c) {
