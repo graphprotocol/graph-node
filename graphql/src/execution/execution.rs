@@ -78,6 +78,9 @@ impl Default for WeightedResult {
     }
 }
 
+/// Organize block caches by network names. Since different networks
+/// will be at different block heights, we need to keep their `CacheByBlock`
+/// separate
 struct QueryBlockCache(Vec<(String, VecDeque<CacheByBlock>)>);
 
 impl QueryBlockCache {
@@ -111,11 +114,11 @@ impl QueryBlockCache {
             // We're creating a new `CacheByBlock` if:
             // - There are none yet, this is the first query being cached, or
             // - `block_ptr` is of higher or equal number than the most recent block in the cache.
-            // Otherwise this is a historical query which will not be cached.
+            // Otherwise this is a historical query that does not belong in
+            // the block cache
             let should_insert = match cache.iter().next() {
                 None => true,
-                Some(highest) if highest.block.number <= block_ptr.number => true,
-                Some(_) => false,
+                Some(highest) => highest.block.number <= block_ptr.number,
             };
 
             if should_insert {
