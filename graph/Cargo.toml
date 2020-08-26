@@ -62,3 +62,4 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
 [dev-dependencies]
 test-store = { path = "../store/test-store" }
 maplit = "1.0.2"
+structopt = { version = "0.3" }

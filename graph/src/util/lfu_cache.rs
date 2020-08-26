@@ -145,9 +145,9 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
         self.queue.len()
     }
 
-    pub fn evict(&mut self, max_weight: usize) {
+    pub fn evict(&mut self, max_weight: usize) -> Option<(usize, usize, usize)> {
         if self.total_weight <= max_weight {
-            return;
+            return None;
         }
 
         self.stale_counter += 1;
@@ -164,14 +164,18 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
             }
         }
 
+        let mut evicted = 0;
+        let old_weight = self.total_weight;
         while self.total_weight > max_weight {
             let entry = self
                 .queue
                 .pop()
                 .expect("empty cache but total_weight > max_weight")
                 .0;
+            evicted += entry.weight;
             self.total_weight -= entry.weight;
         }
+        return Some((evicted, old_weight, self.total_weight));
     }
 }
 

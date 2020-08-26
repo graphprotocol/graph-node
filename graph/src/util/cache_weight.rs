@@ -97,6 +97,12 @@ impl CacheWeight for graphql_parser::query::Value {
     }
 }
 
+impl CacheWeight for usize {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
 #[test]
 fn big_decimal_cache_weight() {
     use std::str::FromStr;
