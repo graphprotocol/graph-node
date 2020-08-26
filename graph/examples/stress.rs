@@ -10,6 +10,9 @@ use structopt::StructOpt;
 use graph::util::cache_weight::CacheWeight;
 use graph::util::lfu_cache::LfuCache;
 
+// Use a custom allocator that tracks how much memory the program
+// has allocated overall
+
 struct Counter;
 
 static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
@@ -32,26 +35,23 @@ unsafe impl GlobalAlloc for Counter {
 #[global_allocator]
 static A: Counter = Counter;
 
-#[derive(StructOpt)]
-#[structopt(name = "stress", about = "Stress test for the LFU Cache")]
-struct Opt {
-    #[structopt(short, long, default_value = "1000")]
-    niter: usize,
-    #[structopt(short, long, default_value = "10")]
-    print_count: usize,
-    #[structopt(short, long, default_value = "1024")]
-    obj_size: usize,
-    #[structopt(short, long, default_value = "1000000")]
-    cache_size: usize,
-}
+// Setup to make checking different data types and how they interact
+// with cache size easier
 
+/// The template of an object we want to cache
 trait Template<T> {
     type Item;
 
+    // Create a new test object
     fn create(size: usize) -> Self;
+
+    // Return a sample of this test object of the given `size`. There's no
+    // fixed definition of 'size', other than that smaller sizes will
+    // take less memory than larger ones
     fn sample(&self, size: usize) -> Self::Item;
 }
 
+/// Template for testing caching of `Vec<usize>`
 impl Template<Vec<usize>> for Vec<usize> {
     type Item = Vec<usize>;
 
@@ -63,6 +63,7 @@ impl Template<Vec<usize>> for Vec<usize> {
     }
 }
 
+/// Template for testing caching of `HashMap<String, String>`
 impl Template<HashMap<String, String>> for HashMap<String, String> {
     type Item = Self;
 
@@ -84,6 +85,8 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
 }
 
 type ValueMap = BTreeMap<String, q::Value>;
+
+/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
 impl Template<ValueMap> for ValueMap {
     type Item = ValueMap;
 
@@ -125,6 +128,7 @@ impl Template<ValueMap> for ValueMap {
     }
 }
 
+/// Helper to deal with different template objects
 struct Cacheable<T> {
     cache: LfuCache<usize, T>,
     template: T,
@@ -147,6 +151,30 @@ impl<T: CacheWeight + Default + Template<T>> Cacheable<T> {
     }
 }
 
+// Command line arguments
+#[derive(StructOpt)]
+#[structopt(name = "stress", about = "Stress test for the LFU Cache")]
+struct Opt {
+    #[structopt(short, long, default_value = "1000")]
+    niter: usize,
+    #[structopt(short, long, default_value = "10")]
+    print_count: usize,
+    #[structopt(short, long, default_value = "1024")]
+    obj_size: usize,
+    #[structopt(short, long, default_value = "1000000")]
+    cache_size: usize,
+}
+
+/// This program constructs a template object of size `obj_size` and then
+/// inserts a sample of size up to `obj_size` into the cache `niter` times.
+/// The cache is limited to `cache_size` total weight, and we call `evict`
+/// before each insertion into the cache.
+///
+/// After each `evict`, we check how much heap we have currently allocated
+/// and print that roughly `print_count` times over the run of the program.
+/// The most important measure is the `heap_factor`, which is the ratio of
+/// memory used on the heap since we started inserting into the cache to
+/// the target `cache_size`
 pub fn main() {
     let opt = Opt::from_args();
 
@@ -180,7 +208,7 @@ pub fn main() {
 
     println!("type: {}", cacheable.name());
     println!(
-        "obj: {} nitems: {} cache_size: {}",
+        "obj: {} iterations: {} cache_size: {}",
         cacheable.template.weight(),
         opt.niter,
         opt.cache_size
