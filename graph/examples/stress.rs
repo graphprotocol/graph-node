@@ -39,7 +39,7 @@ static A: Counter = Counter;
 // with cache size easier
 
 /// The template of an object we want to cache
-trait Template<T> {
+trait Template<T>: CacheWeight + Default {
     type Item;
 
     // Create a new test object
@@ -134,7 +134,7 @@ struct Cacheable<T> {
     template: T,
 }
 
-impl<T: CacheWeight + Default + Template<T>> Cacheable<T> {
+impl<T: Template<T>> Cacheable<T> {
     fn new(size: usize) -> Self {
         Cacheable {
             cache: LfuCache::new(),
@@ -163,6 +163,46 @@ struct Opt {
     obj_size: usize,
     #[structopt(short, long, default_value = "1000000")]
     cache_size: usize,
+    #[structopt(short, long, default_value = "vec")]
+    template: String,
+}
+
+fn stress<T: Template<T, Item = T>>(opt: &Opt) {
+    let mut cacheable: Cacheable<T> = Cacheable::new(opt.obj_size);
+
+    println!("type: {}", cacheable.name());
+    println!(
+        "obj: {} iterations: {} cache_size: {}",
+        cacheable.template.weight(),
+        opt.niter,
+        opt.cache_size
+    );
+    println!("heap_factor is heap_size / cache_size");
+
+    let mut rng = thread_rng();
+    let base_mem = ALLOCATED.load(SeqCst);
+    let print_mod = opt.niter / opt.print_count + 1;
+    let mut should_print = true;
+    for key in 0..opt.niter {
+        should_print = should_print || key % print_mod == 0;
+        let before_mem = ALLOCATED.load(SeqCst);
+        if let Some((evicted, _, new_weight)) = cacheable.cache.evict(opt.cache_size) {
+            let after_mem = ALLOCATED.load(SeqCst);
+            if should_print {
+                let heap_factor = (after_mem - base_mem) as f64 / opt.cache_size as f64;
+                println!(
+                    "evicted: {:6}  dropped: {:6} new_weight: {:8} heap_factor: {:0.2}  ",
+                    evicted,
+                    before_mem - after_mem,
+                    new_weight,
+                    heap_factor
+                );
+                should_print = false;
+            }
+        }
+        let size = rng.gen_range(2, opt.obj_size);
+        cacheable.cache.insert(key, cacheable.sample(size));
+    }
 }
 
 /// This program constructs a template object of size `obj_size` and then
@@ -181,58 +221,32 @@ pub fn main() {
     // Use different Cacheables to see how the cache manages memory with
     // different types of cache entries. Uncomment one of the 'let mut cacheable'
     // lines
-
-    // With Vec<usize> we stay within between opt.cache_size and 3*opt.cache_size
-    // Larger heap factors for very small arrays
-    // obj_size  |  heap factor
-    //   10      |     4.02
-    //   20      |     2.39
-    //   30      |     2.40
-    //   50      |     1.76
-    //  100      |     1.38
-    // 1000      |     1.05
-    // let mut cacheable: Cacheable<Vec<usize>> = Cacheable::new(opt.obj_size);
-
-    // Cache HashMap<String, String>
-    // The heap factor ranges between 2.23 (size 3) and 1.06 (size 100)
-    //let mut cacheable: Cacheable<HashMap<String, String>> = Cacheable::new(opt.obj_size);
-
-    // Cache BTreeMap<String, Value>
-    // obj_size  |  heap factor
-    //    3      |     16.51
-    //    5      |     12.07
-    //   10      |      4.64
-    //   50      |      3.07
-    //  100      |      2.94
-    let mut cacheable: Cacheable<ValueMap> = Cacheable::new(opt.obj_size);
-
-    println!("type: {}", cacheable.name());
-    println!(
-        "obj: {} iterations: {} cache_size: {}",
-        cacheable.template.weight(),
-        opt.niter,
-        opt.cache_size
-    );
-    println!("heap_factor is heap_size / cache_size");
-
-    let mut rng = thread_rng();
-    let base_mem = ALLOCATED.load(SeqCst);
-    let print_mod = opt.niter / opt.print_count + 1;
-    let mut should_print = true;
-    for key in 0..opt.niter {
-        should_print = should_print || key % print_mod == 0;
-        if let Some((evicted, _, new_weight)) = cacheable.cache.evict(opt.cache_size) {
-            if should_print {
-                let heap_factor =
-                    (ALLOCATED.load(SeqCst) - base_mem) as f64 / opt.cache_size as f64;
-                println!(
-                    "evicted: {:6}  new_weight: {:8} heap_factor: {:0.2}  ",
-                    evicted, new_weight, heap_factor
-                );
-                should_print = false;
-            }
-        }
-        let size = rng.gen_range(2, opt.obj_size);
-        cacheable.cache.insert(key, cacheable.sample(size));
+    if opt.template == "vec" {
+        // With Vec<usize> we stay within between opt.cache_size and 3*opt.cache_size
+        // Larger heap factors for very small arrays
+        // obj_size  |  heap factor
+        //   10      |     4.02
+        //   20      |     2.39
+        //   30      |     2.40
+        //   50      |     1.76
+        //  100      |     1.38
+        // 1000      |     1.05
+        stress::<Vec<usize>>(&opt);
+    } else if opt.template == "hashmap" {
+        // Cache HashMap<String, String>
+        // The heap factor ranges between 2.23 (size 3) and 1.06 (size 100)
+        //let mut cacheable: Cacheable<HashMap<String, String>> = Cacheable::new(opt.obj_size);
+        stress::<HashMap<String, String>>(&opt);
+    } else if opt.template == "valuemap" {
+        // Cache BTreeMap<String, Value>
+        // obj_size  |  heap factor
+        //    3      |     16.51
+        //    5      |     12.07
+        //   10      |      4.64
+        //   50      |      3.07
+        //  100      |      2.94
+        stress::<ValueMap>(&opt);
+    } else {
+        println!("unknown value for --template")
     }
 }
