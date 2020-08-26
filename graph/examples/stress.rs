@@ -165,6 +165,8 @@ struct Opt {
     cache_size: usize,
     #[structopt(short, long, default_value = "vec")]
     template: String,
+    #[structopt(short, long)]
+    samples: bool,
 }
 
 fn stress<T: Template<T, Item = T>>(opt: &Opt) {
@@ -201,6 +203,15 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
             }
         }
         let size = rng.gen_range(2, opt.obj_size);
+        let before = ALLOCATED.load(SeqCst);
+        let sample = cacheable.sample(size);
+        if opt.samples {
+            println!(
+                "sample: weight {:6} alloc {:6}",
+                sample.weight(),
+                ALLOCATED.load(SeqCst) - before,
+            );
+        }
         cacheable.cache.insert(key, cacheable.sample(size));
     }
 }
