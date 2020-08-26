@@ -167,6 +167,8 @@ struct Opt {
     template: String,
     #[structopt(short, long)]
     samples: bool,
+    #[structopt(short, long)]
+    fixed: bool,
 }
 
 fn stress<T: Template<T, Item = T>>(opt: &Opt) {
@@ -202,7 +204,11 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
                 should_print = false;
             }
         }
-        let size = rng.gen_range(2, opt.obj_size);
+        let size = if opt.fixed {
+            opt.obj_size
+        } else {
+            rng.gen_range(2, opt.obj_size)
+        };
         let before = ALLOCATED.load(SeqCst);
         let sample = cacheable.sample(size);
         if opt.samples {
