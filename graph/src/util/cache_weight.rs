@@ -32,9 +32,36 @@ impl<T: CacheWeight> CacheWeight for Vec<T> {
 
 impl<T: CacheWeight, U: CacheWeight> CacheWeight for std::collections::BTreeMap<T, U> {
     fn indirect_weight(&self) -> usize {
+        // It is not possible to know how many nodes a BTree has, as `BTreeMap`
+        // does not expose its depth or any other detail about the true size
+        // of the BTree. We estimate that size, assuming the worst case, i.e.,
+        // the sparsest BTree
+
+        // This is std::collections::btree::node::CAPACITY which is not a public
+        // constant.
+        const NODE_CAPACITY: usize = 11;
+
+        // A BTree with just one page needs room for at least NODE_CAPACITY
+        // key/value entries in its root node, except for the empty tree, which
+        // takes no space. If there is more than a root node, at worst,
+        // each page is half full
+        let kv_slots = if self.len() == 0 {
+            0
+        } else if self.len() < NODE_CAPACITY {
+            NODE_CAPACITY
+        } else {
+            2 * self.len()
+        };
+
+        // Size of the vectors in all BTree nodes in the tree
+        let node_size = kv_slots * (mem::size_of::<T>() + mem::size_of::<U>())
+            + mem::size_of::<Vec<T>>()
+            + mem::size_of::<Vec<U>>();
+
         self.iter()
             .map(|(key, value)| key.weight() + value.weight())
-            .sum()
+            .sum::<usize>()
+            + node_size
     }
 }
 

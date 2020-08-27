@@ -262,6 +262,12 @@ pub fn main() {
         //   10      |      4.64
         //   50      |      3.07
         //  100      |      2.94
+        //
+        // The above is for a weight calculation that does not take the
+        // allocated, unused space in the BTree into account. With a guess
+        // at those, the above heap factors range from 1.14 to 0.88, with the
+        // exception of obj_size 0 where we get a factor of 2.88, but that
+        // must be caused by some other effect
         stress::<ValueMap>(&opt);
     } else {
         println!("unknown value for --template")
