@@ -5,12 +5,13 @@ use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
+use parking_lot::RwLock;
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::sync::{Mutex, RwLock};
+use std::sync::Mutex;
 use std::time::Instant;
 
 use graph::data::query::CacheStatus;
@@ -420,7 +421,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                 // and then in the LfuCache for historical queries
                 // The blocks are used to delimit how long locks need to be held
                 {
-                    let cache = QUERY_BLOCK_CACHE.read().unwrap();
+                    let cache = QUERY_BLOCK_CACHE.read();
                     if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return result;
@@ -502,7 +503,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
     {
         // Calculate the weight outside the lock.
         let weight = result.data.as_ref().unwrap().weight();
-        let mut cache = QUERY_BLOCK_CACHE.write().unwrap();
+        let mut cache = QUERY_BLOCK_CACHE.write();
 
         // Get or insert the cache for this network.
         if cache.insert(network, block_ptr, key, result.cheap_clone(), weight) {
