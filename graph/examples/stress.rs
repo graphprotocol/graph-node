@@ -51,6 +51,22 @@ trait Template<T>: CacheWeight + Default {
     fn sample(&self, size: usize) -> Self::Item;
 }
 
+/// Template for testing caching of `String`
+impl Template<String> for String {
+    type Item = String;
+
+    fn create(size: usize) -> Self {
+        let mut s = String::with_capacity(size);
+        for _ in 0..size {
+            s.push('x');
+        }
+        s
+    }
+    fn sample(&self, size: usize) -> Self::Item {
+        self[0..size].into()
+    }
+}
+
 /// Template for testing caching of `Vec<usize>`
 impl Template<Vec<usize>> for Vec<usize> {
     type Item = Vec<usize>;
@@ -204,10 +220,10 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
                 should_print = false;
             }
         }
-        let size = if opt.fixed {
+        let size = if opt.fixed || opt.obj_size == 0 {
             opt.obj_size
         } else {
-            rng.gen_range(2, opt.obj_size)
+            rng.gen_range(0, opt.obj_size)
         };
         let before = ALLOCATED.load(SeqCst);
         let sample = cacheable.sample(size);
@@ -269,6 +285,8 @@ pub fn main() {
         // exception of obj_size 0 where we get a factor of 2.88, but that
         // must be caused by some other effect
         stress::<ValueMap>(&opt);
+    } else if opt.template == "string" {
+        stress::<String>(&opt);
     } else {
         println!("unknown value for --template")
     }
