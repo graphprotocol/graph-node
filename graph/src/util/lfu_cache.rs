@@ -30,7 +30,7 @@ impl<K: Hash, V> Hash for CacheEntry<K, V> {
     }
 }
 
-impl<K, V: Default> CacheEntry<K, V> {
+impl<K, V: Default + CacheWeight> CacheEntry<K, V> {
     fn cache_key(key: K) -> Self {
         // Only the key matters for finding an entry in the cache.
         CacheEntry {
@@ -39,6 +39,13 @@ impl<K, V: Default> CacheEntry<K, V> {
             weight: 0,
             will_stale: false,
         }
+    }
+}
+
+impl<K: CacheWeight, V: Default + CacheWeight> CacheEntry<K, V> {
+    /// Estimate the size of a `CacheEntry` with the given key and value
+    fn weight(key: &K, value: &V) -> usize {
+        value.indirect_weight() + key.indirect_weight() + std::mem::size_of::<Self>()
     }
 }
 
@@ -68,7 +75,7 @@ impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
     }
 }
 
-impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V> {
+impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default> LfuCache<K, V> {
     pub fn new() -> Self {
         LfuCache {
             queue: PriorityQueue::new(),
@@ -79,7 +86,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
 
     /// Updates and bumps freceny if already present.
     pub fn insert(&mut self, key: K, value: V) {
-        let weight = value.weight();
+        let weight = CacheEntry::weight(&key, &value);
         match self.get_mut(key.clone()) {
             None => {
                 self.total_weight += weight;
@@ -94,11 +101,22 @@ impl<K: Clone + Ord + Eq + Hash + Debug, V: CacheWeight + Default> LfuCache<K, V
                 );
             }
             Some(entry) => {
+                let old_weight = entry.weight;
                 entry.weight = weight;
                 entry.value = value;
-                self.total_weight += weight - entry.weight;
+                self.total_weight -= old_weight;
+                self.total_weight += weight;
             }
         }
+    }
+
+    #[cfg(test)]
+    fn weight(&self, key: K) -> usize {
+        let key_entry = CacheEntry::cache_key(key);
+        self.queue
+            .get(&key_entry)
+            .map(|(entry, _)| entry.weight)
+            .unwrap_or(0)
     }
 
     fn get_mut(&mut self, key: K) -> Option<&mut CacheEntry<K, V>> {
@@ -201,31 +219,34 @@ fn entity_lru_cache() {
 
     impl CacheWeight for Weight {
         fn weight(&self) -> usize {
-            self.0
+            self.indirect_weight()
         }
 
         fn indirect_weight(&self) -> usize {
-            0
+            self.0
         }
     }
 
     let mut cache: LfuCache<&'static str, Weight> = LfuCache::new();
     cache.insert("panda", Weight(2));
     cache.insert("cow", Weight(1));
+    let panda_weight = cache.weight("panda");
+    let cow_weight = cache.weight("cow");
 
     assert_eq!(cache.get(&"cow"), Some(&Weight(1)));
     assert_eq!(cache.get(&"panda"), Some(&Weight(2)));
 
-    // Total weight is 3, nothing is evicted.
-    cache.evict(3);
+    // Nothing is evicted.
+    cache.evict(panda_weight + cow_weight);
     assert_eq!(cache.len(), 2);
 
     // "cow" was accessed twice, so "panda" is evicted.
     cache.get(&"cow");
-    cache.evict(2);
+    cache.evict(cow_weight);
     assert!(cache.get(&"panda").is_none());
 
     cache.insert("alligator", Weight(2));
+    let alligator_weight = cache.weight("alligator");
 
     // Give "cow" and "alligator" a high frequency.
     for _ in 0..1000 {
@@ -233,20 +254,26 @@ fn entity_lru_cache() {
         cache.get(&"alligator");
     }
 
-    cache.insert("lion", Weight(3));
+    // Insert a lion and make it weigh the same as the cow and the alligator
+    // together.
+    cache.insert("lion", Weight(0));
+    let lion_weight = cache.weight("lion");
+    let lion_inner_weight = cow_weight + alligator_weight - lion_weight;
+    cache.insert("lion", Weight(lion_inner_weight));
+    let lion_weight = cache.weight("lion");
 
     // Make "cow" and "alligator" stale and remove them.
     for _ in 0..(2 * STALE_PERIOD) {
         cache.get(&"lion");
 
         // The "whale" is something to evict so the stale counter moves.
-        cache.insert("whale", Weight(100));
-        cache.evict(10);
+        cache.insert("whale", Weight(100 * lion_weight));
+        cache.evict(2 * lion_weight);
     }
 
     // Either "cow" and "alligator" fit in the cache, or just "lion".
     // "lion" will be kept, it had lower frequency but was not stale.
     assert!(cache.get(&"cow").is_none());
     assert!(cache.get(&"alligator").is_none());
-    assert_eq!(cache.get(&"lion"), Some(&Weight(3)));
+    assert_eq!(cache.get(&"lion"), Some(&Weight(lion_inner_weight)));
 }
