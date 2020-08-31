@@ -987,14 +987,18 @@ pub fn blocks_with_triggers(
             .and_then(move |(block_hashes, mut triggers_by_block)| {
                 adapter
                     .load_blocks(logger1, chain_store, block_hashes)
-                    .map(move |block| {
-                        EthereumBlockWithTriggers::new(
-                            // All blocks with triggers are in `triggers_by_block`, and will be
-                            // accessed here exactly once.
-                            triggers_by_block.remove(&block.number()).unwrap(),
-                            BlockFinality::Final(block),
-                        )
-                    })
+                    .and_then(
+                        move |block| match triggers_by_block.remove(&block.number()) {
+                            Some(triggers) => Ok(EthereumBlockWithTriggers::new(
+                                triggers,
+                                BlockFinality::Final(block),
+                            )),
+                            None => Err(format_err!(
+                                "block {:?} not found in `triggers_by_block`",
+                                block
+                            )),
+                        },
+                    )
                     .collect()
                     .map(|mut blocks| {
                         blocks.sort_by_key(|block| block.ethereum_block.number());
