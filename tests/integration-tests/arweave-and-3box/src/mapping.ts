@@ -26,11 +26,6 @@ export function handleTrigger(event: Trigger): void {
   ) as TypedMap<string, JSONValue>;
   assert(moo_master.get("name").toString() == "Moo Master");
 
-  let monkey_spirit = box.profile(
-    "did:3:bafyreia7db37k7epoc4qaifound6hk7swpwfkhudvdug4bgccjw6dh77ue"
-  ) as TypedMap<string, JSONValue>;
-  assert(monkey_spirit.get("emoji").toString() == "🐵");
-
   let nothing = box.profile("0xc33307011058fcc0FB717dcd549b9ced09b53333");
   assert(nothing === null);
 }
