@@ -11,8 +11,10 @@ use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::{
     debug, err_msg, error, ethabi, format_err,
-    futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-    hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, CheapClone, DynTryFuture,
+    futures03::{
+        self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
+    },
+    hex, o, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, CheapClone, DynTryFuture,
     Error, EthereumCallCache, Logger, TimeoutError,
 };
 use web3::api::Web3;
@@ -62,6 +64,11 @@ lazy_static! {
             .unwrap_or("10".into())
             .parse::<usize>()
             .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
+
+    static ref PROVIDER_RETRIES: usize = std::env::var("GRAPH_ETHEREUM_PROVIDER_RETRIES")
+        .unwrap_or("2".into())
+        .parse::<usize>()
+        .expect("invalid GRAPH_ETHEREUM_PROVIDER_RETRIES env var");
 }
 
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
@@ -94,6 +101,10 @@ where
         }
     }
 
+    fn url_hostname(&self) -> &str {
+        &self.url_hostname
+    }
+
     fn traces(
         &self,
         logger: &Logger,
@@ -103,7 +114,8 @@ where
         addresses: Vec<H160>,
     ) -> impl Future<Item = Vec<Trace>, Error = Error> {
         let eth = self.clone();
-        let logger = logger.to_owned();
+        let logger = logger.cheap_clone();
+        let hostname = eth.url_hostname().to_owned();
 
         retry("trace_filter RPC call", &logger)
             .limit(*REQUEST_RETRIES)
@@ -126,6 +138,7 @@ where
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth.metrics.clone();
+                let hostname = hostname.clone();
                 eth.web3
                     .trace()
                     .filter(trace_filter)
@@ -153,8 +166,8 @@ where
                     .from_err()
                     .then(move |result| {
                         let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "trace_filter");
-                        subgraph_metrics.observe_request(elapsed, "trace_filter");
+                        provider_metrics.observe_request(elapsed, "trace_filter", &hostname);
+                        subgraph_metrics.observe_request(elapsed, "trace_filter", &hostname);
                         if result.is_err() {
                             provider_metrics.add_error("trace_filter");
                             subgraph_metrics.add_error("trace_filter");
@@ -191,6 +204,8 @@ where
         too_many_logs_fingerprints: &'static [&'static str],
     ) -> impl Future<Item = Vec<Log>, Error = TimeoutError<web3::error::Error>> {
         let eth_adapter = self.clone();
+        let logger = logger.cheap_clone();
+        let hostname = eth_adapter.url_hostname().to_owned();
 
         retry("eth_getLogs RPC call", &logger)
             .when(move |res: &Result<_, web3::error::Error>| match res {
@@ -205,6 +220,7 @@ where
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth_adapter.metrics.clone();
+                let hostname = hostname.clone();
 
                 // Create a log filter
                 let log_filter: Filter = FilterBuilder::default()
@@ -217,8 +233,8 @@ where
                 // Request logs from client
                 eth_adapter.web3.eth().logs(log_filter).then(move |result| {
                     let elapsed = start.elapsed().as_secs_f64();
-                    provider_metrics.observe_request(elapsed, "eth_getLogs");
-                    subgraph_metrics.observe_request(elapsed, "eth_getLogs");
+                    provider_metrics.observe_request(elapsed, "eth_getLogs", &hostname);
+                    subgraph_metrics.observe_request(elapsed, "eth_getLogs", &hostname);
                     if result.is_err() {
                         provider_metrics.add_error("eth_getLogs");
                         subgraph_metrics.add_error("eth_getLogs");
@@ -251,7 +267,7 @@ where
         .max(1);
 
         let eth = self.clone();
-        let logger = logger.to_owned();
+        let logger = logger.cheap_clone();
         stream::unfold(from, move |start| {
             if start > to {
                 return None;
@@ -286,6 +302,7 @@ where
         to: u64,
         filter: EthGetLogsFilter,
     ) -> DynTryFuture<'static, Vec<Log>, Error> {
+        let logger = logger.cheap_clone();
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
         // The first one is for Infura when it hits the log limit, the rest for Alchemy timeouts.
         const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
@@ -380,8 +397,9 @@ where
         block_number_opt: Option<BlockNumber>,
     ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
         let block_number_opt = block_number_opt.map(Into::into);
-        let web3 = self.web3.clone();
-        let logger = logger.clone();
+        let eth_adapter = self.clone();
+        let hostname = eth_adapter.url_hostname().to_owned();
+        let logger = logger.cheap_clone();
 
         // Outer retry used only for 0-byte responses,
         // where we can't guarantee the problem is temporary.
@@ -397,21 +415,27 @@ where
                     Err(_) => false,
                 }
             })
-            .limit(16)
+            .limit(*PROVIDER_RETRIES)
             .no_logging()
             .no_timeout()
             .run(move || {
-                let web3 = web3.clone();
+                let web3 = eth_adapter.web3.clone();
                 let call_data = call_data.clone();
+                let provider_metrics = eth_adapter.metrics.clone();
+                let hostname = hostname.clone();
 
                 retry("eth_call RPC call", &logger)
                     .when(|result| match result {
                         Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
                         Err(_) => true,
                     })
-                    .no_limit()
+                    .limit(*PROVIDER_RETRIES)
                     .timeout_secs(*JSON_RPC_TIMEOUT)
                     .run(move || {
+                        let start = Instant::now();
+                        let provider_metrics = provider_metrics.clone();
+                        let hostname = hostname.clone();
+
                         let req = CallRequest {
                             from: None,
                             to: contract_address,
@@ -420,7 +444,10 @@ where
                             value: None,
                             data: Some(call_data.clone()),
                         };
-                        web3.eth().call(req, block_number_opt).then(|result| {
+                        web3.eth().call(req, block_number_opt).then(move |result| {
+                            let elapsed = start.elapsed().as_secs_f64();
+                            provider_metrics.observe_request(elapsed, "eth_call", &hostname);
+
                             // Try to check if the call was reverted. The JSON-RPC response for
                             // reverts is not standardized, the current situation for the tested
                             // clients is:
@@ -610,25 +637,23 @@ where
     T::Batch: Send,
     T::Out: Send,
 {
-    fn url_hostname(&self) -> &str {
-        &self.url_hostname
-    }
-
     fn net_identifiers(
         &self,
         logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
-        let logger = logger.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         let web3 = self.web3.clone();
         let net_version_future = retry("net_version RPC call", &logger)
-            .no_limit()
+            .limit(*PROVIDER_RETRIES)
             .timeout_secs(20)
             .run(move || web3.net().version().from_err());
 
         let web3 = self.web3.clone();
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
-            .no_limit()
+            .limit(*PROVIDER_RETRIES)
             .timeout_secs(30)
             .run(move || {
                 web3.eth()
@@ -654,7 +679,7 @@ where
                         genesis_block_hash,
                     },
                 )
-                .map_err(|e| {
+                .map_err(move |e| {
                     e.into_inner().unwrap_or_else(|| {
                         format_err!("Ethereum node took too long to read network identifiers")
                     })
@@ -667,10 +692,13 @@ where
         logger: &Logger,
     ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = EthereumAdapterError> + Send> {
         let web3 = self.web3.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         Box::new(
-            retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
-                .no_limit()
+            retry("eth_getBlockByNumber(latest) no txs RPC call", &logger)
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -697,10 +725,13 @@ where
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send + Unpin>
     {
         let web3 = self.web3.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         Box::new(
-            retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
-                .no_limit()
+            retry("eth_getBlockByNumber(latest) with txs RPC call", &logger)
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -726,6 +757,9 @@ where
         logger: &Logger,
         block_hash: H256,
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send> {
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         Box::new(
             self.block_by_hash(&logger, block_hash)
                 .and_then(move |block_opt| {
@@ -745,11 +779,13 @@ where
         block_hash: H256,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
-        let logger = logger.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         Box::new(
             retry("eth_getBlockByHash RPC call", &logger)
-                .limit(*REQUEST_RETRIES)
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -771,10 +807,13 @@ where
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         Box::new(
             retry("eth_getBlockByNumber RPC call", &logger)
-                .no_limit()
+                .limit(*PROVIDER_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
@@ -797,7 +836,9 @@ where
         logger: &Logger,
         block: LightEthereumBlock,
     ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
-        let logger = logger.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         let block_hash = block.hash.expect("block is missing block hash");
 
         // The early return is necessary for correctness, otherwise we'll
@@ -816,7 +857,7 @@ where
         // transaction never made it back into the main chain.
         Box::new(
             retry("batch eth_getTransactionReceipt RPC call", &logger)
-                .limit(16)
+                .limit(*PROVIDER_RETRIES)
                 .no_logging()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
@@ -918,11 +959,14 @@ where
         chain_store: Arc<dyn ChainStore>,
         block_number: u64,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         Box::new(
             // When this method is called (from the subgraph registrar), we don't
             // know yet whether the block with the given number is final, it is
             // therefore safer to assume it is not final
-            self.block_hash_by_block_number(logger, chain_store.clone(), block_number, false)
+            self.block_hash_by_block_number(&logger, chain_store.clone(), block_number, false)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt.ok_or_else(|| {
                         format_err!(
@@ -947,6 +991,9 @@ where
         block_is_final: bool,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         let mut hashes = match chain_store.block_hashes_by_block_number(block_number) {
             Ok(hashes) => hashes,
@@ -988,7 +1035,7 @@ where
         } else {
             Box::new(
                 retry("eth_getBlockByNumber RPC call", &logger)
-                    .no_limit()
+                    .limit(*PROVIDER_RETRIES)
                     .timeout_secs(*JSON_RPC_TIMEOUT)
                     .run(move || {
                         web3.eth()
@@ -1027,13 +1074,16 @@ where
             }
         };
         let n = block.uncles.len();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         Box::new(
             futures::stream::futures_ordered((0..n).map(move |index| {
                 let web3 = self.web3.clone();
 
                 retry("eth_getUncleByBlockHashAndIndex RPC call", &logger)
-                    .no_limit()
+                    .limit(*PROVIDER_RETRIES)
                     .timeout_secs(60)
                     .run(move || {
                         web3.eth()
@@ -1065,6 +1115,9 @@ where
         chain_store: Arc<dyn ChainStore>,
         block_ptr: EthereumBlockPointer,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         Box::new(
             self.block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
                 .and_then(move |block_hash_opt| {
@@ -1086,6 +1139,9 @@ where
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let eth = self.clone();
         let addresses = Vec::new();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         let calls = eth
             .trace_stream(
                 &logger,
@@ -1136,23 +1192,27 @@ where
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> DynTryFuture<'static, Vec<Log>, Error> {
+    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send> {
         let eth: Self = self.cheap_clone();
-        let logger = logger.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
-        futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
-            eth.cheap_clone().log_stream(
-                logger.cheap_clone(),
-                subgraph_metrics.cheap_clone(),
-                from,
-                to,
-                filter,
-            )
-        }))
-        // Real limits on the number of parallel requests are imposed within the adapter.
-        .buffered(1000)
-        .try_concat()
-        .boxed()
+        Box::new(
+            futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
+                eth.cheap_clone().log_stream(
+                    logger.cheap_clone(),
+                    subgraph_metrics.cheap_clone(),
+                    from,
+                    to,
+                    filter,
+                )
+            }))
+            // Real limits on the number of parallel requests are imposed within the adapter.
+            .buffered(1000)
+            .try_concat()
+            .compat(),
+        )
     }
 
     fn calls_in_block_range(
@@ -1164,6 +1224,9 @@ where
         call_filter: EthereumCallFilter,
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
         let eth = self.clone();
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
 
         let addresses: Vec<H160> = call_filter
             .contract_addresses_function_signatures
@@ -1192,6 +1255,9 @@ where
         call: EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         // Emit custom error for type mismatches.
         for (token, kind) in call
             .args
@@ -1272,6 +1338,9 @@ where
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
     ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         // Search for the block in the store first then use json-rpc as a backup.
         let mut blocks = chain_store
             .blocks(block_hashes.iter().cloned().collect())
@@ -1285,7 +1354,7 @@ where
         );
 
         // Return a stream that lazily loads batches of blocks.
-        debug!(logger, "Requesting {} block(s)", missing_blocks.len());
+        debug!(logger, "Requesting {} block(s)", missing_blocks.len(),);
         Box::new(
             self.load_blocks_rpc(logger.clone(), missing_blocks.into_iter().collect())
                 .collect()
@@ -1308,6 +1377,9 @@ where
         from: u64,
         to: u64,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+        let logger = logger.new(o!(
+            "provider" => self.url_hostname().to_owned(),
+        ));
         // Currently we can't go to the DB for this because there might be duplicate entries for
         // the same block number.
         debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use graph::components::ethereum::{triggers_in_block, EthereumNetworks};
+use graph::components::ethereum::{triggers_in_block, EthereumNetworkAdapters, EthereumNetworks};
 use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{ProofOfIndexing, SharedProofOfIndexing};
 use graph::data::store::scalar::Bytes;
@@ -35,7 +35,7 @@ struct IndexingInputs<B, S> {
     network_name: String,
     start_blocks: Vec<u64>,
     store: Arc<S>,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapters: EthereumNetworkAdapters,
     stream_builder: B,
     include_calls_in_blocks: bool,
     top_level_templates: Arc<Vec<DataSourceTemplate>>,
@@ -273,7 +273,7 @@ impl SubgraphInstanceManager {
                                 ))
                                 .clone(),
                             eth_networks
-                                .adapter_with_capabilities(
+                                .adapters_with_capabilities(
                                     network.clone(),
                                     &required_capabilities)
                                 .expect(&format!(
@@ -314,7 +314,7 @@ impl SubgraphInstanceManager {
         host_builder: impl RuntimeHostBuilder,
         stream_builder: B,
         store: Arc<S>,
-        eth_adapter: Arc<dyn EthereumAdapter>,
+        eth_adapters: EthereumNetworkAdapters,
         manifest: SubgraphManifest,
         registry: Arc<M>,
         graphql_runner: Arc<impl GraphQlRunner>,
@@ -403,7 +403,7 @@ impl SubgraphInstanceManager {
                 network_name,
                 start_blocks,
                 store,
-                eth_adapter,
+                eth_adapters,
                 stream_builder,
                 include_calls_in_blocks,
                 top_level_templates,
@@ -538,7 +538,7 @@ where
 
             let res = process_block(
                 &logger,
-                ctx.inputs.eth_adapter.cheap_clone(),
+                ctx.inputs.eth_adapters.clone(),
                 ctx,
                 block_stream_cancel_handle.clone(),
                 block,
@@ -611,7 +611,7 @@ where
 /// whether new dynamic data sources have been added to the subgraph.
 async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S>(
     logger: &Logger,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapter: EthereumNetworkAdapters,
     mut ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,

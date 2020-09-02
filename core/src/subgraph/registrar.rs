@@ -5,7 +5,7 @@ use std::{env, iter};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
-use graph::components::ethereum::EthereumNetworks;
+use graph::components::ethereum::{EthereumNetworkAdapters, EthereumNetworks};
 use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
     SubgraphEntity, SubgraphVersionEntity, TypedEntity,
@@ -322,9 +322,9 @@ where
 
         let subgraph_eth_requirements = manifest.required_ethereum_capabilities();
 
-        let ethereum_adapter = self
+        let ethereum_adapters = self
             .ethereum_networks
-            .adapter_with_capabilities(network_name.clone(), &subgraph_eth_requirements)
+            .adapters_with_capabilities(network_name.clone(), &subgraph_eth_requirements)
             .map_err(|_| {
                 SubgraphRegistrarError::SubgraphNetworkRequirementsNotSupported(
                     network_name,
@@ -337,7 +337,7 @@ where
             &logger,
             self.store.clone(),
             chain_store.clone(),
-            ethereum_adapter.clone(),
+            ethereum_adapters.clone(),
             name.clone(),
             manifest,
             node_id,
@@ -481,7 +481,7 @@ fn create_subgraph(
 fn resolve_subgraph_chain_blocks(
     manifest: SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    ethereum_adapters: EthereumNetworkAdapters,
     logger: &Logger,
 ) -> Box<
     dyn Future<
@@ -507,7 +507,7 @@ fn resolve_subgraph_chain_blocks(
         {
             0 => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
             min_start_block => Box::new(
-                ethereum_adapter
+                ethereum_adapters
                     .block_pointer_from_number(logger, chain_store.clone(), min_start_block - 1)
                     .map(Some)
                     .map_err(move |_| {
@@ -525,7 +525,7 @@ fn resolve_subgraph_chain_blocks(
                 Some(base) => {
                     let base_block = base.block;
                     Box::new(
-                        ethereum_adapter
+                        ethereum_adapters
                             .block_pointer_from_number(
                                 &logger1,
                                 chain_store1.clone(),
@@ -737,7 +737,7 @@ fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl Store>,
     chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    ethereum_adapters: EthereumNetworkAdapters,
     name: SubgraphName,
     manifest: SubgraphManifest,
     node_id: NodeId,
@@ -863,7 +863,7 @@ fn create_subgraph_version(
             resolve_subgraph_chain_blocks(
                 manifest.clone(),
                 chain_store.clone(),
-                ethereum_adapter.clone(),
+                ethereum_adapters.clone(),
                 &logger.clone(),
             )
             .and_then(move |(start_block, base_block)| {

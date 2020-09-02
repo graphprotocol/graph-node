@@ -1,7 +1,6 @@
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use failure::SyncFailure;
 use futures::Future;
-use futures03::future::TryFutureExt;
 use mockall::predicate::*;
 use mockall::*;
 use petgraph::graphmap::GraphMap;
@@ -13,12 +12,14 @@ use tiny_keccak::keccak256;
 use web3::types::*;
 
 use super::types::*;
-use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
+use crate::components::ethereum::EthereumNetworkAdapters;
+use crate::components::metrics::{CounterVec, HistogramVec};
 use crate::prelude::*;
 
 pub type EventSignature = H256;
 
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
+#[derive(Debug)]
 pub struct EthereumNetworkIdentifier {
     pub net_version: String,
     pub genesis_block_hash: H256,
@@ -70,6 +71,12 @@ pub enum EthereumContractCallError {
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
         EthereumContractCallError::ABIError(SyncFailure::new(e))
+    }
+}
+
+impl From<failure::Error> for EthereumContractCallError {
+    fn from(_: failure::Error) -> Self {
+        EthereumContractCallError::Timeout
     }
 }
 
@@ -500,7 +507,7 @@ impl ProviderEthRpcMetrics {
                 String::from("eth_rpc_request_duration"),
                 String::from("Measures eth rpc request duration"),
                 HashMap::new(),
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("hostname")],
                 vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
             )
             .unwrap();
@@ -518,9 +525,9 @@ impl ProviderEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, hostname: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(vec![method, hostname].as_slice())
             .observe(duration);
     }
 
@@ -531,18 +538,19 @@ impl ProviderEthRpcMetrics {
 
 #[derive(Clone)]
 pub struct SubgraphEthRpcMetrics {
-    request_duration: Box<GaugeVec>,
+    request_duration: Box<HistogramVec>,
     errors: Box<CounterVec>,
 }
 
 impl SubgraphEthRpcMetrics {
     pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
         let request_duration = registry
-            .new_gauge_vec(
+            .new_histogram_vec(
                 format!("subgraph_eth_rpc_request_duration_{}", subgraph_hash),
                 String::from("Measures eth rpc request duration for a subgraph deployment"),
                 HashMap::new(),
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("hostname")],
+                vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
             )
             .unwrap();
         let errors = registry
@@ -559,10 +567,10 @@ impl SubgraphEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, hostname: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
-            .set(duration);
+            .with_label_values(vec![method, hostname].as_slice())
+            .observe(duration);
     }
 
     pub fn add_error(&self, method: &str) {
@@ -616,8 +624,6 @@ impl BlockStreamMetrics {
 /// or a remote node over RPC.
 #[automock]
 pub trait EthereumAdapter: Send + Sync + 'static {
-    fn url_hostname(&self) -> &str;
-
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
     fn net_identifiers(
@@ -750,7 +756,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         from: u64,
         to: u64,
         log_filter: EthereumLogFilter,
-    ) -> DynTryFuture<'static, Vec<Log>, Error>;
+    ) -> Box<dyn Future<Item = Vec<Log>, Error = Error> + Send>;
 
     fn calls_in_block_range(
         &self,
@@ -827,7 +833,7 @@ fn parse_block_triggers(
 }
 
 pub async fn triggers_in_block(
-    adapter: Arc<dyn EthereumAdapter>,
+    adapter: EthereumNetworkAdapters,
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
@@ -884,7 +890,7 @@ pub async fn triggers_in_block(
 /// It is recommended that `to` be far behind the block number of latest block the Ethereum
 /// node is aware of.
 pub fn blocks_with_triggers(
-    adapter: Arc<dyn EthereumAdapter>,
+    adapter: EthereumNetworkAdapters,
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
@@ -906,8 +912,7 @@ pub fn blocks_with_triggers(
     if !log_filter.is_empty() {
         trigger_futs.push(Box::new(
             eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
-                .map_ok(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect())
-                .compat(),
+                .map(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect()),
         ))
     }
 
@@ -947,8 +952,6 @@ pub fn blocks_with_triggers(
     }
 
     let logger1 = logger.cheap_clone();
-    let logger2 = logger.cheap_clone();
-    let eth_clone = eth.cheap_clone();
     Box::new(
         trigger_futs
             .concat2()
@@ -957,13 +960,9 @@ pub fn blocks_with_triggers(
                     .clone()
                     .block_hash_by_block_number(&logger, chain_store.clone(), to, true)
                     .then(move |to_hash| match to_hash {
-                        Ok(n) => n.ok_or_else(|| {
-                            warn!(logger2,
-                                    "Ethereum endpoint is behind";
-                                    "url" => eth_clone.url_hostname()
-                            );
-                            format_err!("Block {} not found in the chain", to)
-                        }),
+                        Ok(n) => {
+                            n.ok_or_else(|| format_err!("Block {} not found in the chain", to))
+                        }
                         Err(e) => Err(e),
                     }),
             )
