@@ -84,11 +84,11 @@ impl SubgraphInstanceManagerMetrics {
     pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
         let subgraph_count = registry
             .new_gauge(
-                "subgraph_count",
-                "Counts the number of subgraphs currently being indexed by the graph-node.",
+                "deployment_count",
+                "Counts the number of deployments currently being indexed by the graph-node.",
                 HashMap::new(),
             )
-            .expect("failed to create `subgraph_count` gauge");
+            .expect("failed to create `deployment_count` gauge");
         Self { subgraph_count }
     }
 }

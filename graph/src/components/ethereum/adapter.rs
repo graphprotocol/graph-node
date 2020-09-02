@@ -589,14 +589,14 @@ impl BlockStreamMetrics {
                 "Track the number of blocks a subgraph deployment is behind the HEAD block",
                 deployment_id.as_str(),
             )
-            .expect("failed to create `subgraph_blocks_behind` gauge");
+            .expect("failed to create `deployment_blocks_behind` gauge");
         let reverted_blocks = registry
             .new_deployment_gauge(
                 "deployment_reverted_blocks",
                 "Track the last reverted block for a subgraph deployment",
                 deployment_id.as_str(),
             )
-            .expect("Failed to create `subgraph_reverted_blocks` gauge");
+            .expect("Failed to create `deployment_reverted_blocks` gauge");
         Self {
             ethrpc_metrics,
             blocks_behind,
