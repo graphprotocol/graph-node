@@ -500,7 +500,7 @@ impl RuntimeHostTrait for RuntimeHost {
         // Parse the inputs
         //
         // Take the input for the call, chop off the first 4 bytes, then call
-        // `function.decode_output` to get a vector of `Token`s. Match the `Token`s
+        // `function.decode_input` to get a vector of `Token`s. Match the `Token`s
         // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
         let tokens = function_abi
             .decode_input(&call.input.0[4..])
