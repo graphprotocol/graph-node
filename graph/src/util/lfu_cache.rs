@@ -163,6 +163,14 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         self.queue.len()
     }
 
+    /// Evict entries in the cache until the total weight of the cache is
+    /// equal to or smaller than `max_weight`.
+    ///
+    /// The return value is mostly useful for testing and diagnostics and can
+    /// safely ignored in normal use. It gives the sum of the weight of all
+    /// evicted entries, the weight before anything was evicted and the new
+    /// total weight of the cache, in that order, if anything was evicted
+    /// at all. If there was no reason to evict, `None` is returned.
     pub fn evict(&mut self, max_weight: usize) -> Option<(usize, usize, usize)> {
         if self.total_weight <= max_weight {
             return None;
