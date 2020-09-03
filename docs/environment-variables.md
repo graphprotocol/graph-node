@@ -109,18 +109,21 @@ those.
 - `GRAPH_KILL_IF_UNRESPONSIVE`: If set, the process will be killed if unresponsive.
 - `GRAPH_LOG_QUERY_TIMING`: Control whether the process logs details of
   processing GraphQL and SQL queries. The value is a comma separated list
-  of `sql` and `gql`. If `gql` is present in the list, each GraphQL query
-  made against the node is logged at level `info`. The log message contains
-  the subgraph that was queried, the query, its variables, the amount of
-  time the query took, and a unique `query_id`. If `sql` is present, the
-  SQL queries that a GraphQL query causes are logged. The log message
-  contains the subgraph, the query, its bind variables, the amount of time
-  it took to execute the query, the number of entities found by the query,
-  and the `query_id` of the GraphQL query that caused the SQL query. These
-  SQL queries are marked with `component: GraphQlRunner` There are
-  additional SQL queries that get logged when `sql` is given. These are
+  of `sql`,`gql`, and `cache`. If `gql` is present in the list, each
+  GraphQL query made against the node is logged at level `info`. The log
+  message contains the subgraph that was queried, the query, its variables,
+  the amount of time the query took, and a unique `query_id`. If `sql` is
+  present, the SQL queries that a GraphQL query causes are logged. The log
+  message contains the subgraph, the query, its bind variables, the amount
+  of time it took to execute the query, the number of entities found by the
+  query, and the `query_id` of the GraphQL query that caused the SQL
+  query. These SQL queries are marked with `component: GraphQlRunner` There
+  are additional SQL queries that get logged when `sql` is given. These are
   queries caused by mappings when processing blocks for a subgraph, and
-  queries caused by subscriptions. Defaults to no logging.
+  queries caused by subscriptions. If `cache` is present in addition to
+  `gql`, also logs information for each toplevel GraphQL query field
+  whether that could be retrieved from cache or not. Defaults to no
+  logging.
 - `STORE_CONNECTION_POOL_SIZE`: How many simultaneous connections to allow to the store.
   Due to implementation details, this value may not be strictly adhered to. Defaults to 10.
 - `GRAPH_LOG_POI_EVENTS`: Logs Proof of Indexing events deterministically.

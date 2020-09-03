@@ -245,7 +245,7 @@ impl Query {
 
     /// Log details about the overall execution of the query
     pub fn log_execution(&self, block: u64) {
-        if *graph::log::LOG_GQL_TIMING {
+        if *graph::log::LOG_GQL_CACHE_TIMING {
             info!(
                 &self.logger,
                 "Query timing (GraphQL)";

@@ -385,4 +385,5 @@ fn log_query_timing(kind: &str) -> bool {
 lazy_static! {
     pub static ref LOG_SQL_TIMING: bool = log_query_timing("sql");
     pub static ref LOG_GQL_TIMING: bool = log_query_timing("gql");
+    pub static ref LOG_GQL_CACHE_TIMING: bool = *LOG_GQL_TIMING && log_query_timing("cache");
 }
