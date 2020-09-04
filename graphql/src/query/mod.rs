@@ -70,12 +70,15 @@ where
         block_ptr,
     );
     let elapsed = start.elapsed();
-    options.load_manager.add_query(query.shape_hash, elapsed);
+    let cache_status = ctx.cache_status.load();
+    options
+        .load_manager
+        .record_work(query.shape_hash, elapsed, cache_status);
     query.log_cache_status(
         selection_set,
         block_ptr.map(|b| b.number).unwrap_or(0),
         start,
-        ctx.cache_status.load().to_string(),
+        cache_status.to_string(),
     );
     result
 }

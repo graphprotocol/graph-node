@@ -1,7 +1,8 @@
 use std::fmt;
+use std::slice::Iter;
 
 /// Used for checking if a response hit the cache.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CacheStatus {
     /// Hit is a hit in the generational cache.
     Hit,
@@ -30,5 +31,13 @@ impl fmt::Display for CacheStatus {
             CacheStatus::Insert => f.write_str("insert"),
             CacheStatus::Miss => f.write_str("miss"),
         }
+    }
+}
+
+impl CacheStatus {
+    pub fn iter() -> Iter<'static, CacheStatus> {
+        use CacheStatus::*;
+        static STATUSES: [CacheStatus; 4] = [Hit, Shared, Insert, Miss];
+        STATUSES.iter()
     }
 }

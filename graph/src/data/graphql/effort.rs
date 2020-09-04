@@ -5,14 +5,15 @@ use lazy_static::lazy_static;
 use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use crate::components::metrics::{Gauge, MetricsRegistry};
+use crate::components::metrics::{Counter, Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
-use crate::data::query::QueryExecutionError;
+use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::{debug, info, o, warn, Logger};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
@@ -237,6 +238,7 @@ pub struct LoadManager {
     jailed_queries: RwLock<HashSet<u64>>,
     kill_state: RwLock<KillState>,
     effort_gauge: Box<Gauge>,
+    query_counters: HashMap<CacheStatus, Counter>,
 }
 
 impl LoadManager {
@@ -268,6 +270,20 @@ impl LoadManager {
                 HashMap::new(),
             )
             .expect("failed to create `query_effort_ms` counter");
+        let query_counters = CacheStatus::iter()
+            .map(|s| {
+                let labels = HashMap::from_iter(vec![("cache_status".to_owned(), s.to_string())]);
+                let counter = registry
+                    .global_counter(
+                        "query_cache_status_count",
+                        "Count toplevel GraphQL fields executed and their cache status",
+                        labels,
+                    )
+                    .expect("Failed to register query_counter metric");
+                (s.clone(), counter)
+            })
+            .collect::<HashMap<_, _>>();
+
         Self {
             logger,
             effort: QueryEffort::default(),
@@ -276,12 +292,19 @@ impl LoadManager {
             jailed_queries: RwLock::new(HashSet::new()),
             kill_state: RwLock::new(KillState::new()),
             effort_gauge,
+            query_counters,
         }
     }
 
-    pub fn add_query(&self, shape_hash: u64, duration: Duration) {
+    /// Record that we spent `duration` amount of work for the query
+    /// `shape_hash`, where `cache_status` indicates whether the query
+    /// was cached or had to actually run
+    pub fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
         if !*LOAD_MANAGEMENT_DISABLED {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
+            self.query_counters
+                .get(&cache_status)
+                .map(|counter| counter.inc());
         }
     }
 
