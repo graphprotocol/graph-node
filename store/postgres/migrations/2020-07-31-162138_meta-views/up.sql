@@ -51,7 +51,7 @@ select *,
           where relkind = 'r'
             and (nspname in ('public', 'subgraphs'))
   ) a
-) a;
+) a with no data;
 
 create materialized view meta.subgraph_sizes as
 select *,
@@ -77,7 +77,7 @@ select *,
             and nspname like 'sgd%'
           group by nspname, subgraph, version
   ) a
-) a;
+) a with no data;
 
 create view meta.all_sizes as
 select * from meta.subgraph_sizes
