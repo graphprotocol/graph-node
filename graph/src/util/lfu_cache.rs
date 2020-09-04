@@ -163,6 +163,11 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         self.queue.len()
     }
 
+    /// Same as `evict_with_period(max_weight, STALE_PERIOD)`
+    pub fn evict(&mut self, max_weight: usize) -> Option<(usize, usize, usize)> {
+        self.evict_with_period(max_weight, STALE_PERIOD)
+    }
+
     /// Evict entries in the cache until the total weight of the cache is
     /// equal to or smaller than `max_weight`.
     ///
@@ -171,13 +176,17 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
     /// evicted entries, the weight before anything was evicted and the new
     /// total weight of the cache, in that order, if anything was evicted
     /// at all. If there was no reason to evict, `None` is returned.
-    pub fn evict(&mut self, max_weight: usize) -> Option<(usize, usize, usize)> {
+    pub fn evict_with_period(
+        &mut self,
+        max_weight: usize,
+        stale_period: u64,
+    ) -> Option<(usize, usize, usize)> {
         if self.total_weight <= max_weight {
             return None;
         }
 
         self.stale_counter += 1;
-        if self.stale_counter == STALE_PERIOD {
+        if self.stale_counter == stale_period {
             self.stale_counter = 0;
 
             // Entries marked `will_stale` were not accessed in this period. Properly mark them as

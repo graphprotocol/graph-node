@@ -190,6 +190,13 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_CACHE_MAX_MEM environment variable")
     };
 
+    static ref QUERY_CACHE_STALE_PERIOD: u64 = {
+        std::env::var("GRAPH_QUERY_CACHE_STALE_PERIOD")
+        .unwrap_or("100".to_string())
+        .parse::<u64>()
+        .expect("Invalid value for GRAPH_QUERY_CACHE_STALE_PERIOD environment variable")
+    };
+
     // Cache query results for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: RwLock<QueryBlockCache> = RwLock::new(QueryBlockCache(vec![]));
@@ -495,7 +502,7 @@ pub fn execute_root_selection_set<R: Resolver>(
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE.lock().unwrap();
-            cache.evict(*QUERY_CACHE_MAX_MEM);
+            cache.evict_with_period(*QUERY_CACHE_MAX_MEM, *QUERY_CACHE_STALE_PERIOD);
             cache.insert(
                 key,
                 WeightedResult {

@@ -74,6 +74,8 @@ those.
    blocks.  The default is plenty for most loads, particularly if
    `GRAPH_QUERY_CACHE_BLOCKS` is kept small.  Defaults to 1000, which
    corresponds to 1GB.
+- `GRAPH_QUERY_CACHE_STALE_PERIOD`: Number of queries after which a cache
+  entry can be considered stale. Defaults to 100.
 
 ## GraphQL
 
