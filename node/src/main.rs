@@ -33,7 +33,7 @@ use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
-use graph_store_postgres::BlockStore as DieselBlockStore;
+use graph_store_postgres::{register_jobs as register_store_jobs, BlockStore as DieselBlockStore};
 
 mod config;
 mod opt;
@@ -317,6 +317,11 @@ async fn main() {
                     network_store.block_store(),
                     &logger_factory,
                 );
+
+                // Start a task runner
+                let mut job_runner = graph::util::jobs::Runner::new(&logger);
+                register_store_jobs(&mut job_runner, network_store.clone());
+                graph::spawn_blocking(job_runner.start());
             }
 
             let block_stream_builder = BlockStreamBuilder::new(
