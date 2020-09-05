@@ -299,6 +299,12 @@ impl From<diesel::result::Error> for CancelableError<anyhow::Error> {
     }
 }
 
+impl From<diesel::result::Error> for CancelableError<StoreError> {
+    fn from(e: diesel::result::Error) -> Self {
+        Self::Error(e.into())
+    }
+}
+
 impl From<anyhow::Error> for CancelableError<anyhow::Error> {
     fn from(e: anyhow::Error) -> Self {
         Self::Error(e)

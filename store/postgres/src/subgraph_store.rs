@@ -21,10 +21,11 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
-        lazy_static, o, web3::types::Address, ApiSchema, DeploymentState, DynTryFuture, Entity,
-        EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger, NodeId,
-        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
-        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
+        DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, Error,
+        EthereumBlockPointer, Logger, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
+        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode,
     },
 };
 use store::StoredDynamicDataSource;
@@ -646,6 +647,11 @@ impl SubgraphStore {
     pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
         let (store, _) = self.store(id)?;
         store.error_count(id)
+    }
+
+    /// Vacuum the `subgraph_deployment` table in each shard
+    pub(crate) async fn vacuum(&self) -> Vec<Result<(), StoreError>> {
+        join_all(self.stores.values().map(|store| store.vacuum())).await
     }
 }
 

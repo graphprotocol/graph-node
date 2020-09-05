@@ -635,6 +635,14 @@ impl DeploymentStore {
         conn.batch_execute("delete from deployment_schemas;")?;
         Ok(())
     }
+
+    pub(crate) async fn vacuum(&self) -> Result<(), StoreError> {
+        self.with_conn(|conn, _| {
+            conn.batch_execute("vacuum (analyze) subgraphs.subgraph_deployment")?;
+            Ok(())
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small
