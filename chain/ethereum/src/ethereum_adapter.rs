@@ -374,171 +374,140 @@ where
 
     fn call(
         &self,
-        logger: &Logger,
+        logger: Logger,
         contract_address: Address,
         call_data: Bytes,
         block_hash: H256,
     ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
-        let block_id = BlockId::Hash(block_hash);
         let web3 = self.web3.clone();
-        let logger = logger.clone();
 
-        // Outer retry used only for 0-byte responses,
-        // where we can't guarantee the problem is temporary.
-        // If we keep getting back 0-byte responses,
-        // eventually we assume it's right and return it.
-        retry("eth_call RPC call (outer)", &logger)
-            .when(|result: &Result<Bytes, _>| {
-                match result {
-                    // Retry only if zero-length response received
-                    Ok(bytes) => bytes.0.is_empty(),
-
-                    // Errors are retried in the inner retry
-                    Err(_) => false,
-                }
+        retry("eth_call RPC call", &logger)
+            .when(|result| match result {
+                Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
+                Err(_) => true,
             })
-            .limit(16)
-            .no_logging()
-            .no_timeout()
+            .no_limit()
+            .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
-                let web3 = web3.clone();
-                let call_data = call_data.clone();
+                let req = CallRequest {
+                    from: None,
+                    to: contract_address,
+                    gas: None,
+                    gas_price: None,
+                    value: None,
+                    data: Some(call_data.clone()),
+                };
+                web3.eth().call(req, Some(BlockId::Hash(block_hash))).then(|result| {
+                    // Try to check if the call was reverted. The JSON-RPC response for
+                    // reverts is not standardized, the current situation for the tested
+                    // clients is:
+                    //
+                    // - Parity returns a reliable RPC error response for reverts.
+                    // - Ganache also returns a reliable RPC error.
+                    // - Geth now also returns an RPC error. It used to return `0x` on a
+                    //   revert with no reason string, or a Solidity encoded `Error(string)`
+                    //   call from `revert` and `require` calls with a reason string. We
+                    //   still have support for those but that can be removed on the next
+                    //   hard fork (Berlin).
 
-                retry("eth_call RPC call", &logger)
-                    .when(|result| match result {
-                        Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
-                        Err(_) => true,
-                    })
-                    .no_limit()
-                    .timeout_secs(*JSON_RPC_TIMEOUT)
-                    .run(move || {
-                        let req = CallRequest {
-                            from: None,
-                            to: contract_address,
-                            gas: None,
-                            gas_price: None,
-                            value: None,
-                            data: Some(call_data.clone()),
-                        };
-                        web3.eth().call(req, Some(block_id)).then(|result| {
-                            // Try to check if the call was reverted. The JSON-RPC response for
-                            // reverts is not standardized, the current situation for the tested
-                            // clients is:
-                            //
-                            // - Parity returns a reliable RPC error response for reverts.
-                            // - Ganache also returns a reliable RPC error.
-                            // - Geth now also returns an RPC error. It used to return `0x` on a
-                            //   revert with no reason string, or a Solidity encoded `Error(string)`
-                            //   call from `revert` and `require` calls with a reason string. We
-                            //   still have support for those but that can be removed on the next
-                            //   hard fork (Berlin).
+                    // 0xfe is the "designated bad instruction" of the EVM, and Solidity
+                    // uses it for asserts.
+                    const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
 
-                            // 0xfe is the "designated bad instruction" of the EVM, and Solidity
-                            // uses it for asserts.
-                            const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
+                    // 0xfd is REVERT, but on some contracts, and only on older blocks,
+                    // this happens. Makes sense to consider it a revert as well.
+                    const PARITY_BAD_INSTRUCTION_FD: &str = "Bad instruction fd";
 
-                            // 0xfd is REVERT, but on some contracts, and only on older blocks,
-                            // this happens. Makes sense to consider it a revert as well.
-                            const PARITY_BAD_INSTRUCTION_FD: &str = "Bad instruction fd";
+                    const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
+                    const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
+                    const GANACHE_REVERT_MESSAGE: &str =
+                        "VM Exception while processing transaction: revert";
+                    const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
+                    const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
-                            const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
-                            const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
-                            const GANACHE_REVERT_MESSAGE: &str =
-                                "VM Exception while processing transaction: revert";
-                            const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
-                            const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
+                    // Deterministic Geth execution errors. We might need to expand this as
+                    // subgraphs come across other errors. See
+                    // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
+                    const GETH_EXECUTION_ERRORS: &[&str] = &[
+                        "execution reverted",
+                        "invalid jump destination",
+                        "invalid opcode",
+                    ];
 
-                            // Deterministic Geth execution errors. We might need to expand this as
-                            // subgraphs come across other errors. See
-                            // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
-                            const GETH_EXECUTION_ERRORS: &[&str] = &[
-                                "execution reverted",
-                                "invalid jump destination",
-                                "invalid opcode",
-                            ];
+                    let as_solidity_revert_with_reason = |bytes: &[u8]| {
+                        let solidity_revert_function_selector =
+                            &tiny_keccak::keccak256(b"Error(string)")[..4];
 
-                            let as_solidity_revert_with_reason = |bytes: &[u8]| {
-                                let solidity_revert_function_selector =
-                                    &tiny_keccak::keccak256(b"Error(string)")[..4];
+                        match bytes.len() >= 4 && &bytes[..4] == solidity_revert_function_selector {
+                            false => None,
+                            true => ethabi::decode(&[ParamType::String], &bytes[4..])
+                                .ok()
+                                .and_then(|tokens| tokens[0].clone().to_string()),
+                        }
+                    };
 
-                                match bytes.len() >= 4
-                                    && &bytes[..4] == solidity_revert_function_selector
+                    match result {
+                        // Check for old Geth revert with reason.
+                        Ok(bytes) => match as_solidity_revert_with_reason(&bytes.0) {
+                            None => Ok(bytes),
+                            Some(reason) => Err(EthereumContractCallError::Revert(reason)),
+                        },
+
+                        // Check for Geth revert.
+                        Err(web3::Error::Rpc(rpc_error))
+                            if GETH_EXECUTION_ERRORS
+                                .iter()
+                                .any(|e| rpc_error.message.contains(e)) =>
+                        {
+                            Err(EthereumContractCallError::Revert(rpc_error.message))
+                        }
+
+                        // Check for Parity revert.
+                        Err(web3::Error::Rpc(ref rpc_error))
+                            if rpc_error.code.code() == PARITY_VM_EXECUTION_ERROR =>
+                        {
+                            match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
+                                Some(data)
+                                    if data.starts_with(PARITY_REVERT_PREFIX)
+                                        || data.starts_with(PARITY_BAD_JUMP_PREFIX)
+                                        || data == PARITY_BAD_INSTRUCTION_FE
+                                        || data == PARITY_BAD_INSTRUCTION_FD =>
                                 {
-                                    false => None,
-                                    true => ethabi::decode(&[ParamType::String], &bytes[4..])
-                                        .ok()
-                                        .and_then(|tokens| tokens[0].clone().to_string()),
-                                }
-                            };
-
-                            match result {
-                                // Check for old Geth revert with reason.
-                                Ok(bytes) => match as_solidity_revert_with_reason(&bytes.0) {
-                                    None => Ok(bytes),
-                                    Some(reason) => Err(EthereumContractCallError::Revert(reason)),
-                                },
-
-                                // Check for Geth revert.
-                                Err(web3::Error::Rpc(rpc_error))
-                                    if GETH_EXECUTION_ERRORS
-                                        .iter()
-                                        .any(|e| rpc_error.message.contains(e)) =>
-                                {
-                                    Err(EthereumContractCallError::Revert(rpc_error.message))
-                                }
-
-                                // Check for Parity revert.
-                                Err(web3::Error::Rpc(ref rpc_error))
-                                    if rpc_error.code.code() == PARITY_VM_EXECUTION_ERROR =>
-                                {
-                                    match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
-                                        Some(data)
-                                            if data.starts_with(PARITY_REVERT_PREFIX)
-                                                || data.starts_with(PARITY_BAD_JUMP_PREFIX)
-                                                || data == PARITY_BAD_INSTRUCTION_FE
-                                                || data == PARITY_BAD_INSTRUCTION_FD =>
-                                        {
-                                            let reason = if data == PARITY_BAD_INSTRUCTION_FE {
-                                                PARITY_BAD_INSTRUCTION_FE.to_owned()
-                                            } else {
-                                                let payload =
-                                                    data.trim_start_matches(PARITY_REVERT_PREFIX);
-                                                hex::decode(payload)
-                                                    .ok()
-                                                    .and_then(|payload| {
-                                                        as_solidity_revert_with_reason(&payload)
-                                                    })
-                                                    .unwrap_or("no reason".to_owned())
-                                            };
-                                            Err(EthereumContractCallError::Revert(reason))
-                                        }
-
-                                        // The VM execution error was not identified as a revert.
-                                        _ => Err(EthereumContractCallError::Web3Error(
-                                            web3::Error::Rpc(rpc_error.clone()),
-                                        )),
-                                    }
+                                    let reason = if data == PARITY_BAD_INSTRUCTION_FE {
+                                        PARITY_BAD_INSTRUCTION_FE.to_owned()
+                                    } else {
+                                        let payload = data.trim_start_matches(PARITY_REVERT_PREFIX);
+                                        hex::decode(payload)
+                                            .ok()
+                                            .and_then(|payload| {
+                                                as_solidity_revert_with_reason(&payload)
+                                            })
+                                            .unwrap_or("no reason".to_owned())
+                                    };
+                                    Err(EthereumContractCallError::Revert(reason))
                                 }
 
-                                // Check for Ganache revert.
-                                Err(web3::Error::Rpc(ref rpc_error))
-                                    if rpc_error.code.code() == GANACHE_VM_EXECUTION_ERROR
-                                        && rpc_error
-                                            .message
-                                            .starts_with(GANACHE_REVERT_MESSAGE) =>
-                                {
-                                    Err(EthereumContractCallError::Revert(
-                                        rpc_error.message.clone(),
-                                    ))
-                                }
-
-                                // The error was not identified as a revert.
-                                Err(err) => Err(EthereumContractCallError::Web3Error(err)),
+                                // The VM execution error was not identified as a revert.
+                                _ => Err(EthereumContractCallError::Web3Error(web3::Error::Rpc(
+                                    rpc_error.clone(),
+                                ))),
                             }
-                        })
-                    })
-                    .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
+                        }
+
+                        // Check for Ganache revert.
+                        Err(web3::Error::Rpc(ref rpc_error))
+                            if rpc_error.code.code() == GANACHE_VM_EXECUTION_ERROR
+                                && rpc_error.message.starts_with(GANACHE_REVERT_MESSAGE) =>
+                        {
+                            Err(EthereumContractCallError::Revert(rpc_error.message.clone()))
+                        }
+
+                        // The error was not identified as a revert.
+                        Err(err) => Err(EthereumContractCallError::Web3Error(err)),
+                    }
+                })
             })
+            .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
     }
 
     /// Request blocks by hash through JSON-RPC.
@@ -1226,11 +1195,10 @@ where
                 None => {
                     let cache = cache.clone();
                     let call = call.clone();
-                    let call_data = call_data.clone();
                     let logger = logger.clone();
                     Box::new(
                         self.call(
-                            &logger,
+                            logger.clone(),
                             call.address,
                             Bytes(call_data.clone()),
                             call.block_ptr.hash,
