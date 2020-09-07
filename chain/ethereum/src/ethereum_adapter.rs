@@ -377,9 +377,9 @@ where
         logger: &Logger,
         contract_address: Address,
         call_data: Bytes,
-        block_number_opt: Option<BlockNumber>,
+        block_hash: H256,
     ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
-        let block_number_opt = block_number_opt.map(Into::into);
+        let block_id = BlockId::Hash(block_hash);
         let web3 = self.web3.clone();
         let logger = logger.clone();
 
@@ -420,7 +420,7 @@ where
                             value: None,
                             data: Some(call_data.clone()),
                         };
-                        web3.eth().call(req, block_number_opt).then(|result| {
+                        web3.eth().call(req, Some(block_id)).then(|result| {
                             // Try to check if the call was reverted. The JSON-RPC response for
                             // reverts is not standardized, the current situation for the tested
                             // clients is:
@@ -1233,7 +1233,7 @@ where
                             &logger,
                             call.address,
                             Bytes(call_data.clone()),
-                            Some(call.block_ptr.number.into()),
+                            call.block_ptr.hash,
                         )
                         .map(move |result| {
                             let _ = cache
