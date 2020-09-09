@@ -300,11 +300,11 @@ impl LoadManager {
     /// `shape_hash`, where `cache_status` indicates whether the query
     /// was cached or had to actually run
     pub fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
+        self.query_counters
+            .get(&cache_status)
+            .map(|counter| counter.inc());
         if !*LOAD_MANAGEMENT_DISABLED {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
-            self.query_counters
-                .get(&cache_status)
-                .map(|counter| counter.inc());
         }
     }
 
