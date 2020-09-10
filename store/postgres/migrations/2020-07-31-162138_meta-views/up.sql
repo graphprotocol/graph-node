@@ -1,12 +1,11 @@
 --
 -- Views that are useful in understanding details about the data graph-node
--- stores. These views are _only_ for interactive use. The graph-node code
--- must never access these views
+-- stores.
 --
-drop schema if exists meta cascade;
-create schema meta;
+drop schema if exists info cascade;
+create schema info;
 
-create view meta.subgraph_info as
+create view info.subgraph_info as
 select
     ds.id as schema_id,
     ds.name as schema_name,
@@ -30,7 +29,7 @@ where   d.id = ds.subgraph
 
 -- Size of tables
 -- from https://wiki.postgresql.org/wiki/Disk_Usage
-create materialized view meta.table_sizes as
+create materialized view info.table_sizes as
 select *,
        pg_size_pretty(total_bytes) as total,
        pg_size_pretty(index_bytes) as index,
@@ -53,7 +52,7 @@ select *,
   ) a
 ) a with no data;
 
-create materialized view meta.subgraph_sizes as
+create materialized view info.subgraph_sizes as
 select *,
        pg_size_pretty(total_bytes) as total,
        pg_size_pretty(index_bytes) as index,
@@ -79,13 +78,13 @@ select *,
   ) a
 ) a with no data;
 
-create view meta.all_sizes as
-select * from meta.subgraph_sizes
+create view info.all_sizes as
+select * from info.subgraph_sizes
 union all
-select * from meta.table_sizes;
+select * from info.table_sizes;
 
 -- Currently active queries
-create view meta.activity as
+create view info.activity as
 select coalesce(nullif(application_name,''), 'unknown') as application_name,
        pid,
        extract(epoch from age(now(), query_start)) as query_age,
@@ -95,7 +94,7 @@ select coalesce(nullif(application_name,''), 'unknown') as application_name,
  where state='active'
 order by query_start desc;
 
-create view meta.wraparound as
+create view info.wraparound as
 select oid::regclass::text AS table,
        least(
          (select setting::int
