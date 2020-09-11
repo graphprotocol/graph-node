@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use web3::types::Log;
+use web3::types::{Log, H256};
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -168,13 +168,27 @@ where
                     .map(Arc::new)
                     .context("Found no transaction for event")?;
                 let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
+                let hosts_count = matching_hosts.clone().count();
+
+                if hosts_count > 1 {
+                    info!(
+                        logger,
+                        "{} matching runtime hosts found for log trigger.", hosts_count;
+                        "address" => &log.address.to_string(),
+                        "topic0" => &log.topics.iter().next().unwrap_or(&H256::zero()).to_string(),
+                        "transaction" => log.transaction_hash.unwrap_or(H256::zero()).to_string(),
+                    );
+                }
+
                 // Process the log in each host in the same order the corresponding data
                 // sources appear in the subgraph manifest
                 let transaction = Arc::new(transaction);
-                for host in matching_hosts {
+                for (i, host) in matching_hosts.enumerate() {
+                    let host_context = format!("{}/{}", i + 1, hosts_count);
+                    let logger = logger.new(o!("runtime_host" => host_context));
                     state = host
                         .process_log(
-                            logger,
+                            &logger,
                             block,
                             &transaction,
                             &log,
@@ -192,11 +206,24 @@ where
                     .context("Found no transaction for call")?;
                 let transaction = Arc::new(transaction);
                 let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
+                let hosts_count = matching_hosts.clone().count();
 
-                for host in matching_hosts {
+                if hosts_count > 1 {
+                    info!(
+                        logger,
+                        "{} matching runtime hosts found for call trigger.", hosts_count;
+                        "from" => &call.from.to_string(),
+                        "to" => &call.to.to_string(),
+                        "transaction" => &call.transaction_hash.map(|hash| hash.to_string()).unwrap_or("unkown".to_string()),
+                    );
+                }
+
+                for (i, host) in matching_hosts.enumerate() {
+                    let host_context = format!("{}/{}", i + 1, hosts_count);
+                    let logger = logger.new(o!("runtime_host" => host_context));
                     state = host
                         .process_call(
-                            logger,
+                            &logger,
                             block,
                             &transaction,
                             &call,
@@ -210,10 +237,23 @@ where
                 let matching_hosts = hosts
                     .iter()
                     .filter(|host| host.matches_block(&trigger_type, ptr.number));
-                for host in matching_hosts {
+                let hosts_count = matching_hosts.clone().count();
+
+                if hosts_count > 1 {
+                    info!(
+                        logger,
+                        "{} matching runtime hosts found for block trigger.", hosts_count;
+                        "number" => &ptr.number,
+                        "hash" => &ptr.number,
+                    );
+                }
+
+                for (i, host) in matching_hosts.enumerate() {
+                    let host_context = format!("{}/{}", i + 1, hosts_count);
+                    let logger = logger.new(o!("runtime_host" => host_context));
                     state = host
                         .process_block(
-                            logger,
+                            &logger,
                             block,
                             &trigger_type,
                             state,
