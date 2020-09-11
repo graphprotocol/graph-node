@@ -993,6 +993,13 @@ where
     // Add entity operations to the block state in order to persist
     // the dynamic data sources
     for data_source in data_sources.iter() {
+        debug!(
+            logger,
+            "Persisting data_source";
+            "name" => &data_source.name,
+            "address" => &data_source.source.address.map(|address| address.to_string()).unwrap_or("none".to_string()),
+            "abi" => &data_source.source.abi,
+        );
         let entity = DynamicEthereumContractDataSourceEntity::from((
             &ctx.inputs.deployment_id,
             data_source,
