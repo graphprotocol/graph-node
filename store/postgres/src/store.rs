@@ -1140,7 +1140,16 @@ impl StoreTrait for Store {
             econn.transaction(|| -> Result<_, StoreError> {
                 let block_ptr_from = Self::block_ptr_with_conn(&subgraph_id, &econn)?;
                 if let Some(ref block_ptr_from) = block_ptr_from {
-                    assert!(block_ptr_from.number < block_ptr_to.number);
+                    assert!(
+                        block_ptr_from.number < block_ptr_to.number,
+                        format!(
+                            "subgraph `{}`: invalid transition from block `{}` to `{}`; \
+                             there are most likely two (or more) nodes indexing this subgraph",
+                            subgraph_id,
+                            block_ptr_from.number
+                            block_ptr_to.number
+                        )
+                    );
                 }
 
                 // Ensure the history event exists in the database
