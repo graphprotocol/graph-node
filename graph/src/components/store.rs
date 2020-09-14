@@ -740,6 +740,12 @@ pub enum StoreError {
     QueryExecutionError(String),
     #[fail(display = "invalid identifier: {}", _0)]
     InvalidIdentifier(String),
+    #[fail(
+        display = "subgraph `{}`: invalid transition from block `{}` to `{}`; \
+                   there are most likely two (or more) nodes indexing this subgraph",
+        _0, _1, _2
+    )]
+    InvalidSubgraphTransition(SubgraphDeploymentId, u64, u64),
 }
 
 impl From<TransactionAbortError> for StoreError {
