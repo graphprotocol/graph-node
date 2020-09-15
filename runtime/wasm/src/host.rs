@@ -1,3 +1,4 @@
+use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -717,5 +718,18 @@ impl RuntimeHostTrait for RuntimeHost {
         )
         .err_into()
         .await
+    }
+}
+
+impl PartialEq for RuntimeHost {
+    fn eq(&self, other: &Self) -> bool {
+        // mapping_request_sender, host_exports and host_metrics are operational structs not needed
+        // to define uniqueness; each runtime host should be for a unique data source.
+        self.data_source_name == other.data_source_name
+            && self.data_source_contract == other.data_source_contract
+            && self.data_source_contract_abi == other.data_source_contract_abi
+            && self.data_source_event_handlers == other.data_source_event_handlers
+            && self.data_source_call_handlers == other.data_source_call_handlers
+            && self.data_source_block_handlers == other.data_source_block_handlers
     }
 }

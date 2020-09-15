@@ -488,7 +488,7 @@ impl From<EthereumContractAbiEntity> for UnresolvedMappingABI {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MappingABI {
     pub name: String,
     pub contract: Contract,

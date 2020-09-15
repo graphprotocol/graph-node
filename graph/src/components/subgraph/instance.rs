@@ -61,5 +61,5 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Arc<H>, anyhow::Error>;
+    ) -> Result<Option<Arc<H>>, anyhow::Error>;
 }

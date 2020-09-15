@@ -964,8 +964,22 @@ where
             host_metrics.clone(),
         )?;
 
-        data_sources.push(data_source);
-        runtime_hosts.push(host);
+        match host {
+            Some(host) => {
+                data_sources.push(data_source);
+                runtime_hosts.push(host);
+            }
+            None => warn!(
+                logger,
+                "no runtime hosted created, there is already a runtime host instantiated for \
+                 this data source";
+                "name" => &data_source.name,
+                "address" => &data_source.source.address
+                    .map(|address| address.to_string())
+                    .unwrap_or("none".to_string()),
+                "abi" => &data_source.source.abi
+            ),
+        }
     }
 
     Ok((data_sources, runtime_hosts))

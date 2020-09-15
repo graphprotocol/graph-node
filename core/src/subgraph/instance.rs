@@ -272,7 +272,7 @@ where
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Arc<T::Host>, anyhow::Error> {
+    ) -> Result<Option<Arc<T::Host>>, anyhow::Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = *MAX_DATA_SOURCES {
             if self.hosts.len() >= max_data_sources {
@@ -289,7 +289,12 @@ where
             top_level_templates,
             metrics.clone(),
         )?);
-        self.hosts.push(host.clone());
-        Ok(host)
+
+        Ok(if self.hosts.contains(&host) {
+            None
+        } else {
+            self.hosts.push(host.clone());
+            Some(host)
+        })
     }
 }
