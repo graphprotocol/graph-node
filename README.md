@@ -17,7 +17,7 @@ To build and run this project you need to have the following installed on your s
 
 - Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
-- IPFS – [Installing IPFS](https://ipfs.io/docs/install/)
+- IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 
 For Ethereum network data, you can either run a local node or use Infura.io:
 
