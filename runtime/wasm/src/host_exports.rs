@@ -20,6 +20,18 @@ use graph_graphql::prelude::validate_entity;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
 
+pub(crate) enum EthereumCallError {
+    /// We might have detected a reorg.
+    PossibleReorg(anyhow::Error),
+    Unknown(anyhow::Error),
+}
+
+impl From<anyhow::Error> for EthereumCallError {
+    fn from(e: anyhow::Error) -> Self {
+        EthereumCallError::Unknown(e)
+    }
+}
+
 pub(crate) struct HostExports {
     subgraph_id: SubgraphDeploymentId,
     pub(crate) api_version: Version,
@@ -230,7 +242,7 @@ impl HostExports {
         logger: &Logger,
         block: &LightEthereumBlock,
         unresolved_call: UnresolvedContractCall,
-    ) -> Result<Option<Vec<Token>>, anyhow::Error> {
+    ) -> Result<Option<Vec<Token>>, EthereumCallError> {
         let start_time = Instant::now();
 
         // Obtain the path to the contract ABI
@@ -304,12 +316,23 @@ impl HostExports {
                 info!(logger, "Contract call reverted"; "reason" => reason);
                 Ok(None)
             }
-            Err(e) => Err(anyhow::anyhow!(
+
+            // Any error reported by the Ethereum node could be due to the block no longer being on
+            // the main chain. This is very inespecific but we don't want to risk failing a
+            // subgraph due to a transient error such as a reorg.
+            Err(EthereumContractCallError::Web3Error(e)) => Err(EthereumCallError::PossibleReorg(anyhow::anyhow!(
+                "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
+                unresolved_call.function_name,
+                unresolved_call.contract_name,
+                e
+            ))),
+
+            Err(e) => Err(EthereumCallError::Unknown(anyhow::anyhow!(
                 "Failed to call function \"{}\" of contract \"{}\": {}",
                 unresolved_call.function_name,
                 unresolved_call.contract_name,
                 e
-            )),
+            ))),
         };
 
         debug!(logger, "Contract call finished";
@@ -319,7 +342,7 @@ impl HostExports {
               "function_signature" => &unresolved_call.function_signature,
               "time" => format!("{}ms", start_time.elapsed().as_millis()));
 
-        result
+        result.map_err(Into::into)
     }
 
     /// Prints the module of `n` in hex.

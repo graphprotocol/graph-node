@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use anyhow::ensure;
 use async_trait::async_trait;
 use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
+use graph::ensure;
 use semver::{Version, VersionReq};
 use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
@@ -15,7 +15,7 @@ use tiny_keccak::keccak256;
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
 use graph::components::store::Store;
-use graph::components::subgraph::SharedProofOfIndexing;
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::subgraph::{Mapping, Source};
 use graph::prelude::{
@@ -387,7 +387,7 @@ impl RuntimeHost {
         trigger: MappingTrigger,
         block: &Arc<LightEthereumBlock>,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         let trigger_type = trigger.as_static();
         debug!(
             logger, "Start processing Ethereum trigger";
@@ -478,7 +478,7 @@ impl RuntimeHostTrait for RuntimeHost {
         call: &Arc<EthereumCall>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         // Identify the call handler for this call
         let call_handler = self.handler_for_call(&call)?;
 
@@ -585,7 +585,7 @@ impl RuntimeHostTrait for RuntimeHost {
         trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         let block_handler = self.handler_for_block(trigger_type)?;
         self.send_mapping_request(
             logger,
@@ -612,7 +612,7 @@ impl RuntimeHostTrait for RuntimeHost {
         log: &Arc<Log>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         let data_source_name = &self.data_source_name;
         let abi_name = &self.data_source_contract_abi.name;
         let contract = &self.data_source_contract_abi.contract;
@@ -715,6 +715,7 @@ impl RuntimeHostTrait for RuntimeHost {
             block,
             proof_of_indexing,
         )
+        .err_into()
         .await
     }
 }

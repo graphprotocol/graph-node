@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use web3::types::Log;
 
-use crate::components::subgraph::SharedProofOfIndexing;
+use crate::components::subgraph::{MappingError, SharedProofOfIndexing};
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 
@@ -42,7 +42,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error>;
+    ) -> Result<BlockState, MappingError>;
 
     /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
     async fn process_trigger_in_runtime_hosts(
@@ -52,7 +52,7 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error>;
+    ) -> Result<BlockState, MappingError>;
 
     /// Adds dynamic data sources to the subgraph.
     fn add_dynamic_data_source(

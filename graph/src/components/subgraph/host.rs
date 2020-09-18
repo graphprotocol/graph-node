@@ -10,6 +10,45 @@ use crate::components::subgraph::SharedProofOfIndexing;
 use crate::prelude::*;
 use web3::types::{Log, Transaction};
 
+#[derive(Debug)]
+pub enum MappingError {
+    /// A possible reorg was detected while running the mapping.
+    PossibleReorg(anyhow::Error),
+    Unknown(anyhow::Error),
+}
+
+impl From<anyhow::Error> for MappingError {
+    fn from(e: anyhow::Error) -> Self {
+        MappingError::Unknown(e)
+    }
+}
+
+impl From<CancelableError<MappingError>> for MappingError {
+    fn from(cancelable: CancelableError<MappingError>) -> Self {
+        match cancelable {
+            CancelableError::Error(e) => e,
+            CancelableError::Cancel => MappingError::Unknown(anyhow::anyhow!("mapping canceled")),
+        }
+    }
+}
+
+impl MappingError {
+    pub fn context(self, s: String) -> Self {
+        use MappingError::*;
+        match self {
+            PossibleReorg(e) => PossibleReorg(e.context(s)),
+            Unknown(e) => Unknown(e.context(s)),
+        }
+    }
+
+    pub fn inner_error(self) -> anyhow::Error {
+        use MappingError::*;
+        match self {
+            PossibleReorg(e) | Unknown(e) => e,
+        }
+    }
+}
+
 /// Common trait for runtime host implementations.
 #[async_trait]
 pub trait RuntimeHost: Send + Sync + Debug + 'static {
@@ -31,7 +70,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         log: &Arc<Log>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error>;
+    ) -> Result<BlockState, MappingError>;
 
     /// Process an Ethereum call and return a vector of entity operations
     async fn process_call(
@@ -42,7 +81,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         call: &Arc<EthereumCall>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error>;
+    ) -> Result<BlockState, MappingError>;
 
     /// Process an Ethereum block and return a vector of entity operations
     async fn process_block(
@@ -52,7 +91,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         trigger_type: &EthereumBlockTriggerType,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error>;
+    ) -> Result<BlockState, MappingError>;
 }
 
 pub struct HostMetrics {

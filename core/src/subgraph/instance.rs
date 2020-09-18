@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 
-use graph::components::subgraph::SharedProofOfIndexing;
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use web3::types::Log;
 
@@ -139,7 +139,7 @@ where
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         Self::process_trigger_in_runtime_hosts(
             logger,
             &self.hosts,
@@ -158,7 +158,7 @@ where
         trigger: EthereumTrigger,
         mut state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         match trigger {
             EthereumTrigger::Log(log) => {
                 let log = Arc::new(log);

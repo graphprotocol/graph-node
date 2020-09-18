@@ -12,6 +12,7 @@ use crate::host_exports;
 use crate::mapping::MappingContext;
 use ethabi::LogParam;
 use graph::components::ethereum::*;
+use graph::components::subgraph::MappingError;
 use graph::data::store;
 use graph::prelude::*;
 use web3::types::{Log, Transaction, U256};
@@ -19,7 +20,7 @@ use web3::types::{Log, Transaction, U256};
 use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
 use crate::asc_abi::*;
-use crate::host_exports::HostExports;
+use crate::host_exports::{EthereumCallError, HostExports};
 use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
 
@@ -93,7 +94,7 @@ impl WasmInstance {
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         let block = self.instance_ctx().ctx.block.clone();
 
         // Prepare an EthereumEvent for the WASM runtime
@@ -137,7 +138,7 @@ impl WasmInstance {
         call: Arc<EthereumCall>,
         inputs: Vec<LogParam>,
         outputs: Vec<LogParam>,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         let call = EthereumCallData {
             to: call.to,
             from: call.from,
@@ -160,7 +161,7 @@ impl WasmInstance {
     pub(crate) fn handle_ethereum_block(
         mut self,
         handler_name: &str,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState, MappingError> {
         let block = EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
@@ -189,14 +190,16 @@ impl WasmInstance {
         self.instance.get_func(func_name).unwrap()
     }
 
-    fn invoke_handler<C>(&mut self, handler: &str, arg: AscPtr<C>) -> Result<(), anyhow::Error> {
+    fn invoke_handler<C>(&mut self, handler: &str, arg: AscPtr<C>) -> Result<(), MappingError> {
         let func = self
             .instance
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
 
         func.get1()?(arg.wasm_ptr()).map_err(|e| {
-            if e.to_string().contains(TRAP_TIMEOUT) {
+            if self.instance_ctx().possible_reorg {
+                MappingError::PossibleReorg(e.into())
+            } else if e.to_string().contains(TRAP_TIMEOUT) {
                 anyhow::Error::context(
                     e.into(),
                     format!(
@@ -205,8 +208,10 @@ impl WasmInstance {
                         self.instance_ctx().timeout.unwrap().as_secs()
                     ),
                 )
+                .into()
             } else {
                 anyhow::Error::context(e.into(), format!("Failed to invoke handler '{}'", handler))
+                    .into()
             }
         })
     }
@@ -238,6 +243,9 @@ pub(crate) struct WasmInstanceContext {
 
     // Number of free bytes starting from `arena_start_ptr`.
     arena_free_size: i32,
+
+    // A trap ocurred due to a possible reorg detection.
+    possible_reorg: bool,
 }
 
 impl WasmInstance {
@@ -561,6 +569,7 @@ impl WasmInstanceContext {
             timeout_stopwatch,
             arena_free_size: 0,
             arena_start_ptr: 0,
+            possible_reorg: false,
         })
     }
 
@@ -595,6 +604,7 @@ impl WasmInstanceContext {
             timeout_stopwatch,
             arena_free_size: 0,
             arena_start_ptr: 0,
+            possible_reorg: false,
         })
     }
 }
@@ -704,14 +714,19 @@ impl WasmInstanceContext {
         &mut self,
         call: UnresolvedContractCall,
     ) -> Result<AscEnumArray<EthereumValueKind>, Trap> {
-        let result =
-            self.ctx
-                .host_exports
-                .ethereum_call(&self.ctx.logger, &self.ctx.block, call)?;
-        Ok(match result {
-            Some(tokens) => self.asc_new(tokens.as_slice()),
-            None => AscPtr::null(),
-        })
+        let result = self
+            .ctx
+            .host_exports
+            .ethereum_call(&self.ctx.logger, &self.ctx.block, call);
+        match result {
+            Ok(Some(tokens)) => Ok(self.asc_new(tokens.as_slice())),
+            Ok(None) => Ok(AscPtr::null()),
+            Err(EthereumCallError::Unknown(e)) => Err(e.into()),
+            Err(EthereumCallError::PossibleReorg(e)) => {
+                self.possible_reorg = true;
+                Err(e.into())
+            }
+        }
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string

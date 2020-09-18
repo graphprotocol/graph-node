@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use graph::components::ethereum::{triggers_in_block, EthereumNetworks};
 use graph::components::store::ModificationsAndCache;
-use graph::components::subgraph::{ProofOfIndexing, SharedProofOfIndexing};
+use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{
     queries::LazyMetadata, DynamicEthereumContractDataSourceEntity, SubgraphError, SubgraphHealth,
@@ -48,7 +48,6 @@ struct IndexingState<T: RuntimeHostBuilder> {
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
-    restarts: u64,
     entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
@@ -408,7 +407,6 @@ impl SubgraphInstanceManager {
                 log_filter,
                 call_filter,
                 block_filter,
-                restarts: 0,
                 entity_lfu_cache: LfuCache::new(),
             },
             subgraph_metrics,
@@ -545,9 +543,6 @@ where
                 Ok((c, needs_restart)) => {
                     ctx = c;
                     if needs_restart {
-                        // Increase the restart counter
-                        ctx.state.restarts += 1;
-
                         // Cancel the stream for real
                         ctx.state
                             .instances
@@ -653,18 +648,37 @@ where
 
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
-    let (mut ctx, mut block_state) = process_triggers(
+    let mut block_state = match process_triggers(
         &logger,
         BlockState::new(
             ctx.inputs.store.clone(),
             std::mem::take(&mut ctx.state.entity_lfu_cache),
         ),
         proof_of_indexing.cheap_clone(),
-        ctx,
+        ctx.subgraph_metrics.clone(),
+        &ctx.state.instance,
         &light_block,
         triggers,
     )
-    .await?;
+    .await
+    {
+        Ok(block_state) => block_state,
+        Err(MappingError::Unknown(e)) => return Err(e.compat_err().into()),
+        Err(MappingError::PossibleReorg(e)) => {
+            info!(ctx.state.logger,
+                    "Possible reorg detected, retrying";
+                    "error" => format!("{:?}", e.to_string()),
+                    "id" => ctx.inputs.deployment_id.to_string(),
+            );
+
+            // In case of a possible reorg, we want this function to do nothing and restart the
+            // block stream so it has a chance to detect the reorg.
+            //
+            // The `ctx` is unchanged at this point, except for having cleared the entity cache.
+            // Losing the cache is a bit annoying but not an issue for correctness.
+            return Ok((ctx, true));
+        }
+    };
 
     // If new data sources have been created, restart the subgraph after this block.
     // This is necessary to re-create the block stream.
@@ -739,6 +753,7 @@ where
                 proof_of_indexing.cheap_clone(),
             )
             .await
+            .map_err(|e| e.inner_error())
             .compat_err()?;
         }
     }
@@ -868,17 +883,17 @@ async fn update_proof_of_indexing(
     Ok(())
 }
 
-async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send + Sync>(
+async fn process_triggers(
     logger: &Logger,
     mut block_state: BlockState,
     proof_of_indexing: SharedProofOfIndexing,
-    ctx: IndexingContext<B, T, S>,
+    subgraph_metrics: Arc<SubgraphInstanceMetrics>,
+    instance: &SubgraphInstance<impl RuntimeHostBuilder>,
     block: &Arc<LightEthereumBlock>,
     triggers: Vec<EthereumTrigger>,
-) -> Result<(IndexingContext<B, T, S>, BlockState), CancelableError<Error>> {
+) -> Result<BlockState, MappingError> {
     for trigger in triggers.into_iter() {
         let block_ptr = EthereumBlockPointer::from(block.as_ref());
-        let subgraph_metrics = ctx.subgraph_metrics.clone();
         let trigger_type = match trigger {
             EthereumTrigger::Log(_) => TriggerType::Event,
             EthereumTrigger::Call(_) => TriggerType::Call,
@@ -890,9 +905,7 @@ async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send 
             EthereumTrigger::Block(..) => None,
         };
         let start = Instant::now();
-        block_state = ctx
-            .state
-            .instance
+        block_state = instance
             .process_trigger(
                 &logger,
                 &block,
@@ -901,19 +914,19 @@ async fn process_triggers<B: BlockStreamBuilder, T: RuntimeHostBuilder, S: Send 
                 proof_of_indexing.cheap_clone(),
             )
             .await
-            .map_err(move |e| match transaction_id {
-                Some(tx_hash) => format_err!(
-                    "Failed to process trigger in block {}, transaction {:x}: {:#}",
-                    block_ptr,
-                    tx_hash,
-                    e
-                ),
-                None => format_err!("Failed to process trigger: {:#}", e),
+            .map_err(move |e| {
+                e.context(match transaction_id {
+                    Some(tx_hash) => format!(
+                        "Failed to process trigger in block {}, transaction {:x}",
+                        block_ptr, tx_hash
+                    ),
+                    None => "Failed to process trigger".to_string(),
+                })
             })?;
         let elapsed = start.elapsed().as_secs_f64();
         subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);
     }
-    Ok((ctx, block_state))
+    Ok(block_state)
 }
 
 fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
