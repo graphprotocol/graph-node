@@ -40,13 +40,6 @@ impl MappingError {
             Unknown(e) => Unknown(e.context(s)),
         }
     }
-
-    pub fn inner_error(self) -> anyhow::Error {
-        use MappingError::*;
-        match self {
-            PossibleReorg(e) | Unknown(e) => e,
-        }
-    }
 }
 
 /// Common trait for runtime host implementations.

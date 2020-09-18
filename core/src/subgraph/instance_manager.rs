@@ -676,6 +676,8 @@ where
             //
             // The `ctx` is unchanged at this point, except for having cleared the entity cache.
             // Losing the cache is a bit annoying but not an issue for correctness.
+            //
+            // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
             return Ok((ctx, true));
         }
     };
@@ -753,7 +755,15 @@ where
                 proof_of_indexing.cheap_clone(),
             )
             .await
-            .map_err(|e| e.inner_error())
+            .map_err(|e| {
+                // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
+                // This can cause an unecessary subgraph failure, to fix it we need to figure out a
+                // way to revert the effect of `create_dynamic_data_sources` so we may return a
+                // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                match e {
+                    MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
+                }
+            })
             .compat_err()?;
         }
     }
