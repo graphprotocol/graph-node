@@ -55,12 +55,10 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         let result = Arc::try_unwrap(result).unwrap();
         if result.errors.is_some() {
             Err(format_err!("Failed to query metadata: {:?}", result.errors))
-        } else if result.data.is_empty() {
+        } else if !result.has_data() {
             Err(format_err!("No metadata found"))
-        } else if result.data.len() > 1 {
-            Err(format_err!("Metadata query returned multiple results"))
         } else {
-            Ok(result.data.first().unwrap().clone())
+            Ok(Arc::new(result.take_data().unwrap()))
         }
     }
 

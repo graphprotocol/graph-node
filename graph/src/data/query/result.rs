@@ -1,5 +1,5 @@
 use super::error::{QueryError, QueryExecutionError};
-use crate::data::graphql::SerializableValue;
+use crate::{data::graphql::SerializableValue, prelude::CacheWeight};
 use graphql_parser::query as q;
 use serde::ser::*;
 use serde::Serialize;
@@ -42,7 +42,7 @@ pub struct QueryResult {
         skip_serializing_if = "Vec::is_empty",
         serialize_with = "serialize_datas"
     )]
-    pub data: Vec<Arc<q::Value>>,
+    data: Vec<Arc<q::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<QueryError>>,
     #[serde(
@@ -184,6 +184,14 @@ impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryRes
             Ok(v) => v.into(),
             Err(e) => e.into(),
         }
+    }
+}
+
+impl CacheWeight for QueryResult {
+    fn indirect_weight(&self) -> usize {
+        self.data.indirect_weight()
+            + self.errors.indirect_weight()
+            + self.extensions.indirect_weight()
     }
 }
 

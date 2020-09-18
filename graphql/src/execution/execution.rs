@@ -533,7 +533,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
         (no_cache, key, block_ptr, &ctx.query.network)
     {
         // Calculate the weight outside the lock.
-        let weight = result.data.weight();
+        let weight = result.weight();
         let mut cache = QUERY_BLOCK_CACHE.write().unwrap();
 
         // Get or insert the cache for this network.
