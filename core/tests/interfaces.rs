@@ -57,7 +57,7 @@ fn one_interface_zero_entities() {
 
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"leggeds\": List([])})"
     )
 }
@@ -78,7 +78,7 @@ fn one_interface_one_entity() {
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))})])})"
     );
 
@@ -87,7 +87,7 @@ fn one_interface_one_entity() {
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"legged\": Object({\"legs\": Int(Number(3))})})",
     );
 }
@@ -108,7 +108,7 @@ fn one_interface_one_entity_typename() {
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"leggeds\": List([Object({\"__typename\": String(\"Animal\")})])})"
     )
 }
@@ -135,7 +135,7 @@ fn one_interface_multiple_entities() {
     let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))}), Object({\"legs\": Int(Number(4))})])})"
     );
 
@@ -144,7 +144,7 @@ fn one_interface_multiple_entities() {
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"legged\": Object({\"legs\": Int(Number(4))})})",
     );
 }
@@ -168,7 +168,7 @@ fn reference_interface() {
 
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"leggeds\": List([Object({\"leg\": Object({\"id\": String(\"1\")})})])})"
     )
 }
@@ -232,7 +232,7 @@ fn reference_interface_derived() {
 
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"events\": List([\
             Object({\"id\": String(\"buy\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
             Object({\"id\": String(\"gift\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
@@ -296,7 +296,7 @@ fn follow_interface_reference() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"legged\": Object({\"parent\": Object({\"id\": String(\"parent\")})})})"
     )
 }
@@ -353,7 +353,7 @@ fn derived_interface_relationship() {
 
     let res = insert_and_query(subgraph_id, schema, vec![forest, animal], query);
     assert_eq!(
-        res.unwrap().data.unwrap().to_string(),
+        res.unwrap().take_data().unwrap().to_string(),
         "{forests: [{dwellers: [{id: \"1\"}]}]}"
     );
 }
@@ -394,7 +394,7 @@ fn two_interfaces() {
     let res = insert_and_query(subgraph_id, schema, vec![a, b, ab], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\"ibars\": List([Object({\"bar\": Int(Number(100))}), Object({\"bar\": Int(Number(200))})]), \
                  \"ifoos\": List([Object({\"foo\": String(\"bla\")}), Object({\"foo\": String(\"ble\")})])})"
     );
@@ -419,7 +419,7 @@ fn interface_non_inline_fragment() {
     let query = "query { leggeds { ...frag } } fragment frag on Animal { name }";
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         r#"Object({"leggeds": List([Object({"name": String("cow")})])})"#
     );
 
@@ -428,7 +428,7 @@ fn interface_non_inline_fragment() {
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
     assert!(res.errors.is_none());
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         r#"Object({"leggeds": List([Object({"legs": Int(Number(3)), "name": String("cow")})])})"#,
     );
 }
@@ -461,7 +461,7 @@ fn interface_inline_fragment() {
         "query { leggeds(orderBy: legs) { ... on Animal { name } ...on Bird { airspeed } } }";
     let res = insert_and_query(subgraph_id, schema, vec![animal, bird], query).unwrap();
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         r#"Object({"leggeds": List([Object({"airspeed": Int(Number(24))}), Object({"name": String("cow")})])})"#
     );
 }
@@ -526,7 +526,7 @@ fn interface_inline_fragment_with_subquery() {
     .unwrap();
 
     assert_eq!(
-        format!("{:?}", res.data.unwrap()),
+        format!("{:?}", res.take_data().unwrap()),
         "Object({\
          \"leggeds\": List([\
          Object({\
@@ -607,7 +607,7 @@ fn alias() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             l: object! {
                 p: object! {
@@ -682,7 +682,7 @@ fn fragments_dont_panic() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             parents: vec![
                 object! {
@@ -756,7 +756,7 @@ fn fragments_dont_duplicate_data() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             parents: vec![
                 object! {
@@ -812,7 +812,7 @@ fn redundant_fields() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             leggeds: vec![
                 object! {
@@ -879,7 +879,7 @@ fn fragments_merge_selections() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             parents: vec![
                 object! {
@@ -945,7 +945,7 @@ fn merge_fields_not_in_interface() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             ifaces: vec![
                 object! {
@@ -1044,7 +1044,7 @@ fn nested_interface_fragments() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             i1Faces: vec![
                 object! {
@@ -1131,7 +1131,7 @@ fn nested_interface_fragments_overlapping() {
 
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             i1Faces: vec![
                 object! {
@@ -1164,7 +1164,7 @@ fn nested_interface_fragments_overlapping() {
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
     assert!(res.errors.is_none(), format!("{:#?}", res.errors));
     assert_eq!(
-        res.data.unwrap(),
+        res.take_data().unwrap(),
         object! {
             i1Faces: vec![
                 object! {

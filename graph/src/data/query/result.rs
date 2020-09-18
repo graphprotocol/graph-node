@@ -4,6 +4,7 @@ use graphql_parser::query as q;
 use serde::ser::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 fn serialize_data<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -12,14 +13,36 @@ where
     SerializableValue(data.as_ref().unwrap_or(&q::Value::Null)).serialize(serializer)
 }
 
+fn serialize_datas<S>(data: &Vec<Arc<q::Value>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if data.is_empty() {
+        SerializableValue(&q::Value::Null).serialize(serializer)
+    } else {
+        let mut ser = serializer.serialize_map(None)?;
+        for value in data {
+            match value.as_ref() {
+                q::Value::Object(map) => {
+                    for (k, v) in map {
+                        ser.serialize_entry(k, &SerializableValue(v))?;
+                    }
+                }
+                _ => unreachable!("all data entries in a QueryResult are maps"),
+            }
+        }
+        ser.end()
+    }
+}
+
 /// The result of running a query, if successful.
 #[derive(Debug, Clone, Serialize)]
 pub struct QueryResult {
     #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_data"
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "serialize_datas"
     )]
-    pub data: Option<q::Value>,
+    pub data: Vec<Arc<q::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<QueryError>>,
     #[serde(
@@ -33,13 +56,13 @@ impl QueryResult {
     /// A result with an empty object as the data.
     pub fn empty() -> Self {
         QueryResult {
-            data: Some(q::Value::Object(BTreeMap::new())),
+            data: Vec::new(),
             errors: None,
             extensions: None,
         }
     }
 
-    pub fn new(data: Option<q::Value>) -> Self {
+    pub fn new(data: Vec<Arc<q::Value>>) -> Self {
         QueryResult {
             data,
             errors: None,
@@ -61,15 +84,7 @@ impl QueryResult {
         assert!(self.extensions.is_none());
         assert!(other.extensions.is_none());
 
-        match (&mut self.data, &mut other.data) {
-            (Some(q::Value::Object(ours)), Some(q::Value::Object(other))) => ours.append(other),
-
-            // Subgraph queries always return objects.
-            (Some(_), Some(_)) => unreachable!(),
-
-            // Only one side has data, use that.
-            _ => self.data = self.data.take().or(other.data),
-        }
+        self.data.extend(other.data);
 
         match (&mut self.errors, &mut other.errors) {
             (Some(ours), Some(other)) => ours.append(other),
@@ -92,11 +107,40 @@ impl QueryResult {
             .body(T::from(json))
             .unwrap()
     }
+
+    pub fn take_data(mut self) -> Option<q::Value> {
+        fn take_or_clone(value: Arc<q::Value>) -> q::Value {
+            Arc::try_unwrap(value).unwrap_or_else(|value| value.as_ref().clone())
+        }
+
+        if self.data.is_empty() {
+            None
+        } else {
+            let value = self.data.pop().map(take_or_clone).unwrap();
+            let res = self.data.into_iter().fold(value, |mut acc, value| {
+                let mut value = take_or_clone(value);
+                match (&mut acc, &mut value) {
+                    (q::Value::Object(ours), q::Value::Object(other)) => {
+                        ours.append(other);
+                    }
+                    // Subgraph queries always return objects, so both
+                    // acc and value must be objects
+                    (_, _) => unreachable!(),
+                }
+                acc
+            });
+            Some(res)
+        }
+    }
+
+    pub fn has_data(&self) -> bool {
+        !self.data.is_empty()
+    }
 }
 
 impl From<QueryExecutionError> for QueryResult {
     fn from(e: QueryExecutionError) -> Self {
-        let mut result = Self::new(None);
+        let mut result = Self::new(Vec::new());
         result.errors = Some(vec![QueryError::from(e)]);
         result
     }
@@ -105,7 +149,7 @@ impl From<QueryExecutionError> for QueryResult {
 impl From<QueryError> for QueryResult {
     fn from(e: QueryError) -> Self {
         QueryResult {
-            data: None,
+            data: Vec::new(),
             errors: Some(vec![e]),
             extensions: None,
         }
@@ -115,7 +159,7 @@ impl From<QueryError> for QueryResult {
 impl From<Vec<QueryExecutionError>> for QueryResult {
     fn from(e: Vec<QueryExecutionError>) -> Self {
         QueryResult {
-            data: None,
+            data: Vec::new(),
             errors: Some(e.into_iter().map(QueryError::from).collect()),
             extensions: None,
         }
@@ -124,7 +168,13 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
 
 impl From<BTreeMap<String, q::Value>> for QueryResult {
     fn from(val: BTreeMap<String, q::Value>) -> Self {
-        QueryResult::new(Some(q::Value::Object(val)))
+        QueryResult::from(q::Value::Object(val))
+    }
+}
+
+impl From<q::Value> for QueryResult {
+    fn from(val: q::Value) -> Self {
+        QueryResult::new(vec![Arc::new(val)])
     }
 }
 
@@ -135,4 +185,27 @@ impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryRes
             Err(e) => e.into(),
         }
     }
+}
+
+// Check that when we serialize a `QueryResult` with multiple entries
+// in `data` it appears as if we serialized one big map
+#[test]
+fn multiple_data_items() {
+    use serde_json::json;
+
+    fn make_obj(key: &str, value: &str) -> Arc<q::Value> {
+        let mut map = BTreeMap::new();
+        map.insert(key.to_owned(), q::Value::String(value.to_owned()));
+        Arc::new(q::Value::Object(map))
+    }
+
+    let obj1 = make_obj("key1", "value1");
+    let obj2 = make_obj("key2", "value2");
+
+    let res = QueryResult::new(vec![obj1, obj2]);
+
+    let expected =
+        serde_json::to_string(&json!({"data":{"key1": "value1", "key2": "value2"}})).unwrap();
+    let actual = serde_json::to_string(&res).unwrap();
+    assert_eq!(expected, actual)
 }

@@ -316,13 +316,8 @@ fn can_query_one_to_one_relationship() {
         )
         .await;
 
-        assert!(
-            result.errors.is_none(),
-            format!("Unexpected errors return for query: {:#?}", result.errors)
-        );
-
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![
                 (
                     "musicians",
@@ -389,7 +384,7 @@ fn can_query_one_to_one_relationship() {
                             ),
                         ])
                     ])
-                ),
+                )
             ]))
         )
     })
@@ -423,7 +418,7 @@ fn can_query_one_to_many_relationships_in_both_directions() {
         );
 
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -550,7 +545,7 @@ fn can_query_many_to_many_relationship() {
         ]);
 
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -576,7 +571,7 @@ fn can_query_many_to_many_relationship() {
                         ("name", q::Value::String(String::from("Valerie"))),
                         ("bands", q::Value::List(vec![])),
                     ]),
-                ]),
+                ])
             )]))
         );
     })
@@ -610,7 +605,7 @@ fn query_variables_are_used() {
         .await;
 
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![object_value(vec![(
@@ -649,7 +644,7 @@ fn skip_directive_works_with_query_variables() {
 
         // Assert that only names are returned
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -673,7 +668,7 @@ fn skip_directive_works_with_query_variables() {
 
         // Assert that IDs and names are returned
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -726,7 +721,7 @@ fn include_directive_works_with_query_variables() {
 
         // Assert that IDs and names are returned
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -762,7 +757,7 @@ fn include_directive_works_with_query_variables() {
 
         // Assert that only names are returned
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -985,7 +980,7 @@ fn variable_defaults() {
 
         assert!(result.errors.is_none());
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "bands",
                 q::Value::List(vec![
@@ -1007,7 +1002,7 @@ fn variable_defaults() {
 
         assert!(result.errors.is_none());
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "bands",
                 q::Value::List(vec![
@@ -1036,7 +1031,7 @@ fn skip_is_nullable() {
         let result = execute_query_document_with_variables(&id, query, None).await;
 
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1067,7 +1062,7 @@ fn first_is_nullable() {
         let result = execute_query_document_with_variables(&id, query, None).await;
 
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1106,13 +1101,13 @@ fn nested_variable() {
 
         assert!(result.errors.is_none());
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![object_value(vec![(
                     "name",
                     q::Value::String(String::from("Lisa"))
-                )]),],)
+                )])])
             )]))
         );
     })
@@ -1192,7 +1187,7 @@ fn can_filter_by_relationship_fields() {
             format!("Unexpected errors return for query: {:#?}", result.errors)
         );
         assert_eq!(
-            result.data,
+            result.take_data(),
             Some(object_value(vec![
                 (
                     "musicians",
@@ -1308,9 +1303,10 @@ fn subscription_gets_result_even_without_events() {
         assert_eq!(results.len(), 1);
         let result = &results[0];
         assert!(result.errors.is_none());
-        assert!(result.data.is_some());
+        let data = result.as_ref().clone().take_data();
+        assert!(data.is_some());
         assert_eq!(
-            result.data,
+            data,
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1342,7 +1338,7 @@ fn can_use_nested_filter() {
         .await;
 
         assert_eq!(
-            result.data.unwrap(),
+            result.take_data().unwrap(),
             object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1375,7 +1371,7 @@ fn can_use_nested_filter() {
                     ])
                 ])
             )])
-        )
+        );
     })
 }
 
@@ -1408,7 +1404,7 @@ async fn check_musicians_at(
                 result.errors,
                 qid
             );
-            assert_eq!(result.data, expected, "failed query: ({})", qid);
+            assert_eq!(result.take_data(), expected, "failed query: ({})", qid);
         }
         (true, Err(msg)) => {
             assert!(
@@ -1587,7 +1583,10 @@ fn query_detects_reorg() {
         let result = execute_query_document_with_state(&id, query.clone(), state.clone()).await;
 
         assert!(result.errors.is_none());
-        assert_eq!(result.data.unwrap(), object!(musician: object!(id: "m1")));
+        assert_eq!(
+            result.take_data(),
+            Some(object!(musician: object!(id: "m1")))
+        );
 
         // Revert one block
         STORE
@@ -1599,7 +1598,10 @@ fn query_detects_reorg() {
         // even with a concurrent reorg
         let result = execute_query_document_with_state(&id, query.clone(), state.clone()).await;
         assert!(result.errors.is_none());
-        assert_eq!(result.data.unwrap(), object!(musician: object!(id: "m1")));
+        assert_eq!(
+            result.take_data(),
+            Some(object!(musician: object!(id: "m1")))
+        );
 
         // We move the subgraph head forward, which will execute the query at block 1
         // But the state we have is also for block 1, but with a smaller reorg count

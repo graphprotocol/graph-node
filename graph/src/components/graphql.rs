@@ -45,7 +45,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         subscription: Subscription,
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
-    async fn query_metadata(self: Arc<Self>, query: Query) -> Result<q::Value, Error> {
+    async fn query_metadata(self: Arc<Self>, query: Query) -> Result<Arc<q::Value>, Error> {
         let state = DeploymentState::meta();
         let result = self
             .run_query_with_complexity(query, state, None, None, None, None, false)
@@ -55,8 +55,12 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         let result = Arc::try_unwrap(result).unwrap();
         if result.errors.is_some() {
             Err(format_err!("Failed to query metadata: {:?}", result.errors))
+        } else if result.data.is_empty() {
+            Err(format_err!("No metadata found"))
+        } else if result.data.len() > 1 {
+            Err(format_err!("Metadata query returned multiple results"))
         } else {
-            result.data.ok_or_else(|| format_err!("No metadata found"))
+            Ok(result.data.first().unwrap().clone())
         }
     }
 

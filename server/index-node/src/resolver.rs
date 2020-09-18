@@ -388,17 +388,16 @@ where
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();
 
-        let data = match result.data {
-            Some(data) => data,
-            None => {
-                error!(
-                    self.logger,
-                    "Failed to query subgraph deployments";
-                    "subgraphs" => format!("{:?}", subgraphs),
-                    "errors" => format!("{:?}", result.errors)
-                );
-                return Ok(q::Value::List(vec![]));
-            }
+        let data = if result.has_data() {
+            result.take_data().unwrap()
+        } else {
+            error!(
+                self.logger,
+                "Failed to query subgraph deployments";
+                "subgraphs" => format!("{:?}", subgraphs),
+                "errors" => format!("{:?}", result.errors)
+            );
+            return Ok(q::Value::List(vec![]));
         };
 
         Ok(IndexingStatuses::from(data).into())
@@ -473,17 +472,16 @@ where
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();
 
-        let data = match result.data {
-            Some(data) => data,
-            None => {
-                error!(
-                    self.logger,
-                    "Failed to query subgraph deployments";
-                    "subgraph" => subgraph_name,
-                    "errors" => format!("{:?}", result.errors)
-                );
-                return Ok(q::Value::List(vec![]));
-            }
+        let data = if result.has_data() {
+            result.take_data().unwrap()
+        } else {
+            error!(
+                self.logger,
+                "Failed to query subgraph deployments";
+                "subgraph" => subgraph_name,
+                "errors" => format!("{:?}", result.errors)
+            );
+            return Ok(q::Value::List(vec![]));
         };
 
         let subgraphs = match data
@@ -639,17 +637,16 @@ where
         // Metadata queries are not cached.
         let result = Arc::try_unwrap(result).unwrap();
 
-        let data = match result.data {
-            Some(data) => data,
-            None => {
-                error!(
-                    self.logger,
-                    "Failed to query subgraph deployments";
-                    "subgraph" => subgraph_name,
-                    "errors" => format!("{:?}", result.errors)
-                );
-                return Ok(q::Value::List(vec![]));
-            }
+        let data = if result.has_data() {
+            result.take_data().unwrap()
+        } else {
+            error!(
+                self.logger,
+                "Failed to query subgraph deployments";
+                "subgraph" => subgraph_name,
+                "errors" => format!("{:?}", result.errors)
+            );
+            return Ok(q::Value::List(vec![]));
         };
 
         let subgraphs = match data

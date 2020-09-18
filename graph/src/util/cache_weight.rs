@@ -1,5 +1,6 @@
 use crate::prelude::{BigDecimal, BigInt, EntityKey, Value};
 use std::mem;
+use std::sync::Arc;
 
 /// Estimate of how much memory a value consumes.
 /// Useful for measuring the size of caches.
@@ -27,6 +28,12 @@ impl<T: CacheWeight> CacheWeight for Vec<T> {
     fn indirect_weight(&self) -> usize {
         self.iter().map(CacheWeight::indirect_weight).sum::<usize>()
             + self.capacity() * mem::size_of::<T>()
+    }
+}
+
+impl<T: CacheWeight> CacheWeight for Arc<T> {
+    fn indirect_weight(&self) -> usize {
+        self.as_ref().indirect_weight()
     }
 }
 

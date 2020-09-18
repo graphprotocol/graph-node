@@ -73,7 +73,7 @@ impl CacheWeight for WeightedResult {
 impl Default for WeightedResult {
     fn default() -> Self {
         WeightedResult {
-            result: Arc::new(QueryResult::new(Some(q::Value::Null))),
+            result: Arc::new(QueryResult::new(vec![Arc::new(q::Value::Null)])),
             weight: 0,
         }
     }
@@ -533,7 +533,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
         (no_cache, key, block_ptr, &ctx.query.network)
     {
         // Calculate the weight outside the lock.
-        let weight = result.data.as_ref().unwrap().weight();
+        let weight = result.data.weight();
         let mut cache = QUERY_BLOCK_CACHE.write().unwrap();
 
         // Get or insert the cache for this network.

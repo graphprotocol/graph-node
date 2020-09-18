@@ -194,7 +194,8 @@ where
                 .cheap_clone()
                 .query_metadata(query)
                 .await?;
-            let unresolved_data_sources = self.parse_data_sources(&deployment_id, query_result)?;
+            let unresolved_data_sources =
+                self.parse_data_sources(&deployment_id, query_result.as_ref().clone())?;
             let next_data_sources = self
                 .resolve_data_sources(unresolved_data_sources, &logger)
                 .await?;
