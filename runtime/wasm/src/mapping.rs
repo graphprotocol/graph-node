@@ -3,7 +3,7 @@ use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
 use graph::components::ethereum::*;
-use graph::components::subgraph::SharedProofOfIndexing;
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -128,7 +128,7 @@ pub(crate) enum MappingTrigger {
 }
 
 type MappingResponse = (
-    Result<BlockState, anyhow::Error>,
+    Result<BlockState, MappingError>,
     futures::Finished<Instant, Error>,
 );
 
