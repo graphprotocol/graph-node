@@ -41,7 +41,7 @@ impl PartialOrd for NodeCapabilities {
 }
 
 impl FromStr for NodeCapabilities {
-    type Err = Error;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let capabilities: Vec<&str> = s.split(",").collect();

@@ -318,7 +318,7 @@ impl HostExports {
             }
 
             // Any error reported by the Ethereum node could be due to the block no longer being on
-            // the main chain. This is very inespecific but we don't want to risk failing a
+            // the main chain. This is very unespecific but we don't want to risk failing a
             // subgraph due to a transient error such as a reorg.
             Err(EthereumContractCallError::Web3Error(e)) => Err(EthereumCallError::PossibleReorg(anyhow::anyhow!(
                 "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",

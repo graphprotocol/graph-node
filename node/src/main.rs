@@ -958,7 +958,7 @@ async fn parse_ethereum_networks(
     networks: clap::Values<'_>,
     connection_type: ConnectionType,
     registry: Arc<MetricsRegistry>,
-) -> Result<EthereumNetworks, Error> {
+) -> Result<EthereumNetworks, anyhow::Error> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let mut parsed_networks = EthereumNetworks::new();
     for network_arg in networks {
@@ -966,7 +966,7 @@ async fn parse_ethereum_networks(
             || network_arg.starts_with("http://")
             || network_arg.starts_with("https://")
         {
-            return Err(format_err!(
+            return Err(anyhow::anyhow!(
                 "Is your Ethereum node string missing a network name? \
                      Try 'mainnet:' + the Ethereum node URL."
             ));
@@ -974,7 +974,7 @@ async fn parse_ethereum_networks(
             // Parse string (format is "NETWORK_NAME:NETWORK_CAPABILITIES:URL" OR
             // "NETWORK_NAME::URL" which will default to NETWORK_CAPABILITIES="archive,traces")
             let split_at = network_arg.find(':').ok_or_else(|| {
-                return format_err!(
+                return anyhow::anyhow!(
                     "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
                 );
@@ -983,13 +983,13 @@ async fn parse_ethereum_networks(
             let (name, rest_with_delim) = network_arg.split_at(split_at);
             let rest = &rest_with_delim[1..];
             if name.is_empty() {
-                return Err(format_err!(
+                return Err(anyhow::anyhow!(
                     "Ethereum network name cannot be an empty string"
                 ));
             }
 
             let url_split_at = rest.find(":").ok_or_else(|| {
-                return format_err!(
+                return anyhow::anyhow!(
                     "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
                 );
@@ -1010,7 +1010,9 @@ async fn parse_ethereum_networks(
                 };
 
             if rest.is_empty() {
-                return Err(format_err!("Ethereum node URL cannot be an empty string"));
+                return Err(anyhow::anyhow!(
+                    "Ethereum node URL cannot be an empty string"
+                ));
             }
 
             info!(
@@ -1055,12 +1057,13 @@ mod test {
     use clap::{App, Arg};
     use graph::components::ethereum::NodeCapabilities;
     use graph::log::logger;
+    use graph::prelude::tokio;
     use graph_core::MetricsRegistry;
     use prometheus::Registry;
     use std::sync::Arc;
 
-    #[test]
-    fn correctly_parse_ethereum_networks() {
+    #[tokio::test]
+    async fn correctly_parse_ethereum_networks() {
         let logger = logger(true);
         let m = App::new("graph-node")
             .arg(
@@ -1086,6 +1089,7 @@ mod test {
 
         let ethereum_networks =
             parse_ethereum_networks(logger, network_args, ConnectionType::RPC, metrics_registry)
+                .await
                 .expect("Correctly parse Ethereum network args");
         let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();
         network_names.sort();
