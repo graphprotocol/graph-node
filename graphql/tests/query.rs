@@ -327,7 +327,7 @@ fn can_query_one_to_one_relationship() {
         .await;
 
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![
                 (
                     "musicians",
@@ -605,7 +605,7 @@ fn query_variables_are_used() {
         .await;
 
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![object_value(vec![(
@@ -644,7 +644,7 @@ fn skip_directive_works_with_query_variables() {
 
         // Assert that only names are returned
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -668,7 +668,7 @@ fn skip_directive_works_with_query_variables() {
 
         // Assert that IDs and names are returned
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -721,7 +721,7 @@ fn include_directive_works_with_query_variables() {
 
         // Assert that IDs and names are returned
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -757,7 +757,7 @@ fn include_directive_works_with_query_variables() {
 
         // Assert that only names are returned
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1029,7 +1029,7 @@ fn skip_is_nullable() {
         let result = execute_query_document_with_variables(&id, query, None).await;
 
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1060,7 +1060,7 @@ fn first_is_nullable() {
         let result = execute_query_document_with_variables(&id, query, None).await;
 
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1326,7 +1326,7 @@ fn can_use_nested_filter() {
         .await;
 
         assert_eq!(
-            result.take_data().unwrap(),
+            extract_data!(result).unwrap(),
             object_value(vec![(
                 "musicians",
                 q::Value::List(vec![

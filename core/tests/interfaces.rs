@@ -65,7 +65,7 @@ fn one_interface_zero_entities() {
 
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
 
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(format!("{:?}", data), "Object({\"leggeds\": List([])})")
 }
 
@@ -83,7 +83,7 @@ fn one_interface_one_entity() {
     // Collection query.
     let query = "query { leggeds(first: 100) { legs } }";
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))})])})"
@@ -92,7 +92,7 @@ fn one_interface_one_entity() {
     // Query by ID.
     let query = "query { legged(id: \"1\") { legs } }";
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"legged\": Object({\"legs\": Int(Number(3))})})",
@@ -113,7 +113,7 @@ fn one_interface_one_entity_typename() {
     let query = "query { leggeds(first: 100) { __typename } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"leggeds\": List([Object({\"__typename\": String(\"Animal\")})])})"
@@ -140,7 +140,7 @@ fn one_interface_multiple_entities() {
     let query = "query { leggeds(first: 100, orderBy: legs) { legs } }";
 
     let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))}), Object({\"legs\": Int(Number(4))})])})"
@@ -149,7 +149,7 @@ fn one_interface_multiple_entities() {
     // Test for support issue #32.
     let query = "query { legged(id: \"2\") { legs } }";
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"legged\": Object({\"legs\": Int(Number(4))})})",
@@ -173,7 +173,7 @@ fn reference_interface() {
 
     let res = insert_and_query(subgraph_id, schema, vec![leg, animal], query).unwrap();
 
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"leggeds\": List([Object({\"leg\": Object({\"id\": String(\"1\")})})])})"
@@ -237,7 +237,7 @@ fn reference_interface_derived() {
     let entities = vec![buy, sell1, sell2, gift, txn];
     let res = insert_and_query(subgraph_id, schema, entities.clone(), query).unwrap();
 
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"events\": List([\
@@ -301,7 +301,7 @@ fn follow_interface_reference() {
 
     let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
 
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"legged\": Object({\"parent\": Object({\"id\": String(\"parent\")})})})"
@@ -358,9 +358,10 @@ fn derived_interface_relationship() {
 
     let query = "query { forests(first: 100) { dwellers(first: 100) { id } } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![forest, animal], query);
+    let res = insert_and_query(subgraph_id, schema, vec![forest, animal], query).unwrap();
+    let data = extract_data!(res);
     assert_eq!(
-        res.unwrap().take_data().unwrap().to_string(),
+        data.unwrap().to_string(),
         "{forests: [{dwellers: [{id: \"1\"}]}]}"
     );
 }
@@ -399,7 +400,7 @@ fn two_interfaces() {
                     ifoos(first: 100, orderBy: foo) { foo }
                 }";
     let res = insert_and_query(subgraph_id, schema, vec![a, b, ab], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         "Object({\"ibars\": List([Object({\"bar\": Int(Number(100))}), Object({\"bar\": Int(Number(200))})]), \
@@ -425,7 +426,7 @@ fn interface_non_inline_fragment() {
     // Query only the fragment.
     let query = "query { leggeds { ...frag } } fragment frag on Animal { name }";
     let res = insert_and_query(subgraph_id, schema, vec![entity], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         r#"Object({"leggeds": List([Object({"name": String("cow")})])})"#
@@ -434,7 +435,7 @@ fn interface_non_inline_fragment() {
     // Query the fragment and something else.
     let query = "query { leggeds { legs, ...frag } } fragment frag on Animal { name }";
     let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         r#"Object({"leggeds": List([Object({"legs": Int(Number(3)), "name": String("cow")})])})"#,
@@ -468,7 +469,7 @@ fn interface_inline_fragment() {
     let query =
         "query { leggeds(orderBy: legs) { ... on Animal { name } ...on Bird { airspeed } } }";
     let res = insert_and_query(subgraph_id, schema, vec![animal, bird], query).unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
         r#"Object({"leggeds": List([Object({"airspeed": Int(Number(24))}), Object({"name": String("cow")})])})"#
@@ -533,7 +534,7 @@ fn interface_inline_fragment_with_subquery() {
         query,
     )
     .unwrap();
-    let data = extract_data!(res);
+    let data = extract_data!(res).unwrap();
 
     assert_eq!(
         format!("{:?}", data),

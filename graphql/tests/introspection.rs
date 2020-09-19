@@ -823,8 +823,9 @@ async fn satisfies_graphiql_introspection_query_without_fragments() {
     .await;
 
     let data = result
-        .take_data()
-        .expect("Introspection query returned no result");
+        .to_result()
+        .expect("Introspection query returned no result")
+        .unwrap();
     assert_eq!(data, expected_mock_schema_introspection());
 }
 
@@ -929,8 +930,9 @@ async fn satisfies_graphiql_introspection_query_with_fragments() {
     .await;
 
     let data = result
-        .take_data()
-        .expect("Introspection query returned no result");
+        .to_result()
+        .expect("Introspection query returned no result")
+        .unwrap();
     assert_eq!(data, expected_mock_schema_introspection());
 }
 
@@ -1255,7 +1257,8 @@ async fn introspection_possible_types() {
         }",
     )
     .await
-    .take_data()
+    .to_result()
+    .unwrap()
     .unwrap();
 
     assert_eq!(

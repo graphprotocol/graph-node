@@ -102,7 +102,9 @@ impl QueryResult {
             .unwrap()
     }
 
-    pub fn take_data(mut self) -> Option<q::Value> {
+    /// Combine all the data into one `q::Value`. This method might clone
+    /// all of the data in this result
+    fn take_data(mut self) -> Option<q::Value> {
         fn take_or_clone(value: Arc<q::Value>) -> q::Value {
             Arc::try_unwrap(value).unwrap_or_else(|value| value.as_ref().clone())
         }
@@ -131,8 +133,9 @@ impl QueryResult {
         !self.data.is_empty()
     }
 
-    /// Return either the data or the errors for this `QueryResult`. If there
-    /// are errors, the data just gets dropped.
+    /// Return either the data or the errors for this `QueryResult`. The data
+    /// will be cloned for any of the entries in `self.data` that have a
+    /// reference count greater than 1. If there are errors, the data is ignored.
     pub fn to_result(self) -> Result<Option<q::Value>, Vec<QueryError>> {
         if self.has_errors() {
             Err(self.errors)
