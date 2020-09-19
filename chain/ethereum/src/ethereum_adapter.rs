@@ -95,13 +95,17 @@ where
             .to_string();
 
         let web3 = Arc::new(Web3::new(transport));
+
+        // Use the client version to check if it is ganache. For compatibility with unit tests, be
+        // are lenient with errors, defaulting to false.
         let is_ganache = web3
             .web3()
             .client_version()
             .compat()
             .await
-            .unwrap()
-            .contains("TestRPC");
+            .map(|s| s.contains("TestRPC"))
+            .unwrap_or(false);
+
         EthereumAdapter {
             url_hostname: Arc::new(hostname),
             web3,
