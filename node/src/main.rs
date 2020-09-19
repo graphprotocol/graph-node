@@ -542,7 +542,9 @@ async fn main() {
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     // Ethereum clients
-    let mut eth_networks = [
+    let mut eth_networks = EthereumNetworks::new();
+
+    for (connection_type, values) in [
         (ConnectionType::RPC, ethereum_rpc),
         (ConnectionType::IPC, ethereum_ipc),
         (ConnectionType::WS, ethereum_ws),
@@ -550,23 +552,18 @@ async fn main() {
     .iter()
     .cloned()
     .filter(|(_, values)| values.is_some())
-    .fold(
-        EthereumNetworks::new(),
-        |mut eth_networks, (connection_type, values)| match parse_ethereum_networks(
+    {
+        let networks = parse_ethereum_networks(
             logger.clone(),
             values.unwrap(),
             connection_type,
             metrics_registry.clone(),
-        ) {
-            Ok(networks) => {
-                eth_networks.extend(networks);
-                eth_networks
-            }
-            Err(e) => {
-                panic!("Failed to parse Ethereum networks: {}", e);
-            }
-        },
-    );
+        )
+        .await
+        .expect("Failed to parse Ethereum networks");
+
+        eth_networks.extend(networks);
+    }
     eth_networks.sort();
     let eth_networks = eth_networks;
 
@@ -956,14 +953,15 @@ async fn main() {
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
-fn parse_ethereum_networks(
+async fn parse_ethereum_networks(
     logger: Logger,
-    mut networks: clap::Values,
+    networks: clap::Values<'_>,
     connection_type: ConnectionType,
     registry: Arc<MetricsRegistry>,
 ) -> Result<EthereumNetworks, Error> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
-    networks.try_fold(EthereumNetworks::new(), |mut networks, network_arg| {
+    let mut parsed_networks = EthereumNetworks::new();
+    for network_arg in networks {
         if network_arg.starts_with("wss://")
             || network_arg.starts_with("http://")
             || network_arg.starts_with("https://")
@@ -1033,18 +1031,21 @@ fn parse_ethereum_networks(
             // For now it's fine to just leak it.
             std::mem::forget(transport_event_loop);
 
-            networks.insert(
+            parsed_networks.insert(
                 name.to_string(),
                 capabilities,
-                Arc::new(graph_chain_ethereum::EthereumAdapter::new(
-                    url,
-                    transport,
-                    eth_rpc_metrics.clone(),
-                )) as Arc<dyn EthereumAdapter>,
+                Arc::new(
+                    graph_chain_ethereum::EthereumAdapter::new(
+                        url,
+                        transport,
+                        eth_rpc_metrics.clone(),
+                    )
+                    .await,
+                ) as Arc<dyn EthereumAdapter>,
             );
-            Ok(networks)
         }
-    })
+    }
+    Ok(parsed_networks)
 }
 
 #[cfg(test)]
