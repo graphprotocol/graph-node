@@ -287,6 +287,16 @@ fn mock_query_load_manager() -> Arc<MockQueryLoadManager> {
     ))))
 }
 
+/// Extract the data from a `QueryResult`, and panic if it has errors
+macro_rules! extract_data {
+    ($result: expr) => {
+        match $result.to_result() {
+            Err(errors) => panic!(format!("Unexpected errors return for query: {:#?}", errors)),
+            Ok(data) => data,
+        }
+    };
+}
+
 #[test]
 fn can_query_one_to_one_relationship() {
     run_test_sequentially(setup, |_, id| async move {
@@ -412,13 +422,8 @@ fn can_query_one_to_many_relationships_in_both_directions() {
         )
         .await;
 
-        assert!(
-            result.errors.is_none(),
-            format!("Unexpected errors return for query: {:#?}", result.errors)
-        );
-
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -516,11 +521,6 @@ fn can_query_many_to_many_relationship() {
         )
         .await;
 
-        assert!(
-            result.errors.is_none(),
-            format!("Unexpected errors return for query: {:#?}", result.errors)
-        );
-
         let the_musicians = object_value(vec![
             ("name", q::Value::String(String::from("The Musicians"))),
             (
@@ -545,7 +545,7 @@ fn can_query_many_to_many_relationship() {
         ]);
 
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -801,7 +801,7 @@ fn query_complexity() {
         })
         .await
         .unwrap();
-        assert!(result.errors.is_none());
+        assert!(!result.has_errors());
 
         let query = Query::new(
             Arc::new(api_test_schema(&id)),
@@ -834,7 +834,7 @@ fn query_complexity() {
         })
         .await
         .unwrap();
-        match result.errors.unwrap()[0] {
+        match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
             _ => panic!("did not catch complexity"),
         };
@@ -947,8 +947,8 @@ fn instant_timeout() {
         })
         .await
         .unwrap()
-        .errors
-        .unwrap()[0]
+        .to_result()
+        .unwrap_err()[0]
         {
             QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
             _ => panic!("did not time out"),
@@ -978,9 +978,8 @@ fn variable_defaults() {
         )
         .await;
 
-        assert!(result.errors.is_none());
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "bands",
                 q::Value::List(vec![
@@ -1000,9 +999,8 @@ fn variable_defaults() {
         )
         .await;
 
-        assert!(result.errors.is_none());
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "bands",
                 q::Value::List(vec![
@@ -1099,9 +1097,8 @@ fn nested_variable() {
         )
         .await;
 
-        assert!(result.errors.is_none());
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![object_value(vec![(
@@ -1132,8 +1129,7 @@ fn ambiguous_derived_from_result() {
 
         let result = execute_query_document_with_variables(&id, query, None).await;
 
-        assert!(result.errors.is_some());
-        match &result.errors.unwrap()[0] {
+        match &result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::AmbiguousDerivedFromResult(
                 pos,
                 derived_from_field,
@@ -1182,12 +1178,8 @@ fn can_filter_by_relationship_fields() {
         )
         .await;
 
-        assert!(
-            result.errors.is_none(),
-            format!("Unexpected errors return for query: {:#?}", result.errors)
-        );
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object_value(vec![
                 (
                     "musicians",
@@ -1239,8 +1231,7 @@ fn cannot_filter_by_derved_relationship_fields() {
         )
         .await;
 
-        assert!(result.errors.is_some());
-        match &result.errors.unwrap()[0] {
+        match &result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(_, s, v)) => {
                 assert_eq!(s, "where");
                 assert_eq!(
@@ -1302,11 +1293,8 @@ fn subscription_gets_result_even_without_events() {
 
         assert_eq!(results.len(), 1);
         let result = &results[0];
-        assert!(result.errors.is_none());
-        let data = result.as_ref().clone().take_data();
-        assert!(data.is_some());
         assert_eq!(
-            data,
+            extract_data!(result.as_ref().clone()),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
@@ -1398,22 +1386,20 @@ async fn check_musicians_at(
                 .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
                 .collect();
             let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
-            assert!(
-                result.errors.is_none(),
-                "unexpected error: {:?} ({})\n",
-                result.errors,
-                qid
-            );
-            assert_eq!(result.take_data(), expected, "failed query: ({})", qid);
+            let data = match result.to_result() {
+                Err(errors) => panic!("unexpected error: {:?} ({})\n", errors, qid),
+                Ok(data) => data,
+            };
+            assert_eq!(data, expected, "failed query: ({})", qid);
         }
         (true, Err(msg)) => {
-            assert!(
-                result.errors.is_some(),
-                "expected error `{}` but got successful result ({})",
-                msg,
-                qid
-            );
-            let errors = result.errors.unwrap();
+            let errors = match result.to_result() {
+                Err(errors) => errors,
+                Ok(_) => panic!(
+                    "expected error `{}` but got successful result ({})",
+                    msg, qid
+                ),
+            };
             let actual = errors
                 .first()
                 .expect("we expect one error message")
@@ -1429,7 +1415,7 @@ async fn check_musicians_at(
         }
         (false, _) => {
             assert!(
-                result.errors.is_some(),
+                result.has_errors(),
                 "JSONB does not support time travel: {}",
                 qid
             );
@@ -1582,9 +1568,8 @@ fn query_detects_reorg() {
         // When there is no revert, queries work fine
         let result = execute_query_document_with_state(&id, query.clone(), state.clone()).await;
 
-        assert!(result.errors.is_none());
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object!(musician: object!(id: "m1")))
         );
 
@@ -1597,9 +1582,8 @@ fn query_detects_reorg() {
         // can not affect block 0, and it's therefore ok to query at block 0
         // even with a concurrent reorg
         let result = execute_query_document_with_state(&id, query.clone(), state.clone()).await;
-        assert!(result.errors.is_none());
         assert_eq!(
-            result.take_data(),
+            extract_data!(result),
             Some(object!(musician: object!(id: "m1")))
         );
 
@@ -1608,7 +1592,7 @@ fn query_detects_reorg() {
         // and we therefore report an error
         transact_entity_operations(&*STORE, id.clone(), BLOCK_ONE.clone(), vec![]).unwrap();
         let result = execute_query_document_with_state(&id, query.clone(), state).await;
-        match result.errors.unwrap()[0] {
+        match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */
             }
             _ => panic!("unexpected error from block reorg"),

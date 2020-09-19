@@ -43,8 +43,8 @@ pub struct QueryResult {
         serialize_with = "serialize_datas"
     )]
     data: Vec<Arc<q::Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<QueryError>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    errors: Vec<QueryError>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_data"
@@ -57,7 +57,7 @@ impl QueryResult {
     pub fn empty() -> Self {
         QueryResult {
             data: Vec::new(),
-            errors: None,
+            errors: Vec::new(),
             extensions: None,
         }
     }
@@ -65,7 +65,7 @@ impl QueryResult {
     pub fn new(data: Vec<Arc<q::Value>>) -> Self {
         QueryResult {
             data,
-            errors: None,
+            errors: Vec::new(),
             extensions: None,
         }
     }
@@ -76,22 +76,16 @@ impl QueryResult {
     }
 
     pub fn has_errors(&self) -> bool {
-        return self.errors.is_some();
+        return self.errors.len() > 0;
     }
 
-    pub fn append(&mut self, mut other: QueryResult) {
+    pub fn append(&mut self, other: QueryResult) {
         // Currently we don't used extensions, the desired behaviour for merging them is tbd.
         assert!(self.extensions.is_none());
         assert!(other.extensions.is_none());
 
         self.data.extend(other.data);
-
-        match (&mut self.errors, &mut other.errors) {
-            (Some(ours), Some(other)) => ours.append(other),
-
-            // Only one side has errors, use that.
-            _ => self.errors = self.errors.take().or(other.errors),
-        }
+        self.errors.extend(other.errors);
     }
 
     pub fn as_http_response<T: From<String>>(&self) -> http::Response<T> {
@@ -136,12 +130,22 @@ impl QueryResult {
     pub fn has_data(&self) -> bool {
         !self.data.is_empty()
     }
+
+    /// Return either the data or the errors for this `QueryResult`. If there
+    /// are errors, the data just gets dropped.
+    pub fn to_result(self) -> Result<Option<q::Value>, Vec<QueryError>> {
+        if self.has_errors() {
+            Err(self.errors)
+        } else {
+            Ok(self.take_data())
+        }
+    }
 }
 
 impl From<QueryExecutionError> for QueryResult {
     fn from(e: QueryExecutionError) -> Self {
         let mut result = Self::new(Vec::new());
-        result.errors = Some(vec![QueryError::from(e)]);
+        result.errors = vec![QueryError::from(e)];
         result
     }
 }
@@ -150,7 +154,7 @@ impl From<QueryError> for QueryResult {
     fn from(e: QueryError) -> Self {
         QueryResult {
             data: Vec::new(),
-            errors: Some(vec![e]),
+            errors: vec![e],
             extensions: None,
         }
     }
@@ -160,7 +164,7 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
     fn from(e: Vec<QueryExecutionError>) -> Self {
         QueryResult {
             data: Vec::new(),
-            errors: Some(e.into_iter().map(QueryError::from).collect()),
+            errors: e.into_iter().map(QueryError::from).collect(),
             extensions: None,
         }
     }

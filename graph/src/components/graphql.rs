@@ -52,14 +52,14 @@ pub trait GraphQlRunner: Send + Sync + 'static {
             .await;
 
         // Metadata queries are not cached.
-        let result = Arc::try_unwrap(result).unwrap();
-        if result.errors.is_some() {
-            Err(format_err!("Failed to query metadata: {:?}", result.errors))
-        } else if !result.has_data() {
-            Err(format_err!("No metadata found"))
-        } else {
-            Ok(Arc::new(result.take_data().unwrap()))
-        }
+        Arc::try_unwrap(result)
+            .unwrap()
+            .to_result()
+            .map_err(|errors| format_err!("Failed to query metadata: {:?}", errors))
+            .and_then(|data| {
+                data.map(|data| Ok(Arc::new(data)))
+                    .unwrap_or_else(|| Err(format_err!("No metadata found")))
+            })
     }
 
     fn load_manager(&self) -> Arc<LoadManager>;

@@ -49,7 +49,7 @@ impl CacheByBlock {
     /// Returns `true` if the insert was successful or `false` if the cache was full.
     fn insert(&mut self, key: QueryHash, value: Arc<QueryResult>, weight: usize) -> bool {
         // We never try to insert errors into this cache, and always resolve some value.
-        assert!(value.errors.is_none());
+        assert!(!value.has_errors());
         let fits_in_cache = self.weight + weight <= self.max_weight;
         if fits_in_cache {
             self.weight += weight;
