@@ -6,14 +6,14 @@ use std::collections::BTreeMap;
 
 #[test]
 fn generates_200_for_query_results() {
-    let data = graphql_parser::query::Value::Object(BTreeMap::new());
+    let data = BTreeMap::new();
     let query_result = QueryResult::from(data).as_http_response();
     test_utils::assert_successful_response(query_result);
 }
 
 #[test]
 fn generates_valid_json_for_an_empty_result() {
-    let data = graphql_parser::query::Value::Object(BTreeMap::new());
+    let data = BTreeMap::new();
     let query_result = QueryResult::from(data).as_http_response();
     let data = test_utils::assert_successful_response(query_result);
     assert!(data.is_empty());
@@ -34,7 +34,7 @@ fn canonical_serialization() {
                     | String(_) | Boolean(_) => (),
                 };
             }
-            let res = QueryResult::from($obj);
+            let res = QueryResult::try_from($obj).unwrap();
             assert_eq!($exp, serde_json::to_string(&res).unwrap());
         }};
     }

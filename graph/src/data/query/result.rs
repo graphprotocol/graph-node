@@ -4,6 +4,7 @@ use graphql_parser::query as q;
 use serde::ser::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 fn serialize_data<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
@@ -13,7 +14,7 @@ where
     SerializableValue(data.as_ref().unwrap_or(&q::Value::Null)).serialize(serializer)
 }
 
-fn serialize_datas<S>(data: &Vec<Arc<q::Value>>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_value_map<S>(data: &Vec<Arc<Data>>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -21,28 +22,25 @@ where
         SerializableValue(&q::Value::Null).serialize(serializer)
     } else {
         let mut ser = serializer.serialize_map(None)?;
-        for value in data {
-            match value.as_ref() {
-                q::Value::Object(map) => {
-                    for (k, v) in map {
-                        ser.serialize_entry(k, &SerializableValue(v))?;
-                    }
-                }
-                _ => unreachable!("all data entries in a QueryResult are maps"),
+        for map in data {
+            for (k, v) in map.as_ref() {
+                ser.serialize_entry(k, &SerializableValue(v))?;
             }
         }
         ser.end()
     }
 }
 
+pub type Data = BTreeMap<String, q::Value>;
+
 /// The result of running a query, if successful.
 #[derive(Debug, Clone, Serialize)]
 pub struct QueryResult {
     #[serde(
         skip_serializing_if = "Vec::is_empty",
-        serialize_with = "serialize_datas"
+        serialize_with = "serialize_value_map"
     )]
-    data: Vec<Arc<q::Value>>,
+    data: Vec<Arc<Data>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     errors: Vec<QueryError>,
     #[serde(
@@ -62,7 +60,7 @@ impl QueryResult {
         }
     }
 
-    pub fn new(data: Vec<Arc<q::Value>>) -> Self {
+    pub fn new(data: Vec<Arc<Data>>) -> Self {
         QueryResult {
             data,
             errors: Vec::new(),
@@ -105,7 +103,7 @@ impl QueryResult {
     /// Combine all the data into one `q::Value`. This method might clone
     /// all of the data in this result
     fn take_data(mut self) -> Option<q::Value> {
-        fn take_or_clone(value: Arc<q::Value>) -> q::Value {
+        fn take_or_clone(value: Arc<Data>) -> Data {
             Arc::try_unwrap(value).unwrap_or_else(|value| value.as_ref().clone())
         }
 
@@ -115,17 +113,10 @@ impl QueryResult {
             let value = self.data.pop().map(take_or_clone).unwrap();
             let res = self.data.into_iter().fold(value, |mut acc, value| {
                 let mut value = take_or_clone(value);
-                match (&mut acc, &mut value) {
-                    (q::Value::Object(ours), q::Value::Object(other)) => {
-                        ours.append(other);
-                    }
-                    // Subgraph queries always return objects, so both
-                    // acc and value must be objects
-                    (_, _) => unreachable!(),
-                }
+                acc.append(&mut value);
                 acc
             });
-            Some(res)
+            Some(q::Value::Object(res))
         }
     }
 
@@ -173,15 +164,26 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
     }
 }
 
-impl From<BTreeMap<String, q::Value>> for QueryResult {
-    fn from(val: BTreeMap<String, q::Value>) -> Self {
-        QueryResult::from(q::Value::Object(val))
+impl From<Data> for QueryResult {
+    fn from(val: Data) -> Self {
+        QueryResult::from(Arc::new(val))
     }
 }
 
-impl From<q::Value> for QueryResult {
-    fn from(val: q::Value) -> Self {
-        QueryResult::new(vec![Arc::new(val)])
+impl From<Arc<Data>> for QueryResult {
+    fn from(val: Arc<Data>) -> Self {
+        QueryResult::new(vec![val])
+    }
+}
+
+impl TryFrom<q::Value> for QueryResult {
+    type Error = &'static str;
+
+    fn try_from(value: q::Value) -> Result<Self, Self::Error> {
+        match value {
+            q::Value::Object(map) => Ok(QueryResult::from(map)),
+            _ => Err("only objects can be turned into a QueryResult"),
+        }
     }
 }
 
@@ -208,10 +210,10 @@ impl CacheWeight for QueryResult {
 fn multiple_data_items() {
     use serde_json::json;
 
-    fn make_obj(key: &str, value: &str) -> Arc<q::Value> {
+    fn make_obj(key: &str, value: &str) -> Arc<Data> {
         let mut map = BTreeMap::new();
         map.insert(key.to_owned(), q::Value::String(value.to_owned()));
-        Arc::new(q::Value::Object(map))
+        Arc::new(map)
     }
 
     let obj1 = make_obj("key1", "value1");

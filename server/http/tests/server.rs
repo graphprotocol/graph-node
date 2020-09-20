@@ -36,7 +36,7 @@ impl GraphQlRunner for TestGraphQlRunner {
         _state: DeploymentState,
         _: bool,
     ) -> Arc<QueryResult> {
-        Arc::new(QueryResult::new(vec![Arc::new(q::Value::Object(
+        Arc::new(QueryResult::new(vec![Arc::new(
             if query.variables.is_some()
                 && query
                     .variables
@@ -64,7 +64,7 @@ impl GraphQlRunner for TestGraphQlRunner {
                     .into_iter(),
                 )
             },
-        ))]))
+        )]))
     }
 
     async fn run_subscription(
