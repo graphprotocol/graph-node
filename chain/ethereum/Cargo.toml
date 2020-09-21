@@ -20,7 +20,7 @@ dirs = "3.0"
 
 [dev-dependencies]
 diesel = { version = "1.4.2", features = ["postgres", "serde_json", "numeric", "r2d2"] }
-mockall = "0.7.2"
+mockall = "0.8.1"
 graph-core = { path = "../../core" }
 graph-store-postgres = { path = "../../store/postgres" }
 pretty_assertions = "0.6.1"
