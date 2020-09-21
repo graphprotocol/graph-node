@@ -1141,9 +1141,8 @@ impl StoreTrait for Store {
                 let block_ptr_from = Self::block_ptr_with_conn(&subgraph_id, &econn)?;
                 if let Some(ref block_ptr_from) = block_ptr_from {
                     if block_ptr_from.number >= block_ptr_to.number {
-                        return Err(StoreError::InvalidSubgraphTransition(
+                        return Err(StoreError::DuplicateBlockProcessing(
                             subgraph_id,
-                            block_ptr_from.number,
                             block_ptr_to.number,
                         ));
                     }

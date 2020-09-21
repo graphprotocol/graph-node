@@ -741,11 +741,11 @@ pub enum StoreError {
     #[fail(display = "invalid identifier: {}", _0)]
     InvalidIdentifier(String),
     #[fail(
-        display = "subgraph `{}`: invalid transition from block `{}` to `{}`; \
+        display = "subgraph `{}` has already processed block `{}`; \
                    there are most likely two (or more) nodes indexing this subgraph",
-        _0, _1, _2
+        _0, _1
     )]
-    InvalidSubgraphTransition(SubgraphDeploymentId, u64, u64),
+    DuplicateBlockProcessing(SubgraphDeploymentId, u64),
 }
 
 impl From<TransactionAbortError> for StoreError {
