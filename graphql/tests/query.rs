@@ -252,6 +252,21 @@ async fn execute_query_document_with_variables(
         .clone()
 }
 
+fn execute_query_document_with_state(query: q::Document, state: DeploymentState) -> QueryResult {
+    let runner = Arc::new(GraphQlRunner::new(
+        &*LOGGER,
+        STORE.clone(),
+        LOAD_MANAGER.clone(),
+    ));
+    let query = Query::new(Arc::new(api_test_schema()), query, None, None);
+
+    graph::prelude::futures03::executor::block_on(
+        runner.run_query_with_complexity(query, state, None, None, None),
+    )
+    .as_ref()
+    .clone()
+}
+
 struct MockQueryLoadManager(Arc<tokio::sync::Semaphore>);
 
 #[async_trait]
@@ -1457,5 +1472,31 @@ async fn block_extension() {
         assert_eq!(Some(ext), result.extensions);
     } else {
         assert_eq!(None, result.extensions);
+    }
+}
+
+#[tokio::test]
+async fn query_detects_reorg() {
+    let query = "query { musician(id: \"m1\") { id } }";
+    let query = graphql_parser::parse_query(query).expect("invalid test query");
+    let state = STORE
+        .deployment_state_from_id(TEST_SUBGRAPH_ID.clone())
+        .expect("failed to get state");
+    let result = execute_query_document_with_state(query.clone(), state);
+
+    assert!(result.errors.is_none());
+    assert_eq!(result.data.unwrap(), object!(musician: object!(id: "m1")));
+
+    // Simulate a reorg; this is what store::metadata::revert_block_ptr does
+    // though it goes through the database
+    let mut state = STORE
+        .deployment_state_from_id(TEST_SUBGRAPH_ID.clone())
+        .expect("failed to get state");
+    state.reorg_count += 1;
+    state.max_reorg_depth += 1;
+    let result = execute_query_document_with_state(query.clone(), state);
+    match result.errors.unwrap()[0] {
+        QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */ }
+        _ => panic!("unexpected error from block reorg"),
     }
 }
