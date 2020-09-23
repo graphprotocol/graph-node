@@ -380,6 +380,7 @@ where
             None,
             None,
             Some(std::u32::MAX),
+            Some(std::u32::MAX),
         ));
 
         // Metadata queries are not cached.
@@ -461,6 +462,7 @@ where
             query,
             None,
             None,
+            Some(std::u32::MAX),
             Some(std::u32::MAX),
         ));
 
@@ -624,6 +626,7 @@ where
             query,
             None,
             None,
+            Some(std::u32::MAX),
             Some(std::u32::MAX),
         ));
 

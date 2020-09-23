@@ -240,7 +240,7 @@ async fn execute_query_document_with_variables(
     let query = Query::new(Arc::new(api_test_schema()), query, variables, None);
 
     runner
-        .run_query_with_complexity(query, None, None, None)
+        .run_query_with_complexity(query, None, None, None, None)
         .await
         .as_ref()
         .clone()
@@ -829,6 +829,7 @@ async fn query_complexity_subscriptions() {
         max_complexity,
         max_depth: 100,
         max_first: std::u32::MAX,
+        max_skip: std::u32::MAX,
         load_manager: mock_query_load_manager(),
     };
 
@@ -870,6 +871,7 @@ async fn query_complexity_subscriptions() {
         max_complexity,
         max_depth: 100,
         max_first: std::u32::MAX,
+        max_skip: std::u32::MAX,
         load_manager: mock_query_load_manager(),
     };
 
@@ -1210,6 +1212,7 @@ async fn subscription_gets_result_even_without_events() {
         max_complexity: None,
         max_depth: 100,
         max_first: std::u32::MAX,
+        max_skip: std::u32::MAX,
         load_manager: mock_query_load_manager(),
     };
 

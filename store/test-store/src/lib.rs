@@ -422,6 +422,7 @@ fn execute_subgraph_query_internal(
                     deadline,
                     load_manager: LOAD_MANAGER.clone(),
                     max_first: std::u32::MAX,
+                    max_skip: std::u32::MAX,
                 },
             ))
             .as_ref()

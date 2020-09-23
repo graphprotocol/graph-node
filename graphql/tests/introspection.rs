@@ -564,6 +564,7 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         resolver: MockResolver,
         deadline: None,
         max_first: std::u32::MAX,
+        max_skip: std::u32::MAX,
         load_manager: LOAD_MANAGER.clone(),
     };
 

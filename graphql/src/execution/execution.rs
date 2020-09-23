@@ -296,6 +296,9 @@ where
     /// Max value for `first`.
     pub max_first: u32,
 
+    /// Max value for `skip`
+    pub max_skip: u32,
+
     /// Records whether this was a cache hit, used for logging.
     pub(crate) cache_status: AtomicCell<CacheStatus>,
 
@@ -348,6 +351,7 @@ where
             query: self.query.as_introspection_query(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
+            max_skip: std::u32::MAX,
 
             // `cache_status` and `load_manager` are dead values for the introspection context.
             cache_status: AtomicCell::new(CacheStatus::Miss),

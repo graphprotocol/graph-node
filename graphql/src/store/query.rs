@@ -22,6 +22,7 @@ pub fn build_query<'a>(
     arguments: &HashMap<&q::Name, q::Value>,
     types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
     max_first: u32,
+    max_skip: u32,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
@@ -32,7 +33,7 @@ pub fn build_query<'a>(
             .collect(),
     });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
-        .range(build_range(arguments, max_first)?);
+        .range(build_range(arguments, max_first, max_skip)?);
     if let Some(filter) = build_filter(entity, arguments)? {
         query = query.filter(filter);
     }
@@ -56,6 +57,7 @@ pub fn build_query<'a>(
 fn build_range(
     arguments: &HashMap<&q::Name, q::Value>,
     max_first: u32,
+    max_skip: u32,
 ) -> Result<EntityRange, QueryExecutionError> {
     let first = match arguments.get(&"first".to_string()) {
         Some(q::Value::Int(n)) => {
@@ -73,7 +75,7 @@ fn build_range(
     let skip = match arguments.get(&"skip".to_string()) {
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("skip is Int");
-            if n >= 0 {
+            if n >= 0 && n <= (max_skip as i64) {
                 Ok(n as u32)
             } else {
                 Err("skip")
@@ -428,6 +430,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -440,6 +443,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -456,6 +460,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -475,6 +480,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -490,6 +496,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -509,6 +516,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -524,6 +532,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -545,6 +554,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -561,6 +571,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -580,6 +591,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -599,6 +611,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -620,6 +633,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -636,6 +650,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -652,6 +667,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &default_arguments(),
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -671,6 +687,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX
             )
             .unwrap()
@@ -702,6 +719,7 @@ mod tests {
                 BLOCK_NUMBER_MAX,
                 &args,
                 &BTreeMap::new(),
+                std::u32::MAX,
                 std::u32::MAX,
             )
             .unwrap()

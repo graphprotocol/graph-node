@@ -31,6 +31,9 @@ where
     /// Maximum value for the `first` argument.
     pub max_first: u32,
 
+    /// Maximum value for the `skip` argument.
+    pub max_skip: u32,
+
     pub load_manager: Arc<dyn QueryLoadManager>,
 }
 
@@ -64,6 +67,7 @@ where
         query: query.clone(),
         deadline: None,
         max_first: options.max_first,
+        max_skip: options.max_skip,
         cache_status: Default::default(),
         load_manager: options.load_manager,
     };
@@ -136,6 +140,7 @@ fn map_source_to_response_stream(
     let resolver = ctx.resolver.cheap_clone();
     let query = ctx.query.cheap_clone();
     let max_first = ctx.max_first;
+    let max_skip = ctx.max_skip;
     let load_manager = ctx.load_manager.cheap_clone();
 
     // Create a stream with a single empty event. By chaining this in front
@@ -163,6 +168,7 @@ fn map_source_to_response_stream(
                     event,
                     timeout,
                     max_first,
+                    max_skip,
                     load_manager.cheap_clone(),
                 )
                 .boxed(),
@@ -177,6 +183,7 @@ async fn execute_subscription_event(
     event: Arc<StoreEvent>,
     timeout: Option<Duration>,
     max_first: u32,
+    max_skip: u32,
     load_manager: Arc<dyn QueryLoadManager>,
 ) -> Arc<QueryResult> {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
@@ -188,6 +195,7 @@ async fn execute_subscription_event(
         query,
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
+        max_skip,
         cache_status: Default::default(),
         load_manager,
     });

@@ -23,6 +23,7 @@ impl GraphQlRunner for TestGraphQlRunner {
         _complexity: Option<u64>,
         _max_depth: Option<u8>,
         _max_first: Option<u32>,
+        _max_skip: Option<u32>,
     ) -> Arc<QueryResult> {
         unimplemented!();
     }

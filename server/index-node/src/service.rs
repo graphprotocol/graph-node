@@ -106,6 +106,7 @@ where
                 resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
                 deadline: None,
                 max_first: std::u32::MAX,
+                max_skip: std::u32::MAX,
                 load_manager,
             };
             let result = execute_query(query_clone.cheap_clone(), None, None, options).await;

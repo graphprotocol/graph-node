@@ -24,6 +24,9 @@ pub struct QueryExecutionOptions<R> {
     /// Maximum value for the `first` argument.
     pub max_first: u32,
 
+    /// Maximum value for the `skip` argument
+    pub max_skip: u32,
+
     pub load_manager: Arc<LoadManager>,
 }
 
@@ -45,6 +48,7 @@ where
         query: query.clone(),
         deadline: options.deadline,
         max_first: options.max_first,
+        max_skip: options.max_skip,
         cache_status: Default::default(),
         load_manager: options.load_manager.cheap_clone(),
     });

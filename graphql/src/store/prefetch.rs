@@ -805,6 +805,7 @@ fn execute_field(
         ctx.query.schema.types_for_interface(),
         resolver.block,
         ctx.max_first,
+        ctx.max_skip,
     )
     .map_err(|e| vec![e])
 }
@@ -822,6 +823,7 @@ fn fetch(
     types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
+    max_skip: u32,
 ) -> Result<Vec<Node>, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
@@ -829,6 +831,7 @@ fn fetch(
         &arguments,
         types_for_interface,
         max_first,
+        max_skip,
     )?;
 
     if multiplicity == ChildMultiplicity::Single {

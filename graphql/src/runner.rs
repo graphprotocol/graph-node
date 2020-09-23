@@ -47,6 +47,11 @@ lazy_static! {
         .map(|s| u32::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_FIRST")))
         .unwrap_or(1000);
+    static ref GRAPHQL_MAX_SKIP: u32 = env::var("GRAPH_GRAPHQL_MAX_SKIP")
+        .ok()
+        .map(|s| u32::from_str(&s)
+            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_SKIP")))
+        .unwrap_or(std::u32::MAX);
 }
 
 impl<S> GraphQlRunner<S>
@@ -112,6 +117,7 @@ where
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
+        max_skip: Option<u32>,
     ) -> Result<Arc<QueryResult>, QueryResult> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(&self.logger, query, max_complexity, max_depth)?;
@@ -128,6 +134,7 @@ where
                     resolver,
                     deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
+                    max_skip: max_skip.unwrap_or(*GRAPHQL_MAX_SKIP),
                     load_manager: self.load_manager.clone(),
                 },
             )
@@ -182,6 +189,7 @@ where
             *GRAPHQL_MAX_COMPLEXITY,
             Some(*GRAPHQL_MAX_DEPTH),
             Some(*GRAPHQL_MAX_FIRST),
+            Some(*GRAPHQL_MAX_SKIP),
         )
         .await
     }
@@ -192,8 +200,9 @@ where
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
+        max_skip: Option<u32>,
     ) -> Arc<QueryResult> {
-        self.execute(query, max_complexity, max_depth, max_first)
+        self.execute(query, max_complexity, max_depth, max_first, max_skip)
             .await
             .unwrap_or_else(|e| Arc::new(e))
     }
@@ -226,6 +235,7 @@ where
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,
                 max_first: *GRAPHQL_MAX_FIRST,
+                max_skip: *GRAPHQL_MAX_SKIP,
                 load_manager: self.load_manager.cheap_clone(),
             },
         )
