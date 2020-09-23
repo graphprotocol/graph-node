@@ -531,6 +531,13 @@ fn execute_selection_set<'a>(
     }
 }
 
+/// If the top-level selection is on an object, there will be a single entry in `obj_types` with all
+/// the collected fields.
+///
+/// The interesting case is if the top-level selection is an interface. `iface_cond` will be the
+/// interface type and `iface_fields` the selected fields on the interface. `obj_types` are the
+/// fields selected on objects by fragments. In `collect_fields`, the `iface_fields` will then be
+/// merged into each entry in `obj_types`. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
 #[derive(Default)]
 struct CollectedResponseKey<'a> {
     iface_cond: Option<&'a s::InterfaceType>,
