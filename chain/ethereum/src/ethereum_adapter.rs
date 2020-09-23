@@ -63,6 +63,9 @@ lazy_static! {
             .unwrap_or("10".into())
             .parse::<usize>()
             .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
+
+    /// Log eth_call data and target address at trace level. Turn on for debugging.
+    static ref ETH_CALL_FULL_LOG: bool = std::env::var("GRAPH_ETH_CALL_FULL_LOG").is_ok();
 }
 
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
@@ -1208,6 +1211,13 @@ where
             Ok(data) => data,
             Err(e) => return Box::new(future::err(EthereumContractCallError::EncodingError(e))),
         };
+
+        if *ETH_CALL_FULL_LOG {
+            trace!(logger, "eth_call";
+                "address" => hex::encode(&call.address),
+                "data" => hex::encode(&call_data)
+            );
+        }
 
         // Check if we have it cached, if not do the call and cache.
         Box::new(
