@@ -132,10 +132,16 @@ where
             return Ok(());
         }
         let new_state = self.store.deployment_state_from_id(state.id.clone())?;
-        if state.reorg_count != new_state.reorg_count {
-            if latest_block
-                >= state.latest_ethereum_block_number as u64 - state.max_reorg_depth as u64
-            {
+        assert!(new_state.reorg_count >= state.reorg_count);
+        if new_state.reorg_count > state.reorg_count {
+            // One or more reorgs happened; each reorg can't have gone back
+            // farther than `max_reorg_depth`, so that querying at blocks
+            // far enough away from the previous latest block is fine. Taking
+            // this into consideration is important, since most of the time
+            // there is only one reorg of one block, and we therefore avoid
+            // flagging a lot of queries a bit behind the head
+            let n_blocks = new_state.max_reorg_depth * (new_state.reorg_count - state.reorg_count);
+            if latest_block + n_blocks as u64 > state.latest_ethereum_block_number as u64 {
                 return Err(QueryExecutionError::DeploymentReverted);
             }
         }
