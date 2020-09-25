@@ -723,13 +723,25 @@ impl RuntimeHostTrait for RuntimeHost {
 
 impl PartialEq for RuntimeHost {
     fn eq(&self, other: &Self) -> bool {
-        // mapping_request_sender, host_exports and host_metrics are operational structs not needed
-        // to define uniqueness; each runtime host should be for a unique data source.
-        self.data_source_name == other.data_source_name
-            && self.data_source_contract == other.data_source_contract
-            && self.data_source_contract_abi == other.data_source_contract_abi
-            && self.data_source_event_handlers == other.data_source_event_handlers
-            && self.data_source_call_handlers == other.data_source_call_handlers
-            && self.data_source_block_handlers == other.data_source_block_handlers
+        let RuntimeHost {
+            data_source_name,
+            data_source_contract,
+            data_source_contract_abi,
+            data_source_event_handlers,
+            data_source_call_handlers,
+            data_source_block_handlers,
+            host_exports,
+            mapping_request_sender: _,
+            metrics: _,
+        } = self;
+
+        // mapping_request_sender, host_metrics, and host_exports are operational structs used at runtime
+        // but not needed to define uniqueness; each runtime host should be for a unique data source.
+        data_source_name == &other.data_source_name
+            && data_source_contract == &other.data_source_contract
+            && data_source_contract_abi == &other.data_source_contract_abi
+            && data_source_event_handlers == &other.data_source_event_handlers
+            && data_source_call_handlers == &other.data_source_call_handlers
+            && data_source_block_handlers == &other.data_source_block_handlers
     }
 }

@@ -1012,7 +1012,6 @@ where
             "Persisting data_source";
             "name" => &data_source.name,
             "address" => &data_source.source.address.map(|address| address.to_string()).unwrap_or("none".to_string()),
-            "abi" => &data_source.source.abi,
         );
         let entity = DynamicEthereumContractDataSourceEntity::from((
             &ctx.inputs.deployment_id,
