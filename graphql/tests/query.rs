@@ -1573,23 +1573,38 @@ fn block_extension() {
 #[test]
 fn query_detects_reorg() {
     run_test_sequentially(setup, |_, id| async move {
+        if !STORE.uses_relational_schema(&id).unwrap() {
+            // We don't care about JSONB storage
+            return;
+        }
         let query = "query { musician(id: \"m1\") { id } }";
         let query = graphql_parser::parse_query(query).expect("invalid test query");
         let state = STORE
             .deployment_state_from_id(id.clone())
             .expect("failed to get state");
-        let result = execute_query_document_with_state(&id, query.clone(), state).await;
+
+        // When there is no revert, queries work fine
+        let result = execute_query_document_with_state(&id, query.clone(), state.clone()).await;
 
         assert!(result.errors.is_none());
         assert_eq!(result.data.unwrap(), object!(musician: object!(id: "m1")));
 
-        // Simulate a reorg; this is what store::metadata::revert_block_ptr does
-        // though it goes through the database
-        let mut state = STORE
-            .deployment_state_from_id(id.clone())
-            .expect("failed to get state");
-        state.reorg_count += 1;
-        state.max_reorg_depth += 1;
+        // Revert one block
+        STORE
+            .revert_block_operations(id.clone(), BLOCK_ONE.clone(), GENESIS_PTR.clone())
+            .unwrap();
+        // A query is still fine since we implicitly query at block 0; we were
+        // at block 1 when we got `state`, and reorged once by one block, which
+        // can not affect block 0, and it's therefore ok to query at block 0
+        // even with a concurrent reorg
+        let result = execute_query_document_with_state(&id, query.clone(), state.clone()).await;
+        assert!(result.errors.is_none());
+        assert_eq!(result.data.unwrap(), object!(musician: object!(id: "m1")));
+
+        // We move the subgraph head forward, which will execute the query at block 1
+        // But the state we have is also for block 1, but with a smaller reorg count
+        // and we therefore report an error
+        transact_entity_operations(&*STORE, id.clone(), BLOCK_ONE.clone(), vec![]).unwrap();
         let result = execute_query_document_with_state(&id, query.clone(), state).await;
         match result.errors.unwrap()[0] {
             QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */

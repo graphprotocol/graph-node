@@ -1262,7 +1262,7 @@ impl UnresolvedSubgraphManifest {
 /// database) by `store::metadata::forward_block_ptr` and
 /// `store::metadata::revert_block_ptr` which get called as part of transacting
 /// new entities into the store or reverting blocks.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DeploymentState {
     pub id: SubgraphDeploymentId,
     /// The number of blocks that were ever reverted in this subgraph. This
