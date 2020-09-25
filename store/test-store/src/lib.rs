@@ -2,6 +2,7 @@
 extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
+use diesel::{Connection, PgConnection};
 use graph::data::graphql::effort::LoadManager;
 use graph::log;
 use graph::prelude::{Store as _, *};
@@ -114,6 +115,38 @@ lazy_static! {
             .as_str()
         == "relational"
     };
+}
+
+/// Run the `test` after performing `setup`. The result of `setup` is passed
+/// into `test`. All tests using `run_test_sequentially` are run in sequence,
+/// never in parallel. The `test` is passed a `Store`, but it is permissible
+/// for tests to access the global `STORE` from this module, too.
+pub fn run_test_sequentially<R, S, F, G>(setup: G, test: F)
+where
+    G: FnOnce() -> S + Send + 'static,
+    F: FnOnce(Arc<Store>, S) -> R + Send + 'static,
+    R: std::future::Future<Output = ()> + Send + 'static,
+{
+    let store = STORE.clone();
+
+    // Lock regardless of poisoning. This also forces sequential test execution.
+    let mut runtime = match STORE_RUNTIME.lock() {
+        Ok(guard) => guard,
+        Err(err) => err.into_inner(),
+    };
+
+    runtime.block_on(async {
+        let state = setup();
+        test(store, state).await
+    })
+}
+
+#[cfg(debug_assertions)]
+pub fn remove_subgraphs() {
+    let url = postgres_test_url();
+    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+    graph_store_postgres::store::delete_all_entities_for_test_use_only(&*STORE, &conn)
+        .expect("Failed to remove entity test data");
 }
 
 #[cfg(debug_assertions)]
