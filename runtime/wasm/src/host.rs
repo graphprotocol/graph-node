@@ -735,13 +735,15 @@ impl PartialEq for RuntimeHost {
             metrics: _,
         } = self;
 
-        // mapping_request_sender, host_metrics, and host_exports are operational structs used at runtime
-        // but not needed to define uniqueness; each runtime host should be for a unique data source.
+        // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
+        // used at runtime but not needed to define uniqueness; each runtime host should be for a
+        // unique data source.
         data_source_name == &other.data_source_name
             && data_source_contract == &other.data_source_contract
             && data_source_contract_abi == &other.data_source_contract_abi
             && data_source_event_handlers == &other.data_source_event_handlers
             && data_source_call_handlers == &other.data_source_call_handlers
             && data_source_block_handlers == &other.data_source_block_handlers
+            && host_exports.data_source_context() == other.host_exports.data_source_context()
     }
 }
