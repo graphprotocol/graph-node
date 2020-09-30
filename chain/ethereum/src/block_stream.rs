@@ -799,6 +799,8 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                     match next_blocks_future.poll() {
                         // Reconciliation found blocks to process
                         Ok(Async::Ready(NextBlocks::Blocks(next_blocks, block_range_size))) => {
+                            self.consecutive_err_count = 0;
+
                             let total_triggers =
                                 next_blocks.iter().map(|b| b.triggers.len()).sum::<usize>();
                             self.ctx.previous_triggers_per_block =
