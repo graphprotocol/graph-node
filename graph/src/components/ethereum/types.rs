@@ -105,7 +105,7 @@ impl EthereumBlockWithTriggers {
 #[derive(Clone, Debug)]
 pub struct EthereumBlockWithCalls {
     pub ethereum_block: EthereumBlock,
-    pub calls: Option<Vec<EthereumCall>>,
+    pub calls: Vec<EthereumCall>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
