@@ -491,7 +491,9 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let eth_adapter = self.eth_adapter.clone();
 
-                        let block_with_calls = if !self.include_calls_in_blocks {
+                        let block_with_calls = if !self.include_calls_in_blocks
+                            || head_ancestor.transaction_receipts.is_empty()
+                        {
                             Box::new(future::ok(EthereumBlockWithCalls {
                                 ethereum_block: head_ancestor,
                                 calls: vec![],
