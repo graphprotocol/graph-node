@@ -494,7 +494,7 @@ where
                         let block_with_calls = if !self.include_calls_in_blocks {
                             Box::new(future::ok(EthereumBlockWithCalls {
                                 ethereum_block: head_ancestor,
-                                calls: None,
+                                calls: vec![],
                             }))
                                 as Box<dyn Future<Item = _, Error = _> + Send>
                         } else {
@@ -508,7 +508,7 @@ where
                                     )
                                     .map(move |calls| EthereumBlockWithCalls {
                                         ethereum_block: head_ancestor,
-                                        calls: Some(calls),
+                                        calls,
                                     }),
                             )
                         };
