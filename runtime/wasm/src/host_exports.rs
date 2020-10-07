@@ -1,6 +1,7 @@
 use crate::UnresolvedContractCall;
 use bytes::Bytes;
-use ethabi::{Address, Token};
+use ethabi::{Address, Token, encode, decode};
+use ethabi::param_type::{Reader, ParamType};
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
@@ -645,6 +646,21 @@ pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
     // The string may have been encoded in a fixed length buffer and padded with null
     // characters, so trim trailing nulls.
     s.trim_end_matches('\u{0000}').to_string()
+}
+
+pub(crate) fn abi_encode(params: Vec<Token>) -> Result<Vec<u8>, anyhow::Error> {
+    Ok(encode(&params))
+}
+
+pub(crate) fn abi_decode(types: Vec<String>, data: Vec<u8>) -> Result<Vec<Token>, anyhow::Error> {
+    let types: Vec<ParamType> = types.iter().map(|s| Reader::read(s)).collect::<Result<_, _>>().or_else(
+        |e| Err(anyhow::anyhow!("Failed to read types: {}", e))
+    )?;
+
+    // decode and return mapped error if it fails
+    decode(&types, &data.to_vec()).map_err(
+        |e| anyhow::anyhow!("Failed to decode: {}", e)
+    )
 }
 
 #[test]
