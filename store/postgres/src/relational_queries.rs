@@ -492,14 +492,22 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     }
                     // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
                     ColumnType::TSVector(config) => {
-                        out.push_sql("''::tsvector");
-                        for (i, value) in sql_values.iter().enumerate() {
-                            out.push_sql(" || to_tsvector(");
-                            out.push_bind_param::<Text, _>(&config.language.as_str().to_string())?;
-                            out.push_sql("::regconfig, ");
-                            out.push_bind_param::<Text, _>(&value)?;
-                            out.push_sql(")");
+                        if sql_values.is_empty() {
+                            out.push_sql("''::tsvector");
+                        } else {
+                            out.push_sql("(");
+                            for (i, value) in sql_values.iter().enumerate() {
+                                if i > 0 {
+                                    out.push_sql(") || ");
+                                }
+                                out.push_sql("to_tsvector(");
+                                out.push_bind_param::<Text, _>(&config.language.as_str().to_string())?;
+                                out.push_sql("::regconfig, ");
+                                out.push_bind_param::<Text, _>(&value)?;
+                            }
+                            out.push_sql("))");
                         }
+
                         Ok(())
                     }
                     ColumnType::BytesId => out.push_bind_param::<Array<Binary>, _>(&sql_values),
