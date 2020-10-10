@@ -93,6 +93,7 @@ pub struct Query {
     /// have dummy values
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
+    pub query_id: String,
     pub(crate) complexity: u64,
 }
 
@@ -147,7 +148,7 @@ impl Query {
         let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
         let logger = logger.new(o!(
             "subgraph_id" => query.schema.id().clone(),
-            "query_id" => query_id
+            "query_id" => query_id.clone()
         ));
 
         let mut query = Self {
@@ -162,6 +163,7 @@ impl Query {
             start: Instant::now(),
             query_text: query.query_text.cheap_clone(),
             variables_text: query.variables_text.cheap_clone(),
+            query_id,
             complexity: 0,
         };
 
@@ -219,6 +221,7 @@ impl Query {
             start: self.start,
             query_text: self.query_text.clone(),
             variables_text: self.variables_text.clone(),
+            query_id: self.query_id.clone(),
             complexity: self.complexity,
         })
     }
