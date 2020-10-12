@@ -593,6 +593,7 @@ impl Layout {
         order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
+        query_id: Option<String>,
     ) -> Result<Vec<T>, QueryExecutionError> {
         fn log_query_timing(
             logger: &Logger,
@@ -625,7 +626,14 @@ impl Layout {
         }
 
         let filter_collection = FilterCollection::new(&self, collection, filter.as_ref())?;
-        let query = FilterQuery::new(&filter_collection, filter.as_ref(), order, range, block)?;
+        let query = FilterQuery::new(
+            &filter_collection,
+            filter.as_ref(),
+            order,
+            range,
+            block,
+            query_id,
+        )?;
         let query_clone = query.clone();
 
         let start = Instant::now();

@@ -2136,6 +2136,7 @@ pub struct FilterQuery<'a> {
     sort_key: SortKey<'a>,
     range: FilterRange,
     block: BlockNumber,
+    query_id: Option<String>,
 }
 
 impl<'a> FilterQuery<'a> {
@@ -2145,6 +2146,7 @@ impl<'a> FilterQuery<'a> {
         order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
+        query_id: Option<String>,
     ) -> Result<Self, QueryExecutionError> {
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
@@ -2160,6 +2162,7 @@ impl<'a> FilterQuery<'a> {
             sort_key,
             range: FilterRange(range),
             block,
+            query_id,
         })
     }
 
@@ -2406,6 +2409,11 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             return Ok(());
         }
 
+        if let Some(qid) = &self.query_id {
+            out.push_sql("/* qid: ");
+            out.push_sql(qid);
+            out.push_sql(" */\n");
+        }
         // We generate four different kinds of queries, depending on whether
         // we need to window and whether we query just one or multiple entity
         // types/windows; the most complex situation is windowing with multiple

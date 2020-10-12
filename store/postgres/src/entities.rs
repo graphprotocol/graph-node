@@ -460,6 +460,7 @@ impl Connection<'_> {
         order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
+        query_id: Option<String>,
     ) -> Result<Vec<T>, QueryExecutionError> {
         match &*self.storage {
             Storage::Json(json) => {
@@ -480,9 +481,9 @@ impl Connection<'_> {
                 };
                 json.query(&self.conn, collection, filter, order, range)
             }
-            Storage::Relational(layout) => {
-                layout.query(logger, &self.conn, collection, filter, order, range, block)
-            }
+            Storage::Relational(layout) => layout.query(
+                logger, &self.conn, collection, filter, order, range, block, query_id,
+            ),
         }
     }
 

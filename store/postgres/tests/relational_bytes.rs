@@ -393,6 +393,7 @@ fn query() {
                 EntityOrder::Default,
                 EntityRange::first(10),
                 BLOCK_NUMBER_MAX,
+                None,
             )
             .expect("the query succeeds")
             .into_iter()

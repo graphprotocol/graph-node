@@ -806,6 +806,7 @@ fn execute_field(
         resolver.block,
         ctx.max_first,
         ctx.max_skip,
+        ctx.query.query_id.clone(),
     )
     .map_err(|e| vec![e])
 }
@@ -824,6 +825,7 @@ fn fetch(
     block: BlockNumber,
     max_first: u32,
     max_skip: u32,
+    query_id: String,
 ) -> Result<Vec<Node>, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
@@ -833,6 +835,7 @@ fn fetch(
         max_first,
         max_skip,
     )?;
+    query.query_id = Some(query_id);
 
     if multiplicity == ChildMultiplicity::Single {
         // Suppress 'order by' in lookups of scalar values since

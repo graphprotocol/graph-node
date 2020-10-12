@@ -281,6 +281,8 @@ pub struct EntityQuery {
     /// Optional logger for anything related to this query
     pub logger: Option<Logger>,
 
+    pub query_id: Option<String>,
+
     _force_use_of_new: (),
 }
 
@@ -298,6 +300,7 @@ impl EntityQuery {
             order: EntityOrder::Default,
             range: EntityRange::first(100),
             logger: None,
+            query_id: None,
             _force_use_of_new: (),
         }
     }

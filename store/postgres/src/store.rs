@@ -360,6 +360,7 @@ impl Store {
             query.order,
             query.range,
             query.block,
+            query.query_id,
         )
     }
 
@@ -1008,6 +1009,7 @@ impl StoreTrait for Store {
                                     skip: 0,
                                 },
                                 block_number.try_into().unwrap(),
+                                None,
                             )
                             .map_err(Error::from)?;
 
