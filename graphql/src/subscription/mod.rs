@@ -70,6 +70,7 @@ where
         max_skip: options.max_skip,
         cache_status: Default::default(),
         load_manager: options.load_manager,
+        nested_resolver: false,
     };
 
     if !query.is_subscription() {
@@ -198,6 +199,7 @@ async fn execute_subscription_event(
         max_skip,
         cache_status: Default::default(),
         load_manager,
+        nested_resolver: false,
     });
 
     let subscription_type = match ctx.query.schema.subscription_type.as_ref() {

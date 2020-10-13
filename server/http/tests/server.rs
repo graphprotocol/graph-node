@@ -25,11 +25,17 @@ impl GraphQlRunner for TestGraphQlRunner {
         _max_depth: Option<u8>,
         _max_first: Option<u32>,
         _max_skip: Option<u32>,
+        _nested_resolver: bool,
     ) -> Arc<QueryResult> {
         unimplemented!();
     }
 
-    async fn run_query(self: Arc<Self>, query: Query, _state: DeploymentState) -> Arc<QueryResult> {
+    async fn run_query(
+        self: Arc<Self>,
+        query: Query,
+        _state: DeploymentState,
+        _: bool,
+    ) -> Arc<QueryResult> {
         Arc::new(QueryResult::new(Some(q::Value::Object(
             if query.variables.is_some()
                 && query

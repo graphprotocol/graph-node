@@ -109,7 +109,7 @@ where
                 max_skip: std::u32::MAX,
                 load_manager,
             };
-            let result = execute_query(query_clone.cheap_clone(), None, None, options).await;
+            let result = execute_query(query_clone.cheap_clone(), None, None, options, false).await;
             query_clone.log_execution(0);
             QueryResult::from(
                 // Index status queries are not cacheable, so we may unwrap this.

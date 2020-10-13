@@ -20,7 +20,12 @@ pub type SubscriptionResultFuture =
 #[async_trait]
 pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL query and returns its result.
-    async fn run_query(self: Arc<Self>, query: Query, state: DeploymentState) -> Arc<QueryResult>;
+    async fn run_query(
+        self: Arc<Self>,
+        query: Query,
+        state: DeploymentState,
+        nested_resolver: bool,
+    ) -> Arc<QueryResult>;
 
     /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
     async fn run_query_with_complexity(
@@ -31,6 +36,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         max_depth: Option<u8>,
         max_first: Option<u32>,
         max_skip: Option<u32>,
+        nested_resolver: bool,
     ) -> Arc<QueryResult>;
 
     /// Runs a GraphQL subscription and returns a stream of results.
@@ -42,7 +48,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     async fn query_metadata(self: Arc<Self>, query: Query) -> Result<q::Value, Error> {
         let state = DeploymentState::meta();
         let result = self
-            .run_query_with_complexity(query, state, None, None, None, None)
+            .run_query_with_complexity(query, state, None, None, None, None, false)
             .await;
 
         // Metadata queries are not cached.

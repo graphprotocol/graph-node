@@ -382,6 +382,7 @@ where
             None,
             Some(std::u32::MAX),
             Some(std::u32::MAX),
+            true,
         ));
 
         // Metadata queries are not cached.
@@ -466,6 +467,7 @@ where
             None,
             Some(std::u32::MAX),
             Some(std::u32::MAX),
+            true,
         ));
 
         // Metadata queries are not cached.
@@ -563,7 +565,7 @@ where
         Ok(poi)
     }
 
-    fn resolve_indexing_statuses_for_version(
+    fn resolve_indexing_status_for_version(
         &self,
         arguments: &HashMap<&q::Name, q::Value>,
 
@@ -631,6 +633,7 @@ where
             None,
             Some(std::u32::MAX),
             Some(std::u32::MAX),
+            true,
         ));
 
         // Metadata queries are not cached.
@@ -654,7 +657,7 @@ where
             .expect("invalid subgraphs")
         {
             Some(subgraphs) => subgraphs,
-            None => return Ok(q::Value::List(vec![])),
+            None => return Ok(q::Value::Null),
         };
 
         let subgraphs = subgraphs
@@ -663,7 +666,7 @@ where
 
         let subgraph = match subgraphs.into_iter().next() {
             Some(subgraph) => subgraph,
-            None => return Ok(q::Value::List(vec![])),
+            None => return Ok(q::Value::Null),
         };
 
         let field_name = match current_version {
@@ -785,12 +788,12 @@ where
         match (prefetched_object, field.name.as_str()) {
             // The top-level `indexingStatusForCurrentVersion` field
             (None, "indexingStatusForCurrentVersion") => {
-                self.resolve_indexing_statuses_for_version(arguments, true)
+                self.resolve_indexing_status_for_version(arguments, true)
             }
 
             // The top-level `indexingStatusForPendingVersion` field
             (None, "indexingStatusForPendingVersion") => {
-                self.resolve_indexing_statuses_for_version(arguments, false)
+                self.resolve_indexing_status_for_version(arguments, false)
             }
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
