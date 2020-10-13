@@ -97,34 +97,10 @@
   variable](docs/environment-variables.md) (#1595).
 - Fix loading more than 200 dynamic data sources (#1596).
 - Fix fulltext schema validation (`includes` fields).
-- Dependency updates:
-  anyhow,
-  async-trait,
-  bs58,
-  blake3,
-  bytes,
-  chrono,
-  clap,
-  crossbeam-channel
-  derive_more,
-  diesel-derive-enum,
-  duct,
-  ethabi,
-  git-testament,
-  hex-literal,
-  hyper,
-  indexmap,
-  jsonrpc-core,
-  mockall,
-  once_cell,
-  petgraph,
-  reqwest,
-  semver,
-  serde,
-  serde_json,
-  slog-term,
-  tokio,
-  wasmparser,
+- Dependency updates: anyhow, async-trait, bs58, blake3, bytes, chrono, clap,
+  crossbeam-channel derive_more, diesel-derive-enum, duct, ethabi,
+  git-testament, hex-literal, hyper, indexmap, jsonrpc-core, mockall, once_cell,
+  petgraph, reqwest, semver, serde, serde_json, slog-term, tokio, wasmparser.
 
 ## 0.18.0
 
