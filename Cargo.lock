@@ -1352,7 +1352,7 @@ dependencies = [
 
 [[package]]
 name = "graph"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1408,14 +1408,14 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-arweave"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "graph",
 ]
 
 [[package]]
 name = "graph-chain-ethereum"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "chrono",
  "config",
@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "graph-core"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "async-trait",
  "atomic_refcell",
@@ -1467,7 +1467,7 @@ dependencies = [
 
 [[package]]
 name = "graph-graphql"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "Inflector",
  "crossbeam",
@@ -1488,7 +1488,7 @@ dependencies = [
 
 [[package]]
 name = "graph-mock"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "failure",
  "futures 0.1.29",
@@ -1501,7 +1501,7 @@ dependencies = [
 
 [[package]]
 name = "graph-node"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "assert_cli",
  "clap",
@@ -1531,7 +1531,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-derive"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "quote 0.6.13",
  "syn 0.15.44",
@@ -1539,7 +1539,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-wasm"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "async-trait",
  "atomic_refcell",
@@ -1568,7 +1568,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-http"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "failure",
  "futures 0.1.29",
@@ -1583,7 +1583,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-index-node"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "failure",
  "futures 0.3.4",
@@ -1597,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-json-rpc"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "graph",
  "jsonrpc-http-server",
@@ -1607,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-metrics"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "failure",
  "futures 0.1.29",
@@ -1621,7 +1621,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-websocket"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "futures 0.1.29",
  "graph",
@@ -1637,7 +1637,7 @@ dependencies = [
 
 [[package]]
 name = "graph-store-postgres"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "Inflector",
  "async-trait",
@@ -1671,7 +1671,7 @@ dependencies = [
 
 [[package]]
 name = "graph-tests"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "duct",
  "lazy_static",
@@ -4003,7 +4003,7 @@ dependencies = [
 
 [[package]]
 name = "test-store"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "diesel",
  "graph",
