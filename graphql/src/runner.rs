@@ -156,6 +156,7 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
         max_skip: Option<u32>,
+        nested_resolver: bool,
     ) -> Result<Arc<QueryResult>, QueryResult> {
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(&self.logger, query, max_complexity, max_depth)?;
@@ -175,6 +176,7 @@ where
                     max_skip: max_skip.unwrap_or(*GRAPHQL_MAX_SKIP),
                     load_manager: self.load_manager.clone(),
                 },
+                nested_resolver,
             )
         };
         // Unwrap: There is always at least one block constraint, even if it
@@ -223,7 +225,12 @@ impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
 where
     S: Store + SubgraphDeploymentStore,
 {
-    async fn run_query(self: Arc<Self>, query: Query, state: DeploymentState) -> Arc<QueryResult> {
+    async fn run_query(
+        self: Arc<Self>,
+        query: Query,
+        state: DeploymentState,
+        nested_resolver: bool,
+    ) -> Arc<QueryResult> {
         self.run_query_with_complexity(
             query,
             state,
@@ -231,6 +238,7 @@ where
             Some(*GRAPHQL_MAX_DEPTH),
             Some(*GRAPHQL_MAX_FIRST),
             Some(*GRAPHQL_MAX_SKIP),
+            nested_resolver,
         )
         .await
     }
@@ -243,10 +251,19 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
         max_skip: Option<u32>,
+        nested_resolver: bool,
     ) -> Arc<QueryResult> {
-        self.execute(query, state, max_complexity, max_depth, max_first, max_skip)
-            .await
-            .unwrap_or_else(|e| Arc::new(e))
+        self.execute(
+            query,
+            state,
+            max_complexity,
+            max_depth,
+            max_first,
+            max_skip,
+            nested_resolver,
+        )
+        .await
+        .unwrap_or_else(|e| Arc::new(e))
     }
 
     async fn run_subscription(

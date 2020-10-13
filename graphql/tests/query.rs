@@ -245,7 +245,7 @@ async fn execute_query_document_with_variables(
     };
 
     runner
-        .run_query_with_complexity(query, state, None, None, None, None)
+        .run_query_with_complexity(query, state, None, None, None, None, false)
         .await
         .as_ref()
         .clone()
@@ -264,7 +264,7 @@ async fn execute_query_document_with_state(
     let query = Query::new(Arc::new(api_test_schema(id)), query, None, None);
 
     graph::prelude::futures03::executor::block_on(
-        runner.run_query_with_complexity(query, state, None, None, None, None),
+        runner.run_query_with_complexity(query, state, None, None, None, None, false),
     )
     .as_ref()
     .clone()

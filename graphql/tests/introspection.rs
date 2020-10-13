@@ -569,7 +569,9 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     };
 
     let result = match PreparedQuery::new(&logger, query, None, 100) {
-        Ok(query) => Ok(Arc::try_unwrap(execute_query(query, None, None, options).await).unwrap()),
+        Ok(query) => {
+            Ok(Arc::try_unwrap(execute_query(query, None, None, options, false).await).unwrap())
+        }
         Err(e) => Err(e),
     };
     QueryResult::from(result)

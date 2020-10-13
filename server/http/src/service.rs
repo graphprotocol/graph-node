@@ -251,7 +251,7 @@ where
         let query = GraphQLRequest::new(body, schema, network).compat().await;
 
         let result = match query {
-            Ok(query) => service.graphql_runner.run_query(query, state).await,
+            Ok(query) => service.graphql_runner.run_query(query, state, false).await,
             Err(GraphQLServerError::QueryError(e)) => Arc::new(QueryResult::from(e)),
             Err(e) => return Err(e),
         };
@@ -454,6 +454,7 @@ mod tests {
             _max_depth: Option<u8>,
             _max_first: Option<u32>,
             _max_skip: Option<u32>,
+            _nested_resolver: bool,
         ) -> Arc<QueryResult> {
             unimplemented!();
         }
@@ -462,6 +463,7 @@ mod tests {
             self: Arc<Self>,
             _query: Query,
             _state: DeploymentState,
+            _: bool,
         ) -> Arc<QueryResult> {
             Arc::new(QueryResult::new(Some(q::Value::Object(
                 BTreeMap::from_iter(

@@ -457,6 +457,7 @@ fn execute_subgraph_query_internal(
                     max_first: std::u32::MAX,
                     max_skip: std::u32::MAX,
                 },
+                false,
             ))
             .as_ref()
             .clone(),
