@@ -1,58 +1,130 @@
 # NEWS
 
+## 0.19.0
+
 ## Unreleased
 
-### Feature: Include Block in Query Responses
-
-Responses to GraphQL queries now include the block at which the query was
-executed. The response now contains an `extensions` field of the following
-form:
-
-```json
-{
-  "data": "...",
-  "extensions": {
-    "subgraph": {
-      "blocks": {
-        "ethereum/mainnet": {
-          "hash": "ea3bc37eb909f29c897d7a3fe3de30abd86baa58619403941e14a9797063a479",
-          "number": 9892879
-        }
-      },
-      "id": "QmZo35amfokYndPeuRd91bSzF6EusfBKMuDQCvaq25FVUX"
-    }
-  }
-}
-```
-
-The key in the `blocks` object indicate the Ethereum network that the
-subgraph indexes, such as `ethereum/mainnet` or `ethereum/kovan`. What
-exactly gets reported has `hash` and `number` depends on the query:
-
-- for time-travel queries with a block constraint of the form `block: {
-hash: "deadbeef" }`, that hash and the number of the corresponding block
-will appear in the response
-- for time-travel queries with a block constraint of the form `block: {
-number: 123456 }`, the `hash` will be all zeroes, and the number will be
-the number given in the query
-- for queries without any block constraint, the query will be run against
-  the latest block that subgraph has processed, the hash and number of that
-  block will be reported in the response
-
-### Misc
-
-- Fix loading more than 200 dynamic data sources (#1596).
+- Skip `trace_filter` on empty blocks (#1923).
+- Ensure runtime hosts are unique to avoid double-counting, improve logging
+  (#1904).
+- Add administrative Postgres views (#1889).
+- Limit the GraphQL `skip` argument in the same way as we limit `first` (#1912).
+- Fix GraphQL fragment bugs (#1825).
+- Don't crash node and show better error when multiple graph nodes are indexing
+  the same subgraph (#1903).
+- Add a query semaphore to allow to control the number of concurrent queries and
+  subscription queries being executed (#1802).
+- Call Ethereum contracts by block hash (#1905).
+- Fix fetching the correct function ABI from the contract ABI (#1886).
+- Add LFU cache for historical queries (#1878, #1879, #1891).
+- Log GraphQL queries only once (#1873).
+- Gracefully fail on a null block hash and encoding failures in the Ethereum
+  adapter (#1872).
+- Improve metrics by using labels more (#1868, ...)
+- Log when decoding a contract call result fails to decode (#1842).
+- Fix Ethereum node requirements parsing based on the manifest (#1834).
+- Speed up queries that involve checking for inclusion in an array (#1820).
+- Add better error message when blocking a query due to load management (#1822).
+- Support multiple Ethereum nodes/endpoints per network, with different
+  capabilities (#1810).
+- Change how we index foreign keys (#1811).
+- Add an experimental Ethereum node config file (#1819).
+- Allow using GraphQL variables in block constraints (#1803).
+- Add Solidity struct array / Ethereum tuple array support (#1815).
+- Resolve subgraph names in a blocking task (#1797).
+- Add environmen variable options for sensitive arguments (#1784).
+- USe blocking task for store events (#1789).
+- Refactor servers, log GraphQL panics (#1783).
+- Remove excessive logging in the store (#1772).
+- Add dynamic load management for GraphQL queries (#1762, #1773, #1774).
+- Add ability to block certain queries (#1749, #1771).
+- Log the complexity of each query executed (#1752).
+- Add support for running against read-only Postgres replicas (#1746, #1748,
+  #1753, #1750, #1754, #1860).
+- Catch invalid opcode reverts on Geth (#1744).
+- Optimize queries for single-object lookups (#1734).
+- Increase the maximum number of blocking threads (#1742).
+- Increase default JSON-RPC timeout (#1732).
+- Ignore flaky network indexers tests (#1724).
+- Change default max block range size to 1000 (#1727).
+- Fixed aliased scalar fields (#1726).
+- Fix issue inserting fulltext fields when all included field values are null (#1710).
+- Remove frequent "GraphQL query served" log message (#1719).
+- Fix `bigDecimal.devidedBy` (#1715).
+- Optimize GraphQL execution, remove non-prefetch code (#1712, #1730, #1733,
+  #1743, #1775).
+- Add a query cache (#1708, #1709, #1747, #1751, #1777).
+- Support the new Geth revert format (#1713).
+- Switch WASM runtime from wasmi to wasmtime and cranelift (#1700).
+- Avoid adding `order by` clauses for single-object lookups (#1703).
+- Refactor chain head and store event listeners (#1693).
+- Properly escape single quotes in strings for SQL queries (#1695).
+- Revamp how Graph Node Docker image is built (#1644).
+- Add BRIN indexes to speed up revert handling (#1683).
+- Don't store chain head block in `SubgraphDeployment` entity (#1673).
+- Allow varying block constraints across different GraphQL query fields (#1685).
+- Handle database tables that have `text` columns where they should have enums (#1681).
+- Make contract call cache collision-free (#1680).
+- Fix a SQL query in `cleanup_cached_blocks` (#1672).
+- Exit process when panicking in the notification listener (#1671).
+- Rebase ethabi and web3 forks on top of upstream (#1662).
+- Remove parity-wasm dependency (#1663).
+- Normalize `BigDecimal` values, limit `BigDecimal` exponent (#1640).
+- Strip nulls from strings (#1656).
+- Fetch genesis block by number `0` instead of `"earliest"` (#1658).
+- Speed up GraphQL query execution (#1648).
+- Fetch event logs in parallel (#1646).
+- Cheaper block polling (#1646).
+- Improve indexing status API (#1609, #1655, #1659, #1718).
+- Log Postgres contention again (#1643).
+- Allow `User-Agent` in CORS headers (#1635).
+- Docker: Increase startup wait timeouts (Postgres, IPFS) to 120s (#1634).
+- Allow using `Bytes` for `id` fields (#1607).
+- Increase Postgres connection pool size (#1620).
+- Fix entities updated after being removed in the same block (#1632).
+- Pass `log_index` to mappings in place of `transaction_log_index` (required for
+  Geth).
+- Don't return `__typename` to mappings (#1629).
 - Log warnings after 10 successive failed `eth_call` requests. This makes
   it more visible when graph-node is not operating against an Ethereum
   archive node (#1606).
+- Improve use of async/await across the codebase.
+- Add Proof Of Indexing (POI).
+- Add first implementation of subgraph grafting.
+- Add integration test for handling Ganache reverts (#1590).
 - Log all GraphQL and SQL queries performed by a node, controlled through
   the `GRAPH_LOG_QUERY_TIMING` [environment
   variable](docs/environment-variables.md) (#1595).
-- Add integration test for handling Ganache reverts (#1590).
-- Don't return `__typename` to mappings (#1629).
-- Normalize `BigDecimal` values, limit `BigDecimal` exponent (#1640).
-- Strip nulls from strings (#1656).
-- Less expensive block polling (#1645).
+- Fix loading more than 200 dynamic data sources (#1596).
+- Fix fulltext schema validation (`includes` fields).
+- Dependency updates:
+  anyhow,
+  async-trait,
+  bs58,
+  blake3,
+  bytes,
+  chrono,
+  clap,
+  crossbeam-channel
+  derive_more,
+  diesel-derive-enum,
+  duct,
+  ethabi,
+  git-testament,
+  hex-literal,
+  hyper,
+  indexmap,
+  jsonrpc-core,
+  mockall,
+  once_cell,
+  petgraph,
+  reqwest,
+  semver,
+  serde,
+  serde_json,
+  slog-term,
+  tokio,
+  wasmparser,
 
 ## 0.18.0
 
@@ -162,13 +234,13 @@ that are associated with a particular trading pair, which is included in the
 created data source, like so:
 
 ```ts
-import { DataSourceContext } from '@graphprotocol/graph-ts'
-import { Exchange } from '../generated/templates'
+import { DataSourceContext } from "@graphprotocol/graph-ts";
+import { Exchange } from "../generated/templates";
 
 export function handleNewExchange(event: NewExchange): void {
-  let context = new DataSourceContext()
-  context.setString('tradingPair', event.params.tradingPair)
-  Exchange.createWithContext(event.params.exchange, context)
+  let context = new DataSourceContext();
+  context.setString("tradingPair", event.params.tradingPair);
+  Exchange.createWithContext(event.params.exchange, context);
 }
 ```
 
