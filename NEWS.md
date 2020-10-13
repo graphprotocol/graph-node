@@ -1,8 +1,8 @@
 # NEWS
 
-## 0.19.0
-
 ## Unreleased
+
+## 0.19.0
 
 - Skip `trace_filter` on empty blocks (#1923).
 - Ensure runtime hosts are unique to avoid double-counting, improve logging
