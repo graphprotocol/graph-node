@@ -3,16 +3,19 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use graph::data::graphql::{
-    ext::{DocumentExt, TypeExt},
-    ObjectOrInterface,
-};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{info, o, CheapClone, Logger, QueryExecutionError};
+use graph::{
+    data::graphql::{
+        ext::{DocumentExt, TypeExt},
+        ObjectOrInterface,
+    },
+    prelude::StoreEvent,
+};
 
 use crate::execution::{get_field, get_named_type, object_or_interface};
 use crate::introspection::introspection_schema;
@@ -259,6 +262,20 @@ impl Query {
                 "variables" => &self.variables_text,
                 "query_time_ms" => self.start.elapsed().as_millis(),
                 "block" => block,
+            );
+        }
+    }
+
+    /// Log details about the execution of a subscription
+    pub fn log_subscription_execution(&self, duration: Duration, event: &StoreEvent) {
+        if *graph::log::LOG_GQL_TIMING {
+            info!(
+                &self.logger,
+                "Subscription timing (GraphQL)";
+                "query" => &self.query_text,
+                "variables" => &self.variables_text,
+                "changes" => event.changes.len(),
+                "query_time_ms" => duration.as_millis(),
             );
         }
     }

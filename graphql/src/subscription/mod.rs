@@ -186,13 +186,11 @@ async fn execute_subscription_event(
     max_skip: u32,
     load_manager: Arc<dyn QueryLoadManager>,
 ) -> Arc<QueryResult> {
-    debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
-
     // Create a fresh execution context with deadline.
     let ctx = Arc::new(ExecutionContext {
         logger,
         resolver,
-        query,
+        query: query.clone(),
         deadline: timeout.map(|t| Instant::now() + t),
         max_first,
         max_skip,
@@ -205,11 +203,14 @@ async fn execute_subscription_event(
         None => return Arc::new(QueryExecutionError::NoRootSubscriptionObjectType.into()),
     };
 
-    execute_root_selection_set(
+    let start = Instant::now();
+    let result = execute_root_selection_set(
         ctx.cheap_clone(),
         ctx.query.selection_set.cheap_clone(),
         subscription_type,
         None,
     )
-    .await
+    .await;
+    query.log_subscription_execution(start.elapsed(), event.as_ref());
+    result
 }
