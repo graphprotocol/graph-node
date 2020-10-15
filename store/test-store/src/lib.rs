@@ -2,7 +2,6 @@
 extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
-use diesel::{Connection, PgConnection};
 use graph::data::graphql::effort::LoadManager;
 use graph::log;
 use graph::prelude::{Store as _, *};
@@ -143,6 +142,8 @@ where
 
 #[cfg(debug_assertions)]
 pub fn remove_subgraphs() {
+    use diesel::{Connection, PgConnection};
+
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     graph_store_postgres::store::delete_all_entities_for_test_use_only(&*STORE, &conn)
@@ -264,6 +265,7 @@ pub fn insert_entities(
 #[cfg(debug_assertions)]
 pub mod block_store {
     use diesel::prelude::*;
+    use diesel::{Connection, PgConnection};
     use std::str::FromStr;
 
     use graph::prelude::{serde_json, web3::types::H256};
