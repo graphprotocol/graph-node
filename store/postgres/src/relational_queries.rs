@@ -501,7 +501,9 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                                     out.push_sql(") || ");
                                 }
                                 out.push_sql("to_tsvector(");
-                                out.push_bind_param::<Text, _>(&config.language.as_str().to_string())?;
+                                out.push_bind_param::<Text, _>(
+                                    &config.language.as_str().to_string(),
+                                )?;
                                 out.push_sql("::regconfig, ");
                                 out.push_bind_param::<Text, _>(&value)?;
                             }
