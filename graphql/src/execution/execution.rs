@@ -537,7 +537,13 @@ pub async fn execute_root_selection_set<R: Resolver>(
         let mut cache = QUERY_BLOCK_CACHE.write().unwrap();
 
         // Get or insert the cache for this network.
-        if cache.insert(network, block_ptr, key, result.cheap_clone(), weight) {
+        if cache.insert(
+            network,
+            block_ptr.clone(),
+            key,
+            result.cheap_clone(),
+            weight,
+        ) {
             ctx.cache_status.store(CacheStatus::Insert);
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE

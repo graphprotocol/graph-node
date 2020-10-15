@@ -12,7 +12,7 @@ use graph::data::graphql::{
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
-use graph::prelude::{info, o, CheapClone, Logger, QueryExecutionError};
+use graph::prelude::{info, o, BlockNumber, CheapClone, Logger, QueryExecutionError};
 
 use crate::execution::{get_field, get_named_type, object_or_interface};
 use crate::introspection::introspection_schema;
@@ -250,7 +250,7 @@ impl Query {
     }
 
     /// Log details about the overall execution of the query
-    pub fn log_execution(&self, block: u64) {
+    pub fn log_execution(&self, block: BlockNumber) {
         if *graph::log::LOG_GQL_TIMING {
             info!(
                 &self.logger,

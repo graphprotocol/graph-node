@@ -441,7 +441,7 @@ fn execute_subgraph_query_internal(
     let mut result = QueryResult::empty();
     for (bc, selection_set) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
-        let (resolver, _block_ptr) = return_err!(rt.block_on(StoreResolver::at_block(
+        let resolver = return_err!(rt.block_on(StoreResolver::at_block(
             &logger,
             STORE.clone(),
             bc,

@@ -164,11 +164,11 @@ where
             .decide(query.shape_hash, query.query_text.as_ref())
             .to_result()?;
 
-        let execute = |selection_set, block_ptr, resolver| {
+        let execute = |selection_set, resolver: StoreResolver| {
             execute_query(
                 query.clone(),
                 Some(selection_set),
-                Some(block_ptr),
+                resolver.block_ptr.clone(),
                 QueryExecutionOptions {
                     resolver,
                     deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
@@ -185,36 +185,31 @@ where
         let (bc, selection_set) = by_block_constraint.next().unwrap();
 
         let store = self.store.cheap_clone();
-        let (resolver, block_ptr) =
+        let resolver =
             StoreResolver::at_block(&self.logger, store, bc, query.schema.id().clone()).await?;
-        let mut result = execute(selection_set, block_ptr, resolver).await;
+        let mut max_block = resolver.block_number();
+        let mut result = execute(selection_set, resolver).await;
 
         // We want to optimize for the common case of a single block constraint, where we can avoid
         // cloning the result. If there are multiple constraints we have to clone.
-        let mut max_block = block_ptr.number;
         if by_block_constraint.len() > 0 {
             let mut partial_res = result.as_ref().clone();
             for (bc, selection_set) in by_block_constraint {
-                let (resolver, block_ptr) = StoreResolver::at_block(
+                let resolver = StoreResolver::at_block(
                     &self.logger,
                     self.store.clone(),
                     bc,
                     query.schema.id().clone(),
                 )
                 .await?;
-                max_block = max_block.max(block_ptr.number);
-                partial_res.append(
-                    execute(selection_set, block_ptr, resolver)
-                        .await
-                        .as_ref()
-                        .clone(),
-                );
+                max_block = max_block.max(resolver.block_number());
+                partial_res.append(execute(selection_set, resolver).await.as_ref().clone());
             }
             result = Arc::new(partial_res);
         }
 
         query.log_execution(max_block);
-        self.deployment_changed(state, max_block)
+        self.deployment_changed(state, max_block as u64)
             .map_err(QueryResult::from)
             .map(|()| result)
     }

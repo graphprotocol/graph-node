@@ -803,7 +803,7 @@ fn execute_field(
         argument_values,
         multiplicity,
         ctx.query.schema.types_for_interface(),
-        resolver.block,
+        resolver.block_number(),
         ctx.max_first,
         ctx.max_skip,
         ctx.query.query_id.clone(),

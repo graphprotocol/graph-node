@@ -18,7 +18,7 @@ use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 pub struct StoreResolver {
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
-    pub(crate) block: BlockNumber,
+    pub(crate) block_ptr: Option<EthereumBlockPointer>,
 }
 
 impl CheapClone for StoreResolver {}
@@ -32,7 +32,7 @@ impl StoreResolver {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store: store.query_store(true),
-            block: BLOCK_NUMBER_MAX,
+            block_ptr: None,
         }
     }
 
@@ -46,7 +46,7 @@ impl StoreResolver {
         store: Arc<impl Store + SubgraphDeploymentStore>,
         bc: BlockConstraint,
         subgraph: SubgraphDeploymentId,
-    ) -> Result<(Self, EthereumBlockPointer), QueryExecutionError> {
+    ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let block_ptr = graph::spawn_blocking_allow_panic(move || {
             Self::locate_block(store_clone.as_ref(), bc, subgraph)
@@ -57,9 +57,15 @@ impl StoreResolver {
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store: store.query_store(false),
-            block: block_ptr.number as i32,
+            block_ptr: Some(block_ptr),
         };
-        Ok((resolver, block_ptr))
+        Ok(resolver)
+    }
+
+    pub fn block_number(&self) -> BlockNumber {
+        self.block_ptr
+            .map(|ptr| ptr.number as BlockNumber)
+            .unwrap_or(BLOCK_NUMBER_MAX)
     }
 
     fn locate_block(
