@@ -2,7 +2,7 @@
 extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
-use diesel::{Connection, PgConnection};
+use diesel::{PgConnection};
 use graph::data::graphql::effort::LoadManager;
 use graph::log;
 use graph::prelude::{Store as _, *};
