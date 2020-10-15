@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.19.1
+
+- Detect reorgs during query execution (#1801).
+- Annotate SQL queries with the GraphQL query ID that caused them (#1946).
+- Fix potential deadlock caused by reentering the load manager semaphore (#1948).
+- Fix fulltext query issue with optional and unset fields (#1937 via #1938).
+- Fix build warnings with --release (#1949 via #1953).
+- Dependency updates: async-trait, chrono, wasmparser.
+
 ## 0.19.0
 
 - Skip `trace_filter` on empty blocks (#1923).
