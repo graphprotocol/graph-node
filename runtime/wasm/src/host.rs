@@ -28,10 +28,8 @@ use web3::types::{Log, Transaction};
 use crate::host_exports::HostExports;
 use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
 
-pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
-
 lazy_static! {
-    pub static ref TIMEOUT: Option<Duration> = std::env::var(TIMEOUT_ENV_VAR)
+    static ref TIMEOUT: Option<Duration> = std::env::var("GRAPH_MAPPING_HANDLER_TIMEOUT")
         .ok()
         .map(|s| u64::from_str(&s).expect("Invalid value for GRAPH_MAPPING_HANDLER_TIMEOUT"))
         .map(Duration::from_secs);

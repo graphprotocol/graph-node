@@ -28,6 +28,17 @@ fn test_valid_module_and_store(
     WasmInstance,
     Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
 ) {
+    test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
+}
+
+fn test_valid_module_and_store_with_timeout(
+    subgraph_id: &str,
+    data_source: DataSource,
+    timeout: Option<Duration>,
+) -> (
+    WasmInstance,
+    Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
+) {
     let store = STORE.clone();
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     test_store::create_test_subgraph(
@@ -59,7 +70,7 @@ fn test_valid_module_and_store(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(deployment_id, data_source, store.clone()),
         host_metrics,
-        *crate::host::TIMEOUT,
+        timeout,
         true,
     )
     .unwrap();
