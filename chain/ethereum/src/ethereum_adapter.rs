@@ -66,6 +66,9 @@ lazy_static! {
 
     /// Log eth_call data and target address at trace level. Turn on for debugging.
     static ref ETH_CALL_FULL_LOG: bool = std::env::var("GRAPH_ETH_CALL_FULL_LOG").is_ok();
+
+    /// This is not deterministic and will be removed after the testnet.
+    static ref ETH_CALL_BY_NUMBER: bool = std::env::var("GRAPH_ETH_CALL_BY_NUMBER").is_ok();
 }
 
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
@@ -406,7 +409,7 @@ where
 
         // Ganache does not support calls by block hash.
         // See https://github.com/trufflesuite/ganache-cli/issues/745
-        let block_id = if self.is_ganache {
+        let block_id = if self.is_ganache || *ETH_CALL_BY_NUMBER {
             BlockId::Number(block_ptr.number.into())
         } else {
             BlockId::Hash(block_ptr.hash)
