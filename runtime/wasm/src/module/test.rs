@@ -59,10 +59,8 @@ fn test_valid_module_and_store(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(deployment_id, data_source, store.clone()),
         host_metrics,
-        std::env::var(crate::host::TIMEOUT_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok())
-            .map(std::time::Duration::from_secs),
+        *crate::host::TIMEOUT,
+        true,
     )
     .unwrap();
 
