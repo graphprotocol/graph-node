@@ -246,6 +246,8 @@ pub(crate) struct WasmInstanceContext {
 
     // A trap ocurred due to a possible reorg detection.
     possible_reorg: bool,
+
+    pub(crate) allow_non_determinstic_ipfs: bool,
 }
 
 impl WasmInstance {
@@ -255,6 +257,7 @@ impl WasmInstance {
         ctx: MappingContext,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
+        allow_non_determinstic_ipfs: bool,
     ) -> Result<WasmInstance, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
 
@@ -322,6 +325,7 @@ impl WasmInstance {
                                     host_metrics.cheap_clone(),
                                     timeout,
                                     timeout_stopwatch.cheap_clone(),
+                                    allow_non_determinstic_ipfs
                                 ).unwrap())
                             }
 
@@ -366,6 +370,7 @@ impl WasmInstance {
                                 host_metrics.cheap_clone(),
                                 timeout,
                                 timeout_stopwatch.cheap_clone(),
+                                allow_non_determinstic_ipfs,
                             )
                             .unwrap(),
                         )
@@ -482,6 +487,7 @@ impl WasmInstance {
                 host_metrics,
                 timeout,
                 timeout_stopwatch,
+                allow_non_determinstic_ipfs,
             )?);
         }
 
@@ -548,6 +554,7 @@ impl WasmInstanceContext {
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
         timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
+        allow_non_determinstic_ipfs: bool,
     ) -> Result<Self, anyhow::Error> {
         // Provide access to the WASM runtime linear memory
         let memory = instance
@@ -570,6 +577,7 @@ impl WasmInstanceContext {
             arena_free_size: 0,
             arena_start_ptr: 0,
             possible_reorg: false,
+            allow_non_determinstic_ipfs,
         })
     }
 
@@ -580,6 +588,7 @@ impl WasmInstanceContext {
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
         timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
+        allow_non_determinstic_ipfs: bool,
     ) -> Result<Self, anyhow::Error> {
         let memory = caller
             .get_export("memory")
@@ -605,6 +614,7 @@ impl WasmInstanceContext {
             arena_free_size: 0,
             arena_start_ptr: 0,
             possible_reorg: false,
+            allow_non_determinstic_ipfs,
         })
     }
 }
@@ -805,6 +815,13 @@ impl WasmInstanceContext {
 
     /// function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&mut self, link_ptr: AscPtr<AscString>) -> Result<AscPtr<Uint8Array>, Trap> {
+        if !self.allow_non_determinstic_ipfs {
+            return Err(anyhow::anyhow!(
+                "`ipfs.cat` is deprecated. Improved support for IPFS will be added in the future"
+            )
+            .into());
+        }
+
         let link = self.asc_get(link_ptr);
         let ipfs_res = self.ctx.host_exports.ipfs_cat(&self.ctx.logger, link);
         match ipfs_res {
@@ -831,6 +848,13 @@ impl WasmInstanceContext {
         user_data: AscPtr<AscEnum<StoreValueKind>>,
         flags: AscPtr<Array<AscPtr<AscString>>>,
     ) -> Result<(), Trap> {
+        if !self.allow_non_determinstic_ipfs {
+            return Err(anyhow::anyhow!(
+                "`ipfs.map` is deprecated. Improved support for IPFS will be added in the future"
+            )
+            .into());
+        }
+
         let link: String = self.asc_get(link_ptr);
         let callback: String = self.asc_get(callback);
         let user_data: store::Value = self.try_asc_get(user_data)?;

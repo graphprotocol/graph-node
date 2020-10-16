@@ -413,6 +413,7 @@ impl HostExports {
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                     module.timeout,
+                    module.allow_non_determinstic_ipfs,
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s

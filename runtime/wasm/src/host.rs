@@ -30,6 +30,15 @@ use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
 
 pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
 
+lazy_static! {
+    pub static ref TIMEOUT: Option<Duration> = std::env::var(TIMEOUT_ENV_VAR)
+        .ok()
+        .map(|s| u64::from_str(&s).expect("Invalid value for GRAPH_MAPPING_HANDLER_TIMEOUT"))
+        .map(Duration::from_secs);
+    static ref ALLOW_NON_DETERMINISTIC_IPFS: bool =
+        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_IPFS").is_ok();
+}
+
 struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
     mapping: Mapping,
@@ -97,18 +106,14 @@ where
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, anyhow::Error> {
-        let timeout = std::env::var(TIMEOUT_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok())
-            .map(Duration::from_secs);
-
         crate::mapping::spawn_module(
             raw_module,
             logger,
             subgraph_id,
             metrics,
             tokio::runtime::Handle::current(),
-            timeout,
+            *TIMEOUT,
+            *ALLOW_NON_DETERMINISTIC_IPFS,
         )
     }
 
