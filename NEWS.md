@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.19.2
+
+- Add `GRAPH_ETH_CALL_BY_NUMBER` environment variable for disabling
+  EIP-1898 (#1957).
+- Disable `ipfs.cat` by default, as it is non-deterministic (#1958).
+
 ## 0.19.1
 
 - Detect reorgs during query execution (#1801).
