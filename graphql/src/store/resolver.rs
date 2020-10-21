@@ -49,7 +49,7 @@ impl StoreResolver {
     /// created
     pub async fn at_block(
         logger: &Logger,
-        store: Arc<impl Store + SubgraphDeploymentStore>,
+        store: Arc<dyn QueryStore>,
         bc: BlockConstraint,
         deployment: SubgraphDeploymentId,
     ) -> Result<Self, QueryExecutionError> {
@@ -63,7 +63,7 @@ impl StoreResolver {
         .and_then(|x| x)?; // Propagate panics.
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
-            store: store.query_store(false),
+            store,
             block_ptr: Some(block_ptr),
             deployment,
         };
@@ -77,7 +77,7 @@ impl StoreResolver {
     }
 
     fn locate_block(
-        store: &(impl Store + SubgraphDeploymentStore),
+        store: &dyn QueryStore,
         bc: BlockConstraint,
         subgraph: SubgraphDeploymentId,
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {

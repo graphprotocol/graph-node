@@ -1266,6 +1266,17 @@ pub trait QueryStore: Send + Sync {
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
 
     fn is_deployment_synced(&self, id: SubgraphDeploymentId) -> Result<bool, Error>;
+
+    fn block_ptr(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error>;
+
+    fn block_number(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        block_hash: H256,
+    ) -> Result<Option<BlockNumber>, StoreError>;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to

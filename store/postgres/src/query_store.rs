@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use web3::types::H256;
+
 use crate::store::ReplicaId;
 use graph::components::store::QueryStore as QueryStoreTrait;
 use graph::prelude::{Store as _, *};
@@ -44,5 +46,20 @@ impl QueryStoreTrait for QueryStore {
 
     fn is_deployment_synced(&self, id: SubgraphDeploymentId) -> Result<bool, Error> {
         self.store.is_deployment_synced(id)
+    }
+
+    fn block_ptr(
+        &self,
+        subgraph_id: SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
+        self.store.block_ptr(subgraph_id)
+    }
+
+    fn block_number(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+        block_hash: H256,
+    ) -> Result<Option<BlockNumber>, StoreError> {
+        self.store.block_number(subgraph_id, block_hash)
     }
 }
