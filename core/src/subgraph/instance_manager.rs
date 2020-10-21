@@ -481,7 +481,7 @@ where
                 ctx.inputs.include_calls_in_blocks,
                 ctx.block_stream_metrics.clone(),
             )
-            .from_err()
+            .map_err(CancelableError::Error)
             .cancelable(&block_stream_canceler, || CancelableError::Cancel)
             .compat();
 
@@ -595,6 +595,21 @@ where
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+enum ProcessBlockError {
+    #[error("{0}")]
+    Unknown(anyhow::Error),
+
+    #[error("{0}")]
+    Deterministic(anyhow::Error),
+}
+
+impl From<failure::Error> for ProcessBlockError {
+    fn from(e: failure::Error) -> Self {
+        ProcessBlockError::Unknown(e.compat_err())
+    }
+}
+
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
 async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S>(
@@ -603,7 +618,7 @@ async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S>(
     mut ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
-) -> Result<(IndexingContext<B, T, S>, bool), CancelableError<Error>>
+) -> Result<(IndexingContext<B, T, S>, bool), CancelableError<ProcessBlockError>>
 where
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
@@ -663,7 +678,9 @@ where
     .await
     {
         Ok(block_state) => block_state,
-        Err(MappingError::Unknown(e)) => return Err(e.compat_err().into()),
+        Err(MappingError::Unknown(e)) => {
+            return Err(CancelableError::Error(ProcessBlockError::Unknown(e)))
+        }
         Err(MappingError::PossibleReorg(e)) => {
             info!(ctx.state.logger,
                     "Possible reorg detected, retrying";
