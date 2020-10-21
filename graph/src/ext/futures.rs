@@ -263,9 +263,9 @@ pub enum CancelableError<E = Error> {
     Error(E),
 }
 
-impl From<Error> for CancelableError<Error> {
+impl<E: From<Error>> From<Error> for CancelableError<E> {
     fn from(e: Error) -> Self {
-        Self::Error(e)
+        Self::Error(e.into())
     }
 }
 
