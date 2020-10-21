@@ -1,0 +1,16 @@
+# The type names are purposely awkward to minimize the risk of them
+# colliding with user-supplied types
+"The type for the top-level _meta field"
+type Meta_field_type {
+    "Information about a specific subgraph block"
+    block: Block_field_type!
+    "The deployment ID"
+    deployment: String!
+}
+
+type Block_field_type {
+    "The hash of the block"
+    hash: Bytes!
+    "The block number"
+    number: Int!
+}

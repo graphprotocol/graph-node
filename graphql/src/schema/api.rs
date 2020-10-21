@@ -1,6 +1,7 @@
 use graphql_parser::schema::{Name, Value, *};
 use graphql_parser::Pos;
 use inflector::Inflector;
+use lazy_static::lazy_static;
 
 use crate::schema::ast;
 
@@ -16,6 +17,7 @@ pub enum APISchemaError {
 }
 
 const BLOCK_HEIGHT: &str = "Block_height";
+const META_FIELD_TYPE: &str = "Meta_field_type";
 
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
@@ -34,6 +36,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
     add_block_height_type(&mut schema);
+    add_meta_field_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema, &input_schema)?;
@@ -167,6 +170,21 @@ fn add_block_height_type(schema: &mut Document) {
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
+}
+
+/// Adds a global `Meta_field_type` type to the schema. The `_meta` field
+/// accepts values of this type
+fn add_meta_field_type(schema: &mut Document) {
+    lazy_static! {
+        static ref META_FIELD_SCHEMA: Document = {
+            let schema = include_str!("meta.graphql");
+            parse_schema(schema).expect("the schema `meta.graphql` is invalid")
+        };
+    }
+
+    schema
+        .definitions
+        .extend(META_FIELD_SCHEMA.definitions.iter().cloned());
 }
 
 fn add_types_for_object_types(
@@ -464,6 +482,7 @@ fn add_query_type(
         .filter_map(|fulltext| query_field_for_fulltext(fulltext))
         .collect();
     fields.append(&mut fulltext_fields);
+    fields.push(meta_field());
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
@@ -554,18 +573,21 @@ fn add_subscription_type(
         return Err(APISchemaError::TypeExists(type_name));
     }
 
+    let mut fields: Vec<Field> = object_types
+        .iter()
+        .map(|t| &t.name)
+        .chain(interface_types.iter().map(|t| &t.name))
+        .flat_map(|name| query_fields_for_type(schema, name))
+        .collect();
+    fields.push(meta_field());
+
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
         description: None,
         name: type_name,
         implements_interfaces: vec![],
         directives: vec![],
-        fields: object_types
-            .iter()
-            .map(|t| &t.name)
-            .chain(interface_types.iter().map(|t| &t.name))
-            .flat_map(|name| query_fields_for_type(schema, name))
-            .collect(),
+        fields,
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
@@ -625,6 +647,27 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
             directives: vec![],
         },
     ]
+}
+
+fn meta_field() -> Field {
+    Field {
+        position: Pos::default(),
+        description: Some("Access to subgraph metadata".to_string()),
+        name: "_meta".to_string(),
+        arguments: vec![
+            // block: BlockHeight
+            InputValue {
+                position: Pos::default(),
+                description: None,
+                name: String::from("block"),
+                value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
+                default_value: None,
+                directives: vec![],
+            },
+        ],
+        field_type: Type::NamedType(META_FIELD_TYPE.to_string()),
+        directives: vec![],
+    }
 }
 
 /// Generates arguments for collection queries of a named type (e.g. User).
