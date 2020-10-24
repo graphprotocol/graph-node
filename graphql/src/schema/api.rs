@@ -5,7 +5,10 @@ use lazy_static::lazy_static;
 
 use crate::schema::ast;
 
-use graph::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
+use graph::data::{
+    graphql::ext::{DirectiveExt, DocumentExt, ValueExt},
+    schema::{META_FIELD_NAME, META_FIELD_TYPE},
+};
 use graph::prelude::*;
 
 #[derive(Fail, Debug)]
@@ -17,7 +20,6 @@ pub enum APISchemaError {
 }
 
 const BLOCK_HEIGHT: &str = "Block_height";
-const META_FIELD_TYPE: &str = "Meta_field_type";
 
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
@@ -653,7 +655,7 @@ fn meta_field() -> Field {
     Field {
         position: Pos::default(),
         description: Some("Access to subgraph metadata".to_string()),
-        name: "_meta".to_string(),
+        name: META_FIELD_NAME.to_string(),
         arguments: vec![
             // block: BlockHeight
             InputValue {

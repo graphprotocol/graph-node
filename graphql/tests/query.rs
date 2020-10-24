@@ -1599,3 +1599,68 @@ fn query_detects_reorg() {
         }
     })
 }
+
+#[test]
+fn can_query_meta() {
+    run_test_sequentially(setup, |_, id| async move {
+        if !STORE.uses_relational_schema(&id).unwrap() {
+            // We don't care about JSONB storage
+            return;
+        }
+        // metadata for the latest block (block 1)
+        let query = "query { _meta { deployment block { hash number } } }";
+        let query = graphql_parser::parse_query(query).expect("invalid test query");
+
+        let result = execute_query_document(&id, query).await;
+        let exp = object! {
+            _meta: object! {
+                block: object! {
+                    hash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
+                    number: 1
+                },
+                deployment: "graphqlTestsQuery"
+            },
+        };
+        assert_eq!(extract_data!(result), Some(exp));
+
+        // metadata for block 0 by number
+        let query = "query { _meta(block: { number: 0 }) { deployment block { hash number } } }";
+        let query = graphql_parser::parse_query(query).expect("invalid test query");
+
+        let result = execute_query_document(&id, query).await;
+        let exp = object! {
+            _meta: object! {
+                block: object! {
+                    hash: q::Value::Null,
+                    number: 0
+                },
+                deployment: "graphqlTestsQuery"
+            },
+        };
+        assert_eq!(extract_data!(result), Some(exp));
+
+        // metadata for block 0 by hash
+        let query = "query { _meta(block: { hash: \"bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f\" }) { \
+                                        deployment block { hash number } } }";
+        let query = graphql_parser::parse_query(query).expect("invalid test query");
+
+        let result = execute_query_document(&id, query).await;
+        let exp = object! {
+            _meta: object! {
+                block: object! {
+                    hash: "0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
+                    number: 0
+                },
+                deployment: "graphqlTestsQuery"
+            },
+        };
+        assert_eq!(extract_data!(result), Some(exp));
+
+        // metadata for block 2, which is beyond what the subgraph has indexed
+        let query = "query { _meta(block: { number: 2 }) { deployment block { hash number } } }";
+        let query = graphql_parser::parse_query(query).expect("invalid test query");
+
+        let result = execute_query_document(&id, query).await;
+        assert!(result.has_errors());
+    })
+}

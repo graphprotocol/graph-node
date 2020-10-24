@@ -25,6 +25,9 @@ use std::sync::Arc;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
+pub const META_FIELD_TYPE: &str = "Meta_field_type";
+pub const META_FIELD_NAME: &str = "_meta";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Strings(Vec<String>);
 

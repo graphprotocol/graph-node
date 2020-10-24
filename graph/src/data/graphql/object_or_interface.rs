@@ -2,6 +2,8 @@ use crate::prelude::Schema;
 use graphql_parser::schema as s;
 use std::collections::BTreeMap;
 
+use super::ObjectTypeExt;
+
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
     Object(&'a s::ObjectType),
@@ -82,6 +84,13 @@ impl<'a> ObjectOrInterface<'a> {
             ObjectOrInterface::Interface(i) => types_for_interface[&i.name]
                 .iter()
                 .any(|o| o.name == typename),
+        }
+    }
+
+    pub fn is_meta(&self) -> bool {
+        match self {
+            ObjectOrInterface::Object(o) => o.is_meta(),
+            ObjectOrInterface::Interface(i) => i.is_meta(),
         }
     }
 }

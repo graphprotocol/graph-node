@@ -1,6 +1,6 @@
 use super::cache::QueryCache;
 use crossbeam::atomic::AtomicCell;
-use graph::prelude::CheapClone;
+use graph::{data::schema::META_FIELD_NAME, prelude::CheapClone};
 use graphql_parser::query as q;
 use graphql_parser::schema as s;
 use indexmap::IndexMap;
@@ -380,6 +380,7 @@ pub fn execute_root_selection_set_uncached(
         span: selection_set.span.clone(),
         items: Vec::new(),
     };
+    let mut meta_items = Vec::new();
 
     for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set)) {
         let name = fields[0].name.clone();
@@ -389,16 +390,19 @@ pub fn execute_root_selection_set_uncached(
         // the data_set SelectionSet
         if is_introspection_field(&name) {
             intro_set.items.extend(selections)
+        } else if &name == META_FIELD_NAME {
+            meta_items.extend(selections)
         } else {
             data_set.items.extend(selections)
         }
     }
 
     // If we are getting regular data, prefetch it from the database
-    let mut values = if data_set.items.is_empty() {
+    let mut values = if data_set.items.is_empty() && meta_items.is_empty() {
         BTreeMap::default()
     } else {
-        let initial_data = ctx.resolver.prefetch(&ctx, selection_set)?;
+        let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
+        data_set.items.extend(meta_items);
         execute_selection_set_to_map(&ctx, iter::once(&data_set), root_type, initial_data)?
     };
 

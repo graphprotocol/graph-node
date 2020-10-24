@@ -1,5 +1,5 @@
 use graphql_parser::{query as q, schema as s};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::result;
 use std::sync::Arc;
 
@@ -155,6 +155,45 @@ impl StoreResolver {
             }
         }
     }
+
+    fn handle_meta(
+        &self,
+        prefetched_object: Option<q::Value>,
+        object_type: &ObjectOrInterface<'_>,
+    ) -> Result<(Option<q::Value>, Option<q::Value>), QueryExecutionError> {
+        // Pretend that the whole `_meta` field was loaded by prefetch. Eager
+        // loading this is ok until we add more information to this field
+        // that would force us to query the database; when that happens, we
+        // need to switch to loading on demand
+        if object_type.is_meta() {
+            let hash = self
+                .block_ptr
+                .and_then(|ptr| {
+                    if ptr.hash == web3::types::H256::zero() {
+                        None
+                    } else {
+                        Some(q::Value::String(format!("0x{:x}", ptr.hash)))
+                    }
+                })
+                .unwrap_or(q::Value::Null);
+            let number = self
+                .block_ptr
+                .map(|ptr| q::Value::Int((ptr.number as i32).into()))
+                .unwrap_or(q::Value::Null);
+            let mut map = BTreeMap::new();
+            let block = object! {
+                hash: hash,
+                number: number,
+            };
+            map.insert("prefetch:block".to_string(), q::Value::List(vec![block]));
+            map.insert(
+                "deployment".to_string(),
+                q::Value::String(self.deployment.to_string()),
+            );
+            return Ok((None, Some(q::Value::Object(map))));
+        }
+        return Ok((prefetched_object, None));
+    }
 }
 
 impl Resolver for StoreResolver {
@@ -196,6 +235,10 @@ impl Resolver for StoreResolver {
         object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
+        let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
+        if let Some(meta) = meta {
+            return Ok(meta);
+        }
         if let Some(q::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
                 let derived_from_field =

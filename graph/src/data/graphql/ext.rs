@@ -1,4 +1,4 @@
-use crate::data::schema::SCHEMA_TYPE_NAME;
+use crate::data::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use graphql_parser::schema::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, Name, ObjectType, Type,
     TypeDefinition, Value,
@@ -10,17 +10,26 @@ use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {
     fn field(&self, name: &Name) -> Option<&Field>;
+    fn is_meta(&self) -> bool;
 }
 
 impl ObjectTypeExt for ObjectType {
     fn field(&self, name: &Name) -> Option<&Field> {
         self.fields.iter().find(|field| &field.name == name)
     }
+
+    fn is_meta(&self) -> bool {
+        self.name == META_FIELD_TYPE
+    }
 }
 
 impl ObjectTypeExt for InterfaceType {
     fn field(&self, name: &Name) -> Option<&Field> {
         self.fields.iter().find(|field| &field.name == name)
+    }
+
+    fn is_meta(&self) -> bool {
+        false
     }
 }
 
