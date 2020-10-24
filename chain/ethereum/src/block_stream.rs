@@ -656,15 +656,11 @@ where
                 .map(|entity| entity.id().unwrap())
                 .collect::<Vec<_>>();
             let version_id_values = version_ids.iter().map(Value::from).collect::<Vec<_>>();
-            ops.push(MetadataOperation::AbortUnless {
-                description: "The same subgraph version entities must point to this deployment"
-                    .to_owned(),
-                query: SubgraphVersionEntity::query().filter(EntityFilter::Equal(
-                    "deployment".to_owned(),
-                    self.subgraph_id.to_string().into(),
-                )),
-                entity_ids: version_ids.clone(),
-            });
+            ops.push(SubgraphVersionEntity::abort_unless(
+                "The same subgraph version entities must point to this deployment",
+                EntityFilter::Equal("deployment".to_owned(), self.subgraph_id.to_string().into()),
+                version_ids.clone(),
+            ));
 
             // Find subgraphs with one of these versions as pending version
             let subgraphs_to_update =
@@ -677,15 +673,11 @@ where
                 .iter()
                 .map(|entity| entity.id().unwrap())
                 .collect();
-            ops.push(MetadataOperation::AbortUnless {
-                description: "The same subgraph entities must have these versions pending"
-                    .to_owned(),
-                query: SubgraphEntity::query().filter(EntityFilter::In(
-                    "pendingVersion".to_owned(),
-                    version_id_values.clone(),
-                )),
-                entity_ids: subgraph_ids_to_update,
-            });
+            ops.push(SubgraphEntity::abort_unless(
+                "The same subgraph entities must have these versions pending",
+                EntityFilter::In("pendingVersion".to_owned(), version_id_values.clone()),
+                subgraph_ids_to_update,
+            ));
 
             // The current versions of these subgraphs will no longer be current now that this
             // deployment is synced (they will be replaced by the pending version)

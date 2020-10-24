@@ -452,11 +452,11 @@ fn create_subgraph(
         return Err(SubgraphRegistrarError::NameExists(name.to_string()));
     }
 
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Subgraph entity should not exist".to_owned(),
-        query: SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())),
-        entity_ids: vec![],
-    });
+    ops.push(SubgraphEntity::abort_unless(
+        "Subgraph entity should not exist",
+        EntityFilter::new_equal("name", name.to_string()),
+        vec![],
+    ));
 
     let created_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -760,11 +760,8 @@ fn create_subgraph_version(
         ))
         .and_then(move |subgraph_version_data| {
             let mut ops = vec![];
-            ops.push(MetadataOperation::AbortUnless {
-                description:
-                    "Subgraph entity must still exist, have same name/currentVersion/pendingVersion"
-                        .to_owned(),
-                query: SubgraphEntity::query().filter(EntityFilter::And(vec![
+            ops.push(SubgraphEntity::abort_unless("Subgraph entity must still exist, have same name/currentVersion/pendingVersion",
+                EntityFilter::And(vec![
                     EntityFilter::new_equal("name", name.to_string()),
                     EntityFilter::new_equal(
                         "currentVersion",
@@ -774,9 +771,9 @@ fn create_subgraph_version(
                         "pendingVersion",
                         subgraph_version_data.pending_version_id_opt.clone(),
                     ),
-                ])),
-                entity_ids: vec![subgraph_version_data.subgraph_entity_id.clone()],
-            });
+                ]),
+                 vec![subgraph_version_data.subgraph_entity_id.clone()],
+            ));
 
             // Create the subgraph version entity
             let created_at = SystemTime::now()
@@ -849,17 +846,15 @@ fn create_subgraph_version(
                 .map(|a| (logger, ops, a.is_some()))
         })
         .and_then(move |(logger, mut ops, deployment_exists)| {
-            ops.push(MetadataOperation::AbortUnless {
-                description: "Subgraph deployment entity must continue to exist/not exist"
-                    .to_owned(),
-                query: SubgraphDeploymentEntity::query()
-                    .filter(EntityFilter::new_equal("id", manifest.id.to_string())),
-                entity_ids: if deployment_exists {
+            ops.push(SubgraphDeploymentEntity::abort_unless("Subgraph deployment entity must continue to exist/not exist"
+                    ,
+                EntityFilter::new_equal("id", manifest.id.to_string()),
+                if deployment_exists {
                     vec![manifest.id.to_string()]
                 } else {
                     vec![]
                 },
-            });
+            ));
 
             resolve_subgraph_chain_blocks(
                 manifest.clone(),
@@ -941,28 +936,25 @@ fn remove_subgraph(
     let subgraph_entity = subgraph_entity_opt
         .ok_or_else(|| SubgraphRegistrarError::NameNotFound(name.to_string()))?;
 
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Subgraph entity must still exist".to_owned(),
-        query: SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())),
-        entity_ids: vec![subgraph_entity.id().unwrap()],
-    });
+    ops.push(SubgraphEntity::abort_unless(
+        "Subgraph entity must still exist",
+        EntityFilter::new_equal("name", name.to_string()),
+        vec![subgraph_entity.id().unwrap()],
+    ));
 
     // Find subgraph version entities
     let subgraph_version_entities = store.find(SubgraphVersionEntity::query().filter(
         EntityFilter::new_equal("subgraph", subgraph_entity.id().unwrap()),
     ))?;
 
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Subgraph must have same set of versions".to_owned(),
-        query: SubgraphVersionEntity::query().filter(EntityFilter::new_equal(
-            "subgraph",
-            subgraph_entity.id().unwrap(),
-        )),
-        entity_ids: subgraph_version_entities
+    ops.push(SubgraphVersionEntity::abort_unless(
+        "Subgraph must have same set of versions",
+        EntityFilter::new_equal("subgraph", subgraph_entity.id().unwrap()),
+        subgraph_version_entities
             .iter()
             .map(|entity| entity.id().unwrap())
             .collect(),
-    });
+    ));
 
     // Remove subgraph version entities, and their deployment/assignment when applicable
     ops.extend(
@@ -1089,14 +1081,14 @@ fn reassign_subgraph(
         ));
     }
 
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Deployment assignment is unchanged".to_owned(),
-        query: SubgraphDeploymentAssignmentEntity::query().filter(EntityFilter::And(vec![
+    ops.push(SubgraphDeploymentAssignmentEntity::abort_unless(
+        "Deployment assignment is unchanged",
+        EntityFilter::And(vec![
             EntityFilter::new_equal("nodeId", current_node_id.to_string()),
             EntityFilter::new_equal("id", hash.clone().to_string()),
-        ])),
-        entity_ids: vec![hash.clone().to_string()],
-    });
+        ]),
+        vec![hash.clone().to_string()],
+    ));
 
     // Create the assignment update operations.
     // Note: This will also generate a remove operation for the existing subgraph assignment.

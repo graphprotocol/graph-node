@@ -686,7 +686,8 @@ pub enum MetadataOperation {
     /// to the order of the results if `query` contains an `order_by`.
     AbortUnless {
         description: String, // Programmer-friendly debug message to explain reason for abort
-        query: EntityQuery,  // The query to run
+        metadata_type: MetadataType,
+        filter: EntityFilter,
         entity_ids: Vec<String>, // What entities the query should return
     },
 
@@ -927,11 +928,11 @@ pub trait Store: Send + Sync + 'static {
             .iter()
             .map(|version_entity| version_entity.id().unwrap())
             .collect::<Vec<_>>();
-        ops.push(MetadataOperation::AbortUnless {
-            description: "Same set of subgraph versions must match filter".to_owned(),
-            query: SubgraphVersionEntity::query().filter(version_filter),
-            entity_ids: version_ids.clone(),
-        });
+        ops.push(SubgraphVersionEntity::abort_unless(
+            "Same set of subgraph versions must match filter",
+            version_filter,
+            version_ids.clone(),
+        ));
 
         // Find subgraphs with one of these versions as current or pending
         let subgraphs_with_version_as_current_or_pending =
@@ -944,17 +945,16 @@ pub trait Store: Send + Sync + 'static {
                 .iter()
                 .map(|subgraph_entity| subgraph_entity.id().unwrap())
                 .collect::<HashSet<_>>();
-        ops.push(MetadataOperation::AbortUnless {
-            description: "Same set of subgraphs must have these versions as current or pending"
-                .to_owned(),
-            query: SubgraphEntity::query().filter(EntityFilter::Or(vec![
+        ops.push(SubgraphEntity::abort_unless(
+            "Same set of subgraphs must have these versions as current or pending",
+            EntityFilter::Or(vec![
                 EntityFilter::new_in("currentVersion", version_ids.clone()),
                 EntityFilter::new_in("pendingVersion", version_ids),
-            ])),
-            entity_ids: subgraph_ids_with_version_as_current_or_pending
+            ]),
+            subgraph_ids_with_version_as_current_or_pending
                 .into_iter()
                 .collect(),
-        });
+        ));
 
         // Produce summaries, deriving flags from information in subgraph entities
         let version_summaries =

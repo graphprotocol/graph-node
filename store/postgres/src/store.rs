@@ -493,9 +493,22 @@ impl Store {
             }
             MetadataOperation::AbortUnless {
                 description,
-                query,
+                metadata_type,
+                filter,
                 entity_ids: mut expected_entity_ids,
             } => {
+                let range = EntityRange {
+                    first: None,
+                    skip: 0,
+                };
+                let query = EntityQuery::new(
+                    SUBGRAPHS_ID.clone(),
+                    BLOCK_NUMBER_MAX,
+                    EntityCollection::All(vec![metadata_type.to_string()]),
+                )
+                .range(range)
+                .filter(filter);
+
                 // Execute query
                 let actual_entities =
                     self.execute_query::<Entity>(conn, query.clone())
@@ -514,13 +527,9 @@ impl Store {
                     .map(|entity| entity.id())
                     .collect::<Result<_, _>>()?;
 
-                // Sort entity IDs lexicographically if and only if no sort order is specified.
-                // When no sort order is specified, the entity ordering is arbitrary and should not be a
-                // factor in deciding whether or not to abort.
-                if matches!(query.order, EntityOrder::Default) {
-                    expected_entity_ids.sort();
-                    actual_entity_ids.sort();
-                }
+                // Sort entity IDs lexicographically
+                expected_entity_ids.sort();
+                actual_entity_ids.sort();
 
                 // Abort if actual IDs do not match expected
                 if actual_entity_ids != expected_entity_ids {

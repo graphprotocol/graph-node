@@ -25,12 +25,11 @@ fn create_subgraph(
     let mut ops = vec![];
 
     // Ensure the subgraph itself doesn't already exist
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Subgraph entity should not exist".to_owned(),
-        query: SubgraphEntity::query()
-            .filter(EntityFilter::new_equal("name", subgraph_name.to_string())),
-        entity_ids: vec![],
-    });
+    ops.push(SubgraphEntity::abort_unless(
+        "Subgraph entity should not exist",
+        EntityFilter::new_equal("name", subgraph_name.to_string()),
+        vec![],
+    ));
 
     // Create the subgraph entity (e.g. `ethereum/mainnet`)
     let created_at = SystemTime::now()
@@ -46,12 +45,11 @@ fn create_subgraph(
     );
 
     // Ensure the subgraph version doesn't already exist
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Subgraph version should not exist".to_owned(),
-        query: SubgraphVersionEntity::query()
-            .filter(EntityFilter::new_equal("id", subgraph_id.to_string())),
-        entity_ids: vec![],
-    });
+    ops.push(SubgraphVersionEntity::abort_unless(
+        "Subgraph version should not exist",
+        EntityFilter::new_equal("id", subgraph_id.to_string()),
+        vec![],
+    ));
 
     // Create a subgraph version entity; we're using the same ID for
     // version and deployment to make clear they belong together
@@ -74,12 +72,11 @@ fn create_subgraph(
     ));
 
     // Ensure the deployment doesn't already exist
-    ops.push(MetadataOperation::AbortUnless {
-        description: "Subgraph deployment entity must not exist".to_owned(),
-        query: SubgraphDeploymentEntity::query()
-            .filter(EntityFilter::new_equal("id", subgraph_id.to_string())),
-        entity_ids: vec![],
-    });
+    ops.push(SubgraphDeploymentEntity::abort_unless(
+        "Subgraph deployment entity must not exist",
+        EntityFilter::new_equal("id", subgraph_id.to_string()),
+        vec![],
+    ));
 
     // Create a fake manifest
     let manifest = SubgraphManifest {

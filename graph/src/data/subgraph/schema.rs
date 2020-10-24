@@ -115,6 +115,19 @@ pub trait TypedEntity {
             entity_id: entity_id.to_string(),
         }
     }
+
+    fn abort_unless(
+        description: &'static str,
+        filter: EntityFilter,
+        entity_ids: Vec<String>,
+    ) -> MetadataOperation {
+        MetadataOperation::AbortUnless {
+            description: description.to_owned(),
+            metadata_type: Self::TYPENAME,
+            filter,
+            entity_ids,
+        }
+    }
 }
 
 // See also: ed42d219c6704a4aab57ce1ea66698e7.
@@ -388,11 +401,11 @@ impl SubgraphDeploymentEntity {
         let mut ops: Vec<MetadataOperation> = vec![];
 
         // Abort unless no entity exists with this ID
-        ops.push(MetadataOperation::AbortUnless {
-            description: "Subgraph deployment entity must not exist yet to be created".to_owned(),
-            query: Self::query().filter(EntityFilter::new_equal("id", id.to_string())),
-            entity_ids: vec![],
-        });
+        ops.push(Self::abort_unless(
+            "Subgraph deployment entity must not exist yet to be created",
+            EntityFilter::new_equal("id", id.to_string()),
+            vec![],
+        ));
 
         ops.extend(self.private_create_operations(id));
         ops
