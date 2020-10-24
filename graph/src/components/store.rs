@@ -1074,7 +1074,7 @@ pub trait Store: Send + Sync + 'static {
 
         ops.extend(removed_assignments.into_iter().map(|deployment_id| {
             MetadataOperation::Remove {
-                entity: SubgraphDeploymentAssignmentEntity::TYPENAME.to_owned(),
+                entity: SubgraphDeploymentAssignmentEntity::TYPENAME.to_string(),
                 id: deployment_id.to_string(),
             }
         }));

@@ -201,7 +201,7 @@ pub fn subgraph_network(
 
 fn block_ptr_store_event(id: &SubgraphDeploymentId) -> StoreEvent {
     let change = EntityChange {
-        entity_type: SubgraphDeploymentEntity::TYPENAME.to_owned(),
+        entity_type: SubgraphDeploymentEntity::TYPENAME.to_string(),
         entity_id: id.to_string(),
         subgraph_id: SUBGRAPHS_ID.to_owned(),
         operation: EntityChangeOperation::Set,

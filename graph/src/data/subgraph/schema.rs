@@ -20,8 +20,9 @@ use hex;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
-use std::collections::BTreeMap;
 use std::str::FromStr;
+use std::{collections::BTreeMap, fmt::Display};
+use strum_macros::IntoStaticStr;
 use uuid::Uuid;
 use web3::types::*;
 
@@ -45,9 +46,48 @@ lazy_static! {
 pub const POI_TABLE: &str = "poi2$";
 pub const POI_OBJECT: &str = "Poi$";
 
+#[derive(Debug, Clone, IntoStaticStr)]
+pub enum MetadataType {
+    Subgraph,
+    SubgraphVersion,
+    SubgraphDeployment,
+    SubgraphDeploymentAssignment,
+    SubgraphManifest,
+    EthereumContractDataSource,
+    DynamicEthereumContractDataSource,
+    EthereumContractSource,
+    EthereumContractMapping,
+    EthereumContractAbi,
+    EthereumBlockHandlerEntity,
+    EthereumBlockHandlerFilterEntity,
+    EthereumCallHandlerEntity,
+    EthereumContractEventHandler,
+    EthereumContractDataSourceTemplate,
+    EthereumContractDataSourceTemplateSource,
+    SubgraphError,
+}
+
+impl MetadataType {
+    pub fn as_str(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl Display for MetadataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<MetadataType> for String {
+    fn from(m: MetadataType) -> Self {
+        m.to_string()
+    }
+}
+
 /// Generic type for the entity types defined below.
 pub trait TypedEntity {
-    const TYPENAME: &'static str;
+    const TYPENAME: MetadataType;
     type IdType: ToString;
 
     fn query() -> EntityQuery {
@@ -58,13 +98,13 @@ pub trait TypedEntity {
         EntityQuery::new(
             SUBGRAPHS_ID.clone(),
             BLOCK_NUMBER_MAX,
-            EntityCollection::All(vec![Self::TYPENAME.to_owned()]),
+            EntityCollection::All(vec![Self::TYPENAME.to_string()]),
         )
         .range(range)
     }
 
     fn subgraph_entity_pair() -> SubgraphEntityPair {
-        (SUBGRAPHS_ID.clone(), Self::TYPENAME.to_owned())
+        (SUBGRAPHS_ID.clone(), Self::TYPENAME.to_string())
     }
 
     fn key(entity_id: Self::IdType) -> EntityKey {
@@ -89,20 +129,20 @@ pub struct SubgraphEntity {
 }
 
 impl TypedEntity for SubgraphEntity {
-    const TYPENAME: &'static str = "Subgraph";
+    const TYPENAME: MetadataType = MetadataType::Subgraph;
     type IdType = String;
 }
 
 trait OperationList {
-    fn add(&mut self, entity: &str, id: String, data: Entity);
+    fn add(&mut self, entity: &MetadataType, id: String, data: Entity);
 }
 
 struct MetadataOperationList(Vec<MetadataOperation>);
 
 impl OperationList for MetadataOperationList {
-    fn add(&mut self, entity: &str, id: String, data: Entity) {
+    fn add(&mut self, entity: &MetadataType, id: String, data: Entity) {
         self.0.push(MetadataOperation::Set {
-            entity: entity.to_owned(),
+            entity: entity.to_string(),
             id,
             data,
         })
@@ -112,11 +152,11 @@ impl OperationList for MetadataOperationList {
 struct EntityOperationList(Vec<EntityOperation>);
 
 impl OperationList for EntityOperationList {
-    fn add(&mut self, entity: &str, id: String, data: Entity) {
+    fn add(&mut self, entity: &MetadataType, id: String, data: Entity) {
         self.0.push(EntityOperation::Set {
             key: EntityKey {
                 subgraph_id: SUBGRAPHS_ID.clone(),
-                entity_type: entity.to_owned(),
+                entity_type: entity.to_string(),
                 entity_id: id.to_owned(),
             },
             data,
@@ -197,7 +237,7 @@ pub struct SubgraphVersionEntity {
 }
 
 impl TypedEntity for SubgraphVersionEntity {
-    const TYPENAME: &'static str = "SubgraphVersion";
+    const TYPENAME: MetadataType = MetadataType::SubgraphVersion;
     type IdType = String;
 }
 
@@ -301,7 +341,7 @@ pub struct SubgraphDeploymentEntity {
 }
 
 impl TypedEntity for SubgraphDeploymentEntity {
-    const TYPENAME: &'static str = "SubgraphDeployment";
+    const TYPENAME: MetadataType = MetadataType::SubgraphDeployment;
     type IdType = SubgraphDeploymentId;
 }
 
@@ -476,7 +516,7 @@ pub struct SubgraphDeploymentAssignmentEntity {
 }
 
 impl TypedEntity for SubgraphDeploymentAssignmentEntity {
-    const TYPENAME: &'static str = "SubgraphDeploymentAssignment";
+    const TYPENAME: MetadataType = MetadataType::SubgraphDeploymentAssignment;
     type IdType = SubgraphDeploymentId;
 }
 
@@ -506,7 +546,7 @@ pub struct SubgraphManifestEntity {
 }
 
 impl TypedEntity for SubgraphManifestEntity {
-    const TYPENAME: &'static str = "SubgraphManifest";
+    const TYPENAME: MetadataType = MetadataType::SubgraphManifest;
     type IdType = String;
 }
 
@@ -580,7 +620,7 @@ pub struct EthereumContractDataSourceEntity {
 }
 
 impl TypedEntity for EthereumContractDataSourceEntity {
-    const TYPENAME: &'static str = "EthereumContractDataSource";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSource;
     type IdType = String;
 }
 
@@ -663,7 +703,7 @@ impl DynamicEthereumContractDataSourceEntity {
 }
 
 impl TypedEntity for DynamicEthereumContractDataSourceEntity {
-    const TYPENAME: &'static str = "DynamicEthereumContractDataSource";
+    const TYPENAME: MetadataType = MetadataType::DynamicEthereumContractDataSource;
     type IdType = String;
 }
 
@@ -714,7 +754,7 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
                 .map(|ctx| serde_json::to_string(&ctx).unwrap()),
         };
 
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -769,7 +809,7 @@ pub struct EthereumContractSourceEntity {
 }
 
 impl TypedEntity for EthereumContractSourceEntity {
-    const TYPENAME: &'static str = "EthereumContractSource";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractSource;
     type IdType = String;
 }
 
@@ -780,7 +820,7 @@ impl WriteOperations for EthereumContractSourceEntity {
         entity.set("address", self.address);
         entity.set("abi", self.abi);
         entity.set("startBlock", self.start_block);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -826,7 +866,7 @@ pub struct EthereumContractMappingEntity {
 }
 
 impl TypedEntity for EthereumContractMappingEntity {
-    const TYPENAME: &'static str = "EthereumContractMapping";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractMapping;
     type IdType = String;
 }
 
@@ -892,7 +932,7 @@ impl WriteOperations for EthereumContractMappingEntity {
         entity.set("callHandlers", call_handler_ids);
         entity.set("blockHandlers", block_handler_ids);
 
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -958,7 +998,7 @@ pub struct EthereumContractAbiEntity {
 }
 
 impl TypedEntity for EthereumContractAbiEntity {
-    const TYPENAME: &'static str = "EthereumContractAbi";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractAbi;
     type IdType = String;
 }
 
@@ -968,7 +1008,7 @@ impl WriteOperations for EthereumContractAbiEntity {
         entity.set("id", id);
         entity.set("name", self.name);
         entity.set("file", self.file);
-        ops.add(Self::TYPENAME, id.to_owned(), entity)
+        ops.add(&Self::TYPENAME, id.to_owned(), entity)
     }
 }
 
@@ -1018,12 +1058,12 @@ impl WriteOperations for EthereumBlockHandlerEntity {
         if let Some(filter_id) = filter_id {
             entity.set("filter", filter_id);
         }
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
 impl TypedEntity for EthereumBlockHandlerEntity {
-    const TYPENAME: &'static str = "EthereumBlockHandlerEntity";
+    const TYPENAME: MetadataType = MetadataType::EthereumBlockHandlerEntity;
     type IdType = String;
 }
 
@@ -1068,7 +1108,7 @@ pub struct EthereumBlockHandlerFilterEntity {
 }
 
 impl TypedEntity for EthereumBlockHandlerFilterEntity {
-    const TYPENAME: &'static str = "EthereumBlockHandlerFilterEntity";
+    const TYPENAME: MetadataType = MetadataType::EthereumBlockHandlerFilterEntity;
     type IdType = String;
 }
 
@@ -1077,7 +1117,7 @@ impl WriteOperations for EthereumBlockHandlerFilterEntity {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("kind", self.kind);
-        ops.add(Self::TYPENAME, id.to_owned(), entity)
+        ops.add(&Self::TYPENAME, id.to_owned(), entity)
     }
 }
 
@@ -1106,7 +1146,7 @@ pub struct EthereumCallHandlerEntity {
 }
 
 impl TypedEntity for EthereumCallHandlerEntity {
-    const TYPENAME: &'static str = "EthereumCallHandlerEntity";
+    const TYPENAME: MetadataType = MetadataType::EthereumCallHandlerEntity;
     type IdType = String;
 }
 
@@ -1116,7 +1156,7 @@ impl WriteOperations for EthereumCallHandlerEntity {
         entity.set("id", id);
         entity.set("function", self.function);
         entity.set("handler", self.handler);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1154,7 +1194,7 @@ pub struct EthereumContractEventHandlerEntity {
 }
 
 impl TypedEntity for EthereumContractEventHandlerEntity {
-    const TYPENAME: &'static str = "EthereumContractEventHandler";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractEventHandler;
     type IdType = String;
 }
 
@@ -1165,7 +1205,7 @@ impl WriteOperations for EthereumContractEventHandlerEntity {
         entity.set("event", self.event);
         entity.set("topic0", self.topic0.map_or(Value::Null, Value::from));
         entity.set("handler", self.handler);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1207,7 +1247,7 @@ pub struct EthereumContractDataSourceTemplateEntity {
 }
 
 impl TypedEntity for EthereumContractDataSourceTemplateEntity {
-    const TYPENAME: &'static str = "EthereumContractDataSourceTemplate";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSourceTemplate;
     type IdType = String;
 }
 
@@ -1226,7 +1266,7 @@ impl WriteOperations for EthereumContractDataSourceTemplateEntity {
         entity.set("name", self.name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1268,7 +1308,7 @@ pub struct EthereumContractDataSourceTemplateSourceEntity {
 }
 
 impl TypedEntity for EthereumContractDataSourceTemplateSourceEntity {
-    const TYPENAME: &'static str = "EthereumContractDataSourceTemplateSource";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSourceTemplateSource;
     type IdType = String;
 }
 
@@ -1277,7 +1317,7 @@ impl WriteOperations for EthereumContractDataSourceTemplateSourceEntity {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("abi", self.abi);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
+        ops.add(&Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1336,7 +1376,7 @@ pub struct SubgraphError {
 }
 
 impl TypedEntity for SubgraphError {
-    const TYPENAME: &'static str = "SubgraphError";
+    const TYPENAME: MetadataType = MetadataType::SubgraphError;
     type IdType = String;
 }
 
