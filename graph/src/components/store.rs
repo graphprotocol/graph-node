@@ -673,13 +673,13 @@ pub enum MetadataOperation {
     /// subgraph of subgraphs and sets its attributes according to the
     /// contents of `data`.  If no such entity exists, creates a new entity.
     Set {
-        entity: String,
+        entity: MetadataType,
         id: String,
         data: Entity,
     },
 
     /// Removes an entity with the specified entity type and id if one exists.
-    Remove { entity: String, id: String },
+    Remove { entity: MetadataType, id: String },
 
     /// Aborts and rolls back the transaction unless `query` returns entities
     /// exactly matching `entity_ids`. The equality test is only sensitive
@@ -695,17 +695,17 @@ pub enum MetadataOperation {
     /// if the given entity matches `guard` when the update is made. `Update`
     /// provides a way to atomically do a check-and-set change to an entity.
     Update {
-        entity: String,
+        entity: MetadataType,
         id: String,
         data: Entity,
     },
 }
 
 impl MetadataOperation {
-    pub fn entity_key(entity: String, id: String) -> EntityKey {
+    pub fn entity_key(entity: MetadataType, id: String) -> EntityKey {
         EntityKey {
             subgraph_id: SUBGRAPHS_ID.clone(),
-            entity_type: entity,
+            entity_type: entity.to_string(),
             entity_id: id,
         }
     }
@@ -1074,7 +1074,7 @@ pub trait Store: Send + Sync + 'static {
 
         ops.extend(removed_assignments.into_iter().map(|deployment_id| {
             MetadataOperation::Remove {
-                entity: SubgraphDeploymentAssignmentEntity::TYPENAME.to_string(),
+                entity: SubgraphDeploymentAssignmentEntity::TYPENAME,
                 id: deployment_id.to_string(),
             }
         }));

@@ -134,25 +134,21 @@ impl TypedEntity for SubgraphEntity {
 }
 
 trait OperationList {
-    fn add(&mut self, entity: &MetadataType, id: String, data: Entity);
+    fn add(&mut self, entity: MetadataType, id: String, data: Entity);
 }
 
 struct MetadataOperationList(Vec<MetadataOperation>);
 
 impl OperationList for MetadataOperationList {
-    fn add(&mut self, entity: &MetadataType, id: String, data: Entity) {
-        self.0.push(MetadataOperation::Set {
-            entity: entity.to_string(),
-            id,
-            data,
-        })
+    fn add(&mut self, entity: MetadataType, id: String, data: Entity) {
+        self.0.push(MetadataOperation::Set { entity, id, data })
     }
 }
 
 struct EntityOperationList(Vec<EntityOperation>);
 
 impl OperationList for EntityOperationList {
-    fn add(&mut self, entity: &MetadataType, id: String, data: Entity) {
+    fn add(&mut self, entity: MetadataType, id: String, data: Entity) {
         self.0.push(EntityOperation::Set {
             key: EntityKey {
                 subgraph_id: SUBGRAPHS_ID.clone(),
@@ -754,7 +750,7 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
                 .map(|ctx| serde_json::to_string(&ctx).unwrap()),
         };
 
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -820,7 +816,7 @@ impl WriteOperations for EthereumContractSourceEntity {
         entity.set("address", self.address);
         entity.set("abi", self.abi);
         entity.set("startBlock", self.start_block);
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -932,7 +928,7 @@ impl WriteOperations for EthereumContractMappingEntity {
         entity.set("callHandlers", call_handler_ids);
         entity.set("blockHandlers", block_handler_ids);
 
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1008,7 +1004,7 @@ impl WriteOperations for EthereumContractAbiEntity {
         entity.set("id", id);
         entity.set("name", self.name);
         entity.set("file", self.file);
-        ops.add(&Self::TYPENAME, id.to_owned(), entity)
+        ops.add(Self::TYPENAME, id.to_owned(), entity)
     }
 }
 
@@ -1058,7 +1054,7 @@ impl WriteOperations for EthereumBlockHandlerEntity {
         if let Some(filter_id) = filter_id {
             entity.set("filter", filter_id);
         }
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1117,7 +1113,7 @@ impl WriteOperations for EthereumBlockHandlerFilterEntity {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("kind", self.kind);
-        ops.add(&Self::TYPENAME, id.to_owned(), entity)
+        ops.add(Self::TYPENAME, id.to_owned(), entity)
     }
 }
 
@@ -1156,7 +1152,7 @@ impl WriteOperations for EthereumCallHandlerEntity {
         entity.set("id", id);
         entity.set("function", self.function);
         entity.set("handler", self.handler);
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1205,7 +1201,7 @@ impl WriteOperations for EthereumContractEventHandlerEntity {
         entity.set("event", self.event);
         entity.set("topic0", self.topic0.map_or(Value::Null, Value::from));
         entity.set("handler", self.handler);
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1266,7 +1262,7 @@ impl WriteOperations for EthereumContractDataSourceTemplateEntity {
         entity.set("name", self.name);
         entity.set("source", source_id);
         entity.set("mapping", mapping_id);
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1317,7 +1313,7 @@ impl WriteOperations for EthereumContractDataSourceTemplateSourceEntity {
         let mut entity = Entity::new();
         entity.set("id", id);
         entity.set("abi", self.abi);
-        ops.add(&Self::TYPENAME, id.to_owned(), entity);
+        ops.add(Self::TYPENAME, id.to_owned(), entity);
     }
 }
 
@@ -1344,24 +1340,24 @@ impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
 }
 
 fn set_metadata_operation(
-    entity_type_name: impl Into<String>,
+    entity: MetadataType,
     entity_id: impl Into<String>,
     data: impl Into<Entity>,
 ) -> MetadataOperation {
     MetadataOperation::Set {
-        entity: entity_type_name.into(),
+        entity,
         id: entity_id.into(),
         data: data.into(),
     }
 }
 
 fn update_metadata_operation(
-    entity_type_name: impl Into<String>,
+    entity: MetadataType,
     entity_id: impl Into<String>,
     data: impl Into<Entity>,
 ) -> MetadataOperation {
     MetadataOperation::Update {
-        entity: entity_type_name.into(),
+        entity,
         id: entity_id.into(),
         data: data.into(),
     }

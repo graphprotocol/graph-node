@@ -760,7 +760,7 @@ where
                     currentVersion: subgraph.get("pendingVersion").unwrap().to_owned(),
                 };
                 ops.push(MetadataOperation::Set {
-                    entity: SubgraphEntity::TYPENAME.to_string(),
+                    entity: SubgraphEntity::TYPENAME,
                     id: subgraph.id().unwrap(),
                     data,
                 });
