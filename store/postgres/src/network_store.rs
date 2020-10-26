@@ -195,6 +195,10 @@ impl StoreTrait for NetworkStore {
     ) -> Arc<dyn graph::prelude::QueryStore + Send + Sync> {
         self.store.cheap_clone().query_store(for_subscription)
     }
+
+    fn deployment_synced(&self, id: &graph::prelude::SubgraphDeploymentId) -> Result<(), Error> {
+        self.store.deployment_synced(id)
+    }
 }
 
 impl SubgraphDeploymentStore for NetworkStore {

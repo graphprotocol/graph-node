@@ -195,6 +195,10 @@ impl Store for MockStore {
     fn query_store(self: Arc<Self>, _: bool) -> Arc<dyn QueryStore + Send + Sync> {
         unimplemented!()
     }
+
+    fn deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<(), Error> {
+        unimplemented!()
+    }
 }
 
 pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId) {

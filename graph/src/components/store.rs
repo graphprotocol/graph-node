@@ -1117,6 +1117,11 @@ pub trait Store: Send + Sync + 'static {
             .unwrap_or(Ok(false))
     }
 
+    /// The deployment `id` finished syncing, mark it as synced in the database
+    /// and promote it to the current version in the subgraphs where it was the
+    /// pending version so far
+    fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error>;
+
     /// Create a new subgraph deployment. The deployment must not exist yet. `ops`
     /// needs to contain all the operations on subgraphs and subgraph deployments to
     /// create the deployment, including any assignments as a current or pending
@@ -1314,6 +1319,10 @@ impl Store for MockStore {
     }
 
     fn query_store(self: Arc<Self>, _: bool) -> Arc<dyn QueryStore + Send + Sync> {
+        unimplemented!()
+    }
+
+    fn deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<(), Error> {
         unimplemented!()
     }
 }

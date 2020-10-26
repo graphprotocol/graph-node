@@ -4,7 +4,10 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
-use graph::prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError};
+use graph::{
+    data::subgraph::schema::SubgraphDeploymentAssignmentEntity,
+    prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError},
+};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -1319,6 +1322,15 @@ impl StoreTrait for Store {
             for_subscription,
             replica_id,
         ))
+    }
+
+    fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
+        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
+        econn.transaction(|| {
+            let changes = metadata::deployment_synced(&econn.conn, id)?;
+            econn.send_store_event(&StoreEvent::new(changes))?;
+            Ok(())
+        })
     }
 }
 

@@ -5,13 +5,17 @@ use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
     RunQueryDsl,
 };
+use diesel::sql_types::Text;
 use std::convert::TryFrom;
 
-use graph::data::subgraph::schema::{SubgraphManifestEntity, SUBGRAPHS_ID};
+use graph::data::subgraph::schema::{
+    SubgraphDeploymentAssignmentEntity, SubgraphManifestEntity, SUBGRAPHS_ID,
+};
 use graph::prelude::{
     bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, BlockNumber,
-    DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError,
-    StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName, TypedEntity,
+    DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, MetadataOperation,
+    Schema, StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName,
+    TypedEntity,
 };
 
 // Diesel tables for some of the metadata
@@ -64,6 +68,16 @@ table! {
         reorg_count -> Integer,
         current_reorg_depth -> Integer,
         max_reorg_depth -> Integer,
+        block_range -> Range<Integer>,
+    }
+}
+
+table! {
+    subgraphs.subgraph_deployment_assignment (vid) {
+        vid -> BigInt,
+        id -> Text,
+        node_id -> Text,
+        cost -> Numeric,
         block_range -> Range<Integer>,
     }
 }
@@ -408,4 +422,74 @@ pub fn deployment_state_from_id(
             })
         }
     }
+}
+
+/// Delete all assignments for deployments that are neither the current nor the
+/// pending version of a subgraph and return the deployment id's
+fn remove_unused_assignments(conn: &PgConnection) -> Result<Vec<EntityChange>, StoreError> {
+    const QUERY: &str = "
+    delete from subgraphs.subgraph_deployment_assignment a
+    where not exists (select 1
+                        from subgraphs.subgraph s, subgraphs.subgraph_version v
+                       where v.id in (s.current_version, s.pending_version)
+                         and v.deployment = a.id)
+    returning a.id
+    ";
+    #[derive(QueryableByName)]
+    struct Removed {
+        #[sql_type = "Text"]
+        id: String,
+    }
+
+    Ok(diesel::sql_query(QUERY)
+        .load::<Removed>(conn)?
+        .into_iter()
+        .map(|r| {
+            MetadataOperation::Remove {
+                entity: SubgraphDeploymentAssignmentEntity::TYPENAME,
+                id: r.id,
+            }
+            .into()
+        })
+        .filter_map(|e| e)
+        .collect::<Vec<_>>())
+}
+
+/// Mark the deployment `id` as synced, and promote it to the current version
+/// everywhere where it was the pending version so far, and remove any
+/// assignments that are not needed any longer as a result. Return the changes
+/// that were made to assignments in the process
+pub fn deployment_synced(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+) -> Result<Vec<EntityChange>, StoreError> {
+    use subgraph as s;
+    use subgraph_deployment as d;
+    use subgraph_version as v;
+
+    // Subgraphs where we need to promote the version
+    let pending_subgraph_versions: Vec<(String, String)> = s::table
+        .inner_join(v::table.on(s::pending_version.eq(v::id.nullable())))
+        .filter(v::deployment.eq(id.as_str()))
+        .select((s::id, v::id))
+        .for_update()
+        .load(conn)?;
+
+    // Switch the pending version to the current version
+    for (subgraph, version) in pending_subgraph_versions {
+        update(s::table.filter(s::id.eq(&subgraph)))
+            .set((
+                s::current_version.eq(&version),
+                s::pending_version.eq::<Option<&str>>(None),
+            ))
+            .execute(conn)?;
+    }
+
+    let changes = remove_unused_assignments(conn)?;
+
+    update(d::table.filter(d::id.eq(id.as_str())))
+        .set(d::synced.eq(true))
+        .execute(conn)?;
+
+    Ok(changes)
 }
