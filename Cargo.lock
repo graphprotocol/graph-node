@@ -964,7 +964,7 @@ dependencies = [
 [[package]]
 name = "ethabi"
 version = "12.0.0"
-source = "git+https://github.com/graphprotocol/ethabi.git#fe7cab524f7d713e020dbec05b332008ad88a517"
+source = "git+https://github.com/graphprotocol/ethabi.git#a9246446a16c643d83f4a148d09b9a5eedba8144"
 dependencies = [
  "ethereum-types",
  "rustc-hex",
