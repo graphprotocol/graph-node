@@ -432,10 +432,12 @@ where
                                     call_filter.clone(),
                                     block_filter.clone(),
                                 )
-                                .map(move |blocks| {
+                                .map_ok(move |blocks| {
                                     section.end();
                                     ReconciliationStep::ProcessDescendantBlocks(blocks, range_size)
-                                }),
+                                })
+                                .boxed()
+                                .compat(),
                             )
                         },
                     ),
