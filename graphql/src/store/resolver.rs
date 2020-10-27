@@ -19,6 +19,7 @@ pub struct StoreResolver {
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
     pub(crate) block_ptr: Option<EthereumBlockPointer>,
+    deployment: SubgraphDeploymentId,
 }
 
 impl CheapClone for StoreResolver {}
@@ -28,11 +29,16 @@ impl StoreResolver {
     /// latest when the query is run. That means that multiple calls to find
     /// entities into this resolver might return entities from different
     /// blocks
-    pub fn for_subscription(logger: &Logger, store: Arc<impl Store>) -> Self {
+    pub fn for_subscription(
+        logger: &Logger,
+        deployment: SubgraphDeploymentId,
+        store: Arc<impl Store>,
+    ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store: store.query_store(true),
             block_ptr: None,
+            deployment,
         }
     }
 
@@ -45,11 +51,12 @@ impl StoreResolver {
         logger: &Logger,
         store: Arc<impl Store + SubgraphDeploymentStore>,
         bc: BlockConstraint,
-        subgraph: SubgraphDeploymentId,
+        deployment: SubgraphDeploymentId,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
+        let deployment2 = deployment.clone();
         let block_ptr = graph::spawn_blocking_allow_panic(move || {
-            Self::locate_block(store_clone.as_ref(), bc, subgraph)
+            Self::locate_block(store_clone.as_ref(), bc, deployment2)
         })
         .await
         .map_err(|e| QueryExecutionError::Panic(e.to_string()))
@@ -58,6 +65,7 @@ impl StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store: store.query_store(false),
             block_ptr: Some(block_ptr),
+            deployment,
         };
         Ok(resolver)
     }
