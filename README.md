@@ -46,7 +46,7 @@ Once you have all the dependencies set up, you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
-  --ethereum-rpc mainnet:https://mainnet.infura.io/v3/[PROJECT_ID] \
+  --ethereum-rpc mainnet:archive:https://mainnet.infura.io/v3/[PROJECT_ID] \
   --ipfs 127.0.0.1:5001
 ```
 
@@ -90,17 +90,17 @@ OPTIONS:
             Elasticsearch service to write subgraph logs to [env: ELASTICSEARCH_URL=]
 
         --elasticsearch-user <USER>                   User to use for Elasticsearch logging [env: ELASTICSEARCH_USER=]
-        --ethereum-ipc <NETWORK_NAME:FILE>
-            Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe, separated by a ':'
+        --ethereum-ipc <NETWORK_NAME:CAPABILITIES:FILE>
+            Ethereum network name (e.g. 'mainnet'), optional network capabilities list (defaults to 'full'), and Ethereum IPC pipe, separated by ':'s
 
         --ethereum-polling-interval <MILLISECONDS>
             How often to poll the Ethereum node for new blocks [env: ETHEREUM_POLLING_INTERVAL=]  [default: 500]
 
-        --ethereum-rpc <NETWORK_NAME:URL>
-            Ethereum network name (e.g. 'mainnet') and Ethereum RPC URL, separated by a ':'
+        --ethereum-rpc <NETWORK_NAME:CAPABILITIES:URL>
+            Ethereum network name (e.g. 'mainnet'), optional network capabilities list (defaults to 'full'), and Ethereum RPC URL, separated by a ':'s
 
-        --ethereum-ws <NETWORK_NAME:URL>
-            Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket URL, separated by a ':'
+        --ethereum-ws <NETWORK_NAME:CAPABILITIES:URL>
+            Ethereum network name (e.g. 'mainnet'), optional network capabilities list (defaults to 'full'), and Ethereum WebSocket URL, separated by ':'s
 
         --http-port <PORT>                            Port for the GraphQL HTTP server [default: 8000]
         --ipfs <HOST:PORT>                            HTTP address of an IPFS node
