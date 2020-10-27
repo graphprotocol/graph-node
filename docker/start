@@ -65,10 +65,10 @@ start_index_node() {
     fi
 
     graph-node \
-	    --node-id "${node_id//-/_}" \
-	    --postgres-url "$postgres_url" \
-	    --ethereum-rpc $ethereum \
-	    --ipfs "$ipfs"
+        --node-id "${node_id//-/_}" \
+        --postgres-url "$postgres_url" \
+        --ethereum-rpc $ethereum \
+        --ipfs "$ipfs"
 }
 
 start_combined_node() {
@@ -78,10 +78,11 @@ start_combined_node() {
         --ipfs "$ipfs"
 }
 
-postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host/$postgres_db"
+postgres_port=${postgres_port:-5432}
+postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host:$postgres_port/$postgres_db"
 
 wait_for_ipfs "$ipfs"
-wait_for "$postgres_host:5432" -t 120
+wait_for "$postgres_host:$postgres_port" -t 120
 sleep 5
 
 trap save_coredumps EXIT
