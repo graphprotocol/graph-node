@@ -172,11 +172,12 @@ async fn main() {
                 .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
                 .long("ethereum-rpc")
-                .value_name("NETWORK_NAME:URL")
+                .value_name("NETWORK_NAME:CAPABILITIES:URL")
                 .env("ETHEREUM_RPC")
                 .help(
-                    "Ethereum network name (e.g. 'mainnet') and \
-                     Ethereum RPC URL, separated by a ':'",
+                    "Ethereum network name (e.g. 'mainnet'), optional network \
+                    capabilities list (defaults to 'full'), and \
+                    Ethereum RPC URL, separated by ':'s",
                 ),
         )
         .arg(
@@ -187,11 +188,12 @@ async fn main() {
                 .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
                 .long("ethereum-ws")
-                .value_name("NETWORK_NAME:URL")
+                .value_name("NETWORK_NAME:CAPABILITIES:URL")
                 .env("ETHEREUM_WS")
                 .help(
-                    "Ethereum network name (e.g. 'mainnet') and \
-                     Ethereum WebSocket URL, separated by a ':'",
+                    "Ethereum network name (e.g. 'mainnet'), optional network \
+                    capabilities list (defaults to 'full'), and \
+                    Ethereum WebSocket URL, separated by ':'s",
                 ),
         )
         .arg(
@@ -202,11 +204,12 @@ async fn main() {
                 .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
                 .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
                 .long("ethereum-ipc")
-                .value_name("NETWORK_NAME:FILE")
+                .value_name("NETWORK_NAME:CAPABILITIES:FILE")
                 .env("ETHEREUM_IPC")
                 .help(
-                    "Ethereum network name (e.g. 'mainnet') and \
-                     Ethereum IPC pipe, separated by a ':'",
+                    "Ethereum network name (e.g. 'mainnet'), optional  network \
+                    capabilities list (defaults to 'full'), and \
+                    Ethereum IPC pipe, separated by ':'s",
                 ),
         )
         .arg(

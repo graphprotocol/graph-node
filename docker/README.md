@@ -11,7 +11,7 @@ docker run -it \
   -e postgres_pass=<PASSWORD> \
   -e postgres_db=<DBNAME> \
   -e ipfs=<HOST>:<PORT> \
-  -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL> \
+  -e ethereum=<NETWORK_NAME>:<NETWORK_CAPABILITIES>:<ETHEREUM_RPC_URL> \
   graphprotocol/graph-node:latest
 ```
 
@@ -24,7 +24,7 @@ docker run -it \
   -e postgres_pass=oh-hello \
   -e postgres_db=graph-node \
   -e ipfs=host.docker.internal:5001 \
-  -e ethereum=mainnet:http://localhost:8545/ \
+  -e ethereum=mainnet:full:http://localhost:8545/ \
   graphprotocol/graph-node:latest
 ```
 
@@ -32,8 +32,8 @@ docker run -it \
 
 The Docker Compose setup requires an Ethereum network name and node
 to connect to. By default, it will use `mainnet:http://host.docker.internal:8545`
-in order to connect to an Ethereum node running on your host machine.
-You can replace this with anything else in `docker-compose.yaml`.
+(defualts to capability = 'full') in order to connect to an Ethereum node 
+running on your host machine. You can replace this with anything else in `docker-compose.yaml`.
 
 > **Note for Linux users:** On Linux, `host.docker.internal` is not
 > currently supported. Instead, you will have to replace it with the
