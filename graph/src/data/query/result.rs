@@ -18,17 +18,15 @@ fn serialize_value_map<S>(data: &Vec<Arc<Data>>, serializer: S) -> Result<S::Ok,
 where
     S: Serializer,
 {
-    if data.is_empty() {
-        SerializableValue(&q::Value::Null).serialize(serializer)
-    } else {
-        let mut ser = serializer.serialize_map(None)?;
-        for map in data {
-            for (k, v) in map.as_ref() {
-                ser.serialize_entry(k, &SerializableValue(v))?;
-            }
+    // We only serialize `data` if it is not empty
+    assert!(!data.is_empty());
+    let mut ser = serializer.serialize_map(None)?;
+    for map in data {
+        for (k, v) in map.as_ref() {
+            ser.serialize_entry(k, &SerializableValue(v))?;
         }
-        ser.end()
     }
+    ser.end()
 }
 
 pub type Data = BTreeMap<String, q::Value>;
@@ -74,7 +72,7 @@ impl QueryResult {
     }
 
     pub fn has_errors(&self) -> bool {
-        return self.errors.len() > 0;
+        return !self.errors.is_empty();
     }
 
     pub fn append(&mut self, other: QueryResult) {
@@ -102,7 +100,7 @@ impl QueryResult {
 
     /// Combine all the data into one `q::Value`. This method might clone
     /// all of the data in this result
-    fn take_data(mut self) -> Option<q::Value> {
+    fn take_data(self) -> Option<q::Value> {
         fn take_or_clone(value: Arc<Data>) -> Data {
             Arc::try_unwrap(value).unwrap_or_else(|value| value.as_ref().clone())
         }
@@ -110,8 +108,7 @@ impl QueryResult {
         if self.data.is_empty() {
             None
         } else {
-            let value = self.data.pop().map(take_or_clone).unwrap();
-            let res = self.data.into_iter().fold(value, |mut acc, value| {
+            let res = self.data.into_iter().fold(Data::new(), |mut acc, value| {
                 let mut value = take_or_clone(value);
                 acc.append(&mut value);
                 acc
@@ -198,9 +195,18 @@ impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryRes
 
 impl CacheWeight for QueryResult {
     fn indirect_weight(&self) -> usize {
-        self.data.indirect_weight()
-            + self.errors.indirect_weight()
-            + self.extensions.indirect_weight()
+        // self.data is  a Vev<Arc<Data>>. For cached `QueryResult`, the
+        // `Arc` is not shared with anything else, and we calculate the
+        // indirect weight as if we had a `Vec<Data>`
+        let data_weight = self
+            .data
+            .iter()
+            .map(Arc::as_ref)
+            .map(CacheWeight::indirect_weight)
+            .sum::<usize>()
+            + self.data.capacity() * std::mem::size_of::<Arc<Data>>();
+
+        data_weight + self.errors.indirect_weight() + self.extensions.indirect_weight()
     }
 }
 

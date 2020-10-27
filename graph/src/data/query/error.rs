@@ -391,6 +391,7 @@ impl Serialize for QueryError {
 
 impl CacheWeight for QueryError {
     fn indirect_weight(&self) -> usize {
+        // Errors don't have a weight since they are never cached
         0
     }
 }
