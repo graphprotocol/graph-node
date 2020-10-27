@@ -995,6 +995,26 @@ pub async fn blocks_with_triggers(
         .await?;
 
     blocks.sort_by_key(|block| block.ethereum_block.number());
+
+    // Sanity check that the returned blocks are in the correct range.
+    // Unwrap: `blocks` always includes at least `to`.
+    let first = blocks.first().unwrap().ethereum_block.number();
+    let last = blocks.last().unwrap().ethereum_block.number();
+    if first < from {
+        return Err(format_err!(
+            "block {} returned by the Ethereum node is before {}, the first block of the requested range",
+            first,
+            from,
+        ));
+    }
+    if last > to {
+        return Err(format_err!(
+            "block {} returned by the Ethereum node is after {}, the last block of the requested range",
+            last,
+            to,
+        ));
+    }
+
     Ok(blocks)
 }
 
