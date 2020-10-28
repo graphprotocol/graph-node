@@ -15,7 +15,7 @@ use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
-use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::NetworkStore as DieselStore;
 use web3::types::{Address, H256};
 
 const USER_GQL: &str = "
@@ -278,17 +278,14 @@ fn create_test_entity(
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<graph_store_postgres::Store>) {
+fn remove_test_data(store: Arc<DieselStore>) {
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
         .expect("Failed to remove entity test data");
 }
 
-fn get_entity_count(
-    store: Arc<graph_store_postgres::Store>,
-    subgraph_id: &SubgraphDeploymentId,
-) -> u64 {
+fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId) -> u64 {
     let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
     let entity = store.get(key).unwrap().unwrap();
     entity
@@ -1197,7 +1194,7 @@ fn subscribe_and_consume(
 }
 
 fn check_basic_revert(
-    store: Arc<graph_store_postgres::Store>,
+    store: Arc<DieselStore>,
     expected: StoreEvent,
     subgraph_id: &SubgraphDeploymentId,
     entity_type: &str,

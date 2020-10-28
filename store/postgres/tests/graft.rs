@@ -10,7 +10,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
-use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::NetworkStore as DieselStore;
 use web3::types::H256;
 
 const USER_GQL: &str = "
@@ -245,7 +245,7 @@ fn create_test_entity(
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<graph_store_postgres::Store>) {
+fn remove_test_data(store: Arc<DieselStore>) {
     let url = postgres_test_url();
     let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
     graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)

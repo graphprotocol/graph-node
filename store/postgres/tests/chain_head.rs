@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use graph::components::store::{ChainStore, Store as _};
 use graph::prelude::{Future01CompatExt, SubgraphDeploymentId};
-use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::NetworkStore as DieselStore;
 
 use test_store::block_store::{
     Chain, FakeBlock, BLOCK_FIVE, BLOCK_FOUR, BLOCK_ONE, BLOCK_ONE_NO_PARENT, BLOCK_ONE_SIBLING,

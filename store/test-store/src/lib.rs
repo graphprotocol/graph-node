@@ -10,7 +10,9 @@ use graph_graphql::prelude::{
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::create_connection_pool;
-use graph_store_postgres::{ChainHeadUpdateListener, Store, StoreConfig, SubscriptionManager};
+use graph_store_postgres::{
+    ChainHeadUpdateListener, ChainStore, NetworkStore, Store, SubscriptionManager,
+};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
@@ -48,7 +50,7 @@ lazy_static! {
                          CONN_POOL_SIZE));
 
     // Create Store instance once for use with each of the tests.
-    pub static ref STORE: Arc<Store> = {
+    pub static ref STORE: Arc<NetworkStore> = {
         // Use a separate thread to work around issues with recursive `block_on`.
         std::thread::spawn(move || {
             STORE_RUNTIME.lock().unwrap().block_on(async {
@@ -77,20 +79,16 @@ lazy_static! {
                     logger.clone(),
                     postgres_url.clone(),
                 ));
-                Arc::new(Store::new(
-                    StoreConfig {
-                        postgres_url,
-                        network_name: NETWORK_NAME.to_owned(),
-                    },
+                let store = Arc::new(Store::new(
                     &logger,
-                    net_identifiers,
-                    chain_head_update_listener,
                     subscriptions,
-                    postgres_conn_pool,
+                    postgres_conn_pool.clone(),
                     Vec::new(),
                     Vec::new(),
                     registry.clone(),
-                ))
+                ));
+                let chain_store = ChainStore::new(NETWORK_NAME.to_owned(), net_identifiers, chain_head_update_listener, postgres_conn_pool);
+                Arc::new(NetworkStore::new(store, chain_store))
             })
         }).join().unwrap()
     };
@@ -136,7 +134,7 @@ where
 
     runtime.block_on(async {
         let state = setup();
-        test(store, state).await
+        test(store.store(), state).await
     })
 }
 
@@ -199,7 +197,7 @@ pub fn create_grafted_subgraph(
 
 /// Convenience to transact EntityOperation instead of EntityModification
 pub fn transact_entity_operations(
-    store: &Arc<Store>,
+    store: &Arc<NetworkStore>,
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,

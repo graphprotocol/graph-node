@@ -35,8 +35,8 @@ use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::connection_pool::create_connection_pool;
 use graph_store_postgres::{
-    ChainHeadUpdateListener as PostgresChainHeadUpdateListener, Store as DieselStore, StoreConfig,
-    SubscriptionManager,
+    ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
+    NetworkStore as DieselNetworkStore, Store as DieselStore, SubscriptionManager,
 };
 use graphql_parser::query as q;
 
@@ -269,6 +269,16 @@ async fn main() {
 
     let expensive_queries = read_expensive_queries().unwrap();
 
+    let store = Arc::new(DieselStore::new(
+        &stores_logger,
+        subscriptions.clone(),
+        postgres_conn_pool.clone(),
+        read_only_conn_pools.clone(),
+        pg_host_weights.clone(),
+        stores_metrics_registry.clone(),
+    ));
+    let store2 = store.clone();
+
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_networks.flatten().into_iter().map(
             |(network_name, capabilities, eth_adapter)| {
@@ -296,29 +306,18 @@ async fn main() {
                 "network_version" => &network_identifier.net_version,
                 "capabilities" => &capabilities
             );
-            (
+            let chain_store = DieselChainStore::new(
                 network_name.to_string(),
-                Arc::new(DieselStore::new(
-                    StoreConfig {
-                        postgres_url: postgres_url.clone(),
-                        network_name: network_name.to_string(),
-                    },
-                    &stores_logger,
-                    network_identifier,
-                    chain_head_update_listener.clone(),
-                    subscriptions.clone(),
-                    postgres_conn_pool.clone(),
-                    read_only_conn_pools.clone(),
-                    pg_host_weights.clone(),
-                    stores_metrics_registry.clone(),
-                )),
-            )
+                network_identifier,
+                chain_head_update_listener.clone(),
+                postgres_conn_pool.clone(),
+            );
+            let network_store = DieselNetworkStore::new(store2.clone(), chain_store);
+            (network_name.to_string(), Arc::new(network_store))
         })
         .collect()
         .map(|stores| HashMap::from_iter(stores.into_iter()))
         .and_then(move |stores| {
-            let generic_store = stores.values().next().expect("error creating stores");
-
             let load_manager = Arc::new(LoadManager::new(
                 &logger,
                 wait_stats.clone(),
@@ -326,28 +325,21 @@ async fn main() {
                 metrics_registry.clone(),
                 store_conn_pool_size as usize,
             ));
-            let graphql_runner = Arc::new(GraphQlRunner::new(
-                &logger,
-                generic_store.clone(),
-                load_manager,
-            ));
+            let graphql_runner = Arc::new(GraphQlRunner::new(&logger, store.clone(), load_manager));
             let mut graphql_server = GraphQLQueryServer::new(
                 &logger_factory,
                 graphql_metrics_registry,
                 graphql_runner.clone(),
-                generic_store.clone(),
+                store.clone(),
                 node_id.clone(),
             );
-            let subscription_server = GraphQLSubscriptionServer::new(
-                &logger,
-                graphql_runner.clone(),
-                generic_store.clone(),
-            );
+            let subscription_server =
+                GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
 
             let mut index_node_server = IndexNodeServer::new(
                 &logger_factory,
                 graphql_runner.clone(),
-                generic_store.clone(),
+                store.clone(),
                 node_id.clone(),
             );
 
@@ -426,7 +418,7 @@ async fn main() {
             }
 
             let block_stream_builder = BlockStreamBuilder::new(
-                generic_store.clone(),
+                store.clone(),
                 stores.clone(),
                 eth_networks.clone(),
                 node_id.clone(),
@@ -455,7 +447,7 @@ async fn main() {
             let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
                 &logger_factory,
                 link_resolver.clone(),
-                generic_store.clone(),
+                store.clone(),
                 graphql_runner.clone(),
             );
 
@@ -479,7 +471,7 @@ async fn main() {
                 &logger_factory,
                 link_resolver,
                 Arc::new(subgraph_provider),
-                generic_store.clone(),
+                store.clone(),
                 stores,
                 eth_networks.clone(),
                 node_id.clone(),

@@ -29,7 +29,6 @@ pub struct ChainStore {
 impl ChainStore {
     pub fn new(
         network: String,
-        net_identifiers: EthereumNetworkIdentifier,
         net_identifier: EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
         pool: Pool<ConnectionManager<PgConnection>>,
@@ -42,7 +41,7 @@ impl ChainStore {
         };
 
         // Add network to store and check network identifiers
-        store.add_network_if_missing(net_identifiers).unwrap();
+        store.add_network_if_missing(net_identifier).unwrap();
 
         store
     }
