@@ -139,11 +139,6 @@ async fn main() {
     // Obtain subgraph related command-line arguments
     let subgraph = opt.subgraph.clone();
 
-    // Obtain the Ethereum parameters
-    let ethereum_rpc = opt.ethereum_rpc.clone();
-    let ethereum_ipc = opt.ethereum_ipc.clone();
-    let ethereum_ws = opt.ethereum_ws.clone();
-
     let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
     // Obtain ports to use for the GraphQL server(s)
@@ -208,30 +203,14 @@ async fn main() {
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     // Ethereum clients
-    let mut eth_networks = EthereumNetworks::new();
-
-    for (connection_type, values) in [
-        (ConnectionType::RPC, ethereum_rpc),
-        (ConnectionType::IPC, ethereum_ipc),
-        (ConnectionType::WS, ethereum_ws),
-    ]
-    .iter()
-    .cloned()
-    .filter(|(_, values)| values.len() > 0)
-    {
-        let networks = parse_ethereum_networks(
-            logger.clone(),
-            values,
-            connection_type,
-            metrics_registry.clone(),
-        )
-        .await
-        .expect("Failed to parse Ethereum networks");
-
-        eth_networks.extend(networks);
-    }
-    eth_networks.sort();
-    let eth_networks = eth_networks;
+    let eth_networks = create_ethereum_networks(
+        &logger,
+        metrics_registry.clone(),
+        &opt.ethereum_rpc,
+        &opt.ethereum_ipc,
+        &opt.ethereum_ws,
+    )
+    .await;
 
     // Set up Store
     info!(
@@ -780,6 +759,39 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
             ipfs_client
         })
         .collect()
+}
+
+async fn create_ethereum_networks(
+    logger: &Logger,
+    metrics_registry: Arc<MetricsRegistry>,
+    rpc: &Vec<String>,
+    ipc: &Vec<String>,
+    ws: &Vec<String>,
+) -> EthereumNetworks {
+    let mut eth_networks = EthereumNetworks::new();
+
+    for (connection_type, values) in [
+        (ConnectionType::RPC, rpc),
+        (ConnectionType::IPC, ipc),
+        (ConnectionType::WS, ws),
+    ]
+    .iter()
+    .cloned()
+    .filter(|(_, values)| values.len() > 0)
+    {
+        let networks = parse_ethereum_networks(
+            logger.clone(),
+            values.clone(),
+            connection_type,
+            metrics_registry.clone(),
+        )
+        .await
+        .expect("Failed to parse Ethereum networks");
+
+        eth_networks.extend(networks);
+    }
+    eth_networks.sort();
+    eth_networks
 }
 
 #[cfg(test)]
