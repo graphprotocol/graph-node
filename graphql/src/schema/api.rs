@@ -652,24 +652,27 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
 }
 
 fn meta_field() -> Field {
-    Field {
-        position: Pos::default(),
-        description: Some("Access to subgraph metadata".to_string()),
-        name: META_FIELD_NAME.to_string(),
-        arguments: vec![
-            // block: BlockHeight
-            InputValue {
-                position: Pos::default(),
-                description: None,
-                name: String::from("block"),
-                value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
-                default_value: None,
-                directives: vec![],
-            },
-        ],
-        field_type: Type::NamedType(META_FIELD_TYPE.to_string()),
-        directives: vec![],
+    lazy_static! {
+        static ref META_FIELD: Field = Field {
+            position: Pos::default(),
+            description: Some("Access to subgraph metadata".to_string()),
+            name: META_FIELD_NAME.to_string(),
+            arguments: vec![
+                // block: BlockHeight
+                InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: String::from("block"),
+                    value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
+                    default_value: None,
+                    directives: vec![],
+                },
+            ],
+            field_type: Type::NamedType(META_FIELD_TYPE.to_string()),
+            directives: vec![],
+        };
     }
+    META_FIELD.clone()
 }
 
 /// Generates arguments for collection queries of a named type (e.g. User).
