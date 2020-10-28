@@ -73,10 +73,6 @@ script:
   # Run tests
   - ipfs daemon &> /dev/null &
   - RUST_BACKTRACE=1 cargo test --verbose --all -- --nocapture
-  # Run tests again using JSONB storage
-  - psql -c 'drop database graph_node_test;' -U travis
-  - psql -c 'create database graph_node_test;' -U travis
-  - RUST_BACKTRACE=1 GRAPH_STORAGE_SCHEME=json cargo test --verbose --all -- --nocapture
   - killall ipfs
 
 deploy:
