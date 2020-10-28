@@ -1532,6 +1532,7 @@ dependencies = [
  "ipfs-api",
  "lazy_static",
  "prometheus",
+ "structopt",
  "url 2.1.1",
 ]
 

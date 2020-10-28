@@ -27,6 +27,7 @@ graph-server-json-rpc = { path = "../server/json-rpc"}
 graph-server-websocket = { path = "../server/websocket" }
 graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
+structopt = "0.3.20"
 
 [dev-dependencies]
 assert_cli = "0.6"

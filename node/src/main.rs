@@ -1,4 +1,3 @@
-use clap::{App, Arg};
 use git_testament::{git_testament, render_testament};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
@@ -10,6 +9,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::RwLock;
 use std::time::Duration;
+use structopt::StructOpt;
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -39,6 +39,8 @@ use graph_store_postgres::{
     SubscriptionManager,
 };
 use graphql_parser::query as q;
+
+mod opt;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -116,233 +118,10 @@ fn replace_host(url: &str, host: &str) -> String {
 async fn main() {
     env_logger::init();
 
-    // Setup CLI using Clap, provide general info and capture postgres url
-    let matches = App::new("graph-node")
-        .version(render_testament!(TESTAMENT).as_str())
-        .author("Graph Protocol, Inc.")
-        .about("Scalable queries for a decentralized future")
-        .arg(
-            Arg::with_name("subgraph")
-                .takes_value(true)
-                .long("subgraph")
-                .value_name("[NAME:]IPFS_HASH")
-                .env("SUBGRAPH")
-                .help("name and IPFS hash of the subgraph manifest"),
-        )
-        .arg(
-            Arg::with_name("postgres-url")
-                .takes_value(true)
-                .required(true)
-                .long("postgres-url")
-                .value_name("URL")
-                .env("POSTGRES_URL")
-                .help("Location of the Postgres database used for storing entities"),
-        )
-        .arg(
-            Arg::with_name("postgres-secondary-hosts")
-                .multiple(true)
-                .use_delimiter(true)
-                .long("postgres-secondary-hosts")
-                .value_name("URL,")
-                .env("GRAPH_POSTGRES_SECONDARY_HOSTS")
-                .help(
-                    "Comma-separated list of host names/IP's for read-only Postgres replicas, \
-                       which will share the load with the primary server",
-                ),
-        )
-        .arg(
-            Arg::with_name("postgres-host-weights")
-                .multiple(true)
-                .use_delimiter(true)
-                .long("postgres-host-weights")
-                .value_name("WEIGHT,")
-                .env("GRAPH_POSTGRES_HOST_WEIGHTS")
-                .help(
-                    "Comma-separated list of relative weights for selecting the main database \
-                and secondary databases. The list is in the order MAIN,REPLICA1,REPLICA2,...\
-                A host will receive approximately WEIGHT/SUM(WEIGHTS) fraction of total queries. \
-                Defaults to weight 1 for each host",
-                ),
-        )
-        .arg(
-            Arg::with_name("ethereum-rpc")
-                .takes_value(true)
-                .multiple(true)
-                .min_values(0)
-                .required_unless_one(&["ethereum-ws", "ethereum-ipc"])
-                .conflicts_with_all(&["ethereum-ws", "ethereum-ipc"])
-                .long("ethereum-rpc")
-                .value_name("NETWORK_NAME:URL")
-                .env("ETHEREUM_RPC")
-                .help(
-                    "Ethereum network name (e.g. 'mainnet') and \
-                     Ethereum RPC URL, separated by a ':'",
-                ),
-        )
-        .arg(
-            Arg::with_name("ethereum-ws")
-                .takes_value(true)
-                .multiple(true)
-                .min_values(0)
-                .required_unless_one(&["ethereum-rpc", "ethereum-ipc"])
-                .conflicts_with_all(&["ethereum-rpc", "ethereum-ipc"])
-                .long("ethereum-ws")
-                .value_name("NETWORK_NAME:URL")
-                .env("ETHEREUM_WS")
-                .help(
-                    "Ethereum network name (e.g. 'mainnet') and \
-                     Ethereum WebSocket URL, separated by a ':'",
-                ),
-        )
-        .arg(
-            Arg::with_name("ethereum-ipc")
-                .takes_value(true)
-                .multiple(true)
-                .min_values(0)
-                .required_unless_one(&["ethereum-rpc", "ethereum-ws"])
-                .conflicts_with_all(&["ethereum-rpc", "ethereum-ws"])
-                .long("ethereum-ipc")
-                .value_name("NETWORK_NAME:FILE")
-                .env("ETHEREUM_IPC")
-                .help(
-                    "Ethereum network name (e.g. 'mainnet') and \
-                     Ethereum IPC pipe, separated by a ':'",
-                ),
-        )
-        .arg(
-            Arg::with_name("ipfs")
-                .takes_value(true)
-                .required(true)
-                .long("ipfs")
-                .multiple(true)
-                .value_name("HOST:PORT")
-                .env("IPFS")
-                .help("HTTP addresses of IPFS nodes"),
-        )
-        .arg(
-            Arg::with_name("http-port")
-                .default_value("8000")
-                .long("http-port")
-                .value_name("PORT")
-                .help("Port for the GraphQL HTTP server"),
-        )
-        .arg(
-            Arg::with_name("index-node-port")
-                .default_value("8030")
-                .long("index-node-port")
-                .value_name("PORT")
-                .help("Port for the index node server"),
-        )
-        .arg(
-            Arg::with_name("ws-port")
-                .default_value("8001")
-                .long("ws-port")
-                .value_name("PORT")
-                .help("Port for the GraphQL WebSocket server"),
-        )
-        .arg(
-            Arg::with_name("admin-port")
-                .default_value("8020")
-                .long("admin-port")
-                .value_name("PORT")
-                .help("Port for the JSON-RPC admin server"),
-        )
-        .arg(
-            Arg::with_name("metrics-port")
-                .default_value("8040")
-                .long("metrics-port")
-                .value_name("PORT")
-                .help("Port for the Prometheus metrics server"),
-        )
-        .arg(
-            Arg::with_name("node-id")
-                .default_value("default")
-                .long("node-id")
-                .value_name("NODE_ID")
-                .env("GRAPH_NODE_ID")
-                .help("a unique identifier for this node"),
-        )
-        .arg(
-            Arg::with_name("debug")
-                .long("debug")
-                .help("Enable debug logging"),
-        )
-        .arg(
-            Arg::with_name("elasticsearch-url")
-                .long("elasticsearch-url")
-                .value_name("URL")
-                .env("ELASTICSEARCH_URL")
-                .help("Elasticsearch service to write subgraph logs to"),
-        )
-        .arg(
-            Arg::with_name("elasticsearch-user")
-                .long("elasticsearch-user")
-                .value_name("USER")
-                .env("ELASTICSEARCH_USER")
-                .help("User to use for Elasticsearch logging"),
-        )
-        .arg(
-            Arg::with_name("elasticsearch-password")
-                .long("elasticsearch-password")
-                .value_name("PASSWORD")
-                .env("ELASTICSEARCH_PASSWORD")
-                .hide_env_values(true)
-                .help("Password to use for Elasticsearch logging"),
-        )
-        .arg(
-            Arg::with_name("ethereum-polling-interval")
-                .long("ethereum-polling-interval")
-                .value_name("MILLISECONDS")
-                .default_value("1000")
-                .env("ETHEREUM_POLLING_INTERVAL")
-                .help("How often to poll the Ethereum node for new blocks"),
-        )
-        .arg(
-            Arg::with_name("disable-block-ingestor")
-                .long("disable-block-ingestor")
-                .value_name("DISABLE_BLOCK_INGESTOR")
-                .env("DISABLE_BLOCK_INGESTOR")
-                .default_value("false")
-                .help("Ensures that the block ingestor component does not execute"),
-        )
-        .arg(
-            Arg::with_name("store-connection-pool-size")
-                .long("store-connection-pool-size")
-                .value_name("STORE_CONNECTION_POOL_SIZE")
-                .default_value("10")
-                .env("STORE_CONNECTION_POOL_SIZE")
-                .help("Limits the number of connections in the store's connection pool"),
-        )
-        .arg(
-            Arg::with_name("network-subgraphs")
-                .takes_value(true)
-                .multiple(true)
-                .min_values(1)
-                .long("network-subgraphs")
-                .value_name("NETWORK_NAME")
-                .help(
-                    "One or more network names to index using built-in subgraphs \
-                     (e.g. 'ethereum/mainnet').",
-                ),
-        )
-        .arg(
-            Arg::with_name("arweave-api")
-                .default_value("https://arweave.net/")
-                .long("arweave-api")
-                .value_name("URL")
-                .help("HTTP endpoint of an Arweave gateway"),
-        )
-        .arg(
-            Arg::with_name("3box-api")
-                .default_value("https://ipfs.3box.io/")
-                .long("3box-api")
-                .value_name("URL")
-                .help("HTTP endpoint for 3box profiles"),
-        )
-        .get_matches();
+    let opt = opt::Opt::from_args();
 
     // Set up logger
-    let logger = logger(matches.is_present("debug"));
+    let logger = logger(opt.debug);
 
     // Log version information
     info!(
@@ -352,106 +131,58 @@ async fn main() {
     );
 
     // Safe to unwrap because a value is required by CLI
-    let postgres_url = matches.value_of("postgres-url").unwrap().to_string();
+    let postgres_url = opt.postgres_url.clone();
 
-    let node_id = NodeId::new(matches.value_of("node-id").unwrap())
-        .expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
+    let node_id =
+        NodeId::new(opt.node_id.clone()).expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
 
     // Obtain subgraph related command-line arguments
-    let subgraph = matches.value_of("subgraph").map(|s| s.to_owned());
+    let subgraph = opt.subgraph.clone();
 
     // Obtain the Ethereum parameters
-    let ethereum_rpc = matches.values_of("ethereum-rpc");
-    let ethereum_ipc = matches.values_of("ethereum-ipc");
-    let ethereum_ws = matches.values_of("ethereum-ws");
+    let ethereum_rpc = opt.ethereum_rpc.clone();
+    let ethereum_ipc = opt.ethereum_ipc.clone();
+    let ethereum_ws = opt.ethereum_ws.clone();
 
-    let block_polling_interval = Duration::from_millis(
-        matches
-            .value_of("ethereum-polling-interval")
-            .unwrap()
-            .parse()
-            .expect("Ethereum polling interval must be a nonnegative integer"),
-    );
+    let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
     // Obtain ports to use for the GraphQL server(s)
-    let http_port = matches
-        .value_of("http-port")
-        .unwrap()
-        .parse()
-        .expect("invalid GraphQL HTTP server port");
-    let ws_port = matches
-        .value_of("ws-port")
-        .unwrap()
-        .parse()
-        .expect("invalid GraphQL WebSocket server port");
+    let http_port = opt.http_port;
+    let ws_port = opt.ws_port;
 
     // Obtain JSON-RPC server port
-    let json_rpc_port = matches
-        .value_of("admin-port")
-        .unwrap()
-        .parse()
-        .expect("invalid admin port");
+    let json_rpc_port = opt.admin_port;
 
     // Obtain index node server port
-    let index_node_port = matches
-        .value_of("index-node-port")
-        .unwrap()
-        .parse()
-        .expect("invalid index node server port");
+    let index_node_port = opt.index_node_port;
 
     // Obtain metrics server port
-    let metrics_port = matches
-        .value_of("metrics-port")
-        .unwrap()
-        .parse()
-        .expect("invalid metrics port");
+    let metrics_port = opt.metrics_port;
 
     // Obtain DISABLE_BLOCK_INGESTOR setting
-    let disable_block_ingestor: bool = matches
-        .value_of("disable-block-ingestor")
-        .unwrap()
-        .parse()
-        .expect("invalid --disable-block-ingestor/DISABLE_BLOCK_INGESTOR value");
+    let disable_block_ingestor: bool = opt.disable_block_ingestor;
 
     // Obtain STORE_CONNECTION_POOL_SIZE setting
-    let store_conn_pool_size: u32 = matches
-        .value_of("store-connection-pool-size")
-        .unwrap()
-        .parse()
-        .expect("invalid --store-connection-pool-size/STORE_CONNECTION_POOL_SIZE value");
+    let store_conn_pool_size: u32 = opt.store_connection_pool_size;
 
     // Minimum of two connections needed for the pool in order for the Store to bootstrap
     if store_conn_pool_size <= 1 {
         panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
     }
 
-    let arweave_adapter = Arc::new(ArweaveAdapter::new(
-        matches.value_of("arweave-api").unwrap().to_string(),
-    ));
+    let arweave_adapter = Arc::new(ArweaveAdapter::new(opt.arweave_api.clone()));
 
-    let three_box_adapter = Arc::new(ThreeBoxAdapter::new(
-        matches.value_of("3box-api").unwrap().to_string(),
-    ));
+    let three_box_adapter = Arc::new(ThreeBoxAdapter::new(opt.three_box_api.clone()));
 
-    let pg_read_replicas: Vec<_> = matches
-        .values_of("postgres-secondary-hosts")
-        .into_iter()
-        .flatten()
-        .collect();
-    let pg_host_weights: Vec<_> = matches
-        .values_of("postgres-host-weights")
-        .into_iter()
-        .flatten()
-        .map(|s| s.parse::<usize>())
-        .collect::<Result<_, _>>()
-        .expect("--postgres-host-weights must be a comma-separated list of integers");
+    let pg_read_replicas: Vec<_> = opt.postgres_secondary_hosts.clone();
+    let pg_host_weights: Vec<_> = opt.postgres_host_weights.clone();
 
     info!(logger, "Starting up");
 
     // Parse the IPFS URL from the `--ipfs` command line argument
-    let ipfs_addresses: Vec<_> = matches
-        .values_of("ipfs")
-        .expect("At least one IPFS node is required")
+    let ipfs_addresses: Vec<_> = opt
+        .ipfs
+        .iter()
         .map(|uri| {
             if uri.starts_with("http://") || uri.starts_with("https://") {
                 String::from(uri)
@@ -462,14 +193,14 @@ async fn main() {
         .collect();
 
     // Optionally, identify the Elasticsearch logging configuration
-    let elastic_config =
-        matches
-            .value_of("elasticsearch-url")
-            .map(|endpoint| ElasticLoggingConfig {
-                endpoint: endpoint.into(),
-                username: matches.value_of("elasticsearch-user").map(|s| s.into()),
-                password: matches.value_of("elasticsearch-password").map(|s| s.into()),
-            });
+    let elastic_config = opt
+        .elasticsearch_url
+        .clone()
+        .map(|endpoint| ElasticLoggingConfig {
+            endpoint: endpoint.clone(),
+            username: opt.elasticsearch_user.clone(),
+            password: opt.elasticsearch_password.clone(),
+        });
 
     // Create a component and subgraph logger factory
     let logger_factory = LoggerFactory::new(logger.clone(), elastic_config);
@@ -550,11 +281,11 @@ async fn main() {
     ]
     .iter()
     .cloned()
-    .filter(|(_, values)| values.is_some())
+    .filter(|(_, values)| values.len() > 0)
     {
         let networks = parse_ethereum_networks(
             logger.clone(),
-            values.unwrap(),
+            values,
             connection_type,
             metrics_registry.clone(),
         )
@@ -598,7 +329,7 @@ async fn main() {
         .enumerate()
         .map(|(i, host)| {
             info!(&logger, "Connecting to Postgres read replica at {}", host);
-            let url = replace_host(&postgres_url, host);
+            let url = replace_host(&postgres_url, &host);
             create_connection_pool(
                 &format!("replica{}", i),
                 url,
@@ -706,45 +437,43 @@ async fn main() {
             );
 
             // Spawn Ethereum network indexers for all networks that are to be indexed
-            if let Some(network_subgraphs) = matches.values_of("network-subgraphs") {
-                network_subgraphs
-                    .into_iter()
-                    .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
-                    .for_each(|network_subgraph| {
-                        let network_name = network_subgraph.replace("ethereum/", "");
-                        let mut indexer = network_indexer::NetworkIndexer::new(
-                            &logger,
-                            eth_networks
-                                .adapter_with_capabilities(
-                                    network_name.clone(),
-                                    &NodeCapabilities {
-                                        archive: false,
-                                        traces: false,
-                                    },
-                                )
-                                .expect(&*format!("adapter for network, {}", network_name))
-                                .clone(),
-                            stores
-                                .get(&network_name)
-                                .expect("store for network")
-                                .clone(),
-                            metrics_registry.clone(),
-                            format!("network/{}", network_subgraph).into(),
-                            None,
-                        );
-                        graph::spawn(
-                            indexer
-                                .take_event_stream()
-                                .unwrap()
-                                .for_each(|_| {
-                                    // For now we simply ignore these events; we may later use them
-                                    // to drive subgraph indexing
-                                    Ok(())
-                                })
-                                .compat(),
-                        );
-                    })
-            };
+            opt.network_subgraphs
+                .into_iter()
+                .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
+                .for_each(|network_subgraph| {
+                    let network_name = network_subgraph.replace("ethereum/", "");
+                    let mut indexer = network_indexer::NetworkIndexer::new(
+                        &logger,
+                        eth_networks
+                            .adapter_with_capabilities(
+                                network_name.clone(),
+                                &NodeCapabilities {
+                                    archive: false,
+                                    traces: false,
+                                },
+                            )
+                            .expect(&*format!("adapter for network, {}", network_name))
+                            .clone(),
+                        stores
+                            .get(&network_name)
+                            .expect("store for network")
+                            .clone(),
+                        metrics_registry.clone(),
+                        format!("network/{}", network_subgraph).into(),
+                        None,
+                    );
+                    graph::spawn(
+                        indexer
+                            .take_event_stream()
+                            .unwrap()
+                            .for_each(|_| {
+                                // For now we simply ignore these events; we may later use them
+                                // to drive subgraph indexing
+                                Ok(())
+                            })
+                            .compat(),
+                    );
+                });
 
             if !disable_block_ingestor {
                 // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
@@ -955,7 +684,7 @@ async fn main() {
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
 async fn parse_ethereum_networks(
     logger: Logger,
-    networks: clap::Values<'_>,
+    networks: Vec<String>,
     connection_type: ConnectionType,
     registry: Arc<MetricsRegistry>,
 ) -> Result<EthereumNetworks, anyhow::Error> {
@@ -1054,7 +783,6 @@ async fn parse_ethereum_networks(
 mod test {
     use super::parse_ethereum_networks;
     use crate::ConnectionType;
-    use clap::{App, Arg};
     use graph::components::ethereum::NodeCapabilities;
     use graph::log::logger;
     use graph::prelude::tokio;
@@ -1065,21 +793,11 @@ mod test {
     #[tokio::test]
     async fn correctly_parse_ethereum_networks() {
         let logger = logger(true);
-        let m = App::new("graph-node")
-            .arg(
-                Arg::with_name("ethereum-rpc")
-                    .long("ethereum-rpc")
-                    .multiple(true)
-                    .takes_value(true),
-            )
-            .get_matches_from(vec![
-                "graph-node",
-                "--ethereum-rpc",
-                "mainnet:traces:http://localhost:8545/",
-                "goerli:archive:http://localhost:8546/",
-            ]);
 
-        let network_args = m.values_of("ethereum-rpc").unwrap();
+        let network_args = vec![
+            "mainnet:traces:http://localhost:8545/".to_string(),
+            "goerli:archive:http://localhost:8546/".to_string(),
+        ];
 
         let prometheus_registry = Arc::new(Registry::new());
         let metrics_registry = Arc::new(MetricsRegistry::new(
