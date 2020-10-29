@@ -3,9 +3,9 @@ use std::sync::Arc;
 use graph::prelude::{
     ethabi,
     web3::types::{Address, H256},
-    BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, EthereumBlock,
-    EthereumBlockPointer, EthereumCallCache, LightEthereumBlock, Store as StoreTrait,
-    SubgraphDeploymentStore,
+    BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
+    EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock,
+    Store as StoreTrait, Stream, SubgraphDeploymentStore,
 };
 
 use crate::chain_store::ChainStore;
@@ -252,6 +252,18 @@ impl EthereumCallCache for NetworkStore {
 impl ChainStoreTrait for NetworkStore {
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, failure::Error> {
         self.chain_store.genesis_block_ptr()
+    }
+
+    fn upsert_blocks<B, E>(
+        &self,
+        blocks: B,
+    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
+    where
+        B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
+        E: From<Error> + Send + 'static,
+        Self: Sized,
+    {
+        self.chain_store.upsert_blocks(blocks)
     }
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), failure::Error> {
