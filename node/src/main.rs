@@ -33,7 +33,7 @@ use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
-use graph_store_postgres::connection_pool::create_connection_pool;
+use graph_store_postgres::connection_pool::{create_connection_pool, ConnectionPool};
 use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
     NetworkStore as DieselNetworkStore, Store as DieselStore, SubscriptionManager,
@@ -139,8 +139,6 @@ async fn main() {
     // Obtain subgraph related command-line arguments
     let subgraph = opt.subgraph.clone();
 
-    let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
-
     // Obtain ports to use for the GraphQL server(s)
     let http_port = opt.http_port;
     let ws_port = opt.ws_port;
@@ -154,23 +152,12 @@ async fn main() {
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
 
-    // Obtain DISABLE_BLOCK_INGESTOR setting
-    let disable_block_ingestor: bool = opt.disable_block_ingestor;
-
     // Obtain STORE_CONNECTION_POOL_SIZE setting
     let store_conn_pool_size: u32 = opt.store_connection_pool_size;
-
-    // Minimum of two connections needed for the pool in order for the Store to bootstrap
-    if store_conn_pool_size <= 1 {
-        panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
-    }
 
     let arweave_adapter = Arc::new(ArweaveAdapter::new(opt.arweave_api.clone()));
 
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new(opt.three_box_api.clone()));
-
-    let pg_read_replicas: Vec<_> = opt.postgres_secondary_hosts.clone();
-    let pg_host_weights: Vec<_> = opt.postgres_host_weights.clone();
 
     info!(logger, "Starting up");
 
@@ -220,7 +207,6 @@ async fn main() {
         "conn_pool_size" => store_conn_pool_size,
     );
 
-    let connection_pool_registry = metrics_registry.clone();
     let stores_metrics_registry = metrics_registry.clone();
     let graphql_metrics_registry = metrics_registry.clone();
 
@@ -230,53 +216,23 @@ async fn main() {
     let contention_logger = logger.clone();
     let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
 
-    let postgres_conn_pool = create_connection_pool(
-        "main",
-        postgres_url.clone(),
-        store_conn_pool_size,
-        &logger,
-        connection_pool_registry.cheap_clone(),
-        wait_stats.cheap_clone(),
-    );
-
-    let read_only_conn_pools: Vec<_> = pg_read_replicas
-        .into_iter()
-        .enumerate()
-        .map(|(i, host)| {
-            info!(&logger, "Connecting to Postgres read replica at {}", host);
-            let url = replace_host(&postgres_url, &host);
-            create_connection_pool(
-                &format!("replica{}", i),
-                url,
-                store_conn_pool_size,
-                &logger,
-                connection_pool_registry.cheap_clone(),
-                wait_stats.cheap_clone(),
-            )
-        })
-        .collect();
-
     let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
         &logger,
         stores_metrics_registry.clone(),
         postgres_url.clone(),
     ));
 
-    let subscriptions = Arc::new(SubscriptionManager::new(
-        logger.clone(),
-        postgres_url.clone(),
-    ));
-
     let expensive_queries = read_expensive_queries().unwrap();
 
-    let store = Arc::new(DieselStore::new(
-        &stores_logger,
-        subscriptions.clone(),
-        postgres_conn_pool.clone(),
-        read_only_conn_pools.clone(),
-        pg_host_weights.clone(),
-        stores_metrics_registry.clone(),
-    ));
+    let (store, postgres_conn_pool) = create_store(
+        &logger,
+        &postgres_url,
+        opt.store_connection_pool_size,
+        opt.postgres_secondary_hosts.clone(),
+        opt.postgres_host_weights.clone(),
+        wait_stats.clone(),
+        metrics_registry.cheap_clone(),
+    );
     let store2 = store.clone();
 
     graph::spawn(
@@ -317,7 +273,7 @@ async fn main() {
         })
         .collect()
         .map(|stores| HashMap::from_iter(stores.into_iter()))
-        .and_then(move |stores| {
+        .and_then(move |network_stores| {
             let load_manager = Arc::new(LoadManager::new(
                 &logger,
                 wait_stats.clone(),
@@ -361,7 +317,7 @@ async fn main() {
                             )
                             .expect(&*format!("adapter for network, {}", network_name))
                             .clone(),
-                        stores
+                        network_stores
                             .get(&network_name)
                             .expect("store for network")
                             .clone(),
@@ -382,44 +338,21 @@ async fn main() {
                     );
                 });
 
-            if !disable_block_ingestor {
-                // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
-                // otherwise BlockStream will not work properly.
-                // BlockStream expects the blocks after the reorg threshold to be present in the
-                // database.
-                assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
+            if !opt.disable_block_ingestor {
+                let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
-                info!(logger, "Starting block ingestors");
-
-                // Create Ethereum block ingestors and spawn a thread to run each
-                eth_networks
-                    .networks
-                    .iter()
-                    .for_each(|(network_name, eth_adapters)| {
-                        info!(
-                            logger,
-                            "Starting block ingestor for network";
-                            "network_name" => &network_name
-                        );
-                        let eth_adapter = eth_adapters.cheapest().unwrap(); //Safe to unwrap since it cannot be empty
-                        let block_ingestor = BlockIngestor::new(
-                            stores.get(network_name).expect("network with name").clone(),
-                            eth_adapter.clone(),
-                            *ANCESTOR_COUNT,
-                            network_name.to_string(),
-                            &logger_factory,
-                            block_polling_interval,
-                        )
-                        .expect("failed to create Ethereum block ingestor");
-
-                        // Run the Ethereum block ingestor in the background
-                        graph::spawn(block_ingestor.into_polling_stream());
-                    });
+                start_block_ingestor(
+                    &logger,
+                    block_polling_interval,
+                    &eth_networks,
+                    &network_stores,
+                    &logger_factory,
+                );
             }
 
             let block_stream_builder = BlockStreamBuilder::new(
                 store.clone(),
-                stores.clone(),
+                network_stores.clone(),
                 eth_networks.clone(),
                 node_id.clone(),
                 *REORG_THRESHOLD,
@@ -428,14 +361,14 @@ async fn main() {
             let runtime_host_builder = WASMRuntimeHostBuilder::new(
                 eth_networks.clone(),
                 link_resolver.clone(),
-                stores.clone(),
+                network_stores.clone(),
                 arweave_adapter,
                 three_box_adapter,
             );
 
             let subgraph_instance_manager = SubgraphInstanceManager::new(
                 &logger_factory,
-                stores.clone(),
+                network_stores.clone(),
                 eth_networks.clone(),
                 runtime_host_builder,
                 block_stream_builder,
@@ -472,7 +405,7 @@ async fn main() {
                 link_resolver,
                 Arc::new(subgraph_provider),
                 store.clone(),
-                stores,
+                network_stores,
                 eth_networks.clone(),
                 node_id.clone(),
                 version_switching_mode,
@@ -784,6 +717,106 @@ async fn create_ethereum_networks(
     }
     eth_networks.sort();
     eth_networks
+}
+
+fn start_block_ingestor(
+    logger: &Logger,
+    block_polling_interval: Duration,
+    eth_networks: &EthereumNetworks,
+    network_stores: &HashMap<String, Arc<DieselNetworkStore>>,
+    logger_factory: &LoggerFactory,
+) {
+    // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
+    // otherwise BlockStream will not work properly.
+    // BlockStream expects the blocks after the reorg threshold to be present in the
+    // database.
+    assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
+
+    info!(logger, "Starting block ingestors");
+
+    // Create Ethereum block ingestors and spawn a thread to run each
+    eth_networks
+        .networks
+        .iter()
+        .for_each(|(network_name, eth_adapters)| {
+            info!(
+                logger,
+                "Starting block ingestor for network";
+                "network_name" => &network_name
+            );
+            let eth_adapter = eth_adapters.cheapest().unwrap(); //Safe to unwrap since it cannot be empty
+            let block_ingestor = BlockIngestor::new(
+                network_stores
+                    .get(network_name)
+                    .expect("network with name")
+                    .clone(),
+                eth_adapter.clone(),
+                *ANCESTOR_COUNT,
+                network_name.to_string(),
+                logger_factory,
+                block_polling_interval,
+            )
+            .expect("failed to create Ethereum block ingestor");
+
+            // Run the Ethereum block ingestor in the background
+            graph::spawn(block_ingestor.into_polling_stream());
+        });
+}
+
+fn create_store(
+    logger: &Logger,
+    postgres_url: &str,
+    pool_size: u32,
+    read_replicas: Vec<String>,
+    replica_weights: Vec<usize>,
+    wait_stats: Arc<RwLock<MovingStats>>,
+    registry: Arc<MetricsRegistry>,
+) -> (Arc<DieselStore>, ConnectionPool) {
+    // Minimum of two connections needed for the pool in order for the Store to bootstrap
+    if pool_size <= 1 {
+        panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
+    }
+
+    let postgres_conn_pool = create_connection_pool(
+        "main",
+        postgres_url.to_owned(),
+        pool_size,
+        &logger,
+        registry.cheap_clone(),
+        wait_stats.cheap_clone(),
+    );
+
+    let read_only_conn_pools: Vec<_> = read_replicas
+        .into_iter()
+        .enumerate()
+        .map(|(i, host)| {
+            info!(&logger, "Connecting to Postgres read replica at {}", host);
+            let url = replace_host(postgres_url, &host);
+            create_connection_pool(
+                &format!("replica{}", i),
+                url,
+                pool_size,
+                &logger,
+                registry.cheap_clone(),
+                wait_stats.cheap_clone(),
+            )
+        })
+        .collect();
+
+    let subscriptions = Arc::new(SubscriptionManager::new(
+        logger.clone(),
+        postgres_url.to_owned(),
+    ));
+
+    let store = Arc::new(DieselStore::new(
+        logger,
+        subscriptions.clone(),
+        postgres_conn_pool.clone(),
+        read_only_conn_pools.clone(),
+        replica_weights.clone(),
+        registry.clone(),
+    ));
+    (store, postgres_conn_pool)
 }
 
 #[cfg(test)]

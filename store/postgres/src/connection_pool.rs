@@ -9,6 +9,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+pub type ConnectionPool = Pool<ConnectionManager<PgConnection>>;
+
 struct ErrorHandler(Logger, Counter);
 
 impl Debug for ErrorHandler {
@@ -101,7 +103,7 @@ pub fn create_connection_pool(
     logger: &Logger,
     registry: Arc<dyn MetricsRegistry>,
     wait_time: PoolWaitStats,
-) -> Pool<ConnectionManager<PgConnection>> {
+) -> ConnectionPool {
     let logger_store = logger.new(o!("component" => "Store"));
     let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
     let const_labels = {
