@@ -76,14 +76,14 @@ impl Store for MockStore {
     }
 
     fn supports_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
         unimplemented!()
     }
 
     fn get_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
         _indexer: &'a Option<Address>,
         _block_hash: H256,

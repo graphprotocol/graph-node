@@ -812,7 +812,7 @@ pub trait Store: Send + Sync + 'static {
     ) -> Result<Option<EthereumBlockPointer>, Error>;
 
     fn supports_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         subgraph_id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool>;
 
@@ -822,7 +822,7 @@ pub trait Store: Send + Sync + 'static {
     /// Proof of Indexing. Once all subgraphs have been re-deployed the Option
     /// can be removed.
     fn get_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         subgraph_id: &'a SubgraphDeploymentId,
         indexer: &'a Option<Address>,
         block_hash: H256,
@@ -1044,14 +1044,14 @@ impl Store for MockStore {
     }
 
     fn supports_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
         unimplemented!();
     }
 
     fn get_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
         _indexer: &'a Option<Address>,
         _block_hash: H256,

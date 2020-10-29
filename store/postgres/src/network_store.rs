@@ -63,19 +63,20 @@ impl StoreTrait for NetworkStore {
     }
 
     fn supports_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         subgraph_id: &'a graph::prelude::SubgraphDeploymentId,
     ) -> graph::prelude::DynTryFuture<'a, bool> {
-        self.store.supports_proof_of_indexing(subgraph_id)
+        self.store.clone().supports_proof_of_indexing(subgraph_id)
     }
 
     fn get_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         subgraph_id: &'a graph::prelude::SubgraphDeploymentId,
         indexer: &'a Option<Address>,
         block_hash: H256,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
         self.store
+            .clone()
             .get_proof_of_indexing(subgraph_id, indexer, block_hash)
     }
 
