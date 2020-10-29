@@ -68,7 +68,7 @@ pub(crate) trait EntitySource {}
 // Tables in the public schema that are shared across subgraphs. We put them
 // in this module to make sure that nobody else gets access to them. All
 // access to these tables must go through functions in this module.
-mod public {
+pub mod public {
     /// We used to support different storage schemes. The old 'Split' scheme
     /// which used JSONB storage has been removed, and we will only deal
     /// with relational storage. Trying to do anything with a 'Split' subgraph

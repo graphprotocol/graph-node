@@ -483,6 +483,30 @@ pub fn deployment_state_from_name(
     }
 }
 
+pub fn current_deployment_for_subgraph(
+    conn: &PgConnection,
+    name: SubgraphName,
+) -> Result<SubgraphDeploymentId, StoreError> {
+    use subgraph as s;
+    use subgraph_version as v;
+
+    let id = v::table
+        .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
+        .filter(s::name.eq(name.as_str()))
+        .select(v::deployment)
+        .first::<String>(conn)
+        .optional()?;
+    match id {
+        Some(id) => SubgraphDeploymentId::new(id).map_err(|id| {
+            StoreError::ConstraintViolation(format!("illegal deployment id: {}", id))
+        }),
+        None => Err(StoreError::QueryExecutionError(format!(
+            "Subgraph `{}` not found",
+            name.as_str()
+        ))),
+    }
+}
+
 pub fn deployment_state_from_id(
     conn: &PgConnection,
     id: SubgraphDeploymentId,

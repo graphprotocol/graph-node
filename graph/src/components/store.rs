@@ -740,6 +740,11 @@ pub enum StoreError {
     ConstraintViolation(String),
     #[fail(display = "deployment not found: {}", _0)]
     DeploymentNotFound(String),
+    #[fail(
+        display = "shard not found: {} (this usually indicates a misconfiguration)",
+        _0
+    )]
+    UnknownShard(String),
 }
 
 impl From<TransactionAbortError> for StoreError {

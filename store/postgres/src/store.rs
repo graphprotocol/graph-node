@@ -616,7 +616,9 @@ impl Store {
     }
 
     /// Deprecated. Use `with_conn` instead.
-    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    pub(crate) fn get_conn(
+        &self,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         self.conn.get().map_err(Error::from)
     }
 
@@ -827,6 +829,16 @@ impl Store {
         )
     }
 
+    pub(crate) fn deployment_statuses(
+        &self,
+        ids: Vec<String>,
+    ) -> Result<Vec<status::Info>, StoreError> {
+        let conn = self.get_conn()?;
+        conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
+            detail::deployment_statuses(&conn, ids)
+        })
+    }
+
     pub(crate) fn status_internal(
         &self,
         filter: status::Filter,
@@ -853,6 +865,12 @@ impl Store {
                 }
             }
         })
+    }
+
+    pub fn shard(&self, id: &SubgraphDeploymentId) -> Result<String, StoreError> {
+        let conn = self.get_conn()?;
+        let storage = self.storage(&conn, id)?;
+        Ok(storage.shard.clone())
     }
 }
 
