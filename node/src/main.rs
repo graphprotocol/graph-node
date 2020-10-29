@@ -11,7 +11,6 @@ use std::sync::RwLock;
 use std::time::Duration;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
-use url::Url;
 
 use graph::components::ethereum::{EthereumNetworks, NodeCapabilities};
 use graph::components::forward;
@@ -33,14 +32,13 @@ use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
-use graph_store_postgres::connection_pool::{create_connection_pool, ConnectionPool};
-use graph_store_postgres::{
-    ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
-    NetworkStore as DieselNetworkStore, Store as DieselStore, SubscriptionManager,
-};
+use graph_store_postgres::NetworkStore as DieselNetworkStore;
 use graphql_parser::query as q;
 
 mod opt;
+mod store_builder;
+
+use store_builder::StoreBuilder;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -92,23 +90,6 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
         }
     }
     Ok(queries)
-}
-
-/// Replace the host portion of `url` and return a new URL with `host`
-/// as the host portion
-///
-/// Panics if `url` is not a valid URL (which won't happen in our case since
-/// we would have paniced before getting here as `url` is the connection for
-/// the primary Postgres instance)
-fn replace_host(url: &str, host: &str) -> String {
-    let mut url = match Url::parse(url) {
-        Ok(url) => url,
-        Err(_) => panic!("Invalid Postgres URL {}", url),
-    };
-    if let Err(e) = url.set_host(Some(host)) {
-        panic!("Invalid Postgres url {}: {}", url, e.to_string());
-    }
-    url.into_string()
 }
 
 // Saturating the blocking threads can cause all sorts of issues, so set a large maximum.
@@ -207,7 +188,6 @@ async fn main() {
         "conn_pool_size" => store_conn_pool_size,
     );
 
-    let stores_metrics_registry = metrics_registry.clone();
     let graphql_metrics_registry = metrics_registry.clone();
 
     let stores_logger = logger.clone();
@@ -216,15 +196,9 @@ async fn main() {
     let contention_logger = logger.clone();
     let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
 
-    let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-        &logger,
-        stores_metrics_registry.clone(),
-        postgres_url.clone(),
-    ));
-
     let expensive_queries = read_expensive_queries().unwrap();
 
-    let (store, postgres_conn_pool) = create_store(
+    let store_builder = Arc::new(StoreBuilder::new(
         &logger,
         &postgres_url,
         opt.store_connection_pool_size,
@@ -232,8 +206,8 @@ async fn main() {
         opt.postgres_host_weights.clone(),
         wait_stats.clone(),
         metrics_registry.cheap_clone(),
-    );
-    let store2 = store.clone();
+    ));
+    let store_builder2 = store_builder.clone();
 
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_networks.flatten().into_iter().map(
@@ -262,14 +236,9 @@ async fn main() {
                 "network_version" => &network_identifier.net_version,
                 "capabilities" => &capabilities
             );
-            let chain_store = DieselChainStore::new(
-                network_name.to_string(),
-                network_identifier,
-                chain_head_update_listener.clone(),
-                postgres_conn_pool.clone(),
-            );
-            let network_store = DieselNetworkStore::new(store2.clone(), chain_store);
-            (network_name.to_string(), Arc::new(network_store))
+            let network_store =
+                store_builder2.network_store(network_name.clone(), network_identifier);
+            (network_name.to_string(), network_store)
         })
         .collect()
         .map(|stores| HashMap::from_iter(stores.into_iter()))
@@ -281,21 +250,28 @@ async fn main() {
                 metrics_registry.clone(),
                 store_conn_pool_size as usize,
             ));
-            let graphql_runner = Arc::new(GraphQlRunner::new(&logger, store.clone(), load_manager));
+            let graphql_runner = Arc::new(GraphQlRunner::new(
+                &logger,
+                store_builder.store(),
+                load_manager,
+            ));
             let mut graphql_server = GraphQLQueryServer::new(
                 &logger_factory,
                 graphql_metrics_registry,
                 graphql_runner.clone(),
-                store.clone(),
+                store_builder.store(),
                 node_id.clone(),
             );
-            let subscription_server =
-                GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), store.clone());
+            let subscription_server = GraphQLSubscriptionServer::new(
+                &logger,
+                graphql_runner.clone(),
+                store_builder.store(),
+            );
 
             let mut index_node_server = IndexNodeServer::new(
                 &logger_factory,
                 graphql_runner.clone(),
-                store.clone(),
+                store_builder.store(),
                 node_id.clone(),
             );
 
@@ -351,7 +327,7 @@ async fn main() {
             }
 
             let block_stream_builder = BlockStreamBuilder::new(
-                store.clone(),
+                store_builder.store(),
                 network_stores.clone(),
                 eth_networks.clone(),
                 node_id.clone(),
@@ -380,7 +356,7 @@ async fn main() {
             let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
                 &logger_factory,
                 link_resolver.clone(),
-                store.clone(),
+                store_builder.store(),
                 graphql_runner.clone(),
             );
 
@@ -404,7 +380,7 @@ async fn main() {
                 &logger_factory,
                 link_resolver,
                 Arc::new(subgraph_provider),
-                store.clone(),
+                store_builder.store(),
                 network_stores,
                 eth_networks.clone(),
                 node_id.clone(),
@@ -761,62 +737,6 @@ fn start_block_ingestor(
             // Run the Ethereum block ingestor in the background
             graph::spawn(block_ingestor.into_polling_stream());
         });
-}
-
-fn create_store(
-    logger: &Logger,
-    postgres_url: &str,
-    pool_size: u32,
-    read_replicas: Vec<String>,
-    replica_weights: Vec<usize>,
-    wait_stats: Arc<RwLock<MovingStats>>,
-    registry: Arc<MetricsRegistry>,
-) -> (Arc<DieselStore>, ConnectionPool) {
-    // Minimum of two connections needed for the pool in order for the Store to bootstrap
-    if pool_size <= 1 {
-        panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
-    }
-
-    let postgres_conn_pool = create_connection_pool(
-        "main",
-        postgres_url.to_owned(),
-        pool_size,
-        &logger,
-        registry.cheap_clone(),
-        wait_stats.cheap_clone(),
-    );
-
-    let read_only_conn_pools: Vec<_> = read_replicas
-        .into_iter()
-        .enumerate()
-        .map(|(i, host)| {
-            info!(&logger, "Connecting to Postgres read replica at {}", host);
-            let url = replace_host(postgres_url, &host);
-            create_connection_pool(
-                &format!("replica{}", i),
-                url,
-                pool_size,
-                &logger,
-                registry.cheap_clone(),
-                wait_stats.cheap_clone(),
-            )
-        })
-        .collect();
-
-    let subscriptions = Arc::new(SubscriptionManager::new(
-        logger.clone(),
-        postgres_url.to_owned(),
-    ));
-
-    let store = Arc::new(DieselStore::new(
-        logger,
-        subscriptions.clone(),
-        postgres_conn_pool.clone(),
-        read_only_conn_pools.clone(),
-        replica_weights.clone(),
-        registry.clone(),
-    ));
-    (store, postgres_conn_pool)
 }
 
 #[cfg(test)]
