@@ -174,7 +174,7 @@ fn add_block_height_type(schema: &mut Document) {
     schema.definitions.push(def);
 }
 
-/// Adds a global `Meta_field_type` type to the schema. The `_meta` field
+/// Adds a global `_Meta_` type to the schema. The `_meta` field
 /// accepts values of this type
 fn add_meta_field_type(schema: &mut Document) {
     lazy_static! {
