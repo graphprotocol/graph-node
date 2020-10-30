@@ -10,6 +10,7 @@ use wasmtime::{Memory, Trap};
 
 use crate::host_exports;
 use crate::mapping::MappingContext;
+use anyhow::Error;
 use ethabi::LogParam;
 use graph::components::ethereum::*;
 use graph::components::subgraph::MappingError;
@@ -196,22 +197,32 @@ impl WasmInstance {
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
 
-        func.get1()?(arg.wasm_ptr()).map_err(|e| {
+        func.get1()?(arg.wasm_ptr()).map_err(|trap: Trap| {
             if self.instance_ctx().possible_reorg {
-                MappingError::PossibleReorg(e.into())
-            } else if e.to_string().contains(TRAP_TIMEOUT) {
-                anyhow::Error::context(
-                    e.into(),
-                    format!(
-                        "Handler '{}' hit the timeout of '{}' seconds",
-                        handler,
-                        self.instance_ctx().timeout.unwrap().as_secs()
-                    ),
-                )
-                .into()
+                MappingError::PossibleReorg(trap.into())
+            } else if trap.to_string().contains(TRAP_TIMEOUT) {
+                MappingError::Unknown(Error::from(trap).context(format!(
+                    "Handler '{}' hit the timeout of '{}' seconds",
+                    handler,
+                    self.instance_ctx().timeout.unwrap().as_secs()
+                )))
             } else {
-                anyhow::Error::context(e.into(), format!("Failed to invoke handler '{}'", handler))
-                    .into()
+                use wasmtime::TrapCode::*;
+                let trap_code = trap.trap_code();
+                let e =
+                    Error::from(trap).context(format!("Failed to invoke handler '{}'", handler));
+                match trap_code {
+                    Some(MemoryOutOfBounds)
+                    | Some(HeapMisaligned)
+                    | Some(TableOutOfBounds)
+                    | Some(IndirectCallToNull)
+                    | Some(BadSignature)
+                    | Some(IntegerOverflow)
+                    | Some(IntegerDivisionByZero)
+                    | Some(BadConversionToInteger)
+                    | Some(UnreachableCodeReached) => MappingError::Deterministic(e),
+                    _ => MappingError::Unknown(e),
+                }
             }
         })
     }

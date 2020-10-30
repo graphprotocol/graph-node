@@ -681,6 +681,9 @@ where
         Err(MappingError::Unknown(e)) => {
             return Err(CancelableError::Error(ProcessBlockError::Unknown(e)))
         }
+        Err(MappingError::Deterministic(e)) => {
+            return Err(CancelableError::Error(ProcessBlockError::Deterministic(e)))
+        }
         Err(MappingError::PossibleReorg(e)) => {
             info!(ctx.state.logger,
                     "Possible reorg detected, retrying";
@@ -778,10 +781,13 @@ where
                 // way to revert the effect of `create_dynamic_data_sources` so we may return a
                 // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
                 match e {
-                    MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
+                    MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
+                        ProcessBlockError::Unknown(e)
+                    }
+                    MappingError::Deterministic(e) => ProcessBlockError::Deterministic(e),
                 }
             })
-            .compat_err()?;
+            .map_err(CancelableError::Error)?;
         }
     }
 

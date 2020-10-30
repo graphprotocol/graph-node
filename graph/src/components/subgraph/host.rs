@@ -15,6 +15,7 @@ use web3::types::{Log, Transaction};
 pub enum MappingError {
     /// A possible reorg was detected while running the mapping.
     PossibleReorg(anyhow::Error),
+    Deterministic(anyhow::Error),
     Unknown(anyhow::Error),
 }
 
@@ -38,6 +39,7 @@ impl MappingError {
         use MappingError::*;
         match self {
             PossibleReorg(e) => PossibleReorg(e.context(s)),
+            Deterministic(e) => Deterministic(e.context(s)),
             Unknown(e) => Unknown(e.context(s)),
         }
     }

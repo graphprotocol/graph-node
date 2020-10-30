@@ -19,7 +19,9 @@ uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.19.2"
 strum_macros = "0.19.2"
 bytes = "0.5"
-wasmtime = "0.20.0"
+
+# Go back to a released version on any version over 0.20.0
+wasmtime = { git = "https://github.com/bytecodealliance/wasmtime.git", branch = "main" }
 
 defer = "0.1"
 
