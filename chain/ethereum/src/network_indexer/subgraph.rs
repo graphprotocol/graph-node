@@ -55,7 +55,7 @@ fn create_subgraph(
     // version and deployment to make clear they belong together
     let version_entity_id = subgraph_id.to_string();
     ops.extend(
-        SubgraphVersionEntity::new(subgraph_entity_id.clone(), subgraph_id.clone(), created_at)
+        SubgraphVersionEntity::new(subgraph_entity_id.clone(), subgraph_id.clone())
             .write_operations(&version_entity_id)
             .into_iter()
             .map(|op| op.into()),

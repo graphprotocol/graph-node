@@ -776,16 +776,11 @@ fn create_subgraph_version(
             ));
 
             // Create the subgraph version entity
-            let created_at = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
             ops.extend(subgraph_version_data.read_summaries_ops);
             ops.extend(
                 SubgraphVersionEntity::new(
                     subgraph_version_data.subgraph_entity_id.clone(),
                     manifest_id.clone(),
-                    created_at,
                 )
                 .write_operations(&subgraph_version_data.version_entity_id)
                 .into_iter()

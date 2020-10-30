@@ -23,6 +23,7 @@ use rand::Rng;
 use stable_hash::utils::stable_hash;
 use stable_hash::{crypto::SetHasher, SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, fmt::Display};
 use strum_macros::IntoStaticStr;
 use uuid::Uuid;
@@ -253,7 +254,11 @@ impl TypedEntity for SubgraphVersionEntity {
 }
 
 impl SubgraphVersionEntity {
-    pub fn new(subgraph_id: String, deployment_id: SubgraphDeploymentId, created_at: u64) -> Self {
+    pub fn new(subgraph_id: String, deployment_id: SubgraphDeploymentId) -> Self {
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         Self {
             subgraph_id,
             deployment_id,
