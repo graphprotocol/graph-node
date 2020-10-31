@@ -1122,14 +1122,17 @@ pub trait Store: Send + Sync + 'static {
     /// pending version so far
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error>;
 
-    /// Create a new subgraph deployment. The deployment must not exist yet. `ops`
-    /// needs to contain all the operations on subgraphs and subgraph deployments to
-    /// create the deployment, including any assignments as a current or pending
-    /// version
+    /// Create a new deployment for the subgraph `name`. If the deployment
+    /// already exists (as identified by the `schema.id`), reuse that, otherwise
+    /// create a new deployment, and point the current or pending version of
+    /// `name` at it, depending on the `mode`
     fn create_subgraph_deployment(
         &self,
+        name: SubgraphName,
         schema: &Schema,
-        ops: Vec<MetadataOperation>,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError>;
 
     /// Start an existing subgraph deployment. This will reset the state of
@@ -1286,8 +1289,11 @@ impl Store for MockStore {
 
     fn create_subgraph_deployment(
         &self,
-        _schema: &Schema,
-        _ops: Vec<MetadataOperation>,
+        _: SubgraphName,
+        _: &Schema,
+        _: SubgraphDeploymentEntity,
+        _: NodeId,
+        _: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }

@@ -32,6 +32,9 @@ pub(crate) const BLOCK_RANGE_CURRENT: &str = "block_range @> 2147483647";
 /// for troubleshooting/debugging
 pub(crate) const BLOCK_UNVERSIONED: i32 = -1;
 
+pub(crate) const UNVERSIONED_RANGE: (Bound<i32>, Bound<i32>) =
+    (Bound::Included(BLOCK_UNVERSIONED), Bound::Unbounded);
+
 /// The range of blocks for which an entity is valid. We need this struct
 /// to bind ranges into Diesel queries.
 #[derive(Clone, Debug)]

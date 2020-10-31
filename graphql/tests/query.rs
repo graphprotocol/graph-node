@@ -7,14 +7,17 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use graph::data::query::CacheStatus;
 use graph::prelude::{
     async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o,
     slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
     EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, Query, QueryError,
     QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema, Store,
     SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
-    Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
+    SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
+};
+use graph::{
+    data::query::CacheStatus,
+    prelude::{NodeId, SubgraphName},
 };
 use graph_graphql::prelude::*;
 use test_store::{
@@ -96,12 +99,18 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         templates: vec![],
     };
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, None)
-        .create_operations_replace(&id)
-        .into_iter()
-        .map(|op| op.into())
-        .collect();
-    store.create_subgraph_deployment(&schema, ops).unwrap();
+    let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
+    let name = SubgraphName::new("test/query").unwrap();
+    let node_id = NodeId::new("test").unwrap();
+    store
+        .create_subgraph_deployment(
+            name,
+            &schema,
+            deployment,
+            node_id,
+            SubgraphVersionSwitchingMode::Instant,
+        )
+        .unwrap();
 
     let entities0 = vec![
         Entity::from(vec![

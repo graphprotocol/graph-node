@@ -168,13 +168,20 @@ fn create_subgraph(
         templates: vec![],
     };
 
-    let ops = SubgraphDeploymentEntity::new(&manifest, false, None)
-        .graft(base)
-        .create_operations_replace(&subgraph_id)
-        .into_iter()
-        .map(|op| op.into())
-        .collect();
-    STORE.create_subgraph_deployment(&schema, ops)?;
+    let deployment = SubgraphDeploymentEntity::new(&manifest, false, None).graft(base);
+    let name = {
+        let mut name = subgraph_id.to_string();
+        name.truncate(32);
+        SubgraphName::new(name).unwrap()
+    };
+    let node_id = NodeId::new("test").unwrap();
+    STORE.create_deployment_replace(
+        name,
+        &schema,
+        deployment,
+        node_id,
+        SubgraphVersionSwitchingMode::Instant,
+    )?;
     STORE.start_subgraph_deployment(&*LOGGER, &subgraph_id, vec![])
 }
 

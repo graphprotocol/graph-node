@@ -164,10 +164,17 @@ fn insert_test_data(store: Arc<DieselStore>) {
     };
 
     // Create SubgraphDeploymentEntity
-    let ops =
-        SubgraphDeploymentEntity::new(&manifest, false, None).create_operations(&*TEST_SUBGRAPH_ID);
+    let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
+    let name = SubgraphName::new("test/store").unwrap();
+    let node_id = NodeId::new("test").unwrap();
     store
-        .create_subgraph_deployment(&TEST_SUBGRAPH_SCHEMA, ops)
+        .create_subgraph_deployment(
+            name,
+            &TEST_SUBGRAPH_SCHEMA,
+            deployment,
+            node_id,
+            SubgraphVersionSwitchingMode::Instant,
+        )
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -1615,9 +1622,18 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         };
 
         // Create SubgraphDeploymentEntity
-        let ops = SubgraphDeploymentEntity::new(&manifest, false, Some(*TEST_BLOCK_0_PTR))
-            .create_operations(&subgraph_id);
-        store.create_subgraph_deployment(&schema, ops).unwrap();
+        let deployment = SubgraphDeploymentEntity::new(&manifest, false, Some(*TEST_BLOCK_0_PTR));
+        let name = SubgraphName::new("test/entity-changes-are-fired").unwrap();
+        let node_id = NodeId::new("test").unwrap();
+        store
+            .create_subgraph_deployment(
+                name,
+                &schema,
+                deployment,
+                node_id,
+                SubgraphVersionSwitchingMode::Instant,
+            )
+            .unwrap();
 
         // Create store subscriptions
         let meta_subscription =

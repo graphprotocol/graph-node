@@ -4,8 +4,9 @@ use graph::prelude::{
     ethabi,
     web3::types::{Address, H256},
     BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
-    EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock,
-    Store as StoreTrait, Stream, SubgraphDeploymentStore,
+    EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock, NodeId,
+    Schema, Store as StoreTrait, StoreError, Stream, SubgraphDeploymentEntity,
+    SubgraphDeploymentStore, SubgraphName, SubgraphVersionSwitchingMode,
 };
 
 use crate::chain_store::ChainStore;
@@ -29,6 +30,21 @@ impl NetworkStore {
     #[cfg(debug_assertions)]
     pub(crate) fn clear_storage_cache(&self) {
         self.store.storage_cache.lock().unwrap().clear();
+    }
+
+    // Only for tests to simplify their handling of test fixtures, so that
+    // tests can reset the block pointer of a subgraph by recreating it
+    #[cfg(debug_assertions)]
+    pub fn create_deployment_replace(
+        &self,
+        name: SubgraphName,
+        schema: &Schema,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
+    ) -> Result<(), StoreError> {
+        self.store
+            .create_deployment_replace(name, schema, deployment, node_id, mode)
     }
 }
 
@@ -155,10 +171,14 @@ impl StoreTrait for NetworkStore {
 
     fn create_subgraph_deployment(
         &self,
-        schema: &graph::prelude::Schema,
-        ops: Vec<graph::prelude::MetadataOperation>,
-    ) -> Result<(), graph::prelude::StoreError> {
-        self.store.create_subgraph_deployment(schema, ops)
+        name: SubgraphName,
+        schema: &Schema,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
+    ) -> Result<(), StoreError> {
+        self.store
+            .create_subgraph_deployment(name, schema, deployment, node_id, mode)
     }
 
     fn start_subgraph_deployment(

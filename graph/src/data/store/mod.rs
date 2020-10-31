@@ -54,6 +54,10 @@ impl NodeId {
 
         Ok(NodeId(s))
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl fmt::Display for NodeId {

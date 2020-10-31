@@ -1,22 +1,24 @@
 //! Utilities for dealing with subgraph metadata
-use diesel::dsl::{sql, update};
+use diesel::dsl::{insert_into, sql, update};
 use diesel::pg::PgConnection;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
     RunQueryDsl,
 };
 use diesel::sql_types::Text;
-use std::convert::TryFrom;
-
 use graph::data::subgraph::schema::{
-    SubgraphDeploymentAssignmentEntity, SubgraphManifestEntity, SUBGRAPHS_ID,
+    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphManifestEntity, SUBGRAPHS_ID,
 };
 use graph::prelude::{
     bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, BlockNumber,
     DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, MetadataOperation,
-    Schema, StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName,
-    TypedEntity,
+    NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId,
+    SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
 };
+use std::convert::TryFrom;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::block_range::UNVERSIONED_RANGE;
 
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
@@ -491,5 +493,135 @@ pub fn deployment_synced(
         .set(d::synced.eq(true))
         .execute(conn)?;
 
+    Ok(changes)
+}
+
+fn create_subgraph(
+    conn: &PgConnection,
+    name: &SubgraphName,
+    created_at: u64,
+) -> Result<String, StoreError> {
+    use subgraph as s;
+
+    let id = generate_entity_id();
+    insert_into(s::table)
+        .values((
+            s::id.eq(&id),
+            s::name.eq(name.as_str()),
+            // using BigDecimal::from(created_at) produced a scale error
+            s::created_at.eq(sql(&format!("{}", created_at))),
+            s::block_range.eq(UNVERSIONED_RANGE),
+        ))
+        .execute(conn)?;
+    Ok(id)
+}
+
+pub fn create_subgraph_version(
+    conn: &PgConnection,
+    name: SubgraphName,
+    id: &SubgraphDeploymentId,
+    node_id: NodeId,
+    mode: SubgraphVersionSwitchingMode,
+) -> Result<Vec<EntityChange>, StoreError> {
+    use subgraph as s;
+    use subgraph_deployment as d;
+    use subgraph_deployment_assignment as a;
+    use subgraph_version as v;
+    use SubgraphVersionSwitchingMode::*;
+
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Check the current state of the the subgraph. If no subgraph with the
+    // name exists, create one
+    let info = s::table
+        .filter(s::name.eq(name.as_str()))
+        .select((s::id, s::current_version))
+        .first(conn)
+        .optional()?;
+    let (subgraph_id, current_version): (String, Option<String>) = match info {
+        Some((subgraph_id, current_version)) => (subgraph_id, current_version),
+        None => (create_subgraph(conn, &name, created_at)?, None),
+    };
+
+    // See if the current version of that subgraph is synced. If the subgraph
+    // has no current version, we treat it the same as if it were not synced
+    // The `optional` below only comes into play if data is corrupted/missing;
+    // ignoring that via `optional` makes it possible to fix a missing version
+    // or deployment by deploying over it.
+    let current_exists_and_synced = match &current_version {
+        Some(current_version) => d::table
+            .inner_join(v::table.on(v::deployment.eq(d::id)))
+            .filter(v::id.eq(&current_version))
+            .select(d::synced)
+            .first::<bool>(conn)
+            .optional()?
+            .unwrap_or(false),
+        None => false,
+    };
+
+    // Create the actual subgraph version
+    let version_id = generate_entity_id();
+    insert_into(v::table)
+        .values((
+            v::id.eq(&version_id),
+            v::subgraph.eq(&subgraph_id),
+            v::deployment.eq(id.as_str()),
+            // using BigDecimal::from(created_at) produced a scale error
+            v::created_at.eq(sql(&format!("{}", created_at))),
+            v::block_range.eq(UNVERSIONED_RANGE),
+        ))
+        .execute(conn)?;
+
+    // Create a subgraph assignment if there isn't one already
+    let new_assignment = a::table
+        .filter(a::id.eq(id.as_str()))
+        .select(a::id)
+        .first::<String>(conn)
+        .optional()?
+        .is_none();
+    if new_assignment {
+        insert_into(a::table)
+            .values((
+                a::id.eq(id.as_str()),
+                a::node_id.eq(node_id.as_str()),
+                a::block_range.eq(UNVERSIONED_RANGE),
+                a::cost.eq(sql("1")),
+            ))
+            .execute(conn)?;
+    }
+
+    // See if we should make this the current or pending version
+    let subgraph_row = update(s::table.filter(s::id.eq(&subgraph_id)));
+    match (mode, current_exists_and_synced) {
+        (Instant, _) | (Synced, false) => {
+            subgraph_row
+                .set((
+                    s::current_version.eq(&version_id),
+                    s::pending_version.eq::<Option<&str>>(None),
+                ))
+                .execute(conn)?;
+        }
+        (Synced, true) => {
+            subgraph_row
+                .set(s::pending_version.eq(&version_id))
+                .execute(conn)?;
+        }
+    }
+
+    // Clean up any assignments we might have displaced
+    let mut changes = remove_unused_assignments(conn)?;
+    if new_assignment {
+        let change = EntityChange::from_key(
+            MetadataOperation::entity_key(
+                SubgraphDeploymentAssignmentEntity::TYPENAME,
+                id.to_string(),
+            ),
+            EntityChangeOperation::Set,
+        );
+        changes.push(change);
+    }
     Ok(changes)
 }

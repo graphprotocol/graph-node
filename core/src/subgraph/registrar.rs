@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::{env, iter};
 
 use async_trait::async_trait;
 use lazy_static::lazy_static;
@@ -549,191 +549,6 @@ fn resolve_subgraph_chain_blocks(
     )
 }
 
-struct SubraphVersionUpdatingMetadata {
-    subgraph_entity_id: String,
-    version_entity_id: String,
-    current_is_synced: bool,
-    current_version_id_opt: Option<String>,
-    pending_version_id_opt: Option<String>,
-    version_summaries_before: Vec<SubgraphVersionSummary>,
-    version_summaries_after: Vec<SubgraphVersionSummary>,
-    read_summaries_ops: Vec<MetadataOperation>,
-}
-
-fn get_version_ids_and_summaries(
-    logger: Logger,
-    store: Arc<impl Store>,
-    name: String,
-    manifest_id: SubgraphDeploymentId,
-    version_switching_mode: SubgraphVersionSwitchingMode,
-) -> Result<SubraphVersionUpdatingMetadata, SubgraphRegistrarError> {
-    let name = name.clone();
-    // Look up subgraph entity by name
-    let subgraph_entity_opt = store
-        .find_one(SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.clone())))?;
-    let subgraph_entity = subgraph_entity_opt.ok_or_else(|| {
-        debug!(
-            logger,
-            "Subgraph not found, could not create_subgraph_version";
-            "subgraph_name" => name.to_string()
-        );
-        SubgraphRegistrarError::NameNotFound(name)
-    })?;
-    let subgraph_entity_id = subgraph_entity.id()?;
-    let current_version_id_opt = match subgraph_entity.get("currentVersion") {
-        Some(Value::String(current_version_id)) => Some(current_version_id.to_owned()),
-        Some(Value::Null) => None,
-        None => None,
-        Some(_) => panic!("subgraph entity has invalid type in currentVersion field"),
-    };
-    let pending_version_id_opt = match subgraph_entity.get("pendingVersion") {
-        Some(Value::String(pending_version_id)) => Some(pending_version_id.to_owned()),
-        Some(Value::Null) => None,
-        None => None,
-        Some(_) => panic!("subgraph entity has invalid type in pendingVersion field"),
-    };
-
-    let store = store.clone();
-    // Look up current version's deployment hash
-    let current_version_hash_opt = match current_version_id_opt {
-        Some(ref current_version_id) => Some(get_subgraph_version_deployment_id(
-            store.clone(),
-            current_version_id.clone(),
-        )?),
-        None => None,
-    };
-
-    // Look up pending version's deployment hash
-    let pending_version_hash_opt = match pending_version_id_opt {
-        Some(ref pending_version_id) => Some(get_subgraph_version_deployment_id(
-            store.clone(),
-            pending_version_id.clone(),
-        )?),
-        None => None,
-    };
-
-    // See if current version is fully synced
-    let current_is_synced = match &current_version_hash_opt {
-        Some(hash) => store.is_deployment_synced(hash.to_owned())?,
-        None => false,
-    };
-
-    // Find all subgraph version entities that point to this hash or a hash
-    let (version_summaries_before, read_summaries_ops) = store.read_subgraph_version_summaries(
-        iter::once(manifest_id.clone())
-            .chain(current_version_hash_opt)
-            .chain(pending_version_hash_opt)
-            .collect(),
-    )?;
-
-    let version_entity_id = generate_entity_id();
-
-    // Simulate the creation of the new version and updating of Subgraph.pending/current
-    let version_summaries_after = match version_switching_mode {
-        SubgraphVersionSwitchingMode::Instant => {
-            // Previously pending or current versions will no longer be pending/current
-            let mut version_summaries_after = version_summaries_before
-                .clone()
-                .into_iter()
-                .map(|mut version_summary| {
-                    if Some(&version_summary.id) == pending_version_id_opt.as_ref() {
-                        version_summary.pending = false;
-                    }
-
-                    if Some(&version_summary.id) == current_version_id_opt.as_ref() {
-                        version_summary.current = false;
-                    }
-
-                    version_summary
-                })
-                .collect::<Vec<_>>();
-
-            // Add new version, which will immediately be current
-            version_summaries_after.push(SubgraphVersionSummary {
-                id: version_entity_id.clone(),
-                subgraph_id: subgraph_entity_id.clone(),
-                deployment_id: manifest_id.clone(),
-                pending: false,
-                current: true,
-            });
-
-            version_summaries_after
-        }
-        SubgraphVersionSwitchingMode::Synced => {
-            // There is a current version. Depending on whether it is synced
-            // or not, make the new version the pending or the current version
-            if current_version_id_opt.is_some() {
-                // Previous pending version (if there was one) is no longer pending
-                // Previous current version if it's not fully synced is no
-                // longer the current version
-                let mut version_summaries_after = version_summaries_before
-                    .clone()
-                    .into_iter()
-                    .map(|mut version_summary| {
-                        if Some(&version_summary.id) == pending_version_id_opt.as_ref() {
-                            version_summary.pending = false;
-                        }
-                        if !current_is_synced
-                            && Some(&version_summary.id) == current_version_id_opt.as_ref()
-                        {
-                            // We will make the new version the current version
-                            version_summary.current = false;
-                        }
-
-                        version_summary
-                    })
-                    .collect::<Vec<_>>();
-
-                // Determine if this new version should be the pending or
-                // current version. When we add a version to a subgraph that
-                // already has a current version, the new version becomes the
-                // pending version if the current version is synced,
-                // and replaces the current version if the current version is still syncing
-                let (pending, current) = if current_is_synced {
-                    (true, false)
-                } else {
-                    (false, true)
-                };
-
-                // Add new version, setting pending and current appropriately
-                version_summaries_after.push(SubgraphVersionSummary {
-                    id: version_entity_id.clone(),
-                    subgraph_id: subgraph_entity_id.clone(),
-                    deployment_id: manifest_id.clone(),
-                    pending,
-                    current,
-                });
-
-                version_summaries_after
-            } else {
-                // No need to process list, as there is no current version
-                let mut version_summaries_after = version_summaries_before.clone();
-
-                // Add new version, which will immediately be current
-                version_summaries_after.push(SubgraphVersionSummary {
-                    id: version_entity_id.clone(),
-                    subgraph_id: subgraph_entity_id.clone(),
-                    deployment_id: manifest_id.clone(),
-                    pending: false,
-                    current: true,
-                });
-
-                version_summaries_after
-            }
-        }
-    };
-    Ok(SubraphVersionUpdatingMetadata {
-        subgraph_entity_id,
-        version_entity_id,
-        current_is_synced,
-        current_version_id_opt,
-        pending_version_id_opt,
-        version_summaries_before,
-        version_summaries_after,
-        read_summaries_ops,
-    })
-}
-
 fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl Store>,
@@ -746,111 +561,27 @@ fn create_subgraph_version(
 ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
     let logger = logger.clone();
     let manifest = manifest.clone();
-    let manifest_id = manifest.id.clone();
     let store = store.clone();
     let deployment_store = store.clone();
 
+    match store
+        .find_one(SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())))
+    {
+        Err(e) => return Box::new(future::err(e.into())),
+        Ok(None) => {
+            debug!(
+                logger,
+                "Subgraph not found, could not create_subgraph_version";
+                "subgraph_name" => name.to_string()
+            );
+            return Box::new(future::err(SubgraphRegistrarError::NameNotFound(
+                name.to_string(),
+            )));
+        }
+        _ => { /* everything is fine, continue */ }
+    }
+
     Box::new(
-        future::result(get_version_ids_and_summaries(
-            logger.clone(),
-            store.clone(),
-            name.to_string(),
-            manifest_id.clone(),
-            version_switching_mode,
-        ))
-        .and_then(move |subgraph_version_data| {
-            let mut ops = vec![];
-            ops.push(SubgraphEntity::abort_unless("Subgraph entity must still exist, have same name/currentVersion/pendingVersion",
-                EntityFilter::And(vec![
-                    EntityFilter::new_equal("name", name.to_string()),
-                    EntityFilter::new_equal(
-                        "currentVersion",
-                        subgraph_version_data.current_version_id_opt.clone(),
-                    ),
-                    EntityFilter::new_equal(
-                        "pendingVersion",
-                        subgraph_version_data.pending_version_id_opt.clone(),
-                    ),
-                ]),
-                 vec![subgraph_version_data.subgraph_entity_id.clone()],
-            ));
-
-            // Create the subgraph version entity
-            ops.extend(subgraph_version_data.read_summaries_ops);
-            ops.extend(
-                SubgraphVersionEntity::new(
-                    subgraph_version_data.subgraph_entity_id.clone(),
-                    manifest_id.clone(),
-                )
-                .write_operations(&subgraph_version_data.version_entity_id)
-                .into_iter()
-                .map(|op| op.into()),
-            );
-
-            // Possibly add assignment for new deployment hash, and possibly remove
-            // assignments for old current/pending
-            ops.extend(
-                store
-                    .reconcile_assignments(
-                        &logger.clone(),
-                        subgraph_version_data.version_summaries_before,
-                        subgraph_version_data.version_summaries_after,
-                        Some(node_id),
-                    )
-                    .into_iter()
-                    .map(|op| op.into()),
-            );
-
-            // Update current/pending versions in Subgraph entity
-            match version_switching_mode {
-                SubgraphVersionSwitchingMode::Instant => {
-                    ops.extend(SubgraphEntity::update_pending_version_operations(
-                        &subgraph_version_data.subgraph_entity_id,
-                        None,
-                    ));
-                    ops.extend(SubgraphEntity::update_current_version_operations(
-                        &subgraph_version_data.subgraph_entity_id,
-                        Some(subgraph_version_data.version_entity_id),
-                    ));
-                }
-                SubgraphVersionSwitchingMode::Synced => {
-                    // Set the new version as pending, unless there is no fully synced
-                    // current versions
-                    if subgraph_version_data.current_is_synced {
-                        ops.extend(SubgraphEntity::update_pending_version_operations(
-                            &subgraph_version_data.subgraph_entity_id,
-                            Some(subgraph_version_data.version_entity_id),
-                        ));
-                    } else {
-                        ops.extend(SubgraphEntity::update_pending_version_operations(
-                            &subgraph_version_data.subgraph_entity_id,
-                            None,
-                        ));
-                        ops.extend(SubgraphEntity::update_current_version_operations(
-                            &subgraph_version_data.subgraph_entity_id,
-                            Some(subgraph_version_data.version_entity_id),
-                        ));
-                    }
-                }
-            }
-
-            // Check if deployment exists
-            store
-                .get(SubgraphDeploymentEntity::key(manifest_id.clone()))
-                .map_err(|e| SubgraphRegistrarError::QueryExecutionError(e))
-                .map(|a| (logger, ops, a.is_some()))
-        })
-        .and_then(move |(logger, mut ops, deployment_exists)| {
-            ops.push(SubgraphDeploymentEntity::abort_unless("Subgraph deployment entity must continue to exist/not exist"
-                    ,
-                EntityFilter::new_equal("id", manifest.id.to_string()),
-                if deployment_exists {
-                    vec![manifest.id.to_string()]
-                } else {
-                    vec![]
-                },
-            ));
-
             resolve_subgraph_chain_blocks(
                 manifest.clone(),
                 chain_store.clone(),
@@ -874,47 +605,16 @@ fn create_subgraph_version(
 
                 // Apply the subgraph versioning and deployment operations,
                 // creating a new subgraph deployment if one doesn't exist.
-                if deployment_exists {
-                    deployment_store
-                        .apply_metadata_operations(ops)
-                        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
-                } else {
                     let deployment = SubgraphDeploymentEntity::new(
                         &manifest,
                         false,
                         start_block,
                     ).graft(base_block);
-                    ops.extend(
-                        deployment
-                        .create_operations(&manifest.id),
-                    );
                     deployment_store
-                        .create_subgraph_deployment(&manifest.schema, ops)
+                        .create_subgraph_deployment(name, &manifest.schema, deployment, node_id, version_switching_mode)
                         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
-                }
             })
-        }),
     )
-}
-
-fn get_subgraph_version_deployment_id(
-    store: Arc<impl Store>,
-    version_id: String,
-) -> Result<SubgraphDeploymentId, SubgraphRegistrarError> {
-    let version_entity = store
-        .get(SubgraphVersionEntity::key(version_id))?
-        .ok_or_else(|| TransactionAbortError::Other(format!("Subgraph version entity missing")))
-        .map_err(StoreError::from)?;
-
-    Ok(SubgraphDeploymentId::new(
-        version_entity
-            .get("deployment")
-            .unwrap()
-            .to_owned()
-            .as_string()
-            .unwrap(),
-    )
-    .unwrap())
 }
 
 fn remove_subgraph(

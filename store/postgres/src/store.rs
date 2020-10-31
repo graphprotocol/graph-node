@@ -4,9 +4,8 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
-use graph::{
-    data::subgraph::schema::SubgraphDeploymentAssignmentEntity,
-    prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError},
+use graph::prelude::{
+    CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, SubgraphVersionSwitchingMode,
 };
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -838,6 +837,44 @@ impl Store {
             )),
         }
     }
+
+    fn create_deployment_internal(
+        &self,
+        name: SubgraphName,
+        schema: &Schema,
+        ops: Vec<MetadataOperation>,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
+    ) -> Result<(), StoreError> {
+        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
+        econn.transaction(|| -> Result<(), StoreError> {
+            // Create the deployment if it doesn't exist
+            let mut event = self.apply_metadata_operations_with_conn(&econn, ops)?;
+
+            // Create subgraph, subgraph version, and assignment
+            let changes =
+                metadata::create_subgraph_version(&econn.conn, name, &schema.id, node_id, mode)?;
+            event.changes.extend(changes);
+
+            econn.create_schema(schema)?;
+            econn.send_store_event(&event)
+        })
+    }
+
+    // Only for tests to simplify their handling of test fixtures, so that
+    // tests can reset the block pointer of a subgraph by recreating it
+    #[cfg(debug_assertions)]
+    pub fn create_deployment_replace(
+        &self,
+        name: SubgraphName,
+        schema: &Schema,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
+    ) -> Result<(), StoreError> {
+        let ops = deployment.create_operations_replace(&schema.id);
+        self.create_deployment_internal(name, schema, ops, node_id, mode)
+    }
 }
 
 impl StoreTrait for Store {
@@ -1199,15 +1236,14 @@ impl StoreTrait for Store {
 
     fn create_subgraph_deployment(
         &self,
+        name: SubgraphName,
         schema: &Schema,
-        ops: Vec<MetadataOperation>,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<(), StoreError> {
-            let event = self.apply_metadata_operations_with_conn(&econn, ops.clone())?;
-            econn.create_schema(schema)?;
-            econn.send_store_event(&event)
-        })
+        let ops = deployment.create_operations(&schema.id);
+        self.create_deployment_internal(name, schema, ops, node_id, mode)
     }
 
     fn start_subgraph_deployment(

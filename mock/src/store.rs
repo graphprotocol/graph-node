@@ -160,8 +160,11 @@ impl Store for MockStore {
 
     fn create_subgraph_deployment(
         &self,
-        _schema: &Schema,
-        _ops: Vec<MetadataOperation>,
+        _: SubgraphName,
+        _: &Schema,
+        _: SubgraphDeploymentEntity,
+        _: NodeId,
+        _: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }

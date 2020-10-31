@@ -1,8 +1,6 @@
 use futures::future::FutureResult;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
-use graph::data::subgraph::schema::*;
 
 fn check_subgraph_exists(
     store: Arc<dyn NetworkStore>,
@@ -22,62 +20,6 @@ fn create_subgraph(
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
 ) -> FutureResult<(), Error> {
-    let mut ops = vec![];
-
-    // Ensure the subgraph itself doesn't already exist
-    ops.push(SubgraphEntity::abort_unless(
-        "Subgraph entity should not exist",
-        EntityFilter::new_equal("name", subgraph_name.to_string()),
-        vec![],
-    ));
-
-    // Create the subgraph entity (e.g. `ethereum/mainnet`)
-    let created_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let subgraph_entity_id = generate_entity_id();
-    ops.extend(
-        SubgraphEntity::new(subgraph_name.clone(), None, None, created_at)
-            .write_operations(&subgraph_entity_id)
-            .into_iter()
-            .map(|op| op.into()),
-    );
-
-    // Ensure the subgraph version doesn't already exist
-    ops.push(SubgraphVersionEntity::abort_unless(
-        "Subgraph version should not exist",
-        EntityFilter::new_equal("id", subgraph_id.to_string()),
-        vec![],
-    ));
-
-    // Create a subgraph version entity; we're using the same ID for
-    // version and deployment to make clear they belong together
-    let version_entity_id = subgraph_id.to_string();
-    ops.extend(
-        SubgraphVersionEntity::new(subgraph_entity_id.clone(), subgraph_id.clone())
-            .write_operations(&version_entity_id)
-            .into_iter()
-            .map(|op| op.into()),
-    );
-
-    // Immediately make this version the current one
-    ops.extend(SubgraphEntity::update_pending_version_operations(
-        &subgraph_entity_id,
-        None,
-    ));
-    ops.extend(SubgraphEntity::update_current_version_operations(
-        &subgraph_entity_id,
-        Some(version_entity_id),
-    ));
-
-    // Ensure the deployment doesn't already exist
-    ops.push(SubgraphDeploymentEntity::abort_unless(
-        "Subgraph deployment entity must not exist",
-        EntityFilter::new_equal("id", subgraph_id.to_string()),
-        vec![],
-    ));
-
     // Create a fake manifest
     let manifest = SubgraphManifest {
         id: subgraph_id.clone(),
@@ -92,22 +34,16 @@ fn create_subgraph(
         templates: vec![],
     };
 
-    ops.extend(
-        SubgraphDeploymentEntity::new(&manifest, false, start_block)
-            .create_operations(&manifest.id),
-    );
-
-    // Create a deployment assignment entity
-    ops.extend(
-        SubgraphDeploymentAssignmentEntity::new(NodeId::new("__builtin").unwrap())
-            .write_operations(&subgraph_id)
-            .into_iter()
-            .map(|op| op.into()),
-    );
-
+    let deployment = SubgraphDeploymentEntity::new(&manifest, false, start_block);
     future::result(
         store
-            .create_subgraph_deployment(&manifest.schema, ops)
+            .create_subgraph_deployment(
+                subgraph_name,
+                &manifest.schema,
+                deployment,
+                NodeId::new("__builtin").unwrap(),
+                SubgraphVersionSwitchingMode::Instant,
+            )
             .map_err(|e| e.into()),
     )
 }
