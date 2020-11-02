@@ -140,7 +140,7 @@ specVersion: 0.0.1
         //
         // Validation against subgraph that hasn't synced anything fails
         //
-        test_store::create_test_subgraph(subgraph.as_str(), GQL_SCHEMA);
+        test_store::create_test_subgraph(&subgraph, GQL_SCHEMA);
         // This check is awkward since the test manifest has other problems
         // that the validation complains about as setting up a valid manifest
         // would be a bit more work; we just want to make sure that

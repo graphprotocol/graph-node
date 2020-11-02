@@ -258,7 +258,7 @@ fn graft() {
         const SUBGRAPH: &str = "grafted";
         let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
         let res = test_store::create_grafted_subgraph(
-            SUBGRAPH,
+            &subgraph_id,
             GRAFT_GQL,
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1],

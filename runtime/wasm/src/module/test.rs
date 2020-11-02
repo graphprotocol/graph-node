@@ -41,8 +41,9 @@ fn test_valid_module_and_store_with_timeout(
 ) {
     let store = STORE.clone();
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
+    let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     test_store::create_test_subgraph(
-        subgraph_id,
+        &deployment_id,
         "type User @entity {
             id: ID!,
             name: String,
@@ -54,7 +55,6 @@ fn test_valid_module_and_store_with_timeout(
             extra: String
         }",
     );
-    let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment_id.clone(),

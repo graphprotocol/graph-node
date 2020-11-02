@@ -157,7 +157,7 @@ fn block_number() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     let subgraph = SubgraphDeploymentId::new("nonExistentSubgraph").unwrap();
 
-    create_test_subgraph(subgraph.as_str(), "type Dummy @entity { id: ID! }");
+    create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
 
     run_test(chain, move |store| -> Result<(), ()> {
         let block = store
