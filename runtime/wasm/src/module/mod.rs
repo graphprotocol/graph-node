@@ -16,6 +16,7 @@ use graph::components::ethereum::*;
 use graph::components::subgraph::MappingError;
 use graph::data::store;
 use graph::prelude::*;
+use host_exports::HostExportError;
 use web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::asc_ptr::*;
@@ -35,6 +36,19 @@ use stopwatch::TimeoutStopwatch;
 mod test;
 
 const TRAP_TIMEOUT: &str = "trap: interrupt";
+
+macro_rules! try_host_export {
+    ($this:ident, $e:expr) => {
+        match $e {
+            Ok(x) => x,
+            Err(HostExportError::Deterministic(e)) => {
+                $this.deterministic_host_trap = true;
+                return Err(Trap::from(e));
+            }
+            Err(HostExportError::Unknown(e)) => return Err(Trap::from(e)),
+        }
+    };
+}
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
 pub(crate) struct WasmInstance {
@@ -666,13 +680,18 @@ impl WasmInstanceContext {
             _ => Some(column_number),
         };
 
-        self.deterministic_host_trap = true;
-        Err(self
+        match self
             .ctx
             .host_exports
             .abort(message, file_name, line_number, column_number)
             .unwrap_err()
-            .into())
+        {
+            HostExportError::Deterministic(e) => {
+                self.deterministic_host_trap = true;
+                Err(e.into())
+            }
+            HostExportError::Unknown(_) => unreachable!(),
+        }
     }
 
     /// function store.set(entity: string, id: string, data: Entity): void
@@ -795,7 +814,7 @@ impl WasmInstanceContext {
     /// function typeConversion.stringToH160(s: String): H160
     fn string_to_h160(&mut self, str_ptr: AscPtr<AscString>) -> Result<AscPtr<AscH160>, Trap> {
         let s: String = self.asc_get(str_ptr);
-        let h160 = host_exports::string_to_h160(&s)?;
+        let h160 = try_host_export!(self, host_exports::string_to_h160(&s));
         let h160_obj: AscPtr<AscH160> = self.asc_new(&h160);
         Ok(h160_obj)
     }
@@ -923,29 +942,40 @@ impl WasmInstanceContext {
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
     fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<i64, Trap> {
-        let number = self.ctx.host_exports.json_to_i64(self.asc_get(json_ptr))?;
+        let number = try_host_export!(
+            self,
+            self.ctx.host_exports.json_to_i64(self.asc_get(json_ptr))
+        );
         Ok(number)
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
     fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<u64, Trap> {
-        Ok(self.ctx.host_exports.json_to_u64(self.asc_get(json_ptr))?)
+        Ok(try_host_export!(
+            self,
+            self.ctx.host_exports.json_to_u64(self.asc_get(json_ptr))
+        ))
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
     fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<f64, Trap> {
-        Ok(self.ctx.host_exports.json_to_f64(self.asc_get(json_ptr))?)
+        Ok(try_host_export!(
+            self,
+            self.ctx.host_exports.json_to_f64(self.asc_get(json_ptr))
+        ))
     }
 
     /// Expects a decimal string.
     /// function json.toBigInt(json: String): BigInt
     fn json_to_big_int(&mut self, json_ptr: AscPtr<AscString>) -> Result<AscPtr<AscBigInt>, Trap> {
-        let big_int = self
-            .ctx
-            .host_exports
-            .json_to_big_int(self.asc_get(json_ptr))?;
+        let big_int = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .json_to_big_int(self.asc_get(json_ptr))
+        );
         let big_int_ptr: AscPtr<AscBigInt> = self.asc_new(&*big_int);
         Ok(big_int_ptr)
     }
@@ -1011,10 +1041,12 @@ impl WasmInstanceContext {
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
+        let result = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))
+        );
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(result_ptr)
     }
@@ -1026,10 +1058,12 @@ impl WasmInstanceContext {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, Trap> {
         let x = BigDecimal::new(self.asc_get::<BigInt, _>(x_ptr), 0);
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_divided_by(x, self.try_asc_get(y_ptr)?)?;
+        let result = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .big_decimal_divided_by(x, self.try_asc_get(y_ptr)?)
+        );
         Ok(self.asc_new(&result))
     }
 
@@ -1141,10 +1175,12 @@ impl WasmInstanceContext {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_divided_by(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)?;
+        let result = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .big_decimal_divided_by(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)
+        );
         Ok(self.asc_new(&result))
     }
 
