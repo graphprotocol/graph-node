@@ -1246,6 +1246,11 @@ impl StoreTrait for Store {
         self.create_deployment_internal(name, schema, ops, node_id, mode)
     }
 
+    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
+        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
+        econn.transaction(|| metadata::create_subgraph(&econn.conn, &name))
+    }
+
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         econn.transaction(|| -> Result<(), StoreError> {

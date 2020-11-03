@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
 use graph::components::ethereum::EthereumNetworks;
 use graph::data::subgraph::schema::{
-    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
-    SubgraphEntity, TypedEntity,
+    SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity, SubgraphEntity, TypedEntity,
 };
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
@@ -292,7 +291,11 @@ where
         &self,
         name: SubgraphName,
     ) -> Result<CreateSubgraphResult, SubgraphRegistrarError> {
-        create_subgraph(&self.logger, self.store.clone(), name)
+        let id = self.store.create_subgraph(name.clone())?;
+
+        debug!(self.logger, "Created subgraph"; "subgraph_name" => name.to_string());
+
+        Ok(CreateSubgraphResult { id })
     }
 
     async fn create_subgraph_version(
@@ -434,52 +437,6 @@ async fn start_subgraph(
             );
         }
     }
-}
-
-fn create_subgraph(
-    logger: &Logger,
-    store: Arc<impl Store>,
-    name: SubgraphName,
-) -> Result<CreateSubgraphResult, SubgraphRegistrarError> {
-    let mut ops = vec![];
-
-    // Check if this subgraph already exists
-    let subgraph_entity_opt = store.find_one(
-        SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())),
-    )?;
-    if subgraph_entity_opt.is_some() {
-        debug!(
-            logger,
-            "Subgraph name already exists: {:?}",
-            name.to_string()
-        );
-        return Err(SubgraphRegistrarError::NameExists(name.to_string()));
-    }
-
-    ops.push(SubgraphEntity::abort_unless(
-        "Subgraph entity should not exist",
-        EntityFilter::new_equal("name", name.to_string()),
-        vec![],
-    ));
-
-    let created_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let entity = SubgraphEntity::new(name.clone(), None, None, created_at);
-    let entity_id = generate_entity_id();
-    ops.extend(
-        entity
-            .write_operations(&entity_id)
-            .into_iter()
-            .map(|op| op.into()),
-    );
-
-    store.apply_metadata_operations(ops)?;
-
-    debug!(logger, "Created subgraph"; "subgraph_name" => name.to_string());
-
-    Ok(CreateSubgraphResult { id: entity_id })
 }
 
 /// Resolves the subgraph's earliest block and the manifest's graft base block

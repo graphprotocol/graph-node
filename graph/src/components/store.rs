@@ -950,6 +950,11 @@ pub trait Store: Send + Sync + 'static {
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError>;
 
+    /// Create a new subgraph with the given name. If one already exists, use
+    /// the existing one. Return the `id` of the newly created or existing
+    /// subgraph
+    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
+
     /// Remove a subgraph and all its versions; if deployments that were used
     /// by this subgraph do not need to be indexed anymore, also remove
     /// their assignment, but keep the deployments themselves around
@@ -1115,6 +1120,10 @@ impl Store for MockStore {
         _: NodeId,
         _: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn create_subgraph(&self, _: SubgraphName) -> Result<String, StoreError> {
         unimplemented!()
     }
 

@@ -223,6 +223,10 @@ impl StoreTrait for NetworkStore {
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         self.store.remove_subgraph(name)
     }
+
+    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
+        self.store.create_subgraph(name)
+    }
 }
 
 impl SubgraphDeploymentStore for NetworkStore {

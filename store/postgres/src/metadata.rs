@@ -496,15 +496,18 @@ pub fn deployment_synced(
     Ok(changes)
 }
 
-fn create_subgraph(
-    conn: &PgConnection,
-    name: &SubgraphName,
-    created_at: u64,
-) -> Result<String, StoreError> {
+/// Create a new subgraph with the given name. If one already exists, use
+/// the existing one. Return the `id` of the newly created or existing
+/// subgraph
+pub fn create_subgraph(conn: &PgConnection, name: &SubgraphName) -> Result<String, StoreError> {
     use subgraph as s;
 
     let id = generate_entity_id();
-    insert_into(s::table)
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let inserted = insert_into(s::table)
         .values((
             s::id.eq(&id),
             s::name.eq(name.as_str()),
@@ -512,8 +515,18 @@ fn create_subgraph(
             s::created_at.eq(sql(&format!("{}", created_at))),
             s::block_range.eq(UNVERSIONED_RANGE),
         ))
+        .on_conflict(s::name)
+        .do_nothing()
         .execute(conn)?;
-    Ok(id)
+    if inserted == 0 {
+        let id = s::table
+            .filter(s::name.eq(name.as_str()))
+            .select(s::id)
+            .first::<String>(conn)?;
+        Ok(id)
+    } else {
+        Ok(id)
+    }
 }
 
 pub fn create_subgraph_version(
@@ -543,7 +556,7 @@ pub fn create_subgraph_version(
         .optional()?;
     let (subgraph_id, current_version): (String, Option<String>) = match info {
         Some((subgraph_id, current_version)) => (subgraph_id, current_version),
-        None => (create_subgraph(conn, &name, created_at)?, None),
+        None => (create_subgraph(conn, &name)?, None),
     };
 
     // See if the current version of that subgraph is synced. If the subgraph
