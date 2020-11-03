@@ -576,6 +576,7 @@ where
                         message: e.to_string(),
                         block_ptr: Some(block_ptr),
                         handler: None,
+                        deterministic: e.is_deterministic(),
                     };
 
                     // Set subgraph status to Failed
@@ -597,11 +598,20 @@ where
 
 #[derive(thiserror::Error, Debug)]
 enum ProcessBlockError {
-    #[error("{0}")]
+    #[error("{0:#}")]
     Unknown(anyhow::Error),
 
-    #[error("{0}")]
+    #[error("{0:#}")]
     Deterministic(anyhow::Error),
+}
+
+impl ProcessBlockError {
+    fn is_deterministic(&self) -> bool {
+        match self {
+            ProcessBlockError::Unknown(_) => false,
+            ProcessBlockError::Deterministic(_) => true,
+        }
+    }
 }
 
 impl From<failure::Error> for ProcessBlockError {

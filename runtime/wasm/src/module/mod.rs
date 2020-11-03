@@ -221,6 +221,9 @@ impl WasmInstance {
                     | Some(IntegerDivisionByZero)
                     | Some(BadConversionToInteger)
                     | Some(UnreachableCodeReached) => MappingError::Deterministic(e),
+                    _ if self.instance_ctx().deterministic_host_trap => {
+                        MappingError::Deterministic(e)
+                    }
                     _ => MappingError::Unknown(e),
                 }
             }
@@ -257,6 +260,9 @@ pub(crate) struct WasmInstanceContext {
 
     // A trap ocurred due to a possible reorg detection.
     possible_reorg: bool,
+
+    // A host export trap ocurred for a determinstic reason.
+    deterministic_host_trap: bool,
 
     pub(crate) allow_non_determinstic_ipfs: bool,
 }
@@ -588,6 +594,7 @@ impl WasmInstanceContext {
             arena_free_size: 0,
             arena_start_ptr: 0,
             possible_reorg: false,
+            deterministic_host_trap: false,
             allow_non_determinstic_ipfs,
         })
     }
@@ -625,6 +632,7 @@ impl WasmInstanceContext {
             arena_free_size: 0,
             arena_start_ptr: 0,
             possible_reorg: false,
+            deterministic_host_trap: false,
             allow_non_determinstic_ipfs,
         })
     }
@@ -635,7 +643,7 @@ impl WasmInstanceContext {
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
     fn abort(
-        &self,
+        &mut self,
         message_ptr: AscPtr<AscString>,
         file_name_ptr: AscPtr<AscString>,
         line_number: u32,
@@ -657,6 +665,8 @@ impl WasmInstanceContext {
             0 => None,
             _ => Some(column_number),
         };
+
+        self.deterministic_host_trap = true;
         Err(self
             .ctx
             .host_exports

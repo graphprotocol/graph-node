@@ -33,6 +33,7 @@ const waitForSubgraphToFailWithError = async (blockNumber) =>
                 block {
                   number
                 }
+                deterministic
               }
 
               # Test that non-fatal errors can be queried
@@ -56,7 +57,7 @@ const waitForSubgraphToFailWithError = async (blockNumber) =>
 
         let status = result.data.indexingStatusForCurrentVersion;
         if (status.health == "failed") {
-          if (status.fatalError.block.number != blockNumber) {
+          if (status.fatalError.block.number != blockNumber || status.fatalError.deterministic != true) {
             reject(
               new Error(
                 "Subgraph failed with unexpected block number: " +
