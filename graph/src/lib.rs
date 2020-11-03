@@ -123,8 +123,8 @@ pub mod prelude {
     pub use crate::data::store::ethereum::*;
     pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
-        AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, SubgraphVersionSummary,
-        ToEntityId, ToEntityKey, TryIntoEntity, Value, ValueType,
+        AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, ToEntityId, ToEntityKey,
+        TryIntoEntity, Value, ValueType,
     };
     pub use crate::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};
     pub use crate::data::subgraph::{

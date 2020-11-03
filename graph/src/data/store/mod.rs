@@ -24,16 +24,6 @@ pub mod ethereum;
 /// A pair of subgraph ID and entity type name.
 pub type SubgraphEntityPair = (SubgraphDeploymentId, String);
 
-/// Information about a subgraph version entity used to reconcile subgraph deployment assignments.
-#[derive(Clone, Debug)]
-pub struct SubgraphVersionSummary {
-    pub id: String,
-    pub subgraph_id: String,
-    pub deployment_id: SubgraphDeploymentId,
-    pub pending: bool,
-    pub current: bool,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);
 
