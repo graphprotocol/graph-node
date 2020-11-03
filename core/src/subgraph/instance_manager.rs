@@ -597,7 +597,7 @@ where
 }
 
 #[derive(thiserror::Error, Debug)]
-enum ProcessBlockError {
+enum BlockProcessingError {
     #[error("{0:#}")]
     Unknown(anyhow::Error),
 
@@ -605,18 +605,18 @@ enum ProcessBlockError {
     Deterministic(anyhow::Error),
 }
 
-impl ProcessBlockError {
+impl BlockProcessingError {
     fn is_deterministic(&self) -> bool {
         match self {
-            ProcessBlockError::Unknown(_) => false,
-            ProcessBlockError::Deterministic(_) => true,
+            BlockProcessingError::Unknown(_) => false,
+            BlockProcessingError::Deterministic(_) => true,
         }
     }
 }
 
-impl From<failure::Error> for ProcessBlockError {
+impl From<failure::Error> for BlockProcessingError {
     fn from(e: failure::Error) -> Self {
-        ProcessBlockError::Unknown(e.compat_err())
+        BlockProcessingError::Unknown(e.compat_err())
     }
 }
 
@@ -628,7 +628,7 @@ async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S>(
     mut ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
-) -> Result<(IndexingContext<B, T, S>, bool), CancelableError<ProcessBlockError>>
+) -> Result<(IndexingContext<B, T, S>, bool), CancelableError<BlockProcessingError>>
 where
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
@@ -689,10 +689,12 @@ where
     {
         Ok(block_state) => block_state,
         Err(MappingError::Unknown(e)) => {
-            return Err(CancelableError::Error(ProcessBlockError::Unknown(e)))
+            return Err(CancelableError::Error(BlockProcessingError::Unknown(e)))
         }
         Err(MappingError::Deterministic(e)) => {
-            return Err(CancelableError::Error(ProcessBlockError::Deterministic(e)))
+            return Err(CancelableError::Error(BlockProcessingError::Deterministic(
+                e,
+            )))
         }
         Err(MappingError::PossibleReorg(e)) => {
             info!(ctx.state.logger,
@@ -792,9 +794,9 @@ where
                 // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
                 match e {
                     MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                        ProcessBlockError::Unknown(e)
+                        BlockProcessingError::Unknown(e)
                     }
-                    MappingError::Deterministic(e) => ProcessBlockError::Deterministic(e),
+                    MappingError::Deterministic(e) => BlockProcessingError::Deterministic(e),
                 }
             })
             .map_err(CancelableError::Error)?;
