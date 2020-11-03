@@ -837,6 +837,8 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                         }
 
                         Err(e) => {
+                            // Reset the block range size in an attempt to recover from the error.
+                            self.ctx.previous_block_range_size = 1;
                             self.consecutive_err_count += 1;
 
                             // Pause before trying again
