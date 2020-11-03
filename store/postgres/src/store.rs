@@ -1246,6 +1246,15 @@ impl StoreTrait for Store {
         self.create_deployment_internal(name, schema, ops, node_id, mode)
     }
 
+    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
+        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
+        econn.transaction(|| -> Result<(), StoreError> {
+            let changes = metadata::remove_subgraph(&econn.conn, name)?;
+            let event = StoreEvent::new(changes);
+            econn.send_store_event(&event)
+        })
+    }
+
     fn start_subgraph_deployment(
         &self,
         logger: &Logger,

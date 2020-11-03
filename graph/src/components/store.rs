@@ -1135,6 +1135,11 @@ pub trait Store: Send + Sync + 'static {
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError>;
 
+    /// Remove a subgraph and all its versions; if deployments that were used
+    /// by this subgraph do not need to be indexed anymore, also remove
+    /// their assignment, but keep the deployments themselves around
+    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
+
     /// Start an existing subgraph deployment. This will reset the state of
     /// the subgraph to a known good state. `ops` needs to contain all the
     /// operations on the subgraph of subgraphs to reset the metadata of the
@@ -1295,6 +1300,10 @@ impl Store for MockStore {
         _: NodeId,
         _: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn remove_subgraph(&self, _: SubgraphName) -> Result<(), StoreError> {
         unimplemented!()
     }
 

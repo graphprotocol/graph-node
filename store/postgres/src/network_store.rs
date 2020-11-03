@@ -219,6 +219,10 @@ impl StoreTrait for NetworkStore {
     fn deployment_synced(&self, id: &graph::prelude::SubgraphDeploymentId) -> Result<(), Error> {
         self.store.deployment_synced(id)
     }
+
+    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
+        self.store.remove_subgraph(name)
+    }
 }
 
 impl SubgraphDeploymentStore for NetworkStore {

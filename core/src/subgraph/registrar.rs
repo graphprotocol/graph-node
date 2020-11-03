@@ -8,7 +8,7 @@ use lazy_static::lazy_static;
 use graph::components::ethereum::EthereumNetworks;
 use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity,
-    SubgraphEntity, SubgraphVersionEntity, TypedEntity,
+    SubgraphEntity, TypedEntity,
 };
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
@@ -359,7 +359,11 @@ where
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError> {
-        remove_subgraph(&self.logger, self.store.clone(), name)
+        self.store.clone().remove_subgraph(name.clone())?;
+
+        debug!(self.logger, "Removed subgraph"; "subgraph_name" => name.to_string());
+
+        Ok(())
     }
 
     async fn reassign_subgraph(
@@ -615,138 +619,6 @@ fn create_subgraph_version(
                         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
             })
     )
-}
-
-fn remove_subgraph(
-    logger: &Logger,
-    store: Arc<impl Store>,
-    name: SubgraphName,
-) -> Result<(), SubgraphRegistrarError> {
-    let mut ops = vec![];
-
-    // Find the subgraph entity
-    let subgraph_entity_opt = store
-        .find_one(SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())))
-        .map_err(|e| format_err!("query execution error: {}", e))?;
-    let subgraph_entity = subgraph_entity_opt
-        .ok_or_else(|| SubgraphRegistrarError::NameNotFound(name.to_string()))?;
-
-    ops.push(SubgraphEntity::abort_unless(
-        "Subgraph entity must still exist",
-        EntityFilter::new_equal("name", name.to_string()),
-        vec![subgraph_entity.id().unwrap()],
-    ));
-
-    // Find subgraph version entities
-    let subgraph_version_entities = store.find(SubgraphVersionEntity::query().filter(
-        EntityFilter::new_equal("subgraph", subgraph_entity.id().unwrap()),
-    ))?;
-
-    ops.push(SubgraphVersionEntity::abort_unless(
-        "Subgraph must have same set of versions",
-        EntityFilter::new_equal("subgraph", subgraph_entity.id().unwrap()),
-        subgraph_version_entities
-            .iter()
-            .map(|entity| entity.id().unwrap())
-            .collect(),
-    ));
-
-    // Remove subgraph version entities, and their deployment/assignment when applicable
-    ops.extend(
-        remove_subgraph_versions(logger, store.clone(), subgraph_version_entities)?
-            .into_iter()
-            .map(|op| op.into()),
-    );
-
-    // Remove the subgraph entity
-    ops.push(MetadataOperation::Remove {
-        entity: SubgraphEntity::TYPENAME,
-        id: subgraph_entity.id()?,
-    });
-
-    store.apply_metadata_operations(ops)?;
-
-    debug!(logger, "Removed subgraph"; "subgraph_name" => name.to_string());
-
-    Ok(())
-}
-
-/// Remove a set of subgraph versions atomically.
-///
-/// It may seem like it would be easier to generate the EntityOperations for subgraph versions
-/// removal one at a time, but that approach is significantly complicated by the fact that the
-/// store does not reflect the EntityOperations that have been accumulated so far. Earlier subgraph
-/// version creations/removals can affect later ones by affecting whether or not a subgraph deployment
-/// or assignment needs to be created/removed.
-fn remove_subgraph_versions(
-    logger: &Logger,
-    store: Arc<impl Store>,
-    version_entities_to_delete: Vec<Entity>,
-) -> Result<Vec<MetadataOperation>, SubgraphRegistrarError> {
-    let mut ops = vec![];
-
-    let version_entity_ids_to_delete = version_entities_to_delete
-        .iter()
-        .map(|version_entity| version_entity.id().unwrap())
-        .collect::<HashSet<_>>();
-
-    // Get hashes that are referenced by versions that will be deleted.
-    // These are candidates for clean up.
-    let referenced_subgraph_hashes = version_entities_to_delete
-        .iter()
-        .map(|version_entity| {
-            SubgraphDeploymentId::new(
-                version_entity
-                    .get("deployment")
-                    .unwrap()
-                    .to_owned()
-                    .as_string()
-                    .unwrap(),
-            )
-            .unwrap()
-        })
-        .collect::<HashSet<_>>();
-
-    // Find all subgraph version entities that point to these subgraph deployments
-    let (version_summaries, read_summaries_ops) =
-        store.read_subgraph_version_summaries(referenced_subgraph_hashes.into_iter().collect())?;
-    ops.extend(read_summaries_ops);
-
-    // Simulate the planned removal of SubgraphVersion entities
-    let version_summaries_after_delete = version_summaries
-        .clone()
-        .into_iter()
-        .filter(|version_summary| !version_entity_ids_to_delete.contains(&version_summary.id))
-        .collect::<Vec<_>>();
-
-    // Create/remove assignments based on the subgraph version changes.
-    // We are only deleting versions here, so no assignments will be created,
-    // and we can safely pass None for the node ID.
-    ops.extend(
-        store
-            .reconcile_assignments(
-                logger,
-                version_summaries,
-                version_summaries_after_delete,
-                None,
-            )
-            .into_iter()
-            .map(|op| op.into()),
-    );
-
-    // Actually remove the subgraph version entities.
-    // Note: we do this last because earlier AbortUnless ops depend on these entities still
-    // existing.
-    ops.extend(
-        version_entities_to_delete
-            .iter()
-            .map(|version_entity| MetadataOperation::Remove {
-                entity: SubgraphVersionEntity::TYPENAME,
-                id: version_entity.id().unwrap(),
-            }),
-    );
-
-    Ok(ops)
 }
 
 /// Reassign a subgraph deployment to a different node.

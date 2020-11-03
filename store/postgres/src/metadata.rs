@@ -1,5 +1,5 @@
 //! Utilities for dealing with subgraph metadata
-use diesel::dsl::{insert_into, sql, update};
+use diesel::dsl::{delete, insert_into, sql, update};
 use diesel::pg::PgConnection;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
@@ -624,4 +624,27 @@ pub fn create_subgraph_version(
         changes.push(change);
     }
     Ok(changes)
+}
+
+pub fn remove_subgraph(
+    conn: &PgConnection,
+    name: SubgraphName,
+) -> Result<Vec<EntityChange>, StoreError> {
+    use subgraph as s;
+    use subgraph_version as v;
+
+    // Get the id of the given subgraph. If no subgraph with the
+    // name exists, there is nothing to do
+    let subgraph: Option<String> = s::table
+        .filter(s::name.eq(name.as_str()))
+        .select(s::id)
+        .first(conn)
+        .optional()?;
+    if let Some(subgraph) = subgraph {
+        delete(v::table.filter(v::subgraph.eq(&subgraph))).execute(conn)?;
+        delete(s::table.filter(s::id.eq(subgraph))).execute(conn)?;
+        remove_unused_assignments(conn)
+    } else {
+        Ok(vec![])
+    }
 }
