@@ -201,6 +201,9 @@ type SubgraphError {
   blockNumber: BigInt
   blockHash: Bytes
   handler: String
+
+  # `true` means we have certainty that the error is deterministic.
+  deterministic: Boolean!
 }
 
 enum Health {

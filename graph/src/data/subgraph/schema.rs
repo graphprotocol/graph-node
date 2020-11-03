@@ -1382,6 +1382,9 @@ pub struct SubgraphError {
     pub message: String,
     pub block_ptr: Option<EthereumBlockPointer>,
     pub handler: Option<String>,
+
+    // `true` if we are certain the error is determinsitic. If in doubt, this is `false`.
+    pub deterministic: bool,
 }
 
 impl TypedEntity for SubgraphError {
@@ -1404,6 +1407,7 @@ impl From<SubgraphError> for Entity {
             message,
             block_ptr,
             handler,
+            deterministic,
         } = subgraph_error;
 
         let mut entity = Entity::new();
@@ -1412,6 +1416,7 @@ impl From<SubgraphError> for Entity {
         entity.set("blockNumber", block_ptr.map(|x| x.number));
         entity.set("blockHash", block_ptr.map(|x| x.hash));
         entity.set("handler", handler);
+        entity.set("deterministic", deterministic);
         entity
     }
 }
@@ -1431,6 +1436,7 @@ impl TryFromValue for SubgraphError {
             message: value.get_required("message")?,
             block_ptr,
             handler: value.get_optional("handler")?,
+            deterministic: value.get_optional("deterministic")?.unwrap_or(false),
         })
     }
 }

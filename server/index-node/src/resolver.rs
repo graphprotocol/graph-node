@@ -19,6 +19,7 @@ static DEPLOYMENT_STATUS_FRAGMENT: &str = r#"
             blockNumber
             blockHash
             handler
+            deterministic
         }
         nonFatalErrors(first: 1000, orderBy: blockNumber) {
             subgraphId
@@ -26,6 +27,7 @@ static DEPLOYMENT_STATUS_FRAGMENT: &str = r#"
             blockNumber
             blockHash
             handler
+            deterministic
         }
         ethereumHeadBlockNumber
         ethereumHeadBlockHash
@@ -233,6 +235,7 @@ impl From<IndexingStatus> for q::Value {
                 message,
                 block_ptr,
                 handler,
+                deterministic,
             } = subgraph_error;
 
             object! {
@@ -244,7 +247,8 @@ impl From<IndexingStatus> for q::Value {
                     __typename: "Block",
                     number: block_ptr.map(|x| x.number),
                     hash: block_ptr.map(|x| q::Value::from(Value::Bytes(x.hash.as_ref().into()))),
-                }
+                },
+                deterministic: deterministic,
             }
         }
 
@@ -653,9 +657,9 @@ where
                     "subgraph" => subgraph_name,
                     "errors" => format!("{:?}", errors)
                 );
-                return Ok(q::Value::List(vec![]));
+                return Ok(q::Value::Null);
             }
-            Ok(None) => return Ok(q::Value::List(vec![])),
+            Ok(None) => return Ok(q::Value::Null),
             Ok(Some(data)) => data,
         };
 

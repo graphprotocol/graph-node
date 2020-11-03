@@ -60,6 +60,9 @@ type SubgraphError {
   # Context for the error.
   block: Block
   handler: String
+
+  # `true` means we have certainty that the error is deterministic.
+  deterministic: Boolean!
 }
 
 enum Health {

@@ -173,6 +173,7 @@ where
                 message: e.to_string(),
                 block_ptr: None,
                 handler: None,
+                deterministic: false,
             };
 
             let _ignore_error = store.apply_metadata_operations(
