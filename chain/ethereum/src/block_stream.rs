@@ -111,14 +111,15 @@ struct BlockStreamContext<S, C> {
     metrics: Arc<BlockStreamMetrics>,
     previous_triggers_per_block: f64,
     previous_block_range_size: u64,
+    max_block_range_size: u64,
 }
 
 impl<S, C> Clone for BlockStreamContext<S, C> {
     fn clone(&self) -> Self {
         Self {
-            subgraph_store: self.subgraph_store.clone(),
-            chain_store: self.chain_store.clone(),
-            eth_adapter: self.eth_adapter.clone(),
+            subgraph_store: self.subgraph_store.cheap_clone(),
+            chain_store: self.chain_store.cheap_clone(),
+            eth_adapter: self.eth_adapter.cheap_clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
@@ -131,6 +132,7 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
             metrics: self.metrics.clone(),
             previous_triggers_per_block: self.previous_triggers_per_block,
             previous_block_range_size: self.previous_block_range_size,
+            max_block_range_size: self.max_block_range_size,
         }
     }
 }
@@ -191,6 +193,7 @@ where
                 // A high number here forces a slow start, with a range of 1.
                 previous_triggers_per_block: 1_000_000.0,
                 previous_block_range_size: 1,
+                max_block_range_size: *MAX_BLOCK_RANGE_SIZE,
             },
         }
     }
@@ -242,6 +245,7 @@ where
         let call_filter = self.call_filter.clone();
         let block_filter = self.block_filter.clone();
         let start_blocks = self.start_blocks.clone();
+        let max_block_range_size = self.max_block_range_size;
 
         // Get pointers from database for comparison
         let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
@@ -401,15 +405,15 @@ where
                             //   10000 triggers found, 2 per block, range_size = 1000 / 2 = 500
                             // - Scan 500 blocks:
                             //   1000 triggers found, 2 per block, range_size = 1000 / 2 = 500
-                            let max_range_size =
-                                MAX_BLOCK_RANGE_SIZE.min(ctx.previous_block_range_size * 10);
+                            let range_size_upper_limit =
+                                max_block_range_size.min(ctx.previous_block_range_size * 10);
                             let range_size = if ctx.previous_triggers_per_block == 0.0 {
-                                max_range_size
+                                range_size_upper_limit
                             } else {
                                 (*TARGET_TRIGGERS_PER_BLOCK_RANGE as f64
                                     / ctx.previous_triggers_per_block)
                                     .max(1.0)
-                                    .min(max_range_size as f64)
+                                    .min(range_size_upper_limit as f64)
                                     as u64
                             };
                             let to = cmp::min(from + range_size - 1, to_limit);
@@ -795,6 +799,19 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                     match next_blocks_future.poll() {
                         // Reconciliation found blocks to process
                         Ok(Async::Ready(NextBlocks::Blocks(next_blocks, block_range_size))) => {
+                            // We had only one error, so we infer that reducing the range size is
+                            // what fixed it. Reduce the max range size to prevent future errors.
+                            // See: 018c6df4-132f-4acc-8697-a2d64e83a9f0
+                            if self.consecutive_err_count == 1 {
+                                // Reduce the max range size by 10%, but to no less than 10.
+                                self.ctx.max_block_range_size =
+                                    (self.ctx.max_block_range_size * 9 / 10).max(10);
+                                info!(
+                                    self.ctx.logger,
+                                    "Maximum range size reduced to {}",
+                                    self.ctx.max_block_range_size
+                                );
+                            }
                             self.consecutive_err_count = 0;
 
                             let total_triggers =
@@ -838,6 +855,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
 
                         Err(e) => {
                             // Reset the block range size in an attempt to recover from the error.
+                            // See also: 018c6df4-132f-4acc-8697-a2d64e83a9f0
                             self.ctx.previous_block_range_size = 1;
                             self.consecutive_err_count += 1;
 
