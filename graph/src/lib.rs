@@ -65,6 +65,7 @@ pub mod prelude {
     pub use std::pin::Pin;
     pub use std::sync::Arc;
     pub use std::time::Duration;
+    pub use thiserror;
     pub use tiny_keccak;
     pub use tokio;
     pub use web3;

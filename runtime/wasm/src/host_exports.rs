@@ -32,6 +32,21 @@ impl From<anyhow::Error> for EthereumCallError {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum HostExportError {
+    #[error("{0:#}")]
+    Unknown(anyhow::Error),
+
+    #[error("{0:#}")]
+    Deterministic(anyhow::Error),
+}
+
+impl From<failure::Error> for HostExportError {
+    fn from(e: failure::Error) -> Self {
+        HostExportError::Unknown(e.compat_err())
+    }
+}
+
 pub(crate) struct HostExports {
     subgraph_id: SubgraphDeploymentId,
     pub(crate) api_version: Version,
@@ -105,7 +120,7 @@ impl HostExports {
         file_name: Option<String>,
         line_number: Option<u32>,
         column_number: Option<u32>,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), HostExportError> {
         let message = message
             .map(|message| format!("message: {}", message))
             .unwrap_or_else(|| "no message".into());
@@ -121,11 +136,11 @@ impl HostExports {
             ),
             _ => unreachable!(),
         };
-        Err(anyhow::anyhow!(
+        Err(HostExportError::Deterministic(anyhow::anyhow!(
             "Mapping aborted at {}, with {}",
             location,
             message
-        ))
+        )))
     }
 
     pub(crate) fn store_set(
@@ -434,24 +449,31 @@ impl HostExports {
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_i64(&self, json: String) -> Result<i64, anyhow::Error> {
-        i64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as i64", json))
+    pub(crate) fn json_to_i64(&self, json: String) -> Result<i64, HostExportError> {
+        i64::from_str(&json)
+            .with_context(|| format!("JSON `{}` cannot be parsed as i64", json))
+            .map_err(HostExportError::Deterministic)
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_u64(&self, json: String) -> Result<u64, anyhow::Error> {
-        u64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as u64", json))
+    pub(crate) fn json_to_u64(&self, json: String) -> Result<u64, HostExportError> {
+        u64::from_str(&json)
+            .with_context(|| format!("JSON `{}` cannot be parsed as u64", json))
+            .map_err(HostExportError::Deterministic)
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_f64(&self, json: String) -> Result<f64, anyhow::Error> {
-        f64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as f64", json))
+    pub(crate) fn json_to_f64(&self, json: String) -> Result<f64, HostExportError> {
+        f64::from_str(&json)
+            .with_context(|| format!("JSON `{}` cannot be parsed as f64", json))
+            .map_err(HostExportError::Deterministic)
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_big_int(&self, json: String) -> Result<Vec<u8>, anyhow::Error> {
+    pub(crate) fn json_to_big_int(&self, json: String) -> Result<Vec<u8>, HostExportError> {
         let big_int = BigInt::from_str(&json)
-            .with_context(|| format!("JSON `{}` is not a decimal string", json))?;
+            .with_context(|| format!("JSON `{}` is not a decimal string", json))
+            .map_err(HostExportError::Deterministic)?;
         Ok(big_int.to_signed_bytes_le())
     }
 
@@ -471,8 +493,17 @@ impl HostExports {
         x * y
     }
 
-    pub(crate) fn big_int_divided_by(&self, x: BigInt, y: BigInt) -> Result<BigInt, anyhow::Error> {
-        anyhow::ensure!(y != 0.into(), "attempted to divide BigInt `{}` by zero", x);
+    pub(crate) fn big_int_divided_by(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigInt, HostExportError> {
+        if y == 0.into() {
+            return Err(HostExportError::Deterministic(anyhow::anyhow!(
+                "attempted to divide BigInt `{}` by zero",
+                x
+            )));
+        }
         Ok(x / y)
     }
 
@@ -507,12 +538,13 @@ impl HostExports {
         &self,
         x: BigDecimal,
         y: BigDecimal,
-    ) -> Result<BigDecimal, anyhow::Error> {
-        anyhow::ensure!(
-            y != 0.into(),
-            format!("attempted to divide BigDecimal `{}` by zero", x)
-        );
-
+    ) -> Result<BigDecimal, HostExportError> {
+        if y == 0.into() {
+            return Err(HostExportError::Deterministic(anyhow::anyhow!(
+                "attempted to divide BigDecimal `{}` by zero",
+                x
+            )));
+        }
         Ok(x / y)
     }
 
@@ -619,14 +651,16 @@ impl HostExports {
     }
 }
 
-pub(crate) fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, serde_json::Error> {
-    serde_json::from_reader(bytes.as_slice())
+pub(crate) fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, HostExportError> {
+    serde_json::from_reader(bytes.as_slice()).map_err(|e| HostExportError::Deterministic(e.into()))
 }
 
-pub(crate) fn string_to_h160(string: &str) -> Result<H160, anyhow::Error> {
+pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError> {
     // `H160::from_str` takes a hex string with no leading `0x`.
     let s = string.trim_start_matches("0x");
-    H160::from_str(s).with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
+    H160::from_str(s)
+        .with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
+        .map_err(HostExportError::Deterministic)
 }
 
 pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {

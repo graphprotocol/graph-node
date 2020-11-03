@@ -1429,6 +1429,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "test-store",
+ "thiserror",
  "tiny-keccak 1.5.0",
  "tokio 0.2.22",
  "tokio-retry",
@@ -1494,7 +1495,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "test-store",
- "thiserror",
  "walkdir",
 ]
 
