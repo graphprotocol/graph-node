@@ -121,7 +121,7 @@ lazy_static! {
 pub fn run_test_sequentially<R, S, F, G>(setup: G, test: F)
 where
     G: FnOnce() -> S + Send + 'static,
-    F: FnOnce(Arc<Store>, S) -> R + Send + 'static,
+    F: FnOnce(Arc<NetworkStore>, S) -> R + Send + 'static,
     R: std::future::Future<Output = ()> + Send + 'static,
 {
     let store = STORE.clone();
@@ -134,7 +134,7 @@ where
 
     runtime.block_on(async {
         let state = setup();
-        test(store.store(), state).await
+        test(store, state).await
     })
 }
 
