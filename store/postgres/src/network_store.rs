@@ -6,7 +6,7 @@ use graph::prelude::{
     BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
     EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock, NodeId,
     Schema, Store as StoreTrait, StoreError, Stream, SubgraphDeploymentEntity,
-    SubgraphDeploymentStore, SubgraphName, SubgraphVersionSwitchingMode,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphName, SubgraphVersionSwitchingMode,
 };
 
 use crate::chain_store::ChainStore;
@@ -222,6 +222,14 @@ impl StoreTrait for NetworkStore {
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         self.store.remove_subgraph(name)
+    }
+
+    fn reassign_subgraph(
+        &self,
+        id: &SubgraphDeploymentId,
+        node: &NodeId,
+    ) -> Result<(), StoreError> {
+        self.store.reassign_subgraph(id, node)
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {

@@ -755,6 +755,8 @@ pub enum StoreError {
     /// constraint to not hold
     #[fail(display = "internal constraint violated: {}", _0)]
     ConstraintViolation(String),
+    #[fail(display = "deployment not found: {}", _0)]
+    DeploymentNotFound(String),
 }
 
 impl From<TransactionAbortError> for StoreError {
@@ -960,6 +962,14 @@ pub trait Store: Send + Sync + 'static {
     /// their assignment, but keep the deployments themselves around
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
 
+    /// Assign the subgraph with `id` to the node `node_id`. If there is no
+    /// assignment for the given deployment, report an error.
+    fn reassign_subgraph(
+        &self,
+        id: &SubgraphDeploymentId,
+        node_id: &NodeId,
+    ) -> Result<(), StoreError>;
+
     /// Start an existing subgraph deployment. This will reset the state of
     /// the subgraph to a known good state. `ops` needs to contain all the
     /// operations on the subgraph of subgraphs to reset the metadata of the
@@ -1128,6 +1138,10 @@ impl Store for MockStore {
     }
 
     fn remove_subgraph(&self, _: SubgraphName) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn reassign_subgraph(&self, _: &SubgraphDeploymentId, _: &NodeId) -> Result<(), StoreError> {
         unimplemented!()
     }
 

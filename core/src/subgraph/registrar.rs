@@ -369,12 +369,18 @@ where
         Ok(())
     }
 
+    /// Reassign a subgraph deployment to a different node.
+    ///
+    /// Reassigning to a nodeId that does not match any reachable graph-nodes will effectively pause the
+    /// subgraph syncing process.
     async fn reassign_subgraph(
         &self,
-        hash: SubgraphDeploymentId,
+        id: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
-        reassign_subgraph(self.store.clone(), hash, node_id)
+        self.store.reassign_subgraph(&id, &node_id)?;
+
+        Ok(())
     }
 }
 
@@ -576,54 +582,4 @@ fn create_subgraph_version(
                         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
             })
     )
-}
-
-/// Reassign a subgraph deployment to a different node.
-///
-/// Reassigning to a nodeId that does not match any reachable graph-nodes will effectively pause the
-/// subgraph syncing process.
-fn reassign_subgraph(
-    store: Arc<impl Store>,
-    hash: SubgraphDeploymentId,
-    node_id: NodeId,
-) -> Result<(), SubgraphRegistrarError> {
-    let mut ops = vec![];
-
-    let current_deployment = store.find(
-        SubgraphDeploymentAssignmentEntity::query()
-            .filter(EntityFilter::new_equal("id", hash.clone().to_string())),
-    )?;
-
-    let current_node_id = current_deployment
-        .first()
-        .and_then(|d| d.get("nodeId"))
-        .ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.clone().to_string()))?;
-
-    if current_node_id.to_string() == node_id.to_string() {
-        return Err(SubgraphRegistrarError::DeploymentAssignmentUnchanged(
-            hash.clone().to_string(),
-        ));
-    }
-
-    ops.push(SubgraphDeploymentAssignmentEntity::abort_unless(
-        "Deployment assignment is unchanged",
-        EntityFilter::And(vec![
-            EntityFilter::new_equal("nodeId", current_node_id.to_string()),
-            EntityFilter::new_equal("id", hash.clone().to_string()),
-        ]),
-        vec![hash.clone().to_string()],
-    ));
-
-    // Create the assignment update operations.
-    // Note: This will also generate a remove operation for the existing subgraph assignment.
-    ops.extend(
-        SubgraphDeploymentAssignmentEntity::new(node_id)
-            .write_operations(&hash.clone())
-            .into_iter()
-            .map(|op| op.into()),
-    );
-
-    store.apply_metadata_operations(ops)?;
-
-    Ok(())
 }

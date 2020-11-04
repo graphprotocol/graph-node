@@ -1260,6 +1260,19 @@ impl StoreTrait for Store {
         })
     }
 
+    fn reassign_subgraph(
+        &self,
+        id: &SubgraphDeploymentId,
+        node: &NodeId,
+    ) -> Result<(), StoreError> {
+        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
+        econn.transaction(|| -> Result<(), StoreError> {
+            let changes = metadata::reassign_subgraph(&econn.conn, id, node)?;
+            let event = StoreEvent::new(changes);
+            econn.send_store_event(&event)
+        })
+    }
+
     fn start_subgraph_deployment(
         &self,
         logger: &Logger,

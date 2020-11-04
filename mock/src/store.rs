@@ -177,6 +177,10 @@ impl Store for MockStore {
         unimplemented!()
     }
 
+    fn reassign_subgraph(&self, _: &SubgraphDeploymentId, _: &NodeId) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
     fn start_subgraph_deployment(
         &self,
         _logger: &Logger,

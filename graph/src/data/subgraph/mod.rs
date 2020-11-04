@@ -310,7 +310,10 @@ impl From<QueryExecutionError> for SubgraphRegistrarError {
 
 impl From<StoreError> for SubgraphRegistrarError {
     fn from(e: StoreError) -> Self {
-        SubgraphRegistrarError::StoreError(e)
+        match e {
+            StoreError::DeploymentNotFound(id) => SubgraphRegistrarError::DeploymentNotFound(id),
+            e => SubgraphRegistrarError::StoreError(e),
+        }
     }
 }
 

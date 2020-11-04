@@ -10,7 +10,7 @@ use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphManifestEntity, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bigdecimal::ToPrimitive, format_err, web3::types::H256, BigDecimal, BlockNumber,
+    bigdecimal::ToPrimitive, entity, format_err, web3::types::H256, BigDecimal, BlockNumber,
     DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, MetadataOperation,
     NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId,
     SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
@@ -659,5 +659,36 @@ pub fn remove_subgraph(
         remove_unused_assignments(conn)
     } else {
         Ok(vec![])
+    }
+}
+
+pub fn reassign_subgraph(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    node: &NodeId,
+) -> Result<Vec<EntityChange>, StoreError> {
+    use subgraph_deployment_assignment as a;
+
+    let updates = update(a::table.filter(a::id.eq(id.as_str())))
+        .set(a::node_id.eq(node.as_str()))
+        .execute(conn)?;
+    match updates {
+        0 => Err(StoreError::DeploymentNotFound(id.to_string())),
+        1 => {
+            let op = MetadataOperation::Set {
+                entity: SubgraphDeploymentAssignmentEntity::TYPENAME,
+                id: id.to_string(),
+                data: entity! { node_id: node.to_string() },
+            };
+            let change: Option<EntityChange> = op.into();
+            let change =
+                change.expect("converting a MetadataOperation::Set to an EntityChange is safe");
+            Ok(vec![change])
+        }
+        _ => {
+            // `id` is the primary key of the subgraph_deployment_assignment table,
+            // and we can therefore only update no or one entry
+            unreachable!()
+        }
     }
 }
