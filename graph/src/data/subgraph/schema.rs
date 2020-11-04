@@ -23,7 +23,6 @@ use rand::Rng;
 use stable_hash::utils::stable_hash;
 use stable_hash::{crypto::SetHasher, SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, fmt::Display};
 use strum_macros::IntoStaticStr;
 use uuid::Uuid;
@@ -52,7 +51,6 @@ pub const POI_OBJECT: &str = "Poi$";
 #[derive(Debug, Clone, IntoStaticStr)]
 pub enum MetadataType {
     Subgraph,
-    SubgraphVersion,
     SubgraphDeployment,
     SubgraphDeploymentAssignment,
     SubgraphManifest,
@@ -238,42 +236,6 @@ impl SubgraphEntity {
         };
 
         vec![update_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-}
-
-#[derive(Debug)]
-pub struct SubgraphVersionEntity {
-    subgraph_id: String,
-    deployment_id: SubgraphDeploymentId,
-    created_at: u64,
-}
-
-impl TypedEntity for SubgraphVersionEntity {
-    const TYPENAME: MetadataType = MetadataType::SubgraphVersion;
-    type IdType = String;
-}
-
-impl SubgraphVersionEntity {
-    pub fn new(subgraph_id: String, deployment_id: SubgraphDeploymentId) -> Self {
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        Self {
-            subgraph_id,
-            deployment_id,
-            created_at,
-        }
-    }
-
-    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id.to_owned(),
-            subgraph: self.subgraph_id,
-            deployment: self.deployment_id.to_string(),
-            createdAt: self.created_at,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 
