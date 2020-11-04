@@ -20,6 +20,8 @@ use hex;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
+use stable_hash::utils::stable_hash;
+use stable_hash::{crypto::SetHasher, SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{collections::BTreeMap, fmt::Display};
 use strum_macros::IntoStaticStr;
@@ -489,7 +491,7 @@ impl SubgraphDeploymentEntity {
         id: &SubgraphDeploymentId,
         error: SubgraphError,
     ) -> Vec<MetadataOperation> {
-        let error_id = uuid::Uuid::new_v4().to_string();
+        let error_id = hex::encode(&stable_hash::<SetHasher, _>(&error));
 
         let mut entity = Entity::new();
         entity.set("failed", true);
@@ -1385,6 +1387,23 @@ pub struct SubgraphError {
 
     // `true` if we are certain the error is determinsitic. If in doubt, this is `false`.
     pub deterministic: bool,
+}
+
+impl StableHash for SubgraphError {
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
+        let SubgraphError {
+            subgraph_id,
+            message,
+            block_ptr,
+            handler,
+            deterministic,
+        } = self;
+        subgraph_id.stable_hash(sequence_number.next_child(), state);
+        message.stable_hash(sequence_number.next_child(), state);
+        block_ptr.stable_hash(sequence_number.next_child(), state);
+        handler.stable_hash(sequence_number.next_child(), state);
+        deterministic.stable_hash(sequence_number.next_child(), state);
+    }
 }
 
 impl TypedEntity for SubgraphError {
