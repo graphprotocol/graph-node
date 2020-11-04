@@ -51,7 +51,7 @@ pub mod db_schema_for_tests {
 #[cfg(debug_assertions)]
 pub mod layout_for_tests {
     pub use crate::block_range::*;
-    pub use crate::entities::STRING_PREFIX_SIZE;
+    pub use crate::entities::{EVENT_TAP, EVENT_TAP_ENABLED, STRING_PREFIX_SIZE};
     pub use crate::relational::*;
 }
 

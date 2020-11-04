@@ -266,6 +266,26 @@ pub fn insert_entities(
     .map(|_| ())
 }
 
+/// Tap into store events sent when running `f` and return those events. This
+/// intercepts `StoreEvent` when they are sent and therefore does not require
+/// the delicate timing that actually listening to events in the database
+/// requires. Of course, this does not test that events that are sent are
+/// actually received by anything, but makes ensuring that the right events
+/// get sent much more convenient than trying to receive them
+#[cfg(debug_assertions)]
+pub fn tap_store_events<F>(f: F) -> Vec<StoreEvent>
+where
+    F: FnOnce(),
+{
+    use graph_store_postgres::layout_for_tests::{EVENT_TAP, EVENT_TAP_ENABLED};
+
+    EVENT_TAP.lock().unwrap().clear();
+    *EVENT_TAP_ENABLED.lock().unwrap() = true;
+    f();
+    *EVENT_TAP_ENABLED.lock().unwrap() = false;
+    EVENT_TAP.lock().unwrap().clone()
+}
+
 #[cfg(debug_assertions)]
 pub mod block_store {
     use diesel::prelude::*;

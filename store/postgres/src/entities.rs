@@ -76,6 +76,14 @@ lazy_static! {
     };
 }
 
+#[cfg(debug_assertions)]
+lazy_static! {
+/// Tests set this to true so that `send_store_event` will store a copy
+/// of each event sent in `EVENT_TAP`
+pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
+    pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
+}
+
 /// The size of string prefixes that we index. This is chosen so that we
 /// will index strings that people will do string comparisons like
 /// `=` or `!=` on; if text longer than this is stored in a String attribute
@@ -795,6 +803,12 @@ impl Connection<'_> {
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
         let v = serde_json::to_value(event)?;
+        #[cfg(debug_assertions)]
+        {
+            if *EVENT_TAP_ENABLED.lock().unwrap() {
+                EVENT_TAP.lock().unwrap().push(event.clone());
+            }
+        }
         JsonNotification::send("store_events", &v, &self.conn)
     }
 
