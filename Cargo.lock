@@ -1624,6 +1624,7 @@ dependencies = [
 name = "graph-node"
 version = "0.19.2"
 dependencies = [
+ "anyhow",
  "assert_cli",
  "clap",
  "crossbeam-channel 0.5.0",
@@ -1646,7 +1647,12 @@ dependencies = [
  "ipfs-api",
  "lazy_static",
  "prometheus",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_regex",
  "structopt",
+ "toml",
  "url 2.2.0",
 ]
 
@@ -3784,6 +3790,16 @@ checksum = "dcac07dbffa1c65e7f816ab9eba78eb142c6d44410f4eeba1e26e4f5dfa56b95"
 dependencies = [
  "itoa",
  "ryu",
+ "serde",
+]
+
+[[package]]
+name = "serde_regex"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8136f1a4ea815d7eac4101cfd0b16dc0cb5e1fe1b8609dfd728058656b7badf"
+dependencies = [
+ "regex",
  "serde",
 ]
 

@@ -34,9 +34,11 @@ use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::NetworkStore as DieselNetworkStore;
 use graphql_parser::query as q;
 
+mod config;
 mod opt;
 mod store_builder;
 
+use config::Config;
 use store_builder::StoreBuilder;
 
 lazy_static! {
@@ -109,6 +111,22 @@ async fn main() {
         "Graph Node version: {}",
         render_testament!(TESTAMENT)
     );
+
+    let config = match Config::load(&logger, &opt) {
+        Err(e) => {
+            eprintln!("configuration error: {}", e);
+            std::process::exit(1);
+        }
+        Ok(config) => config,
+    };
+    if opt.check_config {
+        match config.to_json() {
+            Ok(txt) => println!("{}", txt),
+            Err(e) => eprintln!("error serializing config: {}", e),
+        }
+        eprintln!("Successfully validated configuration");
+        std::process::exit(0);
+    }
 
     // Safe to unwrap because a value is required by CLI
     let postgres_url = opt.postgres_url.clone();

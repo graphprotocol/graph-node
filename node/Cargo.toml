@@ -26,7 +26,13 @@ graph-server-json-rpc = { path = "../server/json-rpc"}
 graph-server-websocket = { path = "../server/websocket" }
 graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
+regex = "1.4.2"
+serde = { version = "1.0.117", features = ["derive"] }
+serde_regex = "1.1.0"
 structopt = "0.3.20"
+toml = "0.5.7"
+anyhow = "1.0.34"
+serde_json = "1.0.59"
 
 [dev-dependencies]
 assert_cli = "0.6"

@@ -17,6 +17,14 @@ lazy_static! {
 pub struct Opt {
     #[structopt(
         long,
+        env = "GRAPH_NODE_CONFIG",
+        help = "the name of the configuration file"
+    )]
+    pub config: Option<String>,
+    #[structopt(long, help = "validate the configuration and exit")]
+    pub check_config: bool,
+    #[structopt(
+        long,
         value_name = "[NAME:]IPFS_HASH",
         env = "SUBGRAPH",
         help = "name and IPFS hash of the subgraph manifest"
