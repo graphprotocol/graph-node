@@ -1,7 +1,9 @@
 use std::sync::Arc;
-use url::Url;
 
-use graph::prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger};
+use graph::{
+    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
+    util::security::SafeDisplay,
+};
 use graph_core::MetricsRegistry;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
@@ -9,22 +11,7 @@ use graph_store_postgres::{
     NetworkStore as DieselNetworkStore, Store as DieselStore, SubscriptionManager,
 };
 
-/// Replace the host portion of `url` and return a new URL with `host`
-/// as the host portion
-///
-/// Panics if `url` is not a valid URL (which won't happen in our case since
-/// we would have paniced before getting here as `url` is the connection for
-/// the primary Postgres instance)
-fn replace_host(url: &str, host: &str) -> String {
-    let mut url = match Url::parse(url) {
-        Ok(url) => url,
-        Err(_) => panic!("Invalid Postgres URL {}", url),
-    };
-    if let Err(e) = url.set_host(Some(host)) {
-        panic!("Invalid Postgres url {}: {}", url, e.to_string());
-    }
-    url.into_string()
-}
+use crate::config::Config;
 
 pub struct StoreBuilder {
     store: Arc<DieselStore>,
@@ -33,37 +20,41 @@ pub struct StoreBuilder {
 }
 
 impl StoreBuilder {
-    pub fn new(
-        logger: &Logger,
-        postgres_url: &str,
-        pool_size: u32,
-        read_replicas: Vec<String>,
-        replica_weights: Vec<usize>,
-        registry: Arc<MetricsRegistry>,
-    ) -> Self {
-        // Minimum of two connections needed for the pool in order for the Store to bootstrap
-        if pool_size <= 1 {
-            panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
-        }
+    pub fn new(logger: &Logger, config: &Config, registry: Arc<MetricsRegistry>) -> Self {
+        let primary = config.primary_store();
 
+        info!(
+            logger,
+            "Connecting to Postgres (primary)";
+            "url" => SafeDisplay(primary.connection.as_str()),
+            "conn_pool_size" => primary.pool_size,
+            "weight" => primary.weight
+        );
         let conn_pool = ConnectionPool::create(
             "main",
-            postgres_url.to_owned(),
-            pool_size,
+            primary.connection.to_owned(),
+            primary.pool_size,
             &logger,
             registry.cheap_clone(),
         );
 
-        let read_only_conn_pools: Vec<_> = read_replicas
-            .into_iter()
+        let mut weights: Vec<_> = vec![primary.weight];
+        let read_only_conn_pools: Vec<_> = primary
+            .replicas
+            .values()
             .enumerate()
-            .map(|(i, host)| {
-                info!(&logger, "Connecting to Postgres read replica at {}", host);
-                let url = replace_host(postgres_url, &host);
+            .map(|(i, replica)| {
+                info!(
+                    &logger,
+                    "Connecting to Postgres (read replica {})", i+1;
+                    "url" => SafeDisplay(replica.connection.as_str()),
+                    "weight" => replica.weight
+                );
+                weights.push(replica.weight);
                 ConnectionPool::create(
                     &format!("replica{}", i),
-                    url,
-                    pool_size,
+                    replica.connection.clone(),
+                    replica.pool_size,
                     &logger,
                     registry.cheap_clone(),
                 )
@@ -72,7 +63,7 @@ impl StoreBuilder {
 
         let subscriptions = Arc::new(SubscriptionManager::new(
             logger.clone(),
-            postgres_url.to_owned(),
+            primary.connection.to_owned(),
         ));
 
         let store = Arc::new(DieselStore::new(
@@ -80,14 +71,14 @@ impl StoreBuilder {
             subscriptions.clone(),
             conn_pool.clone(),
             read_only_conn_pools.clone(),
-            replica_weights.clone(),
+            weights,
             registry.clone(),
         ));
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
             &logger,
             registry.clone(),
-            postgres_url.to_owned(),
+            primary.connection.to_owned(),
         ));
 
         Self {

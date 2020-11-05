@@ -128,9 +128,6 @@ async fn main() {
         std::process::exit(0);
     }
 
-    // Safe to unwrap because a value is required by CLI
-    let postgres_url = opt.postgres_url.clone();
-
     let node_id =
         NodeId::new(opt.node_id.clone()).expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
 
@@ -197,14 +194,6 @@ async fn main() {
     )
     .await;
 
-    // Set up Store
-    info!(
-        logger,
-        "Connecting to Postgres";
-        "url" => SafeDisplay(postgres_url.as_str()),
-        "conn_pool_size" => store_conn_pool_size,
-    );
-
     let graphql_metrics_registry = metrics_registry.clone();
 
     let stores_logger = logger.clone();
@@ -216,10 +205,7 @@ async fn main() {
 
     let store_builder = Arc::new(StoreBuilder::new(
         &logger,
-        &postgres_url,
-        opt.store_connection_pool_size,
-        opt.postgres_secondary_hosts.clone(),
-        opt.postgres_host_weights.clone(),
+        &config,
         metrics_registry.cheap_clone(),
     ));
     let store_builder2 = store_builder.clone();

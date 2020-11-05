@@ -87,16 +87,22 @@ impl Config {
         // just stick with JSON
         Ok(serde_json::to_string_pretty(&self)?)
     }
+
+    pub fn primary_store(&self) -> &Shard {
+        self.stores
+            .get(PRIMARY)
+            .expect("a validated config has a primary store")
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Shard {
-    connection: String,
+pub struct Shard {
+    pub connection: String,
     #[serde(default = "one")]
-    weight: usize,
+    pub weight: usize,
     #[serde(default = "zero")]
-    pool_size: u32,
-    replicas: HashMap<String, Replica>,
+    pub pool_size: u32,
+    pub replicas: HashMap<String, Replica>,
 }
 
 fn check_pool_size(pool_size: u32, connection: &str) -> Result<()> {
@@ -145,12 +151,12 @@ impl Shard {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Replica {
-    connection: String,
+pub struct Replica {
+    pub connection: String,
     #[serde(default = "one")]
-    weight: usize,
+    pub weight: usize,
     #[serde(default = "zero")]
-    pool_size: u32,
+    pub pool_size: u32,
 }
 
 impl Replica {
