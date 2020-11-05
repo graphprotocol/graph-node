@@ -119,9 +119,11 @@ fn check_pool_size(pool_size: u32, connection: &str) -> Result<()> {
 
 impl Shard {
     fn validate(&mut self, opt: &Opt) -> Result<()> {
+        self.connection = shellexpand::env(&self.connection)?.into_owned();
         if self.pool_size == 0 {
             self.pool_size = opt.store_connection_pool_size;
         }
+
         check_pool_size(self.pool_size, &self.connection)?;
         for (name, replica) in self.replicas.iter_mut() {
             validate_name(name)?;
@@ -165,9 +167,11 @@ pub struct Replica {
 
 impl Replica {
     fn validate(&mut self, opt: &Opt) -> Result<()> {
+        self.connection = shellexpand::env(&self.connection)?.into_owned();
         if self.pool_size == 0 {
             self.pool_size = opt.store_connection_pool_size;
         }
+
         check_pool_size(self.pool_size, &self.connection)?;
         Ok(())
     }
