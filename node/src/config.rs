@@ -131,18 +131,22 @@ impl Shard {
     }
 
     fn from_opt(opt: &Opt) -> Result<Self> {
-        check_pool_size(opt.store_connection_pool_size, &opt.postgres_url)?;
+        let postgres_url = opt
+            .postgres_url
+            .as_ref()
+            .expect("validation checked that postgres_url is set");
+        check_pool_size(opt.store_connection_pool_size, &postgres_url)?;
         let mut replicas = HashMap::new();
         for (i, host) in opt.postgres_secondary_hosts.iter().enumerate() {
             let replica = Replica {
-                connection: replace_host(&opt.postgres_url, &host),
+                connection: replace_host(&postgres_url, &host),
                 weight: opt.postgres_host_weights.get(i + 1).cloned().unwrap_or(1),
                 pool_size: opt.store_connection_pool_size,
             };
             replicas.insert(format!("replica{}", i + 1), replica);
         }
         Ok(Self {
-            connection: opt.postgres_url.clone(),
+            connection: postgres_url.clone(),
             weight: opt.postgres_host_weights.get(0).cloned().unwrap_or(1),
             pool_size: opt.store_connection_pool_size,
             replicas,

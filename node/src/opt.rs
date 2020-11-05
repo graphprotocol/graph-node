@@ -18,7 +18,9 @@ pub struct Opt {
     #[structopt(
         long,
         env = "GRAPH_NODE_CONFIG",
-        help = "the name of the configuration file"
+        conflicts_with_all = &["postgres-url", "postgres-secondary-hosts", "postgres-host-weights"],
+        required_unless = "postgres-url",
+        help = "the name of the configuration file",
     )]
     pub config: Option<String>,
     #[structopt(long, help = "validate the configuration and exit")]
@@ -34,14 +36,17 @@ pub struct Opt {
         long,
         value_name = "URL",
         env = "POSTGRES_URL",
+        conflicts_with = "config",
+        required_unless = "config",
         help = "Location of the Postgres database used for storing entities"
     )]
-    pub postgres_url: String,
+    pub postgres_url: Option<String>,
     #[structopt(
         long,
         value_name = "URL,",
         use_delimiter = true,
         env = "GRAPH_POSTGRES_SECONDARY_HOSTS",
+        conflicts_with = "config",
         help = "Comma-separated list of host names/IP's for read-only Postgres replicas, \
            which will share the load with the primary server"
     )]
@@ -52,6 +57,7 @@ pub struct Opt {
         value_name = "WEIGHT,",
         use_delimiter = true,
         env = "GRAPH_POSTGRES_HOST_WEIGHTS",
+        conflicts_with = "config",
         help = "Comma-separated list of relative weights for selecting the main database \
     and secondary databases. The list is in the order MAIN,REPLICA1,REPLICA2,...\
     A host will receive approximately WEIGHT/SUM(WEIGHTS) fraction of total queries. \
