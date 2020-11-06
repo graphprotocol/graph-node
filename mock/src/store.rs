@@ -176,7 +176,6 @@ impl Store for MockStore {
         &self,
         _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
-        _ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }

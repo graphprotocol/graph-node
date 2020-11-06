@@ -10,8 +10,7 @@ use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{
-    queries::LazyMetadata, DynamicEthereumContractDataSourceEntity, SubgraphError, SubgraphHealth,
-    POI_OBJECT,
+    DynamicEthereumContractDataSourceEntity, SubgraphError, POI_OBJECT,
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -183,7 +182,6 @@ impl SubgraphInstanceManager {
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
-        graphql_runner: Arc<impl GraphQlRunner>,
     ) -> Self
     where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
@@ -205,7 +203,6 @@ impl SubgraphInstanceManager {
             host_builder,
             block_stream_builder,
             metrics_registry.clone(),
-            graphql_runner,
         );
 
         SubgraphInstanceManager {
@@ -223,7 +220,6 @@ impl SubgraphInstanceManager {
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
-        graphql_runner: Arc<impl GraphQlRunner>,
     ) where
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         B: BlockStreamBuilder,
@@ -278,7 +274,6 @@ impl SubgraphInstanceManager {
                                 .clone(),
                             manifest,
                             metrics_registry_for_subgraph.clone(),
-                            graphql_runner.clone(),
                         )
                         .await
                         {
@@ -312,33 +307,13 @@ impl SubgraphInstanceManager {
         eth_adapter: Arc<dyn EthereumAdapter>,
         manifest: SubgraphManifest,
         registry: Arc<M>,
-        graphql_runner: Arc<impl GraphQlRunner>,
     ) -> Result<(), Error>
     where
         B: BlockStreamBuilder,
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         M: MetricsRegistry,
     {
-        // If a subgraph had a fatal error the last time we tried to run it, we can reset it to the
-        // previous health status in hopes that it doesn't fail again.
-        let status_ops = {
-            let metadata = LazyMetadata {
-                store: store.cheap_clone(),
-                graphql_runner,
-                id: manifest.id.clone(),
-            };
-            match metadata.health().await? {
-                SubgraphHealth::Failed => {
-                    let prev_health = match metadata.has_non_fatal_errors().await? {
-                        false => SubgraphHealth::Healthy,
-                        true => SubgraphHealth::Unhealthy,
-                    };
-                    SubgraphDeploymentEntity::unfail_operations(&manifest.id, prev_health)
-                }
-                SubgraphHealth::Healthy | SubgraphHealth::Unhealthy => vec![],
-            }
-        };
-        store.start_subgraph_deployment(&logger, &manifest.id, status_ops)?;
+        store.start_subgraph_deployment(&logger, &manifest.id)?;
 
         let mut templates: Vec<DataSourceTemplate> = vec![];
         for data_source in manifest.data_sources.iter() {

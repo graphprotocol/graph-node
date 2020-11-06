@@ -1236,14 +1236,12 @@ impl StoreTrait for Store {
         &self,
         logger: &Logger,
         subgraph_id: &SubgraphDeploymentId,
-        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(subgraph_id, ReplicaId::Main)?;
 
         econn.transaction(|| {
-            let event = self.apply_metadata_operations_with_conn(&econn, ops)?;
-            econn.start_subgraph(logger)?;
-            econn.send_store_event(&event)
+            metadata::unfail_deployment(&econn.conn, subgraph_id)?;
+            econn.start_subgraph(logger)
         })
     }
 

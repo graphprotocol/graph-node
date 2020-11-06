@@ -179,10 +179,8 @@ impl StoreTrait for NetworkStore {
         &self,
         logger: &graph::prelude::Logger,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-        ops: Vec<graph::prelude::MetadataOperation>,
     ) -> Result<(), graph::prelude::StoreError> {
-        self.store
-            .start_subgraph_deployment(logger, subgraph_id, ops)
+        self.store.start_subgraph_deployment(logger, subgraph_id)
     }
 
     fn migrate_subgraph_deployment(
