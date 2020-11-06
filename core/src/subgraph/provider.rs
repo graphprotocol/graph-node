@@ -161,6 +161,7 @@ where
             };
 
             let _ignore_error = store.apply_metadata_operations(
+                &subgraph_id,
                 SubgraphDeploymentEntity::fail_operations(&subgraph_id, error),
             );
             e

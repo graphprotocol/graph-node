@@ -1166,7 +1166,7 @@ fn subscribe_and_consume(
     };
 
     store
-        .apply_metadata_operations(vec![op])
+        .apply_metadata_operations(subgraph, vec![op])
         .expect("Failed to apply marker operation");
 
     let source = subscription
