@@ -193,12 +193,7 @@ impl HostExports {
 
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
-        if !is_valid
-            && self
-                .store
-                .uses_relational_schema(&self.subgraph_id)
-                .compat()?
-        {
+        if !is_valid {
             let entity = state
                 .entity_cache
                 .get(&key)

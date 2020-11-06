@@ -252,13 +252,6 @@ impl SubgraphDeploymentStore for NetworkStore {
         self.store.api_schema(subgraph_id)
     }
 
-    fn uses_relational_schema(
-        &self,
-        subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<bool, failure::Error> {
-        self.store.uses_relational_schema(subgraph_id)
-    }
-
     fn network_name(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,

@@ -12,8 +12,8 @@ use graph::prelude::{
     slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
     EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, Query, QueryError,
     QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema, Store,
-    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest,
-    SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
+    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphVersionSwitchingMode,
+    Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
 };
 use graph::{
     data::query::CacheStatus,
@@ -1388,8 +1388,8 @@ async fn check_musicians_at(
 
     let result = execute_query_document_with_variables(id, query, vars).await;
 
-    match (STORE.uses_relational_schema(id).unwrap(), expected) {
-        (true, Ok(ids)) => {
+    match expected {
+        Ok(ids) => {
             let ids: Vec<_> = ids
                 .into_iter()
                 .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
@@ -1401,7 +1401,7 @@ async fn check_musicians_at(
             };
             assert_eq!(data, expected, "failed query: ({})", qid);
         }
-        (true, Err(msg)) => {
+        Err(msg) => {
             let errors = match result.to_result() {
                 Err(errors) => errors,
                 Ok(_) => panic!(
@@ -1419,13 +1419,6 @@ async fn check_musicians_at(
                 "expected error message `{}` but got {:?} ({})",
                 msg,
                 errors,
-                qid
-            );
-        }
-        (false, _) => {
-            assert!(
-                result.has_errors(),
-                "JSONB does not support time travel: {}",
                 qid
             );
         }
@@ -1539,10 +1532,6 @@ fn query_at_block_with_vars() {
 #[test]
 fn query_detects_reorg() {
     run_test_sequentially(setup, |_, id| async move {
-        if !STORE.uses_relational_schema(&id).unwrap() {
-            // We don't care about JSONB storage
-            return;
-        }
         let query = "query { musician(id: \"m1\") { id } }";
         let query = graphql_parser::parse_query(query).expect("invalid test query");
         let state = STORE
@@ -1587,10 +1576,6 @@ fn query_detects_reorg() {
 #[test]
 fn can_query_meta() {
     run_test_sequentially(setup, |_, id| async move {
-        if !STORE.uses_relational_schema(&id).unwrap() {
-            // We don't care about JSONB storage
-            return;
-        }
         // metadata for the latest block (block 1)
         let query = "query { _meta { deployment block { hash number } } }";
         let query = graphql_parser::parse_query(query).expect("invalid test query");

@@ -1281,15 +1281,6 @@ impl StoreTrait for Store {
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(subgraph_id, ReplicaId::Main)?;
 
-        if !econn.uses_relational_schema() {
-            warn!(
-                logger,
-                "This subgraph uses JSONB storage, which is \
-              deprecated and support for it will be removed in a future release. \
-              Please redeploy the subgraph to address this warning"
-            );
-        }
-
         econn.transaction(|| {
             let event = self.apply_metadata_operations_with_conn(&econn, ops)?;
             econn.start_subgraph(logger)?;
@@ -1404,11 +1395,6 @@ impl SubgraphDeploymentStore for Store {
 
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error> {
         Ok(self.subgraph_info(subgraph_id)?.api)
-    }
-
-    fn uses_relational_schema(&self, subgraph: &SubgraphDeploymentId) -> Result<bool, Error> {
-        self.get_entity_conn(subgraph, ReplicaId::Main)
-            .map(|econn| econn.uses_relational_schema())
     }
 
     fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {

@@ -780,10 +780,6 @@ impl Connection<'_> {
         }
     }
 
-    pub(crate) fn uses_relational_schema(&self) -> bool {
-        true
-    }
-
     fn metadata_layout(&self) -> &Layout {
         match &*self.metadata {
             Storage::Relational(layout) => layout,

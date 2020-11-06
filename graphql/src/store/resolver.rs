@@ -81,11 +81,7 @@ impl StoreResolver {
         bc: BlockConstraint,
         subgraph: SubgraphDeploymentId,
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {
-        if store
-            .uses_relational_schema(&subgraph)
-            .map_err(StoreError::from)?
-            && !subgraph.is_meta()
-        {
+        if !subgraph.is_meta() {
             // Relational storage (most subgraphs); block constraints fully
             // supported
             match bc {
