@@ -843,6 +843,13 @@ impl Layout {
         }
         Ok(StoreEvent::new(changes))
     }
+
+    pub fn is_cacheable(&self) -> bool {
+        // This would be false if we still needed to migrate the Layout, but
+        // since there are no migrations in the code right now, it is always
+        // safe to cache a Layout
+        true
+    }
 }
 
 /// A user-defined enum

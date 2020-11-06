@@ -39,6 +39,7 @@ use web3::types::{Address, H256};
 use crate::entities as e;
 use crate::history_event::HistoryEvent;
 use crate::metadata;
+use crate::relational::Layout;
 use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
 
@@ -713,12 +714,12 @@ impl Store {
         &self,
         conn: &PgConnection,
         subgraph: &SubgraphDeploymentId,
-    ) -> Result<Arc<e::Storage>, StoreError> {
+    ) -> Result<Arc<Layout>, StoreError> {
         if let Some(storage) = self.storage_cache.lock().unwrap().get(subgraph) {
             return Ok(storage.clone());
         }
 
-        let storage = Arc::new(e::Storage::new(conn, subgraph)?);
+        let storage = Arc::new(e::Connection::layout(conn, subgraph)?);
         if storage.is_cacheable() {
             &self
                 .storage_cache
