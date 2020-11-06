@@ -37,7 +37,6 @@ use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
 use crate::entities as e;
-use crate::history_event::HistoryEvent;
 use crate::metadata;
 use crate::relational::Layout;
 use crate::relational_queries::FromEntityData;
@@ -469,7 +468,7 @@ impl Store {
         &self,
         conn: &e::Connection,
         mods: Vec<EntityModification>,
-        history_event: Option<&HistoryEvent>,
+        ptr: Option<&EthereumBlockPointer>,
         stopwatch: StopwatchMetrics,
     ) -> Result<(), StoreError> {
         let mut count = 0;
@@ -485,7 +484,7 @@ impl Store {
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_update");
-                    conn.update(&key, data, history_event).map(|_| 0)
+                    conn.update(&key, data, ptr).map(|_| 0)
                 }
                 Insert { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -493,10 +492,10 @@ impl Store {
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_insert");
-                    conn.insert(&key, data, history_event).map(|_| 1)
+                    conn.insert(&key, data, ptr).map(|_| 1)
                 }
                 Remove { key } => conn
-                    .delete(&key, history_event)
+                    .delete(&key, ptr)
                     // This conversion is ok since n will only be 0 or 1
                     .map(|n| -(n as i32))
                     .map_err(|e| {
@@ -1081,9 +1080,6 @@ impl StoreTrait for Store {
                     }
                 }
 
-                // Ensure the history event exists in the database
-                let history_event = econn.create_history_event(block_ptr_to)?;
-
                 let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
 
                 // Emit a store event for the changes we are about to make. We
@@ -1094,7 +1090,7 @@ impl StoreTrait for Store {
 
                 // Make the changes
                 let section = stopwatch.start_section("apply_entity_modifications");
-                self.apply_entity_modifications(&econn, mods, Some(&history_event), stopwatch)?;
+                self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
                 section.end();
 
                 let metadata_event =

@@ -29,7 +29,6 @@ mod db_schema;
 mod entities;
 mod filter;
 mod functions;
-mod history_event;
 mod jsonb;
 mod metadata;
 mod network_store;

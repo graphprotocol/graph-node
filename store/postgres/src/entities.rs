@@ -45,7 +45,6 @@ use graph::prelude::{
 };
 
 use crate::block_range::block_number;
-use crate::history_event::HistoryEvent;
 use crate::metadata;
 use crate::notification_listener::JsonNotification;
 use crate::relational::{Catalog, Layout};
@@ -340,13 +339,11 @@ impl Connection<'_> {
         &self,
         key: &EntityKey,
         entity: Entity,
-        history_event: Option<&HistoryEvent>,
+        ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
         let layout = &self.storage_for(key);
-        match history_event {
-            Some(history_event) => {
-                layout.insert(&self.conn, key, entity, block_number(&history_event))
-            }
+        match ptr {
+            Some(ptr) => layout.insert(&self.conn, key, entity, block_number(ptr)),
             None => layout.insert_unversioned(&self.conn, key, entity),
         }
     }
@@ -358,13 +355,11 @@ impl Connection<'_> {
         &self,
         key: &EntityKey,
         entity: Entity,
-        history_event: Option<&HistoryEvent>,
+        ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
         let layout = &self.storage_for(key);
-        match history_event {
-            Some(history_event) => {
-                layout.update(&self.conn, key, entity, block_number(&history_event))
-            }
+        match ptr {
+            Some(ptr) => layout.update(&self.conn, key, entity, block_number(&ptr)),
             None => layout
                 .overwrite_unversioned(&self.conn, key, entity)
                 .map(|_| ()),
@@ -392,11 +387,11 @@ impl Connection<'_> {
     pub(crate) fn delete(
         &self,
         key: &EntityKey,
-        history_event: Option<&HistoryEvent>,
+        ptr: Option<&EthereumBlockPointer>,
     ) -> Result<usize, StoreError> {
         let layout = &self.storage_for(key);
-        match history_event {
-            Some(history_event) => layout.delete(&self.conn, key, block_number(&history_event)),
+        match ptr {
+            Some(ptr) => layout.delete(&self.conn, key, block_number(&ptr)),
             None => layout.delete_unversioned(&self.conn, key),
         }
     }
@@ -462,16 +457,6 @@ impl Connection<'_> {
             .bind::<Text, _>(self.storage.subgraph.as_str())
             .execute(conn)
             .map(|_| ())?)
-    }
-
-    pub(crate) fn create_history_event(
-        &self,
-        block_ptr: EthereumBlockPointer,
-    ) -> Result<HistoryEvent, Error> {
-        Ok(HistoryEvent::create_without_event_metadata(
-            self.storage.subgraph.clone(),
-            block_ptr,
-        ))
     }
 
     /// Check if the schema for `subgraph` needs to be migrated, and if so

@@ -7,9 +7,8 @@ use diesel::sql_types::{Integer, Range};
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use graph::prelude::{BlockNumber, BLOCK_NUMBER_MAX};
+use graph::prelude::{BlockNumber, EthereumBlockPointer, BLOCK_NUMBER_MAX};
 
-use crate::history_event::HistoryEvent;
 use crate::relational::Table;
 
 /// The name of the column in which we store the block range
@@ -54,8 +53,7 @@ fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
 /// `None` panic because that indicates that we want to perform an
 /// operation that does not record history, which should not happen
 /// with how we currently use relational schemas
-pub(crate) fn block_number(history_event: &HistoryEvent) -> BlockNumber {
-    let block_ptr = history_event.block_ptr;
+pub(crate) fn block_number(block_ptr: &EthereumBlockPointer) -> BlockNumber {
     if block_ptr.number < std::i32::MAX as u64 {
         block_ptr.number as i32
     } else {
