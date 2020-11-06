@@ -49,25 +49,6 @@ use crate::metadata;
 use crate::notification_listener::JsonNotification;
 use crate::relational::{Catalog, Layout};
 
-lazy_static! {
-    // We allow overriding the default storage scheme with the environment
-    // variable `GRAPH_STORAGE_SCHEME` in an overabundance of caution in case
-    // there is a problem with the default, relational storage. Eventually,
-    // this choice will go away.
-    static ref GRAPH_STORAGE_SCHEME: self::public::DeploymentSchemaVersion = {
-        use self::public::DeploymentSchemaVersion as v;
-
-        match std::env::var("GRAPH_STORAGE_SCHEME")
-                .unwrap_or_else(|_| "relational".to_owned())
-                .as_str() {
-            "relational" => v::Relational,
-            "json" => v::Split,
-            _ => panic!("Invalid value for GRAPH_STORAGE_SCHEME. It must be \
-                 either `relational` or `json`")
-        }
-    };
-}
-
 #[cfg(debug_assertions)]
 lazy_static! {
 /// Tests set this to true so that `send_store_event` will store a copy
@@ -657,7 +638,7 @@ impl Connection<'_> {
         let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
             .values((
                 deployment_schemas::subgraph.eq(schema.id.to_string()),
-                deployment_schemas::version.eq(*GRAPH_STORAGE_SCHEME),
+                deployment_schemas::version.eq(v::Relational),
                 deployment_schemas::state.eq(s::Init),
             ))
             .returning(deployment_schemas::name)
@@ -669,35 +650,22 @@ impl Connection<'_> {
         let query = format!("create schema {}", schema_name);
         self.conn.batch_execute(&*query)?;
 
-        match *GRAPH_STORAGE_SCHEME {
-            v::Relational => {
-                let layout =
-                    Layout::create_relational_schema(&self.conn, schema, schema_name.to_owned())?;
-                // See if we are grafting and check that the graft is permissible
-                if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
-                    let base = &Connection::layout(&self.conn, &base)?;
-                    let errors = layout.can_copy_from(&base);
-                    if !errors.is_empty() {
-                        return Err(StoreError::Unknown(format_err!(
-                            "The subgraph `{}` cannot be used as the graft base \
+        let layout = Layout::create_relational_schema(&self.conn, schema, schema_name.to_owned())?;
+        // See if we are grafting and check that the graft is permissible
+        if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
+            let base = &Connection::layout(&self.conn, &base)?;
+            let errors = layout.can_copy_from(&base);
+            if !errors.is_empty() {
+                return Err(StoreError::Unknown(format_err!(
+                    "The subgraph `{}` cannot be used as the graft base \
                                         for `{}` because the schemas are incompatible:\n    - {}",
-                            &base.subgraph,
-                            &layout.subgraph,
-                            errors.join("\n    - ")
-                        )));
-                    }
-                }
-                Ok(())
-            }
-            v::Split => {
-                if metadata::deployment_graft(&self.conn, &schema.id)?.is_some() {
-                    return Err(StoreError::Unknown(format_err!(
-                        "JSONB storage does not support grafting onto another subgraph",
-                    )));
-                }
-                create_split_schema(&self.conn, &schema_name)
+                    &base.subgraph,
+                    &layout.subgraph,
+                    errors.join("\n    - ")
+                )));
             }
         }
+        Ok(())
     }
 
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {
@@ -808,77 +776,6 @@ pub fn delete_all_entities_for_test_use_only(
     ";
     conn.batch_execute(query)?;
     store.clear_storage_cache();
-    Ok(())
-}
-
-pub fn create_split_schema(conn: &PgConnection, schema_name: &str) -> Result<(), StoreError> {
-    // The order of columns in the primary key matters a lot, since
-    // we want the pk index to also support queries that do not have an id,
-    // just an entity (like counting the number of entities of a certain type)
-    let query = format!(
-        "create table {}.entities
-         (
-           entity       varchar not null,
-           id           varchar not null,
-           data         jsonb,
-           event_source varchar not null,
-
-           primary key(entity, id)
-         )",
-        schema_name
-    );
-    conn.batch_execute(&*query)?;
-
-    let query = format!(
-        "create trigger entity_change_insert_trigger
-           after insert on {schema}.entities
-           for each row
-             execute procedure subgraph_log_entity_event()",
-        schema = schema_name
-    );
-    conn.batch_execute(&*query)?;
-
-    let query = format!(
-        "create trigger entity_change_update_trigger
-           after update on {schema}.entities
-           for each row
-             when (old.data != new.data)
-             execute procedure subgraph_log_entity_event()",
-        schema = schema_name
-    );
-    conn.batch_execute(&*query)?;
-
-    let query = format!(
-        "create trigger entity_change_delete_trigger
-           after delete on {schema}.entities
-           for each row
-             execute procedure subgraph_log_entity_event()",
-        schema = schema_name
-    );
-    conn.batch_execute(&*query)?;
-
-    let query = format!(
-        "create table {}.entity_history
-         (
-           id           serial primary key,
-           event_id     integer,
-           entity       varchar not null,
-           entity_id    varchar not null,
-           data_before  jsonb,
-           reversion    bool not null default false,
-           op_id        int2 NOT NULL
-         )",
-        schema_name
-    );
-    conn.batch_execute(&*query)?;
-
-    let query = format!(
-        "create index entity_history_event_id_btree_idx
-           on {}.entity_history(event_id)",
-        schema_name
-    );
-    conn.batch_execute(&*query)?;
-
     Ok(())
 }
 

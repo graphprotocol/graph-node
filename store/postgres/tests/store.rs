@@ -2231,12 +2231,9 @@ fn find_at_block() {
         })
     }
 
-    // These tests only make sense with relational storage
-    if *USING_RELATIONAL_STORAGE {
-        shaqueeena_at_block(1, "queensha@email.com");
-        shaqueeena_at_block(2, "teeko@email.com");
-        shaqueeena_at_block(7000, "teeko@email.com");
-    }
+    shaqueeena_at_block(1, "queensha@email.com");
+    shaqueeena_at_block(2, "teeko@email.com");
+    shaqueeena_at_block(7000, "teeko@email.com");
 }
 
 #[test]

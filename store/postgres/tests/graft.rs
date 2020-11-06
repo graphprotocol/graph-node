@@ -271,13 +271,7 @@ fn graft() {
             BLOCKS[1],
         );
 
-        if *USING_RELATIONAL_STORAGE {
-            assert!(res.is_ok())
-        } else {
-            // Grafting for JSONB storage just fails
-            assert!(res.is_err());
-            return Ok(());
-        }
+        assert!(res.is_ok());
 
         let query = EntityQuery::new(
             subgraph_id.clone(),
