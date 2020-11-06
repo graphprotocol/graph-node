@@ -110,10 +110,14 @@ OPTIONS:
         --ws-port <PORT>                              Port for the GraphQL WebSocket server [default: 8001]
 ```
 
-### Environment Variables
+### Advanced Configuration
 
-See [here](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md) for a list of
-the environment variables that can be configured.
+The command line arguments generally are all that is needed to run a
+`graph-node` instance. For advanced uses, various aspects of `graph-node`
+can further be configured through [environment
+variables](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md). Very
+large `graph-node` instances can also split the work of querying and
+indexing across [multiple databases](./docs/multiple-databases.md).
 
 ## Project Layout
 
