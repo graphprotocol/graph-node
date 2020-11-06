@@ -519,11 +519,11 @@ pub fn create_subgraph(conn: &PgConnection, name: &SubgraphName) -> Result<Strin
         .do_nothing()
         .execute(conn)?;
     if inserted == 0 {
-        let id = s::table
+        let existing_id = s::table
             .filter(s::name.eq(name.as_str()))
             .select(s::id)
             .first::<String>(conn)?;
-        Ok(id)
+        Ok(existing_id)
     } else {
         Ok(id)
     }
