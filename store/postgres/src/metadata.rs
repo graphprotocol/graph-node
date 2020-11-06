@@ -49,13 +49,20 @@ table! {
     }
 }
 
+#[derive(DbEnum, Debug, Clone, Copy)]
+pub enum SubgraphHealth {
+    Failed,
+    Healthy,
+    Unhealthy,
+}
+
 table! {
     subgraphs.subgraph_deployment (vid) {
         vid -> BigInt,
         id -> Text,
         manifest -> Text,
         failed -> Bool,
-        health -> Text,
+        health -> crate::metadata::SubgraphHealthMapping,
         synced -> Bool,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
@@ -80,6 +87,20 @@ table! {
         id -> Text,
         node_id -> Text,
         cost -> Numeric,
+        block_range -> Range<Integer>,
+    }
+}
+
+table! {
+    subgraphs.subgraph_error (vid) {
+        vid -> BigInt,
+        id -> Text,
+        subgraph_id -> Nullable<Text>,
+        message -> Text,
+        block_number -> Nullable<Numeric>,
+        block_hash -> Nullable<Binary>,
+        handler -> Nullable<Text>,
+        deterministic -> Bool,
         block_range -> Range<Integer>,
     }
 }
@@ -691,4 +712,40 @@ pub fn reassign_subgraph(
             unreachable!()
         }
     }
+}
+
+/// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as
+/// healthy or unhealthy depending on whether it also had non-fatal errors
+pub fn unfail_deployment(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+    use diesel::dsl::count;
+    use subgraph_deployment as d;
+    use subgraph_error as e;
+    use SubgraphHealth::*;
+
+    let has_non_fatal_errors = e::table
+        .filter(e::subgraph_id.eq(id.as_str()))
+        .filter(e::deterministic)
+        .select(count(e::id))
+        .first::<i64>(conn)?
+        > 0;
+
+    let prev_health = if has_non_fatal_errors {
+        Unhealthy
+    } else {
+        Healthy
+    };
+
+    // The update does nothing unless the subgraph is in state 'failed'
+    update(
+        d::table
+            .filter(d::id.eq(id.as_str()))
+            .filter(d::health.eq(Failed)),
+    )
+    .set((
+        d::failed.eq(false),
+        d::health.eq(prev_health),
+        d::fatal_error.eq::<Option<String>>(None),
+    ))
+    .execute(conn)?;
+    Ok(())
 }

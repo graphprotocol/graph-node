@@ -174,7 +174,7 @@ fn create_subgraph(
         node_id,
         SubgraphVersionSwitchingMode::Instant,
     )?;
-    STORE.start_subgraph_deployment(&*LOGGER, &subgraph_id, vec![])
+    STORE.start_subgraph_deployment(&*LOGGER, &subgraph_id)
 }
 
 #[cfg(debug_assertions)]

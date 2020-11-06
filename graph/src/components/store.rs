@@ -963,7 +963,6 @@ pub trait Store: Send + Sync + 'static {
         &self,
         logger: &Logger,
         subgraph_id: &SubgraphDeploymentId,
-        ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError>;
 
     /// Try to perform a pending migration for a subgraph schema. Even if a
@@ -1127,7 +1126,6 @@ impl Store for MockStore {
         &self,
         _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
-        _ops: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }

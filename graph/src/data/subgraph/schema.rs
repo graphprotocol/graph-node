@@ -250,6 +250,16 @@ pub enum SubgraphHealth {
     Failed,
 }
 
+impl SubgraphHealth {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SubgraphHealth::Healthy => "healthy",
+            SubgraphHealth::Unhealthy => "unhealthy",
+            SubgraphHealth::Failed => "failed",
+        }
+    }
+}
+
 impl FromStr for SubgraphHealth {
     type Err = Error;
 
@@ -265,11 +275,7 @@ impl FromStr for SubgraphHealth {
 
 impl From<SubgraphHealth> for String {
     fn from(health: SubgraphHealth) -> String {
-        match health {
-            SubgraphHealth::Healthy => "healthy".into(),
-            SubgraphHealth::Unhealthy => "unhealthy".into(),
-            SubgraphHealth::Failed => "failed".into(),
-        }
+        health.as_str().to_string()
     }
 }
 
