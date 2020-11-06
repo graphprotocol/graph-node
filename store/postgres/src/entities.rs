@@ -20,17 +20,13 @@
 // for dynamic tables.
 
 use diesel::connection::SimpleConnection;
-use diesel::debug_query;
 use diesel::deserialize::QueryableByName;
-use diesel::dsl::any;
 use diesel::pg::{Pg, PgConnection};
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
-use diesel::BoolExpressionMethods;
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
-use inflector::cases::snakecase::to_snake_case;
 use lazy_static::lazy_static;
 use maybe_owned::MaybeOwned;
 use std::collections::hash_map::DefaultHasher;
@@ -45,14 +41,13 @@ use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE, SUBGRAPHS_ID};
 use graph::prelude::{
     debug, format_err, info, serde_json, warn, AttributeIndexDefinition, BlockNumber, Entity,
-    EntityChange, EntityChangeOperation, EntityCollection, EntityFilter, EntityKey,
-    EntityModification, EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
+    EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityRange, Error,
+    EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
+    SubgraphDeploymentId, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::block_number;
 use crate::history_event::HistoryEvent;
-use crate::jsonb_queries::FilterQuery;
 use crate::metadata;
 use crate::notification_listener::JsonNotification;
 use crate::relational::{Catalog, Layout};
@@ -91,27 +86,6 @@ pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
 /// This also makes sure that we do not put strings into a BTree index that's
 /// bigger than Postgres' limit on such strings which is about 2k
 pub const STRING_PREFIX_SIZE: usize = 256;
-
-/// The type of operation that led to a history entry. When we revert a block,
-/// we reverse the effects of that operation; e.g., an `Insert` entry in the
-/// history will cause us to delete the underlying entity
-enum OperationType {
-    Insert,
-    Update,
-    Delete,
-}
-
-/// Translate from the integer that is stored in `entity_history.op_id` to
-/// the symbolic `OperationType`
-impl Into<i32> for OperationType {
-    fn into(self) -> i32 {
-        match self {
-            OperationType::Insert => 0,
-            OperationType::Update => 1,
-            OperationType::Delete => 2,
-        }
-    }
-}
 
 /// Marker trait for tables that store entities
 pub(crate) trait EntitySource {}
@@ -192,13 +166,6 @@ mod public {
     }
 }
 
-pub(crate) type EntityTable = diesel_dynamic_schema::Table<String>;
-
-pub(crate) type EntityColumn<ST> = diesel_dynamic_schema::Column<EntityTable, String, ST>;
-
-// This is a bit weak, as any DynamicTable<String> is now an EntitySource
-impl EntitySource for EntityTable {}
-
 use public::deployment_schemas;
 
 /// Information about the database schema that stores the entities for a
@@ -241,32 +208,14 @@ struct Schema {
     state: public::DeploymentSchemaState,
 }
 
-/// Storage using JSONB for entities. All entities are stored in one table
-#[derive(Debug, Clone)]
-pub(crate) struct JsonStorage {
-    /// The name of the database schema
-    schema: String,
-    /// The subgraph id
-    subgraph: SubgraphDeploymentId,
-    table: EntityTable,
-    id: EntityColumn<diesel::sql_types::Text>,
-    entity: EntityColumn<diesel::sql_types::Text>,
-    data: EntityColumn<diesel::sql_types::Jsonb>,
-    event_source: EntityColumn<diesel::sql_types::Text>,
-    // The query to count all entities
-    count_query: String,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) enum Storage {
-    Json(JsonStorage),
     Relational(Layout),
 }
 
 impl Storage {
     fn subgraph(&self) -> &SubgraphDeploymentId {
         match self {
-            Storage::Json(json) => &json.subgraph,
             Storage::Relational(layout) => &layout.subgraph,
         }
     }
@@ -369,9 +318,6 @@ impl Connection<'_> {
                         if let Some((base, block)) = graft {
                             let base = match Storage::new(&self.conn, &base)? {
                                 Storage::Relational(base) => base,
-                                Storage::Json(_) => unreachable!(
-                                    "A JSONB subgraph is never used as the base for a graft"
-                                ),
                             };
                             layout.copy_from(
                                 logger,
@@ -387,15 +333,6 @@ impl Connection<'_> {
                             .execute(self.conn.as_ref())?;
                         info!(logger, "Subgraph successfully initialized";
                               "time_ms" => start.elapsed().as_millis());
-                    }
-                    Storage::Json(_) => {
-                        if graft.is_some() {
-                            unreachable!("A JSONB subgraph is never grafted onto another subgraph");
-                        }
-                        diesel::update(dsl::table)
-                            .set(dsl::state.eq(State::Ready))
-                            .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
-                            .execute(self.conn.as_ref())?;
                     }
                 }
             }
@@ -427,7 +364,6 @@ impl Connection<'_> {
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
         match &*self.storage {
-            Storage::Json(json) => json.find(&self.conn, entity, id),
             Storage::Relational(layout) => layout.find(&self.conn, entity, id, block),
         }
     }
@@ -440,22 +376,6 @@ impl Connection<'_> {
         block: BlockNumber,
     ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
         match &*self.storage {
-            Storage::Json(json) => {
-                // Reuse `find` since we don't care about the performance of this on json.
-                let mut entities: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
-                for (entity_type, ids) in ids_for_type {
-                    for id in ids {
-                        if let Some(entity) = json.find(&self.conn, entity_type, id)? {
-                            entities
-                                .entry(entity_type.to_owned())
-                                .or_default()
-                                .push(entity)
-                        }
-                    }
-                }
-                Ok(entities)
-            }
-
             Storage::Relational(layout) => layout.find_many(&self.conn, ids_for_type, block),
         }
     }
@@ -471,24 +391,6 @@ impl Connection<'_> {
         query_id: Option<String>,
     ) -> Result<Vec<T>, QueryExecutionError> {
         match &*self.storage {
-            Storage::Json(json) => {
-                // JSON storage can only query at the latest block
-                if block != BLOCK_NUMBER_MAX {
-                    return Err(StoreError::QueryExecutionError(
-                        "This subgraph uses JSONB storage, which does not \
-                         support querying at a specific block height. Redeploy \
-                         a new version of this subgraph to enable this feature."
-                            .to_owned(),
-                    )
-                    .into());
-                }
-                let order = match order {
-                    EntityOrder::Ascending(attr, value_type) => Some((attr, value_type, "asc")),
-                    EntityOrder::Descending(attr, value_type) => Some((attr, value_type, "desc")),
-                    EntityOrder::Default | EntityOrder::Unordered => None,
-                };
-                json.query(&self.conn, collection, filter, order, range)
-            }
             Storage::Relational(layout) => layout.query(
                 logger, &self.conn, collection, filter, order, range, block, query_id,
             ),
@@ -501,7 +403,6 @@ impl Connection<'_> {
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
         match &*self.storage {
-            Storage::Json(json) => json.conflicting_entity(&self.conn, entity_id, entities),
             Storage::Relational(layout) => {
                 layout.conflicting_entity(&self.conn, entity_id, entities)
             }
@@ -515,9 +416,6 @@ impl Connection<'_> {
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
         match self.storage_for(key) {
-            Storage::Json(json) => json
-                .insert(&self.conn, &key, entity, history_event)
-                .map(|_| ()),
             Storage::Relational(layout) => match history_event {
                 Some(history_event) => {
                     layout.insert(&self.conn, key, entity, block_number(&history_event))
@@ -537,9 +435,6 @@ impl Connection<'_> {
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
         match self.storage_for(key) {
-            Storage::Json(json) => json
-                .update(&self.conn, key, entity, history_event)
-                .map(|_| ()),
             Storage::Relational(layout) => match history_event {
                 Some(history_event) => {
                     layout.update(&self.conn, key, entity, block_number(&history_event))
@@ -577,7 +472,6 @@ impl Connection<'_> {
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
         match self.storage_for(key) {
-            Storage::Json(json) => json.delete(&self.conn, key, history_event),
             Storage::Relational(layout) => match history_event {
                 Some(history_event) => layout.delete(&self.conn, key, block_number(&history_event)),
                 None => layout.delete_unversioned(&self.conn, key),
@@ -587,12 +481,9 @@ impl Connection<'_> {
 
     pub(crate) fn build_attribute_index(
         &self,
-        index: &AttributeIndexDefinition,
+        _: &AttributeIndexDefinition,
     ) -> Result<usize, StoreError> {
-        match &*self.storage {
-            Storage::Json(json) => json.build_attribute_index(&self.conn, index),
-            Storage::Relational(_) => Ok(1),
-        }
+        Ok(1)
     }
 
     pub(crate) fn revert_block(
@@ -608,7 +499,6 @@ impl Connection<'_> {
 
         // Revert the block in the subgraph itself
         let (event, count) = match &*self.storage {
-            Storage::Json(json) => json.revert_block(&self.conn, block_ptr.hash_hex())?,
             Storage::Relational(layout) => layout.revert_block(&self.conn, block)?,
         };
         // Revert the meta data changes that correspond to this subgraph.
@@ -633,13 +523,8 @@ impl Connection<'_> {
     pub(crate) fn create_history_event(
         &self,
         block_ptr: EthereumBlockPointer,
-        mods: &Vec<EntityModification>,
     ) -> Result<HistoryEvent, Error> {
-        let has_removes = mods.iter().any(|m| m.is_remove());
         match &*self.storage {
-            Storage::Json(json) => {
-                HistoryEvent::allocate(&self.conn, json.subgraph.clone(), block_ptr, has_removes)
-            }
             Storage::Relational(layout) => {
                 // For relational storage, we do not need an entry in event_meta_data
                 Ok(HistoryEvent::create_without_event_metadata(
@@ -880,16 +765,6 @@ impl Connection<'_> {
                                 )));
                             }
                         }
-                        Storage::Json(json) => {
-                            return Err(StoreError::Unknown(format_err!(
-                                "The subgraph `{}` cannot be used as the graft base \
-                                    for `{}` since it uses JSONB storage. Redeploy \
-                                    `{}` to fix this",
-                                &json.subgraph,
-                                &schema.id,
-                                &json.subgraph
-                            )));
-                        }
                     }
                 }
                 Ok(())
@@ -906,22 +781,17 @@ impl Connection<'_> {
     }
 
     pub(crate) fn uses_relational_schema(&self) -> bool {
-        match &*self.storage {
-            Storage::Json(_) => false,
-            Storage::Relational(_) => true,
-        }
+        true
     }
 
     fn metadata_layout(&self) -> &Layout {
         match &*self.metadata {
-            Storage::Json(_) => unreachable!("JSONB storage of subgraph metadata is not supported"),
             Storage::Relational(layout) => layout,
         }
     }
 
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {
         match &*self.storage {
-            Storage::Json(_) => false,
             Storage::Relational(layout) => layout.tables.contains_key(POI_OBJECT),
         }
     }
@@ -961,433 +831,6 @@ fn supports_proof_of_indexing(
     Ok(result.len() > 0)
 }
 
-fn entity_to_json(key: &EntityKey, entity: &Entity) -> Result<serde_json::Value, Error> {
-    serde_json::to_value(entity).map_err(|e| {
-        format_err!(
-            "Failed to convert entity ({}, {}, {}) to JSON: {}",
-            key.subgraph_id,
-            key.entity_type,
-            key.entity_id,
-            e
-        )
-    })
-}
-
-fn entity_from_json(json: serde_json::Value, entity: &str) -> Result<Entity, StoreError> {
-    let mut value = serde_json::from_value::<Entity>(json)?;
-    value.set("__typename", entity);
-    Ok(value)
-}
-
-impl JsonStorage {
-    fn find(
-        &self,
-        conn: &PgConnection,
-        entity: &str,
-        id: &str,
-    ) -> Result<Option<Entity>, StoreError> {
-        let entities = self.clone();
-        entities
-            .table
-            .filter(entities.entity.eq(entity).and(entities.id.eq(id)))
-            .select(entities.data)
-            .first::<serde_json::Value>(conn)
-            .optional()?
-            .map(|json| entity_from_json(json, entity))
-            .transpose()
-    }
-
-    /// order is a tuple (attribute, value_type, direction)
-    fn query<T: From<Entity>>(
-        &self,
-        conn: &PgConnection,
-        collection: EntityCollection,
-        filter: Option<EntityFilter>,
-        order: Option<(String, ValueType, &'static str)>,
-        range: EntityRange,
-    ) -> Result<Vec<T>, QueryExecutionError> {
-        let query = FilterQuery::new(&self.table, collection, filter, order, range)?;
-
-        let query_debug_info = debug_query(&query).to_string();
-
-        let values = query
-            .load::<(String, serde_json::Value, String)>(conn)
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntitiesError(format!(
-                    "{}, query = {:?}",
-                    e, query_debug_info
-                ))
-            })?;
-        values
-            .into_iter()
-            .map(|(_, value, entity_type)| {
-                entity_from_json(value, &entity_type)
-                    .map(T::from)
-                    .map_err(QueryExecutionError::from)
-            })
-            .collect()
-    }
-
-    fn insert(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        entity: Entity,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
-        let data = entity_to_json(key, &entity)?;
-        let event_source = HistoryEvent::to_event_source_string(&history_event);
-
-        self.add_entity_history_record(conn, history_event, &key, OperationType::Insert)?;
-
-        Ok(diesel::sql_query(format!(
-            "insert into {}.entities(entity, id, data, event_source)
-                       values($1, $2, $3, $4)",
-            self.schema
-        ))
-        .bind::<Text, _>(&key.entity_type)
-        .bind::<Text, _>(&key.entity_id)
-        .bind::<Jsonb, _>(&data)
-        .bind::<Text, _>(&event_source)
-        .execute(conn)?)
-    }
-
-    fn upsert(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        data: &serde_json::Value,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
-        let event_source = HistoryEvent::to_event_source_string(&history_event);
-
-        let query = format!(
-            "insert into {}.entities(entity, id, data, event_source)
-                       values($1, $2, $3, $4)
-                     on conflict(entity, id)
-                       do update set data = $3, event_source = $4",
-            self.schema
-        );
-        let query = diesel::sql_query(query)
-            .bind::<Text, _>(&key.entity_type)
-            .bind::<Text, _>(&key.entity_id)
-            .bind::<Jsonb, _>(data)
-            .bind::<Text, _>(event_source);
-        Ok(query.execute(conn)?)
-    }
-
-    fn update(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        entity: Entity,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
-        let data = entity_to_json(key, &entity)?;
-
-        self.add_entity_history_record(conn, history_event, &key, OperationType::Update)?;
-
-        let event_source = HistoryEvent::to_event_source_string(&history_event);
-
-        // We need to use a direct query since diesel::update does not like
-        // dynamic tables.
-        let query = format!(
-            "update {}.entities
-                       set data = $3, event_source = $4
-                       where entity = $1 and id = $2",
-            self.schema
-        );
-        let query = diesel::sql_query(query)
-            .bind::<Text, _>(&key.entity_type)
-            .bind::<Text, _>(&key.entity_id)
-            .bind::<Jsonb, _>(data)
-            .bind::<Text, _>(&event_source);
-        query.execute(conn).map_err(|e| {
-            format_err!(
-                "Failed to update entity ({}, {}, {}): {}",
-                key.subgraph_id,
-                key.entity_type,
-                key.entity_id,
-                e
-            )
-            .into()
-        })
-    }
-
-    fn delete(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        history_event: Option<&HistoryEvent>,
-    ) -> Result<usize, StoreError> {
-        self.add_entity_history_record(conn, history_event, &key, OperationType::Delete)?;
-
-        let query = format!(
-            "delete from {}.entities
-                      where entity = $1
-                        and id = $2",
-            self.schema
-        );
-        let query = diesel::sql_query(query)
-            .bind::<Text, _>(&key.entity_type)
-            .bind::<Text, _>(&key.entity_id);
-        Ok(query.execute(conn)?)
-    }
-
-    fn conflicting_entity(
-        &self,
-        conn: &PgConnection,
-        entity_id: &String,
-        entities: Vec<&String>,
-    ) -> Result<Option<String>, StoreError> {
-        let ents = self.clone();
-        Ok(ents
-            .table
-            .select(ents.entity.clone())
-            .filter(ents.entity.eq(any(entities)))
-            .filter(ents.id.eq(entity_id))
-            .first(conn)
-            .optional()?)
-    }
-
-    /// This takes a history event, a reversion flag, an entity key to create
-    /// the history record for and an operation type (e.g. `OperationType::Insert`).
-    /// It then creates an entry in the subgraph's `entity_history` table.
-    ///
-    /// Special casing is applied for the `subgraphs.entities` table, as its
-    /// history records include the subgraph ID in the `subgraph` column.
-    fn add_entity_history_record(
-        &self,
-        conn: &PgConnection,
-        history_event: Option<&HistoryEvent>,
-        key: &EntityKey,
-        operation: OperationType,
-    ) -> Result<(), Error> {
-        // We only need to do work for the subgraph of subgraphs. All other
-        // entities tables have triggers that will populate a history record
-        // whenever we make a change to an entity
-        if !key.subgraph_id.is_meta() {
-            return Ok(());
-        }
-        let history_event = match history_event {
-            None => return Ok(()),
-            Some(event) => event,
-        };
-        let event_id = history_event
-            .id
-            .expect("we always allocate an event_id when we need to record metadata history");
-        let schema = self.schema.as_str();
-
-        diesel::sql_query(format!(
-            "insert into {}.entity_history(
-                   event_id,
-                   subgraph, entity, entity_id,
-                   data_before, op_id
-                 )
-                 select
-                   $1 as event_id,
-                   $2 as subgraph,
-                   $3 as entity,
-                   $4 as entity_id,
-                   (select data
-                      from {}.entities
-                     where entity = $3
-                       and id = $4) as data_before,
-                   $5 as op_id",
-            schema, schema,
-        ))
-        .bind::<Integer, _>(event_id)
-        .bind::<Text, _>(&*history_event.subgraph)
-        .bind::<Text, _>(&key.entity_type)
-        .bind::<Text, _>(&key.entity_id)
-        .bind::<Integer, i32>(operation.into())
-        .execute(conn)?;
-
-        Ok(())
-    }
-
-    /// Revert the block with the given `block_ptr` which must be the hash
-    /// of the block to revert. The returned `StoreEvent` reflects the changes
-    /// that were made during reversion
-    fn revert_block(
-        &self,
-        conn: &PgConnection,
-        block_ptr: String,
-    ) -> Result<(StoreEvent, i32), StoreError> {
-        // We can't use Diesel's JoinOnDsl here because DynamicTable
-        // does not implement AppearsInFromClause, so we have to run
-        // a raw SQL query
-        let query = format!(
-            "select h.id, h.entity, h.entity_id, h.data_before, h.op_id
-                       from {}.entity_history h, event_meta_data m
-                      where m.id = h.event_id
-                        and m.source = $1
-                      order by h.event_id desc",
-            self.schema
-        );
-
-        let query = diesel::sql_query(query).bind::<Text, _>(&block_ptr);
-
-        // Collect entity history events for the subgraph for which we're
-        // reverting the block
-        let entries: Vec<RawHistory> = query.get_results(conn)?;
-
-        // Apply revert operations
-        self.revert_entity_history_records(conn, entries)
-            .map(|(changes, count)| (StoreEvent::new(changes), count))
-    }
-
-    fn build_attribute_index(
-        &self,
-        conn: &PgConnection,
-        index: &AttributeIndexDefinition,
-    ) -> Result<usize, StoreError> {
-        let (index_type, index_operator, jsonb_operator) = match index.field_value_type {
-            ValueType::Boolean
-            | ValueType::BigInt
-            | ValueType::Bytes
-            | ValueType::BigDecimal
-            | ValueType::Int
-            | ValueType::String => (String::from("btree"), String::from(""), "->>"),
-            ValueType::List => (String::from("gin"), String::from("jsonb_path_ops"), "->"),
-        };
-        // Cast between the type we store in JSONB for the field and the type
-        // as which comparisons should be made. For example, we store BigInt
-        // as a string in JSONB, but the comparison needs to be made as
-        // a number
-        let type_cast = match index.field_value_type {
-            ValueType::BigInt | ValueType::BigDecimal => "::numeric",
-            ValueType::Boolean => "::bool",
-            _ => "",
-        };
-        // It is not possible to use bind variables in this code,
-        // and we have to interpolate everything into the query directly.
-        // We also have to use conn.batch_execute to issue the `create index`
-        // commands; using `sql_query(..).execute(conn)` will make the database
-        // accept the commands, and log them as if they were successful, but
-        // without any effect on the schema
-        //
-        // Note that this code depends on `index.entity_number` and
-        // `index.attribute_number` to be stable, i.e., that we always get the
-        // same numbers for the same `(entity, attribute)` combination. If it is
-        // not stable, we will create duplicate indexes
-
-        // It is possible that the user's `entity_name` and
-        // `attribute_name` are so long that `name` becomes longer than
-        // 63 characters which is Postgres' length limit on identifiers.
-        // If we go over, Postgres will truncate the name to 63 characters;
-        // because of that we include the `entity_number` and
-        // `attribute_number` to ensure that a 63 character prefix
-        // of the name is guaranteed to be unique
-        let name = format!(
-            "attr_{}_{}_{}_{}",
-            index.entity_number,
-            index.attribute_number,
-            to_snake_case(&index.entity_name),
-            to_snake_case(&index.attribute_name)
-        );
-        let query = match index.field_value_type {
-            ValueType::String => format!(
-                "create index if not exists {name}
-                         on {subgraph}.entities
-                      using btree(left(data->'{attribute_name}'->>'data', {prefix_size}))
-                      where entity='{entity_name}'",
-                name = name,
-                subgraph = self.schema,
-                attribute_name = &index.attribute_name,
-                entity_name = &index.entity_name,
-                prefix_size = STRING_PREFIX_SIZE,
-            ),
-            _ => format!(
-                "create index if not exists {name}
-                         on {subgraph}.entities
-                      using {index_type} (
-                              ((data->'{attribute_name}'{jsonb_operator}'data'){type_cast})
-                              {index_operator}
-                            )
-                      where entity='{entity_name}'",
-                name = name,
-                subgraph = self.schema,
-                index_type = index_type,
-                attribute_name = &index.attribute_name,
-                jsonb_operator = jsonb_operator,
-                type_cast = type_cast,
-                index_operator = index_operator,
-                entity_name = &index.entity_name
-            ),
-        };
-        conn.batch_execute(&*query)?;
-        Ok(1)
-    }
-
-    fn revert_entity_history_records(
-        &self,
-        conn: &PgConnection,
-        records: Vec<RawHistory>,
-    ) -> Result<(Vec<EntityChange>, i32), StoreError> {
-        let subgraph_id = self.subgraph.clone();
-
-        let mut changes = vec![];
-        let mut count = 0;
-
-        for history in records.into_iter() {
-            // Perform the actual reversion
-            let key = EntityKey {
-                subgraph_id: self.subgraph.clone(),
-                entity_type: history.entity.clone(),
-                entity_id: history.entity_id.clone(),
-            };
-            match history.op {
-                0 => {
-                    // Reverse an insert
-                    self.delete(conn, &key, None)?;
-                    count -= 1;
-                }
-                1 | 2 => {
-                    // Reverse an update or delete
-                    if let Some(data) = history.data {
-                        self.upsert(conn, &key, &data, None)?;
-                    } else {
-                        return Err(StoreError::Unknown(format_err!(
-                            "History entry for update/delete has NULL data_before. id={}, op={}",
-                            history.id,
-                            history.op
-                        )));
-                    }
-                    if history.op == 2 {
-                        count += 1;
-                    }
-                }
-                _ => {
-                    return Err(StoreError::Unknown(format_err!(
-                        "bad operation {}",
-                        history.op
-                    )))
-                }
-            }
-            // Record the change that was just made
-            let change = EntityChange {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: history.entity,
-                entity_id: history.entity_id,
-                operation: match history.op {
-                    0 => EntityChangeOperation::Removed,
-                    1 | 2 => EntityChangeOperation::Set,
-                    _ => {
-                        return Err(StoreError::Unknown(format_err!(
-                            "bad operation {}",
-                            history.op
-                        )))
-                    }
-                },
-            };
-            changes.push(change);
-        }
-
-        Ok((changes, count))
-    }
-}
-
 impl Storage {
     /// Look up the schema for `subgraph` and return its entity storage.
     /// Returns an error if `subgraph` does not have an entry in
@@ -1403,24 +846,10 @@ impl Storage {
             .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
         let storage = match schema.version {
             V::Split => {
-                let table =
-                    diesel_dynamic_schema::schema(schema.name.clone()).table("entities".to_owned());
-                let id = table.column::<Text, _>("id".to_string());
-                let entity = table.column::<Text, _>("entity".to_string());
-                let data = table.column::<Jsonb, _>("data".to_string());
-                let event_source = table.column::<Text, _>("event_source".to_string());
-                let count_query = format!("select count(*) from \"{}\".entities", schema.name);
-
-                Storage::Json(JsonStorage {
-                    schema: schema.name,
-                    subgraph: subgraph.clone(),
-                    table,
-                    id,
-                    entity,
-                    data,
-                    event_source,
-                    count_query,
-                })
+                return Err(StoreError::ConstraintViolation(format!(
+                    "the subgraph {} uses JSONB storage which is not supported any longer",
+                    subgraph.as_str()
+                )))
             }
             V::Relational => {
                 let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
@@ -1448,7 +877,6 @@ impl Storage {
         count: i32,
     ) -> Result<(), StoreError> {
         let count_query = match self {
-            Storage::Json(json) => json.count_query.as_str(),
             Storage::Relational(layout) => layout.count_query.as_str(),
         };
         // The big complication in this query is how to determine what the

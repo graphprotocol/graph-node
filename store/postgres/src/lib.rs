@@ -31,7 +31,6 @@ mod filter;
 mod functions;
 mod history_event;
 mod jsonb;
-mod jsonb_queries;
 mod metadata;
 mod network_store;
 mod notification_listener;
