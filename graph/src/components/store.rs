@@ -855,9 +855,11 @@ pub trait Store: Send + Sync + 'static {
         stopwatch: StopwatchMetrics,
     ) -> Result<bool, StoreError>;
 
-    /// Apply the specified metadata operations.
+    /// Apply the specified metadata operations which only concern metadata
+    /// for the `target_deployment`.
     fn apply_metadata_operations(
         &self,
+        target_deployment: &SubgraphDeploymentId,
         operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError>;
 
@@ -1068,6 +1070,7 @@ impl Store for MockStore {
 
     fn apply_metadata_operations(
         &self,
+        _target_deployment: &SubgraphDeploymentId,
         _operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         unimplemented!()

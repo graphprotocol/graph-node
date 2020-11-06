@@ -1111,6 +1111,7 @@ impl StoreTrait for Store {
     /// mentioned in `history_event` should have its schema migrated
     fn apply_metadata_operations(
         &self,
+        _: &SubgraphDeploymentId,
         operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
