@@ -1931,18 +1931,6 @@ fn handle_large_string_with_index() {
     };
 
     run_test(|store| -> Result<(), ()> {
-        let index = AttributeIndexDefinition {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_number: 0,
-            attribute_number: 0,
-            field_value_type: ValueType::String,
-            attribute_name: NAME.to_owned(),
-            entity_name: USER.to_owned(),
-        };
-        store
-            .build_entity_attribute_indexes(&*TEST_SUBGRAPH_ID, vec![index])
-            .unwrap();
-
         // We have to produce a massive string (1_000_000 chars) because
         // the repeated text compresses so well. This leads to an error
         // 'index row requires 11488 bytes, maximum size is 8191' if

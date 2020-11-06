@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 
-use graph::data::subgraph::schema::{attribute_index_definitions, SubgraphError};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::{
     DataSourceLoader as _, GraphQlRunner,
     SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *,
@@ -132,22 +132,6 @@ where
 
                 return Err(SubgraphAssignmentProviderError::AlreadyRunning(subgraph.id));
             }
-
-            info!(logger, "Create attribute indexes for subgraph entities");
-
-            // Build indexes for each entity attribute in the Subgraph
-            let index_definitions =
-                attribute_index_definitions(subgraph.id.clone(), subgraph.schema.document.clone());
-            self_clone
-                .store
-                .build_entity_attribute_indexes(&subgraph.id, index_definitions)
-                .map(|_| {
-                    info!(
-                        logger,
-                        "Successfully created attribute indexes for subgraph entities"
-                    )
-                })
-                .ok();
 
             // Send events to trigger subgraph processing
             if let Err(e) = self_clone

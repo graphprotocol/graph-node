@@ -40,10 +40,9 @@ use std::time::Instant;
 use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE, SUBGRAPHS_ID};
 use graph::prelude::{
-    debug, format_err, info, serde_json, warn, AttributeIndexDefinition, BlockNumber, Entity,
-    EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityRange, Error,
-    EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, BLOCK_NUMBER_MAX,
+    debug, format_err, info, serde_json, warn, BlockNumber, Entity, EntityCollection, EntityFilter,
+    EntityKey, EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger, QueryExecutionError,
+    StoreError, StoreEvent, SubgraphDeploymentId, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::block_number;
@@ -477,13 +476,6 @@ impl Connection<'_> {
                 None => layout.delete_unversioned(&self.conn, key),
             },
         }
-    }
-
-    pub(crate) fn build_attribute_index(
-        &self,
-        _: &AttributeIndexDefinition,
-    ) -> Result<usize, StoreError> {
-        Ok(1)
     }
 
     pub(crate) fn revert_block(

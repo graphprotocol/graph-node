@@ -25,12 +25,12 @@ use graph::data::subgraph::schema::{
 };
 use graph::prelude::{
     debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, warn, web3,
-    ApiSchema, AttributeIndexDefinition, BigInt, BlockNumber, CheapClone, DeploymentState,
-    DynTryFuture, Entity, EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange,
-    Error, EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
-    QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox,
-    SubgraphAssignmentProviderError, SubgraphDeploymentId, SubgraphDeploymentStore,
-    SubgraphEntityPair, SubgraphName, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    ApiSchema, BigInt, BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey,
+    EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlockPointer,
+    EthereumCallCache, Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema,
+    StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox, SubgraphDeploymentId,
+    SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName, TransactionAbortError, Value,
+    BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -530,36 +530,6 @@ impl Store {
             self.apply_metadata_operation(econn, operation)?;
         }
         Ok(event)
-    }
-
-    /// Build a partial Postgres index on a Subgraph-Entity-Attribute
-    fn build_entity_attribute_index_with_conn(
-        &self,
-        conn: &e::Connection,
-        index: AttributeIndexDefinition,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
-        conn.build_attribute_index(&index)
-            .map_err(|e| SubgraphAssignmentProviderError::Unknown(e.into()))
-            .and_then(move |row_count| match row_count {
-                1 => Ok(()),
-                _ => Err(SubgraphAssignmentProviderError::BuildIndexesError(
-                    index.subgraph_id.to_string(),
-                    index.entity_name.clone(),
-                    index.attribute_name.clone(),
-                )),
-            })
-    }
-
-    /// Build a set of indexes on the entities table
-    fn build_entity_attribute_indexes_with_conn(
-        &self,
-        conn: &e::Connection,
-        indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
-        for index in indexes.into_iter() {
-            self.build_entity_attribute_index_with_conn(conn, index)?;
-        }
-        Ok(())
     }
 
     /// Execute a closure with a connection to the database.
@@ -1152,15 +1122,6 @@ impl StoreTrait for Store {
 
         // Send the event separately, because NOTIFY uses a global DB lock.
         econn.transaction(|| econn.send_store_event(&event))
-    }
-
-    fn build_entity_attribute_indexes(
-        &self,
-        subgraph: &SubgraphDeploymentId,
-        indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
-        let econn = self.get_entity_conn(subgraph, ReplicaId::Main)?;
-        econn.transaction(|| self.build_entity_attribute_indexes_with_conn(&econn, indexes))
     }
 
     fn revert_block_operations(

@@ -712,16 +712,6 @@ impl MetadataOperation {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct AttributeIndexDefinition {
-    pub subgraph_id: SubgraphDeploymentId,
-    pub entity_number: usize,
-    pub attribute_number: usize,
-    pub field_value_type: ValueType,
-    pub attribute_name: String,
-    pub entity_name: String,
-}
-
 #[derive(Fail, Debug)]
 pub enum StoreError {
     #[fail(display = "store transaction failed, need to retry: {}", _0)]
@@ -870,13 +860,6 @@ pub trait Store: Send + Sync + 'static {
         &self,
         operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError>;
-
-    /// Build indexes for a set of subgraph entity attributes
-    fn build_entity_attribute_indexes(
-        &self,
-        subgraph: &SubgraphDeploymentId,
-        indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
@@ -1087,14 +1070,6 @@ impl Store for MockStore {
         &self,
         _operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn build_entity_attribute_indexes(
-        &self,
-        _subgraph: &SubgraphDeploymentId,
-        _indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
         unimplemented!()
     }
 

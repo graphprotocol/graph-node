@@ -98,8 +98,8 @@ pub mod prelude {
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
-        AttributeIndexDefinition, BlockNumber, ChainStore, ChildMultiplicity, EntityCache,
-        EntityChange, EntityChangeOperation, EntityCollection, EntityFilter, EntityKey, EntityLink,
+        BlockNumber, ChainStore, ChildMultiplicity, EntityCache, EntityChange,
+        EntityChangeOperation, EntityCollection, EntityFilter, EntityKey, EntityLink,
         EntityModification, EntityOperation, EntityOrder, EntityQuery, EntityRange, EntityWindow,
         EthereumCallCache, MetadataOperation, ParentLink, PoolWaitStats, QueryStore, Store,
         StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, SubgraphDeploymentStore,

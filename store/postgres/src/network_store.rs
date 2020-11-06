@@ -130,14 +130,6 @@ impl StoreTrait for NetworkStore {
         self.store.apply_metadata_operations(operations)
     }
 
-    fn build_entity_attribute_indexes(
-        &self,
-        subgraph: &graph::prelude::SubgraphDeploymentId,
-        indexes: Vec<graph::prelude::AttributeIndexDefinition>,
-    ) -> Result<(), graph::prelude::SubgraphAssignmentProviderError> {
-        self.store.build_entity_attribute_indexes(subgraph, indexes)
-    }
-
     fn revert_block_operations(
         &self,
         subgraph_id: graph::prelude::SubgraphDeploymentId,

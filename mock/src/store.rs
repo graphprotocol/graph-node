@@ -119,14 +119,6 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn build_entity_attribute_indexes(
-        &self,
-        _subgraph: &SubgraphDeploymentId,
-        _indexes: Vec<AttributeIndexDefinition>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
-        unimplemented!()
-    }
-
     fn revert_block_operations(
         &self,
         _subgraph_id: SubgraphDeploymentId,
