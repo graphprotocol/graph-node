@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+**NOTE: JSONB storage is no longer supported. Do not upgrade to this
+release if you still have subgraphs that were deployed with a version
+before 0.16. They need to be redeployed before updating to this version.**
+
+You can check if you have JSONB subgraphs by running the query `select
+count(*) from deployment_schemas where version='split'` in `psql`. If that
+query returns `0`, you do not have JSONB subgraphs and it is safe to upgrde
+to this version.
+
+
 ## 0.19.2
 
 - Add `GRAPH_ETH_CALL_BY_NUMBER` environment variable for disabling
