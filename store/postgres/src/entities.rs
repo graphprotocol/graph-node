@@ -208,15 +208,13 @@ struct Schema {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum Storage {
-    Relational(Layout),
+pub(crate) struct Storage {
+    layout: Layout,
 }
 
 impl Storage {
     fn subgraph(&self) -> &SubgraphDeploymentId {
-        match self {
-            Storage::Relational(layout) => &layout.subgraph,
-        }
+        &self.layout.subgraph
     }
 }
 
@@ -311,29 +309,18 @@ impl Connection<'_> {
         match state {
             State::Init => {
                 let graft = metadata::deployment_graft(&self.conn, &self.storage.subgraph())?;
-                match &*self.storage {
-                    Storage::Relational(layout) => {
-                        let start = Instant::now();
-                        if let Some((base, block)) = graft {
-                            let base = match Storage::new(&self.conn, &base)? {
-                                Storage::Relational(base) => base,
-                            };
-                            layout.copy_from(
-                                logger,
-                                &self.conn,
-                                &base,
-                                block,
-                                self.metadata_layout(),
-                            )?;
-                        }
-                        diesel::update(dsl::table)
-                            .set(dsl::state.eq(State::Ready))
-                            .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
-                            .execute(self.conn.as_ref())?;
-                        info!(logger, "Subgraph successfully initialized";
-                              "time_ms" => start.elapsed().as_millis());
-                    }
+                let layout = &self.storage.layout;
+                let start = Instant::now();
+                if let Some((base, block)) = graft {
+                    let base = &Storage::new(&self.conn, &base)?.layout;
+                    layout.copy_from(logger, &self.conn, &base, block, self.metadata_layout())?;
                 }
+                diesel::update(dsl::table)
+                    .set(dsl::state.eq(State::Ready))
+                    .filter(dsl::subgraph.eq(self.storage.subgraph().as_str()))
+                    .execute(self.conn.as_ref())?;
+                info!(logger, "Subgraph successfully initialized";
+                              "time_ms" => start.elapsed().as_millis());
             }
             State::Tables => unimplemented!("continue the migration"),
             State::Ready => { // Nothing to do
@@ -362,9 +349,7 @@ impl Connection<'_> {
         id: &String,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        match &*self.storage {
-            Storage::Relational(layout) => layout.find(&self.conn, entity, id, block),
-        }
+        self.storage.layout.find(&self.conn, entity, id, block)
     }
 
     /// Returns a sequence of `(type, entity)`.
@@ -374,9 +359,9 @@ impl Connection<'_> {
         ids_for_type: BTreeMap<&str, Vec<&str>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
-        match &*self.storage {
-            Storage::Relational(layout) => layout.find_many(&self.conn, ids_for_type, block),
-        }
+        self.storage
+            .layout
+            .find_many(&self.conn, ids_for_type, block)
     }
 
     pub(crate) fn query<T: crate::relational_queries::FromEntityData>(
@@ -389,11 +374,9 @@ impl Connection<'_> {
         block: BlockNumber,
         query_id: Option<String>,
     ) -> Result<Vec<T>, QueryExecutionError> {
-        match &*self.storage {
-            Storage::Relational(layout) => layout.query(
-                logger, &self.conn, collection, filter, order, range, block, query_id,
-            ),
-        }
+        self.storage.layout.query(
+            logger, &self.conn, collection, filter, order, range, block, query_id,
+        )
     }
 
     pub(crate) fn conflicting_entity(
@@ -401,11 +384,9 @@ impl Connection<'_> {
         entity_id: &String,
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
-        match &*self.storage {
-            Storage::Relational(layout) => {
-                layout.conflicting_entity(&self.conn, entity_id, entities)
-            }
-        }
+        self.storage
+            .layout
+            .conflicting_entity(&self.conn, entity_id, entities)
     }
 
     pub(crate) fn insert(
@@ -414,13 +395,12 @@ impl Connection<'_> {
         entity: Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
-        match self.storage_for(key) {
-            Storage::Relational(layout) => match history_event {
-                Some(history_event) => {
-                    layout.insert(&self.conn, key, entity, block_number(&history_event))
-                }
-                None => layout.insert_unversioned(&self.conn, key, entity),
-            },
+        let layout = &self.storage_for(key).layout;
+        match history_event {
+            Some(history_event) => {
+                layout.insert(&self.conn, key, entity, block_number(&history_event))
+            }
+            None => layout.insert_unversioned(&self.conn, key, entity),
         }
     }
 
@@ -433,15 +413,14 @@ impl Connection<'_> {
         entity: Entity,
         history_event: Option<&HistoryEvent>,
     ) -> Result<(), StoreError> {
-        match self.storage_for(key) {
-            Storage::Relational(layout) => match history_event {
-                Some(history_event) => {
-                    layout.update(&self.conn, key, entity, block_number(&history_event))
-                }
-                None => layout
-                    .overwrite_unversioned(&self.conn, key, entity)
-                    .map(|_| ()),
-            },
+        let layout = &self.storage_for(key).layout;
+        match history_event {
+            Some(history_event) => {
+                layout.update(&self.conn, key, entity, block_number(&history_event))
+            }
+            None => layout
+                .overwrite_unversioned(&self.conn, key, entity)
+                .map(|_| ()),
         }
     }
 
@@ -470,11 +449,10 @@ impl Connection<'_> {
         key: &EntityKey,
         history_event: Option<&HistoryEvent>,
     ) -> Result<usize, StoreError> {
-        match self.storage_for(key) {
-            Storage::Relational(layout) => match history_event {
-                Some(history_event) => layout.delete(&self.conn, key, block_number(&history_event)),
-                None => layout.delete_unversioned(&self.conn, key),
-            },
+        let layout = &self.storage_for(key).layout;
+        match history_event {
+            Some(history_event) => layout.delete(&self.conn, key, block_number(&history_event)),
+            None => layout.delete_unversioned(&self.conn, key),
         }
     }
 
@@ -490,9 +468,7 @@ impl Connection<'_> {
             .expect("block numbers fit into an i32");
 
         // Revert the block in the subgraph itself
-        let (event, count) = match &*self.storage {
-            Storage::Relational(layout) => layout.revert_block(&self.conn, block)?,
-        };
+        let (event, count) = self.storage.layout.revert_block(&self.conn, block)?;
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
         // importantly creation of dynamic data sources. We ensure in the
@@ -516,15 +492,10 @@ impl Connection<'_> {
         &self,
         block_ptr: EthereumBlockPointer,
     ) -> Result<HistoryEvent, Error> {
-        match &*self.storage {
-            Storage::Relational(layout) => {
-                // For relational storage, we do not need an entry in event_meta_data
-                Ok(HistoryEvent::create_without_event_metadata(
-                    layout.subgraph.clone(),
-                    block_ptr,
-                ))
-            }
-        }
+        Ok(HistoryEvent::create_without_event_metadata(
+            self.storage.layout.subgraph.clone(),
+            block_ptr,
+        ))
     }
 
     /// Check if the schema for `subgraph` needs to be migrated, and if so
@@ -744,19 +715,16 @@ impl Connection<'_> {
                     Layout::create_relational_schema(&self.conn, schema, schema_name.to_owned())?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
-                    match Storage::new(&self.conn, &base)? {
-                        Storage::Relational(base) => {
-                            let errors = layout.can_copy_from(&base);
-                            if !errors.is_empty() {
-                                return Err(StoreError::Unknown(format_err!(
-                                    "The subgraph `{}` cannot be used as the graft base \
+                    let base = &Storage::new(&self.conn, &base)?.layout;
+                    let errors = layout.can_copy_from(&base);
+                    if !errors.is_empty() {
+                        return Err(StoreError::Unknown(format_err!(
+                            "The subgraph `{}` cannot be used as the graft base \
                                         for `{}` because the schemas are incompatible:\n    - {}",
-                                    &base.subgraph,
-                                    &layout.subgraph,
-                                    errors.join("\n    - ")
-                                )));
-                            }
-                        }
+                            &base.subgraph,
+                            &layout.subgraph,
+                            errors.join("\n    - ")
+                        )));
                     }
                 }
                 Ok(())
@@ -773,15 +741,11 @@ impl Connection<'_> {
     }
 
     fn metadata_layout(&self) -> &Layout {
-        match &*self.metadata {
-            Storage::Relational(layout) => layout,
-        }
+        &self.metadata.layout
     }
 
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {
-        match &*self.storage {
-            Storage::Relational(layout) => layout.tables.contains_key(POI_OBJECT),
-        }
+        self.storage.layout.tables.contains_key(POI_OBJECT)
     }
 }
 
@@ -844,7 +808,7 @@ impl Storage {
                 let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
                 let catalog = Catalog::new(conn, schema.name)?;
                 let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
-                Storage::Relational(layout)
+                Storage { layout }
             }
         };
         Ok(storage)
@@ -864,9 +828,8 @@ impl Storage {
         conn: &PgConnection,
         count: i32,
     ) -> Result<(), StoreError> {
-        let count_query = match self {
-            Storage::Relational(layout) => layout.count_query.as_str(),
-        };
+        let count_query = self.layout.count_query.as_str();
+
         // The big complication in this query is how to determine what the
         // new entityCount should be. We want to make sure that if the entityCount
         // is NULL or the special value `-1`, it gets recomputed. Using `-1` here
