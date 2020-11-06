@@ -15,6 +15,7 @@ use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
+use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
@@ -29,7 +30,6 @@ use crate::block_range::{
     BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
 };
 use crate::entities::STRING_PREFIX_SIZE;
-use crate::filter::UnsupportedFilter;
 use crate::relational::{Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
 
@@ -47,6 +47,30 @@ lazy_static! {
             })
             .unwrap_or(150)
     };
+}
+
+#[derive(Debug)]
+pub(crate) struct UnsupportedFilter {
+    pub filter: String,
+    pub value: Value,
+}
+
+impl Display for UnsupportedFilter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "unsupported filter `{}` for value `{}`",
+            self.filter, self.value
+        )
+    }
+}
+
+impl std::error::Error for UnsupportedFilter {}
+
+impl From<UnsupportedFilter> for diesel::result::Error {
+    fn from(error: UnsupportedFilter) -> Self {
+        diesel::result::Error::QueryBuilderError(Box::new(error))
+    }
 }
 
 fn str_as_bytes(id: &str) -> QueryResult<scalar::Bytes> {
