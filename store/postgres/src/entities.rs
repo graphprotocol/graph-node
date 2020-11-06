@@ -20,10 +20,9 @@
 // for dynamic tables.
 
 use diesel::connection::SimpleConnection;
-use diesel::deserialize::QueryableByName;
-use diesel::pg::{Pg, PgConnection};
+use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::sql_types::{Integer, Jsonb, Nullable, Text};
+use diesel::sql_types::{Integer, Text};
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
@@ -205,32 +204,6 @@ struct Schema {
     /// locks. When the data is in place, the migration updates `version` to
     /// the new version we migrated to, and sets the state to `Ready`
     state: public::DeploymentSchemaState,
-}
-
-/// Helper struct to support a custom query for entity history
-#[derive(Debug, Queryable)]
-struct RawHistory {
-    id: i32,
-    entity: String,
-    entity_id: String,
-    data: Option<serde_json::Value>,
-    // The operation that lead to this history record
-    // 0 = INSERT, 1 = UPDATE, 2 = DELETE
-    op: i16,
-}
-
-impl QueryableByName<Pg> for RawHistory {
-    // Extract one RawHistory entry from the database. The names of the columns
-    // must follow exactly the names used in the queries in revert_block
-    fn build<R: diesel::row::NamedRow<Pg>>(row: &R) -> diesel::deserialize::Result<Self> {
-        Ok(RawHistory {
-            id: row.get("id")?,
-            entity: row.get("entity")?,
-            entity_id: row.get("entity_id")?,
-            data: row.get::<Nullable<Jsonb>, _>("data_before")?,
-            op: row.get("op_id")?,
-        })
-    }
 }
 
 /// A cache for storage objects as constructing them takes a bit of
