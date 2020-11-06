@@ -1,21 +1,16 @@
-use graphql_parser::query as q;
-use std::collections::BTreeMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::prelude::{
-    object, object_value, QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions,
-};
+use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
-    async_trait, o, CheapClone, DeploymentState, EthereumBlockPointer,
-    GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, QueryResult, Store,
-    StoreError, SubgraphDeploymentId, SubgraphDeploymentStore, Subscription, SubscriptionError,
-    SubscriptionResult,
+    async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
+    Query, QueryExecutionError, QueryResult, Store, SubgraphDeploymentStore, Subscription,
+    SubscriptionError, SubscriptionResult,
 };
 
 use lazy_static::lazy_static;
@@ -74,49 +69,6 @@ where
             store,
             load_manager,
         }
-    }
-
-    /// Create a JSON value that contains the block information for our
-    /// response
-    #[allow(dead_code)]
-    fn make_extensions(
-        &self,
-        subgraph: &SubgraphDeploymentId,
-        block_ptr: &EthereumBlockPointer,
-    ) -> Result<BTreeMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
-        let network = self
-            .store
-            .network_name(subgraph)
-            .map_err(|e| vec![QueryExecutionError::StoreError(e.into())])?
-            .map(|s| format!("ethereum/{}", s))
-            .unwrap_or("unknown".to_string());
-        let network_info = if self
-            .store
-            .uses_relational_schema(subgraph)
-            .map_err(|e| vec![StoreError::from(e).into()])?
-        {
-            // Relational storage: produce the full output
-            object_value(vec![(
-                network.as_str(),
-                object! {
-                        hash: block_ptr.hash_hex(),
-                        number: q::Number::from(block_ptr.number as i32)
-                },
-            )])
-        } else {
-            // JSONB storage: we can not reliably report anything about
-            // the block where the query happened
-            object_value(vec![(network.as_str(), object_value(vec![]))])
-        };
-        let mut exts = BTreeMap::new();
-        exts.insert(
-            "subgraph".to_owned(),
-            object! {
-                id: subgraph.to_string(),
-                blocks: network_info
-            },
-        );
-        Ok(exts)
     }
 
     /// Check if the subgraph state differs from `state` now in a way that

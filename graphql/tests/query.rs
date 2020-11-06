@@ -1536,31 +1536,6 @@ fn query_at_block_with_vars() {
     })
 }
 
-/// Check that the `extensions` field in the query result has the correct format
-#[test]
-#[ignore]
-fn block_extension() {
-    run_test_sequentially(setup, |_, id| async move {
-        let query = format!("query {{ musicians(block: {{ number: 0 }}) {{ id }} }}");
-        let query = graphql_parser::parse_query(&query).expect("invalid test query");
-
-        let result = execute_query_document(&id, query).await;
-
-        if STORE.uses_relational_schema(&id).unwrap() {
-            let ext = object! {
-            subgraph: object! {
-                blocks: object! {
-                    unknown: object! {
-                        hash: "0000000000000000000000000000000000000000000000000000000000000000",
-                        number: 0}},
-                id: "graphqlTestsQuery" }};
-            assert_eq!(Some(ext), result.extensions);
-        } else {
-            assert_eq!(None, result.extensions);
-        }
-    })
-}
-
 #[test]
 fn query_detects_reorg() {
     run_test_sequentially(setup, |_, id| async move {
