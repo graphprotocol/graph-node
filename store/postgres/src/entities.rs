@@ -92,15 +92,6 @@ pub(crate) trait EntitySource {}
 // in this module to make sure that nobody else gets access to them. All
 // access to these tables must go through functions in this module.
 mod public {
-    table! {
-        event_meta_data (id) {
-            id -> Integer,
-            db_transaction_id -> BigInt,
-            db_transaction_time -> Timestamp,
-            source -> Nullable<Varchar>,
-        }
-    }
-
     /// We support different storage schemes per subgraph. This enum is used
     /// to track which scheme a given subgraph uses and corresponds to the
     /// `deployment_schema_version` type in the database.
@@ -800,8 +791,6 @@ pub fn delete_all_entities_for_test_use_only(
     store: &crate::NetworkStore,
     conn: &PgConnection,
 ) -> Result<(), StoreError> {
-    // Delete public entities and related data
-    diesel::delete(public::event_meta_data::table).execute(conn)?;
     // Delete all subgraph schemas
     for subgraph in public::deployment_schemas::table
         .select(public::deployment_schemas::subgraph)
