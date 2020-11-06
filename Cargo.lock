@@ -1402,7 +1402,6 @@ dependencies = [
  "graphql-parser",
  "hex 0.4.2",
  "http 0.2.1",
- "ipfs-api",
  "isatty",
  "lazy_static",
  "maplit",
@@ -1458,9 +1457,7 @@ dependencies = [
  "futures 0.1.29",
  "graph",
  "graph-core",
- "graph-mock",
  "graph-store-postgres",
- "hex-literal",
  "hyper 0.12.35",
  "jsonrpc-core",
  "lazy_static",
@@ -1487,7 +1484,7 @@ dependencies = [
  "hex 0.4.2",
  "ipfs-api",
  "lazy_static",
- "lru_time_cache 0.9.0",
+ "lru_time_cache",
  "pretty_assertions",
  "prometheus",
  "semver 0.10.0",
@@ -1510,7 +1507,6 @@ dependencies = [
  "graphql-parser",
  "indexmap",
  "lazy_static",
- "lru_time_cache 0.10.0",
  "once_cell",
  "parking_lot 0.11.0",
  "pretty_assertions",
@@ -1547,7 +1543,6 @@ dependencies = [
  "graph-chain-ethereum",
  "graph-core",
  "graph-graphql",
- "graph-mock",
  "graph-runtime-wasm",
  "graph-server-http",
  "graph-server-index-node",
@@ -1659,7 +1654,6 @@ version = "0.19.2"
 dependencies = [
  "futures 0.1.29",
  "graph",
- "graph-graphql",
  "graphql-parser",
  "http 0.2.1",
  "lazy_static",
@@ -1693,7 +1687,7 @@ dependencies = [
  "hex 0.4.2",
  "hex-literal",
  "lazy_static",
- "lru_time_cache 0.9.0",
+ "lru_time_cache",
  "maybe-owned",
  "postgres",
  "rand 0.6.5",
@@ -2289,12 +2283,6 @@ name = "lru_time_cache"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab44e08e5b5110188be64dc8f0865635206ad7386fe672903bef195df3cc8960"
-
-[[package]]
-name = "lru_time_cache"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb241df5c4caeb888755363fc95f8a896618dc0d435e9e775f7930cb099beab"
 
 [[package]]
 name = "mach"
