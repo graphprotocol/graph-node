@@ -11,9 +11,6 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
-/// Convenient graphql queries for the metadata.
-pub mod queries;
-
 use graphql_parser::query as q;
 use hex;
 use lazy_static::lazy_static;
