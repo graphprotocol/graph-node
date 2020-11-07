@@ -853,9 +853,6 @@ pub trait Store: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
-    ///
-    /// Return `true` if the subgraph mentioned in `history_event` should have
-    /// its schema migrated at `block_ptr_to`
     fn transact_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
@@ -863,7 +860,7 @@ pub trait Store: Send + Sync + 'static {
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, StoreError>;
+    ) -> Result<(), StoreError>;
 
     /// Apply the specified metadata operations which only concern metadata
     /// for the `target_deployment`.
@@ -982,20 +979,6 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError>;
 
-    /// Try to perform a pending migration for a subgraph schema. Even if a
-    /// subgraph has a pending schema migration, this method might not actually
-    /// perform the migration because of limits on the total number of
-    /// migrations that can happen at the same time across the whole system.
-    ///
-    /// Any errors happening during the migration will be logged as warnings
-    /// on `logger`, but otherwise ignored
-    fn migrate_subgraph_deployment(
-        &self,
-        logger: &Logger,
-        subgraph_id: &SubgraphDeploymentId,
-        block_ptr: &EthereumBlockPointer,
-    );
-
     /// Return the number of the block with the given hash for the given
     /// subgraph
     fn block_number(
@@ -1090,7 +1073,7 @@ impl Store for MockStore {
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
         _deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -1162,15 +1145,6 @@ impl Store for MockStore {
         _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn migrate_subgraph_deployment(
-        &self,
-        _logger: &Logger,
-        _subgraph_id: &SubgraphDeploymentId,
-        _block_ptr: &EthereumBlockPointer,
-    ) {
         unimplemented!()
     }
 

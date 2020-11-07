@@ -29,7 +29,7 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, SubgraphError, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, warn, web3,
+    anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, web3,
     ApiSchema, BigInt, BlockNumber, CheapClone, CompatErr, DeploymentState, DynTryFuture, Entity,
     EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
     EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
@@ -1060,7 +1060,7 @@ impl StoreTrait for Store {
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<(), StoreError> {
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
         if mods
@@ -1076,43 +1076,36 @@ impl StoreTrait for Store {
 
         let econn = self.get_entity_conn(&subgraph_id, ReplicaId::Main)?;
 
-        let (event, metadata_event, should_migrate) =
-            econn.transaction(|| -> Result<_, StoreError> {
-                let block_ptr_from = Self::block_ptr_with_conn(&subgraph_id, &econn)?;
-                if let Some(ref block_ptr_from) = block_ptr_from {
-                    if block_ptr_from.number >= block_ptr_to.number {
-                        return Err(StoreError::DuplicateBlockProcessing(
-                            subgraph_id,
-                            block_ptr_to.number,
-                        ));
-                    }
+        let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
+            let block_ptr_from = Self::block_ptr_with_conn(&subgraph_id, &econn)?;
+            if let Some(ref block_ptr_from) = block_ptr_from {
+                if block_ptr_from.number >= block_ptr_to.number {
+                    return Err(StoreError::DuplicateBlockProcessing(
+                        subgraph_id,
+                        block_ptr_to.number,
+                    ));
                 }
+            }
 
-                let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
+            // Emit a store event for the changes we are about to make. We
+            // wait with sending it until we have done all our other work
+            // so that we do not hold a lock on the notification queue
+            // for longer than we have to
+            let event: StoreEvent = mods.iter().collect();
 
-                // Emit a store event for the changes we are about to make. We
-                // wait with sending it until we have done all our other work
-                // so that we do not hold a lock on the notification queue
-                // for longer than we have to
-                let event: StoreEvent = mods.iter().collect();
+            // Make the changes
+            let section = stopwatch.start_section("apply_entity_modifications");
+            self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
+            section.end();
 
-                // Make the changes
-                let section = stopwatch.start_section("apply_entity_modifications");
-                self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
-                section.end();
+            if !deterministic_errors.is_empty() {
+                metadata::insert_subgraph_errors(&econn.conn, &subgraph_id, deterministic_errors)?;
+            }
 
-                if !deterministic_errors.is_empty() {
-                    metadata::insert_subgraph_errors(
-                        &econn.conn,
-                        &subgraph_id,
-                        deterministic_errors,
-                    )?;
-                }
-
-                let metadata_event =
-                    metadata::forward_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
-                Ok((event, metadata_event, should_migrate))
-            })?;
+            let metadata_event =
+                metadata::forward_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
+            Ok((event, metadata_event))
+        })?;
 
         // Send the events separately, because NOTIFY uses a global DB lock.
         econn.transaction(|| {
@@ -1120,7 +1113,7 @@ impl StoreTrait for Store {
             econn.send_store_event(&event)
         })?;
 
-        Ok(should_migrate)
+        Ok(())
     }
 
     /// Apply a series of entity operations. Return `true` if the subgraph
@@ -1271,33 +1264,6 @@ impl StoreTrait for Store {
             metadata::unfail_deployment(&econn.conn, subgraph_id)?;
             econn.start_subgraph(logger)
         })
-    }
-
-    fn migrate_subgraph_deployment(
-        &self,
-        logger: &Logger,
-        subgraph_id: &SubgraphDeploymentId,
-        block_ptr: &EthereumBlockPointer,
-    ) {
-        let econn = match self.get_entity_conn(subgraph_id, ReplicaId::Main) {
-            Ok(econn) => econn,
-            Err(e) => {
-                warn!(logger, "failed to get connection to start migrating";
-                                "subgraph" => subgraph_id.to_string(),
-                                "error" => e.to_string(),
-                );
-                return;
-            }
-        };
-
-        if let Err(e) = econn.migrate(logger, block_ptr) {
-            // An error in a migration should not lead to the
-            // subgraph being marked as failed
-            warn!(logger, "aborted migrating";
-                            "subgraph" => subgraph_id.to_string(),
-                            "error" => e.to_string(),
-            );
-        }
     }
 
     fn block_number(

@@ -126,7 +126,7 @@ impl StoreTrait for NetworkStore {
         mods: Vec<graph::prelude::EntityModification>,
         stopwatch: graph::prelude::StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, graph::prelude::StoreError> {
+    ) -> Result<(), graph::prelude::StoreError> {
         self.store.transact_block_operations(
             subgraph_id,
             block_ptr_to,
@@ -202,16 +202,6 @@ impl StoreTrait for NetworkStore {
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<(), graph::prelude::StoreError> {
         self.store.start_subgraph_deployment(logger, subgraph_id)
-    }
-
-    fn migrate_subgraph_deployment(
-        &self,
-        logger: &graph::prelude::Logger,
-        subgraph_id: &graph::prelude::SubgraphDeploymentId,
-        block_ptr: &EthereumBlockPointer,
-    ) {
-        self.store
-            .migrate_subgraph_deployment(logger, subgraph_id, block_ptr)
     }
 
     fn block_number(

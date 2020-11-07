@@ -27,10 +27,8 @@ use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
 use maybe_owned::MaybeOwned;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
-use std::hash::{Hash, Hasher};
 use std::ops::Deref as _;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -38,9 +36,9 @@ use std::time::Instant;
 use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE, SUBGRAPHS_ID};
 use graph::prelude::{
-    debug, format_err, info, serde_json, warn, BlockNumber, Entity, EntityCollection, EntityFilter,
-    EntityKey, EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger, QueryExecutionError,
-    StoreError, StoreEvent, SubgraphDeploymentId, BLOCK_NUMBER_MAX,
+    format_err, info, serde_json, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey,
+    EntityOrder, EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError,
+    StoreEvent, SubgraphDeploymentId, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::block_number;
@@ -71,20 +69,10 @@ pub(crate) trait EntitySource {}
 // in this module to make sure that nobody else gets access to them. All
 // access to these tables must go through functions in this module.
 mod public {
-    /// We support different storage schemes per subgraph. This enum is used
-    /// to track which scheme a given subgraph uses and corresponds to the
-    /// `deployment_schema_version` type in the database.
-    ///
-    /// The column `deployment_schemas.version` stores that information for
-    /// each subgraph. Subgraphs that store their entities and history as
-    /// JSONB blobs with a separate history table are marked with version
-    /// `Split`. Subgraphs that use a relational schema for entities, and
-    /// store their history in the same table are marked as 'Relational'
-    ///
-    /// Migrating a subgraph amounts to changing the storage scheme for that
-    /// subgraph from one version to another. Whether a subgraph scheme needs
-    /// migrating is determined by `Table::needs_migrating`, the migration
-    /// machinery is kicked off with a call to `Connection::migrate`
+    /// We used to support different storage schemes. The old 'Split' scheme
+    /// which used JSONB storage has been removed, and we will only deal
+    /// with relational storage. Trying to do anything with a 'Split' subgraph
+    /// will result in an error.
     #[derive(DbEnum, Debug, Clone, Copy)]
     pub enum DeploymentSchemaVersion {
         Split,
@@ -96,18 +84,8 @@ mod public {
     /// `Ready`. The state `Init` is used to indicate that the subgraph has
     /// remaining initialization work to do, in particular, that it needs to
     /// copy data if it is grafted onto another subgraph. The `Tables` state
-    /// is used during schema migrations as described below. Both of these
-    /// states move the subgraph to `Ready` upon successful completion of the
-    /// work associated with them.
-    ///
-    /// When a subgraph is migrated, the migration is broken into two steps:
-    /// in the first step, the schema changes that the migration needs are
-    /// put into place; in the second step data is moved from the old storage
-    /// scheme to the new one. These two steps happen in separate database
-    /// transactions, since the first step if fast but takes fairly strong
-    /// locks that can block other database work. The second step, moving data,
-    /// only requires relatively weak locks that do not block write activity
-    /// in other subgraphs.
+    /// was used with a per-subgraph migration facility that has been removed,
+    /// and is currently unused.
     #[derive(DbEnum, Debug, Clone)]
     pub enum DeploymentSchemaState {
         Ready,
@@ -122,12 +100,6 @@ mod public {
             name -> Text,
             /// The subgraph storage scheme used for this subgraph
             version -> crate::entities::public::DeploymentSchemaVersionMapping,
-            /// Whether this subgraph is in the process of being migrated to
-            /// a new storage scheme. This column functions as a lock (or
-            /// semaphore) and is used to limit the number of subgraphs that
-            /// are being migrated at any given time. The details of handling
-            /// this lock are in `Connection::should_migrate`
-            migrating -> Bool,
             /// See comment on DeploymentSchemaState
             state -> crate::entities::public::DeploymentSchemaStateMapping,
         }
@@ -137,42 +109,17 @@ mod public {
 use public::deployment_schemas;
 
 /// Information about the database schema that stores the entities for a
-/// subgraph. The schemas are versioned by subgraph, which makes it possible
-/// to migrate subgraphs one at a time to newer storage schemes. Migrations
-/// are split into two stages to make sure that intrusive locks are
-/// only held a very short amount of time. The overall goal is to pause
-/// indexing (write activity) for a subgraph while we migrate, but keep it
-/// possible to query the subgraph, and not affect other subgraph's operation.
-///
-/// When writing a migration, the following guidelines should be followed:
-/// - each migration can only affect a single subgraph, and must not interfere
-///   with the working of any other subgraph
-/// - writing to the subgraph will be paused while the migration is running
-/// - each migration step is run in its own database transaction
+/// subgraph.
 #[derive(Queryable, QueryableByName, Debug)]
 #[table_name = "deployment_schemas"]
 struct Schema {
     id: i32,
     subgraph: String,
     name: String,
-    /// The version currently in use. While we are migrating, the version
-    /// will remain at the old version until the new version is ready to use.
-    /// Migrations should update this field as the very last operation they
-    /// perform.
+    /// The version currently in use.
     version: public::DeploymentSchemaVersion,
-    /// True if the subgraph is currently running a migration. The `migrating`
-    /// flags in the `deployment_schemas` table act as a semaphore that limits
-    /// the number of subgraphs that can undergo a migration at the same time.
-    migrating: bool,
-    /// Track which parts of a migration have already been performed. The
-    /// `Ready` state means no work to get to the next version has been done
-    /// yet. A migration will first perform a transaction that purely does DDL;
-    /// since that generally requires fairly strong locks but is fast, that
-    /// is done in its own transaction. Once we have done the necessary DDL,
-    /// the state goes to `Tables`. The final state of the migration is
-    /// copying data, which can be very slow, but should not require intrusive
-    /// locks. When the data is in place, the migration updates `version` to
-    /// the new version we migrated to, and sets the state to `Ready`
+    /// Whether the subgraph is ready for use or needs additional work to be
+    /// fully initialized
     state: public::DeploymentSchemaState,
 }
 
@@ -190,9 +137,8 @@ pub(crate) fn make_storage_cache() -> StorageCache {
 /// or from the metadata subgraph. Attempts to access other subgraphs will
 /// generally result in a panic.
 ///
-/// Instances of this struct must not be cached across transactions as there
-/// is no mechanism in place to notify other index nodes that a subgraph has
-/// been migrated
+/// Instances of this struct must not be cached across transactions as it
+/// contains a database connection
 #[derive(Constructor)]
 pub(crate) struct Connection<'a> {
     pub conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
@@ -257,19 +203,7 @@ impl Connection<'_> {
             State::Ready => { // Nothing to do
             }
         }
-
-        // Clear the `migrating` lock on the subgraph; this flag must be
-        // visible to other db users before the migration starts and is
-        // therefore set in its own txn before migration actually starts.
-        // If the migration does not finish, e.g., because the server is shut
-        // down, `migrating` remains set to `true` even though no work for
-        // the migration is being done.
-        Ok(
-            diesel::update(dsl::table.filter(dsl::subgraph.eq(self.storage.subgraph.to_string())))
-                .set(dsl::migrating.eq(false))
-                .execute(self.conn.deref())
-                .map(|_| ())?,
-        )
+        Ok(())
     }
 
     pub(crate) fn find(
@@ -437,157 +371,6 @@ impl Connection<'_> {
             .bind::<Text, _>(self.storage.subgraph.as_str())
             .execute(conn)
             .map(|_| ())?)
-    }
-
-    /// Check if the schema for `subgraph` needs to be migrated, and if so
-    /// if now (indicated by the block pointer) is the right time to do so.
-    /// We try to spread the actual database work associated with checking
-    /// if a subgraph should be migrated out as much as possible. This
-    /// function does not query the database, and the actual check for
-    /// migrating should only be done if this function returns `true`
-    pub(crate) fn should_migrate(
-        &self,
-        subgraph: &SubgraphDeploymentId,
-        block_ptr: &EthereumBlockPointer,
-    ) -> Result<bool, StoreError> {
-        // How often to check whether a subgraph needs to be migrated (in
-        // blocks) Doing it every 20 blocks translates to roughly once every
-        // 5 minutes
-        const MIGRATION_CHECK_FREQ: u64 = 20;
-
-        if false {
-            // We determine whether it is time for us to check if we should
-            // migrate in a way that tries to splay the checks for different
-            // subgraphs, using the hash of the subgraph id as a somewhat
-            // arbitrary indicator. We really just want the checks to be
-            // distributed across all possible values mod MIGRATION_CHECK_FREQ
-            // so that we don't have a mad dash to migrate every
-            // MIGRATION_CHECK_FREQ blocks, which would happen if we checked
-            // for `block_ptr.number % MIGRATION_CHECK_FREQ == 0`
-            let mut hasher = DefaultHasher::new();
-            subgraph.hash(&mut hasher);
-            let hash = hasher.finish();
-            Ok(hash % MIGRATION_CHECK_FREQ == block_ptr.number % MIGRATION_CHECK_FREQ)
-        } else {
-            Ok(false)
-        }
-    }
-
-    /// Check if the database schema for `subgraph` needs to be migrated, and
-    /// if so, perform the migration. Return `true` if a migration was
-    /// performed, and `false` otherwise. A return value of `false` does not
-    /// indicate that no migration is necessary, just that we currently can
-    /// not perform it, for example, because too many other subgraphs are
-    /// migrating.
-    ///
-    /// Migrating requires performing multiple transactions, and the connection
-    /// in `self` must therefore not have a transaction open already.
-    pub(crate) fn migrate(
-        self,
-        logger: &Logger,
-        block_ptr: &EthereumBlockPointer,
-    ) -> Result<bool, Error> {
-        // How many simultaneous subgraph migrations we allow
-        const MIGRATION_LIMIT: i32 = 2;
-        let subgraph = &self.storage.subgraph;
-
-        if !self.should_migrate(subgraph, block_ptr)? {
-            return Ok(false);
-        }
-
-        let do_migrate = self.conn.transaction(|| -> Result<bool, Error> {
-            let lock =
-                diesel::sql_query("lock table public.deployment_schemas in exclusive mode nowait")
-                    .execute(self.conn.deref());
-            if lock.is_err() {
-                return Ok(false);
-            }
-
-            let query = "
-                UPDATE public.deployment_schemas
-                   SET migrating = true
-                 WHERE subgraph=$1
-                   AND (SELECT count(*) FROM public.deployment_schemas WHERE migrating) < $2";
-            let query = diesel::sql_query(query)
-                .bind::<Text, _>(subgraph.to_string())
-                .bind::<Integer, _>(MIGRATION_LIMIT);
-            Ok(query.execute(self.conn.deref())? > 0)
-        })?;
-
-        if do_migrate {
-            use self::public::deployment_schemas as dsl;
-
-            let result = loop {
-                match self.migration_step(logger, subgraph) {
-                    Err(e) => {
-                        // An error in a migration should not lead to the
-                        // subgraph being marked as failed
-                        warn!(logger, "aborted migrating";
-                                        "subgraph" => subgraph.to_string(),
-                                        "error" => e.to_string(),
-                        );
-                        break Ok(false);
-                    }
-                    Ok(again) if !again => break Ok(true),
-                    Ok(_) => continue,
-                }
-            };
-            // Relinquish the migrating lock, no matter what happened in
-            // the migration
-            diesel::update(dsl::table.filter(dsl::subgraph.eq(subgraph.to_string())))
-                .set(dsl::migrating.eq(false))
-                .execute(self.conn.deref())?;
-            result
-        } else {
-            Ok(false)
-        }
-    }
-
-    /// Perform one migration step and return true if there are more steps
-    /// left to do. Each step of the migration is performed in  a separate
-    /// transaction so that any locks a step takes are freed up at the end
-    // We do not currently use this, but getting the framework right was
-    // painful enough that we should preserve the general setup of
-    // per-subgraph migrations
-    #[allow(unreachable_code, unused_variables)]
-    fn migration_step(
-        &self,
-        logger: &Logger,
-        subgraph: &SubgraphDeploymentId,
-    ) -> Result<bool, Error> {
-        unreachable!("The curent code base does not require any subgraph migrations");
-        self.conn.transaction(|| -> Result<bool, Error> {
-            let errmsg = format_err!(
-                "subgraph {} has no entry in deployment_schemas and can not be migrated",
-                subgraph.to_string()
-            );
-            let schema = find_schema(&self.conn, &subgraph)?.ok_or(errmsg)?;
-
-            debug!(
-                logger,
-                "start migrating";
-                "name" => &schema.name,
-                "subgraph" => subgraph.to_string(),
-                "state" => format!("{:?}", schema.state)
-            );
-            let start = Instant::now();
-            // Do the actual migration, and return an updated storage
-            // object, something like
-            //
-            // let storage = storage.migrate(&self.conn, logger, &schema)?;
-            // let needs_migrating = storage.needs_migrating();
-            // self.cache.borrow_mut().insert(subgraph.clone(), Arc::new(storage));
-            //
-            info!(
-                logger,
-                "finished migrating";
-                "name" => &schema.name,
-                "subgraph" => subgraph.to_string(),
-                "state" => format!("{:?}", schema.state),
-                "migration_time_ms" => start.elapsed().as_millis()
-            );
-            Ok(false)
-        })
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {

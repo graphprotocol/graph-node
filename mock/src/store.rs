@@ -110,7 +110,7 @@ impl Store for MockStore {
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
         _deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -187,15 +187,6 @@ impl Store for MockStore {
         _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn migrate_subgraph_deployment(
-        &self,
-        _logger: &Logger,
-        _subgraph_id: &SubgraphDeploymentId,
-        _block_ptr: &EthereumBlockPointer,
-    ) {
         unimplemented!()
     }
 

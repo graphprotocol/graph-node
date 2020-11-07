@@ -200,7 +200,7 @@ pub fn transact_errors(
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     errs: Vec<SubgraphError>,
-) -> Result<bool, StoreError> {
+) -> Result<(), StoreError> {
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
@@ -222,7 +222,7 @@ pub fn transact_entity_operations(
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
-) -> Result<bool, StoreError> {
+) -> Result<(), StoreError> {
     let mut entity_cache = EntityCache::new(store.clone());
     entity_cache.append(ops);
     let mods = entity_cache
