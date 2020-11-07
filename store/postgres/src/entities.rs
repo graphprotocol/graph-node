@@ -98,6 +98,7 @@ mod public {
             id -> Integer,
             subgraph -> Text,
             name -> Text,
+            shard -> Text,
             /// The subgraph storage scheme used for this subgraph
             version -> crate::entities::public::DeploymentSchemaVersionMapping,
             /// See comment on DeploymentSchemaState
@@ -116,6 +117,7 @@ struct Schema {
     id: i32,
     subgraph: String,
     name: String,
+    shard: String,
     /// The version currently in use.
     version: public::DeploymentSchemaVersion,
     /// Whether the subgraph is ready for use or needs additional work to be
@@ -397,7 +399,11 @@ impl Connection<'_> {
     /// It is an error if `deployment_schemas` already has an entry for this
     /// `subgraph_id`. Note that `self` must be a connection for the subgraph
     /// of subgraphs
-    pub(crate) fn create_schema(&self, schema: &SubgraphSchema) -> Result<(), StoreError> {
+    pub(crate) fn create_schema(
+        &self,
+        shard: String,
+        schema: &SubgraphSchema,
+    ) -> Result<(), StoreError> {
         use self::public::DeploymentSchemaState as s;
         use self::public::DeploymentSchemaVersion as v;
 
@@ -420,6 +426,7 @@ impl Connection<'_> {
         let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
             .values((
                 deployment_schemas::subgraph.eq(schema.id.to_string()),
+                deployment_schemas::shard.eq(&shard),
                 deployment_schemas::version.eq(v::Relational),
                 deployment_schemas::state.eq(s::Init),
             ))
@@ -432,7 +439,8 @@ impl Connection<'_> {
         let query = format!("create schema {}", schema_name);
         self.conn.batch_execute(&*query)?;
 
-        let layout = Layout::create_relational_schema(&self.conn, schema, schema_name.to_owned())?;
+        let layout =
+            Layout::create_relational_schema(&self.conn, shard, schema, schema_name.to_owned())?;
         // See if we are grafting and check that the graft is permissible
         if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
             let base = &Connection::layout(&self.conn, &base)?;
@@ -477,7 +485,7 @@ impl Connection<'_> {
                 let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
                 let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
                 let catalog = Catalog::new(conn, schema.name)?;
-                Layout::new(&subgraph_schema, catalog, has_poi)?
+                Layout::new(schema.shard, &subgraph_schema, catalog, has_poi)?
             }
         };
         Ok(layout)

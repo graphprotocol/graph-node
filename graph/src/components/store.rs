@@ -32,6 +32,9 @@ lazy_static! {
             .unwrap_or_else(|| Duration::from_millis(1000));
 }
 
+/// The name of the primary shard that contains all instance-wide data
+pub const PRIMARY_SHARD: &str = "primary";
+
 // Note: Do not modify fields without making a backward compatible change to
 // the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.

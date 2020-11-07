@@ -8,11 +8,14 @@ use lazy_static::lazy_static;
 use std::fmt::Debug;
 use std::str::FromStr;
 
-use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
     web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityQuery,
     EntityRange, Future01CompatExt, Schema, SubgraphDeploymentId, Value, ValueType,
     BLOCK_NUMBER_MAX,
+};
+use graph::{
+    data::store::scalar::{BigDecimal, BigInt, Bytes},
+    prelude::PRIMARY_SHARD,
 };
 use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
 
@@ -340,7 +343,8 @@ fn insert_test_data(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", SCHEMA_NAME);
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME.to_owned())
+    let shard = PRIMARY_SHARD.to_string();
+    Layout::create_relational_schema(&conn, shard, &schema, SCHEMA_NAME.to_owned())
         .expect("Failed to create relational schema")
 }
 

@@ -8,11 +8,14 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
-use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
     web3::types::H256, ChildMultiplicity, Entity, EntityCollection, EntityKey, EntityLink,
     EntityOrder, EntityRange, EntityWindow, Future01CompatExt, ParentLink, Schema,
     SubgraphDeploymentId, Value, WindowAttribute, BLOCK_NUMBER_MAX,
+};
+use graph::{
+    data::store::scalar::{BigDecimal, BigInt},
+    prelude::PRIMARY_SHARD,
 };
 use graph_store_postgres::layout_for_tests::Layout;
 
@@ -102,7 +105,8 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", SCHEMA_NAME);
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME.to_owned())
+    let shard = PRIMARY_SHARD.to_string();
+    Layout::create_relational_schema(&conn, shard, &schema, SCHEMA_NAME.to_owned())
         .expect("Failed to create relational schema")
 }
 

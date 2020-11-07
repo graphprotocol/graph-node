@@ -1,6 +1,6 @@
 use graph::prelude::{
     anyhow::{anyhow, Result},
-    info, serde_json, Logger,
+    info, serde_json, Logger, PRIMARY_SHARD,
 };
 
 use regex::Regex;
@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 use std::fs::read_to_string;
 use url::Url;
 
-const PRIMARY: &str = "primary";
 const ANY_NAME: &str = ".*";
 
 use crate::opt::Opt;
@@ -39,7 +38,7 @@ impl Config {
     /// Check that the config is valid. Some defaults (like `pool_size`) will
     /// be filled in from `opt` at the same time.
     fn validate(&mut self, opt: &Opt) -> Result<()> {
-        if !self.stores.contains_key(PRIMARY) {
+        if !self.stores.contains_key(PRIMARY_SHARD) {
             return Err(anyhow!("missing a primary store"));
         }
         for (key, shard) in self.stores.iter_mut() {
@@ -72,7 +71,7 @@ impl Config {
         let ingestor = Ingestor::from_opt(opt);
         let deployment = Deployment::from_opt(opt);
         let mut stores = BTreeMap::new();
-        stores.insert(PRIMARY.to_string(), Shard::from_opt(opt)?);
+        stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(opt)?);
         Ok(Config {
             stores,
             deployment,
@@ -92,7 +91,7 @@ impl Config {
 
     pub fn primary_store(&self) -> &Shard {
         self.stores
-            .get(PRIMARY)
+            .get(PRIMARY_SHARD)
             .expect("a validated config has a primary store")
     }
 }
@@ -214,7 +213,7 @@ impl Deployment {
         if self.rules.is_empty() {
             // This can only happen if we have only command line arguments and no
             // configuration file
-            Some((PRIMARY, vec![default.to_string()]))
+            Some((PRIMARY_SHARD, vec![default.to_string()]))
         } else {
             self.rules
                 .iter()
@@ -333,7 +332,7 @@ fn any_name() -> Regex {
 }
 
 fn primary_store() -> String {
-    PRIMARY.to_string()
+    PRIMARY_SHARD.to_string()
 }
 
 fn one() -> usize {

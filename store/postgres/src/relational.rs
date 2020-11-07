@@ -188,6 +188,8 @@ type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
 #[derive(Debug, Clone)]
 pub struct Layout {
+    /// The database (shard) where data is stored
+    pub shard: String,
     /// Maps the GraphQL name of a type to the relational table
     pub tables: HashMap<String, Arc<Table>>,
     /// The subgraph id
@@ -206,6 +208,7 @@ impl Layout {
     /// GraphQL schema `schema`. The name of the database schema in which
     /// the subgraph's tables live is in `schema`.
     pub fn new(
+        shard: String,
         schema: &Schema,
         catalog: Catalog,
         create_proof_of_indexing: bool,
@@ -313,6 +316,7 @@ impl Layout {
             });
 
         Ok(Layout {
+            shard,
             subgraph: schema.id.clone(),
             catalog,
             tables,
@@ -359,11 +363,12 @@ impl Layout {
 
     pub fn create_relational_schema(
         conn: &PgConnection,
+        shard: String,
         schema: &Schema,
         schema_name: String,
     ) -> Result<Layout, StoreError> {
         let catalog = Catalog::new(conn, schema_name)?;
-        let layout = Self::new(schema, catalog, true)?;
+        let layout = Self::new(shard, schema, catalog, true)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
@@ -1397,6 +1402,8 @@ fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use graph::prelude::PRIMARY_SHARD;
+
     use super::*;
 
     const ID_TYPE: ColumnType = ColumnType::String;
@@ -1405,7 +1412,8 @@ mod tests {
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph).expect("Test schema invalid");
         let catalog = Catalog::make_empty("rel".to_owned()).expect("Can not create catalog");
-        Layout::new(&schema, catalog, false).expect("Failed to construct Layout")
+        let shard = PRIMARY_SHARD.to_string();
+        Layout::new(shard, &schema, catalog, false).expect("Failed to construct Layout")
     }
 
     #[test]

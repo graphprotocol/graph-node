@@ -4,14 +4,12 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
-use graph::{
-    components::store::StoredDynamicDataSource,
-    prelude::{
-        CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
-        SubgraphVersionSwitchingMode,
-    },
+use graph::components::store::StoredDynamicDataSource;
+use graph::data::subgraph::status;
+use graph::prelude::{
+    CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
+    SubgraphVersionSwitchingMode, TryFutureExt, PRIMARY_SHARD,
 };
-use graph::{data::subgraph::status, prelude::TryFutureExt};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -772,6 +770,7 @@ impl Store {
     fn create_deployment_internal(
         &self,
         name: SubgraphName,
+        shard: String,
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
@@ -794,7 +793,7 @@ impl Store {
             };
 
             if !exists {
-                econn.create_schema(schema)?;
+                econn.create_schema(shard, schema)?;
             }
 
             // Create subgraph, subgraph version, and assignment
@@ -817,7 +816,15 @@ impl Store {
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, mode, true)
+        self.create_deployment_internal(
+            name,
+            PRIMARY_SHARD.to_string(),
+            schema,
+            deployment,
+            node_id,
+            mode,
+            true,
+        )
     }
 
     pub(crate) fn status_internal(
@@ -1223,7 +1230,9 @@ impl StoreTrait for Store {
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, mode, false)
+        // TODO: determine the shard where the subgraph should go based on name and network
+        let shard = PRIMARY_SHARD.to_string();
+        self.create_deployment_internal(name, shard, schema, deployment, node_id, mode, false)
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
