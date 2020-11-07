@@ -120,7 +120,11 @@ where
         // while the query is running. `self.store` can not be used after this
         // point, and everything needs to go through the `store` we are
         // setting up here
-        let store = self.store.cheap_clone().query_store(false);
+        let store = self
+            .store
+            .cheap_clone()
+            .query_store(query.schema.id(), false)
+            .map_err(|e| QueryExecutionError::from(e))?;
 
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(&self.logger, query, max_complexity, max_depth)?;
@@ -227,7 +231,12 @@ where
             *GRAPHQL_MAX_DEPTH,
         )?;
 
-        let store = self.store.clone().query_store(true);
+        let deployment = query.schema.id().clone();
+        let store = self
+            .store
+            .clone()
+            .query_store(&deployment, true)
+            .map_err(|e| QueryExecutionError::from(e))?;
         if let Err(err) = self
             .load_manager
             .decide(
@@ -240,12 +249,12 @@ where
             return Err(SubscriptionError::GraphQLError(vec![err]));
         }
 
-        let deployment = query.schema.id().clone();
+        let resolver = StoreResolver::for_subscription(&self.logger, deployment, store);
         execute_prepared_subscription(
             query,
             SubscriptionExecutionOptions {
                 logger: self.logger.clone(),
-                resolver: StoreResolver::for_subscription(&self.logger, deployment, store),
+                resolver,
                 timeout: GRAPHQL_QUERY_TIMEOUT.clone(),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,

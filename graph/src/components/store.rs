@@ -993,8 +993,17 @@ pub trait Store: Send + Sync + 'static {
     /// Get a new `QueryStore`. A `QueryStore` is tied to a DB replica, so if Graph Node is
     /// configured to use secondary DB servers the queries will be distributed between servers.
     ///
+    /// The query store is specific to a deployment, and `id` must indicate
+    /// which deployment will be queried. It is not possible to use the id of the
+    /// metadata subgraph, though the resulting store can be used to query
+    /// metadata about the deployment `id` (but not metadata about other deployments).
+    ///
     /// If `for_subscription` is true, the main replica will always be used.
-    fn query_store(self: Arc<Self>, for_subscription: bool) -> Arc<dyn QueryStore + Send + Sync>;
+    fn query_store(
+        self: Arc<Self>,
+        id: &SubgraphDeploymentId,
+        for_subscription: bool,
+    ) -> Result<Arc<dyn QueryStore + Send + Sync>, StoreError>;
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
@@ -1159,7 +1168,11 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn query_store(self: Arc<Self>, _: bool) -> Arc<dyn QueryStore + Send + Sync> {
+    fn query_store(
+        self: Arc<Self>,
+        _: &SubgraphDeploymentId,
+        _: bool,
+    ) -> Result<Arc<dyn QueryStore + Send + Sync>, StoreError> {
         unimplemented!()
     }
 

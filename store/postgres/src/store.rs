@@ -1314,8 +1314,9 @@ impl StoreTrait for Store {
 
     fn query_store(
         self: Arc<Self>,
+        _id: &SubgraphDeploymentId,
         for_subscription: bool,
-    ) -> Arc<(dyn QueryStore + Send + Sync + 'static)> {
+    ) -> Result<Arc<(dyn QueryStore + Send + Sync + 'static)>, StoreError> {
         use std::sync::atomic::Ordering;
 
         let replica_id = match for_subscription {
@@ -1331,11 +1332,11 @@ impl StoreTrait for Store {
             true => ReplicaId::Main,
         };
 
-        Arc::new(crate::query_store::QueryStore::new(
+        Ok(Arc::new(crate::query_store::QueryStore::new(
             self,
             for_subscription,
             replica_id,
-        ))
+        )))
     }
 
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {

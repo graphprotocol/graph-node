@@ -855,7 +855,7 @@ fn query_complexity() {
 fn query_complexity_subscriptions() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store = STORE.clone().query_store(true);
+        let store = STORE.clone().query_store(&id, true).unwrap();
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
         let schema = STORE.api_schema(&id).unwrap();
 
@@ -919,7 +919,7 @@ fn query_complexity_subscriptions() {
             None,
         );
 
-        let store = STORE.clone().query_store(true);
+        let store = STORE.clone().query_store(&id, true).unwrap();
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let options = SubscriptionExecutionOptions {
@@ -1266,7 +1266,7 @@ fn cannot_filter_by_derved_relationship_fields() {
 fn subscription_gets_result_even_without_events() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store = STORE.clone().query_store(true);
+        let store = STORE.clone().query_store(&id, true).unwrap();
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
         let schema = STORE.api_schema(&id).unwrap();
 
