@@ -68,6 +68,7 @@ env:
 # Test pipeline
 before_script:
   - cargo install --force cargo-audit
+  - cargo generate-lockfile
   - psql -c "ALTER USER travis WITH PASSWORD 'travis';"
   - psql -c 'create database graph_node_test;' -U travis
 
