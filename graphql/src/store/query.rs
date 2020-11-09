@@ -63,12 +63,14 @@ fn build_range(
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("first is Int");
             if n > 0 && n <= (max_first as i64) {
-                Ok(n as u32)
+                n as u32
             } else {
-                Err("first")
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "first", max_first, n,
+                ));
             }
         }
-        Some(q::Value::Null) | None => Ok(100),
+        Some(q::Value::Null) | None => 100,
         _ => unreachable!("first is an Int with a default value"),
     };
 
@@ -76,29 +78,21 @@ fn build_range(
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("skip is Int");
             if n >= 0 && n <= (max_skip as i64) {
-                Ok(n as u32)
+                n as u32
             } else {
-                Err("skip")
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "skip", max_skip, n,
+                ));
             }
         }
-        Some(q::Value::Null) | None => Ok(0),
+        Some(q::Value::Null) | None => 0,
         _ => unreachable!("skip is an Int with a default value"),
     };
 
-    match (first, skip) {
-        (Ok(first), Ok(skip)) => Ok(EntityRange {
-            first: Some(first),
-            skip,
-        }),
-        _ => {
-            let errors: Vec<_> = vec![first, skip]
-                .into_iter()
-                .filter(|r| r.is_err())
-                .map(|e| e.unwrap_err())
-                .collect();
-            Err(QueryExecutionError::RangeArgumentsError(errors, max_first))
-        }
-    }
+    Ok(EntityRange {
+        first: Some(first),
+        skip,
+    })
 }
 
 /// Parses GraphQL arguments into an EntityFilter, if present.

@@ -52,7 +52,7 @@ pub enum QueryExecutionError {
     EmptyQuery,
     MultipleSubscriptionFields,
     SubgraphDeploymentIdError(String),
-    RangeArgumentsError(Vec<&'static str>, u32),
+    RangeArgumentsError(&'static str, u32, i64),
     InvalidFilterError,
     EntityFieldError(String, String),
     ListTypesError(String, Vec<String>),
@@ -153,15 +153,8 @@ impl fmt::Display for QueryExecutionError {
             SubgraphDeploymentIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: `{}`", s)
             }
-            RangeArgumentsError(args, first_limit) => {
-                let msg = args.into_iter().map(|arg| {
-                    match *arg {
-                        "first" => format!("Value of \"first\" must be between 1 and {}", first_limit),
-                        "skip" => format!("Value of \"skip\" must be greater than 0"),
-                        _ => format!("Value of \"{}\" is must be an integer", arg),
-                    }
-                }).collect::<Vec<_>>().join(", ");
-                write!(f, "{}", msg)
+            RangeArgumentsError(arg, max, actual) => {
+                write!(f, "The `{}` argument must be between 0 and {}, but is {}", arg, max, actual)
             }
             InvalidFilterError => write!(f, "Filter must by an object"),
             EntityFieldError(e, a) => {
