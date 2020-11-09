@@ -1,6 +1,9 @@
 dist: bionic
 language: rust
-cache: cargo # cache cargo-audit once installed
+# This line would cache cargo-audit once installed,
+# but instead will fail from the 10 minute timeout after
+# printing the line "creating directory /home/travis/.cache/sccache"
+#cache: cargo
 rust:
   - stable
   - beta
