@@ -1,5 +1,5 @@
 use git_testament::{git_testament, render_testament};
-use ipfs_api::IpfsClient;
+use ipfs_api::{IpfsClient, TryFromUri};
 use lazy_static::lazy_static;
 use prometheus::Registry;
 use std::collections::HashMap;
@@ -617,7 +617,7 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
                 SafeDisplay(&ipfs_address)
             );
 
-            let ipfs_client = match IpfsClient::new_from_uri(&ipfs_address) {
+            let ipfs_client: IpfsClient = match TryFromUri::from_str(&ipfs_address) {
                 Ok(ipfs_client) => ipfs_client,
                 Err(e) => {
                     error!(
