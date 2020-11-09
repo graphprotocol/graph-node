@@ -22,6 +22,20 @@ pub struct Opt {
     pub node_id: String,
 }
 
+impl Default for Opt {
+    fn default() -> Self {
+        Opt {
+            postgres_url: None,
+            config: None,
+            store_connection_pool_size: 10,
+            postgres_secondary_hosts: vec![],
+            postgres_host_weights: vec![],
+            disable_block_ingestor: true,
+            node_id: "default".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     #[serde(rename = "store")]

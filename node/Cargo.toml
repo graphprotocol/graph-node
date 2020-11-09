@@ -2,6 +2,15 @@
 name = "graph-node"
 version = "0.19.2"
 edition = "2018"
+default-run = "graph-node"
+
+[[bin]]
+name = "graph-node"
+path = "src/main.rs"
+
+[[bin]]
+name = "graphman"
+path = "src/bin/manager.rs"
 
 [dependencies]
 clap = "2.33.3"
@@ -32,6 +41,7 @@ serde_regex = "1.1.0"
 structopt = "0.3.20"
 toml = "0.5.7"
 shellexpand = "2.0.0"
+diesel = "1.4.5"
 
 [dev-dependencies]
 assert_cli = "0.6"
