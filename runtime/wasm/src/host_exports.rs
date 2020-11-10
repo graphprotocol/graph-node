@@ -592,12 +592,14 @@ impl HostExports {
             .clone();
 
         // Remember that we need to create this data source
-        state.created_data_sources.push(DataSourceTemplateInfo {
-            data_source: self.data_source_name.clone(),
-            template,
-            params,
-            context,
-        });
+        state
+            .created_data_sources
+            .push_back(DataSourceTemplateInfo {
+                data_source: self.data_source_name.clone(),
+                template,
+                params,
+                context,
+            });
 
         Ok(())
     }

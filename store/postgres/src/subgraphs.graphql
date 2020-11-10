@@ -38,6 +38,11 @@ type SubgraphDeployment @entity {
     earliestEthereumBlockNumber: BigInt
     latestEthereumBlockHash: Bytes
     latestEthereumBlockNumber: BigInt
+
+    # Null if still healthy.
+    lastHealthyEthereumBlockHash: Bytes
+    lastHealthyEthereumBlockNumber: BigInt
+
     entityCount: BigInt!
     dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
     graftBase: SubgraphDeployment

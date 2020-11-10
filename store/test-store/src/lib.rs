@@ -208,7 +208,13 @@ pub fn transact_entity_operations(
         subgraph_id.clone(),
         metrics_registry.clone(),
     );
-    store.transact_block_operations(subgraph_id, block_ptr_to, mods, stopwatch_metrics)
+    store.transact_block_operations(
+        subgraph_id,
+        block_ptr_to,
+        mods,
+        stopwatch_metrics,
+        Vec::new(),
+    )
 }
 
 pub fn insert_ens_name(hash: &str, name: &str) {

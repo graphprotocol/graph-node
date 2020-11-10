@@ -168,6 +168,7 @@ impl WriteContext {
                                 block_ptr.clone(),
                                 modifications,
                                 stopwatch,
+                                Vec::new(),
                             )
                             .map_err(|e| e.into())
                             .map(move |_| {

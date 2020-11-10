@@ -26,7 +26,7 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, warn, web3,
+    anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, warn, web3,
     ApiSchema, BigInt, BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey,
     EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlockPointer,
     EthereumCallCache, Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema,
@@ -1049,6 +1049,7 @@ impl StoreTrait for Store {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
+        deterministic_errors: Vec<anyhow::Error>,
     ) -> Result<bool, StoreError> {
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
@@ -1089,6 +1090,10 @@ impl StoreTrait for Store {
                 let section = stopwatch.start_section("apply_entity_modifications");
                 self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
                 section.end();
+
+                if !deterministic_errors.is_empty() {
+                    metadata::set_unhealthy(&econn.conn, &subgraph_id, block_ptr_to)?;
+                }
 
                 let metadata_event =
                     metadata::forward_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
