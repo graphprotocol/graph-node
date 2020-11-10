@@ -702,7 +702,7 @@ impl Store {
         };
 
         let graft_block =
-            metadata::deployment_graft(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
+            metadata::graft_point(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
 
         let features = metadata::subgraph_features(&conn, subgraph_id)?;
 

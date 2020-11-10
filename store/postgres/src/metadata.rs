@@ -169,10 +169,13 @@ table! {
 allow_tables_to_appear_in_same_query!(subgraph, subgraph_version, subgraph_deployment);
 
 /// Look up the graft point for the given subgraph in the database and
-/// return it
-pub fn deployment_graft(
+/// return it. If `pending_only` is `true`, only return `Some(_)` if the
+/// deployment has not progressed past the graft point, i.e., data has not
+/// been copied for the graft
+fn deployment_graft(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
+    pending_only: bool,
 ) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
     use subgraph_deployment as sd;
 
@@ -180,11 +183,23 @@ pub fn deployment_graft(
         // There is no SubgraphDeployment for the metadata subgraph
         Ok(None)
     } else {
-        match sd::table
+        let graft_query = sd::table
             .select((sd::graft_base, sd::graft_block_hash, sd::graft_block_number))
-            .filter(sd::id.eq(id.as_str()))
-            .first::<(Option<String>, Option<Vec<u8>>, Option<BigDecimal>)>(conn)?
-        {
+            .filter(sd::id.eq(id.as_str()));
+        // The name of the base subgraph, the hash, and block number
+        let graft: (Option<String>, Option<Vec<u8>>, Option<BigDecimal>) = if pending_only {
+            graft_query
+                .filter(sd::graft_block_number.ge(sql("coalesce(latest_ethereum_block_number, 0)")))
+                .first(conn)
+                .optional()?
+                .unwrap_or((None, None, None))
+        } else {
+            graft_query
+                .first(conn)
+                .optional()?
+                .unwrap_or((None, None, None))
+        };
+        match graft {
             (None, None, None) => Ok(None),
             (Some(subgraph), Some(hash), Some(block)) => {
                 let hash = H256::from_slice(hash.as_slice());
@@ -202,6 +217,27 @@ pub fn deployment_graft(
             ),
         }
     }
+}
+
+/// Look up the graft point for the given subgraph in the database and
+/// return it. Returns `None` if the deployment does not have
+/// a graft or if the subgraph has already progress past the graft point,
+/// indicating that the data copying for grafting has been performed
+pub fn graft_pending(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
+    deployment_graft(conn, id, true)
+}
+
+/// Look up the graft point for the given subgraph in the database and
+/// return it. Returns `None` if the deployment does not have
+/// a graft
+pub fn graft_point(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
+    deployment_graft(conn, id, false)
 }
 
 pub fn subgraph_schema(

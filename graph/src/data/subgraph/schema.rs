@@ -341,8 +341,10 @@ impl SubgraphDeploymentEntity {
             self.graft_base = Some(subgraph);
             self.graft_block_hash = Some(ptr.hash);
             self.graft_block_number = Some(ptr.number);
-            self.latest_ethereum_block_hash = Some(ptr.hash);
-            self.latest_ethereum_block_number = Some(ptr.number);
+            // When we graft, the block pointer is only set after copying
+            // from the base subgraph finished successfully
+            self.latest_ethereum_block_hash = None;
+            self.latest_ethereum_block_number = None;
         }
         self
     }

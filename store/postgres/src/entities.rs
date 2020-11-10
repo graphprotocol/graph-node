@@ -79,20 +79,6 @@ mod public {
         Relational,
     }
 
-    /// A deployment has an internal lifecycle that is controlled by this
-    /// enum. A subgraph that is ready to be used for indexing is in state
-    /// `Ready`. The state `Init` is used to indicate that the subgraph has
-    /// remaining initialization work to do, in particular, that it needs to
-    /// copy data if it is grafted onto another subgraph. The `Tables` state
-    /// was used with a per-subgraph migration facility that has been removed,
-    /// and is currently unused.
-    #[derive(DbEnum, Debug, Clone)]
-    pub enum DeploymentSchemaState {
-        Ready,
-        Tables,
-        Init,
-    }
-
     table! {
         deployment_schemas(id) {
             id -> Integer,
@@ -101,8 +87,6 @@ mod public {
             shard -> Text,
             /// The subgraph storage scheme used for this subgraph
             version -> crate::entities::public::DeploymentSchemaVersionMapping,
-            /// See comment on DeploymentSchemaState
-            state -> crate::entities::public::DeploymentSchemaStateMapping,
         }
     }
 }
@@ -120,9 +104,6 @@ struct Schema {
     shard: String,
     /// The version currently in use.
     version: public::DeploymentSchemaVersion,
-    /// Whether the subgraph is ready for use or needs additional work to be
-    /// fully initialized
-    state: public::DeploymentSchemaState,
 }
 
 /// A cache for storage objects as constructing them takes a bit of
@@ -177,33 +158,17 @@ impl Connection<'_> {
 
     /// Do any cleanup to bring the subgraph into a known good state
     pub(crate) fn start_subgraph(&self, logger: &Logger) -> Result<(), StoreError> {
-        use public::deployment_schemas as dsl;
-        use public::DeploymentSchemaState as State;
-
-        let state = dsl::table
-            .select(dsl::state)
-            .filter(dsl::subgraph.eq(self.storage.subgraph.as_str()))
-            .first::<State>(self.conn.as_ref())?;
-
-        match state {
-            State::Init => {
-                let graft = metadata::deployment_graft(&self.conn, &self.storage.subgraph)?;
-                let layout = &self.storage;
-                let start = Instant::now();
-                if let Some((base, block)) = graft {
-                    let base = &Connection::layout(&self.conn, &base)?;
-                    layout.copy_from(logger, &self.conn, &base, block, &self.metadata)?;
-                }
-                diesel::update(dsl::table)
-                    .set(dsl::state.eq(State::Ready))
-                    .filter(dsl::subgraph.eq(self.storage.subgraph.as_str()))
-                    .execute(self.conn.as_ref())?;
-                info!(logger, "Subgraph successfully initialized";
-                              "time_ms" => start.elapsed().as_millis());
-            }
-            State::Tables => unimplemented!("continue the migration"),
-            State::Ready => { // Nothing to do
-            }
+        let graft = metadata::graft_pending(&self.conn, &self.storage.subgraph)?;
+        if let Some((base, block)) = graft {
+            let layout = &self.storage;
+            let start = Instant::now();
+            let base = &Connection::layout(&self.conn, &base)?;
+            layout.copy_from(logger, &self.conn, &base, block, &self.metadata)?;
+            // Set the block ptr to the graft point to signal that we successfully
+            // performed the graft
+            metadata::forward_block_ptr(&self.conn, &self.storage.subgraph, block.clone())?;
+            info!(logger, "Subgraph successfully initialized";
+            "time_ms" => start.elapsed().as_millis());
         }
         Ok(())
     }
@@ -404,7 +369,6 @@ impl Connection<'_> {
         shard: String,
         schema: &SubgraphSchema,
     ) -> Result<(), StoreError> {
-        use self::public::DeploymentSchemaState as s;
         use self::public::DeploymentSchemaVersion as v;
 
         assert_eq!(
@@ -428,7 +392,6 @@ impl Connection<'_> {
                 deployment_schemas::subgraph.eq(schema.id.to_string()),
                 deployment_schemas::shard.eq(&shard),
                 deployment_schemas::version.eq(v::Relational),
-                deployment_schemas::state.eq(s::Init),
             ))
             .returning(deployment_schemas::name)
             .get_results(self.conn.deref())?;
@@ -442,7 +405,7 @@ impl Connection<'_> {
         let layout =
             Layout::create_relational_schema(&self.conn, shard, schema, schema_name.to_owned())?;
         // See if we are grafting and check that the graft is permissible
-        if let Some((base, _)) = metadata::deployment_graft(&self.conn, &schema.id)? {
+        if let Some((base, _)) = metadata::graft_pending(&self.conn, &schema.id)? {
             let base = &Connection::layout(&self.conn, &base)?;
             let errors = layout.can_copy_from(&base);
             if !errors.is_empty() {
