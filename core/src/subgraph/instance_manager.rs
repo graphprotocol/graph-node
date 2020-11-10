@@ -691,11 +691,6 @@ where
         Err(MappingError::Unknown(e)) => {
             return Err(CancelableError::Error(BlockProcessingError::Unknown(e)))
         }
-        Err(MappingError::Deterministic(e)) => {
-            return Err(CancelableError::Error(BlockProcessingError::Deterministic(
-                e,
-            )))
-        }
         Err(MappingError::PossibleReorg(e)) => {
             info!(ctx.state.logger,
                     "Possible reorg detected, retrying";
@@ -733,7 +728,7 @@ where
             logger.clone(),
             &mut ctx,
             host_metrics.clone(),
-            block_state.created_data_sources.drain(..),
+            block_state.created_data_sources.split_off(0).into_iter(),
         )
         .compat_err()?;
 
@@ -796,7 +791,6 @@ where
                     MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
                         BlockProcessingError::Unknown(e)
                     }
-                    MappingError::Deterministic(e) => BlockProcessingError::Deterministic(e),
                 }
             })
             .map_err(CancelableError::Error)?;
@@ -858,11 +852,13 @@ where
     let stopwatch = ctx.host_metrics.stopwatch.clone();
     let start = Instant::now();
 
-    match ctx
-        .inputs
-        .store
-        .transact_block_operations(subgraph_id, block_ptr_after, mods, stopwatch)
-    {
+    match ctx.inputs.store.transact_block_operations(
+        subgraph_id,
+        block_ptr_after,
+        mods,
+        stopwatch,
+        block_state.deterministic_errors,
+    ) {
         Ok(should_migrate) => {
             let elapsed = start.elapsed().as_secs_f64();
             metrics.block_ops_transaction_duration.observe(elapsed);

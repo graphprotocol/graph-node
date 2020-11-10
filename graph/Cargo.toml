@@ -56,6 +56,7 @@ futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 uuid = { version = "0.8.1", features = ["v4"] }
 wasmparser = "0.63.1"
 thiserror = "1.0"
+im = "15.0"
 
 # Our fork contains a small but hacky patch.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }

@@ -861,6 +861,7 @@ pub trait Store: Send + Sync + 'static {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
+        deterministic_errors: Vec<anyhow::Error>,
     ) -> Result<bool, StoreError>;
 
     /// Apply the specified metadata operations.
@@ -1236,6 +1237,7 @@ impl Store for MockStore {
         _block_ptr_to: EthereumBlockPointer,
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
+        _deterministic_errors: Vec<anyhow::Error>,
     ) -> Result<bool, StoreError> {
         unimplemented!()
     }
@@ -1488,16 +1490,17 @@ impl EntityModification {
 ///   (1) no entity appears in more than one operation
 ///   (2) only entities that will actually be changed from what they
 ///       are in the store are changed
-#[derive(Clone)]
+#[derive(Clone)] // TODO: Check where this is used.
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
     current: LfuCache<EntityKey, Option<Entity>>,
 
-    /// The accumulated changes to an entity. An entry of `None`
-    /// means that the entity should be deleted
-    updates: BTreeMap<EntityKey, Option<Entity>>,
+    /// The accumulated changes to an entity. An entry of `None` means that the entity should be
+    /// deleted. This is a persistent collection to cheapen cloning, see the `im` crate docs.
+    updates: im::HashMap<EntityKey, Option<Entity>>,
 
+    /// The store is only used to read entities.
     pub store: Arc<dyn Store>,
 }
 
@@ -1519,7 +1522,7 @@ impl EntityCache {
     pub fn new(store: Arc<dyn Store>) -> Self {
         Self {
             current: LfuCache::new(),
-            updates: BTreeMap::new(),
+            updates: im::HashMap::new(),
             store,
         }
     }
@@ -1530,7 +1533,7 @@ impl EntityCache {
     ) -> EntityCache {
         EntityCache {
             current,
-            updates: BTreeMap::new(),
+            updates: im::HashMap::new(),
             store,
         }
     }
@@ -1559,7 +1562,7 @@ impl EntityCache {
     }
 
     pub fn set(&mut self, key: EntityKey, mut entity: Entity) -> Result<(), QueryExecutionError> {
-        use std::collections::btree_map::Entry;
+        use im::hashmap::Entry;
 
         let update = self.updates.entry(key.clone());
 
@@ -1603,7 +1606,7 @@ impl EntityCache {
         Ok(())
     }
 
-    pub fn extend(&mut self, other: EntityCache) -> Result<(), QueryExecutionError> {
+    pub(crate) fn extend(&mut self, other: EntityCache) -> Result<(), QueryExecutionError> {
         self.current.extend(other.current);
         for (key, update) in other.updates {
             match update {
@@ -1612,6 +1615,19 @@ impl EntityCache {
             }
         }
         Ok(())
+    }
+
+    /// A copy of the pending updates. Those are kept in a persistent data structure so this is a
+    /// cheap operation.
+    pub(crate) fn updates_snapshot(&self) -> im::HashMap<EntityKey, Option<Entity>> {
+        self.updates.clone()
+    }
+
+    pub(crate) fn restore_updates_snapshot(
+        &mut self,
+        snapshot: im::HashMap<EntityKey, Option<Entity>>,
+    ) {
+        self.updates = snapshot;
     }
 
     /// Return the changes that have been made via `set` and `remove` as

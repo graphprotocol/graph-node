@@ -139,11 +139,7 @@ impl WasmInstance {
             .erase()
         };
 
-        // Invoke the event handler
-        self.invoke_handler(handler_name, event)?;
-
-        // Return the output state
-        Ok(self.take_ctx().ctx.state)
+        self.invoke_handler(handler_name, event)
     }
 
     pub(crate) fn handle_ethereum_call(
@@ -168,9 +164,7 @@ impl WasmInstance {
             self.asc_new::<AscEthereumCall, _>(&call).erase()
         };
 
-        self.invoke_handler(handler_name, arg)?;
-
-        Ok(self.take_ctx().ctx.state)
+        self.invoke_handler(handler_name, arg)
     }
 
     pub(crate) fn handle_ethereum_block(
@@ -182,9 +176,7 @@ impl WasmInstance {
         // Prepare an EthereumBlock for the WASM runtime
         let arg = self.asc_new(&block);
 
-        self.invoke_handler(handler_name, arg)?;
-
-        Ok(self.take_ctx().ctx.state)
+        self.invoke_handler(handler_name, arg)
     }
 
     pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext {
@@ -195,7 +187,6 @@ impl WasmInstance {
         std::cell::Ref::map(self.instance_ctx.borrow(), |i| i.as_ref().unwrap())
     }
 
-    #[cfg(test)]
     pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext> {
         std::cell::RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap())
     }
@@ -205,22 +196,34 @@ impl WasmInstance {
         self.instance.get_func(func_name).unwrap()
     }
 
-    fn invoke_handler<C>(&mut self, handler: &str, arg: AscPtr<C>) -> Result<(), MappingError> {
+    fn invoke_handler<C>(
+        &mut self,
+        handler: &str,
+        arg: AscPtr<C>,
+    ) -> Result<BlockState, MappingError> {
         let func = self
             .instance
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
 
-        func.get1()?(arg.wasm_ptr()).map_err(|trap: Trap| {
-            if self.instance_ctx().possible_reorg {
-                MappingError::PossibleReorg(trap.into())
-            } else if trap.to_string().contains(TRAP_TIMEOUT) {
-                MappingError::Unknown(Error::from(trap).context(format!(
+        // Store the state of entity updates for this block previous to the trigger being run,
+        // in case the trigger encounters an error and has its changes ignored.
+        let snapshot = self.instance_ctx().ctx.state.updates_snapshot();
+
+        // This `match` will return early if there was a non-determinstic trap.
+        let deterministic_error: Option<Error> = match func.get1()?(arg.wasm_ptr()) {
+            Ok(()) => None,
+            Err(trap) if self.instance_ctx().possible_reorg => {
+                return Err(MappingError::PossibleReorg(trap.into()))
+            }
+            Err(trap) if trap.to_string().contains(TRAP_TIMEOUT) => {
+                return Err(MappingError::Unknown(Error::from(trap).context(format!(
                     "Handler '{}' hit the timeout of '{}' seconds",
                     handler,
                     self.instance_ctx().timeout.unwrap().as_secs()
-                )))
-            } else {
+                ))))
+            }
+            Err(trap) => {
                 use wasmtime::TrapCode::*;
                 let trap_code = trap.trap_code();
                 let e =
@@ -234,14 +237,26 @@ impl WasmInstance {
                     | Some(IntegerOverflow)
                     | Some(IntegerDivisionByZero)
                     | Some(BadConversionToInteger)
-                    | Some(UnreachableCodeReached) => MappingError::Deterministic(e),
-                    _ if self.instance_ctx().deterministic_host_trap => {
-                        MappingError::Deterministic(e)
-                    }
-                    _ => MappingError::Unknown(e),
+                    | Some(UnreachableCodeReached) => Some(e),
+                    _ if self.instance_ctx().deterministic_host_trap => Some(e),
+                    _ => return Err(MappingError::Unknown(e)),
                 }
             }
-        })
+        };
+
+        if let Some(deterministic_error) = deterministic_error {
+            // Log the error and restore the updates snaphsot, effectively skipping the handler.
+            error!(&self.instance_ctx().ctx.logger,
+                "Handler skipped due to execution failure";
+                "error" => deterministic_error.to_string()
+            );
+            self.instance_ctx_mut()
+                .ctx
+                .state
+                .restore_updates_snapshot_due_to_error(snapshot, deterministic_error);
+        }
+
+        Ok(self.take_ctx().ctx.state)
     }
 }
 
@@ -927,13 +942,8 @@ impl WasmInstanceContext {
         for output_state in output_states {
             self.ctx
                 .state
-                .entity_cache
-                .extend(output_state.entity_cache)
+                .extend(output_state)
                 .map_err(anyhow::Error::from)?;
-            self.ctx
-                .state
-                .created_data_sources
-                .extend(output_state.created_data_sources);
         }
 
         Ok(())
