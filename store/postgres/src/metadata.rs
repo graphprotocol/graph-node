@@ -70,6 +70,8 @@ table! {
         earliest_ethereum_block_number -> Nullable<Numeric>,
         latest_ethereum_block_hash -> Nullable<Binary>,
         latest_ethereum_block_number -> Nullable<Numeric>,
+        last_healthy_ethereum_block_hash -> Nullable<Binary>,
+        last_healthy_ethereum_block_number -> Nullable<Numeric>,
         entity_count -> Numeric,
         graft_base -> Nullable<Text>,
         graft_block_hash -> Nullable<Binary>,
@@ -783,4 +785,29 @@ pub fn unfail_deployment(conn: &PgConnection, id: &SubgraphDeploymentId) -> Resu
     ))
     .execute(conn)?;
     Ok(())
+}
+
+/// Set the last healthy block for the subgraph.
+/// If already unhealthy, this is a no-op.
+pub fn set_unhealthy(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    ptr: EthereumBlockPointer,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    let number = format!("{}::numeric", ptr.number);
+
+    update(
+        d::table
+            .filter(d::id.eq(id.as_str()))
+            .filter(d::last_healthy_ethereum_block_hash.is_null()),
+    )
+    .set((
+        d::last_healthy_ethereum_block_number.eq(sql(&number)),
+        d::last_healthy_ethereum_block_hash.eq(ptr.hash.as_bytes()),
+    ))
+    .execute(conn)
+    .map(|_| ())
+    .map_err(|e| e.into())
 }

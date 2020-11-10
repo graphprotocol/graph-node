@@ -16,15 +16,56 @@ pub struct DataSourceTemplateInfo {
 #[derive(Debug)]
 pub struct BlockState {
     pub entity_cache: EntityCache,
-    pub created_data_sources: Vec<DataSourceTemplateInfo>,
+    pub deterministic_errors: Vec<anyhow::Error>,
+    pub created_data_sources: im::Vector<DataSourceTemplateInfo>,
+}
+
+pub struct BlockStateUpdatesSnapshot {
+    pub entity_updates: im::HashMap<EntityKey, Option<Entity>>,
+    pub created_data_sources: im::Vector<DataSourceTemplateInfo>,
 }
 
 impl BlockState {
     pub fn new(store: Arc<dyn Store>, lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
         BlockState {
             entity_cache: EntityCache::with_current(store, lfu_cache),
-            created_data_sources: Vec::new(),
+            deterministic_errors: Vec::new(),
+            created_data_sources: im::Vector::new(),
         }
+    }
+
+    pub fn extend(&mut self, other: BlockState) -> Result<(), anyhow::Error> {
+        let BlockState {
+            entity_cache,
+            deterministic_errors,
+            created_data_sources,
+        } = self;
+        entity_cache
+            .extend(other.entity_cache)
+            .map_err(anyhow::Error::from)?;
+        created_data_sources.extend(other.created_data_sources);
+        deterministic_errors.extend(other.deterministic_errors);
+        Ok(())
+    }
+
+    /// Returns a clone of the pending updates in the block state.
+    /// This uses peristent data structures so it is a cheap operation.
+    pub fn updates_snapshot(&self) -> BlockStateUpdatesSnapshot {
+        BlockStateUpdatesSnapshot {
+            entity_updates: self.entity_cache.updates_snapshot(),
+            created_data_sources: self.created_data_sources.clone(),
+        }
+    }
+
+    pub fn restore_updates_snapshot_due_to_error(
+        &mut self,
+        snapshot: BlockStateUpdatesSnapshot,
+        error: anyhow::Error,
+    ) {
+        self.entity_cache
+            .restore_updates_snapshot(snapshot.entity_updates);
+        self.created_data_sources = snapshot.created_data_sources;
+        self.deterministic_errors.push(error);
     }
 }
 

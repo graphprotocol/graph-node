@@ -108,6 +108,7 @@ impl Store for MockStore {
         _block_ptr_to: EthereumBlockPointer,
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
+        _deterministic_errors: Vec<anyhow::Error>,
     ) -> Result<bool, StoreError> {
         unimplemented!()
     }

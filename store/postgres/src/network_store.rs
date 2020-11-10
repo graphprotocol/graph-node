@@ -3,7 +3,7 @@ use std::sync::Arc;
 use graph::{
     data::subgraph::status,
     prelude::{
-        ethabi,
+        anyhow, ethabi,
         web3::types::{Address, H256},
         BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
         EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock, NodeId,
@@ -121,9 +121,15 @@ impl StoreTrait for NetworkStore {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<graph::prelude::EntityModification>,
         stopwatch: graph::prelude::StopwatchMetrics,
+        deterministic_errors: Vec<anyhow::Error>,
     ) -> Result<bool, graph::prelude::StoreError> {
-        self.store
-            .transact_block_operations(subgraph_id, block_ptr_to, mods, stopwatch)
+        self.store.transact_block_operations(
+            subgraph_id,
+            block_ptr_to,
+            mods,
+            stopwatch,
+            deterministic_errors,
+        )
     }
 
     fn apply_metadata_operations(
