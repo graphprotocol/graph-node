@@ -778,10 +778,6 @@ impl Store {
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
-
-        // Leo do amanha:
-        // Voce parou bem aqui. Agora voce quer colocar esse
-        // `schema` em um novo `ApiSchema`, feshow?
         schema.document = api_schema(&schema.document)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
