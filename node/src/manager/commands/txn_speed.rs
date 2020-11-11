@@ -1,6 +1,6 @@
+use diesel::PgConnection;
 use std::{collections::HashMap, thread::sleep, time::Duration};
 
-use diesel::PgConnection;
 use graph::prelude::anyhow;
 use graph_store_postgres::connection_pool::ConnectionPool;
 

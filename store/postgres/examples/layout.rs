@@ -6,7 +6,7 @@ use std::fs;
 use std::process::exit;
 
 use graph::prelude::{Schema, SubgraphDeploymentId};
-use graph_store_postgres::relational::{Catalog, Column, ColumnType, Layout};
+use graph_store_postgres::command_support::{Catalog, Column, ColumnType, Layout};
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);

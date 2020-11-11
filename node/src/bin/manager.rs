@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use git_testament::{git_testament, render_testament};
 use graph_core::MetricsRegistry;
@@ -8,7 +8,7 @@ use structopt::StructOpt;
 
 use graph::{
     log::logger,
-    prelude::{info, tokio, Logger},
+    prelude::{info, o, slog, tokio, Logger},
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
@@ -45,20 +45,21 @@ pub struct Opt {
         help = "the name of the configuration file"
     )]
     pub config: String,
-    #[structopt(long, help = "Enable debug logging")]
-    pub debug: bool,
     #[structopt(subcommand)]
     pub cmd: Command,
 }
 
 #[derive(Clone, Debug, StructOpt)]
 pub enum Command {
-    /// check connecting to the database
-    //Connect,
-    /// calculate the transaction speed
+    /// Calculate the transaction speed
     TxnSpeed {
         #[structopt(long, short, default_value = "60")]
         delay: u64,
+    },
+    /// Print details about a deployment
+    Info {
+        /// The deployment, an id, schema name or subgraph name
+        name: String,
     },
 }
 
@@ -86,7 +87,10 @@ async fn main() {
     let opt = Opt::from_args();
 
     // Set up logger
-    let logger = logger(opt.debug);
+    let logger = match env::var_os("GRAPH_LOG") {
+        Some(_) => logger(false),
+        None => Logger::root(slog::Discard, o!()),
+    };
 
     // Log version information
     info!(
@@ -108,6 +112,7 @@ async fn main() {
     use Command::*;
     let result = match opt.cmd {
         TxnSpeed { delay } => commands::txn_speed::run(pool, delay),
+        Info { name } => commands::info::run(pool, name),
     };
     if let Err(e) = result {
         die!("error: {}", e)

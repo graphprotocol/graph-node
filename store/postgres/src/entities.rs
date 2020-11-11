@@ -72,7 +72,7 @@ pub(crate) fn make_storage_cache() -> StorageCache {
 /// Instances of this struct must not be cached across transactions as it
 /// contains a database connection
 #[derive(Constructor)]
-pub(crate) struct Connection<'a> {
+pub struct Connection<'a> {
     pub conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
     /// The storage of the subgraph we are dealing with; entities
     /// go into this
