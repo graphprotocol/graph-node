@@ -32,6 +32,7 @@ pub struct Opt {
     #[structopt(
         long,
         value_name = "URL,",
+        use_delimiter = true,
         env = "GRAPH_POSTGRES_SECONDARY_HOSTS",
         help = "Comma-separated list of host names/IP's for read-only Postgres replicas, \
            which will share the load with the primary server"
@@ -41,6 +42,7 @@ pub struct Opt {
     #[structopt(
         long,
         value_name = "WEIGHT,",
+        use_delimiter = true,
         env = "GRAPH_POSTGRES_HOST_WEIGHTS",
         help = "Comma-separated list of relative weights for selecting the main database \
     and secondary databases. The list is in the order MAIN,REPLICA1,REPLICA2,...\
