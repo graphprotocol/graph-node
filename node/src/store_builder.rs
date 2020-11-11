@@ -24,43 +24,10 @@ impl StoreBuilder {
     pub fn new(logger: &Logger, config: &Config, registry: Arc<MetricsRegistry>) -> Self {
         let primary = config.primary_store();
 
-        info!(
-            logger,
-            "Connecting to Postgres (primary)";
-            "url" => SafeDisplay(primary.connection.as_str()),
-            "conn_pool_size" => primary.pool_size,
-            "weight" => primary.weight
-        );
-        let conn_pool = ConnectionPool::create(
-            "main",
-            primary.connection.to_owned(),
-            primary.pool_size,
-            &logger,
-            registry.cheap_clone(),
-        );
+        let conn_pool = Self::main_pool(logger, config, registry.cheap_clone());
 
-        let mut weights: Vec<_> = vec![primary.weight];
-        let read_only_conn_pools: Vec<_> = primary
-            .replicas
-            .values()
-            .enumerate()
-            .map(|(i, replica)| {
-                info!(
-                    &logger,
-                    "Connecting to Postgres (read replica {})", i+1;
-                    "url" => SafeDisplay(replica.connection.as_str()),
-                    "weight" => replica.weight
-                );
-                weights.push(replica.weight);
-                ConnectionPool::create(
-                    &format!("replica{}", i),
-                    replica.connection.clone(),
-                    replica.pool_size,
-                    &logger,
-                    registry.cheap_clone(),
-                )
-            })
-            .collect();
+        let (read_only_conn_pools, weights) =
+            Self::replica_pools(logger, config, registry.cheap_clone());
 
         let subscriptions = Arc::new(SubscriptionManager::new(
             logger.clone(),
@@ -73,7 +40,7 @@ impl StoreBuilder {
             conn_pool.clone(),
             read_only_conn_pools.clone(),
             weights,
-            registry.clone(),
+            registry.cheap_clone(),
         ));
         let mut store_map = HashMap::new();
         store_map.insert(PRIMARY_SHARD.clone(), primary_store);
@@ -90,6 +57,64 @@ impl StoreBuilder {
             conn_pool,
             chain_head_update_listener,
         }
+    }
+
+    /// Create a connection pool for the main database
+    pub fn main_pool(
+        logger: &Logger,
+        config: &Config,
+        registry: Arc<MetricsRegistry>,
+    ) -> ConnectionPool {
+        let primary = config.primary_store();
+
+        info!(
+            logger,
+            "Connecting to Postgres (primary)";
+            "url" => SafeDisplay(primary.connection.as_str()),
+            "conn_pool_size" => primary.pool_size,
+            "weight" => primary.weight
+        );
+        ConnectionPool::create(
+            "main",
+            primary.connection.to_owned(),
+            primary.pool_size,
+            &logger,
+            registry.cheap_clone(),
+        )
+    }
+
+    /// Create connection pools for each of the replicas
+    pub fn replica_pools(
+        logger: &Logger,
+        config: &Config,
+        registry: Arc<MetricsRegistry>,
+    ) -> (Vec<ConnectionPool>, Vec<usize>) {
+        let primary = config.primary_store();
+        let mut weights: Vec<_> = vec![primary.weight];
+        (
+            primary
+                .replicas
+                .values()
+                .enumerate()
+                .map(|(i, replica)| {
+                    info!(
+                        &logger,
+                        "Connecting to Postgres (read replica {})", i+1;
+                        "url" => SafeDisplay(replica.connection.as_str()),
+                        "weight" => replica.weight
+                    );
+                    weights.push(replica.weight);
+                    ConnectionPool::create(
+                        &format!("replica{}", i),
+                        replica.connection.clone(),
+                        replica.pool_size,
+                        &logger,
+                        registry.cheap_clone(),
+                    )
+                })
+                .collect(),
+            weights,
+        )
     }
 
     /// Return a store that includes a `ChainStore` for the given network
