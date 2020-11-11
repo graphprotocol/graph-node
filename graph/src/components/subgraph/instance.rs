@@ -67,6 +67,10 @@ impl BlockState {
         self.created_data_sources = snapshot.created_data_sources;
         self.deterministic_errors.push(error);
     }
+
+    pub fn has_errors(&self) -> bool {
+        !self.deterministic_errors.is_empty()
+    }
 }
 
 /// Represents a loaded instance of a subgraph.

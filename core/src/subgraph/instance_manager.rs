@@ -1,7 +1,7 @@
 use atomic_refcell::AtomicRefCell;
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -31,6 +31,7 @@ type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, Cance
 
 struct IndexingInputs<B, S> {
     deployment_id: SubgraphDeploymentId,
+    features: BTreeSet<SubgraphFeatures>,
     network_name: String,
     start_blocks: Vec<u64>,
     store: Arc<S>,
@@ -359,6 +360,7 @@ impl SubgraphInstanceManager {
             &deployment_id,
             stopwatch_metrics,
         ));
+        let features = manifest.features.clone();
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
 
@@ -366,6 +368,7 @@ impl SubgraphInstanceManager {
         let ctx = IndexingContext {
             inputs: IndexingInputs {
                 deployment_id: deployment_id.clone(),
+                features,
                 network_name,
                 start_blocks,
                 store,
@@ -662,7 +665,25 @@ where
     )
     .await
     {
+        // The triggers were processed but some were skipped due to deterministic errors.
+        Ok(block_state) if block_state.has_errors() => {
+            use SubgraphFeatures::*;
+
+            // TODO: || subgraph still syncing
+            if !ctx.inputs.features.contains(&nonFatalErrors) {
+                // Take just the first error to report.
+                return Err(CancelableError::Error(BlockProcessingError::Deterministic(
+                    block_state.deterministic_errors.into_iter().next().unwrap(),
+                )));
+            }
+
+            block_state
+        }
+
+        // Triggers processed with no errors.
         Ok(block_state) => block_state,
+
+        // Some form of unknown or non-deterministic error ocurred.
         Err(MappingError::Unknown(e)) => {
             return Err(CancelableError::Error(BlockProcessingError::Unknown(e)))
         }

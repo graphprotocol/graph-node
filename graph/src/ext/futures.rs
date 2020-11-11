@@ -281,6 +281,12 @@ impl From<diesel::result::Error> for CancelableError<Error> {
     }
 }
 
+impl From<anyhow::Error> for CancelableError<anyhow::Error> {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Error(e)
+    }
+}
+
 impl<E> fmt::Display for CancelableError<E>
 where
     E: fmt::Display,
