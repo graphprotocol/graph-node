@@ -12,7 +12,15 @@ use url::Url;
 
 const ANY_NAME: &str = ".*";
 
-use crate::opt::Opt;
+pub struct Opt {
+    pub postgres_url: Option<String>,
+    pub config: Option<String>,
+    pub store_connection_pool_size: u32,
+    pub postgres_secondary_hosts: Vec<String>,
+    pub postgres_host_weights: Vec<usize>,
+    pub disable_block_ingestor: bool,
+    pub node_id: String,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {

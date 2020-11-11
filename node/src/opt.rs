@@ -2,12 +2,14 @@ use git_testament::{git_testament, render_testament};
 use lazy_static::lazy_static;
 use structopt::StructOpt;
 
+use crate::config;
+
 git_testament!(TESTAMENT);
 lazy_static! {
     static ref RENDERED_TESTAMENT: String = render_testament!(TESTAMENT);
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Clone, Debug, StructOpt)]
 #[structopt(
     name = "graph-node",
     about = "Scalable queries for a decentralized future",
@@ -211,4 +213,28 @@ pub struct Opt {
         help = "HTTP endpoint for 3box profiles"
     )]
     pub three_box_api: String,
+}
+
+impl From<Opt> for config::Opt {
+    fn from(opt: Opt) -> Self {
+        let Opt {
+            postgres_url,
+            config,
+            store_connection_pool_size,
+            postgres_host_weights,
+            postgres_secondary_hosts,
+            disable_block_ingestor,
+            node_id,
+            ..
+        } = opt;
+        config::Opt {
+            postgres_url,
+            config,
+            store_connection_pool_size,
+            postgres_host_weights,
+            postgres_secondary_hosts,
+            disable_block_ingestor,
+            node_id,
+        }
+    }
 }

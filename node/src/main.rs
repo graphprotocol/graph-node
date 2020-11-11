@@ -112,7 +112,7 @@ async fn main() {
         render_testament!(TESTAMENT)
     );
 
-    let config = match Config::load(&logger, &opt) {
+    let config = match Config::load(&logger, &opt.clone().into()) {
         Err(e) => {
             eprintln!("configuration error: {}", e);
             std::process::exit(1);
