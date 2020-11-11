@@ -1,6 +1,6 @@
-use futures::future::FutureResult;
-
 use super::*;
+use futures::future::FutureResult;
+use std::collections::BTreeSet;
 
 fn check_subgraph_exists(
     store: Arc<dyn NetworkStore>,
@@ -25,6 +25,7 @@ fn create_subgraph(
         id: subgraph_id.clone(),
         location: subgraph_name.to_string(),
         spec_version: String::from("0.0.1"),
+        features: BTreeSet::new(),
         description: None,
         repository: None,
         schema: Schema::parse(include_str!("./ethereum.graphql"), subgraph_id.clone())

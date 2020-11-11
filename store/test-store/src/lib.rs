@@ -15,6 +15,7 @@ use graph_store_postgres::{
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::collections::BTreeSet;
 use std::env;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -148,6 +149,7 @@ fn create_subgraph(
         id: subgraph_id.clone(),
         location: String::new(),
         spec_version: "1".to_owned(),
+        features: BTreeSet::new(),
         description: None,
         repository: None,
         schema: schema.clone(),

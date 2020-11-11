@@ -245,9 +245,9 @@ impl WasmInstance {
         };
 
         if let Some(deterministic_error) = deterministic_error {
-            // Log the error and restore the updates snaphsot, effectively skipping the handler.
+            // Log the error and restore the updates snaphsot, effectively reverting the handler.
             error!(&self.instance_ctx().ctx.logger,
-                "Handler skipped due to execution failure";
+                "Handler reverted";
                 "error" => deterministic_error.to_string()
             );
             self.instance_ctx_mut()

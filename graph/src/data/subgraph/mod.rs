@@ -12,6 +12,7 @@ use serde::ser;
 use serde_yaml;
 use slog::{info, Logger};
 use stable_hash::prelude::*;
+use std::collections::BTreeSet;
 use wasmparser;
 use web3::types::{Address, H256};
 
@@ -953,6 +954,8 @@ pub struct BaseSubgraphManifest<S, D, T> {
     pub id: SubgraphDeploymentId,
     pub location: String,
     pub spec_version: String,
+    #[serde(default)]
+    pub features: BTreeSet<SubgraphFeatures>,
     pub description: Option<String>,
     pub repository: Option<String>,
     pub schema: S,
@@ -1206,6 +1209,7 @@ impl UnresolvedSubgraphManifest {
             id,
             location,
             spec_version,
+            features,
             description,
             repository,
             schema,
@@ -1250,6 +1254,7 @@ impl UnresolvedSubgraphManifest {
             id,
             location,
             spec_version,
+            features,
             description,
             repository,
             schema,
@@ -1291,4 +1296,10 @@ impl DeploymentState {
             latest_ethereum_block_number: BLOCK_NUMBER_MAX,
         }
     }
+}
+
+#[derive(Debug, Deserialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(non_camel_case_types)]
+pub enum SubgraphFeatures {
+    nonFatalErrors,
 }
