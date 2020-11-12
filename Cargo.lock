@@ -461,7 +461,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7471b7b1588b2cda44e0cdf3fd3da5706c1b46224dbf486c3daceb6655ec191c"
 dependencies = [
  "bytes 0.5.6",
- "futures 0.3.7",
+ "futures 0.3.8",
  "http 0.2.1",
  "mime 0.3.16",
  "rand 0.5.6",
@@ -516,7 +516,7 @@ checksum = "8aebca1129a03dc6dc2b127edd729435bbc4a37e1d5f4d7513165089ceb02634"
 [[package]]
 name = "cranelift-bforest"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "cranelift-entity",
 ]
@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "byteorder",
  "cranelift-bforest",
@@ -543,7 +543,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-meta"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "cranelift-codegen-shared",
  "cranelift-entity",
@@ -552,12 +552,12 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-shared"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 
 [[package]]
 name = "cranelift-entity"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "serde",
 ]
@@ -565,7 +565,7 @@ dependencies = [
 [[package]]
 name = "cranelift-frontend"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "cranelift-codegen",
  "log 0.4.11",
@@ -576,7 +576,7 @@ dependencies = [
 [[package]]
 name = "cranelift-native"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "cranelift-codegen",
  "raw-cpuid",
@@ -586,7 +586,7 @@ dependencies = [
 [[package]]
 name = "cranelift-wasm"
 version = "0.68.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
@@ -596,7 +596,7 @@ dependencies = [
  "serde",
  "smallvec 1.4.2",
  "thiserror",
- "wasmparser 0.65.0",
+ "wasmparser 0.67.0",
 ]
 
 [[package]]
@@ -1270,9 +1270,9 @@ checksum = "4c7e4c2612746b0df8fed4ce0c69156021b704c9aefa360311c04e6e9e002eed"
 
 [[package]]
 name = "futures"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95314d38584ffbfda215621d723e0a3906f032e03ae5551e650058dac83d4797"
+checksum = "9b3b0c040a1fe6529d30b3c5944b280c7f0dcb2930d2c3062bca967b602583d0"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -1285,9 +1285,9 @@ dependencies = [
 
 [[package]]
 name = "futures-channel"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0448174b01148032eed37ac4aed28963aaaa8cfa93569a08e5b479bbc6c2c151"
+checksum = "4b7109687aa4e177ef6fe84553af6280ef2778bdb7783ba44c9dc3399110fe64"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -1295,9 +1295,9 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18eaa56102984bed2c88ea39026cff3ce3b4c7f508ca970cedf2450ea10d4e46"
+checksum = "847ce131b72ffb13b6109a221da9ad97a64cbe48feb1028356b836b47b8f1748"
 
 [[package]]
 name = "futures-cpupool"
@@ -1311,9 +1311,9 @@ dependencies = [
 
 [[package]]
 name = "futures-executor"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f8e0c9258abaea85e78ebdda17ef9666d390e987f006be6080dfe354b708cb"
+checksum = "4caa2b2b68b880003057c1dd49f1ed937e38f22fcf6c212188a121f08cf40a65"
 dependencies = [
  "futures-core",
  "futures-task",
@@ -1322,15 +1322,15 @@ dependencies = [
 
 [[package]]
 name = "futures-io"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e1798854a4727ff944a7b12aa999f58ce7aa81db80d2dfaaf2ba06f065ddd2b"
+checksum = "611834ce18aaa1bd13c4b374f5d653e1027cf99b6b502584ff8c9a64413b30bb"
 
 [[package]]
 name = "futures-macro"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e36fccf3fc58563b4a14d265027c627c3b665d7fed489427e88e7cc929559efe"
+checksum = "77408a692f1f97bcc61dc001d752e00643408fbc922e4d634c655df50d595556"
 dependencies = [
  "proc-macro-hack",
  "proc-macro2 1.0.24",
@@ -1340,24 +1340,24 @@ dependencies = [
 
 [[package]]
 name = "futures-sink"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e3ca3f17d6e8804ae5d3df7a7d35b2b3a6fe89dac84b31872720fc3060a0b11"
+checksum = "f878195a49cee50e006b02b93cf7e0a95a38ac7b776b4c4d9cc1207cd20fcb3d"
 
 [[package]]
 name = "futures-task"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96d502af37186c4fef99453df03e374683f8a1eec9dcc1e66b3b82dc8278ce3c"
+checksum = "7c554eb5bf48b2426c4771ab68c6b14468b6e76cc90996f528c3338d761a4d0d"
 dependencies = [
  "once_cell",
 ]
 
 [[package]]
 name = "futures-util"
-version = "0.3.7"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abcb44342f62e6f3e8ac427b8aa815f724fd705dfad060b18ac7866c15bb8e34"
+checksum = "d304cff4a7b99cfb7986f7d43fbe93d175e72e704a8860787cc95e9ffd85cbd2"
 dependencies = [
  "futures 0.1.30",
  "futures-channel",
@@ -1487,7 +1487,7 @@ dependencies = [
  "ethabi 12.0.0-graph",
  "failure",
  "futures 0.1.30",
- "futures 0.3.7",
+ "futures 0.3.8",
  "graphql-parser",
  "hex 0.4.2",
  "http 0.2.1",
@@ -1519,7 +1519,7 @@ dependencies = [
  "test-store",
  "thiserror",
  "tiny-keccak 1.5.0",
- "tokio 0.2.22",
+ "tokio 0.2.23",
  "tokio-retry",
  "url 2.2.0",
  "uuid 0.8.1",
@@ -1565,7 +1565,7 @@ dependencies = [
  "atomic_refcell",
  "bytes 0.5.6",
  "futures 0.1.30",
- "futures 0.3.7",
+ "futures 0.3.8",
  "graph",
  "graph-graphql",
  "graph-mock",
@@ -1625,7 +1625,7 @@ dependencies = [
  "clap",
  "crossbeam-channel 0.4.4",
  "env_logger",
- "futures 0.3.7",
+ "futures 0.3.8",
  "git-testament",
  "graph",
  "graph-chain-arweave",
@@ -1704,7 +1704,7 @@ name = "graph-server-index-node"
 version = "0.19.2"
 dependencies = [
  "failure",
- "futures 0.3.7",
+ "futures 0.3.8",
  "graph",
  "graph-graphql",
  "graphql-parser",
@@ -1836,7 +1836,7 @@ dependencies = [
  "http 0.2.1",
  "indexmap",
  "slab 0.4.2",
- "tokio 0.2.22",
+ "tokio 0.2.23",
  "tokio-util 0.3.1",
  "tracing",
  "tracing-futures",
@@ -2026,7 +2026,7 @@ dependencies = [
  "itoa",
  "pin-project 1.0.1",
  "socket2",
- "tokio 0.2.22",
+ "tokio 0.2.23",
  "tower-service",
  "tracing",
  "want 0.3.0",
@@ -2040,7 +2040,7 @@ checksum = "3a71feb0ce26d0e28969633c06521716b07607f58f55dff84f30214b6c6d256a"
 dependencies = [
  "bytes 0.5.6",
  "common-multipart-rfc7578",
- "futures 0.3.7",
+ "futures 0.3.8",
  "http 0.2.1",
  "hyper 0.13.9",
 ]
@@ -2067,7 +2067,7 @@ dependencies = [
  "bytes 0.5.6",
  "hyper 0.13.9",
  "native-tls",
- "tokio 0.2.22",
+ "tokio 0.2.23",
  "tokio-tls 0.3.1",
 ]
 
@@ -2173,7 +2173,7 @@ dependencies = [
  "bytes 0.5.6",
  "dirs 2.0.2",
  "failure",
- "futures 0.3.7",
+ "futures 0.3.8",
  "http 0.2.1",
  "hyper 0.13.9",
  "hyper-multipart-rfc7578",
@@ -2182,7 +2182,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "tokio 0.2.22",
+ "tokio 0.2.23",
  "tokio-util 0.2.0",
  "walkdir",
 ]
@@ -2588,9 +2588,9 @@ checksum = "0debeb9fcf88823ea64d64e4a815ab1643f33127d995978e099942ce38f25238"
 
 [[package]]
 name = "native-tls"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a1cda389c26d6b88f3d2dc38aa1b750fe87d298cc5d795ec9e975f402f00372"
+checksum = "6fcc7939b5edc4e4f86b1b4a04bb1498afaaf871b1a6691838ed06fcb48d3a3f"
 dependencies = [
  "lazy_static",
  "libc",
@@ -2686,9 +2686,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.4.1"
+version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "260e51e7efe62b592207e9e13a68e43692a7a279171d6ba57abd208bf23645ad"
+checksum = "13bd41f508810a131401606d54ac32a467c97172d74ba7662562ebba5ad07fa0"
 
 [[package]]
 name = "opaque-debug"
@@ -3092,9 +3092,9 @@ dependencies = [
 
 [[package]]
 name = "primitive-types"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c55c21c64d0eaa4d7ed885d959ef2d62d9e488c27c0e02d9aa5ce6c877b7d5f8"
+checksum = "7dd39dcacf71411ba488570da7bbc89b717225e46478b30ba99b92db6b149809"
 dependencies = [
  "fixed-hash",
  "impl-codec",
@@ -3564,7 +3564,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "serde_urlencoded",
- "tokio 0.2.22",
+ "tokio 0.2.23",
  "tokio-tls 0.3.1",
  "url 2.2.0",
  "wasm-bindgen",
@@ -3702,7 +3702,7 @@ dependencies = [
 [[package]]
 name = "secp256k1"
 version = "0.19.0"
-source = "git+https://github.com/rust-bitcoin/rust-secp256k1#d31dcf20b0db4768f5ca5345ec4508434eac0b02"
+source = "git+https://github.com/rust-bitcoin/rust-secp256k1#221254b6417bc29b992e651ea122da642cee9da9"
 dependencies = [
  "secp256k1-sys",
 ]
@@ -3710,7 +3710,7 @@ dependencies = [
 [[package]]
 name = "secp256k1-sys"
 version = "0.3.0"
-source = "git+https://github.com/rust-bitcoin/rust-secp256k1#d31dcf20b0db4768f5ca5345ec4508434eac0b02"
+source = "git+https://github.com/rust-bitcoin/rust-secp256k1#221254b6417bc29b992e651ea122da642cee9da9"
 dependencies = [
  "cc",
 ]
@@ -3998,9 +3998,9 @@ checksum = "fbee7696b84bbf3d89a1c2eccff0850e3047ed46bfcd2e92c29a2d074d57e252"
 
 [[package]]
 name = "socket2"
-version = "0.3.15"
+version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1fa70dc5c8104ec096f4fe7ede7a221d35ae13dcd19ba1ad9a81d2cab9a1c44"
+checksum = "7fd8b795c389288baa5f355489c65e71fd48a02104600d15c4cfbc561e9e429d"
 dependencies = [
  "cfg-if 0.1.10",
  "libc",
@@ -4290,9 +4290,18 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "0.3.4"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "238ce071d267c5710f9d31451efec16c5ee22de34df17cc05e56cbc92e967117"
+checksum = "b78a366903f506d2ad52ca8dc552102ffdd3e937ba8a227f024dc1d1eae28575"
+dependencies = [
+ "tinyvec_macros",
+]
+
+[[package]]
+name = "tinyvec_macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
@@ -4320,9 +4329,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "0.2.22"
+version = "0.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d34ca54d84bf2b5b4d7d31e901a8464f7b60ac145a284fba25ceb801f2ddccd"
+checksum = "a6d7ad61edd59bfcc7e80dababf0f4aed2e6d5e0ba1659356ae889752dfc12ff"
 dependencies = [
  "bytes 0.5.6",
  "fnv",
@@ -4424,9 +4433,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0c3acc6aa564495a0f2e1d59fab677cd7f81a19994cfc7f3ad0e64301560389"
+checksum = "e44da00bfc73a25f814cd8d7e57a68a5c31b74b3152a0a1d1f590c97ed06265a"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
@@ -4458,9 +4467,9 @@ version = "0.2.0"
 source = "git+https://github.com/graphprotocol/rust-tokio-retry?branch=update-to-tokio-02#fc0e868bdc7ff79ac84cf502d4cec20c5ce5adaf"
 dependencies = [
  "futures 0.1.30",
- "futures 0.3.7",
+ "futures 0.3.8",
  "rand 0.4.6",
- "tokio 0.2.22",
+ "tokio 0.2.23",
 ]
 
 [[package]]
@@ -4544,7 +4553,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a70f4fcd7b3b24fb194f837560168208f669ca8cb70d0c4b862944452396343"
 dependencies = [
  "native-tls",
- "tokio 0.2.22",
+ "tokio 0.2.23",
 ]
 
 [[package]]
@@ -4553,10 +4562,10 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8b8fe88007ebc363512449868d7da4389c9400072a3f666f212c7280082882a"
 dependencies = [
- "futures 0.3.7",
+ "futures 0.3.8",
  "log 0.4.11",
  "pin-project 0.4.27",
- "tokio 0.2.22",
+ "tokio 0.2.23",
  "tungstenite",
 ]
 
@@ -4621,7 +4630,7 @@ dependencies = [
  "futures-sink",
  "log 0.4.11",
  "pin-project-lite",
- "tokio 0.2.22",
+ "tokio 0.2.23",
 ]
 
 [[package]]
@@ -4635,7 +4644,7 @@ dependencies = [
  "futures-sink",
  "log 0.4.11",
  "pin-project-lite",
- "tokio 0.2.22",
+ "tokio 0.2.23",
 ]
 
 [[package]]
@@ -4774,9 +4783,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-normalization"
-version = "0.1.13"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fb19cf769fa8c6a80a162df694621ebeb4dafb606470b2b2fce0be40a98a977"
+checksum = "b7f98e67a4d84f730d343392f9bfff7d21e3fca562b9cb7a43b768350beeddc6"
 dependencies = [
  "tinyvec",
 ]
@@ -5023,14 +5032,14 @@ checksum = "89e4bce139034f66d49ad6071f6eda10f7188b0ad3cbfe080d673535ee30c23e"
 
 [[package]]
 name = "wasmparser"
-version = "0.65.0"
+version = "0.67.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87cc2fe6350834b4e528ba0901e7aa405d78b89dc1fa3145359eb4de0e323fcf"
+checksum = "9f091cf3849e5fe76a60255bff169277459f2201435bc583b6656880553f0ad0"
 
 [[package]]
 name = "wasmtime"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -5044,7 +5053,7 @@ dependencies = [
  "serde",
  "smallvec 1.4.2",
  "target-lexicon",
- "wasmparser 0.65.0",
+ "wasmparser 0.67.0",
  "wasmtime-cache",
  "wasmtime-environ",
  "wasmtime-jit",
@@ -5057,7 +5066,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-cache"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "anyhow",
  "base64 0.13.0",
@@ -5077,7 +5086,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-cranelift"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
@@ -5089,7 +5098,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-debug"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "anyhow",
  "gimli",
@@ -5097,14 +5106,14 @@ dependencies = [
  "object",
  "target-lexicon",
  "thiserror",
- "wasmparser 0.65.0",
+ "wasmparser 0.67.0",
  "wasmtime-environ",
 ]
 
 [[package]]
 name = "wasmtime-environ"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -5117,13 +5126,13 @@ dependencies = [
  "more-asserts",
  "serde",
  "thiserror",
- "wasmparser 0.65.0",
+ "wasmparser 0.67.0",
 ]
 
 [[package]]
 name = "wasmtime-jit"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -5141,7 +5150,7 @@ dependencies = [
  "serde",
  "target-lexicon",
  "thiserror",
- "wasmparser 0.65.0",
+ "wasmparser 0.67.0",
  "wasmtime-cranelift",
  "wasmtime-debug",
  "wasmtime-environ",
@@ -5154,7 +5163,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-obj"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "anyhow",
  "more-asserts",
@@ -5167,7 +5176,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-profiling"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "anyhow",
  "cfg-if 1.0.0",
@@ -5185,7 +5194,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-runtime"
 version = "0.21.0"
-source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#12e658a1ef344ccacf872accb0cadd7ef6e8cf4a"
+source = "git+https://github.com/bytecodealliance/wasmtime.git?branch=main#01b7d88641c7f97544e1590fa5ff80143e261731"
 dependencies = [
  "backtrace",
  "cc",
@@ -5205,18 +5214,18 @@ dependencies = [
 
 [[package]]
 name = "wast"
-version = "26.0.1"
+version = "27.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3f174eed73e885ede6c8fcc3fbea8c3757afa521840676496cde56bb742ddab"
+checksum = "c2c3ef5f6a72dffa44c24d5811123f704e18a1dbc83637d347b1852b41d3835c"
 dependencies = [
  "leb128",
 ]
 
 [[package]]
 name = "wat"
-version = "1.0.27"
+version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26b2dccbce4d0e14875091846e110a2369267b18ddd0d6423479b88dad914d71"
+checksum = "835cf59c907f67e2bbc20f50157e08f35006fe2a8444d8ec9f5683e22f937045"
 dependencies = [
  "wast",
 ]
