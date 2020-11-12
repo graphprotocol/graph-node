@@ -300,6 +300,7 @@ async fn main() {
                         metrics_registry.clone(),
                         format!("network/{}", network_subgraph).into(),
                         None,
+                        network_name,
                     );
                     graph::spawn(
                         indexer

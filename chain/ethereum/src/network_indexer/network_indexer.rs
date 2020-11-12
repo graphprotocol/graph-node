@@ -84,6 +84,7 @@ fn ensure_subgraph(
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
+    network_name: String,
 ) -> EnsureSubgraphFuture {
     Box::new(subgraph::ensure_subgraph_exists(
         subgraph_name,
@@ -91,6 +92,7 @@ fn ensure_subgraph(
         logger,
         store,
         start_block,
+        network_name,
     ))
 }
 
@@ -455,6 +457,7 @@ pub struct Context {
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
+    network_name: String,
 }
 
 /// Events emitted by the network tracer.
@@ -648,6 +651,7 @@ impl PollStateMachine for StateMachine {
                 context.subgraph_name.clone(),
                 context.subgraph_id.clone(),
                 context.start_block.clone(),
+                context.network_name.clone(),
             )
         })
     }
@@ -1117,6 +1121,7 @@ impl NetworkIndexer {
         metrics_registry: Arc<dyn MetricsRegistry>,
         subgraph_name: String,
         start_block: Option<EthereumBlockPointer>,
+        network_name: String,
     ) -> Self
     where
         S: Store + ChainStore,
@@ -1172,6 +1177,7 @@ impl NetworkIndexer {
             subgraph_name,
             subgraph_id,
             start_block,
+            network_name,
         });
 
         // Launch state machine.

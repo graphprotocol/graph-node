@@ -141,6 +141,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
             &TEST_SUBGRAPH_SCHEMA,
             deployment,
             node_id,
+            "fake_network".to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
         .unwrap();

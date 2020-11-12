@@ -71,6 +71,7 @@ fn run_network_indexer(
         metrics_registry,
         subgraph_name.to_string(),
         start_block,
+        "fake_network".to_string(),
     );
 
     let (event_sink, event_stream) = futures::sync::mpsc::channel(100);

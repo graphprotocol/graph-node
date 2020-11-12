@@ -159,7 +159,14 @@ fn create_subgraph() {
 
         tap_store_events(|| {
             store
-                .create_subgraph_deployment(name, &schema, deployment, node_id, mode)
+                .create_subgraph_deployment(
+                    name,
+                    &schema,
+                    deployment,
+                    node_id,
+                    NETWORK_NAME.to_string(),
+                    mode,
+                )
                 .unwrap()
         })
         .into_iter()

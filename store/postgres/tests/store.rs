@@ -174,6 +174,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
             &TEST_SUBGRAPH_SCHEMA,
             deployment,
             node_id,
+            NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
         .unwrap();
@@ -1633,6 +1634,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 &schema,
                 deployment,
                 node_id,
+                NETWORK_NAME.to_string(),
                 SubgraphVersionSwitchingMode::Instant,
             )
             .unwrap();

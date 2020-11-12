@@ -28,6 +28,8 @@ use test_store::{
     LOAD_MANAGER, LOGGER, STORE,
 };
 
+const NETWORK_NAME: &str = "fake_network";
+
 fn setup() -> SubgraphDeploymentId {
     setup_with_features("graphqlTestsQuery", BTreeSet::new())
 }
@@ -39,7 +41,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Subgrap
 
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     block_store::remove();
-    block_store::insert(chain, "fake_network");
+    block_store::insert(chain, NETWORK_NAME);
     test_store::remove_subgraphs();
 
     let schema = test_schema(id.clone());
@@ -107,6 +109,7 @@ fn insert_test_entities(store: &impl Store, manifest: SubgraphManifest) {
             &manifest.schema,
             deployment,
             node_id,
+            NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
         .unwrap();

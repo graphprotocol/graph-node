@@ -19,6 +19,7 @@ fn create_subgraph(
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
+    network_name: String,
 ) -> FutureResult<(), Error> {
     // Create a fake manifest
     let manifest = SubgraphManifest {
@@ -43,6 +44,7 @@ fn create_subgraph(
                 &manifest.schema,
                 deployment,
                 NodeId::new("__builtin").unwrap(),
+                network_name,
                 SubgraphVersionSwitchingMode::Instant,
             )
             .map_err(|e| e.into()),
@@ -55,6 +57,7 @@ pub fn ensure_subgraph_exists(
     logger: Logger,
     store: Arc<dyn NetworkStore>,
     start_block: Option<EthereumBlockPointer>,
+    network_name: String,
 ) -> impl Future<Item = (), Error = Error> {
     debug!(logger, "Ensure that the network subgraph exists");
 
@@ -74,6 +77,7 @@ pub fn ensure_subgraph_exists(
                         subgraph_name.clone(),
                         subgraph_id.clone(),
                         start_block,
+                        network_name,
                     )
                     .inspect(move |_| {
                         debug!(logger_for_created, "Created Ethereum network subgraph");

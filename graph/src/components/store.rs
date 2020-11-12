@@ -951,6 +951,7 @@ pub trait Store: Send + Sync + 'static {
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
+        network: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError>;
 
@@ -1135,6 +1136,7 @@ impl Store for MockStore {
         _: &Schema,
         _: SubgraphDeploymentEntity,
         _: NodeId,
+        _: String,
         _: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         unimplemented!()
@@ -1669,4 +1671,13 @@ impl LfuCache<EntityKey, Option<Entity>> {
             Some(data) => Ok(data.to_owned()),
         }
     }
+}
+
+/// Decide where a new deployment should be placed based on the subgraph name
+/// and the network it is indexing. If the deployment can be placed, returns
+/// the name of the database shard for the deployment and the names of the
+/// indexers that should index it. The deployment should then be assigned to
+/// one of the returned indexers.
+pub trait DeploymentPlacer {
+    fn place(&self, name: &str, network: &str, default: &str) -> Option<(&str, Vec<String>)>;
 }

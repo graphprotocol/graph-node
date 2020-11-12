@@ -572,13 +572,14 @@ fn create_subgraph_version(
 
                 // Apply the subgraph versioning and deployment operations,
                 // creating a new subgraph deployment if one doesn't exist.
-                    let deployment = SubgraphDeploymentEntity::new(
+                let network = manifest.network_name();
+                let deployment = SubgraphDeploymentEntity::new(
                         &manifest,
                         false,
                         start_block,
                     ).graft(base_block);
                     deployment_store
-                        .create_subgraph_deployment(name, &manifest.schema, deployment, node_id, version_switching_mode)
+                        .create_subgraph_deployment(name, &manifest.schema, deployment, node_id, network, version_switching_mode)
                         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
             })
     )

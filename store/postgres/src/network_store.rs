@@ -190,10 +190,11 @@ impl StoreTrait for NetworkStore {
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
+        network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         self.store
-            .create_subgraph_deployment(name, schema, deployment, node_id, mode)
+            .create_subgraph_deployment(name, schema, deployment, node_id, network_name, mode)
     }
 
     fn start_subgraph_deployment(

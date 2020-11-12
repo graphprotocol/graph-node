@@ -1,3 +1,4 @@
+use graph::components::store::DeploymentPlacer;
 use graph::prelude::{
     anyhow::{anyhow, Result},
     info, serde_json, Logger, PRIMARY_SHARD,
@@ -207,8 +208,12 @@ impl Deployment {
         Ok(())
     }
 
-    // This needs to be moved to some sort of trait
-    #[allow(dead_code)]
+    fn from_opt(_: &Opt) -> Self {
+        Self { rules: vec![] }
+    }
+}
+
+impl DeploymentPlacer for Deployment {
     fn place(&self, name: &str, network: &str, default: &str) -> Option<(&str, Vec<String>)> {
         if self.rules.is_empty() {
             // This can only happen if we have only command line arguments and no
@@ -220,10 +225,6 @@ impl Deployment {
                 .find(|rule| rule.matches(name, network))
                 .map(|rule| (rule.store.as_str(), rule.indexers.clone()))
         }
-    }
-
-    fn from_opt(_: &Opt) -> Self {
-        Self { rules: vec![] }
     }
 }
 
