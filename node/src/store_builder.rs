@@ -1,20 +1,20 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use graph::{
-    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
+    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger, PRIMARY_SHARD},
     util::security::SafeDisplay,
 };
 use graph_core::MetricsRegistry;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
-    NetworkStore as DieselNetworkStore, Store as DieselStore, SubscriptionManager,
+    NetworkStore as DieselNetworkStore, ShardedStore, Store as DieselStore, SubscriptionManager,
 };
 
 use crate::config::Config;
 
 pub struct StoreBuilder {
-    store: Arc<DieselStore>,
+    store: Arc<ShardedStore>,
     conn_pool: ConnectionPool,
     chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
 }
@@ -66,7 +66,7 @@ impl StoreBuilder {
             primary.connection.to_owned(),
         ));
 
-        let store = Arc::new(DieselStore::new(
+        let primary_store = Arc::new(DieselStore::new(
             logger,
             subscriptions.clone(),
             conn_pool.clone(),
@@ -74,6 +74,9 @@ impl StoreBuilder {
             weights,
             registry.clone(),
         ));
+        let mut store_map = HashMap::new();
+        store_map.insert(PRIMARY_SHARD.to_string(), primary_store);
+        let store = Arc::new(ShardedStore::new(store_map));
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
             &logger,
@@ -105,7 +108,7 @@ impl StoreBuilder {
 
     /// Return the store for subgraph and other storage; this store can
     /// handle everything besides being a `ChainStore`
-    pub fn store(&self) -> Arc<DieselStore> {
+    pub fn store(&self) -> Arc<ShardedStore> {
         self.store.cheap_clone()
     }
 }

@@ -14,27 +14,26 @@ use graph::{
     },
 };
 
-use crate::chain_store::ChainStore;
-use crate::store::Store;
+use crate::{chain_store::ChainStore, ShardedStore};
 
 pub struct NetworkStore {
-    store: Arc<Store>,
+    store: Arc<ShardedStore>,
     chain_store: ChainStore,
 }
 
 impl NetworkStore {
-    pub fn new(store: Arc<Store>, chain_store: ChainStore) -> Self {
+    pub fn new(store: Arc<ShardedStore>, chain_store: ChainStore) -> Self {
         Self { store, chain_store }
     }
 
-    pub fn store(&self) -> Arc<Store> {
+    pub fn store(&self) -> Arc<ShardedStore> {
         self.store.cheap_clone()
     }
 
     // Only needed for tests
     #[cfg(debug_assertions)]
     pub(crate) fn clear_storage_cache(&self) {
-        self.store.storage_cache.lock().unwrap().clear();
+        self.store.clear_storage_cache();
     }
 
     // Only for tests to simplify their handling of test fixtures, so that

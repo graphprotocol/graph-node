@@ -13,13 +13,13 @@ use graph_graphql::prelude::{
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
-    ChainHeadUpdateListener, ChainStore, NetworkStore, Store, SubscriptionManager,
+    ChainHeadUpdateListener, ChainStore, NetworkStore, ShardedStore, Store, SubscriptionManager,
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::env;
 use std::sync::Mutex;
 use std::time::Instant;
+use std::{collections::HashMap, env};
 use web3::types::H256;
 
 #[cfg(debug_assertions)]
@@ -80,7 +80,7 @@ lazy_static! {
                     logger.clone(),
                     postgres_url.clone(),
                 ));
-                let store = Arc::new(Store::new(
+                let primary_store = Arc::new(Store::new(
                     &logger,
                     subscriptions,
                     postgres_conn_pool.clone(),
@@ -88,6 +88,9 @@ lazy_static! {
                     Vec::new(),
                     registry.clone(),
                 ));
+                let mut store_map = HashMap::new();
+                store_map.insert(PRIMARY_SHARD.to_string(), primary_store);
+                let store = Arc::new(ShardedStore::new(store_map));
                 let chain_store = ChainStore::new(NETWORK_NAME.to_owned(), net_identifiers, chain_head_update_listener, postgres_conn_pool);
                 Arc::new(NetworkStore::new(store, chain_store))
             })
