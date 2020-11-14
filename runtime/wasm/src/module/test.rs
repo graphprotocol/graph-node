@@ -9,6 +9,7 @@ use graph::components::store::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::mock::MockEthereumAdapter;
+use graph::prelude::im;
 use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
@@ -575,19 +576,20 @@ async fn bytes_to_base58() {
 
 #[tokio::test]
 async fn data_source_create() {
-    let run_data_source_create = move |name: String,
-                                       params: Vec<String>|
-          -> Result<Vec<DataSourceTemplateInfo>, wasmtime::Trap> {
-        let mut module = test_module(
-            "DataSourceCreate",
-            mock_data_source("wasm_test/data_source_create.wasm"),
-        );
+    let run_data_source_create =
+        move |name: String,
+              params: Vec<String>|
+              -> Result<im::Vector<DataSourceTemplateInfo>, wasmtime::Trap> {
+            let mut module = test_module(
+                "DataSourceCreate",
+                mock_data_source("wasm_test/data_source_create.wasm"),
+            );
 
-        let name = module.asc_new(&name);
-        let params = module.asc_new(&*params);
-        module.invoke_export2_void("dataSourceCreate", name, params)?;
-        Ok(module.take_ctx().ctx.state.created_data_sources)
-    };
+            let name = module.asc_new(&name);
+            let params = module.asc_new(&*params);
+            module.invoke_export2_void("dataSourceCreate", name, params)?;
+            Ok(module.take_ctx().ctx.state.created_data_sources)
+        };
 
     // Test with a valid template
     let data_source = String::from("example data source");

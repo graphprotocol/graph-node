@@ -92,6 +92,7 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         id: id.clone(),
         location: String::new(),
         spec_version: "1".to_owned(),
+        features: Default::default(),
         description: None,
         repository: None,
         schema: schema.clone(),

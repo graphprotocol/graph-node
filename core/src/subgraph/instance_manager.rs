@@ -25,6 +25,10 @@ lazy_static! {
             .unwrap_or("10000".into())
             .parse::<usize>()
             .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
+
+    // Keep deterministic errors non-fatal even if the subgraph is pending. For test purposes.
+    pub static ref DISABLE_FAIL_FAST: bool =
+        std::env::var("GRAPH_DISABLE_FAIL_FAST").is_ok();
 }
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
@@ -531,7 +535,7 @@ where
                         break;
                     }
                 }
-                Err(CancelableError::Cancel) => {
+                Err(BlockProcessingError::Canceled) => {
                     debug!(
                         &logger,
                         "Subgraph block stream shut down cleanly";
@@ -539,8 +543,9 @@ where
                     );
                     return Err(());
                 }
+
                 // Handle unexpected stream errors by marking the subgraph as failed.
-                Err(CancelableError::Error(e)) => {
+                Err(e) => {
                     error!(
                         &logger,
                         "Subgraph instance failed to run: {}", e;
@@ -579,15 +584,20 @@ enum BlockProcessingError {
     #[error("{0:#}")]
     Unknown(anyhow::Error),
 
+    // The error had a determinstic cause but, for a possibly non-deterministic reason, we chose to
+    // halt processing due to the error.
     #[error("{0:#}")]
     Deterministic(anyhow::Error),
+
+    #[error("subgraph stopped while processing triggers")]
+    Canceled,
 }
 
 impl BlockProcessingError {
     fn is_deterministic(&self) -> bool {
         match self {
-            BlockProcessingError::Unknown(_) => false,
             BlockProcessingError::Deterministic(_) => true,
+            _ => false,
         }
     }
 }
@@ -606,7 +616,7 @@ async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S>(
     mut ctx: IndexingContext<B, T, S>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
-) -> Result<(IndexingContext<B, T, S>, bool), CancelableError<BlockProcessingError>>
+) -> Result<(IndexingContext<B, T, S>, bool), BlockProcessingError>
 where
     S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
 {
@@ -669,12 +679,23 @@ where
         Ok(block_state) if block_state.has_errors() => {
             use SubgraphFeatures::*;
 
-            // TODO: || subgraph still syncing
-            if !ctx.inputs.features.contains(&nonFatalErrors) {
+            // While the version is pending we fail the subgraph even if the error is determinsitic.
+            // This prevents a buggy pending version from replacing a current version.
+            let store = &ctx.inputs.store;
+            let id = ctx.inputs.deployment_id.clone();
+            let fail_fast = || -> Result<bool, BlockProcessingError> {
+                Ok(!*DISABLE_FAIL_FAST
+                    && !store
+                        .is_deployment_synced(id)
+                        .compat_err()
+                        .map_err(BlockProcessingError::Unknown)?)
+            };
+
+            if !ctx.inputs.features.contains(&nonFatalErrors) || fail_fast()? {
                 // Take just the first error to report.
-                return Err(CancelableError::Error(BlockProcessingError::Deterministic(
+                return Err(BlockProcessingError::Deterministic(
                     block_state.deterministic_errors.into_iter().next().unwrap(),
-                )));
+                ));
             }
 
             block_state
@@ -684,9 +705,7 @@ where
         Ok(block_state) => block_state,
 
         // Some form of unknown or non-deterministic error ocurred.
-        Err(MappingError::Unknown(e)) => {
-            return Err(CancelableError::Error(BlockProcessingError::Unknown(e)))
-        }
+        Err(MappingError::Unknown(e)) => return Err(BlockProcessingError::Unknown(e)),
         Err(MappingError::PossibleReorg(e)) => {
             info!(ctx.state.logger,
                     "Possible reorg detected, retrying";
@@ -788,8 +807,7 @@ where
                         BlockProcessingError::Unknown(e)
                     }
                 }
-            })
-            .map_err(CancelableError::Error)?;
+            })?;
         }
     }
 
@@ -797,7 +815,7 @@ where
 
     // Avoid writing to store if block stream has been canceled
     if block_stream_cancel_handle.is_canceled() {
-        return Err(CancelableError::Cancel);
+        return Err(BlockProcessingError::Canceled);
     }
 
     if let Some(proof_of_indexing) = proof_of_indexing {
@@ -818,12 +836,7 @@ where
     } = block_state
         .entity_cache
         .as_modifications(ctx.inputs.store.as_ref())
-        .map_err(|e| {
-            CancelableError::from(format_err!(
-                "Error while processing block stream for a subgraph: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
     section.end();
 
     let section = ctx

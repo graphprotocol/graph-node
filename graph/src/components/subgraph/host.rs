@@ -24,15 +24,6 @@ impl From<anyhow::Error> for MappingError {
     }
 }
 
-impl From<CancelableError<MappingError>> for MappingError {
-    fn from(cancelable: CancelableError<MappingError>) -> Self {
-        match cancelable {
-            CancelableError::Error(e) => e,
-            CancelableError::Cancel => MappingError::Unknown(anyhow::anyhow!("mapping canceled")),
-        }
-    }
-}
-
 impl MappingError {
     pub fn context(self, s: String) -> Self {
         use MappingError::*;
