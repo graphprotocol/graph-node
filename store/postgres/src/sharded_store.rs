@@ -7,8 +7,9 @@ use graph::{
     components::store,
     data::subgraph::schema::MetadataType,
     data::subgraph::{schema::SubgraphError, status},
+    prelude::StoreEvent,
     prelude::{
-        self,
+        self, serde_json,
         web3::types::{Address, H256},
         ApiSchema, BlockNumber, DynTryFuture, Error, EthereumBlockPointer, EthereumCallCache,
         Store as StoreTrait, SubgraphDeploymentId, SubgraphDeploymentStore, PRIMARY_SHARD,
@@ -22,7 +23,17 @@ use prelude::{
 use store::StoredDynamicDataSource;
 
 use crate::store::Store;
-use crate::{detail, metadata};
+use crate::{detail, metadata, notification_listener::JsonNotification};
+
+#[cfg(debug_assertions)]
+use std::sync::Mutex;
+#[cfg(debug_assertions)]
+lazy_static::lazy_static! {
+    /// Tests set this to true so that `send_store_event` will store a copy
+    /// of each event sent in `EVENT_TAP`
+    pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
+    pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
+}
 
 /// Multiplex store operations on subgraphs and deployments between a primary
 /// and any number of additional storage shards. See [this document](../../docs/sharded.md)
@@ -79,8 +90,22 @@ impl ShardedStore {
         mode: prelude::SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         // This works because we only allow one shard for now
-        self.primary
-            .create_deployment_replace(name, schema, deployment, node_id, mode)
+        let event = self
+            .primary
+            .create_deployment_replace(name, schema, deployment, node_id, mode)?;
+        self.send_store_event(&event)
+    }
+
+    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
+        let conn = self.primary.get_conn()?;
+        let v = serde_json::to_value(event)?;
+        #[cfg(debug_assertions)]
+        {
+            if *EVENT_TAP_ENABLED.lock().unwrap() {
+                EVENT_TAP.lock().unwrap().push(event.clone());
+            }
+        }
+        JsonNotification::send("store_events", &v, &conn)
     }
 }
 
@@ -153,7 +178,14 @@ impl StoreTrait for ShardedStore {
             "can only transact operations within one shard"
         );
         let store = self.store(&id)?;
-        store.transact_block_operations(id, block_ptr_to, mods, stopwatch, deterministic_errors)
+        let event = store.transact_block_operations(
+            id,
+            block_ptr_to,
+            mods,
+            stopwatch,
+            deterministic_errors,
+        )?;
+        self.send_store_event(&event)
     }
 
     fn apply_metadata_operations(
@@ -167,7 +199,8 @@ impl StoreTrait for ShardedStore {
         );
 
         let store = self.store(&target_deployment)?;
-        store.apply_metadata_operations(target_deployment, operations)
+        let event = store.apply_metadata_operations(target_deployment, operations)?;
+        self.send_store_event(&event)
     }
 
     fn revert_block_operations(
@@ -177,7 +210,8 @@ impl StoreTrait for ShardedStore {
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         let store = self.store(&id)?;
-        store.revert_block_operations(id, block_ptr_from, block_ptr_to)
+        let event = store.revert_block_operations(id, block_ptr_from, block_ptr_to)?;
+        self.send_store_event(&event)
     }
 
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
@@ -234,8 +268,11 @@ impl StoreTrait for ShardedStore {
     }
 
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
+        // TODO: Move the whole logic here so that we can do all of this
+        // in one txn
         let store = self.store(&id)?;
-        store.deployment_synced(id)
+        let event = store.deployment_synced(id)?;
+        Ok(self.send_store_event(&event)?)
     }
 
     fn create_subgraph_deployment(
@@ -249,8 +286,12 @@ impl StoreTrait for ShardedStore {
     ) -> Result<(), StoreError> {
         // We only allow one shard (the primary) for now, so it is fine
         // to forward this to the primary store
-        self.primary
-            .create_subgraph_deployment(name, schema, deployment, node_id, network, mode)
+        let event = self
+            .primary
+            .create_subgraph_deployment(name, schema, deployment, node_id, network, mode)?;
+        // We should really try and send this event in the same transaction as
+        // making changes to assignments
+        self.send_store_event(&event)
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
@@ -258,7 +299,10 @@ impl StoreTrait for ShardedStore {
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        self.primary.remove_subgraph(name)
+        // TODO: Move the whole logic here so that we can do all of this
+        // in one txn
+        let event = self.primary.remove_subgraph(name)?;
+        self.send_store_event(&event)
     }
 
     fn reassign_subgraph(
@@ -266,7 +310,10 @@ impl StoreTrait for ShardedStore {
         id: &SubgraphDeploymentId,
         node_id: &prelude::NodeId,
     ) -> Result<(), StoreError> {
-        self.primary.reassign_subgraph(id, node_id)
+        // TODO: Move the whole logic here so that we can do all of this
+        // in one txn
+        let event = self.primary.reassign_subgraph(id, node_id)?;
+        self.send_store_event(&event)
     }
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {

@@ -783,12 +783,12 @@ impl Store {
         // replace == true is only used in tests; for non-test code, it must
         // be 'false'
         replace: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<(), StoreError> {
+        econn.transaction(|| -> Result<StoreEvent, StoreError> {
             let exists = metadata::deployment_exists(&econn.conn, &schema.id)?;
             let mut event = if replace || !exists {
                 let ops = deployment.create_operations(&schema.id);
@@ -806,7 +806,7 @@ impl Store {
                 metadata::create_subgraph_version(&econn.conn, name, &schema.id, node_id, mode)?;
             event.changes.extend(changes);
 
-            econn.send_store_event(&event)
+            Ok(event)
         })
     }
 
@@ -820,7 +820,7 @@ impl Store {
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         self.create_deployment_internal(
             name,
             PRIMARY_SHARD.to_string(),
@@ -1064,7 +1064,7 @@ impl Store {
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
         if mods
@@ -1080,7 +1080,7 @@ impl Store {
 
         let econn = self.get_entity_conn(&subgraph_id, ReplicaId::Main)?;
 
-        let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
+        let event = econn.transaction(|| -> Result<_, StoreError> {
             let block_ptr_from = Self::block_ptr_with_conn(&subgraph_id, &econn)?;
             if let Some(ref block_ptr_from) = block_ptr_from {
                 if block_ptr_from.number >= block_ptr_to.number {
@@ -1108,16 +1108,10 @@ impl Store {
 
             let metadata_event =
                 metadata::forward_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
-            Ok((event, metadata_event))
+            Ok(event.extend(metadata_event))
         })?;
 
-        // Send the events separately, because NOTIFY uses a global DB lock.
-        econn.transaction(|| {
-            econn.send_store_event(&metadata_event)?;
-            econn.send_store_event(&event)
-        })?;
-
-        Ok(())
+        Ok(event)
     }
 
     /// Apply a series of entity operations. Return `true` if the subgraph
@@ -1126,13 +1120,11 @@ impl Store {
         &self,
         _: &SubgraphDeploymentId,
         operations: Vec<MetadataOperation>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         let event =
             econn.transaction(|| self.apply_metadata_operations_with_conn(&econn, operations))?;
-
-        // Send the event separately, because NOTIFY uses a global DB lock.
-        econn.transaction(|| econn.send_store_event(&event))
+        Ok(event)
     }
 
     pub(crate) fn revert_block_operations(
@@ -1140,7 +1132,7 @@ impl Store {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number + 1 {
             panic!("revert_block_operations must revert a single block only");
@@ -1162,7 +1154,7 @@ impl Store {
         }
 
         let econn = self.get_entity_conn(&subgraph_id, ReplicaId::Main)?;
-        let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
+        let event = econn.transaction(|| -> Result<_, StoreError> {
             assert_eq!(
                 Some(block_ptr_from),
                 Self::block_ptr_with_conn(&subgraph_id, &econn)?
@@ -1172,14 +1164,10 @@ impl Store {
 
             let (event, count) = econn.revert_block(&block_ptr_from)?;
             econn.update_entity_count(count)?;
-            Ok((event, metadata_event))
+            Ok(event.extend(metadata_event))
         })?;
 
-        // Send the events separately, because NOTIFY uses a global DB lock.
-        econn.transaction(|| {
-            econn.send_store_event(&metadata_event)?;
-            econn.send_store_event(&event)
-        })
+        Ok(event)
     }
 
     pub(crate) fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
@@ -1219,7 +1207,7 @@ impl Store {
         node_id: NodeId,
         _network_name: String,
         mode: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         let shard = PRIMARY_SHARD.to_string();
         self.create_deployment_internal(name, shard, schema, deployment, node_id, mode, false)
     }
@@ -1229,12 +1217,11 @@ impl Store {
         econn.transaction(|| metadata::create_subgraph(&econn.conn, &name))
     }
 
-    pub(crate) fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
+    pub(crate) fn remove_subgraph(&self, name: SubgraphName) -> Result<StoreEvent, StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<(), StoreError> {
+        econn.transaction(|| -> Result<_, StoreError> {
             let changes = metadata::remove_subgraph(&econn.conn, name)?;
-            let event = StoreEvent::new(changes);
-            econn.send_store_event(&event)
+            Ok(StoreEvent::new(changes))
         })
     }
 
@@ -1242,12 +1229,11 @@ impl Store {
         &self,
         id: &SubgraphDeploymentId,
         node: &NodeId,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<(), StoreError> {
+        econn.transaction(|| -> Result<_, StoreError> {
             let changes = metadata::reassign_subgraph(&econn.conn, id, node)?;
-            let event = StoreEvent::new(changes);
-            econn.send_store_event(&event)
+            Ok(StoreEvent::new(changes))
         })
     }
 
@@ -1328,12 +1314,11 @@ impl Store {
         )))
     }
 
-    pub(crate) fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
+    pub(crate) fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<StoreEvent, Error> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         econn.transaction(|| {
             let changes = metadata::deployment_synced(&econn.conn, id)?;
-            econn.send_store_event(&StoreEvent::new(changes))?;
-            Ok(())
+            Ok(StoreEvent::new(changes))
         })
     }
 

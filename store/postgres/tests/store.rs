@@ -4,9 +4,9 @@ use graph_mock::MockMetricsRegistry;
 use graphql_parser::schema as s;
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::collections::HashSet;
 use std::str::FromStr;
 use std::time::Duration;
+use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
 use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery};
@@ -958,8 +958,7 @@ fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityC
     }
 }
 
-// Get as many events as expected contains from stream and check that they
-// are equal to the expected events
+// Get as events until we've seen all the expected events or we time out waiting
 async fn check_events(
     stream: StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send>,
     expected: Vec<StoreEvent>,
@@ -971,22 +970,36 @@ async fn check_events(
         })
     }
 
-    let num_events_expected = expected.len() as u64;
-    let expected = as_set(expected.into_iter().map(|event| Arc::new(event)).collect());
-    let events = stream
-        .take(num_events_expected)
+    let expected = Mutex::new(as_set(
+        expected.into_iter().map(|event| Arc::new(event)).collect(),
+    ));
+    // Capture extra changes here; this is only needed for debugging, really.
+    // It's permissible that we get more changes than we expected because of
+    // how store events group changes together
+    let extra: Mutex<HashSet<EntityChange>> = Mutex::new(HashSet::new());
+    // Get events from the store until we've either seen all the changes we
+    // expected or we timed out waiting for them
+    stream
+        .take_while(|event| {
+            let mut expected = expected.lock().unwrap();
+            for change in &event.changes {
+                if !expected.remove(&change) {
+                    extra.lock().unwrap().insert(change.clone());
+                }
+            }
+            future::ok(!expected.is_empty())
+        })
         .collect()
         .timeout(Duration::from_secs(3))
         .await
-        .expect("timed out waiting for events")
+        .expect(&format!(
+            "timed out waiting for events\n  still waiting for {:?}\n  got extra events {:?}",
+            expected.lock().unwrap().clone(),
+            extra.lock().unwrap().clone()
+        ))
         .expect("something went wrong getting events");
-
-    let changes = as_set(events);
-    // Test expected and events for equality in a way that produces
-    // useful errors when it goes wrong
-    let empty = HashSet::new();
-    assert_eq!(empty, changes.difference(&expected).collect());
-    assert_eq!(empty, expected.difference(&changes).collect());
+    // Check again that we really got everything
+    assert_eq!(HashSet::new(), expected.lock().unwrap().clone());
 }
 
 // Subscribe to store events from the store. This implementation works
