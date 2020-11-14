@@ -155,6 +155,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
         id: TEST_SUBGRAPH_ID.clone(),
         location: "/ipfs/test".to_owned(),
         spec_version: "1".to_owned(),
+        features: Default::default(),
         description: None,
         repository: None,
         schema: TEST_SUBGRAPH_SCHEMA.clone(),
@@ -1613,6 +1614,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             id: subgraph_id.clone(),
             location: "/ipfs/test".to_owned(),
             spec_version: "1".to_owned(),
+            features: Default::default(),
             description: None,
             repository: None,
             schema: schema.clone(),
@@ -1956,6 +1958,7 @@ fn handle_large_string_with_index() {
                     make_insert_op(TWO, &other_text),
                 ],
                 stopwatch_metrics,
+                Vec::new(),
             )
             .expect("Failed to insert large text");
 

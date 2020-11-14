@@ -146,6 +146,7 @@ fn create_subgraph() {
             id: id.clone(),
             location: String::new(),
             spec_version: "1".to_owned(),
+            features: Default::default(),
             description: None,
             repository: None,
             schema: schema.clone(),
