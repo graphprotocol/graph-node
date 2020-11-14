@@ -441,24 +441,6 @@ impl SubgraphDeploymentEntity {
         ops
     }
 
-    /// When starting the subgraph, we try to "unfail" it.
-    pub fn unfail_operations(
-        id: &SubgraphDeploymentId,
-        new_health: SubgraphHealth,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            failed: false,
-            health: new_health,
-            fatalError: Value::Null,
-        };
-
-        vec![update_metadata_operation(
-            Self::TYPENAME,
-            id.as_str(),
-            entity,
-        )]
-    }
-
     pub fn fail_operations(
         id: &SubgraphDeploymentId,
         error: SubgraphError,
@@ -474,21 +456,6 @@ impl SubgraphDeploymentEntity {
             error.create_operation(error_id),
             update_metadata_operation(Self::TYPENAME, id.as_str(), entity),
         ]
-    }
-
-    pub fn update_synced_operations(
-        id: &SubgraphDeploymentId,
-        synced: bool,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            synced: synced,
-        };
-
-        vec![update_metadata_operation(
-            Self::TYPENAME,
-            id.as_str(),
-            entity,
-        )]
     }
 }
 
