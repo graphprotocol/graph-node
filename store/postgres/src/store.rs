@@ -32,8 +32,8 @@ use graph::prelude::{
     EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
     EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
     QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox,
-    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName,
-    TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    SubgraphDeploymentId, SubgraphEntityPair, SubgraphName, TransactionAbortError, Value,
+    BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -145,16 +145,16 @@ pub enum ReplicaId {
 /// `Store.subgraph_cache`. Only immutable subgraph data can be cached this
 /// way as the cache lives for the lifetime of the `Store` object
 #[derive(Clone)]
-struct SubgraphInfo {
+pub(crate) struct SubgraphInfo {
     /// The schema as supplied by the user
-    input: Arc<Schema>,
+    pub(crate) input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
-    api: Arc<ApiSchema>,
+    pub(crate) api: Arc<ApiSchema>,
     /// The name of the network from which the subgraph is syncing
-    network: Option<String>,
+    pub(crate) network: Option<String>,
     /// The block number at which this subgraph was grafted onto
     /// another one. We do not allow reverting past this block
-    graft_block: Option<BlockNumber>,
+    pub(crate) graft_block: Option<BlockNumber>,
 }
 
 pub struct StoreInner {
@@ -299,7 +299,7 @@ impl Store {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.api_schema(&key.subgraph_id)?;
+        let schema = self.subgraph_info(&key.subgraph_id)?.api;
         let types_for_interface = schema.types_for_interface();
         let types_with_shared_interface = Vec::from_iter(
             schema
@@ -688,7 +688,10 @@ impl Store {
         Ok(storage.clone())
     }
 
-    fn subgraph_info(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SubgraphInfo, Error> {
+    pub(crate) fn subgraph_info(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<SubgraphInfo, Error> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }
@@ -1279,7 +1282,7 @@ impl Store {
             .filter(dsl::hash.eq(format!("{:x}", hash)))
             .first(&*self.get_conn()?)
             .optional()?;
-        let subgraph_network = self.network_name(subgraph_id)?;
+        let subgraph_network = self.subgraph_info(subgraph_id)?.network;
         block
             .map(|(number, network_name)| {
                 if subgraph_network.is_none() || Some(&network_name) == subgraph_network.as_ref() {
@@ -1340,20 +1343,6 @@ impl Store {
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         econn.transaction(|| crate::dynds::load(&econn.conn, id.as_str()))
-    }
-}
-
-impl SubgraphDeploymentStore for Store {
-    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.input)
-    }
-
-    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.api)
-    }
-
-    fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.network)
     }
 }
 

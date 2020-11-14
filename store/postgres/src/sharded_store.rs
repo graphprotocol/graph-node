@@ -10,9 +10,8 @@ use graph::{
     prelude::{
         self,
         web3::types::{Address, H256},
-        BlockNumber, DynTryFuture, Error, EthereumBlockPointer, EthereumCallCache, NodeId,
-        Store as StoreTrait, SubgraphDeploymentEntity, SubgraphDeploymentId,
-        SubgraphDeploymentStore, SubgraphVersionSwitchingMode, PRIMARY_SHARD,
+        ApiSchema, BlockNumber, DynTryFuture, Error, EthereumBlockPointer, EthereumCallCache,
+        Store as StoreTrait, SubgraphDeploymentId, SubgraphDeploymentStore, PRIMARY_SHARD,
     },
 };
 use prelude::{
@@ -75,9 +74,9 @@ impl ShardedStore {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
-        node_id: NodeId,
-        mode: SubgraphVersionSwitchingMode,
+        deployment: prelude::SubgraphDeploymentEntity,
+        node_id: prelude::NodeId,
+        mode: prelude::SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         // This works because we only allow one shard for now
         self.primary
@@ -345,23 +344,21 @@ impl StoreTrait for ShardedStore {
     }
 }
 
+/// Methods similar to those for SubgraphDeploymentStore
 impl SubgraphDeploymentStore for ShardedStore {
-    fn input_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<Schema>, failure::Error> {
-        let store = self.store(&id)?;
-        store.input_schema(id)
+    fn input_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+        let info = self.store(&id)?.subgraph_info(id)?;
+        Ok(info.input)
     }
 
-    fn api_schema(
-        &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<Arc<prelude::ApiSchema>, failure::Error> {
-        let store = self.store(&id)?;
-        store.api_schema(id)
+    fn api_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error> {
+        let info = self.store(&id)?.subgraph_info(id)?;
+        Ok(info.api)
     }
 
-    fn network_name(&self, id: &SubgraphDeploymentId) -> Result<Option<String>, failure::Error> {
-        let store = self.store(&id)?;
-        store.network_name(id)
+    fn network_name(&self, id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {
+        let info = self.store(&id)?.subgraph_info(id)?;
+        Ok(info.network)
     }
 }
 
