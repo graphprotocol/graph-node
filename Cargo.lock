@@ -2159,9 +2159,9 @@ dependencies = [
 
 [[package]]
 name = "ipfs-api"
-version = "0.7.2"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9e7fbfe5c8cb04c27fe20bf2624354f4d102652fd465a297a924c24e60aba4a"
+checksum = "e93cd854b7d68085b438401625317dc38b88a7c586cdea09ccdbe19cb49ac55b"
 dependencies = [
  "bytes 0.5.6",
  "dirs 2.0.2",
