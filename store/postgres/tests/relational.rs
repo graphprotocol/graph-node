@@ -620,11 +620,13 @@ fn conflicting_entity() {
     })
 }
 
-fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
-    let mut expected_entity_ids: Vec<String> =
-        expected_entity_ids.into_iter().map(str::to_owned).collect();
+struct QueryChecker<'a> {
+    conn: &'a PgConnection,
+    layout: &'a Layout,
+}
 
-    run_test(move |conn, layout| -> Result<(), ()> {
+impl<'a> QueryChecker<'a> {
+    fn new(conn: &'a PgConnection, layout: &'a Layout) -> Self {
         insert_users(conn, layout);
         update_user_entity(
             conn,
@@ -641,11 +643,16 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
         );
         insert_pets(conn, layout);
 
+        Self { conn, layout }
+    }
+
+    fn check(self, expected_entity_ids: Vec<&'static str>, query: EntityQuery) -> Self {
         let unordered = matches!(query.order, EntityOrder::Unordered);
-        let entities = layout
+        let entities = self
+            .layout
             .query::<Entity>(
                 &*LOGGER,
-                conn,
+                self.conn,
                 query.collection,
                 query.filter,
                 query.order,
@@ -664,15 +671,17 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
             })
             .collect();
 
+        let mut expected_entity_ids: Vec<String> =
+            expected_entity_ids.into_iter().map(str::to_owned).collect();
+
         if unordered {
             entity_ids.sort();
             expected_entity_ids.sort();
         }
 
         assert_eq!(entity_ids, expected_entity_ids);
-
-        Ok(())
-    })
+        self
+    }
 }
 
 fn query(entity_types: Vec<&str>) -> EntityQuery {
@@ -710,644 +719,478 @@ impl EasyOrder for EntityQuery {
 }
 
 #[test]
-fn find_interface() {
-    test_find(vec!["garfield", "pluto"], query(vec!["Cat", "Dog"]));
+fn check_find() {
+    run_test(move |conn, layout| -> Result<(), ()> {
+        // find with interfaces
+        let checker = QueryChecker::new(conn, layout)
+            .check(vec!["garfield", "pluto"], query(vec!["Cat", "Dog"]))
+            .check(
+                vec!["pluto", "garfield"],
+                query(vec!["Cat", "Dog"]).desc("name"),
+            )
+            .check(
+                vec!["garfield"],
+                query(vec!["Cat", "Dog"])
+                    .filter(EntityFilter::StartsWith("name".into(), Value::from("Gar")))
+                    .desc("name"),
+            )
+            .check(
+                vec!["pluto", "garfield"],
+                query(vec!["Cat", "Dog"]).desc("id"),
+            )
+            .check(
+                vec!["garfield", "pluto"],
+                query(vec!["Cat", "Dog"]).asc("id"),
+            )
+            .check(
+                vec!["garfield", "pluto"],
+                query(vec!["Cat", "Dog"]).unordered(),
+            );
 
-    test_find(
-        vec!["pluto", "garfield"],
-        query(vec!["Cat", "Dog"]).desc("name"),
-    );
+        // fulltext
+        let checker = checker
+            .check(
+                vec!["3"],
+                user_query().filter(EntityFilter::Equal("userSearch".into(), "Shaq:*".into())),
+            )
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::Equal(
+                    "userSearch".into(),
+                    "Jono & achangedemail@email.com".into(),
+                )),
+            );
 
-    test_find(
-        vec!["garfield"],
-        query(vec!["Cat", "Dog"])
-            .filter(EntityFilter::StartsWith("name".into(), Value::from("Gar")))
-            .desc("name"),
-    );
+        // list contains
+        fn drinks_query(v: Vec<&str>) -> EntityQuery {
+            let drinks: Option<Value> = Some(v.into());
+            user_query().filter(EntityFilter::Contains("drinks".into(), drinks.into()))
+        }
 
-    // Test that we can order by id
-    test_find(
-        vec!["pluto", "garfield"],
-        query(vec!["Cat", "Dog"]).desc("id"),
-    );
+        let checker = checker
+            .check(vec!["2"], drinks_query(vec!["beer"]))
+            // Reverse of how we stored it
+            .check(vec!["3"], drinks_query(vec!["tea", "coffee"]))
+            .check(vec![], drinks_query(vec!["beer", "tea"]))
+            .check(vec![], drinks_query(vec!["beer", "water"]))
+            .check(vec![], drinks_query(vec!["beer", "wine", "water"]));
 
-    test_find(
-        vec!["garfield", "pluto"],
-        query(vec!["Cat", "Dog"]).asc("id"),
-    );
-
-    test_find(
-        vec!["garfield", "pluto"],
-        query(vec!["Cat", "Dog"]).unordered(),
-    );
-}
-
-#[test]
-fn find_string_contains() {
-    test_find(
-        vec!["2"],
-        user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
-    )
-}
-
-#[test]
-fn find_fulltext_prefix() {
-    test_find(
-        vec!["3"],
-        user_query().filter(EntityFilter::Equal("userSearch".into(), "Shaq:*".into())),
-    )
-}
-
-#[test]
-fn find_fulltext_and() {
-    test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::Equal(
-            "userSearch".into(),
-            "Jono & achangedemail@email.com".into(),
-        )),
-    )
-}
-
-#[test]
-fn find_list_contains() {
-    fn query(v: Vec<&str>) -> EntityQuery {
-        let drinks: Option<Value> = Some(v.into());
-        user_query().filter(EntityFilter::Contains("drinks".into(), drinks.into()))
-    }
-
-    test_find(vec!["2"], query(vec!["beer"]));
-    // Reverse of how we stored it
-    test_find(vec!["3"], query(vec!["tea", "coffee"]));
-    test_find(vec![], query(vec!["beer", "tea"]));
-    test_find(vec![], query(vec!["beer", "water"]));
-    test_find(vec![], query(vec!["beer", "wine", "water"]));
-}
-
-#[test]
-fn find_string_equal() {
-    test_find(
-        vec!["2"],
-        user_query().filter(EntityFilter::Equal("name".to_owned(), "Cindini".into())),
-    );
-
-    // Test that we can order by id
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::Equal("name".to_owned(), "Cindini".into()))
-            .desc("id"),
-    )
-}
-
-#[test]
-fn find_string_not_equal() {
-    test_find(
-        vec!["1", "3"],
-        user_query()
-            .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_string_greater_than() {
-    test_find(
-        vec!["3"],
-        user_query().filter(EntityFilter::GreaterThan("name".to_owned(), "Kundi".into())),
-    )
-}
-
-#[test]
-fn find_string_less_than_order_by_asc() {
-    test_find(
-        vec!["2", "1"],
-        user_query()
-            .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_string_less_than_order_by_desc() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_less_than_range() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::LessThan("name".to_owned(), "ZZZ".into()))
-            .desc("name")
-            .first(1)
-            .skip(1),
-    )
-}
-
-#[test]
-fn find_string_multiple_and() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::And(vec![
-                EntityFilter::LessThan("name".to_owned(), "Cz".into()),
-                EntityFilter::Equal("name".to_owned(), "Cindini".into()),
-            ]))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_ends_with() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_not_ends_with() {
-    test_find(
-        vec!["3", "1"],
-        user_query()
-            .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_in() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::In(
-                "name".to_owned(),
-                vec!["Jono".into(), "Nobody".into(), "Still nobody".into()],
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_empty_in() {
-    test_find(
-        vec![],
-        user_query().filter(EntityFilter::In("name".to_owned(), vec![])),
-    )
-}
-
-#[test]
-fn find_string_not_in() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "name".to_owned(),
-                vec!["Shaqueeena".into()],
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_float_equal() {
-    test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::Equal(
-            "weight".to_owned(),
-            Value::BigDecimal(184.4.into()),
-        )),
-    )
-}
-
-#[test]
-fn find_float_not_equal() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::Not(
-                "weight".to_owned(),
-                Value::BigDecimal(184.4.into()),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_float_greater_than() {
-    test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::GreaterThan(
-            "weight".to_owned(),
-            Value::BigDecimal(160.0.into()),
-        )),
-    )
-}
-
-#[test]
-fn find_float_less_than() {
-    test_find(
-        vec!["2", "3"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "weight".to_owned(),
-                Value::BigDecimal(160.0.into()),
-            ))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_float_less_than_order_by_desc() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "weight".to_owned(),
-                Value::BigDecimal(160.0.into()),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_float_less_than_range() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "weight".to_owned(),
-                Value::BigDecimal(161.0.into()),
-            ))
-            .desc("name")
-            .first(1)
-            .skip(1),
-    )
-}
-
-#[test]
-fn find_float_in() {
-    test_find(
-        vec!["3", "1"],
-        user_query()
-            .filter(EntityFilter::In(
-                "weight".to_owned(),
-                vec![
+        // string attributes
+        let checker = checker
+            .check(
+                vec!["2"],
+                user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
+            )
+            .check(
+                vec!["2"],
+                user_query().filter(EntityFilter::Equal("name".to_owned(), "Cindini".into())),
+            )
+            // Test that we can order by id
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::Equal("name".to_owned(), "Cindini".into()))
+                    .desc("id"),
+            )
+            .check(
+                vec!["1", "3"],
+                user_query()
+                    .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
+                    .asc("name"),
+            )
+            .check(
+                vec!["3"],
+                user_query().filter(EntityFilter::GreaterThan("name".to_owned(), "Kundi".into())),
+            )
+            .check(
+                vec!["2", "1"],
+                user_query()
+                    .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
+                    .asc("name"),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::LessThan("name".to_owned(), "ZZZ".into()))
+                    .desc("name")
+                    .first(1)
+                    .skip(1),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::And(vec![
+                        EntityFilter::LessThan("name".to_owned(), "Cz".into()),
+                        EntityFilter::Equal("name".to_owned(), "Cindini".into()),
+                    ]))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
+                    .desc("name"),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "name".to_owned(),
+                        vec!["Jono".into(), "Nobody".into(), "Still nobody".into()],
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec![],
+                user_query().filter(EntityFilter::In("name".to_owned(), vec![])),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "name".to_owned(),
+                        vec!["Shaqueeena".into()],
+                    ))
+                    .desc("name"),
+            );
+        // float attributes
+        let checker = checker
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::Equal(
+                    "weight".to_owned(),
                     Value::BigDecimal(184.4.into()),
-                    Value::BigDecimal(111.7.into()),
-                ],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
+                )),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::Not(
+                        "weight".to_owned(),
+                        Value::BigDecimal(184.4.into()),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::GreaterThan(
+                    "weight".to_owned(),
+                    Value::BigDecimal(160.0.into()),
+                )),
+            )
+            .check(
+                vec!["2", "3"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "weight".to_owned(),
+                        Value::BigDecimal(160.0.into()),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "weight".to_owned(),
+                        Value::BigDecimal(160.0.into()),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "weight".to_owned(),
+                        Value::BigDecimal(161.0.into()),
+                    ))
+                    .desc("name")
+                    .first(1)
+                    .skip(1),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "weight".to_owned(),
+                        vec![
+                            Value::BigDecimal(184.4.into()),
+                            Value::BigDecimal(111.7.into()),
+                        ],
+                    ))
+                    .desc("name")
+                    .first(5),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "weight".to_owned(),
+                        vec![
+                            Value::BigDecimal(184.4.into()),
+                            Value::BigDecimal(111.7.into()),
+                        ],
+                    ))
+                    .desc("name")
+                    .first(5),
+            );
 
-#[test]
-fn find_float_not_in() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "weight".to_owned(),
-                vec![
-                    Value::BigDecimal(184.4.into()),
-                    Value::BigDecimal(111.7.into()),
-                ],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
+        // int attributes
+        let checker = checker
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67 as i32)))
+                    .desc("name"),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::Not("age".to_owned(), Value::Int(67 as i32)))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::GreaterThan(
+                    "age".to_owned(),
+                    Value::Int(43 as i32),
+                )),
+            )
+            .check(
+                vec!["2", "1"],
+                user_query()
+                    .filter(EntityFilter::GreaterOrEqual(
+                        "age".to_owned(),
+                        Value::Int(43 as i32),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["2", "3"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "age".to_owned(),
+                        Value::Int(50 as i32),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["2", "3"],
+                user_query()
+                    .filter(EntityFilter::LessOrEqual(
+                        "age".to_owned(),
+                        Value::Int(43 as i32),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "age".to_owned(),
+                        Value::Int(50 as i32),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "age".to_owned(),
+                        Value::Int(67 as i32),
+                    ))
+                    .desc("name")
+                    .first(1)
+                    .skip(1),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "age".to_owned(),
+                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            )
+            .check(
+                vec!["3"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "age".to_owned(),
+                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            );
 
-#[test]
-fn find_int_equal() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67 as i32)))
-            .desc("name"),
-    )
-}
+        // bool attributes
+        let checker = checker
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1", "3"],
+                user_query()
+                    .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
+                    .asc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "coffee".to_owned(),
+                        vec![Value::Bool(true)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "coffee".to_owned(),
+                        vec![Value::Bool(true)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            );
+        // misc tests
+        let checker = checker
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::Equal(
+                        "bin_name".to_owned(),
+                        Value::Bytes("Jono".as_bytes().into()),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["3"],
+                user_query()
+                    .filter(EntityFilter::Equal(
+                        "favorite_color".to_owned(),
+                        Value::Null,
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "favorite_color".to_owned(),
+                        vec![Value::Null],
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "favorite_color".to_owned(),
+                        vec!["red".into(), Value::Null],
+                    ))
+                    .desc("name"),
+            )
+            .check(vec!["3", "2", "1"], user_query().asc("weight"))
+            .check(vec!["1", "2", "3"], user_query().desc("weight"))
+            .check(vec!["1", "2", "3"], user_query().unordered())
+            .check(vec!["1", "2", "3"], user_query().asc("id"))
+            .check(vec!["3", "2", "1"], user_query().desc("id"))
+            .check(vec!["1", "2", "3"], user_query().unordered())
+            .check(vec!["3", "2", "1"], user_query().asc("age"))
+            .check(vec!["1", "2", "3"], user_query().desc("age"))
+            .check(vec!["2", "1", "3"], user_query().asc("name"))
+            .check(vec!["3", "1", "2"], user_query().desc("name"))
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::And(vec![EntityFilter::Or(vec![
+                        EntityFilter::Equal("id".to_owned(), Value::from("1")),
+                        EntityFilter::Equal("id".to_owned(), Value::from("2")),
+                    ])]))
+                    .asc("id"),
+            );
 
-#[test]
-fn find_int_not_equal() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::Not("age".to_owned(), Value::Int(67 as i32)))
-            .desc("name"),
-    )
-}
+        // enum attributes
+        let checker = checker
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::Equal(
+                        "favorite_color".to_owned(),
+                        "red".into(),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::Not("favorite_color".to_owned(), "red".into()))
+                    .asc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "favorite_color".to_owned(),
+                        vec!["red".into()],
+                    ))
+                    .desc("name")
+                    .first(5),
+            )
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "favorite_color".to_owned(),
+                        vec!["red".into()],
+                    ))
+                    .desc("name")
+                    .first(5),
+            );
 
-#[test]
-fn find_int_greater_than() {
-    test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::GreaterThan(
-            "age".to_owned(),
-            Value::Int(43 as i32),
-        )),
-    )
-}
+        // empty and / or
 
-#[test]
-fn find_int_greater_or_equal() {
-    test_find(
-        vec!["2", "1"],
-        user_query()
-            .filter(EntityFilter::GreaterOrEqual(
-                "age".to_owned(),
-                Value::Int(43 as i32),
-            ))
-            .asc("name"),
-    )
-}
+        // It's somewhat arbitrary that we define empty 'or' and 'and' to
+        // be 'true' and 'false'; it's mostly this way since that's what the
+        // JSONB storage filters do
 
-#[test]
-fn find_int_less_than() {
-    test_find(
-        vec!["2", "3"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "age".to_owned(),
-                Value::Int(50 as i32),
-            ))
-            .asc("name"),
-    )
-}
+        checker
+            // An empty 'or' is 'false'
+            .check(
+                vec![],
+                user_query().filter(EntityFilter::And(vec![EntityFilter::Or(vec![])])),
+            )
+            // An empty 'and' is 'true'
+            .check(
+                vec!["1", "2", "3"],
+                user_query().filter(EntityFilter::Or(vec![EntityFilter::And(vec![])])),
+            );
 
-#[test]
-fn find_int_less_or_equal() {
-    test_find(
-        vec!["2", "3"],
-        user_query()
-            .filter(EntityFilter::LessOrEqual(
-                "age".to_owned(),
-                Value::Int(43 as i32),
-            ))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_int_less_than_order_by_desc() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "age".to_owned(),
-                Value::Int(50 as i32),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_int_less_than_range() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "age".to_owned(),
-                Value::Int(67 as i32),
-            ))
-            .desc("name")
-            .first(1)
-            .skip(1),
-    )
-}
-
-#[test]
-fn find_int_in() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::In(
-                "age".to_owned(),
-                vec![Value::Int(67 as i32), Value::Int(43 as i32)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_int_not_in() {
-    test_find(
-        vec!["3"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "age".to_owned(),
-                vec![Value::Int(67 as i32), Value::Int(43 as i32)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_bool_equal() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_bool_not_equal() {
-    test_find(
-        vec!["1", "3"],
-        user_query()
-            .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_bool_in() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::In(
-                "coffee".to_owned(),
-                vec![Value::Bool(true)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_bool_not_in() {
-    test_find(
-        vec!["3", "1"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "coffee".to_owned(),
-                vec![Value::Bool(true)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_bytes_equal() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::Equal(
-                "bin_name".to_owned(),
-                Value::Bytes("Jono".as_bytes().into()),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_null_equal() {
-    test_find(
-        vec!["3"],
-        user_query()
-            .filter(EntityFilter::Equal(
-                "favorite_color".to_owned(),
-                Value::Null,
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_null_not_equal() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_null_not_in() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "favorite_color".to_owned(),
-                vec![Value::Null],
-            ))
-            .desc("name"),
-    );
-
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "favorite_color".to_owned(),
-                vec!["red".into(), Value::Null],
-            ))
-            .desc("name"),
-    );
-}
-
-#[test]
-fn find_order_by_float() {
-    test_find(vec!["3", "2", "1"], user_query().asc("weight"));
-    test_find(vec!["1", "2", "3"], user_query().desc("weight"));
-    test_find(vec!["1", "2", "3"], user_query().unordered());
-}
-
-#[test]
-fn find_order_by_id() {
-    test_find(vec!["1", "2", "3"], user_query().asc("id"));
-    test_find(vec!["3", "2", "1"], user_query().desc("id"));
-    test_find(vec!["1", "2", "3"], user_query().unordered());
-}
-
-#[test]
-fn find_order_by_int() {
-    test_find(vec!["3", "2", "1"], user_query().asc("age"));
-    test_find(vec!["1", "2", "3"], user_query().desc("age"));
-}
-
-#[test]
-fn find_order_by_string() {
-    test_find(vec!["2", "1", "3"], user_query().asc("name"));
-    test_find(vec!["3", "1", "2"], user_query().desc("name"));
-}
-
-#[test]
-fn find_where_nested_and_or() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::And(vec![EntityFilter::Or(vec![
-                EntityFilter::Equal("id".to_owned(), Value::from("1")),
-                EntityFilter::Equal("id".to_owned(), Value::from("2")),
-            ])]))
-            .asc("id"),
-    )
-}
-
-#[test]
-fn find_enum_equal() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::Equal(
-                "favorite_color".to_owned(),
-                "red".into(),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_enum_not_equal() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::Not("favorite_color".to_owned(), "red".into()))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_enum_in() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::In(
-                "favorite_color".to_owned(),
-                vec!["red".into()],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_enum_not_in() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "favorite_color".to_owned(),
-                vec!["red".into()],
-            ))
-            .desc("name")
-            .first(5),
-    )
+        Ok(())
+    })
 }
 
 // We call our test strings aN so that
@@ -1519,23 +1362,4 @@ fn text_not_in() {
     text_find(vec!["a1", "a2", "a2b"], filter(vec![&a3]));
     text_find(vec!["a2b", "a3"], filter(vec![&a1, &a2]));
     text_find(vec!["a2", "a2b"], filter(vec![&a1, &a3]));
-}
-
-#[test]
-fn find_empty_and_or() {
-    // It's somewhat arbitrary that we define empty 'or' and 'and' to
-    // be 'true' and 'false'; it's mostly this way since that's what the
-    // JSONB storage filters do
-
-    // An empty 'or' is 'false'
-    test_find(
-        vec![],
-        user_query().filter(EntityFilter::And(vec![EntityFilter::Or(vec![])])),
-    );
-
-    // An empty 'and' is 'true'
-    test_find(
-        vec!["1", "2", "3"],
-        user_query().filter(EntityFilter::Or(vec![EntityFilter::And(vec![])])),
-    )
 }
