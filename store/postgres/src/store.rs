@@ -7,8 +7,7 @@ use futures03::FutureExt as _;
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::status;
 use graph::prelude::{
-    CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
-    SubgraphVersionSwitchingMode, TryFutureExt, PRIMARY_SHARD,
+    CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats, TryFutureExt,
 };
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -467,7 +466,7 @@ impl Store {
         Ok(())
     }
 
-    fn apply_metadata_operations_with_conn(
+    pub(crate) fn apply_metadata_operations_with_conn(
         &self,
         econn: &e::Connection,
         operations: Vec<MetadataOperation>,
@@ -668,7 +667,7 @@ impl Store {
     /// the Store. Storage objects with a pending migration can not be
     /// cached for longer than a transaction since they might change
     /// without us knowing
-    fn storage(
+    pub(crate) fn storage(
         &self,
         conn: &PgConnection,
         subgraph: &SubgraphDeploymentId,
@@ -770,66 +769,6 @@ impl Store {
                  or `latestEthereumBlockNumber`"
             )),
         }
-    }
-
-    fn create_deployment_internal(
-        &self,
-        name: SubgraphName,
-        shard: String,
-        schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
-        node_id: NodeId,
-        mode: SubgraphVersionSwitchingMode,
-        // replace == true is only used in tests; for non-test code, it must
-        // be 'false'
-        replace: bool,
-    ) -> Result<StoreEvent, StoreError> {
-        #[cfg(not(debug_assertions))]
-        assert!(!replace);
-
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<StoreEvent, StoreError> {
-            let exists = metadata::deployment_exists(&econn.conn, &schema.id)?;
-            let mut event = if replace || !exists {
-                let ops = deployment.create_operations(&schema.id);
-                self.apply_metadata_operations_with_conn(&econn, ops)?
-            } else {
-                StoreEvent::new(vec![])
-            };
-
-            if !exists {
-                econn.create_schema(shard, schema)?;
-            }
-
-            // Create subgraph, subgraph version, and assignment
-            let changes =
-                metadata::create_subgraph_version(&econn.conn, name, &schema.id, node_id, mode)?;
-            event.changes.extend(changes);
-
-            Ok(event)
-        })
-    }
-
-    // Only for tests to simplify their handling of test fixtures, so that
-    // tests can reset the block pointer of a subgraph by recreating it
-    #[cfg(debug_assertions)]
-    pub fn create_deployment_replace(
-        &self,
-        name: SubgraphName,
-        schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
-        node_id: NodeId,
-        mode: SubgraphVersionSwitchingMode,
-    ) -> Result<StoreEvent, StoreError> {
-        self.create_deployment_internal(
-            name,
-            PRIMARY_SHARD.to_string(),
-            schema,
-            deployment,
-            node_id,
-            mode,
-            true,
-        )
     }
 
     pub(crate) fn deployment_statuses(
@@ -1198,20 +1137,20 @@ impl Store {
         .await?;
         Ok(())
     }
-
-    pub(crate) fn create_subgraph_deployment(
-        &self,
-        name: SubgraphName,
-        schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
-        node_id: NodeId,
-        _network_name: String,
-        mode: SubgraphVersionSwitchingMode,
-    ) -> Result<StoreEvent, StoreError> {
-        let shard = PRIMARY_SHARD.to_string();
-        self.create_deployment_internal(name, shard, schema, deployment, node_id, mode, false)
-    }
-
+    /*
+        pub(crate) fn create_subgraph_deployment(
+            &self,
+            name: SubgraphName,
+            schema: &Schema,
+            deployment: SubgraphDeploymentEntity,
+            node_id: NodeId,
+            _network_name: String,
+            mode: SubgraphVersionSwitchingMode,
+        ) -> Result<StoreEvent, StoreError> {
+            let shard = PRIMARY_SHARD.to_string();
+            self.create_deployment_internal(name, shard, schema, deployment, node_id, mode, false)
+        }
+    */
     pub(crate) fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         econn.transaction(|| metadata::create_subgraph(&econn.conn, &name))

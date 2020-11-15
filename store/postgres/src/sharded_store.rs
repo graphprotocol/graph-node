@@ -1,28 +1,29 @@
 use std::str::FromStr;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 
-use diesel::Connection;
+use diesel::{Connection, PgConnection};
 
 use graph::{
     components::store,
-    data::subgraph::schema::MetadataType,
-    data::subgraph::{schema::SubgraphError, status},
+    data::subgraph::schema::SubgraphError,
+    data::subgraph::schema::{MetadataType, SUBGRAPHS_ID},
+    data::subgraph::status,
     prelude::StoreEvent,
+    prelude::SubgraphDeploymentEntity,
     prelude::{
-        self, serde_json,
+        anyhow, serde_json,
         web3::types::{Address, H256},
-        ApiSchema, BlockNumber, DynTryFuture, Error, EthereumBlockPointer, EthereumCallCache,
-        Store as StoreTrait, SubgraphDeploymentId, SubgraphDeploymentStore, PRIMARY_SHARD,
+        ApiSchema, BlockNumber, DeploymentState, DynTryFuture, Entity, EntityKey,
+        EntityModification, EntityQuery, Error, EthereumBlockPointer, EthereumCallCache, Logger,
+        MetadataOperation, NodeId, QueryExecutionError, QueryStore, Schema, StopwatchMetrics,
+        Store as StoreTrait, StoreError, StoreEventStreamBox, SubgraphDeploymentId,
+        SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName, SubgraphVersionSwitchingMode,
+        PRIMARY_SHARD,
     },
-};
-use prelude::{
-    anyhow, DeploymentState, Entity, EntityKey, EntityModification, EntityQuery, Logger,
-    MetadataOperation, QueryExecutionError, QueryStore, Schema, StopwatchMetrics, StoreError,
-    StoreEventStreamBox, SubgraphEntityPair, SubgraphName,
 };
 use store::StoredDynamicDataSource;
 
-use crate::store::Store;
+use crate::store::{ReplicaId, Store};
 use crate::{detail, metadata, notification_listener::JsonNotification};
 
 #[cfg(debug_assertions)]
@@ -68,7 +69,9 @@ impl ShardedStore {
     }
 
     fn shard(&self, id: &SubgraphDeploymentId) -> Result<String, StoreError> {
-        self.primary.shard(id)
+        let conn = self.primary.get_conn()?;
+        let storage = self.primary.storage(&conn, id)?;
+        Ok(storage.shard.clone())
     }
 
     fn store(&self, id: &SubgraphDeploymentId) -> Result<&Arc<Store>, StoreError> {
@@ -78,6 +81,53 @@ impl ShardedStore {
             .ok_or(StoreError::UnknownShard(shard))
     }
 
+    fn create_deployment_internal(
+        &self,
+        name: SubgraphName,
+        shard: String,
+        schema: &Schema,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
+        // replace == true is only used in tests; for non-test code, it must
+        // be 'false'
+        replace: bool,
+    ) -> Result<(), StoreError> {
+        #[cfg(not(debug_assertions))]
+        assert!(!replace);
+
+        let deployment_store = self
+            .stores
+            .get(&shard)
+            .ok_or_else(|| StoreError::UnknownShard(shard.clone()))?;
+        let econn = deployment_store.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
+        let mut event = econn.transaction(|| -> Result<_, StoreError> {
+            let exists = metadata::deployment_exists(&econn.conn, &schema.id)?;
+            let event = if replace || !exists {
+                let ops = deployment.create_operations(&schema.id);
+                deployment_store.apply_metadata_operations_with_conn(&econn, ops)?
+            } else {
+                StoreEvent::new(vec![])
+            };
+
+            if !exists {
+                econn.create_schema(shard, schema)?;
+            }
+
+            Ok(event)
+        })?;
+
+        let conn = self.primary.get_conn()?;
+        conn.transaction(|| -> Result<_, StoreError> {
+            // Create subgraph, subgraph version, and assignment
+            let changes =
+                metadata::create_subgraph_version(&conn, name, &schema.id, node_id, mode)?;
+            event.changes.extend(changes);
+            self.send_store_event_with_conn(&conn, &event)?;
+            Ok(())
+        })
+    }
+
     // Only for tests to simplify their handling of test fixtures, so that
     // tests can reset the block pointer of a subgraph by recreating it
     #[cfg(debug_assertions)]
@@ -85,19 +135,27 @@ impl ShardedStore {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        deployment: prelude::SubgraphDeploymentEntity,
-        node_id: prelude::NodeId,
-        mode: prelude::SubgraphVersionSwitchingMode,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         // This works because we only allow one shard for now
-        let event = self
-            .primary
-            .create_deployment_replace(name, schema, deployment, node_id, mode)?;
-        self.send_store_event(&event)
+        self.create_deployment_internal(
+            name,
+            PRIMARY_SHARD.to_string(),
+            schema,
+            deployment,
+            node_id,
+            mode,
+            true,
+        )
     }
 
-    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
-        let conn = self.primary.get_conn()?;
+    fn send_store_event_with_conn(
+        &self,
+        conn: &PgConnection,
+        event: &StoreEvent,
+    ) -> Result<(), StoreError> {
         let v = serde_json::to_value(event)?;
         #[cfg(debug_assertions)]
         {
@@ -106,6 +164,11 @@ impl ShardedStore {
             }
         }
         JsonNotification::send("store_events", &v, &conn)
+    }
+
+    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
+        let conn = self.primary.get_conn()?;
+        self.send_store_event_with_conn(&conn, event)
     }
 }
 
@@ -279,19 +342,15 @@ impl StoreTrait for ShardedStore {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        deployment: prelude::SubgraphDeploymentEntity,
-        node_id: prelude::NodeId,
-        network: String,
-        mode: prelude::SubgraphVersionSwitchingMode,
+        deployment: SubgraphDeploymentEntity,
+        node_id: NodeId,
+        _network: String,
+        mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         // We only allow one shard (the primary) for now, so it is fine
         // to forward this to the primary store
-        let event = self
-            .primary
-            .create_subgraph_deployment(name, schema, deployment, node_id, network, mode)?;
-        // We should really try and send this event in the same transaction as
-        // making changes to assignments
-        self.send_store_event(&event)
+        let shard = PRIMARY_SHARD.to_string();
+        self.create_deployment_internal(name, shard, schema, deployment, node_id, mode, false)
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
@@ -308,7 +367,7 @@ impl StoreTrait for ShardedStore {
     fn reassign_subgraph(
         &self,
         id: &SubgraphDeploymentId,
-        node_id: &prelude::NodeId,
+        node_id: &NodeId,
     ) -> Result<(), StoreError> {
         // TODO: Move the whole logic here so that we can do all of this
         // in one txn
@@ -384,8 +443,8 @@ impl StoreTrait for ShardedStore {
     async fn fail_subgraph(
         &self,
         id: SubgraphDeploymentId,
-        error: graph::data::subgraph::schema::SubgraphError,
-    ) -> Result<(), prelude::anyhow::Error> {
+        error: SubgraphError,
+    ) -> Result<(), StoreError> {
         let store = self.store(&id).map_err(|e| anyhow::anyhow!(e))?;
         store.fail_subgraph(id, error).await
     }
