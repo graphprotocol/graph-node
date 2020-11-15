@@ -120,20 +120,11 @@ lazy_static! {
 fn run_test<R, F>(test: F)
 where
     F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
-    R: IntoFuture<Item = ()> + Send + 'static,
-    R::Error: Send + Debug,
-    R::Future: Send,
+    R: std::future::Future<Output = ()> + Send + 'static,
 {
-    let store = STORE.clone();
-
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
-    runtime
-        .block_on(async {
+    run_test_sequentially(
+        || (),
+        |store, ()| async move {
             // Reset state before starting
             remove_test_data(store.clone());
 
@@ -141,9 +132,9 @@ where
             insert_test_data(store.clone());
 
             // Run test
-            test(store).into_future().compat().await
-        })
-        .unwrap_or_else(|e| panic!("Failed to run Store test: {:?}", e));
+            test(store).await
+        },
+    );
 }
 
 /// Inserts test data into the store.
@@ -308,7 +299,7 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId)
 
 #[test]
 fn delete_entity() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: USER.to_owned(),
@@ -335,15 +326,13 @@ fn delete_entity() {
 
         // Check that that the deleted entity id is not present
         assert!(store.get(entity_key).unwrap().is_none());
-
-        Ok(())
     })
 }
 
 /// Check that user 1 was inserted correctly
 #[test]
 fn get_entity_1() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: USER.to_owned(),
@@ -372,15 +361,13 @@ fn get_entity_1() {
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
-
-        Ok(())
     })
 }
 
 /// Check that user 3 was updated correctly
 #[test]
 fn get_entity_3() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: USER.to_owned(),
@@ -409,14 +396,12 @@ fn get_entity_3() {
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
-
-        Ok(())
     })
 }
 
 #[test]
 fn insert_entity() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: USER.to_owned(),
@@ -447,14 +432,12 @@ fn insert_entity() {
 
         // Check that new record is in the store
         store.get(entity_key).unwrap().unwrap();
-
-        Ok(())
     })
 }
 
 #[test]
 fn update_existing() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: USER.to_owned(),
@@ -499,14 +482,12 @@ fn update_existing() {
         new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(store.get(entity_key).unwrap(), Some(new_data));
-
-        Ok(())
     })
 }
 
 #[test]
 fn partially_update_existing() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: USER.to_owned(),
@@ -549,8 +530,6 @@ fn partially_update_existing() {
         assert_eq!(updated_entity.get("age"), original_entity.get("age"));
         assert_eq!(updated_entity.get("weight"), original_entity.get("weight"));
         assert_eq!(updated_entity.get("coffee"), original_entity.get("coffee"));
-
-        Ok(())
     })
 }
 
@@ -558,7 +537,7 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
     let expected_entity_ids: Vec<String> =
         expected_entity_ids.into_iter().map(str::to_owned).collect();
 
-    run_test(move |store| -> Result<(), ()> {
+    run_test(|store| async move {
         let entities = store
             .find(query)
             .expect("store.find failed to execute query");
@@ -573,8 +552,6 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
             .collect();
 
         assert_eq!(entity_ids, expected_entity_ids);
-
-        Ok(())
     })
 }
 
@@ -1119,10 +1096,10 @@ fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityC
 
 // Get as many events as expected contains from stream and check that they
 // are equal to the expected events
-fn check_events(
+async fn check_events(
     stream: StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send>,
     expected: Vec<StoreEvent>,
-) -> impl Future<Item = (), Error = tokio::time::Elapsed> {
+) {
     fn as_set(events: Vec<Arc<StoreEvent>>) -> HashSet<EntityChange> {
         events.into_iter().fold(HashSet::new(), |mut set, event| {
             set.extend(event.changes.iter().map(|change| change.clone()));
@@ -1132,19 +1109,20 @@ fn check_events(
 
     let num_events_expected = expected.len() as u64;
     let expected = as_set(expected.into_iter().map(|event| Arc::new(event)).collect());
-    stream
+    let events = stream
         .take(num_events_expected)
         .collect()
         .timeout(Duration::from_secs(3))
-        .map_ok(move |events| {
-            let events = as_set(events.unwrap());
-            // Test expected and events for equality in a way that produces
-            // useful errors when it goes wrong
-            let empty = HashSet::new();
-            assert_eq!(empty, events.difference(&expected).collect());
-            assert_eq!(empty, expected.difference(&events).collect());
-        })
-        .compat()
+        .await
+        .expect("timed out waiting for events")
+        .expect("something went wrong getting events");
+
+    let changes = as_set(events);
+    // Test expected and events for equality in a way that produces
+    // useful errors when it goes wrong
+    let empty = HashSet::new();
+    assert_eq!(empty, changes.difference(&expected).collect());
+    assert_eq!(empty, expected.difference(&changes).collect());
 }
 
 // Subscribe to store events from the store. This implementation works
@@ -1213,12 +1191,12 @@ fn subscribe_and_consume(
     StoreEventStream::new(source)
 }
 
-fn check_basic_revert(
+async fn check_basic_revert(
     store: Arc<DieselStore>,
     expected: StoreEvent,
     subgraph_id: &SubgraphDeploymentId,
     entity_type: &str,
-) -> impl Future<Item = (), Error = tokio::time::Elapsed> {
+) {
     let this_query = user_query()
         .filter(EntityFilter::Equal(
             "name".to_owned(),
@@ -1263,12 +1241,12 @@ fn check_basic_revert(
         assert_eq!(subgraph_id, &state.id);
     }
 
-    check_events(subscription, vec![expected])
+    check_events(subscription, vec![expected]).await
 }
 
 #[test]
 fn revert_block_basic_user() {
-    run_test(|store| {
+    run_test(|store| async move {
         let expected = StoreEvent::new(vec![make_entity_change(
             USER,
             "3",
@@ -1276,29 +1254,27 @@ fn revert_block_basic_user() {
         )]);
 
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, USER).and_then(move |x| {
-            assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
-            Ok(x)
-        })
+        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, USER).await;
+        assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
     })
 }
 
 #[test]
 fn revert_block_basic_subgraphs() {
-    run_test(|store| {
+    run_test(|store| async move {
         let expected = StoreEvent::new(vec![make_deployment_change(
             "testsubgraph",
             EntityChangeOperation::Set,
         )]);
         let subgraphs = SubgraphDeploymentId::new("subgraphs").unwrap();
 
-        check_basic_revert(store.clone(), expected, &subgraphs, "SubgraphDeployment")
+        check_basic_revert(store.clone(), expected, &subgraphs, "SubgraphDeployment").await
     })
 }
 
 #[test]
 fn revert_block_with_delete() {
-    run_test(|store| {
+    run_test(|store| async move {
         let this_query = user_query()
             .filter(EntityFilter::Equal(
                 "name".to_owned(),
@@ -1360,13 +1336,13 @@ fn revert_block_with_delete() {
         )]);
 
         // The last event is the one for the reversion
-        check_events(subscription, vec![expected])
+        check_events(subscription, vec![expected]).await
     })
 }
 
 #[test]
 fn revert_block_with_partial_update() {
-    run_test(|store| {
+    run_test(|store| async move {
         let entity_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
             entity_type: USER.to_owned(),
@@ -1425,7 +1401,7 @@ fn revert_block_with_partial_update() {
             EntityChangeOperation::Set,
         )]);
 
-        check_events(subscription, vec![expected])
+        check_events(subscription, vec![expected]).await
     })
 }
 
@@ -1481,7 +1457,7 @@ fn mock_data_source() -> DataSource {
 
 #[test]
 fn revert_block_with_dynamic_data_source_operations() {
-    run_test(|store| {
+    run_test(|store| async move {
         // Create operations to add a user
         let user_key = EntityKey {
             subgraph_id: TEST_SUBGRAPH_ID.clone(),
@@ -1612,13 +1588,13 @@ fn revert_block_with_dynamic_data_source_operations() {
                 .into_iter(),
             ),
         }];
-        check_events(subscription, expected_events)
+        check_events(subscription, expected_events).await
     })
 }
 
 #[test]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
-    run_test(|store| {
+    run_test(|store| async move {
         let subgraph_id = SubgraphDeploymentId::new("EntityChangeTestSubgraph").unwrap();
         let schema =
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
@@ -1738,9 +1714,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             }]),
         ];
 
-        // FIXME: This does not await, meaning calling this doesn't
-        // do anything. But, waiting here causes the test to hang.
-        let _ignore_future = check_events(meta_subscription, meta_expected);
+        check_events(meta_subscription, meta_expected).await;
 
         // We're expecting two events to be written to the subscription stream
         let expected = vec![
@@ -1774,13 +1748,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ]),
         ];
 
-        check_events(subscription, expected)
+        check_events(subscription, expected).await
     })
 }
 
 #[test]
 fn throttle_subscription_delivers() {
-    run_test(|store| {
+    run_test(|store| async move {
         let meta_subscription =
             subscribe_and_consume(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment")
                 .throttle_while_syncing(
@@ -1832,61 +1806,54 @@ fn throttle_subscription_delivers() {
             EntityChangeOperation::Set,
         )]);
 
-        check_events(subscription, vec![expected])
+        check_events(subscription, vec![expected]).await
     })
 }
 
 #[test]
 fn throttle_subscription_throttles() {
-    run_test(
-        |store| -> Box<dyn Future<Item = (), Error = TimeoutError<()>> + Send> {
-            // Throttle for a very long time (30s)
-            let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER)
-                .throttle_while_syncing(
-                    &*LOGGER,
-                    store.clone().query_store(&TEST_SUBGRAPH_ID, true).unwrap(),
-                    TEST_SUBGRAPH_ID.clone(),
-                    Duration::from_secs(30),
-                );
-
-            let user4 = create_test_entity(
-                "4",
-                USER,
-                "Steve",
-                "nieve@email.com",
-                72 as i32,
-                120.7,
-                false,
-                None,
+    run_test(|store| async move {
+        // Throttle for a very long time (30s)
+        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER)
+            .throttle_while_syncing(
+                &*LOGGER,
+                store.clone().query_store(&TEST_SUBGRAPH_ID, true).unwrap(),
+                TEST_SUBGRAPH_ID.clone(),
+                Duration::from_secs(30),
             );
 
-            transact_entity_operations(
-                &store,
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                vec![user4],
-            )
-            .unwrap();
+        let user4 = create_test_entity(
+            "4",
+            USER,
+            "Steve",
+            "nieve@email.com",
+            72 as i32,
+            120.7,
+            false,
+            None,
+        );
 
-            // Make sure we time out waiting for the subscription
-            Box::new(
-                subscription
-                    .take(1)
-                    .collect()
-                    .timeout(Duration::from_millis(500))
-                    .compat()
-                    .then(|res| {
-                        assert!(res.is_err());
-                        future::ok(())
-                    }),
-            )
-        },
-    )
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            vec![user4],
+        )
+        .unwrap();
+
+        // Make sure we time out waiting for the subscription
+        let res = subscription
+            .take(1)
+            .collect()
+            .timeout(Duration::from_millis(500))
+            .await;
+        assert!(res.is_err());
+    })
 }
 
 #[test]
 fn subgraph_schema_types_have_subgraph_id_directive() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let schema = store
             .api_schema(&TEST_SUBGRAPH_ID)
             .expect("test subgraph should have a schema");
@@ -1921,7 +1888,6 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
                 )]
             );
         }
-        Ok(())
     })
 }
 
@@ -1945,7 +1911,7 @@ fn handle_large_string_with_index() {
         EntityModification::Insert { key, data }
     };
 
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         // We have to produce a massive string (1_000_000 chars) because
         // the repeated text compresses so well. This leads to an error
         // 'index row requires 11488 bytes, maximum size is 8191' if
@@ -2011,8 +1977,6 @@ fn handle_large_string_with_index() {
 
         // Users with name 'Cindini' and 'Johnton'
         assert_eq!(vec!["2", "1"], ids);
-
-        Ok(())
     })
 }
 
@@ -2160,7 +2124,7 @@ fn window() {
         make_person("p2", "red", 15),
     ];
 
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
             .expect("Failed to create test users");
 
@@ -2221,15 +2185,13 @@ fn window() {
                 vec!["10", "11", "2", "4", "5", "6", "7", "8", "9", "p2"],
                 "q9",
             );
-
-        Ok(())
     });
 }
 
 #[test]
 fn find_at_block() {
     fn shaqueeena_at_block(block: BlockNumber, email: &'static str) {
-        run_test(move |store| -> Result<(), ()> {
+        run_test(move |store| async move {
             let mut query = user_query()
                 .filter(EntityFilter::Equal("name".to_owned(), "Shaqueeena".into()))
                 .desc("name");
@@ -2242,8 +2204,6 @@ fn find_at_block() {
             assert_eq!(1, entities.len());
             let entity = entities.first().unwrap();
             assert_eq!(Some(&Value::from(email)), entity.get("email"));
-
-            Ok(())
         })
     }
 
@@ -2254,14 +2214,13 @@ fn find_at_block() {
 
 #[test]
 fn cleanup_cached_blocks() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         // This test is somewhat silly in that there is nothing to clean up.
         // The main purpose for this test is to ensure that the SQL query
         // we run in `cleanup_cached_blocks` to figure out the first block
         // that should be removed is syntactically correct
         let cleaned = store.cleanup_cached_blocks(10).expect("cleanup succeeds");
         assert_eq!((0, 0), cleaned);
-        Ok(())
     })
 }
 
@@ -2308,7 +2267,7 @@ fn reorg_tracking() {
 
     // Check that reorg_count, max_reorg_depth, and latest_ethereum_block_number
     // are reported correctly in DeploymentState
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         check_state!(store, 0, 0, 2);
 
         // Jump to block 4
@@ -2380,7 +2339,5 @@ fn reorg_tracking() {
             )
             .unwrap();
         check_state!(store, 5, 3, 2);
-
-        Ok(())
     })
 }
