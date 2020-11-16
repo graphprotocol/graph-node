@@ -54,6 +54,7 @@ mock! {
     }
 }
 
+#[async_trait]
 impl Store for MockStore {
     fn block_ptr(
         &self,
@@ -148,6 +149,14 @@ impl Store for MockStore {
             max_reorg_depth: 0,
             latest_ethereum_block_number: 0,
         })
+    }
+
+    async fn fail_subgraph(
+        &self,
+        _: SubgraphDeploymentId,
+        _: SubgraphError,
+    ) -> Result<(), anyhow::Error> {
+        unimplemented!()
     }
 
     fn create_subgraph_deployment(

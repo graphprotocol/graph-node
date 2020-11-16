@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graph::{
+    data::subgraph::schema::SubgraphError,
     data::subgraph::status,
     prelude::{
         anyhow, ethabi,
@@ -51,6 +52,7 @@ impl NetworkStore {
     }
 }
 
+#[async_trait::async_trait]
 impl StoreTrait for NetworkStore {
     fn block_ptr(
         &self,
@@ -170,6 +172,14 @@ impl StoreTrait for NetworkStore {
         id: graph::prelude::SubgraphDeploymentId,
     ) -> Result<graph::prelude::DeploymentState, graph::prelude::StoreError> {
         self.store.deployment_state_from_id(id)
+    }
+
+    async fn fail_subgraph(
+        &self,
+        id: SubgraphDeploymentId,
+        error: SubgraphError,
+    ) -> Result<(), anyhow::Error> {
+        self.store.fail_subgraph(id, error).await
     }
 
     fn create_subgraph_deployment(

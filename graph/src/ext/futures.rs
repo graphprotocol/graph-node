@@ -1,9 +1,11 @@
+use crate::prelude::StoreError;
+use crate::util::error::CompatErr;
 use failure::Error;
 use futures::future::Fuse;
 use futures::prelude::{Future, Poll, Stream};
 use futures::sync::oneshot;
 use futures03::compat::{Compat01As03, Future01CompatExt};
-use std::fmt;
+use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -257,25 +259,35 @@ impl<F: Future> FutureExtension for F {
     }
 }
 
-#[derive(Debug)]
-pub enum CancelableError<E = Error> {
+#[derive(thiserror::Error, Debug)]
+pub enum CancelableError<E: Display + Debug> {
+    #[error("operation canceled")]
     Cancel,
+
+    #[error("{0:}")]
     Error(E),
 }
 
-impl<E: From<Error>> From<Error> for CancelableError<E> {
+// TODO : comment out?
+impl<E: From<Error> + Display + Debug> From<Error> for CancelableError<E> {
     fn from(e: Error) -> Self {
         Self::Error(e.into())
     }
 }
 
-impl<E> From<Canceled> for CancelableError<E> {
+impl From<crate::prelude::StoreError> for CancelableError<anyhow::Error> {
+    fn from(e: StoreError) -> Self {
+        Self::Error(failure::Error::from(e).compat_err())
+    }
+}
+
+impl<E: Display + Debug> From<Canceled> for CancelableError<E> {
     fn from(_: Canceled) -> Self {
         Self::Cancel
     }
 }
 
-impl From<diesel::result::Error> for CancelableError<Error> {
+impl From<diesel::result::Error> for CancelableError<anyhow::Error> {
     fn from(e: diesel::result::Error) -> Self {
         Self::Error(e.into())
     }
@@ -284,17 +296,5 @@ impl From<diesel::result::Error> for CancelableError<Error> {
 impl From<anyhow::Error> for CancelableError<anyhow::Error> {
     fn from(e: anyhow::Error) -> Self {
         Self::Error(e)
-    }
-}
-
-impl<E> fmt::Display for CancelableError<E>
-where
-    E: fmt::Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CancelableError::Error(e) => e.fmt(f),
-            CancelableError::Cancel => write!(f, "operation canceled"),
-        }
     }
 }

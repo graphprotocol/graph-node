@@ -23,16 +23,16 @@ use tokio::sync::Semaphore;
 use graph::components::store::{EntityCollection, QueryStore, Store as StoreTrait};
 use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{
-    SubgraphDeploymentEntity, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
+    SubgraphDeploymentEntity, SubgraphError, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
 };
 use graph::prelude::{
     anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, warn, web3,
-    ApiSchema, BigInt, BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey,
-    EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlockPointer,
-    EthereumCallCache, Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema,
-    StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox, SubgraphDeploymentId,
-    SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName, TransactionAbortError, Value,
-    BLOCK_NUMBER_MAX,
+    ApiSchema, BigInt, BlockNumber, CheapClone, CompatErr, DeploymentState, DynTryFuture, Entity,
+    EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
+    EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
+    QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName,
+    TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -528,8 +528,8 @@ impl Store {
             + FnOnce(
                 &PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
-            ) -> Result<T, CancelableError>,
-    ) -> Result<T, Error> {
+            ) -> Result<T, CancelableError<anyhow::Error>>,
+    ) -> Result<T, anyhow::Error> {
         let _permit = CONNECTION_LIMITER.acquire().await;
         let store = self.clone();
 
@@ -543,7 +543,7 @@ impl Store {
 
             // A failure to establish a connection is propagated as though the
             // closure failed.
-            let conn = store.get_conn()?;
+            let conn = store.get_conn().compat_err()?;
 
             // It is possible time has passed while establishing a connection.
             // Time to check for cancel.
@@ -576,8 +576,10 @@ impl Store {
     async fn with_entity_conn<T: Send + 'static>(
         &self,
         subgraph: &SubgraphDeploymentId,
-        f: impl 'static + Send + FnOnce(&e::Connection, &CancelHandle) -> Result<T, CancelableError>,
-    ) -> Result<T, Error> {
+        f: impl 'static
+            + Send
+            + FnOnce(&e::Connection, &CancelHandle) -> Result<T, CancelableError<anyhow::Error>>,
+    ) -> Result<T, anyhow::Error> {
         let store = self.cheap_clone();
         // Unfortunate clone in order to pass a 'static closure to with_conn.
         let subgraph = subgraph.clone();
@@ -595,17 +597,13 @@ impl Store {
                     "total time spent getting an entity connection",
                     subgraph.as_str(),
                 )
-                .map_err(Into::<Error>::into)?
+                .map_err(|e| CancelableError::Error(e.into()))?
                 .inc_by(start.elapsed().as_secs_f64());
 
             cancel_handle.check_cancel()?;
-            let storage = store
-                .storage(&conn, &subgraph)
-                .map_err(Into::<Error>::into)?;
+            let storage = store.storage(&conn, &subgraph)?;
             cancel_handle.check_cancel()?;
-            let metadata = store
-                .storage(&conn, &*SUBGRAPHS_ID)
-                .map_err(Into::<Error>::into)?;
+            let metadata = store.storage(&conn, &*SUBGRAPHS_ID)?;
             cancel_handle.check_cancel()?;
             let conn = e::Connection::new(conn.into(), storage, metadata);
 
@@ -844,6 +842,7 @@ impl Store {
     }
 }
 
+#[async_trait::async_trait]
 impl StoreTrait for Store {
     fn block_ptr(
         &self,
@@ -888,9 +887,11 @@ impl StoreTrait for Store {
                         return Ok(None);
                     }
 
-                    conn.transaction::<_, CancelableError, _>(move || {
+                    conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
                         let latest_block_ptr =
-                            match Self::block_ptr_with_conn(&subgraph_id_inner, conn)? {
+                            match Self::block_ptr_with_conn(&subgraph_id_inner, conn)
+                                .compat_err()?
+                            {
                                 Some(inner) => inner,
                                 None => return Ok(None),
                             };
@@ -908,7 +909,7 @@ impl StoreTrait for Store {
                         // similar to most determinism bugs in that money is on the line.
                         let block_number = self_inner
                             .block_number(&subgraph_id_inner, block_hash)
-                            .map_err(|e| CancelableError::Error(e.into()))?;
+                            .map_err(|e| CancelableError::from(e))?;
                         let block_number = match block_number {
                             Some(n) => n.try_into().unwrap(),
                             None => return Ok(None),
@@ -938,7 +939,7 @@ impl StoreTrait for Store {
                                 block_number.try_into().unwrap(),
                                 None,
                             )
-                            .map_err(Error::from)?;
+                            .map_err(anyhow::Error::from)?;
 
                         Ok(Some((entities, block_number)))
                     })
@@ -955,10 +956,10 @@ impl StoreTrait for Store {
             let mut by_causality_region = entities
                 .into_iter()
                 .map(|e| {
-                    let causality_region = e.id()?;
+                    let causality_region = e.id().compat_err()?;
                     let digest = match e.get("digest") {
                         Some(Value::Bytes(b)) => Ok(b.to_owned()),
-                        other => Err(format_err!(
+                        other => Err(anyhow::anyhow!(
                             "Entity has non-bytes digest attribute: {:?}",
                             other
                         )),
@@ -966,7 +967,7 @@ impl StoreTrait for Store {
 
                     Ok((causality_region, digest))
                 })
-                .collect::<Result<HashMap<_, _>, Error>>()?;
+                .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
             let block = EthereumBlockPointer {
                 number: block_number,
@@ -1193,6 +1194,18 @@ impl StoreTrait for Store {
             let conn = self.get_conn()?;
             metadata::deployment_state_from_id(&conn, id)
         }
+    }
+
+    async fn fail_subgraph(
+        &self,
+        id: SubgraphDeploymentId,
+        error: SubgraphError,
+    ) -> Result<(), anyhow::Error> {
+        self.with_conn(move |conn, _| {
+            metadata::fail_subgraph(&conn, &id, error).map_err(|e| e.into())
+        })
+        .await?;
+        Ok(())
     }
 
     fn create_subgraph_deployment(
