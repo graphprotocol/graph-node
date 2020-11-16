@@ -40,7 +40,7 @@ impl Config {
     /// be filled in from `opt` at the same time.
     fn validate(&mut self, opt: &Opt) -> Result<()> {
         if !self.stores.contains_key(PRIMARY) {
-            return Err(anyhow!("missing a primary store".to_string()));
+            return Err(anyhow!("missing a primary store"));
         }
         for (key, shard) in self.stores.iter_mut() {
             validate_name(key)?;
@@ -102,7 +102,7 @@ pub struct Shard {
     pub connection: String,
     #[serde(default = "one")]
     pub weight: usize,
-    #[serde(default = "zero")]
+    #[serde(default)]
     pub pool_size: u32,
     pub replicas: BTreeMap<String, Replica>,
 }
