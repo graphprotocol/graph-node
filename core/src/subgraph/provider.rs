@@ -102,7 +102,7 @@ where
 
         info!(logger, "Resolve subgraph files using IPFS");
 
-        async move {
+        if let Err(e) = async move {
             let mut subgraph = SubgraphManifest::resolve(
                 Link { link },
                 self.resolver.deref(),
@@ -145,7 +145,8 @@ where
             }
             Ok(())
         }
-        .map_err(move |e| {
+        .await
+        {
             error!(
                 logger_for_err,
                 "Failed to resolve subgraph files using IPFS";
@@ -160,13 +161,11 @@ where
                 deterministic: false,
             };
 
-            let _ignore_error = store.apply_metadata_operations(
-                &subgraph_id,
-                SubgraphDeploymentEntity::fail_operations(&subgraph_id, error),
-            );
-            e
-        })
-        .await
+            let _ignore_error = store.fail_subgraph(subgraph_id, error).await;
+            return Err(e);
+        }
+
+        Ok(())
     }
 
     async fn stop(&self, id: SubgraphDeploymentId) -> Result<(), SubgraphAssignmentProviderError> {

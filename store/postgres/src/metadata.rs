@@ -7,16 +7,18 @@ use diesel::prelude::{
 };
 use diesel::sql_types::Text;
 use graph::data::subgraph::schema::{
-    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphManifestEntity, SUBGRAPHS_ID,
+    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphError, SubgraphManifestEntity,
+    SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bigdecimal::ToPrimitive, entity, format_err, web3::types::H256, BigDecimal, BlockNumber,
-    DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, MetadataOperation,
-    NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId,
-    SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
+    anyhow, bigdecimal::ToPrimitive, entity, format_err, hex, web3::types::H256, BigDecimal,
+    BlockNumber, DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer,
+    MetadataOperation, NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity,
+    SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
 };
-use std::convert::TryFrom;
+use stable_hash::crypto::SetHasher;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{convert::TryFrom, ops::Bound};
 
 use crate::block_range::UNVERSIONED_RANGE;
 
@@ -749,6 +751,62 @@ pub fn reassign_subgraph(
             unreachable!()
         }
     }
+}
+
+// Does nothing if the error already exists. Returns the error id.
+fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::Result<String> {
+    use subgraph_error as e;
+
+    let error_id = hex::encode(&stable_hash::utils::stable_hash::<SetHasher, _>(&error));
+    let SubgraphError {
+        subgraph_id,
+        message,
+        handler,
+        block_ptr,
+        deterministic,
+    } = error;
+
+    let block_num = match block_ptr {
+        None => {
+            assert_eq!(deterministic, false);
+            crate::block_range::BLOCK_UNVERSIONED
+        }
+        Some(block) => crate::block_range::block_number(&block),
+    };
+
+    insert_into(e::table)
+        .values((
+            e::id.eq(&error_id),
+            e::subgraph_id.eq(subgraph_id.as_str()),
+            e::message.eq(message),
+            e::handler.eq(handler),
+            e::deterministic.eq(deterministic),
+            e::block_hash.eq(block_ptr.as_ref().map(|ptr| ptr.hash.as_bytes())),
+            e::block_number.eq(sql(&format!("{}::numeric", block_num))),
+            e::block_range.eq((Bound::Included(block_num), Bound::Unbounded)),
+        ))
+        .on_conflict_do_nothing()
+        .execute(conn)?;
+
+    Ok(error_id)
+}
+
+pub fn fail_subgraph(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    error: SubgraphError,
+) -> Result<(), anyhow::Error> {
+    use subgraph_deployment as d;
+
+    let error_id = insert_subgraph_error(conn, error)?;
+    update(d::table.filter(d::id.eq(id.as_str())))
+        .set((
+            d::failed.eq(true),
+            d::health.eq(SubgraphHealth::Failed),
+            d::fatal_error.eq(Some(error_id)),
+        ))
+        .execute(conn)?;
+    Ok(())
 }
 
 /// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as

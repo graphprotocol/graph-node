@@ -785,6 +785,7 @@ pub enum TransactionAbortError {
 }
 
 /// Common trait for store implementations.
+#[async_trait]
 pub trait Store: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(
@@ -882,6 +883,13 @@ pub trait Store: Send + Sync + 'static {
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError>;
+
+    /// Set subgraph status to failed with the given error as the cause.
+    async fn fail_subgraph(
+        &self,
+        id: SubgraphDeploymentId,
+        error: SubgraphError,
+    ) -> Result<(), anyhow::Error>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
@@ -1002,6 +1010,7 @@ mock! {
 pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
+#[async_trait]
 impl Store for MockStore {
     fn block_ptr(
         &self,
@@ -1090,6 +1099,14 @@ impl Store for MockStore {
         &self,
         _: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {
+        unimplemented!()
+    }
+
+    async fn fail_subgraph(
+        &self,
+        _: SubgraphDeploymentId,
+        _: SubgraphError,
+    ) -> Result<(), anyhow::Error> {
         unimplemented!()
     }
 

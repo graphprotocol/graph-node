@@ -561,10 +561,7 @@ where
                         deterministic: e.is_deterministic(),
                     };
 
-                    // Set subgraph status to Failed
-                    let status_ops = SubgraphDeploymentEntity::fail_operations(&id_for_err, error);
-                    if let Err(e) = store_for_err.apply_metadata_operations(&id_for_err, status_ops)
-                    {
+                    if let Err(e) = store_for_err.fail_subgraph(id_for_err.clone(), error).await {
                         error!(
                             &logger,
                             "Failed to set subgraph status to Failed: {}", e;
@@ -605,6 +602,12 @@ impl BlockProcessingError {
 impl From<failure::Error> for BlockProcessingError {
     fn from(e: failure::Error) -> Self {
         BlockProcessingError::Unknown(e.compat_err())
+    }
+}
+
+impl From<anyhow::Error> for BlockProcessingError {
+    fn from(e: anyhow::Error) -> Self {
+        BlockProcessingError::Unknown(e)
     }
 }
 

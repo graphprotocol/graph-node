@@ -19,8 +19,7 @@ use hex;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
-use stable_hash::utils::stable_hash;
-use stable_hash::{crypto::SetHasher, SequenceNumber, StableHash, StableHasher};
+use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{collections::BTreeMap, fmt::Display};
 use strum_macros::IntoStaticStr;
@@ -405,23 +404,6 @@ impl SubgraphDeploymentEntity {
         ));
 
         ops
-    }
-
-    pub fn fail_operations(
-        id: &SubgraphDeploymentId,
-        error: SubgraphError,
-    ) -> Vec<MetadataOperation> {
-        let error_id = hex::encode(&stable_hash::<SetHasher, _>(&error));
-
-        let mut entity = Entity::new();
-        entity.set("failed", true);
-        entity.set("health", SubgraphHealth::Failed);
-        entity.set("fatalError", error_id.clone());
-
-        vec![
-            error.create_operation(error_id),
-            update_metadata_operation(Self::TYPENAME, id.as_str(), entity),
-        ]
     }
 }
 
@@ -1308,40 +1290,6 @@ impl StableHash for SubgraphError {
         block_ptr.stable_hash(sequence_number.next_child(), state);
         handler.stable_hash(sequence_number.next_child(), state);
         deterministic.stable_hash(sequence_number.next_child(), state);
-    }
-}
-
-impl TypedEntity for SubgraphError {
-    const TYPENAME: MetadataType = MetadataType::SubgraphError;
-    type IdType = String;
-}
-
-impl SubgraphError {
-    fn create_operation(self, id: String) -> MetadataOperation {
-        let mut entity = Entity::from(self);
-        entity.set("id", id.clone());
-        set_metadata_operation(Self::TYPENAME, id, entity)
-    }
-}
-
-impl From<SubgraphError> for Entity {
-    fn from(subgraph_error: SubgraphError) -> Entity {
-        let SubgraphError {
-            subgraph_id,
-            message,
-            block_ptr,
-            handler,
-            deterministic,
-        } = subgraph_error;
-
-        let mut entity = Entity::new();
-        entity.set("subgraphId", subgraph_id.to_string());
-        entity.set("message", message);
-        entity.set("blockNumber", block_ptr.map(|x| x.number));
-        entity.set("blockHash", block_ptr.map(|x| x.hash));
-        entity.set("handler", handler);
-        entity.set("deterministic", deterministic);
-        entity
     }
 }
 

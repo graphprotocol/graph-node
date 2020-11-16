@@ -29,6 +29,7 @@ pub use task_spawn::{
 };
 
 pub use bytes;
+pub use stable_hash;
 pub use url;
 
 /// A prelude that makes all system component traits and data types available.
@@ -71,7 +72,7 @@ pub mod prelude {
     pub use tokio;
     pub use web3;
 
-    pub type DynTryFuture<'a, Ok = (), Err = Error> =
+    pub type DynTryFuture<'a, Ok = (), Err = anyhow::Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::components::ethereum::{
