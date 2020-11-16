@@ -5,7 +5,7 @@ use graph::prelude::{
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs::read_to_string;
 use url::Url;
 
@@ -17,7 +17,7 @@ use crate::opt::Opt;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     #[serde(rename = "store")]
-    stores: HashMap<String, Shard>,
+    stores: BTreeMap<String, Shard>,
     deployment: Deployment,
     ingestor: Ingestor,
 }
@@ -71,7 +71,7 @@ impl Config {
     fn from_opt(opt: &Opt) -> Result<Config> {
         let ingestor = Ingestor::from_opt(opt);
         let deployment = Deployment::from_opt(opt);
-        let mut stores = HashMap::new();
+        let mut stores = BTreeMap::new();
         stores.insert(PRIMARY.to_string(), Shard::from_opt(opt)?);
         Ok(Config {
             stores,
@@ -104,7 +104,7 @@ pub struct Shard {
     pub weight: usize,
     #[serde(default = "zero")]
     pub pool_size: u32,
-    pub replicas: HashMap<String, Replica>,
+    pub replicas: BTreeMap<String, Replica>,
 }
 
 fn check_pool_size(pool_size: u32, connection: &str) -> Result<()> {
@@ -140,7 +140,7 @@ impl Shard {
             .as_ref()
             .expect("validation checked that postgres_url is set");
         check_pool_size(opt.store_connection_pool_size, &postgres_url)?;
-        let mut replicas = HashMap::new();
+        let mut replicas = BTreeMap::new();
         for (i, host) in opt.postgres_secondary_hosts.iter().enumerate() {
             let replica = Replica {
                 connection: replace_host(&postgres_url, &host),
