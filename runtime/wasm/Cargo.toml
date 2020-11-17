@@ -29,5 +29,5 @@ graphql-parser = "0.2.3"
 graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
 test-store = { path = "../../store/test-store" }
-ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
+ipfs-api = { version = "=0.7.1", features = ["hyper-tls"] }
 graph-chain-arweave = { path = "../../chain/arweave" }
