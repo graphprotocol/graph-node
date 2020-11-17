@@ -757,6 +757,12 @@ impl From<Error> for StoreError {
     }
 }
 
+impl From<anyhow::Error> for StoreError {
+    fn from(e: anyhow::Error) -> Self {
+        StoreError::Unknown(e.compat_err())
+    }
+}
+
 impl From<serde_json::Error> for StoreError {
     fn from(e: serde_json::Error) -> Self {
         StoreError::Unknown(e.into())
@@ -844,7 +850,7 @@ pub trait Store: Send + Sync + 'static {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
-        deterministic_errors: Vec<anyhow::Error>,
+        deterministic_errors: Vec<SubgraphError>,
     ) -> Result<bool, StoreError>;
 
     /// Apply the specified metadata operations which only concern metadata
@@ -1065,7 +1071,7 @@ impl Store for MockStore {
         _block_ptr_to: EthereumBlockPointer,
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
-        _deterministic_errors: Vec<anyhow::Error>,
+        _deterministic_errors: Vec<SubgraphError>,
     ) -> Result<bool, StoreError> {
         unimplemented!()
     }

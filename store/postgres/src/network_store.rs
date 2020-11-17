@@ -123,7 +123,7 @@ impl StoreTrait for NetworkStore {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<graph::prelude::EntityModification>,
         stopwatch: graph::prelude::StopwatchMetrics,
-        deterministic_errors: Vec<anyhow::Error>,
+        deterministic_errors: Vec<SubgraphError>,
     ) -> Result<bool, graph::prelude::StoreError> {
         self.store.transact_block_operations(
             subgraph_id,

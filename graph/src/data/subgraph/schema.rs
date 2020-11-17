@@ -21,7 +21,7 @@ use rand::rngs::OsRng;
 use rand::Rng;
 use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
-use std::{collections::BTreeMap, fmt::Display};
+use std::{collections::BTreeMap, fmt, fmt::Display};
 use strum_macros::IntoStaticStr;
 use uuid::Uuid;
 use web3::types::*;
@@ -1274,6 +1274,19 @@ pub struct SubgraphError {
 
     // `true` if we are certain the error is determinsitic. If in doubt, this is `false`.
     pub deterministic: bool,
+}
+
+impl Display for SubgraphError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.message)?;
+        if let Some(handler) = &self.handler {
+            write!(f, " in handler `{}`", handler)?;
+        }
+        if let Some(block_ptr) = self.block_ptr {
+            write!(f, " at block {}", block_ptr)?;
+        }
+        Ok(())
+    }
 }
 
 impl StableHash for SubgraphError {

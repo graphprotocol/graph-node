@@ -1,5 +1,5 @@
 //! Utilities for dealing with subgraph metadata
-use diesel::dsl::{delete, insert_into, sql, update};
+use diesel::dsl::{delete, exists, insert_into, select, sql, update};
 use diesel::pg::PgConnection;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
@@ -845,26 +845,40 @@ pub fn unfail_deployment(conn: &PgConnection, id: &SubgraphDeploymentId) -> Resu
     Ok(())
 }
 
-/// Set the last healthy block for the subgraph.
-/// If already unhealthy, this is a no-op.
-pub fn set_unhealthy(
+/// Insert the errors and check if the subgraph needs to be set as unhealthy.
+pub(crate) fn insert_subgraph_errors(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
-    ptr: EthereumBlockPointer,
-) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
+    deterministic_errors: Vec<SubgraphError>,
+) -> Result<(), anyhow::Error> {
+    for error in deterministic_errors {
+        insert_subgraph_error(conn, error)?;
+    }
 
-    let number = format!("{}::numeric", ptr.number);
+    check_health(conn, id)
+}
+
+/// Checks if the subgraph is healthy or unhealthy as of the latest block, based on the presence of
+/// deterministic errors. Has no effect on failed subgraphs.
+fn check_health(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), anyhow::Error> {
+    use subgraph_deployment as d;
+    use subgraph_error as e;
+
+    // Errors have unbounded upper bounds so if one exists, it exists as of the latest block.
+    let has_errors =
+        select(exists(e::table.filter(e::subgraph_id.eq(id.as_str())))).get_result(conn)?;
+
+    let (new, old) = match has_errors {
+        true => (SubgraphHealth::Unhealthy, SubgraphHealth::Healthy),
+        false => (SubgraphHealth::Healthy, SubgraphHealth::Unhealthy),
+    };
 
     update(
         d::table
             .filter(d::id.eq(id.as_str()))
-            .filter(d::last_healthy_ethereum_block_hash.is_null()),
+            .filter(d::health.eq(old)),
     )
-    .set((
-        d::last_healthy_ethereum_block_number.eq(sql(&number)),
-        d::last_healthy_ethereum_block_hash.eq(ptr.hash.as_bytes()),
-    ))
+    .set(d::health.eq(new))
     .execute(conn)
     .map(|_| ())
     .map_err(|e| e.into())

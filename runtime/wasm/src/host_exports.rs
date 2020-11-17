@@ -48,7 +48,7 @@ impl From<failure::Error> for HostExportError {
 }
 
 pub(crate) struct HostExports {
-    subgraph_id: SubgraphDeploymentId,
+    pub(crate) subgraph_id: SubgraphDeploymentId,
     pub(crate) api_version: Version,
     data_source_name: String,
     data_source_address: Option<Address>,
