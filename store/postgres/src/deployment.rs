@@ -1,8 +1,10 @@
-//! Utilities for dealing with subgraph metadata
+//! Utilities for dealing with deployment metadata. Any connection passed
+//! into these methods must be for the shard that holds the actual
+//! deployment data and metadata
 use diesel::pg::PgConnection;
 use diesel::prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use diesel::{
-    dsl::{delete, exists, insert_into, select, sql, update},
+    dsl::{delete, insert_into, select, sql, update},
     sql_types::Integer,
 };
 use graph::{
@@ -43,7 +45,7 @@ table! {
         id -> Text,
         manifest -> Text,
         failed -> Bool,
-        health -> crate::metadata::SubgraphHealthMapping,
+        health -> crate::deployment::SubgraphHealthMapping,
         synced -> Bool,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
@@ -127,7 +129,7 @@ table! {
 /// return it. If `pending_only` is `true`, only return `Some(_)` if the
 /// deployment has not progressed past the graft point, i.e., data has not
 /// been copied for the graft
-fn deployment_graft(
+fn graft(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     pending_only: bool,
@@ -182,7 +184,7 @@ pub fn graft_pending(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
 ) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
-    deployment_graft(conn, id, true)
+    graft(conn, id, true)
 }
 
 /// Look up the graft point for the given subgraph in the database and
@@ -192,13 +194,10 @@ pub fn graft_point(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
 ) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
-    deployment_graft(conn, id, false)
+    graft(conn, id, false)
 }
 
-pub fn subgraph_schema(
-    conn: &PgConnection,
-    id: SubgraphDeploymentId,
-) -> Result<Schema, StoreError> {
+pub fn schema(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<Schema, StoreError> {
     // The subgraph of subgraphs schema is built-in and doesn't have a
     // SubgraphManifest in the database
     const SUBGRAPHS_SCHEMA: &str = include_str!("subgraphs.graphql");
@@ -216,7 +215,7 @@ pub fn subgraph_schema(
     res.map_err(|e| StoreError::Unknown(e))
 }
 
-pub fn subgraph_network(
+pub fn network(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
 ) -> Result<Option<String>, StoreError> {
@@ -360,10 +359,7 @@ fn latest_as_block_number(
     }
 }
 
-pub fn deployment_state_from_id(
-    conn: &PgConnection,
-    id: SubgraphDeploymentId,
-) -> Result<DeploymentState, StoreError> {
+pub fn state(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<DeploymentState, StoreError> {
     use subgraph_deployment as d;
 
     match d::table
@@ -413,7 +409,7 @@ pub fn set_synced(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), 
 }
 
 /// Returns `true` if the deployment `id` exists
-pub fn deployment_exists(conn: &PgConnection, id: &str) -> Result<bool, StoreError> {
+pub fn exists(conn: &PgConnection, id: &str) -> Result<bool, StoreError> {
     use subgraph_deployment as d;
 
     let exists = d::table
@@ -474,7 +470,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
     Ok(error_id)
 }
 
-pub fn fail_subgraph(
+pub fn fail(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     error: SubgraphError,
@@ -501,7 +497,7 @@ pub(crate) fn has_non_fatal_errors(
     use subgraph_error as e;
 
     let block = block.unwrap_or(BLOCK_NUMBER_MAX);
-    select(exists(
+    select(diesel::dsl::exists(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
             .filter(e::deterministic)
@@ -513,7 +509,7 @@ pub(crate) fn has_non_fatal_errors(
 
 /// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as
 /// healthy or unhealthy depending on whether it also had non-fatal errors
-pub fn unfail_deployment(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+pub fn unfail(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
     use subgraph_deployment as d;
     use SubgraphHealth::*;
 
@@ -626,7 +622,7 @@ fn subgraph_error() {
 
             assert!(count() == 0);
 
-            crate::metadata::insert_subgraph_error(&conn, error).unwrap();
+            crate::deployment::insert_subgraph_error(&conn, error).unwrap();
             assert!(count() == 1);
 
             let error = SubgraphError {
@@ -638,7 +634,7 @@ fn subgraph_error() {
             };
 
             // Inserting the same error is allowed but ignored.
-            crate::metadata::insert_subgraph_error(&conn, error).unwrap();
+            crate::deployment::insert_subgraph_error(&conn, error).unwrap();
             assert!(count() == 1);
 
             let error2 = SubgraphError {
@@ -649,7 +645,7 @@ fn subgraph_error() {
                 deterministic: false,
             };
 
-            crate::metadata::insert_subgraph_error(&conn, error2).unwrap();
+            crate::deployment::insert_subgraph_error(&conn, error2).unwrap();
             assert!(count() == 2);
 
             test_store::delete_all_entities_for_test_use_only(store.as_ref(), &conn).unwrap();

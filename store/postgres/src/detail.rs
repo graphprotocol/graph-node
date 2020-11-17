@@ -45,7 +45,7 @@ table! {
     }
 }
 
-use crate::metadata::subgraph_error;
+use crate::deployment::subgraph_error;
 
 allow_tables_to_appear_in_same_query!(subgraph_deployment_detail, subgraph_error);
 

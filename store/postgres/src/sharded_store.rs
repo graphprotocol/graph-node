@@ -24,7 +24,7 @@ use graph::{
 use store::StoredDynamicDataSource;
 
 use crate::store::{ReplicaId, Store};
-use crate::{metadata, notification_listener::JsonNotification, primary};
+use crate::{deployment, notification_listener::JsonNotification, primary};
 
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
@@ -102,7 +102,7 @@ impl ShardedStore {
             .ok_or_else(|| StoreError::UnknownShard(shard.clone()))?;
         let econn = deployment_store.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         let mut event = econn.transaction(|| -> Result<_, StoreError> {
-            let exists = metadata::deployment_exists(&econn.conn, &schema.id)?;
+            let exists = deployment::exists(&econn.conn, &schema.id)?;
             let event = if replace || !exists {
                 let ops = deployment.create_operations(&schema.id);
                 deployment_store.apply_metadata_operations_with_conn(&econn, ops)?
@@ -119,7 +119,7 @@ impl ShardedStore {
 
         let exists_and_synced = |id: &SubgraphDeploymentId| {
             let conn = self.store(&id)?.get_conn()?;
-            metadata::exists_and_synced(&conn, id.as_str())
+            deployment::exists_and_synced(&conn, id.as_str())
         };
 
         let conn = self.primary.get_conn()?;
@@ -348,7 +348,7 @@ impl StoreTrait for ShardedStore {
             let changes = primary::promote_deployment(&pconn, id)?;
             Ok(StoreEvent::new(changes))
         })?;
-        dconn.transaction(|| metadata::set_synced(&dconn, id))?;
+        dconn.transaction(|| deployment::set_synced(&dconn, id))?;
         Ok(self.send_store_event(&event)?)
     }
 

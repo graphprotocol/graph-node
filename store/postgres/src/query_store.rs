@@ -83,7 +83,7 @@ impl QueryStoreTrait for QueryStore {
     ) -> Result<bool, StoreError> {
         self.store
             .with_conn(move |conn, _| {
-                crate::metadata::has_non_fatal_errors(conn, &id, block).map_err(|e| e.into())
+                crate::deployment::has_non_fatal_errors(conn, &id, block).map_err(|e| e.into())
             })
             .await
     }

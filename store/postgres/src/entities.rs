@@ -42,7 +42,7 @@ use graph::prelude::{
 };
 
 use crate::block_range::block_number;
-use crate::metadata;
+use crate::deployment;
 use crate::relational::{Catalog, Layout};
 
 /// The size of string prefixes that we index. This is chosen so that we
@@ -149,7 +149,7 @@ impl Connection<'_> {
 
     /// Do any cleanup to bring the subgraph into a known good state
     pub(crate) fn start_subgraph(&self, logger: &Logger) -> Result<(), StoreError> {
-        let graft = metadata::graft_pending(&self.conn, &self.storage.subgraph)?;
+        let graft = deployment::graft_pending(&self.conn, &self.storage.subgraph)?;
         if let Some((base, block)) = graft {
             let layout = &self.storage;
             let start = Instant::now();
@@ -157,7 +157,7 @@ impl Connection<'_> {
             layout.copy_from(logger, &self.conn, &base, block, &self.metadata)?;
             // Set the block ptr to the graft point to signal that we successfully
             // performed the graft
-            metadata::forward_block_ptr(&self.conn, &self.storage.subgraph, block.clone())?;
+            deployment::forward_block_ptr(&self.conn, &self.storage.subgraph, block.clone())?;
             info!(logger, "Subgraph successfully initialized";
             "time_ms" => start.elapsed().as_millis());
         }
@@ -385,7 +385,7 @@ impl Connection<'_> {
         let layout =
             Layout::create_relational_schema(&self.conn, shard, schema, schema_name.to_owned())?;
         // See if we are grafting and check that the graft is permissible
-        if let Some((base, _)) = metadata::graft_pending(&self.conn, &schema.id)? {
+        if let Some((base, _)) = deployment::graft_pending(&self.conn, &schema.id)? {
             let base = &Connection::layout(&self.conn, &base)?;
             let errors = layout.can_copy_from(&base);
             if !errors.is_empty() {
@@ -425,7 +425,7 @@ impl Connection<'_> {
                 )))
             }
             V::Relational => {
-                let subgraph_schema = metadata::subgraph_schema(conn, subgraph.to_owned())?;
+                let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
                 let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
                 let catalog = Catalog::new(conn, schema.name)?;
                 Layout::new(schema.shard, &subgraph_schema, catalog, has_poi)?
