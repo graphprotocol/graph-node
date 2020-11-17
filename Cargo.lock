@@ -1616,7 +1616,7 @@ version = "0.19.2"
 dependencies = [
  "assert_cli",
  "clap",
- "crossbeam-channel 0.4.4",
+ "crossbeam-channel 0.5.0",
  "env_logger",
  "futures 0.3.8",
  "git-testament",
