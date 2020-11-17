@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 
-use diesel::{Connection, PgConnection};
+use diesel::Connection;
 
 use graph::{
     components::store,
@@ -11,7 +11,7 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
-        anyhow, serde_json,
+        anyhow,
         web3::types::{Address, H256},
         ApiSchema, BlockNumber, DeploymentState, DynTryFuture, Entity, EntityKey,
         EntityModification, EntityQuery, Error, EthereumBlockPointer, EthereumCallCache, Logger,
@@ -24,17 +24,7 @@ use graph::{
 use store::StoredDynamicDataSource;
 
 use crate::store::{ReplicaId, Store};
-use crate::{deployment, notification_listener::JsonNotification, primary};
-
-#[cfg(debug_assertions)]
-use std::sync::Mutex;
-#[cfg(debug_assertions)]
-lazy_static::lazy_static! {
-    /// Tests set this to true so that `send_store_event` will store a copy
-    /// of each event sent in `EVENT_TAP`
-    pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
-    pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
-}
+use crate::{deployment, primary};
 
 /// Multiplex store operations on subgraphs and deployments between a primary
 /// and any number of additional storage shards. See [this document](../../docs/sharded.md)
@@ -122,19 +112,13 @@ impl ShardedStore {
             deployment::exists_and_synced(&conn, id.as_str())
         };
 
-        let conn = self.primary.get_conn()?;
+        let conn = self.primary_conn()?;
         conn.transaction(|| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
-            let changes = primary::create_subgraph_version(
-                &conn,
-                name,
-                &schema.id,
-                node_id,
-                mode,
-                exists_and_synced,
-            )?;
+            let changes =
+                conn.create_subgraph_version(name, &schema.id, node_id, mode, exists_and_synced)?;
             event.changes.extend(changes);
-            self.send_store_event_with_conn(&conn, &event)?;
+            conn.send_store_event(&event)?;
             Ok(())
         })
     }
@@ -162,24 +146,14 @@ impl ShardedStore {
         )
     }
 
-    fn send_store_event_with_conn(
-        &self,
-        conn: &PgConnection,
-        event: &StoreEvent,
-    ) -> Result<(), StoreError> {
-        let v = serde_json::to_value(event)?;
-        #[cfg(debug_assertions)]
-        {
-            if *EVENT_TAP_ENABLED.lock().unwrap() {
-                EVENT_TAP.lock().unwrap().push(event.clone());
-            }
-        }
-        JsonNotification::send("store_events", &v, &conn)
+    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
+        let conn = self.primary_conn()?;
+        conn.send_store_event(event)
     }
 
-    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
+    fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
         let conn = self.primary.get_conn()?;
-        self.send_store_event_with_conn(&conn, event)
+        Ok(primary::Connection::new(conn))
     }
 }
 
@@ -297,8 +271,8 @@ impl StoreTrait for ShardedStore {
         &self,
         name: SubgraphName,
     ) -> Result<DeploymentState, StoreError> {
-        let conn = self.primary.get_conn()?;
-        let id = conn.transaction(|| primary::current_deployment_for_subgraph(&conn, name))?;
+        let conn = self.primary_conn()?;
+        let id = conn.transaction(|| conn.current_deployment_for_subgraph(name))?;
         self.deployment_state_from_id(id)
     }
 
@@ -342,14 +316,14 @@ impl StoreTrait for ShardedStore {
     }
 
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
-        let pconn = self.primary.get_conn()?;
+        let pconn = self.primary_conn()?;
         let dconn = self.store(id)?.get_conn()?;
         let event = pconn.transaction(|| -> Result<_, Error> {
-            let changes = primary::promote_deployment(&pconn, id)?;
+            let changes = pconn.promote_deployment(id)?;
             Ok(StoreEvent::new(changes))
         })?;
         dconn.transaction(|| deployment::set_synced(&dconn, id))?;
-        Ok(self.send_store_event(&event)?)
+        Ok(pconn.send_store_event(&event)?)
     }
 
     fn create_subgraph_deployment(
@@ -368,17 +342,16 @@ impl StoreTrait for ShardedStore {
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        let pconn = self.primary.get_conn()?;
-        pconn.transaction(|| primary::create_subgraph(&pconn, &name))
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| pconn.create_subgraph(&name))
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        let pconn = self.primary.get_conn()?;
-        let event = pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = primary::remove_subgraph(&pconn, name)?;
-            Ok(StoreEvent::new(changes))
-        })?;
-        self.send_store_event(&event)
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = pconn.remove_subgraph(name)?;
+            pconn.send_store_event(&StoreEvent::new(changes))
+        })
     }
 
     fn reassign_subgraph(
@@ -386,12 +359,11 @@ impl StoreTrait for ShardedStore {
         id: &SubgraphDeploymentId,
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
-        let pconn = self.primary.get_conn()?;
-        let event = pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = primary::reassign_subgraph(&pconn, id, node_id)?;
-            Ok(StoreEvent::new(changes))
-        })?;
-        self.send_store_event(&event)
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = pconn.reassign_subgraph(id, node_id)?;
+            pconn.send_store_event(&StoreEvent::new(changes))
+        })
     }
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
