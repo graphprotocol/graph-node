@@ -16,6 +16,7 @@ pub trait LightEthereumBlockExt {
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
     fn format(&self) -> String;
+    fn block_ptr(&self) -> EthereumBlockPointer;
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
@@ -53,6 +54,13 @@ impl LightEthereumBlockExt for LightEthereumBlock {
             self.hash
                 .map_or(String::from("-"), |hash| format!("{:x}", hash))
         )
+    }
+
+    fn block_ptr(&self) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: self.hash.unwrap(),
+            number: self.number.unwrap().as_u64(),
+        }
     }
 }
 

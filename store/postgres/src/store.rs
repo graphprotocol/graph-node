@@ -1050,7 +1050,7 @@ impl StoreTrait for Store {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
-        deterministic_errors: Vec<anyhow::Error>,
+        deterministic_errors: Vec<SubgraphError>,
     ) -> Result<bool, StoreError> {
         // All operations should apply only to entities in this subgraph or
         // the subgraph of subgraphs
@@ -1093,7 +1093,11 @@ impl StoreTrait for Store {
                 section.end();
 
                 if !deterministic_errors.is_empty() {
-                    metadata::set_unhealthy(&econn.conn, &subgraph_id, block_ptr_to)?;
+                    metadata::insert_subgraph_errors(
+                        &econn.conn,
+                        &subgraph_id,
+                        deterministic_errors,
+                    )?;
                 }
 
                 let metadata_event =
@@ -1202,7 +1206,7 @@ impl StoreTrait for Store {
         error: SubgraphError,
     ) -> Result<(), anyhow::Error> {
         self.with_conn(move |conn, _| {
-            metadata::fail_subgraph(&conn, &id, error).map_err(|e| e.into())
+            conn.transaction(|| metadata::fail_subgraph(&conn, &id, error).map_err(|e| e.into()))
         })
         .await?;
         Ok(())

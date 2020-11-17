@@ -583,8 +583,8 @@ enum BlockProcessingError {
 
     // The error had a determinstic cause but, for a possibly non-deterministic reason, we chose to
     // halt processing due to the error.
-    #[error("{0:#}")]
-    Deterministic(anyhow::Error),
+    #[error("{0}")]
+    Deterministic(SubgraphError),
 
     #[error("subgraph stopped while processing triggers")]
     Canceled,

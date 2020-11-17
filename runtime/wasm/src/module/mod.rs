@@ -12,9 +12,9 @@ use crate::host_exports;
 use crate::mapping::MappingContext;
 use anyhow::Error;
 use ethabi::LogParam;
-use graph::components::ethereum::*;
 use graph::components::subgraph::MappingError;
 use graph::data::store;
+use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
 use host_exports::HostExportError;
 use web3::types::{Log, Transaction, U256};
@@ -226,8 +226,7 @@ impl WasmInstance {
             Err(trap) => {
                 use wasmtime::TrapCode::*;
                 let trap_code = trap.trap_code();
-                let e =
-                    Error::from(trap).context(format!("Failed to invoke handler '{}'", handler));
+                let e = Error::from(trap);
                 match trap_code {
                     Some(MemoryOutOfBounds)
                     | Some(HeapMisaligned)
@@ -248,12 +247,20 @@ impl WasmInstance {
             // Log the error and restore the updates snaphsot, effectively reverting the handler.
             error!(&self.instance_ctx().ctx.logger,
                 "Handler reverted";
-                "error" => deterministic_error.to_string()
+                "handler" => handler,
+                "error" => format!("{:#}", deterministic_error)
             );
+            let subgraph = SubgraphError {
+                subgraph_id: self.instance_ctx().ctx.host_exports.subgraph_id.clone(),
+                message: format!("{:#}", deterministic_error),
+                block_ptr: Some(self.instance_ctx().ctx.block.block_ptr()),
+                handler: Some(handler.to_string()),
+                deterministic: true,
+            };
             self.instance_ctx_mut()
                 .ctx
                 .state
-                .restore_updates_snapshot_due_to_error(snapshot, deterministic_error);
+                .restore_updates_snapshot_due_to_error(snapshot, subgraph);
         }
 
         Ok(self.take_ctx().ctx.state)

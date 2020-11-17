@@ -1,9 +1,12 @@
 use async_trait::async_trait;
 use web3::types::Log;
 
-use crate::components::subgraph::{MappingError, SharedProofOfIndexing};
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
+use crate::{
+    components::subgraph::{MappingError, SharedProofOfIndexing},
+    data::subgraph::schema::SubgraphError,
+};
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo {
@@ -16,7 +19,7 @@ pub struct DataSourceTemplateInfo {
 #[derive(Debug)]
 pub struct BlockState {
     pub entity_cache: EntityCache,
-    pub deterministic_errors: Vec<anyhow::Error>,
+    pub deterministic_errors: Vec<SubgraphError>,
     pub created_data_sources: im::Vector<DataSourceTemplateInfo>,
 }
 
@@ -60,7 +63,7 @@ impl BlockState {
     pub fn restore_updates_snapshot_due_to_error(
         &mut self,
         snapshot: BlockStateUpdatesSnapshot,
-        error: anyhow::Error,
+        error: SubgraphError,
     ) {
         self.entity_cache
             .restore_updates_snapshot(snapshot.entity_updates);
