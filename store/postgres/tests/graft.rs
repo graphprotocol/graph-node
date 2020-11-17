@@ -1,5 +1,3 @@
-use diesel::pg::PgConnection;
-use diesel::*;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::str::FromStr;
@@ -255,10 +253,9 @@ fn create_test_entity(
 
 /// Removes test data from the database behind the store.
 fn remove_test_data(store: Arc<DieselStore>) {
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
-        .expect("Failed to remove entity test data");
+    store
+        .delete_all_entities_for_test_use_only()
+        .expect("deleting test entities succeeds");
 }
 
 #[test]
@@ -272,7 +269,7 @@ fn graft() {
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1],
         );
-
+        dbg!(&res);
         assert!(res.is_ok());
 
         let query = EntityQuery::new(

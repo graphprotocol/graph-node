@@ -590,6 +590,17 @@ pub(crate) fn revert_subgraph_errors(
     check_health(conn, id)
 }
 
+/// Drop the schema for `subgraph`. This deletes all data for the subgraph,
+/// and can not be reversed. It does not remove any of the metadata in
+/// `subgraphs.entities` associated with the subgraph
+#[cfg(debug_assertions)]
+pub fn drop_entities(conn: &diesel::pg::PgConnection, namespace: &str) -> Result<(), StoreError> {
+    use diesel::connection::SimpleConnection;
+
+    let query = format!("drop schema if exists {} cascade", namespace);
+    Ok(conn.batch_execute(&*query)?)
+}
+
 #[test]
 fn subgraph_error() {
     use diesel::Connection;
@@ -597,7 +608,7 @@ fn subgraph_error() {
 
     test_store::run_test_sequentially(
         || {},
-        |store, _| async move {
+        |_, _| async move {
             let url = test_store::postgres_test_url();
             let conn = PgConnection::establish(url.as_str()).unwrap();
 
@@ -648,7 +659,7 @@ fn subgraph_error() {
             crate::deployment::insert_subgraph_error(&conn, error2).unwrap();
             assert!(count() == 2);
 
-            test_store::delete_all_entities_for_test_use_only(store.as_ref(), &conn).unwrap();
+            test_store::remove_subgraphs();
         },
     )
 }

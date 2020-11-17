@@ -1,8 +1,6 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use diesel::connection::Connection;
-use diesel::pg::PgConnection;
 use std::convert::TryInto;
 use std::sync::Mutex;
 use std::thread;
@@ -36,10 +34,9 @@ macro_rules! revert {
 
 // Helper to wipe the store clean.
 fn remove_test_data(store: Arc<DieselStore>) {
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
-        .expect("Failed to remove entity test data");
+    store
+        .delete_all_entities_for_test_use_only()
+        .expect("removing test data succeeds");
 }
 
 // Helper to run network indexer against test chains.

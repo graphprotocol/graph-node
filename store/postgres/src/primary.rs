@@ -14,15 +14,22 @@ use diesel::{
     },
     Connection as _,
 };
-use graph::prelude::{
-    entity, serde_json, EntityChange, EntityChangeOperation, MetadataOperation, NodeId, StoreError,
-    SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
+use failure::format_err;
+use graph::{
+    data::subgraph::schema::SUBGRAPHS_ID,
+    prelude::{
+        entity, serde_json, EntityChange, EntityChangeOperation, MetadataOperation, NodeId,
+        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
+    },
 };
 use graph::{
     data::subgraph::schema::{generate_entity_id, SubgraphDeploymentAssignmentEntity},
     prelude::StoreEvent,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    convert::TryFrom,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{block_range::UNVERSIONED_RANGE, notification_listener::JsonNotification};
 
@@ -35,8 +42,6 @@ lazy_static::lazy_static! {
     pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
     pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
 }
-
-pub struct Connection(PooledConnection<ConnectionManager<PgConnection>>);
 
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
@@ -77,7 +82,85 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(subgraph, subgraph_version);
+/// We used to support different storage schemes. The old 'Split' scheme
+/// which used JSONB storage has been removed, and we will only deal
+/// with relational storage. Trying to do anything with a 'Split' subgraph
+/// will result in an error.
+#[derive(DbEnum, Debug, Clone, Copy)]
+pub enum DeploymentSchemaVersion {
+    Split,
+    Relational,
+}
+
+table! {
+    deployment_schemas(id) {
+        id -> Integer,
+        subgraph -> Text,
+        name -> Text,
+        shard -> Text,
+        /// The subgraph storage scheme used for this subgraph
+        version -> crate::primary::DeploymentSchemaVersionMapping,
+    }
+}
+
+allow_tables_to_appear_in_same_query!(subgraph, subgraph_version, deployment_schemas);
+
+/// Information about the database schema that stores the entities for a
+/// subgraph.
+#[derive(Clone, Queryable, QueryableByName, Debug)]
+#[table_name = "deployment_schemas"]
+struct Schema {
+    id: i32,
+    pub subgraph: String,
+    pub name: String,
+    pub shard: String,
+    /// The version currently in use. Always `Relational`, attempts to load
+    /// schemas from the database with `Split` produce an error
+    version: DeploymentSchemaVersion,
+}
+
+/// Details about a deployment and the shard in which it is stored. We need
+/// the database namespace for the deployment as that information is only
+/// stored in the primary database
+pub struct Site {
+    /// The subgraph deployment
+    pub deployment: SubgraphDeploymentId,
+    /// The name of the database shard
+    pub shard: String,
+    /// The database namespace (schema) that holds the data for the deployment
+    pub namespace: String,
+}
+
+impl Site {
+    /// A site that can be used to access the metadata subgraph in the given
+    /// shard
+    pub fn meta(shard: String) -> Self {
+        Site {
+            deployment: SUBGRAPHS_ID.clone(),
+            namespace: SUBGRAPHS_ID.to_string(),
+            shard,
+        }
+    }
+}
+
+impl TryFrom<Schema> for Site {
+    type Error = StoreError;
+
+    fn try_from(schema: Schema) -> Result<Self, Self::Error> {
+        let deployment = SubgraphDeploymentId::new(schema.subgraph)
+            .map_err(|s| StoreError::ConstraintViolation(format!("Invalid deployment id {}", s)))?;
+
+        Ok(Self {
+            deployment,
+            namespace: schema.name,
+            shard: schema.shard,
+        })
+    }
+}
+
+/// A wrapper for a database connection that provides access to functionality
+/// that works only on the primary database
+pub struct Connection(PooledConnection<ConnectionManager<PgConnection>>);
 
 impl Connection {
     pub fn new(conn: PooledConnection<ConnectionManager<PgConnection>>) -> Self {
@@ -399,6 +482,82 @@ impl Connection {
                 unreachable!()
             }
         }
+    }
+
+    pub fn allocate_site(
+        &self,
+        shard: String,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<Site, StoreError> {
+        use deployment_schemas as ds;
+        use DeploymentSchemaVersion as v;
+
+        let conn = &self.0;
+
+        if let Some(schema) = self.find_site(subgraph)? {
+            return Ok(schema);
+        }
+
+        // Create a schema for the deployment.
+        let schemas: Vec<String> = diesel::insert_into(ds::table)
+            .values((
+                ds::subgraph.eq(subgraph.as_str()),
+                ds::shard.eq(&shard),
+                ds::version.eq(v::Relational),
+            ))
+            .returning(ds::name)
+            .get_results(conn)?;
+        let name = schemas
+            .first()
+            .cloned()
+            .ok_or_else(|| format_err!("failed to read schema name for {} back", subgraph))?;
+
+        Ok(Site {
+            deployment: subgraph.clone(),
+            namespace: name,
+            shard,
+        })
+    }
+
+    pub fn find_site(&self, subgraph: &SubgraphDeploymentId) -> Result<Option<Site>, StoreError> {
+        let schema = deployment_schemas::table
+            .filter(deployment_schemas::subgraph.eq(subgraph.to_string()))
+            .first::<Schema>(&self.0)
+            .optional()?;
+        if let Some(Schema { version, .. }) = schema {
+            if matches!(version, DeploymentSchemaVersion::Split) {
+                return Err(StoreError::ConstraintViolation(format!(
+                    "the subgraph {} uses JSONB storage which is not supported any longer",
+                    subgraph.as_str()
+                )));
+            }
+        }
+        Ok(schema.map(|schema| Site {
+            deployment: subgraph.clone(),
+            namespace: schema.name,
+            shard: schema.shard,
+        }))
+    }
+
+    pub fn find_existing_site(&self, subgraph: &SubgraphDeploymentId) -> Result<Site, StoreError> {
+        self.find_site(subgraph)?
+            .ok_or_else(|| StoreError::DeploymentNotFound(subgraph.to_string()))
+    }
+
+    // Only restricted to tests because we don't need it anywhere else
+    // Would be fine to expose in 'normal' code
+    #[cfg(debug_assertions)]
+    pub fn sites(&self) -> Result<Vec<Site>, StoreError> {
+        use std::convert::TryInto;
+
+        use deployment_schemas as ds;
+
+        ds::table
+            .filter(ds::name.ne("subgraphs"))
+            .load::<Schema>(&self.0)?
+            .into_iter()
+            .map(|schema| schema.try_into())
+            .collect()
     }
 
     pub fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {

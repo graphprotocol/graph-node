@@ -24,12 +24,10 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::{Integer, Text};
 use diesel::Connection as _;
-use diesel::ExpressionMethods;
-use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::RunQueryDsl;
 use maybe_owned::MaybeOwned;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
-use std::ops::Deref as _;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -43,6 +41,7 @@ use graph::prelude::{
 
 use crate::block_range::block_number;
 use crate::deployment;
+use crate::primary::Site;
 use crate::relational::{Catalog, Layout};
 
 /// The size of string prefixes that we index. This is chosen so that we
@@ -55,47 +54,6 @@ pub const STRING_PREFIX_SIZE: usize = 256;
 
 /// Marker trait for tables that store entities
 pub(crate) trait EntitySource {}
-
-// Tables in the public schema that are shared across subgraphs. We put them
-// in this module to make sure that nobody else gets access to them. All
-// access to these tables must go through functions in this module.
-pub mod public {
-    /// We used to support different storage schemes. The old 'Split' scheme
-    /// which used JSONB storage has been removed, and we will only deal
-    /// with relational storage. Trying to do anything with a 'Split' subgraph
-    /// will result in an error.
-    #[derive(DbEnum, Debug, Clone, Copy)]
-    pub enum DeploymentSchemaVersion {
-        Split,
-        Relational,
-    }
-
-    table! {
-        deployment_schemas(id) {
-            id -> Integer,
-            subgraph -> Text,
-            name -> Text,
-            shard -> Text,
-            /// The subgraph storage scheme used for this subgraph
-            version -> crate::entities::public::DeploymentSchemaVersionMapping,
-        }
-    }
-}
-
-use public::deployment_schemas;
-
-/// Information about the database schema that stores the entities for a
-/// subgraph.
-#[derive(Queryable, QueryableByName, Debug)]
-#[table_name = "deployment_schemas"]
-struct Schema {
-    id: i32,
-    subgraph: String,
-    name: String,
-    shard: String,
-    /// The version currently in use.
-    version: public::DeploymentSchemaVersion,
-}
 
 /// A cache for storage objects as constructing them takes a bit of
 /// computation. The cache lives as an attribute on the Store, but is managed
@@ -148,12 +106,15 @@ impl Connection<'_> {
     }
 
     /// Do any cleanup to bring the subgraph into a known good state
-    pub(crate) fn start_subgraph(&self, logger: &Logger) -> Result<(), StoreError> {
-        let graft = deployment::graft_pending(&self.conn, &self.storage.subgraph)?;
-        if let Some((base, block)) = graft {
+    pub(crate) fn start_subgraph(
+        &self,
+        logger: &Logger,
+        graft_base: Option<(Site, EthereumBlockPointer)>,
+    ) -> Result<(), StoreError> {
+        if let Some((base, block)) = graft_base {
             let layout = &self.storage;
             let start = Instant::now();
-            let base = &Connection::layout(&self.conn, &base)?;
+            let base = &Connection::layout(&self.conn, &base.namespace, &base.deployment)?;
             layout.copy_from(logger, &self.conn, &base, block, &self.metadata)?;
             // Set the block ptr to the graft point to signal that we successfully
             // performed the graft
@@ -346,47 +307,18 @@ impl Connection<'_> {
     /// of subgraphs
     pub(crate) fn create_schema(
         &self,
-        shard: String,
+        db_schema: String,
         schema: &SubgraphSchema,
+        graft_site: Option<Site>,
     ) -> Result<(), StoreError> {
-        use self::public::DeploymentSchemaVersion as v;
-
-        assert_eq!(
-            &*SUBGRAPHS_ID, &self.storage.subgraph,
-            "create_schema can only be called on a Connection for the metadata subgraph"
-        );
-
-        // Check if there already is an entry for this subgraph. If so, do
-        // nothing
-        let count = deployment_schemas::table
-            .filter(deployment_schemas::subgraph.eq(schema.id.to_string()))
-            .count()
-            .first::<i64>(self.conn.deref())?;
-        if count > 0 {
-            return Ok(());
-        }
-
-        // Create a schema for the deployment.
-        let schemas: Vec<String> = diesel::insert_into(deployment_schemas::table)
-            .values((
-                deployment_schemas::subgraph.eq(schema.id.to_string()),
-                deployment_schemas::shard.eq(&shard),
-                deployment_schemas::version.eq(v::Relational),
-            ))
-            .returning(deployment_schemas::name)
-            .get_results(self.conn.deref())?;
-        let schema_name = schemas
-            .first()
-            .ok_or_else(|| format_err!("failed to read schema name for {} back", &schema.id))?;
-
-        let query = format!("create schema {}", schema_name);
+        let query = format!("create schema {}", db_schema);
         self.conn.batch_execute(&*query)?;
 
-        let layout =
-            Layout::create_relational_schema(&self.conn, shard, schema, schema_name.to_owned())?;
+        let layout = Layout::create_relational_schema(&self.conn, schema, db_schema.to_owned())?;
         // See if we are grafting and check that the graft is permissible
-        if let Some((base, _)) = deployment::graft_pending(&self.conn, &schema.id)? {
-            let base = &Connection::layout(&self.conn, &base)?;
+        if let Some(graft_site) = graft_site {
+            let base =
+                &Connection::layout(&self.conn, &graft_site.namespace, &graft_site.deployment)?;
             let errors = layout.can_copy_from(&base);
             if !errors.is_empty() {
                 return Err(StoreError::Unknown(format_err!(
@@ -411,40 +343,16 @@ impl Connection<'_> {
     /// called for that `subgraph`
     pub(crate) fn layout(
         conn: &PgConnection,
+        schema: &str,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Layout, StoreError> {
-        use public::DeploymentSchemaVersion as V;
+        let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
+        let has_poi = supports_proof_of_indexing(conn, subgraph, schema)?;
+        let catalog = Catalog::new(conn, schema.to_string())?;
+        let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
 
-        let schema = find_schema(conn, subgraph)?
-            .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
-        let layout = match schema.version {
-            V::Split => {
-                return Err(StoreError::ConstraintViolation(format!(
-                    "the subgraph {} uses JSONB storage which is not supported any longer",
-                    subgraph.as_str()
-                )))
-            }
-            V::Relational => {
-                let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
-                let has_poi = supports_proof_of_indexing(conn, subgraph, &schema.name)?;
-                let catalog = Catalog::new(conn, schema.name)?;
-                Layout::new(schema.shard, &subgraph_schema, catalog, has_poi)?
-            }
-        };
         Ok(layout)
     }
-}
-
-// Find the database schema for `subgraph`. If no explicit schema exists,
-// return `None`.
-fn find_schema(
-    conn: &diesel::pg::PgConnection,
-    subgraph: &SubgraphDeploymentId,
-) -> Result<Option<Schema>, StoreError> {
-    Ok(deployment_schemas::table
-        .filter(deployment_schemas::subgraph.eq(subgraph.to_string()))
-        .first::<Schema>(conn)
-        .optional()?)
 }
 
 fn supports_proof_of_indexing(
@@ -467,67 +375,4 @@ fn supports_proof_of_indexing(
         .bind::<Text, _>(POI_TABLE)
         .load(conn)?;
     Ok(result.len() > 0)
-}
-
-/// Delete all entities. This function exists solely for integration tests
-/// and should never be called from any other code. Unfortunately, Rust makes
-/// it very hard to export items just for testing
-#[cfg(debug_assertions)]
-pub fn delete_all_entities_for_test_use_only(
-    store: &crate::NetworkStore,
-    conn: &PgConnection,
-) -> Result<(), StoreError> {
-    // Delete all subgraph schemas
-    for subgraph in public::deployment_schemas::table
-        .select(public::deployment_schemas::subgraph)
-        .filter(public::deployment_schemas::subgraph.ne("subgraphs"))
-        .get_results::<String>(conn)?
-    {
-        let subgraph = SubgraphDeploymentId::new(subgraph.clone())
-            .map_err(|_| StoreError::Unknown(format_err!("illegal subgraph {}", subgraph)))?;
-        drop_schema(conn, &subgraph)?;
-    }
-    // Delete subgraphs entities
-    // Generated by running 'layout -g delete subgraphs.graphql'
-    let query = "
-        delete from subgraphs.ethereum_block_handler_filter_entity;
-        delete from subgraphs.ethereum_contract_source;
-        delete from subgraphs.dynamic_ethereum_contract_data_source;
-        delete from subgraphs.ethereum_contract_abi;
-        delete from subgraphs.subgraph;
-        delete from subgraphs.subgraph_deployment;
-        delete from subgraphs.ethereum_block_handler_entity;
-        delete from subgraphs.subgraph_deployment_assignment;
-        delete from subgraphs.ethereum_contract_mapping;
-        delete from subgraphs.subgraph_version;
-        delete from subgraphs.subgraph_manifest;
-        delete from subgraphs.ethereum_call_handler_entity;
-        delete from subgraphs.ethereum_contract_data_source;
-        delete from subgraphs.ethereum_contract_data_source_template;
-        delete from subgraphs.ethereum_contract_data_source_template_source;
-        delete from subgraphs.ethereum_contract_event_handler;
-    ";
-    conn.batch_execute(query)?;
-    store.clear_storage_cache();
-    Ok(())
-}
-
-/// Drop the schema for `subgraph`. This deletes all data for the subgraph,
-/// and can not be reversed. It does not remove any of the metadata in
-/// `subgraphs.entities` associated with the subgraph
-#[cfg(debug_assertions)]
-fn drop_schema(
-    conn: &diesel::pg::PgConnection,
-    subgraph: &SubgraphDeploymentId,
-) -> Result<usize, StoreError> {
-    let info = find_schema(conn, subgraph)?;
-    if let Some(schema) = info {
-        let query = format!("drop schema if exists {} cascade", schema.name);
-        conn.batch_execute(&*query)?;
-        Ok(diesel::delete(deployment_schemas::table)
-            .filter(deployment_schemas::subgraph.eq(schema.subgraph))
-            .execute(conn)?)
-    } else {
-        Ok(0)
-    }
 }

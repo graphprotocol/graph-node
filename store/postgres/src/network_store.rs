@@ -30,12 +30,6 @@ impl NetworkStore {
         self.store.cheap_clone()
     }
 
-    // Only needed for tests
-    #[cfg(debug_assertions)]
-    pub(crate) fn clear_storage_cache(&self) {
-        self.store.clear_storage_cache();
-    }
-
     // Only for tests to simplify their handling of test fixtures, so that
     // tests can reset the block pointer of a subgraph by recreating it
     #[cfg(debug_assertions)]
@@ -49,6 +43,11 @@ impl NetworkStore {
     ) -> Result<(), StoreError> {
         self.store
             .create_deployment_replace(name, schema, deployment, node_id, mode)
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
+        self.store.delete_all_entities_for_test_use_only()
     }
 }
 

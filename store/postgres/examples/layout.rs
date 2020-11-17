@@ -5,7 +5,7 @@ use clap::App;
 use std::fs;
 use std::process::exit;
 
-use graph::prelude::{Schema, SubgraphDeploymentId, PRIMARY_SHARD};
+use graph::prelude::{Schema, SubgraphDeploymentId};
 use graph_store_postgres::relational::{Catalog, Column, ColumnType, Layout};
 
 pub fn usage(msg: &str) -> ! {
@@ -323,9 +323,8 @@ pub fn main() {
         Catalog::make_empty(db_schema.to_owned()),
         "Failed to construct catalog",
     );
-    let shard = PRIMARY_SHARD.to_string();
     let layout = ensure(
-        Layout::new(shard, &schema, catalog, false),
+        Layout::new(&schema, catalog, false),
         "Failed to construct Mapping",
     );
     match kind {

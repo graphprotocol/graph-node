@@ -297,7 +297,7 @@ pub struct SubgraphDeploymentEntity {
     earliest_ethereum_block_number: Option<u64>,
     latest_ethereum_block_hash: Option<H256>,
     latest_ethereum_block_number: Option<u64>,
-    graft_base: Option<SubgraphDeploymentId>,
+    pub graft_base: Option<SubgraphDeploymentId>,
     graft_block_hash: Option<H256>,
     graft_block_number: Option<u64>,
     reorg_count: i32,

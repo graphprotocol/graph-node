@@ -22,9 +22,6 @@ use std::time::Instant;
 use std::{collections::HashMap, env};
 use web3::types::H256;
 
-#[cfg(debug_assertions)]
-pub use graph_store_postgres::store::delete_all_entities_for_test_use_only;
-
 pub fn postgres_test_url() -> String {
     std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
         .expect("The THEGRAPH_STORE_POSTGRES_DIESEL_URL environment variable is not set")
@@ -136,12 +133,9 @@ where
 
 #[cfg(debug_assertions)]
 pub fn remove_subgraphs() {
-    use diesel::{Connection, PgConnection};
-
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&*STORE, &conn)
-        .expect("Failed to remove entity test data");
+    STORE
+        .delete_all_entities_for_test_use_only()
+        .expect("deleting test entities succeeds");
 }
 
 #[cfg(debug_assertions)]

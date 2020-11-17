@@ -1,5 +1,3 @@
-use diesel::pg::PgConnection;
-use diesel::*;
 use graph_mock::MockMetricsRegistry;
 use graphql_parser::schema as s;
 use hex_literal::hex;
@@ -279,10 +277,9 @@ fn create_test_entity(
 
 /// Removes test data from the database behind the store.
 fn remove_test_data(store: Arc<DieselStore>) {
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
-        .expect("Failed to remove entity test data");
+    store
+        .delete_all_entities_for_test_use_only()
+        .expect("deleting test entities succeeds");
 }
 
 fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId) -> u64 {
