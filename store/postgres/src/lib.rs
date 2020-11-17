@@ -34,6 +34,7 @@ mod jsonb;
 mod metadata;
 mod network_store;
 mod notification_listener;
+mod primary;
 pub mod query_store;
 pub mod relational;
 mod relational_queries;

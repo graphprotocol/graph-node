@@ -24,7 +24,7 @@ use graph::{
 use store::StoredDynamicDataSource;
 
 use crate::store::{ReplicaId, Store};
-use crate::{detail, metadata, notification_listener::JsonNotification};
+use crate::{metadata, notification_listener::JsonNotification, primary};
 
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
@@ -117,11 +117,22 @@ impl ShardedStore {
             Ok(event)
         })?;
 
+        let exists_and_synced = |id: &SubgraphDeploymentId| {
+            let conn = self.store(&id)?.get_conn()?;
+            metadata::exists_and_synced(&conn, id.as_str())
+        };
+
         let conn = self.primary.get_conn()?;
         conn.transaction(|| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
-            let changes =
-                metadata::create_subgraph_version(&conn, name, &schema.id, node_id, mode)?;
+            let changes = primary::create_subgraph_version(
+                &conn,
+                name,
+                &schema.id,
+                node_id,
+                mode,
+                exists_and_synced,
+            )?;
             event.changes.extend(changes);
             self.send_store_event_with_conn(&conn, &event)?;
             Ok(())
@@ -287,7 +298,7 @@ impl StoreTrait for ShardedStore {
         name: SubgraphName,
     ) -> Result<DeploymentState, StoreError> {
         let conn = self.primary.get_conn()?;
-        let id = conn.transaction(|| metadata::current_deployment_for_subgraph(&conn, name))?;
+        let id = conn.transaction(|| primary::current_deployment_for_subgraph(&conn, name))?;
         self.deployment_state_from_id(id)
     }
 
@@ -332,10 +343,12 @@ impl StoreTrait for ShardedStore {
 
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
         let pconn = self.primary.get_conn()?;
+        let dconn = self.store(id)?.get_conn()?;
         let event = pconn.transaction(|| -> Result<_, Error> {
-            let changes = metadata::deployment_synced(&pconn, id)?;
+            let changes = primary::promote_deployment(&pconn, id)?;
             Ok(StoreEvent::new(changes))
         })?;
+        dconn.transaction(|| metadata::set_synced(&dconn, id))?;
         Ok(self.send_store_event(&event)?)
     }
 
@@ -356,13 +369,13 @@ impl StoreTrait for ShardedStore {
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let pconn = self.primary.get_conn()?;
-        pconn.transaction(|| metadata::create_subgraph(&pconn, &name))
+        pconn.transaction(|| primary::create_subgraph(&pconn, &name))
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         let pconn = self.primary.get_conn()?;
         let event = pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = metadata::remove_subgraph(&pconn, name)?;
+            let changes = primary::remove_subgraph(&pconn, name)?;
             Ok(StoreEvent::new(changes))
         })?;
         self.send_store_event(&event)
@@ -375,7 +388,7 @@ impl StoreTrait for ShardedStore {
     ) -> Result<(), StoreError> {
         let pconn = self.primary.get_conn()?;
         let event = pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = metadata::reassign_subgraph(&pconn, id, node_id)?;
+            let changes = primary::reassign_subgraph(&pconn, id, node_id)?;
             Ok(StoreEvent::new(changes))
         })?;
         self.send_store_event(&event)
@@ -386,11 +399,11 @@ impl StoreTrait for ShardedStore {
         let (deployments, empty_means_all) = conn.transaction(|| -> Result<_, StoreError> {
             match filter {
                 status::Filter::SubgraphName(name) => {
-                    let deployments = detail::deployments_for_subgraph(&conn, name)?;
+                    let deployments = primary::deployments_for_subgraph(&conn, name)?;
                     Ok((deployments, false))
                 }
                 status::Filter::SubgraphVersion(name, use_current) => {
-                    let deployments = detail::subgraph_version(&conn, name, use_current)?
+                    let deployments = primary::subgraph_version(&conn, name, use_current)?
                         .map(|d| vec![d])
                         .unwrap_or_else(|| vec![]);
                     Ok((deployments, false))

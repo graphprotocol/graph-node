@@ -1,8 +1,7 @@
 //! Queries to support the index node API
 use diesel::pg::PgConnection;
 use diesel::prelude::{
-    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
-    RunQueryDsl,
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
 use graph::{
     data::subgraph::schema::SubgraphError,
@@ -16,8 +15,6 @@ use graph::{
 };
 use std::ops::Bound;
 use std::{convert::TryFrom, str::FromStr};
-
-use crate::metadata::{subgraph, subgraph_version};
 
 // This is not a real table, only a view. We can use diesel to read from it
 // but write attempts will fail
@@ -238,21 +235,6 @@ impl TryFrom<DetailAndError> for status::Info {
     }
 }
 
-pub(crate) fn deployments_for_subgraph(
-    conn: &PgConnection,
-    name: String,
-) -> Result<Vec<String>, StoreError> {
-    use subgraph as s;
-    use subgraph_version as v;
-
-    Ok(v::table
-        .inner_join(s::table.on(v::subgraph.eq(s::id)))
-        .filter(s::name.eq(&name))
-        .order_by(v::created_at.asc())
-        .select(v::deployment)
-        .load(conn)?)
-}
-
 pub(crate) fn deployment_statuses(
     conn: &PgConnection,
     deployments: Vec<String>,
@@ -277,28 +259,4 @@ pub(crate) fn deployment_statuses(
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
             .collect()
     }
-}
-
-pub fn subgraph_version(
-    conn: &PgConnection,
-    name: String,
-    use_current: bool,
-) -> Result<Option<String>, StoreError> {
-    use subgraph as s;
-    use subgraph_version as v;
-
-    let deployment = if use_current {
-        v::table
-            .select(v::deployment.nullable())
-            .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
-            .filter(s::name.eq(&name))
-            .first::<Option<String>>(conn)
-    } else {
-        v::table
-            .select(v::deployment.nullable())
-            .inner_join(s::table.on(s::pending_version.eq(v::id.nullable())))
-            .filter(s::name.eq(&name))
-            .first::<Option<String>>(conn)
-    };
-    Ok(deployment.optional()?.flatten())
 }
