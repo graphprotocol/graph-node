@@ -10,7 +10,7 @@ git-testament = "0.1"
 graphql-parser = "0.2.3"
 prometheus = "0.7"
 futures = { version = "0.3.1", features = ["compat"] }
-ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
+ipfs-api = { version = "0.9.0", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 url = "2.1.1"
 crossbeam-channel = "0.4.4"

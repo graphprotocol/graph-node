@@ -11,7 +11,7 @@ futures01 = { package="futures", version="0.1.29" }
 futures = { version="0.3.4", features=["compat"] }
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
-ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
+ipfs-api = { version = "0.9.0", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 lru_time_cache = "0.9"
 semver = "0.10.0"
