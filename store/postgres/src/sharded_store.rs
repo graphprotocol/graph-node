@@ -331,11 +331,9 @@ impl StoreTrait for ShardedStore {
     }
 
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
-        let econn = self
-            .primary
-            .get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        let event = econn.transaction(|| -> Result<_, Error> {
-            let changes = metadata::deployment_synced(&econn.conn, id)?;
+        let pconn = self.primary.get_conn()?;
+        let event = pconn.transaction(|| -> Result<_, Error> {
+            let changes = metadata::deployment_synced(&pconn, id)?;
             Ok(StoreEvent::new(changes))
         })?;
         Ok(self.send_store_event(&event)?)
@@ -357,18 +355,14 @@ impl StoreTrait for ShardedStore {
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        let econn = self
-            .primary
-            .get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| metadata::create_subgraph(&econn.conn, &name))
+        let pconn = self.primary.get_conn()?;
+        pconn.transaction(|| metadata::create_subgraph(&pconn, &name))
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        let econn = self
-            .primary
-            .get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        let event = econn.transaction(|| -> Result<_, StoreError> {
-            let changes = metadata::remove_subgraph(&econn.conn, name)?;
+        let pconn = self.primary.get_conn()?;
+        let event = pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = metadata::remove_subgraph(&pconn, name)?;
             Ok(StoreEvent::new(changes))
         })?;
         self.send_store_event(&event)
@@ -379,11 +373,9 @@ impl StoreTrait for ShardedStore {
         id: &SubgraphDeploymentId,
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
-        let econn = self
-            .primary
-            .get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        let event = econn.transaction(|| -> Result<_, StoreError> {
-            let changes = metadata::reassign_subgraph(&econn.conn, id, node_id)?;
+        let pconn = self.primary.get_conn()?;
+        let event = pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = metadata::reassign_subgraph(&pconn, id, node_id)?;
             Ok(StoreEvent::new(changes))
         })?;
         self.send_store_event(&event)
