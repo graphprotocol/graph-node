@@ -510,9 +510,16 @@ pub fn deployment_synced(
 
     let changes = remove_unused_assignments(conn)?;
 
-    update(d::table.filter(d::id.eq(id.as_str())))
-        .set(d::synced.eq(true))
-        .execute(conn)?;
+    // This seems to get called a lot by the block stream, even if the
+    // deployment is already synced. Avoid allocating a txid if we are
+    // not actually flipping the `synced` flag
+    update(
+        d::table
+            .filter(d::id.eq(id.as_str()))
+            .filter(d::synced.eq(false)),
+    )
+    .set(d::synced.eq(true))
+    .execute(conn)?;
 
     Ok(changes)
 }
