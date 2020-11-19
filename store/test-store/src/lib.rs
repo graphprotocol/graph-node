@@ -14,6 +14,7 @@ use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     ChainHeadUpdateListener, ChainStore, NetworkStore, ShardedStore, Store, SubscriptionManager,
+    PRIMARY_SHARD,
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -86,7 +87,7 @@ lazy_static! {
                     registry.clone(),
                 ));
                 let mut store_map = HashMap::new();
-                store_map.insert(PRIMARY_SHARD.to_string(), primary_store);
+                store_map.insert(PRIMARY_SHARD.clone(), primary_store);
                 let store = Arc::new(ShardedStore::new(store_map));
                 let chain_store = ChainStore::new(NETWORK_NAME.to_owned(), net_identifiers, chain_head_update_listener, postgres_conn_pool);
                 Arc::new(NetworkStore::new(store, chain_store))

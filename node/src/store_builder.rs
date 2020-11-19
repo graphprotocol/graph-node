@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use graph::{
-    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger, PRIMARY_SHARD},
+    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
     util::security::SafeDisplay,
 };
 use graph_core::MetricsRegistry;
@@ -9,6 +9,7 @@ use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
     NetworkStore as DieselNetworkStore, ShardedStore, Store as DieselStore, SubscriptionManager,
+    PRIMARY_SHARD,
 };
 
 use crate::config::Config;
@@ -75,7 +76,7 @@ impl StoreBuilder {
             registry.clone(),
         ));
         let mut store_map = HashMap::new();
-        store_map.insert(PRIMARY_SHARD.to_string(), primary_store);
+        store_map.insert(PRIMARY_SHARD.clone(), primary_store);
         let store = Arc::new(ShardedStore::new(store_map));
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(

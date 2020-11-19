@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
+use std::{fmt, str::FromStr};
 
 use diesel::Connection;
 
@@ -11,13 +11,13 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
+        lazy_static,
         web3::types::{Address, H256},
         ApiSchema, BlockNumber, DeploymentState, DynTryFuture, Entity, EntityKey,
         EntityModification, EntityQuery, Error, EthereumBlockPointer, EthereumCallCache, Logger,
         MetadataOperation, NodeId, QueryExecutionError, QueryStore, Schema, StopwatchMetrics,
         Store as StoreTrait, StoreError, StoreEventStreamBox, SubgraphDeploymentId,
         SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName, SubgraphVersionSwitchingMode,
-        PRIMARY_SHARD,
     },
 };
 use store::StoredDynamicDataSource;
@@ -25,24 +25,78 @@ use store::StoredDynamicDataSource;
 use crate::store::{ReplicaId, Store};
 use crate::{deployment, primary, primary::Site};
 
+/// The name of a database shard; valid names must match `[a-z0-9_]+`
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Shard(String);
+
+lazy_static! {
+    /// The name of the primary shard that contains all instance-wide data
+    pub static ref PRIMARY_SHARD: Shard = Shard("primary".to_string());
+}
+
+impl Shard {
+    pub fn new(name: String) -> Result<Self, StoreError> {
+        if name.is_empty() {
+            return Err(StoreError::InvalidIdentifier(format!(
+                "shard names must not be empty"
+            )));
+        }
+        if name.len() > 30 {
+            return Err(StoreError::InvalidIdentifier(format!(
+                "shard names can be at most 30 characters, but `{}` has {} characters",
+                name,
+                name.len()
+            )));
+        }
+        if !name
+            .chars()
+            .all(|c| (c.is_ascii_alphanumeric() && c.is_lowercase()) || c == '_')
+        {
+            return Err(StoreError::InvalidIdentifier(format!(
+                "shard names must only contain lowercase alphanumeric characters or '_'"
+            )));
+        }
+        Ok(Shard(name))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for Shard {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Decide where a new deployment should be placed based on the subgraph name
+/// and the network it is indexing. If the deployment can be placed, returns
+/// the name of the database shard for the deployment and the names of the
+/// indexers that should index it. The deployment should then be assigned to
+/// one of the returned indexers.
+pub trait DeploymentPlacer {
+    fn place(&self, name: &str, network: &str, default: &str) -> Option<(Shard, Vec<String>)>;
+}
+
 /// Multiplex store operations on subgraphs and deployments between a primary
 /// and any number of additional storage shards. See [this document](../../docs/sharded.md)
 /// for details on how storage is split up
 pub struct ShardedStore {
     primary: Arc<Store>,
-    stores: HashMap<String, Arc<Store>>,
+    stores: HashMap<Shard, Arc<Store>>,
 }
 
 impl ShardedStore {
     #[allow(dead_code)]
-    pub fn new(stores: HashMap<String, Arc<Store>>) -> Self {
+    pub fn new(stores: HashMap<Shard, Arc<Store>>) -> Self {
         assert_eq!(
             1,
             stores.len(),
             "The sharded store can only handle one shard for now"
         );
         let primary = stores
-            .get(PRIMARY_SHARD)
+            .get(&PRIMARY_SHARD)
             .expect("we always have a primary store")
             .clone();
         Self { primary, stores }
@@ -72,7 +126,7 @@ impl ShardedStore {
         let store = self
             .stores
             .get(&site.shard)
-            .ok_or(StoreError::UnknownShard(site.shard.clone()))?;
+            .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))?;
         Ok((store, site))
     }
 
@@ -92,12 +146,12 @@ impl ShardedStore {
 
         // We only allow one shard (the primary) for now, so it is fine
         // to forward this to the primary store
-        let shard = PRIMARY_SHARD.to_string();
+        let shard = PRIMARY_SHARD.clone();
 
         let deployment_store = self
             .stores
             .get(&shard)
-            .ok_or_else(|| StoreError::UnknownShard(shard.clone()))?;
+            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
         let pconn = self.primary_conn()?;
 
         // TODO: Check this for behavior on failure
@@ -483,7 +537,7 @@ impl StoreTrait for ShardedStore {
             .collect::<Result<Vec<_>, StoreError>>()?;
 
         // Partition the list of deployments by shard
-        let deployments_by_shard: HashMap<String, Vec<Arc<Site>>> = deployments_with_shard
+        let deployments_by_shard: HashMap<Shard, Vec<Arc<Site>>> = deployments_with_shard
             .into_iter()
             .fold(HashMap::new(), |mut map, site| {
                 map.entry(site.shard.clone()).or_default().push(site);
@@ -496,7 +550,7 @@ impl StoreTrait for ShardedStore {
             let store = self
                 .stores
                 .get(&shard)
-                .ok_or(StoreError::UnknownShard(shard))?;
+                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
             let ids = ids
                 .into_iter()
                 .map(|site| site.deployment.to_string())

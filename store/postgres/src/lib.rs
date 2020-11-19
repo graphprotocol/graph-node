@@ -60,6 +60,6 @@ pub mod layout_for_tests {
 pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::chain_store::ChainStore;
 pub use self::network_store::NetworkStore;
-pub use self::sharded_store::ShardedStore;
+pub use self::sharded_store::{DeploymentPlacer, Shard, ShardedStore, PRIMARY_SHARD};
 pub use self::store::{Store, StoreConfig};
 pub use self::store_events::SubscriptionManager;

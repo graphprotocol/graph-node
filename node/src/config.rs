@@ -1,8 +1,8 @@
-use graph::components::store::DeploymentPlacer;
 use graph::prelude::{
     anyhow::{anyhow, Result},
-    info, serde_json, Logger, PRIMARY_SHARD,
+    info, serde_json, Logger,
 };
+use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -23,14 +23,25 @@ pub struct Config {
 }
 
 fn validate_name(s: &str) -> Result<()> {
-    for c in s.chars() {
-        if !c.is_ascii_alphanumeric() || c == '-' {
-            return Err(anyhow!(
-                "names can only contain alphanumeric characters or '-', but `{}` contains `{}`",
-                s,
-                c
-            ));
-        }
+    if s.is_empty() {
+        return Err(anyhow!("names must not be empty"));
+    }
+    if s.len() > 30 {
+        return Err(anyhow!(
+            "names can be at most 30 characters, but `{}` has {} characters",
+            s,
+            s.len()
+        ));
+    }
+
+    if !s
+        .chars()
+        .all(|c| (c.is_ascii_alphanumeric() && c.is_lowercase()) || c == '-')
+    {
+        return Err(anyhow!(
+            "name `{}` is invalid: names can only contain lowercase alphanumeric characters or '-'",
+            s
+        ));
     }
     Ok(())
 }
@@ -39,14 +50,25 @@ impl Config {
     /// Check that the config is valid. Some defaults (like `pool_size`) will
     /// be filled in from `opt` at the same time.
     fn validate(&mut self, opt: &Opt) -> Result<()> {
-        if !self.stores.contains_key(PRIMARY_SHARD) {
+        if !self.stores.contains_key(PRIMARY_SHARD.as_str()) {
             return Err(anyhow!("missing a primary store"));
         }
         for (key, shard) in self.stores.iter_mut() {
-            validate_name(key)?;
+            ShardName::new(key.clone()).map_err(|e| anyhow!(e))?;
             shard.validate(opt)?;
         }
         self.deployment.validate()?;
+
+        // Check that deployment rules only reference existing stores
+        for (i, rule) in self.deployment.rules.iter().enumerate() {
+            if !self.stores.contains_key(&rule.store) {
+                return Err(anyhow!(
+                    "unknown shard {} in deployment rule {}",
+                    rule.store,
+                    i
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -92,7 +114,7 @@ impl Config {
 
     pub fn primary_store(&self) -> &Shard {
         self.stores
-            .get(PRIMARY_SHARD)
+            .get(PRIMARY_SHARD.as_str())
             .expect("a validated config has a primary store")
     }
 }
@@ -214,16 +236,21 @@ impl Deployment {
 }
 
 impl DeploymentPlacer for Deployment {
-    fn place(&self, name: &str, network: &str, default: &str) -> Option<(&str, Vec<String>)> {
+    fn place(&self, name: &str, network: &str, default: &str) -> Option<(ShardName, Vec<String>)> {
         if self.rules.is_empty() {
             // This can only happen if we have only command line arguments and no
             // configuration file
-            Some((PRIMARY_SHARD, vec![default.to_string()]))
+            Some((PRIMARY_SHARD.clone(), vec![default.to_string()]))
         } else {
             self.rules
                 .iter()
                 .find(|rule| rule.matches(name, network))
-                .map(|rule| (rule.store.as_str(), rule.indexers.clone()))
+                .map(|rule| {
+                    (
+                        ShardName::new(rule.store.clone()).unwrap(),
+                        rule.indexers.clone(),
+                    )
+                })
         }
     }
 }

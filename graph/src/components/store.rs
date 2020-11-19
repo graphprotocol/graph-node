@@ -32,9 +32,6 @@ lazy_static! {
             .unwrap_or_else(|| Duration::from_millis(1000));
 }
 
-/// The name of the primary shard that contains all instance-wide data
-pub const PRIMARY_SHARD: &str = "primary";
-
 // Note: Do not modify fields without making a backward compatible change to
 // the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.
@@ -1676,13 +1673,4 @@ impl LfuCache<EntityKey, Option<Entity>> {
             Some(data) => Ok(data.to_owned()),
         }
     }
-}
-
-/// Decide where a new deployment should be placed based on the subgraph name
-/// and the network it is indexing. If the deployment can be placed, returns
-/// the name of the database shard for the deployment and the names of the
-/// indexers that should index it. The deployment should then be assigned to
-/// one of the returned indexers.
-pub trait DeploymentPlacer {
-    fn place(&self, name: &str, network: &str, default: &str) -> Option<(&str, Vec<String>)>;
 }
