@@ -408,59 +408,6 @@ impl Store {
                         .into()
                     })
             }
-            MetadataOperation::AbortUnless {
-                description,
-                metadata_type,
-                filter,
-                entity_ids: mut expected_entity_ids,
-            } => {
-                let range = EntityRange {
-                    first: None,
-                    skip: 0,
-                };
-                let query = EntityQuery::new(
-                    SUBGRAPHS_ID.clone(),
-                    BLOCK_NUMBER_MAX,
-                    EntityCollection::All(vec![metadata_type.to_string()]),
-                )
-                .range(range)
-                .filter(filter);
-
-                // Execute query
-                let actual_entities =
-                    self.execute_query::<Entity>(conn, query.clone())
-                        .map_err(|e| {
-                            format_err!(
-                                "AbortUnless ({}): query execution error: {:?}, {}",
-                                description,
-                                query,
-                                e
-                            )
-                        })?;
-
-                // Extract IDs from entities
-                let mut actual_entity_ids: Vec<String> = actual_entities
-                    .into_iter()
-                    .map(|entity| entity.id())
-                    .collect::<Result<_, _>>()?;
-
-                // Sort entity IDs lexicographically
-                expected_entity_ids.sort();
-                actual_entity_ids.sort();
-
-                // Abort if actual IDs do not match expected
-                if actual_entity_ids != expected_entity_ids {
-                    return Err(TransactionAbortError::AbortUnless {
-                        expected_entity_ids,
-                        actual_entity_ids,
-                        description,
-                    }
-                    .into());
-                }
-
-                // Safe to continue
-                Ok(0)
-            }
         }
     }
 

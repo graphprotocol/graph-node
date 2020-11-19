@@ -30,8 +30,7 @@ use web3::types::*;
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
 use crate::components::store::{
-    EntityCollection, EntityFilter, EntityKey, EntityOperation, EntityQuery, EntityRange,
-    MetadataOperation,
+    EntityCollection, EntityKey, EntityOperation, EntityQuery, EntityRange, MetadataOperation,
 };
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value};
@@ -113,19 +112,6 @@ pub trait TypedEntity {
             subgraph_id,
             entity_type,
             entity_id: entity_id.to_string(),
-        }
-    }
-
-    fn abort_unless(
-        description: &'static str,
-        filter: EntityFilter,
-        entity_ids: Vec<String>,
-    ) -> MetadataOperation {
-        MetadataOperation::AbortUnless {
-            description: description.to_owned(),
-            metadata_type: Self::TYPENAME,
-            filter,
-            entity_ids,
         }
     }
 }

@@ -408,7 +408,6 @@ impl From<MetadataOperation> for Option<EntityChange> {
                 MetadataOperation::entity_key(entity, id),
                 EntityChangeOperation::Removed,
             )),
-            AbortUnless { .. } => None,
         }
     }
 }
@@ -680,16 +679,6 @@ pub enum MetadataOperation {
 
     /// Removes an entity with the specified entity type and id if one exists.
     Remove { entity: MetadataType, id: String },
-
-    /// Aborts and rolls back the transaction unless `query` returns entities
-    /// exactly matching `entity_ids`. The equality test is only sensitive
-    /// to the order of the results if `query` contains an `order_by`.
-    AbortUnless {
-        description: String, // Programmer-friendly debug message to explain reason for abort
-        metadata_type: MetadataType,
-        filter: EntityFilter,
-        entity_ids: Vec<String>, // What entities the query should return
-    },
 
     /// Update an entity. The `data` should only contain the attributes that
     /// need to be changed, not the entire entity. The update will only happen
