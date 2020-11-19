@@ -590,30 +590,44 @@ pub fn create_subgraph_version(
     // Check the current state of the the subgraph. If no subgraph with the
     // name exists, create one
     let info = s::table
+        .left_outer_join(v::table.on(s::current_version.eq(v::id.nullable())))
         .filter(s::name.eq(name.as_str()))
-        .select((s::id, s::current_version))
-        .first(conn)
+        .select((s::id, v::deployment.nullable()))
+        .first::<(String, Option<String>)>(conn)
         .optional()?;
-    let (subgraph_id, current_version): (String, Option<String>) = match info {
-        Some((subgraph_id, current_version)) => (subgraph_id, current_version),
+    let (subgraph_id, current_deployment) = match info {
+        Some((subgraph_id, current_deployment)) => (subgraph_id, current_deployment),
         None => (create_subgraph(conn, &name)?, None),
     };
+    let pending_deployment = s::table
+        .left_outer_join(v::table.on(s::pending_version.eq(v::id.nullable())))
+        .filter(s::id.eq(&subgraph_id))
+        .select(v::deployment.nullable())
+        .first::<Option<String>>(conn)?;
 
     // See if the current version of that subgraph is synced. If the subgraph
     // has no current version, we treat it the same as if it were not synced
     // The `optional` below only comes into play if data is corrupted/missing;
     // ignoring that via `optional` makes it possible to fix a missing version
     // or deployment by deploying over it.
-    let current_exists_and_synced = match &current_version {
-        Some(current_version) => d::table
-            .inner_join(v::table.on(v::deployment.eq(d::id)))
-            .filter(v::id.eq(&current_version))
+    let current_exists_and_synced = match &current_deployment {
+        Some(current_deployment) => d::table
+            .filter(d::id.eq(&current_deployment))
             .select(d::synced)
-            .first::<bool>(conn)
+            .first(conn)
             .optional()?
             .unwrap_or(false),
         None => false,
     };
+
+    // Check if we even need to make any changes
+    let change_needed = match (mode, current_exists_and_synced) {
+        (Instant, _) | (Synced, false) => current_deployment.as_deref() != Some(id.as_str()),
+        (Synced, true) => pending_deployment.as_deref() != Some(id.as_str()),
+    };
+    if !change_needed {
+        return Ok(vec![]);
+    }
 
     // Create the actual subgraph version
     let version_id = generate_entity_id();
