@@ -1,7 +1,8 @@
-use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
-use std::{fmt, str::FromStr};
-
 use diesel::Connection;
+use std::fmt;
+use std::str::FromStr;
+use std::sync::RwLock;
+use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 
 use graph::{
     components::store,
@@ -85,6 +86,8 @@ pub trait DeploymentPlacer {
 pub struct ShardedStore {
     primary: Arc<Store>,
     stores: HashMap<Shard, Arc<Store>>,
+    /// Cache for the mapping from deployment id to shard/namespace/id
+    sites: RwLock<HashMap<SubgraphDeploymentId, Arc<Site>>>,
 }
 
 impl ShardedStore {
@@ -99,7 +102,12 @@ impl ShardedStore {
             .get(&PRIMARY_SHARD)
             .expect("we always have a primary store")
             .clone();
-        Self { primary, stores }
+        let sites = RwLock::new(HashMap::new());
+        Self {
+            primary,
+            stores,
+            sites,
+        }
     }
 
     // Only needed for tests
@@ -112,13 +120,18 @@ impl ShardedStore {
     }
 
     fn site(&self, id: &SubgraphDeploymentId) -> Result<Arc<Site>, StoreError> {
+        if let Some(site) = self.sites.read().unwrap().get(id) {
+            return Ok(site.clone());
+        }
+
         let conn = self.primary_conn()?;
         let site = conn
             .find_site(id)?
             .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
+        let site = Arc::new(site);
 
-        // We'll eventually cache this, for now create a new Arc
-        Ok(Arc::new(site))
+        self.sites.write().unwrap().insert(id.clone(), site.clone());
+        Ok(site)
     }
 
     fn store(&self, id: &SubgraphDeploymentId) -> Result<(&Arc<Store>, Arc<Site>), StoreError> {
