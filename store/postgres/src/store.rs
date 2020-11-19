@@ -825,17 +825,16 @@ impl Store {
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         econn.transaction(|| -> Result<(), StoreError> {
             let exists = metadata::deployment_exists(&econn.conn, &schema.id)?;
-            let mut event = if replace && exists {
-                let ops = deployment.create_operations_replace(&schema.id);
-                self.apply_metadata_operations_with_conn(&econn, ops)?
-            } else if !exists {
+            let mut event = if replace || !exists {
                 let ops = deployment.create_operations(&schema.id);
-                let event = self.apply_metadata_operations_with_conn(&econn, ops)?;
-                econn.create_schema(schema)?;
-                event
+                self.apply_metadata_operations_with_conn(&econn, ops)?
             } else {
                 StoreEvent::new(vec![])
             };
+
+            if !exists {
+                econn.create_schema(schema)?;
+            }
 
             // Create subgraph, subgraph version, and assignment
             let changes =

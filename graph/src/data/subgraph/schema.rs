@@ -365,17 +365,7 @@ impl SubgraphDeploymentEntity {
         self
     }
 
-    // Overwrite entity if it exists. Only in debug builds so it's not used outside tests.
-    #[cfg(debug_assertions)]
-    pub fn create_operations_replace(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        self.private_create_operations(id)
-    }
-
     pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        self.private_create_operations(id)
-    }
-
-    fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let SubgraphDeploymentEntity {
