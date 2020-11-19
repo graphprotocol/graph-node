@@ -1,11 +1,14 @@
 //! Utilities for dealing with subgraph metadata
-use diesel::dsl::{delete, exists, insert_into, select, sql, update};
 use diesel::pg::PgConnection;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
     RunQueryDsl,
 };
 use diesel::sql_types::Text;
+use diesel::{
+    dsl::{delete, exists, insert_into, select, sql, update},
+    sql_types::Integer,
+};
 use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphError, SubgraphManifestEntity,
     SUBGRAPHS_ID,
@@ -882,4 +885,22 @@ fn check_health(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), an
     .execute(conn)
     .map(|_| ())
     .map_err(|e| e.into())
+}
+
+/// Reverts the errors and updates the subgraph health if necessary.
+pub(crate) fn revert_subgraph_errors(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    reverted_block: BlockNumber,
+) -> Result<(), anyhow::Error> {
+    use subgraph_error as e;
+
+    delete(
+        e::table
+            .filter(e::subgraph_id.eq(id.as_str()))
+            .filter(sql("lower(block_range) >= $1").bind::<Integer, _>(reverted_block)),
+    )
+    .execute(conn)?;
+
+    check_health(conn, id)
 }
