@@ -372,17 +372,7 @@ impl SubgraphDeploymentEntity {
     }
 
     pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        let mut ops: Vec<MetadataOperation> = vec![];
-
-        // Abort unless no entity exists with this ID
-        ops.push(Self::abort_unless(
-            "Subgraph deployment entity must not exist yet to be created",
-            EntityFilter::new_equal("id", id.to_string()),
-            vec![],
-        ));
-
-        ops.extend(self.private_create_operations(id));
-        ops
+        self.private_create_operations(id)
     }
 
     fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
