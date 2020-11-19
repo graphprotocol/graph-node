@@ -542,14 +542,9 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
             directives: vec![],
         },
         // block: BlockHeight
-        InputValue {
-            position: Pos::default(),
-            description: None,
-            name: String::from("block"),
-            value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
-            default_value: None,
-            directives: vec![],
-        },
+        block_argument(),
+        // allowIndexingErrors: Boolean!
+        allow_indexing_errors_argument(),
     ];
     Some(Field {
         position: Pos::default(),
@@ -613,11 +608,26 @@ fn block_argument() -> InputValue {
     }
 }
 
+fn allow_indexing_errors_argument() -> InputValue {
+    InputValue {
+        position: Pos::default(),
+        description: Some(
+            "Set to `true` to receive data even if the subgraph has skipped over errors while syncing."
+                .to_owned(),
+        ),
+        name: "allowIndexingErrors".to_string(),
+        value_type: Type::NamedType("Boolean".to_string()),
+        default_value: Some(Value::Boolean(false)),
+        directives: vec![],
+    }
+}
+
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
 fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
     let input_objects = ast::get_input_object_definitions(schema);
     let mut collection_arguments = collection_arguments_for_named_type(&input_objects, type_name);
     collection_arguments.push(block_argument());
+    collection_arguments.push(allow_indexing_errors_argument());
 
     vec![
         Field {
@@ -1014,7 +1024,8 @@ mod tests {
                 "orderBy",
                 "orderDirection",
                 "where",
-                "block"
+                "block",
+                "allowIndexingErrors"
             ]
             .iter()
             .map(|name| name.to_string())
@@ -1105,7 +1116,8 @@ mod tests {
                 "orderBy",
                 "orderDirection",
                 "where",
-                "block"
+                "block",
+                "allowIndexingErrors"
             ]
             .iter()
             .map(|name| name.to_string())

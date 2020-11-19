@@ -898,7 +898,7 @@ pub(crate) fn revert_subgraph_errors(
     delete(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(sql("lower(block_range) >= $1").bind::<Integer, _>(reverted_block)),
+            .filter(sql("lower(block_range) >= ").bind::<Integer, _>(reverted_block)),
     )
     .execute(conn)?;
 
