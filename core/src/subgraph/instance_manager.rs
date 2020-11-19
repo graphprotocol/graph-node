@@ -249,29 +249,14 @@ impl SubgraphInstanceManager {
                             "data_sources" => manifest.data_sources.len()
                         );
                         let network = manifest.network_name();
-                        let required_capabilities = manifest.required_ethereum_capabilities();
 
                         match Self::start_subgraph(
                             logger.clone(),
                             instances.clone(),
                             host_builder.clone(),
                             block_stream_builder.clone(),
-                            stores
-                                .get(&network)
-                                .expect(&format!(
-                                    "expected store that matches subgraph network: {}",
-                                    &network
-                                ))
-                                .clone(),
-                            eth_networks
-                                .adapter_with_capabilities(
-                                    network.clone(),
-                                    &required_capabilities)
-                                .expect(&format!(
-                                    "expected eth adapter that matches subgraph network {} with required capabilities: {}",
-                                    &network,
-                                    &required_capabilities))
-                                .clone(),
+                            stores.get(&network).cloned(),
+                            &eth_networks,
                             manifest,
                             metrics_registry_for_subgraph.clone(),
                         )
@@ -303,8 +288,8 @@ impl SubgraphInstanceManager {
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
         stream_builder: B,
-        store: Arc<S>,
-        eth_adapter: Arc<dyn EthereumAdapter>,
+        store: Option<Arc<S>>,
+        eth_networks: &EthereumNetworks,
         manifest: SubgraphManifest,
         registry: Arc<M>,
     ) -> Result<(), Error>
@@ -313,6 +298,20 @@ impl SubgraphInstanceManager {
         S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
         M: MetricsRegistry,
     {
+        let required_capabilities = manifest.required_ethereum_capabilities();
+        let network = manifest.network_name();
+
+        let store = store.ok_or_else(|| {
+            format_err!("expected store that matches subgraph network: {}", &network)
+        })?;
+
+        let eth_adapter = eth_networks
+            .adapter_with_capabilities(network.clone(), &required_capabilities).map_err(|e|
+                format_err!(
+                "expected eth adapter that matches subgraph network {} with required capabilities: {}: {}",
+                &network,
+                &required_capabilities, e))?.clone();
+
         store.start_subgraph_deployment(&logger, &manifest.id)?;
 
         let mut templates: Vec<DataSourceTemplate> = vec![];
