@@ -841,6 +841,9 @@ impl Layout {
                 changes.extend(deleted);
             }
         }
+
+        crate::metadata::revert_subgraph_errors(conn, &self.subgraph, block)?;
+
         Ok(StoreEvent::new(changes))
     }
 
