@@ -812,21 +812,36 @@ impl Store {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        ops: Vec<MetadataOperation>,
+        deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
+        // replace == true is only used in tests; for non-test code, it must
+        // be 'false'
+        replace: bool,
     ) -> Result<(), StoreError> {
+        #[cfg(not(debug_assertions))]
+        assert!(!replace);
+
         let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
         econn.transaction(|| -> Result<(), StoreError> {
-            // Create the deployment if it doesn't exist
-            let mut event = self.apply_metadata_operations_with_conn(&econn, ops)?;
+            let exists = metadata::deployment_exists(&econn.conn, &schema.id)?;
+            let mut event = if replace && exists {
+                let ops = deployment.create_operations_replace(&schema.id);
+                self.apply_metadata_operations_with_conn(&econn, ops)?
+            } else if !exists {
+                let ops = deployment.create_operations(&schema.id);
+                let event = self.apply_metadata_operations_with_conn(&econn, ops)?;
+                econn.create_schema(schema)?;
+                event
+            } else {
+                StoreEvent::new(vec![])
+            };
 
             // Create subgraph, subgraph version, and assignment
             let changes =
                 metadata::create_subgraph_version(&econn.conn, name, &schema.id, node_id, mode)?;
             event.changes.extend(changes);
 
-            econn.create_schema(schema)?;
             econn.send_store_event(&event)
         })
     }
@@ -842,8 +857,7 @@ impl Store {
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        let ops = deployment.create_operations_replace(&schema.id);
-        self.create_deployment_internal(name, schema, ops, node_id, mode)
+        self.create_deployment_internal(name, schema, deployment, node_id, mode, true)
     }
 }
 
@@ -1201,8 +1215,7 @@ impl StoreTrait for Store {
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        let ops = deployment.create_operations(&schema.id);
-        self.create_deployment_internal(name, schema, ops, node_id, mode)
+        self.create_deployment_internal(name, schema, deployment, node_id, mode, false)
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {

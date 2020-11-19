@@ -524,6 +524,18 @@ pub fn deployment_synced(
     Ok(changes)
 }
 
+/// Returns `true` if the deployment `id` exists
+pub fn deployment_exists(conn: &PgConnection, id: &str) -> Result<bool, StoreError> {
+    use subgraph_deployment as d;
+
+    let exists = d::table
+        .filter(d::id.eq(id))
+        .count()
+        .get_result::<i64>(conn)?
+        > 0;
+    Ok(exists)
+}
+
 /// Create a new subgraph with the given name. If one already exists, use
 /// the existing one. Return the `id` of the newly created or existing
 /// subgraph
