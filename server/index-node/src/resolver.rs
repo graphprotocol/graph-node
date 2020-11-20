@@ -1,10 +1,12 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
-use graph::data::graphql::{ObjectOrInterface, TryFromValue, ValueList, ValueMap};
+use graph::data::graphql::{
+    object, IntoValue, ObjectOrInterface, TryFromValue, ValueList, ValueMap,
+};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth, SUBGRAPHS_ID};
 use graph::prelude::*;
-use graph_graphql::prelude::{object, ExecutionContext, IntoValue, Resolver};
+use graph_graphql::prelude::{ExecutionContext, Resolver};
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 

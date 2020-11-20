@@ -1,5 +1,5 @@
+use graph::data::graphql::object;
 use graph::prelude::*;
-use graph_graphql::object;
 use graph_server_http::test_utils;
 use graphql_parser::{self, query as q};
 use std::collections::BTreeMap;

@@ -5,14 +5,14 @@ use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use graph::data::graphql::ObjectOrInterface;
+use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::prelude::{
     o, slog, tokio, ApiSchema, Logger, Query, QueryExecutionError, QueryResult, Schema,
     SubgraphDeploymentId,
 };
 use graph_graphql::prelude::{
-    api_schema, execute_query, object, object_value, ExecutionContext, Query as PreparedQuery,
-    QueryExecutionOptions, Resolver,
+    api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
+    Resolver,
 };
 use test_store::LOAD_MANAGER;
 

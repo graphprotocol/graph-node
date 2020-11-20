@@ -2,8 +2,8 @@
 
 use pretty_assertions::assert_eq;
 
+use graph::data::graphql::object;
 use graph::prelude::*;
-use graph_graphql::prelude::object;
 use graphql_parser::query as q;
 use test_store::*;
 

@@ -16,6 +16,7 @@ use graph::prelude::{
     Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
 };
 use graph::{
+    data::graphql::{object, object_value},
     data::query::CacheStatus,
     prelude::{NodeId, SubgraphName},
 };
