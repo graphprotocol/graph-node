@@ -52,6 +52,8 @@ lazy_static! {
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
 
+pub mod status;
+
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
 where
