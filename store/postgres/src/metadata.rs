@@ -474,7 +474,6 @@ fn remove_unused_assignments(conn: &PgConnection) -> Result<Vec<EntityChange>, S
             }
             .into()
         })
-        .filter_map(|e| e)
         .collect::<Vec<_>>())
 }
 
@@ -734,10 +733,7 @@ pub fn reassign_subgraph(
                 id: id.to_string(),
                 data: entity! { node_id: node.to_string() },
             };
-            let change: Option<EntityChange> = op.into();
-            let change =
-                change.expect("converting a MetadataOperation::Set to an EntityChange is safe");
-            Ok(vec![change])
+            Ok(vec![op.into()])
         }
         _ => {
             // `id` is the primary key of the subgraph_deployment_assignment table,

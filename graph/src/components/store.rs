@@ -396,18 +396,18 @@ impl EntityChange {
     }
 }
 
-impl From<MetadataOperation> for Option<EntityChange> {
+impl From<MetadataOperation> for EntityChange {
     fn from(operation: MetadataOperation) -> Self {
         use self::MetadataOperation::*;
         match operation {
-            Set { entity, id, .. } | Update { entity, id, .. } => Some(EntityChange::from_key(
+            Set { entity, id, .. } | Update { entity, id, .. } => EntityChange::from_key(
                 MetadataOperation::entity_key(entity, id),
                 EntityChangeOperation::Set,
-            )),
-            Remove { entity, id, .. } => Some(EntityChange::from_key(
+            ),
+            Remove { entity, id, .. } => EntityChange::from_key(
                 MetadataOperation::entity_key(entity, id),
                 EntityChangeOperation::Removed,
-            )),
+            ),
         }
     }
 }
@@ -430,7 +430,7 @@ pub struct StoreEvent {
 
 impl From<Vec<MetadataOperation>> for StoreEvent {
     fn from(operations: Vec<MetadataOperation>) -> Self {
-        let changes: Vec<_> = operations.into_iter().filter_map(|op| op.into()).collect();
+        let changes: Vec<_> = operations.into_iter().map(EntityChange::from).collect();
         StoreEvent::new(changes)
     }
 }
