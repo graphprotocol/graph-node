@@ -223,23 +223,20 @@ pub fn network(
     use subgraph_manifest as sm;
 
     let manifest_id = SubgraphManifestEntity::id(&id);
-    sm::table
+    let data_sources: Vec<String> = sm::table
         .select(sm::data_sources)
         .filter(sm::id.eq(manifest_id.as_str()))
-        .first::<Vec<String>>(conn)?
-        // The NetworkIndexer creates a manifest with an empty
-        // array of data sources and we therefore accept 'None'
-        // here
-        .first()
-        .map(|ds_id| {
-            ds::table
-                .select(ds::network)
-                .filter(ds::id.eq(&ds_id))
-                .first::<Option<String>>(conn)
-        })
-        .transpose()
-        .map(|x| x.flatten())
-        .map_err(|e| e.into())
+        .first::<Vec<String>>(conn)?;
+    // The NetworkIndexer creates a manifest with an empty
+    // array of data sources and we therefore accept 'None'
+    // here
+    match data_sources.first() {
+        Some(ds_id) => Ok(ds::table
+            .select(ds::network)
+            .filter(ds::id.eq(&ds_id))
+            .first::<Option<String>>(conn)?),
+        None => Ok(None),
+    }
 }
 
 pub fn subgraph_features(
