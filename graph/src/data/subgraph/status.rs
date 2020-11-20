@@ -38,9 +38,11 @@ impl IntoValue for EthereumBlock {
     }
 }
 
-/// The indexing status of a subgraph on an Ethereum network (like mainnet or ropsten).
+/// Indexing status information related to the chain. Right now, we only
+/// support Ethereum, but once we support more chains, we'll have to turn this into
+/// an enum
 #[derive(Debug)]
-pub struct EthereumInfo {
+pub struct ChainInfo {
     /// The network name (e.g. `mainnet`, `ropsten`, `rinkeby`, `kovan` or `goerli`).
     network: String,
     /// The current head block of the chain.
@@ -51,24 +53,22 @@ pub struct EthereumInfo {
     latest_block: Option<EthereumBlock>,
 }
 
-/// Indexing status information for different chains (only Ethereum right now).
-#[derive(Debug)]
-pub enum ChainInfo {
-    Ethereum(EthereumInfo),
-}
-
 impl From<ChainInfo> for q::Value {
-    fn from(status: ChainInfo) -> Self {
-        match status {
-            ChainInfo::Ethereum(inner) => object! {
-                // `__typename` is needed for the `ChainIndexingStatus` interface
-                // in GraphQL to work.
-                __typename: "EthereumIndexingStatus",
-                network: inner.network,
-                chainHeadBlock: inner.chain_head_block,
-                earliestBlock: inner.earliest_block,
-                latestBlock: inner.latest_block,
-            },
+    fn from(info: ChainInfo) -> Self {
+        let ChainInfo {
+            network,
+            chain_head_block,
+            earliest_block,
+            latest_block,
+        } = info;
+        object! {
+            // `__typename` is needed for the `ChainIndexingStatus` interface
+            // in GraphQL to work.
+            __typename: "EthereumIndexingStatus",
+            network: network,
+            chainHeadBlock: chain_head_block,
+            earliestBlock: earliest_block,
+            latestBlock: latest_block,
         }
     }
 }
@@ -153,7 +153,7 @@ impl TryFromValue for Info {
             health: value.get_required("health")?,
             fatal_error: value.get_optional("fatalError")?,
             non_fatal_errors: value.get_required("nonFatalErrors")?,
-            chains: vec![ChainInfo::Ethereum(EthereumInfo {
+            chains: vec![ChainInfo {
                 network: value
                     .get_required::<q::Value>("manifest")?
                     .get_required::<q::Value>("dataSources")?
@@ -162,7 +162,7 @@ impl TryFromValue for Info {
                 chain_head_block: Self::block_from_value(value, "ethereumHeadBlock")?,
                 earliest_block: Self::block_from_value(value, "earliestEthereumBlock")?,
                 latest_block: Self::block_from_value(value, "latestEthereumBlock")?,
-            })],
+            }],
             node: "THIS WILL GO AWAY WHEN WE QUERY THE DATABASE DIRECTLY".to_string(),
         })
     }
