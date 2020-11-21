@@ -62,4 +62,8 @@ impl QueryStoreTrait for QueryStore {
     ) -> Result<Option<BlockNumber>, StoreError> {
         self.store.block_number(subgraph_id, block_hash)
     }
+
+    fn wait_stats(&self) -> &PoolWaitStats {
+        self.store.wait_stats(self.replica_id)
+    }
 }

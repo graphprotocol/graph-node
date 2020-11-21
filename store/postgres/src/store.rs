@@ -5,7 +5,8 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
 use graph::prelude::{
-    CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, SubgraphVersionSwitchingMode,
+    CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
+    SubgraphVersionSwitchingMode,
 };
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -648,6 +649,13 @@ impl Store {
         let storage = self.storage(&conn, subgraph)?;
         let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;
         Ok(e::Connection::new(conn.into(), storage, metadata))
+    }
+
+    pub(crate) fn wait_stats(&self, replica: ReplicaId) -> &PoolWaitStats {
+        match replica {
+            ReplicaId::Main => &self.conn.wait_stats,
+            ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx].wait_stats,
+        }
     }
 
     /// Return the storage for the subgraph. Since constructing a `Storage`

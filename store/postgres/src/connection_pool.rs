@@ -12,7 +12,7 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct ConnectionPool {
     pool: Pool<ConnectionManager<PgConnection>>,
-    wait_stats: PoolWaitStats,
+    pub(crate) wait_stats: PoolWaitStats,
 }
 
 struct ErrorHandler(Logger, Counter);

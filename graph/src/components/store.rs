@@ -1277,6 +1277,8 @@ pub trait QueryStore: Send + Sync {
         subgraph_id: &SubgraphDeploymentId,
         block_hash: H256,
     ) -> Result<Option<BlockNumber>, StoreError>;
+
+    fn wait_stats(&self) -> &PoolWaitStats;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to
