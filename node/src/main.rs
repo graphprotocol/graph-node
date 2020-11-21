@@ -7,7 +7,6 @@ use std::env;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::str::FromStr;
-use std::sync::RwLock;
 use std::time::Duration;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
@@ -194,7 +193,6 @@ async fn main() {
     let stores_error_logger = logger.clone();
     let stores_eth_networks = eth_networks.clone();
     let contention_logger = logger.clone();
-    let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
 
     let expensive_queries = read_expensive_queries().unwrap();
 
@@ -204,7 +202,6 @@ async fn main() {
         opt.store_connection_pool_size,
         opt.postgres_secondary_hosts.clone(),
         opt.postgres_host_weights.clone(),
-        wait_stats.clone(),
         metrics_registry.cheap_clone(),
     ));
     let store_builder2 = store_builder.clone();

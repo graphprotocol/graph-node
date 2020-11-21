@@ -1,7 +1,7 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use url::Url;
 
-use graph::prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger, MovingStats};
+use graph::prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger};
 use graph_core::MetricsRegistry;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
@@ -39,7 +39,6 @@ impl StoreBuilder {
         pool_size: u32,
         read_replicas: Vec<String>,
         replica_weights: Vec<usize>,
-        wait_stats: Arc<RwLock<MovingStats>>,
         registry: Arc<MetricsRegistry>,
     ) -> Self {
         // Minimum of two connections needed for the pool in order for the Store to bootstrap
@@ -53,7 +52,6 @@ impl StoreBuilder {
             pool_size,
             &logger,
             registry.cheap_clone(),
-            wait_stats.cheap_clone(),
         );
 
         let read_only_conn_pools: Vec<_> = read_replicas
@@ -68,7 +66,6 @@ impl StoreBuilder {
                     pool_size,
                     &logger,
                     registry.cheap_clone(),
-                    wait_stats.cheap_clone(),
                 )
             })
             .collect();

@@ -16,7 +16,7 @@ use graph_store_postgres::{
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
-use std::sync::{Mutex, RwLock};
+use std::sync::Mutex;
 use std::time::Instant;
 use web3::types::H256;
 
@@ -39,8 +39,6 @@ lazy_static! {
     };
 
     pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(Builder::new().basic_scheduler().enable_all().build().unwrap());
-
-    pub static ref POOL_WAIT_STATS: PoolWaitStats = Arc::new(RwLock::new(MovingStats::default()));
 
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(
         LoadManager::new(&*LOGGER,
@@ -66,7 +64,6 @@ lazy_static! {
                     CONN_POOL_SIZE as u32,
                     &logger,
                     Arc::new(MockMetricsRegistry::new()),
-                    POOL_WAIT_STATS.clone()
                 );
                 let registry = Arc::new(MockMetricsRegistry::new());
                 let chain_head_update_listener = Arc::new(ChainHeadUpdateListener::new(

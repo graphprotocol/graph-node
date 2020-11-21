@@ -4,10 +4,10 @@ use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 use graph::prelude::*;
 use graph::util::security::SafeDisplay;
 
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{collections::HashMap, sync::RwLock};
 
 #[derive(Clone)]
 pub struct ConnectionPool {
@@ -115,7 +115,6 @@ impl ConnectionPool {
         pool_size: u32,
         logger: &Logger,
         registry: Arc<dyn MetricsRegistry>,
-        wait_time: PoolWaitStats,
     ) -> ConnectionPool {
         let logger_store = logger.new(o!("component" => "Store"));
         let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
@@ -132,10 +131,11 @@ impl ConnectionPool {
             )
             .expect("failed to create `store_connection_error_count` counter");
         let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
+        let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
         let event_handler = Box::new(EventHandler::new(
             logger_pool.clone(),
             registry,
-            wait_time.clone(),
+            wait_stats.clone(),
             const_labels,
         ));
 
@@ -167,9 +167,6 @@ impl ConnectionPool {
             "pool_name" => pool_name,
             "url" => SafeDisplay(postgres_url.as_str())
         );
-        ConnectionPool {
-            pool,
-            wait_stats: wait_time,
-        }
+        ConnectionPool { pool, wait_stats }
     }
 }
