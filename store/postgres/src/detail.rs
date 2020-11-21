@@ -1,6 +1,9 @@
 //! Queries to support the index node API
 use diesel::pg::PgConnection;
-use diesel::prelude::{ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
+use diesel::prelude::{
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
+    RunQueryDsl,
+};
 use graph::prelude::{bigdecimal::ToPrimitive, BigDecimal, StoreError};
 use graph::{
     data::subgraph::{schema::SubgraphHealth, status},
@@ -196,4 +199,28 @@ pub(crate) fn deployment_statuses(
             .map(|detail| status::Info::try_from(detail))
             .collect()
     }
+}
+
+pub fn subgraph_version(
+    conn: &PgConnection,
+    name: String,
+    use_current: bool,
+) -> Result<Option<String>, StoreError> {
+    use subgraph as s;
+    use subgraph_version as v;
+
+    let deployment = if use_current {
+        v::table
+            .select(v::deployment.nullable())
+            .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
+            .filter(s::name.eq(&name))
+            .first::<Option<String>>(conn)
+    } else {
+        v::table
+            .select(v::deployment.nullable())
+            .inner_join(s::table.on(s::pending_version.eq(v::id.nullable())))
+            .filter(s::name.eq(&name))
+            .first::<Option<String>>(conn)
+    };
+    Ok(deployment.optional()?.flatten())
 }

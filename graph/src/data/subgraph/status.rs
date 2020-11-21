@@ -14,6 +14,7 @@ use crate::{
 
 pub enum Filter {
     SubgraphName(String),
+    SubgraphVersion(String, bool),
 }
 
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.

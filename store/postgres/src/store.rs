@@ -827,6 +827,12 @@ impl Store {
                         detail::deployment_statuses(&conn, deployments)
                     }
                 }
+                status::Filter::SubgraphVersion(name, use_current) => {
+                    match detail::subgraph_version(&conn, name, use_current)? {
+                        Some(deployment) => detail::deployment_statuses(&conn, vec![deployment]),
+                        None => Ok(vec![]),
+                    }
+                }
             }
         })
     }
