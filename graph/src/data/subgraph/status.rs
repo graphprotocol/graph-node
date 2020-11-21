@@ -1,16 +1,9 @@
 //! Support for the indexing status API
-use failure::Error;
 use graphql_parser::query as q;
 
 use super::schema::{SubgraphError, SubgraphHealth};
-use crate::{
-    data::graphql::ValueList,
-    prelude::{web3::types::H256, BigInt, EthereumBlockPointer, Value, ValueMap},
-};
-use crate::{
-    data::graphql::{object, IntoValue},
-    prelude::TryFromValue,
-};
+use crate::data::graphql::{object, IntoValue};
+use crate::prelude::{web3::types::H256, EthereumBlockPointer, Value};
 
 pub enum Filter {
     SubgraphName(String),
@@ -79,24 +72,6 @@ impl From<ChainInfo> for q::Value {
     }
 }
 
-/// The ID of a subgraph deployment assignment.
-#[derive(Debug)]
-pub struct DeploymentAssignment {
-    /// ID of the subgraph.
-    subgraph: String,
-    /// ID of the Graph Node that indexes the subgraph.
-    node: String,
-}
-
-impl TryFromValue for DeploymentAssignment {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        Ok(Self {
-            subgraph: value.get_required("id")?,
-            node: value.get_required("nodeId")?,
-        })
-    }
-}
-
 #[derive(Debug)]
 pub struct Info {
     /// The subgraph ID.
@@ -113,65 +88,6 @@ pub struct Info {
 
     /// ID of the Graph Node that the subgraph is indexed by.
     pub node: Option<String>,
-}
-
-impl Info {
-    /// Adds a Graph Node ID to the indexing status.
-    pub fn with_node(self, node: String) -> Self {
-        Self {
-            subgraph: self.subgraph,
-            synced: self.synced,
-            health: self.health,
-            fatal_error: self.fatal_error,
-            non_fatal_errors: self.non_fatal_errors,
-            chains: self.chains,
-            node: Some(node),
-        }
-    }
-
-    /// Attempts to parse `${prefix}Hash` and `${prefix}Number` fields on a
-    /// GraphQL object value into an `EthereumBlock`.
-    fn block_from_value(
-        value: &q::Value,
-        prefix: &'static str,
-    ) -> Result<Option<EthereumBlock>, Error> {
-        let hash_key = format!("{}Hash", prefix);
-        let number_key = format!("{}Number", prefix);
-
-        match (
-            value.get_optional::<H256>(hash_key.as_ref())?,
-            value
-                .get_optional::<BigInt>(number_key.as_ref())?
-                .map(|n| n.to_u64()),
-        ) {
-            // Only return an Ethereum block if we can parse both the block hash and number
-            (Some(hash), Some(number)) => Ok(Some(EthereumBlock::new(hash, number))),
-            _ => Ok(None),
-        }
-    }
-}
-
-impl TryFromValue for Info {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        Ok(Self {
-            subgraph: value.get_required("id")?,
-            synced: value.get_required("synced")?,
-            health: value.get_required("health")?,
-            fatal_error: value.get_optional("fatalError")?,
-            non_fatal_errors: value.get_required("nonFatalErrors")?,
-            chains: vec![ChainInfo {
-                network: value
-                    .get_required::<q::Value>("manifest")?
-                    .get_required::<q::Value>("dataSources")?
-                    .get_values::<q::Value>()?[0]
-                    .get_required("network")?,
-                chain_head_block: Self::block_from_value(value, "ethereumHeadBlock")?,
-                earliest_block: Self::block_from_value(value, "earliestEthereumBlock")?,
-                latest_block: Self::block_from_value(value, "latestEthereumBlock")?,
-            }],
-            node: None,
-        })
-    }
 }
 
 impl From<Info> for q::Value {
@@ -239,34 +155,6 @@ impl Infos {
 impl From<Vec<Info>> for Infos {
     fn from(infos: Vec<Info>) -> Self {
         Infos(infos)
-    }
-}
-
-impl From<q::Value> for Infos {
-    fn from(data: q::Value) -> Self {
-        // Extract deployment assignment IDs from the query result
-        let assignments = data
-            .get_required::<q::Value>("subgraphDeploymentAssignments")
-            .expect("no subgraph deployment assignments in the result")
-            .get_values::<DeploymentAssignment>()
-            .expect("failed to parse subgraph deployment assignments");
-
-        Infos(
-            // Parse indexing statuses from deployments
-            data.get_required::<q::Value>("subgraphDeployments")
-                .expect("no subgraph deployments in the result")
-                .get_values()
-                .expect("failed to parse subgraph deployments")
-                .into_iter()
-                // Filter out those deployments for which there is no active assignment
-                .filter_map(|status: Info| {
-                    assignments
-                        .iter()
-                        .find(|assignment| assignment.subgraph == status.subgraph)
-                        .map(|assignment| status.with_node(assignment.node.clone()))
-                })
-                .collect(),
-        )
     }
 }
 
