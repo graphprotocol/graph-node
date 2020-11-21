@@ -143,6 +143,7 @@ impl Query {
         let query_hash = {
             let mut hasher = DefaultHasher::new();
             query.query_text.hash(&mut hasher);
+            query.variables_text.hash(&mut hasher);
             hasher.finish()
         };
         let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
