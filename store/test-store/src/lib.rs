@@ -9,7 +9,7 @@ use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
 use graph_mock::MockMetricsRegistry;
-use graph_store_postgres::connection_pool::create_connection_pool;
+use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     ChainHeadUpdateListener, ChainStore, NetworkStore, Store, SubscriptionManager,
 };
@@ -61,7 +61,7 @@ lazy_static! {
                     net_version: NETWORK_VERSION.to_owned(),
                     genesis_block_hash: GENESIS_PTR.hash,
                 };
-                let postgres_conn_pool = create_connection_pool(
+                let postgres_conn_pool = ConnectionPool::create(
                     "test",
                     postgres_url.clone(),
                     CONN_POOL_SIZE as u32,

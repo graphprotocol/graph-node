@@ -3,7 +3,7 @@ use url::Url;
 
 use graph::prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger, MovingStats};
 use graph_core::MetricsRegistry;
-use graph_store_postgres::connection_pool::{create_connection_pool, ConnectionPool};
+use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
     NetworkStore as DieselNetworkStore, Store as DieselStore, SubscriptionManager,
@@ -47,7 +47,7 @@ impl StoreBuilder {
             panic!("--store-connection-pool-size/STORE_CONNECTION_POOL_SIZE must be > 1")
         }
 
-        let conn_pool = create_connection_pool(
+        let conn_pool = ConnectionPool::create(
             "main",
             postgres_url.to_owned(),
             pool_size,
@@ -62,7 +62,7 @@ impl StoreBuilder {
             .map(|(i, host)| {
                 info!(&logger, "Connecting to Postgres read replica at {}", host);
                 let url = replace_host(postgres_url, &host);
-                create_connection_pool(
+                ConnectionPool::create(
                     &format!("replica{}", i),
                     url,
                     pool_size,
