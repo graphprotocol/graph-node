@@ -116,7 +116,7 @@ impl TryFrom<Detail> for status::Info {
             earliest_ethereum_block_number,
             latest_ethereum_block_hash,
             latest_ethereum_block_number,
-            entity_count: _,
+            entity_count,
             graft_base: _,
             graft_block_hash: _,
             graft_block_number: _,
@@ -151,6 +151,12 @@ impl TryFrom<Detail> for status::Info {
             earliest_block,
             latest_block,
         };
+        let entity_count = entity_count.to_u64().ok_or_else(|| {
+            StoreError::ConstraintViolation(format!(
+                "the entityCount for {} is not representable as a u64",
+                id
+            ))
+        })?;
         Ok(status::Info {
             subgraph: id,
             synced,
@@ -158,6 +164,7 @@ impl TryFrom<Detail> for status::Info {
             fatal_error: None,
             non_fatal_errors: vec![],
             chains: vec![chain],
+            entity_count,
             node: node_id,
         })
     }

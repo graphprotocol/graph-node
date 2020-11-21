@@ -86,6 +86,8 @@ pub struct Info {
     /// Indexing status on different chains involved in the subgraph's data sources.
     pub chains: Vec<ChainInfo>,
 
+    pub entity_count: u64,
+
     /// ID of the Graph Node that the subgraph is indexed by.
     pub node: Option<String>,
 }
@@ -95,6 +97,7 @@ impl From<Info> for q::Value {
         let Info {
             subgraph,
             chains,
+            entity_count,
             fatal_error,
             health,
             node,
@@ -139,6 +142,7 @@ impl From<Info> for q::Value {
             fatalError: fatal_error_val,
             nonFatalErrors: non_fatal_errors,
             chains: chains.into_iter().map(q::Value::from).collect::<Vec<_>>(),
+            entityCount: format!("{}", entity_count),
             node: node,
         }
     }
