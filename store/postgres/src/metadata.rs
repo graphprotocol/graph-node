@@ -498,7 +498,7 @@ pub fn deployment_synced(
         .load(conn)?;
 
     // Switch the pending version to the current version
-    for (subgraph, version) in pending_subgraph_versions {
+    for (subgraph, version) in &pending_subgraph_versions {
         update(s::table.filter(s::id.eq(&subgraph)))
             .set((
                 s::current_version.eq(&version),
@@ -507,7 +507,13 @@ pub fn deployment_synced(
             .execute(conn)?;
     }
 
-    let changes = remove_unused_assignments(conn)?;
+    // Clean up assignments if we could possibly have changed any
+    // subgraph versions
+    let changes = if pending_subgraph_versions.is_empty() {
+        vec![]
+    } else {
+        remove_unused_assignments(conn)?
+    };
 
     // This seems to get called a lot by the block stream, even if the
     // deployment is already synced. Avoid allocating a txid if we are
