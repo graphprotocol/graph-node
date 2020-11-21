@@ -240,7 +240,6 @@ impl Decision {
 pub struct LoadManager {
     logger: Logger,
     effort: QueryEffort,
-    store_wait_stats: PoolWaitStats,
     /// List of query shapes that have been statically blocked through
     /// configuration
     blocked_queries: HashSet<u64>,
@@ -262,7 +261,6 @@ pub struct LoadManager {
 impl LoadManager {
     pub fn new(
         logger: &Logger,
-        store_wait_stats: PoolWaitStats,
         blocked_queries: Vec<Arc<q::Document>>,
         registry: Arc<dyn MetricsRegistry>,
         store_conn_pool_size: usize,
@@ -319,7 +317,6 @@ impl LoadManager {
         Self {
             logger,
             effort: QueryEffort::default(),
-            store_wait_stats,
             blocked_queries,
             jailed_queries: RwLock::new(HashSet::new()),
             kill_state: RwLock::new(KillState::new()),
@@ -389,7 +386,7 @@ impl LoadManager {
     /// case, we also do not take any locks when asked to update statistics,
     /// or to check whether we are overloaded; these operations amount to
     /// noops.
-    pub fn decide(&self, shape_hash: u64, query: &str) -> Decision {
+    pub fn decide(&self, wait_stats: &PoolWaitStats, shape_hash: u64, query: &str) -> Decision {
         use Decision::*;
 
         if self.blocked_queries.contains(&shape_hash) {
@@ -403,7 +400,7 @@ impl LoadManager {
             return if *SIMULATE { Proceed } else { TooExpensive };
         }
 
-        let (overloaded, wait_ms) = self.overloaded();
+        let (overloaded, wait_ms) = self.overloaded(wait_stats);
         let (kill_rate, last_update) = self.kill_state();
         if !overloaded && kill_rate == 0.0 {
             return Proceed;
@@ -458,8 +455,8 @@ impl LoadManager {
         Proceed
     }
 
-    fn overloaded(&self) -> (bool, Duration) {
-        let store_avg = self.store_wait_stats.read().unwrap().average();
+    fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
+        let store_avg = wait_stats.read().unwrap().average();
         let semaphore_avg = self.semaphore_wait_stats.read().unwrap().average();
         let max_avg = store_avg.max(semaphore_avg);
         let overloaded = max_avg

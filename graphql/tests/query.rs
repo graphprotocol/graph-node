@@ -854,7 +854,8 @@ fn query_complexity() {
 fn query_complexity_subscriptions() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), STORE.clone());
+        let store = STORE.clone().query_store(true);
+        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let query = Query::new(
             Arc::new(api_test_schema(&id)),
@@ -916,7 +917,8 @@ fn query_complexity_subscriptions() {
             None,
         );
 
-        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), STORE.clone());
+        let store = STORE.clone().query_store(true);
+        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let options = SubscriptionExecutionOptions {
             logger,
@@ -1260,7 +1262,8 @@ fn cannot_filter_by_derved_relationship_fields() {
 fn subscription_gets_result_even_without_events() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), STORE.clone());
+        let store = STORE.clone().query_store(true);
+        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let query = Query::new(
             Arc::new(api_test_schema(&id)),

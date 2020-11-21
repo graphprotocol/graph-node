@@ -44,7 +44,6 @@ lazy_static! {
 
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(
         LoadManager::new(&*LOGGER,
-                         POOL_WAIT_STATS.clone(),
                          Vec::new(),
                          Arc::new(MockMetricsRegistry::new()),
                          CONN_POOL_SIZE));

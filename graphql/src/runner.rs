@@ -110,10 +110,25 @@ where
         max_skip: Option<u32>,
         nested_resolver: bool,
     ) -> Result<Arc<QueryResult>, QueryResult> {
+        // We need to use the same `QueryStore` for the entire query to ensure
+        // we have a consistent view if the world, even when replicas, which
+        // are eventually consistent, are in use. If we run different parts
+        // of the query against different replicas, it would be possible for
+        // them to be at wildly different states, and we might unwittingly
+        // mix data from different block heights even if no reverts happen
+        // while the query is running. `self.store` can not be used after this
+        // point, and everything needs to go through the `store` we are
+        // setting up here
+        let store = self.store.cheap_clone().query_store(false);
+
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
         let query = crate::execution::Query::new(&self.logger, query, max_complexity, max_depth)?;
         self.load_manager
-            .decide(query.shape_hash, query.query_text.as_ref())
+            .decide(
+                store.wait_stats(),
+                query.shape_hash,
+                query.query_text.as_ref(),
+            )
             .to_result()?;
 
         let execute = |selection_set, resolver: StoreResolver| {
@@ -136,16 +151,6 @@ where
         let mut by_block_constraint = query.block_constraint()?.into_iter();
         let (bc, selection_set) = by_block_constraint.next().unwrap();
 
-        // We need to use the same `QueryStore` for the entire query to ensure
-        // we have a consistent view if the world, even when replicas, which
-        // are eventually consistent, are in use. If we run different parts
-        // of the query against different replicas, it would be possible for
-        // them to be at wildly different states, and we might unwittingly
-        // mix data from different block heights even if no reverts happen
-        // while the query is running. `self.store` can not be used after this
-        // point, and everything needs to go through the `store` we are
-        // setting up here
-        let store = self.store.cheap_clone().query_store(false);
         let resolver = StoreResolver::at_block(
             &self.logger,
             store.cheap_clone(),
@@ -238,9 +243,14 @@ where
             *GRAPHQL_MAX_DEPTH,
         )?;
 
+        let store = self.store.clone().query_store(true);
         if let Err(err) = self
             .load_manager
-            .decide(query.shape_hash, query.query_text.as_ref())
+            .decide(
+                store.wait_stats(),
+                query.shape_hash,
+                query.query_text.as_ref(),
+            )
             .to_result()
         {
             return Err(SubscriptionError::GraphQLError(vec![err]));
@@ -251,11 +261,7 @@ where
             query,
             SubscriptionExecutionOptions {
                 logger: self.logger.clone(),
-                resolver: StoreResolver::for_subscription(
-                    &self.logger,
-                    deployment,
-                    self.store.clone(),
-                ),
+                resolver: StoreResolver::for_subscription(&self.logger, deployment, store),
                 timeout: GRAPHQL_QUERY_TIMEOUT.clone(),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,

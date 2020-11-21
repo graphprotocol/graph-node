@@ -32,11 +32,11 @@ impl StoreResolver {
     pub fn for_subscription(
         logger: &Logger,
         deployment: SubgraphDeploymentId,
-        store: Arc<impl Store>,
+        store: Arc<dyn QueryStore>,
     ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
-            store: store.query_store(true),
+            store,
             block_ptr: None,
             deployment,
         }

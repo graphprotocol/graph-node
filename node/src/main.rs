@@ -245,7 +245,6 @@ async fn main() {
         .and_then(move |network_stores| {
             let load_manager = Arc::new(LoadManager::new(
                 &logger,
-                wait_stats.clone(),
                 expensive_queries,
                 metrics_registry.clone(),
                 store_conn_pool_size as usize,
