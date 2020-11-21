@@ -1,7 +1,7 @@
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
+use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
 use graph::prelude::{
@@ -36,11 +36,11 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
-use crate::entities as e;
 use crate::metadata;
 use crate::relational::Layout;
 use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
+use crate::{connection_pool::ConnectionPool, entities as e};
 
 lazy_static! {
     static ref CONNECTION_LIMITER: Semaphore = {
@@ -158,8 +158,8 @@ pub struct StoreInner {
     logger: Logger,
     subscriptions: Arc<SubscriptionManager>,
 
-    conn: Pool<ConnectionManager<PgConnection>>,
-    read_only_pools: Vec<Pool<ConnectionManager<PgConnection>>>,
+    conn: ConnectionPool,
+    read_only_pools: Vec<ConnectionPool>,
     replica_order: Vec<ReplicaId>,
     conn_round_robin_counter: AtomicUsize,
 
@@ -191,8 +191,8 @@ impl Store {
     pub fn new(
         logger: &Logger,
         subscriptions: Arc<SubscriptionManager>,
-        pool: Pool<ConnectionManager<PgConnection>>,
-        read_only_pools: Vec<Pool<ConnectionManager<PgConnection>>>,
+        pool: ConnectionPool,
+        read_only_pools: Vec<ConnectionPool>,
         mut pool_weights: Vec<usize>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {

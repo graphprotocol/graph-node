@@ -2,7 +2,7 @@ use graph::prelude::ChainStore as ChainStoreTrait;
 
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
+use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, select, update};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -16,11 +16,11 @@ use graph::prelude::{
 
 //use web3::types::H256;
 
-use crate::chain_head_listener::ChainHeadUpdateListener;
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
+use crate::{chain_head_listener::ChainHeadUpdateListener, connection_pool::ConnectionPool};
 
 pub struct ChainStore {
-    conn: Pool<ConnectionManager<PgConnection>>,
+    conn: ConnectionPool,
     network: String,
     genesis_block_ptr: EthereumBlockPointer,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
@@ -31,7 +31,7 @@ impl ChainStore {
         network: String,
         net_identifier: EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
-        pool: Pool<ConnectionManager<PgConnection>>,
+        pool: ConnectionPool,
     ) -> Self {
         let store = ChainStore {
             conn: pool,

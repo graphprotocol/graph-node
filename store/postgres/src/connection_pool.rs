@@ -9,7 +9,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub type ConnectionPool = Pool<ConnectionManager<PgConnection>>;
+#[derive(Clone)]
+pub struct ConnectionPool {
+    pool: Pool<ConnectionManager<PgConnection>>,
+    wait_stats: PoolWaitStats,
+}
 
 struct ErrorHandler(Logger, Counter);
 
@@ -96,6 +100,14 @@ impl HandleEvent for EventHandler {
     }
 }
 
+impl std::ops::Deref for ConnectionPool {
+    type Target = Pool<ConnectionManager<PgConnection>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pool
+    }
+}
+
 pub fn create_connection_pool(
     pool_name: &str,
     postgres_url: String,
@@ -122,7 +134,7 @@ pub fn create_connection_pool(
     let event_handler = Box::new(EventHandler::new(
         logger_pool.clone(),
         registry,
-        wait_time,
+        wait_time.clone(),
         const_labels,
     ));
 
@@ -154,5 +166,8 @@ pub fn create_connection_pool(
         "pool_name" => pool_name,
         "url" => SafeDisplay(postgres_url.as_str())
     );
-    pool
+    ConnectionPool {
+        pool,
+        wait_stats: wait_time,
+    }
 }
