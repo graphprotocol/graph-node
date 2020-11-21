@@ -12,6 +12,10 @@ use crate::{
     prelude::TryFromValue,
 };
 
+pub enum Filter {
+    SubgraphName(String),
+}
+
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
 #[derive(Debug)]
 pub struct EthereumBlock(EthereumBlockPointer);
@@ -44,13 +48,13 @@ impl IntoValue for EthereumBlock {
 #[derive(Debug)]
 pub struct ChainInfo {
     /// The network name (e.g. `mainnet`, `ropsten`, `rinkeby`, `kovan` or `goerli`).
-    network: String,
+    pub network: String,
     /// The current head block of the chain.
-    chain_head_block: Option<EthereumBlock>,
+    pub chain_head_block: Option<EthereumBlock>,
     /// The earliest block available for this subgraph.
-    earliest_block: Option<EthereumBlock>,
+    pub earliest_block: Option<EthereumBlock>,
     /// The latest block that the subgraph has synced to.
-    latest_block: Option<EthereumBlock>,
+    pub latest_block: Option<EthereumBlock>,
 }
 
 impl From<ChainInfo> for q::Value {
@@ -94,19 +98,19 @@ impl TryFromValue for DeploymentAssignment {
 #[derive(Debug)]
 pub struct Info {
     /// The subgraph ID.
-    subgraph: String,
+    pub subgraph: String,
 
     /// Whether or not the subgraph has synced all the way to the current chain head.
-    synced: bool,
-    health: SubgraphHealth,
-    fatal_error: Option<SubgraphError>,
-    non_fatal_errors: Vec<SubgraphError>,
+    pub synced: bool,
+    pub health: SubgraphHealth,
+    pub fatal_error: Option<SubgraphError>,
+    pub non_fatal_errors: Vec<SubgraphError>,
 
     /// Indexing status on different chains involved in the subgraph's data sources.
-    chains: Vec<ChainInfo>,
+    pub chains: Vec<ChainInfo>,
 
     /// ID of the Graph Node that the subgraph is indexed by.
-    node: String,
+    pub node: Option<String>,
 }
 
 impl Info {
@@ -119,7 +123,7 @@ impl Info {
             fatal_error: self.fatal_error,
             non_fatal_errors: self.non_fatal_errors,
             chains: self.chains,
-            node,
+            node: Some(node),
         }
     }
 
@@ -163,7 +167,7 @@ impl TryFromValue for Info {
                 earliest_block: Self::block_from_value(value, "earliestEthereumBlock")?,
                 latest_block: Self::block_from_value(value, "latestEthereumBlock")?,
             }],
-            node: "THIS WILL GO AWAY WHEN WE QUERY THE DATABASE DIRECTLY".to_string(),
+            node: None,
         })
     }
 }
@@ -222,15 +226,21 @@ impl From<Info> for q::Value {
     }
 }
 
-pub struct Statuses(Vec<Info>);
+pub struct Infos(Vec<Info>);
 
-impl Statuses {
+impl Infos {
     pub fn to_vec(self) -> Vec<Info> {
         self.0
     }
 }
 
-impl From<q::Value> for Statuses {
+impl From<Vec<Info>> for Infos {
+    fn from(infos: Vec<Info>) -> Self {
+        Infos(infos)
+    }
+}
+
+impl From<q::Value> for Infos {
     fn from(data: q::Value) -> Self {
         // Extract deployment assignment IDs from the query result
         let assignments = data
@@ -239,7 +249,7 @@ impl From<q::Value> for Statuses {
             .get_values::<DeploymentAssignment>()
             .expect("failed to parse subgraph deployment assignments");
 
-        Statuses(
+        Infos(
             // Parse indexing statuses from deployments
             data.get_required::<q::Value>("subgraphDeployments")
                 .expect("no subgraph deployments in the result")
@@ -258,8 +268,8 @@ impl From<q::Value> for Statuses {
     }
 }
 
-impl From<Statuses> for q::Value {
-    fn from(statuses: Statuses) -> Self {
-        q::Value::List(statuses.0.into_iter().map(q::Value::from).collect())
+impl From<Infos> for q::Value {
+    fn from(infos: Infos) -> Self {
+        q::Value::List(infos.0.into_iter().map(q::Value::from).collect())
     }
 }

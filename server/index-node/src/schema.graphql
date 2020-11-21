@@ -30,7 +30,7 @@ type SubgraphIndexingStatus {
   "Sorted from first to last, limited to first 1000"
   nonFatalErrors: [SubgraphError!]!
   chains: [ChainIndexingStatus!]!
-  node: String!
+  node: String
 }
 
 interface ChainIndexingStatus {

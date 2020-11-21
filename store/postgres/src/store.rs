@@ -4,6 +4,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
+use graph::data::subgraph::status;
 use graph::prelude::{
     CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
     SubgraphVersionSwitchingMode,
@@ -41,7 +42,7 @@ use crate::metadata;
 use crate::relational::Layout;
 use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
-use crate::{connection_pool::ConnectionPool, entities as e};
+use crate::{connection_pool::ConnectionPool, detail, entities as e};
 
 lazy_static! {
     static ref CONNECTION_LIMITER: Semaphore = {
@@ -812,6 +813,22 @@ impl Store {
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         self.create_deployment_internal(name, schema, deployment, node_id, mode, true)
+    }
+
+    pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+        let conn = self.get_conn()?;
+        conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
+            match filter {
+                status::Filter::SubgraphName(name) => {
+                    let deployments = detail::deployments_for_subgraph(&conn, name)?;
+                    if deployments.is_empty() {
+                        Ok(Vec::new())
+                    } else {
+                        detail::deployment_statuses(&conn, deployments)
+                    }
+                }
+            }
+        })
     }
 }
 

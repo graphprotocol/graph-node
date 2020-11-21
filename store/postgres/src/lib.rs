@@ -26,6 +26,7 @@ mod chain_head_listener;
 mod chain_store;
 pub mod connection_pool;
 mod db_schema;
+mod detail;
 mod entities;
 mod functions;
 mod jsonb;

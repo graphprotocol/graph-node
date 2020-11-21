@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use graph::data::graphql::{object, ObjectOrInterface, ValueList, ValueMap};
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
-use graph::data::subgraph::status::Statuses as IndexingStatuses;
+use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph_graphql::prelude::{ExecutionContext, Resolver};
 use std::convert::TryInto;
@@ -152,7 +152,7 @@ where
             Ok(Some(data)) => data,
         };
 
-        Ok(IndexingStatuses::from(data).into())
+        Ok(status::Infos::from(data).into())
     }
 
     fn resolve_indexing_statuses_for_subgraph_name(
@@ -172,113 +172,13 @@ where
             "name" => &subgraph_name
         );
 
-        // Build a `where` filter that the subgraph has to match
-        let where_filter = object! { name: subgraph_name.clone() };
+        let infos = self
+            .store
+            .cheap_clone()
+            .query_store(false)
+            .status(status::Filter::SubgraphName(subgraph_name))?;
 
-        // Build a query for matching subgraph deployments
-        let query = Query::new(
-            // The query is against the subgraph of subgraphs
-            self.store
-                .api_schema(&SUBGRAPHS_ID)
-                .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
-            // We're querying all deployments that match the provided filter
-            q::parse_query(&format!(
-                "{}{}",
-                DEPLOYMENT_STATUS_FRAGMENT,
-                r#"
-                query subgraphs($where: Subgraph_filter!) {
-                  subgraphs(where: $where, first: 1000000) {
-                    versions(orderBy: createdAt, orderDirection: asc, first: 1000000) {
-                      deployment {
-                       ...deploymentStatus
-                      }
-                    }
-                  }
-                  subgraphDeploymentAssignments(first: 1000000) {
-                    id
-                    nodeId
-                  }
-                }
-                "#,
-            ))
-            .unwrap(),
-            // If the `subgraphs` argument was provided, build a suitable `where`
-            // filter to match the IDs; otherwise leave the `where` filter empty
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![("where".into(), where_filter)].into_iter(),
-            ))),
-            None,
-        );
-
-        // Execute the query. We are in a blocking context so we may just block.
-        let result = graph::block_on(self.graphql_runner.cheap_clone().run_query_with_complexity(
-            query,
-            DeploymentState::meta(),
-            None,
-            None,
-            Some(std::u32::MAX),
-            Some(std::u32::MAX),
-            true,
-        ));
-
-        // Metadata queries are not cached.
-        let result = Arc::try_unwrap(result).unwrap();
-
-        let data = match result.to_result() {
-            Err(errors) => {
-                error!(
-                    self.logger,
-                    "Failed to query subgraph deployments";
-                    "subgraph" => subgraph_name,
-                    "errors" => format!("{:?}", errors)
-                );
-                return Ok(q::Value::List(vec![]));
-            }
-            Ok(None) => {
-                return Ok(q::Value::List(vec![]));
-            }
-            Ok(Some(data)) => data,
-        };
-
-        let subgraphs = match data
-            .get_optional::<q::Value>("subgraphs")
-            .expect("invalid subgraphs")
-        {
-            Some(subgraphs) => subgraphs,
-            None => return Ok(q::Value::List(vec![])),
-        };
-
-        let subgraphs = subgraphs
-            .get_values::<q::Value>()
-            .expect("invalid subgraph values");
-
-        let subgraph = if subgraphs.len() > 0 {
-            subgraphs[0].clone()
-        } else {
-            return Ok(q::Value::List(vec![]));
-        };
-
-        let deployments = subgraph
-            .get_required::<q::Value>("versions")
-            .expect("missing subgraph versions")
-            .get_values::<q::Value>()
-            .expect("invalid subgraph versions")
-            .into_iter()
-            .map(|version| {
-                version
-                    .get_required::<q::Value>("deployment")
-                    .expect("missing deployment")
-            })
-            .collect::<Vec<_>>();
-
-        let transformed_data = object! {
-            subgraphDeployments: deployments,
-            subgraphDeploymentAssignments:
-                data.get_required::<q::Value>("subgraphDeploymentAssignments")
-                    .expect("missing deployment assignments"),
-        };
-
-        Ok(IndexingStatuses::from(transformed_data).into())
+        Ok(status::Infos::from(infos).into())
     }
 
     fn resolve_proof_of_indexing(
@@ -446,7 +346,7 @@ where
                     .expect("missing deployment assignments"),
         );
 
-        Ok(IndexingStatuses::from(transformed_data)
+        Ok(status::Infos::from(transformed_data)
             .to_vec()
             .into_iter()
             .next()
