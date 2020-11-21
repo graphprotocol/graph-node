@@ -3,6 +3,7 @@ extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
 use graph::data::graphql::effort::LoadManager;
+use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{Store as _, *};
 use graph_graphql::prelude::{
@@ -191,6 +192,27 @@ pub fn create_grafted_subgraph(
     create_subgraph(subgraph_id, schema, base)
 }
 
+pub fn transact_errors(
+    store: &Arc<NetworkStore>,
+    subgraph_id: SubgraphDeploymentId,
+    block_ptr_to: EthereumBlockPointer,
+    errs: Vec<SubgraphError>,
+) -> Result<bool, StoreError> {
+    let metrics_registry = Arc::new(MockMetricsRegistry::new());
+    let stopwatch_metrics = StopwatchMetrics::new(
+        Logger::root(slog::Discard, o!()),
+        subgraph_id.clone(),
+        metrics_registry.clone(),
+    );
+    store.transact_block_operations(
+        subgraph_id,
+        block_ptr_to,
+        Vec::new(),
+        stopwatch_metrics,
+        errs,
+    )
+}
+
 /// Convenience to transact EntityOperation instead of EntityModification
 pub fn transact_entity_operations(
     store: &Arc<NetworkStore>,
@@ -288,7 +310,7 @@ pub mod block_store {
     use diesel::{Connection, PgConnection};
     use std::str::FromStr;
 
-    use graph::prelude::{serde_json, web3::types::H256};
+    use graph::prelude::{serde_json, web3::types::H256, EthereumBlockPointer};
     use graph_store_postgres::db_schema_for_tests as db_schema;
     use lazy_static::lazy_static;
 
@@ -342,6 +364,13 @@ pub mod block_store {
 
         pub fn block_hash(&self) -> H256 {
             H256::from_str(self.hash.as_str()).expect("invalid block hash")
+        }
+
+        pub fn block_ptr(&self) -> EthereumBlockPointer {
+            EthereumBlockPointer {
+                number: self.number,
+                hash: self.block_hash(),
+            }
         }
     }
 
@@ -459,12 +488,13 @@ fn execute_subgraph_query_internal(
     let logger = Logger::root(slog::Discard, o!());
     let query = return_err!(PreparedQuery::new(&logger, query, max_complexity, 100));
     let mut result = QueryResult::empty();
-    for (bc, selection_set) in return_err!(query.block_constraint()) {
+    for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
         let resolver = return_err!(rt.block_on(StoreResolver::at_block(
             &logger,
             STORE.clone().query_store(false),
             bc,
+            error_policy,
             query.schema.id().clone()
         )));
         result.append(

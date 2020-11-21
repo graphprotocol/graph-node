@@ -1,3 +1,6 @@
+use std::str::FromStr;
+
+use graphql_parser::query as q;
 use graphql_parser::schema::{Name, Value, *};
 use graphql_parser::Pos;
 use inflector::Inflector;
@@ -21,6 +24,44 @@ pub enum APISchemaError {
 
 const BLOCK_HEIGHT: &str = "Block_height";
 
+const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
+
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum ErrorPolicy {
+    Allow,
+    Deny,
+}
+
+impl ErrorPolicy {
+    fn graphql_variants() -> [&'static str; 2] {
+        ["ALLOW", "DENY"]
+    }
+}
+
+impl std::str::FromStr for ErrorPolicy {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<ErrorPolicy, anyhow::Error> {
+        match s {
+            "ALLOW" => Ok(ErrorPolicy::Allow),
+            "DENY" => Ok(ErrorPolicy::Deny),
+            _ => Err(anyhow::anyhow!("failed to parse `{}` as ErrorPolicy", s)),
+        }
+    }
+}
+
+impl TryFrom<&q::Value> for ErrorPolicy {
+    type Error = anyhow::Error;
+
+    /// `value` should be the output of input value coercion.
+    fn try_from(value: &q::Value) -> Result<Self, Self::Error> {
+        match value {
+            q::Value::Enum(s) => ErrorPolicy::from_str(s),
+            _ => Err(anyhow::anyhow!("invalid `ErrorPolicy`")),
+        }
+    }
+}
+
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
 /// The input schema should only have type/enum/interface/union definitions
@@ -38,6 +79,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
     add_block_height_type(&mut schema);
+    add_subgraph_error_policy_type(&mut schema);
     add_meta_field_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
@@ -169,6 +211,26 @@ fn add_block_height_type(schema: &mut Document) {
                 directives: vec![],
             },
         ],
+    });
+    let def = Definition::TypeDefinition(typedef);
+    schema.definitions.push(def);
+}
+
+fn add_subgraph_error_policy_type(schema: &mut Document) {
+    let typedef = TypeDefinition::Enum(EnumType {
+        position: Pos::default(),
+        description: None,
+        name: ERROR_POLICY_TYPE.to_string(),
+        directives: vec![],
+        values: ErrorPolicy::graphql_variants()
+            .iter()
+            .map(|name| EnumValue {
+                position: Pos::default(),
+                description: None,
+                name: name.to_string(),
+                directives: vec![],
+            })
+            .collect(),
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
@@ -543,8 +605,8 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
         },
         // block: BlockHeight
         block_argument(),
-        // allowIndexingErrors: Boolean!
-        allow_indexing_errors_argument(),
+        // subgraphError: _SubgraphErrorPolicy! = DENY
+        subgraph_error_argument(),
     ];
     Some(Field {
         position: Pos::default(),
@@ -608,16 +670,16 @@ fn block_argument() -> InputValue {
     }
 }
 
-fn allow_indexing_errors_argument() -> InputValue {
+fn subgraph_error_argument() -> InputValue {
     InputValue {
         position: Pos::default(),
         description: Some(
-            "Set to `true` to receive data even if the subgraph has skipped over errors while syncing."
+            "Set to `ALLOW` to receive data even if the subgraph has skipped over errors while syncing."
                 .to_owned(),
         ),
-        name: "allowIndexingErrors".to_string(),
-        value_type: Type::NamedType("Boolean".to_string()),
-        default_value: Some(Value::Boolean(false)),
+        name: "subgraphError".to_string(),
+        value_type: Type::NonNullType(Box::new(Type::NamedType(ERROR_POLICY_TYPE.to_string()))),
+        default_value: Some(Value::Enum("DENY".to_string())),
         directives: vec![],
     }
 }
@@ -627,7 +689,7 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
     let input_objects = ast::get_input_object_definitions(schema);
     let mut collection_arguments = collection_arguments_for_named_type(&input_objects, type_name);
     collection_arguments.push(block_argument());
-    collection_arguments.push(allow_indexing_errors_argument());
+    collection_arguments.push(subgraph_error_argument());
 
     vec![
         Field {
@@ -1025,7 +1087,7 @@ mod tests {
                 "orderDirection",
                 "where",
                 "block",
-                "allowIndexingErrors"
+                "subgraphError"
             ]
             .iter()
             .map(|name| name.to_string())
@@ -1117,7 +1179,7 @@ mod tests {
                 "orderDirection",
                 "where",
                 "block",
-                "allowIndexingErrors"
+                "subgraphError"
             ]
             .iter()
             .map(|name| name.to_string())

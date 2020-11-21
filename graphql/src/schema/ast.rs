@@ -235,7 +235,7 @@ pub fn get_type_description(t: &TypeDefinition) -> &Option<String> {
 
 /// Returns the argument definitions for a field of an object type.
 pub fn get_argument_definitions<'a>(
-    object_type: &'a ObjectType,
+    object_type: impl Into<ObjectOrInterface<'a>>,
     name: &Name,
 ) -> Option<&'a Vec<InputValue>> {
     lazy_static! {

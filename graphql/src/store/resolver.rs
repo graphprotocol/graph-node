@@ -7,9 +7,9 @@ use graph::components::store::*;
 use graph::data::graphql::{object, ObjectOrInterface};
 use graph::prelude::*;
 
-use crate::prelude::*;
 use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
+use crate::{prelude::*, schema::api::ErrorPolicy};
 
 use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 
@@ -20,6 +20,8 @@ pub struct StoreResolver {
     pub(crate) store: Arc<dyn QueryStore>,
     pub(crate) block_ptr: Option<EthereumBlockPointer>,
     deployment: SubgraphDeploymentId,
+    has_non_fatal_errors: bool,
+    error_policy: ErrorPolicy,
 }
 
 impl CheapClone for StoreResolver {}
@@ -39,6 +41,10 @@ impl StoreResolver {
             store,
             block_ptr: None,
             deployment,
+
+            // Checking for non-fatal errors does not work with subscriptions.
+            has_non_fatal_errors: false,
+            error_policy: ErrorPolicy::Deny,
         }
     }
 
@@ -51,21 +57,29 @@ impl StoreResolver {
         logger: &Logger,
         store: Arc<dyn QueryStore>,
         bc: BlockConstraint,
+        error_policy: ErrorPolicy,
         deployment: SubgraphDeploymentId,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let deployment2 = deployment.clone();
         let block_ptr = graph::spawn_blocking_allow_panic(move || {
-            Self::locate_block(store_clone.as_ref(), bc, deployment2)
+            Self::locate_block(store_clone.as_ref(), bc, deployment2.clone())
         })
         .await
         .map_err(|e| QueryExecutionError::Panic(e.to_string()))
         .and_then(|x| x)?; // Propagate panics.
+
+        let has_non_fatal_errors = store
+            .has_non_fatal_errors(deployment.clone(), Some(block_ptr.block_number()))
+            .await?;
+
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
             block_ptr: Some(block_ptr),
             deployment,
+            has_non_fatal_errors,
+            error_policy,
         };
         Ok(resolver)
     }

@@ -1,23 +1,29 @@
 use graphql_parser::{query as q, schema as s};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
+use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
-use graph::data::graphql::{
-    ext::{DocumentExt, TypeExt},
-    ObjectOrInterface,
-};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
-use graph::prelude::{info, o, BlockNumber, CheapClone, Logger, QueryExecutionError};
+use graph::prelude::{info, o, BlockNumber, CheapClone, CompatErr, Logger, QueryExecutionError};
+use graph::{
+    data::graphql::{
+        ext::{DocumentExt, TypeExt},
+        ObjectOrInterface,
+    },
+    prelude::TryFromValue,
+};
 
-use crate::execution::{get_field, get_named_type, object_or_interface};
 use crate::introspection::introspection_schema;
-use crate::query::{ast as qast, ext::BlockConstraint, ext::FieldExt};
+use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast as sast;
+use crate::{
+    execution::{get_field, get_named_type, object_or_interface},
+    schema::api::ErrorPolicy,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ComplexityError {
@@ -174,29 +180,57 @@ impl Query {
         Ok(Arc::new(query))
     }
 
-    /// Return the block constraint for the toplevel query field(s), merging the
-    /// selection sets of fields that have the same block constraint.
+    /// Return the block constraint for the toplevel query field(s), merging the selection sets of
+    /// fields that have the same block constraint.
+    ///
+    /// Also returns the combined error policy for those fields, which is `Deny` if any field is
+    /// `Deny` and `Allow` otherwise.
     pub fn block_constraint(
         &self,
-    ) -> Result<HashMap<BlockConstraint, q::SelectionSet>, Vec<QueryExecutionError>> {
+    ) -> Result<HashMap<BlockConstraint, (q::SelectionSet, ErrorPolicy)>, Vec<QueryExecutionError>>
+    {
+        use q::Selection::Field;
+
         let mut bcs = HashMap::new();
         let mut errors = Vec::new();
 
         for field in self.selection_set.items.iter().filter_map(|sel| match sel {
-            q::Selection::Field(f) => Some(f),
+            Field(f) => Some(f),
             _ => None,
         }) {
-            match field.block_constraint(&self.variables) {
-                Ok(bc) => {
-                    let selection_set = bcs.entry(bc).or_insert(q::SelectionSet {
+            let query_ty = self.schema.query_type.as_ref();
+            let args = match crate::execution::coerce_argument_values(self, query_ty, field) {
+                Ok(args) => args,
+                Err(errs) => {
+                    errors.extend(errs);
+                    continue;
+                }
+            };
+
+            let bc = match args.get(&"block".to_string()) {
+                Some(bc) => {
+                    BlockConstraint::try_from_value(bc).map_err(|e| vec![e.compat_err().into()])?
+                }
+                None => BlockConstraint::Latest,
+            };
+
+            let field_error_policy = match args.get(&"subgraphError".to_string()) {
+                Some(value) => ErrorPolicy::try_from(value).map_err(|e| vec![e.into()])?,
+                None => ErrorPolicy::Deny,
+            };
+
+            let (selection_set, error_policy) = bcs.entry(bc).or_insert_with(|| {
+                (
+                    q::SelectionSet {
                         span: self.selection_set.span.clone(),
                         items: vec![],
-                    });
-                    selection_set.items.push(q::Selection::Field(field.clone()));
-                }
-                Err(e) => {
-                    errors.push(e);
-                }
+                    },
+                    field_error_policy,
+                )
+            });
+            selection_set.items.push(Field(field.clone()));
+            if field_error_policy == ErrorPolicy::Deny {
+                *error_policy = ErrorPolicy::Deny;
             }
         }
         if !errors.is_empty() {

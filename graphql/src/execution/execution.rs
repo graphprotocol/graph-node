@@ -785,7 +785,7 @@ fn execute_field(
     field_definition: &s::Field,
     fields: Vec<&q::Field>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
-    coerce_argument_values(ctx, object_type, field)
+    coerce_argument_values(&ctx.query, object_type, field)
         .and_then(|argument_values| {
             resolve_field_value(
                 ctx,
@@ -1121,21 +1121,21 @@ fn resolve_abstract_type<'a>(
 
 /// Coerces argument values into GraphQL values.
 pub fn coerce_argument_values<'a>(
-    ctx: &ExecutionContext<impl Resolver>,
-    object_type: &'a s::ObjectType,
+    query: &crate::execution::Query,
+    ty: impl Into<ObjectOrInterface<'a>>,
     field: &q::Field,
 ) -> Result<HashMap<&'a q::Name, q::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &Name| sast::get_named_type(ctx.query.schema.document(), name);
+    let resolver = |name: &Name| sast::get_named_type(&query.schema.document(), name);
 
-    for argument_def in sast::get_argument_definitions(object_type, &field.name)
+    for argument_def in sast::get_argument_definitions(ty, &field.name)
         .into_iter()
         .flatten()
     {
         let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
-        match coercion::coerce_input_value(value, &argument_def, &resolver, &ctx.query.variables) {
+        match coercion::coerce_input_value(value, &argument_def, &resolver, &query.variables) {
             Ok(Some(value)) => {
                 if argument_def.name == "text".to_string() {
                     coerced_values.insert(

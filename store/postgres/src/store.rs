@@ -521,7 +521,7 @@ impl Store {
     ///   * This task will panic if the supplied closure panics
     ///   * This task will panic if the supplied closure returns Err(Cancelled)
     ///     when the supplied cancel token is not cancelled.
-    async fn with_conn<T: Send + 'static>(
+    pub(crate) async fn with_conn<T: Send + 'static>(
         &self,
         f: impl 'static
             + Send
