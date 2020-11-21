@@ -1,48 +1,12 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
-use graph::data::graphql::{object, ObjectOrInterface, ValueMap};
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
+use graph::data::graphql::{ObjectOrInterface, ValueMap};
 use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph_graphql::prelude::{ExecutionContext, Resolver};
 use std::convert::TryInto;
 use web3::types::{Address, H256};
-
-static DEPLOYMENT_STATUS_FRAGMENT: &str = r#"
-    fragment deploymentStatus on SubgraphDeploymentDetail {
-        id
-        synced
-        health
-        fatalError {
-            subgraphId
-            message
-            blockNumber
-            blockHash
-            handler
-            deterministic
-        }
-        nonFatalErrors(first: 1000, orderBy: blockNumber) {
-            subgraphId
-            message
-            blockNumber
-            blockHash
-            handler
-            deterministic
-        }
-        ethereumHeadBlockNumber
-        ethereumHeadBlockHash
-        earliestEthereumBlockHash
-        earliestEthereumBlockNumber
-        latestEthereumBlockHash
-        latestEthereumBlockNumber
-        manifest {
-            dataSources(first: 1) {
-                network
-            }
-        }
-    }
-  "#;
 
 /// Resolver for the index node GraphQL API.
 pub struct IndexNodeResolver<R, S> {
@@ -69,90 +33,26 @@ where
         &self,
         arguments: &HashMap<&q::Name, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
-        // Extract optional "subgraphs" argument
-        let subgraphs = arguments
+        let deployments = arguments
             .get(&String::from("subgraphs"))
             .map(|value| match value {
-                ids @ q::Value::List(_) => ids.clone(),
+                q::Value::List(ids) => ids
+                    .into_iter()
+                    .map(|id| match id {
+                        s::Value::String(s) => s.clone(),
+                        _ => unreachable!(),
+                    })
+                    .collect(),
                 _ => unreachable!(),
-            });
+            })
+            .unwrap_or_else(|| Vec::new());
 
-        // Build a `where` filter that both subgraph deployments and subgraph deployment
-        // assignments have to match
-        let where_filter = match subgraphs {
-            Some(ref ids) => object! { id_in: ids.clone() },
-            None => object! {},
-        };
-
-        // Build a query for matching subgraph deployments
-        let query = Query::new(
-            // The query is against the subgraph of subgraphs
-            self.store
-                .api_schema(&SUBGRAPHS_ID)
-                .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
-            // We're querying all deployments that match the provided filter
-            q::parse_query(&format!(
-                "{}{}",
-                DEPLOYMENT_STATUS_FRAGMENT,
-                r#"
-                query deployments(
-                  $whereDeployments: SubgraphDeployment_filter!,
-                  $whereAssignments: SubgraphDeploymentAssignment_filter!
-                ) {
-                  subgraphDeployments: subgraphDeploymentDetails(where: $whereDeployments, first: 1000000) {
-                    ...deploymentStatus
-                  }
-                  subgraphDeploymentAssignments(where: $whereAssignments, first: 1000000) {
-                    id
-                    nodeId
-                  }
-                }
-                "#,
-            ))
-            .unwrap(),
-            // If the `subgraphs` argument was provided, build a suitable `where`
-            // filter to match the IDs; otherwise leave the `where` filter empty
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![
-                    ("whereDeployments".into(), where_filter.clone()),
-                    ("whereAssignments".into(), where_filter),
-                ]
-                .into_iter(),
-            ))),
-            None,
-        );
-
-        // Execute the query. We are in a blocking context so we may just block.
-        let result = graph::block_on(self.graphql_runner.cheap_clone().run_query_with_complexity(
-            query,
-            DeploymentState::meta(),
-            None,
-            None,
-            Some(std::u32::MAX),
-            Some(std::u32::MAX),
-            true,
-        ));
-
-        // Metadata queries are not cached.
-        let result = Arc::try_unwrap(result).unwrap();
-
-        let data = match result.to_result() {
-            Err(errors) => {
-                error!(
-                    self.logger,
-                    "Failed to query subgraph deployments";
-                    "subgraphs" => format!("{:?}", subgraphs),
-                    "errors" => format!("{:?}", errors)
-                );
-                return Ok(q::Value::List(vec![]));
-            }
-            Ok(None) => {
-                return Ok(q::Value::List(vec![]));
-            }
-            Ok(Some(data)) => data,
-        };
-
-        Ok(status::Infos::from(data).into())
+        let infos = self
+            .store
+            .cheap_clone()
+            .query_store(false)
+            .status(status::Filter::Deployments(deployments))?;
+        Ok(status::Infos::from(infos).into())
     }
 
     fn resolve_indexing_statuses_for_subgraph_name(

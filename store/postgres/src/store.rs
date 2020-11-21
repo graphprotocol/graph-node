@@ -833,6 +833,9 @@ impl Store {
                         None => Ok(vec![]),
                     }
                 }
+                status::Filter::Deployments(deployments) => {
+                    detail::deployment_statuses(&conn, deployments)
+                }
             }
         })
     }
