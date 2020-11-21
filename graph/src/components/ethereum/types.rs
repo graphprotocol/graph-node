@@ -435,6 +435,19 @@ impl EthereumBlockPointer {
     pub fn hash_hex(&self) -> String {
         format!("{:x}", self.hash)
     }
+
+    /// Block number to be passed into the store. Panics if it does not fit in an i32.
+    pub fn block_number(&self) -> crate::components::store::BlockNumber {
+        if self.number <= std::i32::MAX as u64 {
+            self.number as i32
+        } else {
+            panic!(
+                "Block numbers bigger than {} are not supported, but received block number {}",
+                std::i32::MAX,
+                self.number
+            )
+        }
+    }
 }
 
 impl fmt::Display for EthereumBlockPointer {

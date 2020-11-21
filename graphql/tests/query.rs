@@ -7,24 +7,27 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use graph::prelude::{
-    async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o,
-    slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
-    EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, Query, QueryError,
-    QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema, Store,
-    SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphVersionSwitchingMode,
-    Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
-};
 use graph::{
     data::graphql::{object, object_value},
     data::query::CacheStatus,
     prelude::{NodeId, SubgraphName},
 };
+use graph::{
+    data::subgraph::schema::SubgraphError,
+    prelude::{
+        async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
+        o, slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
+        EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, Query, QueryError,
+        QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema, Store,
+        SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest,
+        SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
+    },
+};
 use graph_graphql::prelude::*;
 use test_store::{
     execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline,
-    run_test_sequentially, transact_entity_operations, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER,
-    LOGGER, STORE,
+    run_test_sequentially, transact_entity_operations, transact_errors, BLOCK_ONE, GENESIS_PTR,
+    LOAD_MANAGER, LOGGER, STORE,
 };
 
 fn setup() -> SubgraphDeploymentId {
@@ -1636,5 +1639,29 @@ fn can_query_meta() {
 
         let result = execute_query_document(&id, query).await;
         assert!(result.has_errors());
+    })
+}
+
+#[test]
+#[ignore]
+fn non_fatal_errors() {
+    use test_store::block_store::BLOCK_TWO;
+
+    run_test_sequentially(setup, |_, id| async move {
+        let err = SubgraphError {
+            subgraph_id: id.clone(),
+            message: "cow template handler could not moo event transaction".to_string(),
+            block_ptr: Some(BLOCK_TWO.block_ptr()),
+            handler: Some("handleMoo".to_string()),
+            deterministic: true,
+        };
+
+        transact_errors(&*STORE, id.clone(), BLOCK_TWO.block_ptr(), vec![err]).unwrap();
+
+        let query = "query { musician(id: \"m1\") { id } }";
+        let query = graphql_parser::parse_query(query).unwrap();
+
+        dbg!(execute_query_document(&id, query).await);
+        assert!(false);
     })
 }

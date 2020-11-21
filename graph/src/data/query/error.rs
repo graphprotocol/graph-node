@@ -9,9 +9,9 @@ use std::fmt;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 
-use crate::data::graphql::SerializableValue;
 use crate::data::subgraph::*;
 use crate::{components::store::StoreError, prelude::CacheWeight};
+use crate::{data::graphql::SerializableValue, prelude::CompatErr};
 
 #[derive(Debug)]
 pub struct CloneableFailureError(Arc<failure::Error>);
@@ -249,6 +249,12 @@ impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
 impl From<StoreError> for QueryExecutionError {
     fn from(e: StoreError) -> Self {
         QueryExecutionError::StoreError(CloneableFailureError(Arc::new(e.into())))
+    }
+}
+
+impl From<anyhow::Error> for QueryExecutionError {
+    fn from(e: anyhow::Error) -> Self {
+        QueryExecutionError::StoreError(CloneableFailureError(Arc::new(e.compat_err())))
     }
 }
 

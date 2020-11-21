@@ -764,31 +764,7 @@ fn execute_field(
     field: &q::Field,
     field_definition: &s::Field,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
-    let argument_values = match object_type {
-        ObjectOrInterface::Object(object_type) => {
-            crate::execution::coerce_argument_values(ctx, object_type, field)
-        }
-        ObjectOrInterface::Interface(interface_type) => {
-            // This assumes that all implementations of the interface accept
-            // the same arguments for this field
-            match ctx
-                .query
-                .schema
-                .types_for_interface()
-                .get(&interface_type.name)
-                .expect("interface type exists")
-                .first()
-            {
-                Some(object_type) => {
-                    crate::execution::coerce_argument_values(ctx, &object_type, field)
-                }
-                None => {
-                    // Nobody is implementing this interface
-                    return Ok(vec![]);
-                }
-            }
-        }
-    }?;
+    let argument_values = crate::execution::coerce_argument_values(&ctx.query, object_type, field)?;
 
     let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
         ChildMultiplicity::Many

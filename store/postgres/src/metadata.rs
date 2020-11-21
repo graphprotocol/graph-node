@@ -9,15 +9,18 @@ use diesel::{
     dsl::{delete, exists, insert_into, select, sql, update},
     sql_types::Integer,
 };
-use graph::data::subgraph::schema::{
-    generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphError, SubgraphManifestEntity,
-    SUBGRAPHS_ID,
-};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, entity, format_err, hex, web3::types::H256, BigDecimal,
     BlockNumber, DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer,
     MetadataOperation, NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity,
     SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
+};
+use graph::{
+    data::subgraph::schema::{
+        generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphError,
+        SubgraphManifestEntity, SUBGRAPHS_ID,
+    },
+    prelude::BLOCK_NUMBER_MAX,
 };
 use stable_hash::crypto::SetHasher;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -812,22 +815,32 @@ pub fn fail_subgraph(
     Ok(())
 }
 
+/// If `block` is `None`, assumes the latest block.
+pub(crate) fn has_non_fatal_errors(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    block: Option<BlockNumber>,
+) -> Result<bool, anyhow::Error> {
+    use subgraph_error as e;
+
+    let block = block.unwrap_or(BLOCK_NUMBER_MAX);
+    select(exists(
+        e::table
+            .filter(e::subgraph_id.eq(id.as_str()))
+            .filter(e::deterministic)
+            .filter(sql("block_range @> ").bind::<Integer, _>(block)),
+    ))
+    .get_result(conn)
+    .map_err(|e| e.into())
+}
+
 /// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as
 /// healthy or unhealthy depending on whether it also had non-fatal errors
 pub fn unfail_deployment(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
-    use diesel::dsl::count;
     use subgraph_deployment as d;
-    use subgraph_error as e;
     use SubgraphHealth::*;
 
-    let has_non_fatal_errors = e::table
-        .filter(e::subgraph_id.eq(id.as_str()))
-        .filter(e::deterministic)
-        .select(count(e::id))
-        .first::<i64>(conn)?
-        > 0;
-
-    let prev_health = if has_non_fatal_errors {
+    let prev_health = if has_non_fatal_errors(conn, id, None)? {
         Unhealthy
     } else {
         Healthy
@@ -865,11 +878,9 @@ pub(crate) fn insert_subgraph_errors(
 /// deterministic errors. Has no effect on failed subgraphs.
 fn check_health(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), anyhow::Error> {
     use subgraph_deployment as d;
-    use subgraph_error as e;
 
     // Errors have unbounded upper bounds so if one exists, it exists as of the latest block.
-    let has_errors =
-        select(exists(e::table.filter(e::subgraph_id.eq(id.as_str())))).get_result(conn)?;
+    let has_errors = has_non_fatal_errors(conn, id, None)?;
 
     let (new, old) = match has_errors {
         true => (SubgraphHealth::Unhealthy, SubgraphHealth::Healthy),
