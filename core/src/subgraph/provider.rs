@@ -88,11 +88,7 @@ where
         let store = self.store.clone();
         let subgraph_id = id.clone();
 
-        let loader = Arc::new(DataSourceLoader::new(
-            store.clone(),
-            self.resolver.clone(),
-            self.graphql_runner.clone(),
-        ));
+        let loader = Arc::new(DataSourceLoader::new(store.clone()));
 
         let link = format!("/ipfs/{}", id);
 
@@ -112,7 +108,7 @@ where
             .await?;
 
             let data_sources = loader
-                .load_dynamic_data_sources(id.clone(), logger.clone())
+                .load_dynamic_data_sources(id.clone(), logger.clone(), subgraph.clone())
                 .map_err(SubgraphAssignmentProviderError::DynamicDataSourcesError)
                 .await?;
 
