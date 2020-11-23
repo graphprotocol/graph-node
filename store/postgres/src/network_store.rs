@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graph::{
+    components::store::StoredDynamicDataSource,
     data::subgraph::status,
     prelude::{
         ethabi,
@@ -233,6 +234,13 @@ impl StoreTrait for NetworkStore {
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         self.store.status(filter)
+    }
+
+    fn load_dynamic_data_sources(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        self.store.load_dynamic_data_sources(subgraph_id)
     }
 }
 
