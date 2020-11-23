@@ -8,5 +8,6 @@ pub trait DataSourceLoader {
         &self,
         id: SubgraphDeploymentId,
         logger: Logger,
+        manifest: SubgraphManifest,
     ) -> Result<Vec<DataSource>, Error>;
 }
