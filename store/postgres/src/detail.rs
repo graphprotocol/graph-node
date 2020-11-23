@@ -4,7 +4,10 @@ use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
     RunQueryDsl,
 };
-use graph::prelude::{bigdecimal::ToPrimitive, BigDecimal, StoreError};
+use graph::{
+    data::subgraph::schema::SubgraphError,
+    prelude::{bigdecimal::ToPrimitive, BigDecimal, StoreError, SubgraphDeploymentId},
+};
 use graph::{
     data::subgraph::{schema::SubgraphHealth, status},
     prelude::web3::types::H256,
@@ -42,6 +45,23 @@ table! {
     }
 }
 
+table! {
+    subgraphs.subgraph_error (vid) {
+        vid -> BigInt,
+        id -> Text,
+        subgraph_id -> Nullable<Text>,
+        message -> Text,
+        block_number -> Nullable<Numeric>,
+        block_hash -> Nullable<Binary>,
+        handler -> Nullable<Text>,
+        deterministic -> Bool,
+        // We don't map block_range
+        // block_range -> Range<Integer>,
+    }
+}
+
+allow_tables_to_appear_in_same_query!(subgraph_deployment_detail, subgraph_error);
+
 type Bytes = Vec<u8>;
 
 #[derive(Queryable, QueryableByName)]
@@ -72,36 +92,99 @@ struct Detail {
     node_id: Option<String>,
 }
 
-impl TryFrom<Detail> for status::Info {
+#[derive(Queryable, QueryableByName)]
+#[table_name = "subgraph_error"]
+// We map all fields to make loading `Detail` with diesel easier, but we
+// don't need all the fields
+#[allow(dead_code)]
+struct ErrorDetail {
+    vid: i64,
+    id: String,
+    subgraph_id: Option<String>,
+    message: String,
+    block_number: Option<BigDecimal>,
+    block_hash: Option<Bytes>,
+    handler: Option<String>,
+    deterministic: bool,
+}
+
+struct DetailAndError(Detail, Option<ErrorDetail>);
+
+fn block(
+    id: &str,
+    name: &str,
+    hash: Option<Vec<u8>>,
+    number: Option<BigDecimal>,
+) -> Result<Option<status::EthereumBlock>, StoreError> {
+    match (&hash, &number) {
+        (Some(hash), Some(number)) => {
+            let hash = H256::from_slice(hash.as_slice());
+            let number = number.to_u64().ok_or_else(|| {
+                StoreError::ConstraintViolation(format!(
+                    "the block number {} for {} in {} is not representable as a u64",
+                    number, name, id
+                ))
+            })?;
+            Ok(Some(status::EthereumBlock::new(hash, number)))
+        }
+        (None, None) => Ok(None),
+        _ => Err(StoreError::ConstraintViolation(format!(
+            "the hash and number \
+        of a block pointer must either both be null or both have a \
+        value, but for `{}` the hash of {} is `{:?}` and the number is `{:?}`",
+            id, name, hash, number
+        ))),
+    }
+}
+
+impl TryFrom<ErrorDetail> for SubgraphError {
     type Error = StoreError;
 
-    fn try_from(detail: Detail) -> Result<Self, Self::Error> {
-        fn block(
-            id: &str,
-            name: &str,
-            hash: Option<Vec<u8>>,
-            number: Option<BigDecimal>,
-        ) -> Result<Option<status::EthereumBlock>, StoreError> {
-            match (&hash, &number) {
-                (Some(hash), Some(number)) => {
-                    let hash = H256::from_slice(hash.as_slice());
-                    let number = number.to_u64().ok_or_else(|| {
-                        StoreError::ConstraintViolation(format!(
-                            "the block number {} for {} in {} is not representable as a u64",
-                            number, name, id
-                        ))
-                    })?;
-                    Ok(Some(status::EthereumBlock::new(hash, number)))
-                }
-                (None, None) => Ok(None),
-                _ => Err(StoreError::ConstraintViolation(format!(
-                    "the hash and number \
-                of a block pointer must either both be null or both have a \
-                value, but for `{}` the hash of {} is `{:?}` and the number is `{:?}`",
-                    id, name, hash, number
-                ))),
-            }
-        }
+    fn try_from(value: ErrorDetail) -> Result<Self, Self::Error> {
+        let ErrorDetail {
+            vid: _,
+            id: _,
+            subgraph_id,
+            message,
+            block_number,
+            block_hash,
+            handler,
+            deterministic,
+        } = value;
+        let block_ptr = block(
+            subgraph_id.as_deref().unwrap_or("unknown"),
+            "fatal_error",
+            block_hash,
+            block_number,
+        )?
+        .map(|block| block.to_ptr());
+        let subgraph_id = subgraph_id
+            .map(|id| SubgraphDeploymentId::new(id))
+            .transpose()
+            .map_err(|id| {
+                StoreError::ConstraintViolation(format!(
+                    "invalid subgraph id `{}` in fatal error",
+                    id
+                ))
+            })?
+            .ok_or_else(|| {
+                StoreError::ConstraintViolation(format!("missing subgraph id for fatal error"))
+            })?;
+        Ok(SubgraphError {
+            subgraph_id,
+            message,
+            block_ptr,
+            handler,
+            deterministic,
+        })
+    }
+}
+
+impl TryFrom<DetailAndError> for status::Info {
+    type Error = StoreError;
+
+    fn try_from(detail_and_error: DetailAndError) -> Result<Self, Self::Error> {
+        let DetailAndError(detail, error) = detail_and_error;
 
         let Detail {
             vid: _,
@@ -157,11 +240,12 @@ impl TryFrom<Detail> for status::Info {
                 id
             ))
         })?;
+        let fatal_error = error.map(|e| SubgraphError::try_from(e)).transpose()?;
         Ok(status::Info {
             subgraph: id,
             synced,
             health,
-            fatal_error: None,
+            fatal_error,
             non_fatal_errors: vec![],
             chains: vec![chain],
             entity_count,
@@ -190,20 +274,23 @@ pub(crate) fn deployment_statuses(
     deployments: Vec<String>,
 ) -> Result<Vec<status::Info>, StoreError> {
     use subgraph_deployment_detail as d;
+    use subgraph_error as e;
 
     // Empty deployments means 'all of them'
     if deployments.is_empty() {
         d::table
-            .load::<Detail>(conn)?
+            .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
+            .load::<(Detail, Option<ErrorDetail>)>(conn)?
             .into_iter()
-            .map(|detail| status::Info::try_from(detail))
+            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
             .collect()
     } else {
         d::table
+            .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
             .filter(d::id.eq_any(&deployments))
-            .load::<Detail>(conn)?
+            .load::<(Detail, Option<ErrorDetail>)>(conn)?
             .into_iter()
-            .map(|detail| status::Info::try_from(detail))
+            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
             .collect()
     }
 }

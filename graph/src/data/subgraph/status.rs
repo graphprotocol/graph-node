@@ -19,6 +19,10 @@ impl EthereumBlock {
     pub fn new(hash: H256, number: u64) -> Self {
         EthereumBlock(EthereumBlockPointer { hash, number })
     }
+
+    pub fn to_ptr(self) -> EthereumBlockPointer {
+        self.0
+    }
 }
 
 impl From<EthereumBlock> for q::Value {
