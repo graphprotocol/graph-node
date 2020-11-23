@@ -27,6 +27,7 @@ mod chain_store;
 pub mod connection_pool;
 mod db_schema;
 mod detail;
+mod dynds;
 mod entities;
 mod functions;
 mod jsonb;

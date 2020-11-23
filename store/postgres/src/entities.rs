@@ -26,7 +26,6 @@ use diesel::sql_types::{Integer, Text};
 use diesel::Connection as _;
 use diesel::ExpressionMethods;
 use diesel::{OptionalExtension, QueryDsl, RunQueryDsl};
-use lazy_static::lazy_static;
 use maybe_owned::MaybeOwned;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap};
@@ -50,7 +49,7 @@ use crate::notification_listener::JsonNotification;
 use crate::relational::{Catalog, Layout};
 
 #[cfg(debug_assertions)]
-lazy_static! {
+lazy_static::lazy_static! {
 /// Tests set this to true so that `send_store_event` will store a copy
 /// of each event sent in `EVENT_TAP`
 pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);

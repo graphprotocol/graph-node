@@ -2,9 +2,9 @@ use mockall::predicate::*;
 use mockall::*;
 use std::collections::BTreeMap;
 
-use graph::data::subgraph::schema::*;
 use graph::data::subgraph::status;
 use graph::prelude::*;
+use graph::{components::store::StoredDynamicDataSource, data::subgraph::schema::SubgraphError};
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
@@ -216,6 +216,13 @@ impl Store for MockStore {
     }
 
     fn status(&self, _: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+        unimplemented!()
+    }
+
+    fn load_dynamic_data_sources(
+        &self,
+        _: &SubgraphDeploymentId,
+    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         unimplemented!()
     }
 }
