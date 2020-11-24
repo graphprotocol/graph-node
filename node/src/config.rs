@@ -148,6 +148,7 @@ pub struct Shard {
     pub weight: usize,
     #[serde(default)]
     pub pool_size: u32,
+    #[serde(default)]
     pub replicas: BTreeMap<String, Replica>,
 }
 
