@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1.41"
 atomic_refcell = "0.1.6"
-bytes = "0.5"
+bytes = "0.6"
 futures01 = { package="futures", version="0.1.29" }
 futures = { version="0.3.4", features=["compat"] }
 graph = { path = "../graph" }

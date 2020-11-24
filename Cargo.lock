@@ -349,6 +349,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e4cec68f03f32e44924783795810fa50a7035d8c8ebe78580ad7e6c703fba38"
 
 [[package]]
+name = "bytes"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0dcbc35f504eb6fc275a6d20e4ebcda18cf50d40ba6fabff8c711fa16cb3b16"
+
+[[package]]
 name = "cc"
 version = "1.0.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1473,7 +1479,7 @@ dependencies = [
  "async-trait",
  "atomic_refcell",
  "bigdecimal",
- "bytes 0.5.6",
+ "bytes 0.6.0",
  "chrono",
  "diesel",
  "diesel_derives",
@@ -1556,7 +1562,7 @@ version = "0.19.2"
 dependencies = [
  "async-trait",
  "atomic_refcell",
- "bytes 0.5.6",
+ "bytes 0.6.0",
  "futures 0.1.30",
  "futures 0.3.8",
  "graph",
@@ -1655,7 +1661,7 @@ dependencies = [
  "async-trait",
  "atomic_refcell",
  "bs58",
- "bytes 0.5.6",
+ "bytes 0.6.0",
  "defer",
  "ethabi 12.0.0-graph",
  "futures 0.1.30",
