@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
+use graph::prelude::MetricsRegistry;
 use graph::{
     prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
     util::security::SafeDisplay,
 };
-use graph_core::MetricsRegistry;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
@@ -21,7 +21,7 @@ pub struct StoreBuilder {
 }
 
 impl StoreBuilder {
-    pub fn new(logger: &Logger, config: &Config, registry: Arc<MetricsRegistry>) -> Self {
+    pub fn new(logger: &Logger, config: &Config, registry: Arc<dyn MetricsRegistry>) -> Self {
         let primary = config.primary_store();
 
         let conn_pool = Self::main_pool(logger, config, registry.cheap_clone());
@@ -63,7 +63,7 @@ impl StoreBuilder {
     pub fn main_pool(
         logger: &Logger,
         config: &Config,
-        registry: Arc<MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> ConnectionPool {
         let primary = config.primary_store();
 
@@ -87,7 +87,7 @@ impl StoreBuilder {
     pub fn replica_pools(
         logger: &Logger,
         config: &Config,
-        registry: Arc<MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> (Vec<ConnectionPool>, Vec<usize>) {
         let primary = config.primary_store();
         let mut weights: Vec<_> = vec![primary.weight];
@@ -136,5 +136,13 @@ impl StoreBuilder {
     /// handle everything besides being a `ChainStore`
     pub fn store(&self) -> Arc<ShardedStore> {
         self.store.cheap_clone()
+    }
+
+    // This is used in the test-store, but rustc keeps complaining that it
+    // is not used
+    #[cfg(debug_assertions)]
+    #[allow(dead_code)]
+    pub fn primary_pool(&self) -> ConnectionPool {
+        self.conn_pool.clone()
     }
 }

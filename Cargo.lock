@@ -4240,6 +4240,7 @@ dependencies = [
  "graph",
  "graph-graphql",
  "graph-mock",
+ "graph-node",
  "graph-store-postgres",
  "graphql-parser",
  "hex-literal",

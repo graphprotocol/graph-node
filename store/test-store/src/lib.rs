@@ -12,107 +12,57 @@ use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
 use graph_mock::MockMetricsRegistry;
+use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::connection_pool::ConnectionPool;
-use graph_store_postgres::{
-    ChainHeadUpdateListener, ChainStore, NetworkStore, ShardedStore, Store, SubscriptionManager,
-    PRIMARY_SHARD,
-};
+use graph_store_postgres::NetworkStore;
+
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::env;
 use std::sync::Mutex;
 use std::time::Instant;
-use std::{collections::HashMap, env};
 use web3::types::H256;
-
-fn postgres_test_url() -> String {
-    std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
-        .expect("The THEGRAPH_STORE_POSTGRES_DIESEL_URL environment variable is not set")
-        .into_string()
-        .unwrap()
-}
 
 pub const NETWORK_NAME: &str = "fake_network";
 pub const NETWORK_VERSION: &str = "graph test suite";
 
-const CONN_POOL_SIZE: usize = 20;
+const CONN_POOL_SIZE: u32 = 20;
 
 lazy_static! {
-    pub static ref LOGGER:Logger = match env::var_os("GRAPH_LOG") {
+    pub static ref LOGGER: Logger = match env::var_os("GRAPH_LOG") {
         Some(_) => log::logger(false),
         None => Logger::root(slog::Discard, o!()),
     };
-
-    pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(Builder::new().basic_scheduler().enable_all().build().unwrap());
-
-    pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(
-        LoadManager::new(&*LOGGER,
-                         Vec::new(),
-                         Arc::new(MockMetricsRegistry::new()),
-                         CONN_POOL_SIZE));
-
-    static ref PRIMARY_POOL: ConnectionPool = {
-        let logger = &*LOGGER;
-        let postgres_url = postgres_test_url();
-        ConnectionPool::create(
-            "test",
-            postgres_url.clone(),
-            CONN_POOL_SIZE as u32,
-            &logger,
-            Arc::new(MockMetricsRegistry::new()),
-        )
-    };
-
-    // Create Store instance once for use with each of the tests.
-    pub static ref STORE: Arc<NetworkStore> = {
-        // Use a separate thread to work around issues with recursive `block_on`.
-        std::thread::spawn(move || {
-            STORE_RUNTIME.lock().unwrap().block_on(async {
-                // Set up Store
-                let logger = &*LOGGER;
-                let postgres_url = postgres_test_url();
-                let net_identifiers = EthereumNetworkIdentifier {
-                    net_version: NETWORK_VERSION.to_owned(),
-                    genesis_block_hash: GENESIS_PTR.hash,
-                };
-                let postgres_conn_pool = PRIMARY_POOL.clone();
-                let registry = Arc::new(MockMetricsRegistry::new());
-                let chain_head_update_listener = Arc::new(ChainHeadUpdateListener::new(
-                    &logger,
-                    registry.clone(),
-                    postgres_url.clone(),
-                ));
-                let subscriptions = Arc::new(SubscriptionManager::new(
-                    logger.clone(),
-                    postgres_url.clone(),
-                ));
-                let primary_store = Arc::new(Store::new(
-                    &logger,
-                    subscriptions,
-                    postgres_conn_pool.clone(),
-                    Vec::new(),
-                    Vec::new(),
-                    registry.clone(),
-                ));
-                let mut store_map = HashMap::new();
-                store_map.insert(PRIMARY_SHARD.clone(), primary_store);
-                let store = Arc::new(ShardedStore::new(store_map));
-                let chain_store = ChainStore::new(NETWORK_NAME.to_owned(), net_identifiers, chain_head_update_listener, postgres_conn_pool);
-                Arc::new(NetworkStore::new(store, chain_store))
-            })
-        }).join().unwrap()
-    };
-
+    pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(
+        Builder::new()
+            .basic_scheduler()
+            .enable_all()
+            .build()
+            .unwrap()
+    );
+    pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
+        &*LOGGER,
+        Vec::new(),
+        Arc::new(MockMetricsRegistry::new()),
+        CONN_POOL_SIZE as usize
+    ));
+    static ref STORE_AND_POOL: (Arc<NetworkStore>, ConnectionPool) = build_store();
+    static ref PRIMARY_POOL: ConnectionPool = STORE_AND_POOL.1.clone();
+    pub static ref STORE: Arc<NetworkStore> = STORE_AND_POOL.0.clone();
     pub static ref GENESIS_PTR: EthereumBlockPointer = (
-        H256::from(hex!("bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f")),
+        H256::from(hex!(
+            "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
+        )),
         0u64
-    ).into();
-
+    )
+        .into();
     pub static ref BLOCK_ONE: EthereumBlockPointer = (
         H256::from(hex!(
             "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"
         )),
         1u64
-    ).into();
+    )
+        .into();
 }
 
 /// Run the `test` after performing `setup`. The result of `setup` is passed
@@ -269,7 +219,7 @@ pub fn transact_entity_operations(
 pub fn insert_ens_name(hash: &str, name: &str) {
     use diesel::insert_into;
     use diesel::prelude::*;
-    let conn = PgConnection::establish(&postgres_test_url()).unwrap();
+    let conn = PRIMARY_POOL.get().unwrap();
 
     table! {
         ens_names(hash) {
@@ -332,7 +282,7 @@ where
 #[cfg(debug_assertions)]
 pub mod block_store {
     use diesel::prelude::*;
-    use diesel::{Connection, PgConnection};
+    use diesel::PgConnection;
     use std::str::FromStr;
 
     use graph::prelude::{serde_json, web3::types::H256, EthereumBlockPointer};
@@ -434,8 +384,9 @@ pub mod block_store {
         use db_schema::ethereum_blocks as b;
         use db_schema::ethereum_networks as n;
 
-        let url = super::postgres_test_url();
-        let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+        let conn = super::PRIMARY_POOL
+            .get()
+            .expect("Failed to connect to Postgres");
 
         diesel::delete(b::table)
             .execute(&conn)
@@ -448,8 +399,9 @@ pub mod block_store {
     // Store the given chain as the blocks for the `network` and set the
     // network's genesis block to the hash of `GENESIS_BLOCK`
     pub fn insert(chain: Chain, network: &str) {
-        let url = super::postgres_test_url();
-        let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+        let conn = super::PRIMARY_POOL
+            .get()
+            .expect("Failed to connect to Postgres");
 
         use db_schema::ethereum_networks as n;
         let hash = format!("{:x}", super::GENESIS_PTR.hash);
@@ -539,4 +491,44 @@ fn execute_subgraph_query_internal(
         )))
     }
     result
+}
+
+fn build_store() -> (Arc<NetworkStore>, ConnectionPool) {
+    use graph_node::config::{Config, Opt};
+
+    let mut opt = Opt::default();
+    let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| s.len() > 0);
+    let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| s.len() > 0);
+    if let Some(file) = file {
+        let file = file.into_string().unwrap();
+        opt.config = Some(file);
+        if url.is_some() {
+            eprintln!("WARNING: ignoring THEGRAPH_STORE_POSTGRES_DIESEL_URL because GRAPH_NODE_TEST_CONFIG is set");
+        }
+    } else if let Some(url) = url {
+        let url = url.into_string().unwrap();
+        opt.postgres_url = Some(url);
+    } else {
+        panic!("You can not set both THEGRAPH_STORE_POSTGRES_DIESEL_URL and GRAPH_NODE_TEST_CONFIG (see CONTRIBUTING.md)");
+    }
+    opt.store_connection_pool_size = CONN_POOL_SIZE;
+
+    let config = Config::load(&*LOGGER, &opt).expect("config is not valid");
+    let registry = Arc::new(MockMetricsRegistry::new());
+    std::thread::spawn(move || {
+        STORE_RUNTIME.lock().unwrap().block_on(async {
+            let builder = StoreBuilder::new(&*LOGGER, &config, registry);
+            let net_identifiers = EthereumNetworkIdentifier {
+                net_version: NETWORK_VERSION.to_owned(),
+                genesis_block_hash: GENESIS_PTR.hash,
+            };
+
+            (
+                builder.network_store(NETWORK_NAME.to_string(), net_identifiers),
+                builder.primary_pool(),
+            )
+        })
+    })
+    .join()
+    .unwrap()
 }
