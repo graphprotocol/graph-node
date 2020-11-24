@@ -27,16 +27,9 @@ where
     R::Error: Send + Debug,
     R::Future: Send,
 {
-    let store = STORE.clone();
-
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
-    runtime
-        .block_on(async {
+    run_test_sequentially(
+        || (),
+        |store, ()| async move {
             // Reset state before starting
             block_store::remove();
 
@@ -44,9 +37,13 @@ where
             block_store::insert(chain, NETWORK_NAME);
 
             // Run test
-            test(store).into_future().compat().await
-        })
-        .unwrap_or_else(|e| panic!("Failed to run ChainHead test: {:?}", e));
+            test(store)
+                .into_future()
+                .compat()
+                .await
+                .expect("test finishes successfully");
+        },
+    );
 }
 
 /// Check that `attempt_chain_head_update` works as expected on the given
