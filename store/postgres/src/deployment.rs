@@ -600,63 +600,56 @@ pub fn drop_entities(conn: &diesel::pg::PgConnection, namespace: &str) -> Result
 
 #[test]
 fn subgraph_error() {
-    use diesel::Connection;
     use subgraph_error as e;
 
-    test_store::run_test_sequentially(
-        || {},
-        |_, _| async move {
-            let url = test_store::postgres_test_url();
-            let conn = PgConnection::establish(url.as_str()).unwrap();
+    test_store::run_test_with_conn(|conn| {
+        let subgraph_id = SubgraphDeploymentId::new("testSubgraph").unwrap();
+        test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
 
-            let subgraph_id = SubgraphDeploymentId::new("testSubgraph").unwrap();
-            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
+        let error = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: false,
+        };
 
-            let error = SubgraphError {
-                subgraph_id: subgraph_id.clone(),
-                message: "test".to_string(),
-                block_ptr: None,
-                handler: None,
-                deterministic: false,
-            };
+        let count = || -> i64 {
+            e::table
+                .filter(e::subgraph_id.eq(subgraph_id.as_str()))
+                .count()
+                .get_result(conn)
+                .unwrap()
+        };
 
-            let count = || -> i64 {
-                e::table
-                    .filter(e::subgraph_id.eq(subgraph_id.as_str()))
-                    .count()
-                    .get_result(&conn)
-                    .unwrap()
-            };
+        assert!(count() == 0);
 
-            assert!(count() == 0);
+        crate::deployment::insert_subgraph_error(conn, error).unwrap();
+        assert!(count() == 1);
 
-            crate::deployment::insert_subgraph_error(&conn, error).unwrap();
-            assert!(count() == 1);
+        let error = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: false,
+        };
 
-            let error = SubgraphError {
-                subgraph_id: subgraph_id.clone(),
-                message: "test".to_string(),
-                block_ptr: None,
-                handler: None,
-                deterministic: false,
-            };
+        // Inserting the same error is allowed but ignored.
+        crate::deployment::insert_subgraph_error(conn, error).unwrap();
+        assert!(count() == 1);
 
-            // Inserting the same error is allowed but ignored.
-            crate::deployment::insert_subgraph_error(&conn, error).unwrap();
-            assert!(count() == 1);
+        let error2 = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test2".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: false,
+        };
 
-            let error2 = SubgraphError {
-                subgraph_id: subgraph_id.clone(),
-                message: "test2".to_string(),
-                block_ptr: None,
-                handler: None,
-                deterministic: false,
-            };
+        crate::deployment::insert_subgraph_error(conn, error2).unwrap();
+        assert!(count() == 2);
 
-            crate::deployment::insert_subgraph_error(&conn, error2).unwrap();
-            assert!(count() == 2);
-
-            test_store::remove_subgraphs();
-        },
-    )
+        test_store::remove_subgraphs();
+    })
 }

@@ -7,7 +7,7 @@ use futures03::FutureExt as _;
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::status;
 use graph::prelude::{
-    CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats, TryFutureExt,
+    error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
 };
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -100,22 +100,27 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConne
     });
     info!(logger, "Migrations finished");
 
-    match result {
-        Ok(_) => info!(logger, "Completed pending Postgres schema migrations"),
-        Err(e) => panic!(
+    // If there was any migration output, log it now
+    let has_output = !output.is_empty();
+    if has_output {
+        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        if result.is_err() {
+            error!(logger, "Postgres migration output"; "output" => msg);
+        } else {
+            debug!(logger, "Postgres migration output"; "output" => msg);
+        }
+    }
+
+    if let Err(e) = result {
+        panic!(
             "Error setting up Postgres database: \
              You may need to drop and recreate your database to work with the \
              latest version of graph-node. Error information: {:?}",
             e
-        ),
+        )
     };
-    // If there was any migration output, log it now
-    if !output.is_empty() {
-        debug!(
-            logger, "Postgres migration output";
-            "output" => String::from_utf8(output)
-                .unwrap_or_else(|_| String::from("<unreadable>"))
-        );
+
+    if has_output {
         // We take getting output as a signal that a migration was actually
         // run, which is not easy to tell from the Diesel API, and reset the
         // query statistics since a schema change makes them not all that
@@ -797,11 +802,14 @@ impl Store {
         self: Arc<Self>,
         site: Arc<Site>,
     ) -> DynTryFuture<'a, bool> {
-        self.with_entity_conn(site, |conn, cancel| {
-            cancel.check_cancel()?;
-            Ok(conn.supports_proof_of_indexing())
-        })
-        .map_err(|e| e.into())
+        async move {
+            self.with_entity_conn(site, |conn, cancel| {
+                cancel.check_cancel()?;
+                Ok(conn.supports_proof_of_indexing())
+            })
+            .await
+            .map_err(|e| e.into())
+        }
         .boxed()
     }
 
