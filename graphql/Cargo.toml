@@ -4,7 +4,7 @@ version = "0.19.2"
 edition = "2018"
 
 [dependencies]
-crossbeam = "0.7"
+crossbeam = "0.8"
 futures01 = { package="futures", version="0.1.29" }
 graph = { path = "../graph" }
 graphql-parser = "0.2.3"
