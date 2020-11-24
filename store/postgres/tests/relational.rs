@@ -1,18 +1,14 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use diesel::prelude::*;
-use futures::future::IntoFuture;
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::fmt::Debug;
 use std::str::FromStr;
 
 use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
     web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityQuery,
-    EntityRange, Future01CompatExt, Schema, SubgraphDeploymentId, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    EntityRange, Schema, SubgraphDeploymentId, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
 
@@ -385,39 +381,25 @@ macro_rules! assert_entity_eq {
 }
 
 /// Test harness for running database integration tests.
-fn run_test<R, F>(test: F)
+fn run_test<F>(test: F)
 where
-    F: FnOnce(&PgConnection, &Layout) -> R + Send + 'static,
-    R: IntoFuture<Item = ()> + Send + 'static,
-    R::Error: Send + Debug,
-    R::Future: Send,
+    F: FnOnce(&PgConnection, &Layout) -> (),
 {
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+    run_test_with_conn(|conn| {
+        // Reset state before starting
+        remove_test_data(conn);
 
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
+        // Seed database with test data
+        let layout = insert_test_data(conn);
 
-    runtime
-        .block_on(async {
-            // Reset state before starting
-            remove_test_data(&conn);
-
-            // Seed database with test data
-            let layout = insert_test_data(&conn);
-
-            // Run test
-            test(&conn, &layout).into_future().compat().await
-        })
-        .unwrap_or_else(|e| panic!("Failed to run ChainHead test: {:?}", e));
+        // Run test
+        test(conn, &layout);
+    });
 }
 
 #[test]
 fn find() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
 
         // Happy path: find existing entity
@@ -442,13 +424,12 @@ fn find() {
                 assert!(false)
             }
         }
-        Ok(())
     });
 }
 
 #[test]
 fn insert_null_fulltext_fields() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         insert_entity(
             &conn,
             &layout,
@@ -462,14 +443,12 @@ fn insert_null_fulltext_fields() {
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&*EMPTY_NULLABLESTRINGS_ENTITY), entity);
-
-        Ok(())
     });
 }
 
 #[test]
 fn update() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
 
         // Update with overwrite
@@ -495,14 +474,13 @@ fn update() {
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
-        Ok(())
     });
 }
 
 /// Test that we properly handle BigDecimal values with a negative scale.
 #[test]
 fn serialize_bigdecimal() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
 
         // Update with overwrite
@@ -527,7 +505,6 @@ fn serialize_bigdecimal() {
                 .unwrap();
             assert_entity_eq!(&entity, actual);
         }
-        Ok(())
     });
 }
 
@@ -557,7 +534,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
 
 #[test]
 fn delete() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two");
@@ -578,13 +555,12 @@ fn delete() {
         let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout));
-        Ok(())
     });
 }
 
 #[test]
 fn conflicting_entity() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         let id = "fred";
         let cat = "Cat".to_owned();
         let dog = "Dog".to_owned();
@@ -612,7 +588,6 @@ fn conflicting_entity() {
         let result = layout.conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret, &chair]);
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
-        Ok(())
     })
 }
 
@@ -716,7 +691,7 @@ impl EasyOrder for EntityQuery {
 
 #[test]
 fn check_find() {
-    run_test(move |conn, layout| -> Result<(), ()> {
+    run_test(move |conn, layout| {
         // find with interfaces
         let checker = QueryChecker::new(conn, layout)
             .check(vec!["garfield", "pluto"], query(vec!["Cat", "Dog"]))
@@ -1184,8 +1159,6 @@ fn check_find() {
                 vec!["1", "2", "3"],
                 user_query().filter(EntityFilter::Or(vec![EntityFilter::And(vec![])])),
             );
-
-        Ok(())
     })
 }
 
@@ -1209,7 +1182,7 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
     let expected_entity_ids: Vec<String> =
         expected_entity_ids.into_iter().map(str::to_owned).collect();
 
-    run_test(move |conn, layout| -> Result<(), ()> {
+    run_test(move |conn, layout| {
         let (a1, a2, a2b, a3) = ferrets();
         insert_pet(conn, layout, "Ferret", "a1", &a1);
         insert_pet(conn, layout, "Ferret", "a2", &a2);
@@ -1241,8 +1214,6 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
             .collect();
 
         assert_eq!(expected_entity_ids, entity_ids);
-
-        Ok(())
     })
 }
 

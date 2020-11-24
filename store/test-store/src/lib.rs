@@ -2,6 +2,7 @@
 extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
+use diesel::PgConnection;
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::subgraph::schema::SubgraphError;
@@ -23,7 +24,7 @@ use std::time::Instant;
 use std::{collections::HashMap, env};
 use web3::types::H256;
 
-pub fn postgres_test_url() -> String {
+fn postgres_test_url() -> String {
     std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
         .expect("The THEGRAPH_STORE_POSTGRES_DIESEL_URL environment variable is not set")
         .into_string()
@@ -49,6 +50,18 @@ lazy_static! {
                          Arc::new(MockMetricsRegistry::new()),
                          CONN_POOL_SIZE));
 
+    static ref PRIMARY_POOL: ConnectionPool = {
+        let logger = &*LOGGER;
+        let postgres_url = postgres_test_url();
+        ConnectionPool::create(
+            "test",
+            postgres_url.clone(),
+            CONN_POOL_SIZE as u32,
+            &logger,
+            Arc::new(MockMetricsRegistry::new()),
+        )
+    };
+
     // Create Store instance once for use with each of the tests.
     pub static ref STORE: Arc<NetworkStore> = {
         // Use a separate thread to work around issues with recursive `block_on`.
@@ -61,13 +74,7 @@ lazy_static! {
                     net_version: NETWORK_VERSION.to_owned(),
                     genesis_block_hash: GENESIS_PTR.hash,
                 };
-                let postgres_conn_pool = ConnectionPool::create(
-                    "test",
-                    postgres_url.clone(),
-                    CONN_POOL_SIZE as u32,
-                    &logger,
-                    Arc::new(MockMetricsRegistry::new()),
-                );
+                let postgres_conn_pool = PRIMARY_POOL.clone();
                 let registry = Arc::new(MockMetricsRegistry::new());
                 let chain_head_update_listener = Arc::new(ChainHeadUpdateListener::new(
                     &logger,
@@ -130,6 +137,23 @@ where
         let state = setup();
         test(store, state).await
     })
+}
+
+/// Run a test with a connection into the primary database, not a full store
+pub fn run_test_with_conn<F>(test: F)
+where
+    F: FnOnce(&PgConnection) -> (),
+{
+    let conn = PRIMARY_POOL
+        .get()
+        .expect("failed to get connection for primary database");
+
+    let _runtime = match STORE_RUNTIME.lock() {
+        Ok(guard) => guard,
+        Err(err) => err.into_inner(),
+    };
+
+    test(&conn);
 }
 
 #[cfg(debug_assertions)]
