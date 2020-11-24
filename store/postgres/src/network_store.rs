@@ -39,10 +39,11 @@ impl NetworkStore {
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
+        network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         self.store
-            .create_deployment_replace(name, schema, deployment, node_id, mode)
+            .create_deployment_replace(name, schema, deployment, node_id, network_name, mode)
     }
 
     #[cfg(debug_assertions)]

@@ -146,6 +146,7 @@ fn create_subgraph(
         &schema,
         deployment,
         node_id,
+        NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
     )?;
     STORE.start_subgraph_deployment(&*LOGGER, &subgraph_id)

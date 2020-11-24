@@ -44,7 +44,10 @@ impl StoreBuilder {
         ));
         let mut store_map = HashMap::new();
         store_map.insert(PRIMARY_SHARD.clone(), primary_store);
-        let store = Arc::new(ShardedStore::new(store_map));
+        let store = Arc::new(ShardedStore::new(
+            store_map,
+            Arc::new(config.deployment.clone()),
+        ));
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
             &logger,

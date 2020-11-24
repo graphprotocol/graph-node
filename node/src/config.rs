@@ -1,6 +1,6 @@
 use graph::prelude::{
     anyhow::{anyhow, Result},
-    info, serde_json, Logger,
+    info, serde_json, Logger, NodeId,
 };
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
@@ -40,7 +40,7 @@ impl Default for Opt {
 pub struct Config {
     #[serde(rename = "store")]
     stores: BTreeMap<String, Shard>,
-    deployment: Deployment,
+    pub deployment: Deployment,
     ingestor: Ingestor,
 }
 
@@ -224,8 +224,8 @@ impl Replica {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Deployment {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Deployment {
     #[serde(rename = "rule")]
     rules: Vec<Rule>,
 }
@@ -259,26 +259,31 @@ impl Deployment {
 }
 
 impl DeploymentPlacer for Deployment {
-    fn place(&self, name: &str, network: &str, default: &str) -> Option<(ShardName, Vec<String>)> {
-        if self.rules.is_empty() {
-            // This can only happen if we have only command line arguments and no
-            // configuration file
-            Some((PRIMARY_SHARD.clone(), vec![default.to_string()]))
-        } else {
-            self.rules
-                .iter()
-                .find(|rule| rule.matches(name, network))
-                .map(|rule| {
-                    (
-                        ShardName::new(rule.store.clone()).unwrap(),
-                        rule.indexers.clone(),
-                    )
-                })
-        }
+    fn place(&self, name: &str, network: &str) -> Result<Option<(ShardName, Vec<NodeId>)>, String> {
+        // Errors here are really programming errors. We should have validated
+        // everything already so that the various conversions can't fail. We
+        // still return errors so that they bubble up to the deployment request
+        // rather than crashing the node and burying the crash in the logs
+        let placement = match self.rules.iter().find(|rule| rule.matches(name, network)) {
+            Some(rule) => {
+                let shard = ShardName::new(rule.store.clone()).map_err(|e| e.to_string())?;
+                let indexers: Vec<_> = rule
+                    .indexers
+                    .iter()
+                    .map(|idx| {
+                        NodeId::new(idx.clone())
+                            .map_err(|()| format!("{} is not a valid node name", idx))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Some((shard, indexers))
+            }
+            None => None,
+        };
+        Ok(placement)
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Rule {
     #[serde(rename = "match", default)]
     pred: Predicate,
@@ -300,11 +305,16 @@ impl Rule {
         if self.indexers.is_empty() {
             return Err(anyhow!("useless rule without indexers"));
         }
+        for indexer in &self.indexers {
+            NodeId::new(indexer).map_err(|()| anyhow!("invalid node id {}", &indexer))?;
+        }
+        ShardName::new(self.store.clone())
+            .map_err(|e| anyhow!("illegal name for store shard `{}`: {}", &self.store, e))?;
         Ok(())
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Predicate {
     #[serde(with = "serde_regex", default = "any_name")]
     name: Regex,

@@ -77,7 +77,7 @@ impl fmt::Display for Shard {
 /// indexers that should index it. The deployment should then be assigned to
 /// one of the returned indexers.
 pub trait DeploymentPlacer {
-    fn place(&self, name: &str, network: &str, default: &str) -> Option<(Shard, Vec<String>)>;
+    fn place(&self, name: &str, network: &str) -> Result<Option<(Shard, Vec<NodeId>)>, String>;
 }
 
 /// Multiplex store operations on subgraphs and deployments between a primary
@@ -88,11 +88,15 @@ pub struct ShardedStore {
     stores: HashMap<Shard, Arc<Store>>,
     /// Cache for the mapping from deployment id to shard/namespace/id
     sites: RwLock<HashMap<SubgraphDeploymentId, Arc<Site>>>,
+    placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
 }
 
 impl ShardedStore {
     #[allow(dead_code)]
-    pub fn new(stores: HashMap<Shard, Arc<Store>>) -> Self {
+    pub fn new(
+        stores: HashMap<Shard, Arc<Store>>,
+        placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
+    ) -> Self {
         assert_eq!(
             1,
             stores.len(),
@@ -107,6 +111,7 @@ impl ShardedStore {
             primary,
             stores,
             sites,
+            placer,
         }
     }
 
@@ -143,12 +148,51 @@ impl ShardedStore {
         Ok((store, site))
     }
 
+    fn place(
+        &self,
+        name: &SubgraphName,
+        network_name: &str,
+        default_node: NodeId,
+    ) -> Result<(Shard, NodeId), StoreError> {
+        // We try to place the deployment according to the configured rules.
+        // If they don't yield a match, place into the primary and have
+        // `default_node` index the deployment. The latter can only happen
+        // when `graph-node` is not using a configuration file, but
+        // uses the legacy command-line options as configuration
+        let placement = self
+            .placer
+            .place(name.as_str(), network_name)
+            .map_err(|msg| {
+                StoreError::ConstraintViolation(format!(
+                    "illegal indexer name in deployment rule: {}",
+                    msg
+                ))
+            })?;
+
+        match placement {
+            None => Ok((PRIMARY_SHARD.clone(), default_node)),
+            Some((_, nodes)) if nodes.is_empty() => {
+                // This is really a configuration error
+                Ok((PRIMARY_SHARD.clone(), default_node))
+            }
+            Some((shard, mut nodes)) if nodes.len() == 1 => Ok((shard, nodes.pop().unwrap())),
+            Some((shard, nodes)) => {
+                let conn = self.primary_conn()?;
+
+                // unwrap is fine since nodes is not empty
+                let node = conn.least_assigned_node(&nodes)?.unwrap();
+                Ok((shard, node))
+            }
+        }
+    }
+
     fn create_deployment_internal(
         &self,
         name: SubgraphName,
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
+        network_name: String,
         mode: SubgraphVersionSwitchingMode,
         // replace == true is only used in tests; for non-test code, it must
         // be 'false'
@@ -157,9 +201,7 @@ impl ShardedStore {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
-        // We only allow one shard (the primary) for now, so it is fine
-        // to forward this to the primary store
-        let shard = PRIMARY_SHARD.clone();
+        let (shard, node_id) = self.place(&name, &network_name, node_id)?;
 
         let deployment_store = self
             .stores
@@ -232,9 +274,10 @@ impl ShardedStore {
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
+        network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, mode, true)
+        self.create_deployment_internal(name, schema, deployment, node_id, network_name, mode, true)
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
@@ -478,16 +521,25 @@ impl StoreTrait for ShardedStore {
         Ok(pconn.send_store_event(&event)?)
     }
 
+    // FIXME: This method should not get a node_id
     fn create_subgraph_deployment(
         &self,
         name: SubgraphName,
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
-        _network: String,
+        network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, mode, false)
+        self.create_deployment_internal(
+            name,
+            schema,
+            deployment,
+            node_id,
+            network_name,
+            mode,
+            false,
+        )
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {

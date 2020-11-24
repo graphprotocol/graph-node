@@ -1,7 +1,7 @@
 //! Utilities for dealing with subgraph metadata that resides in the primary
 //! shard. Anything in this module can only be used with a database connection
 //! for the primary shard.
-use diesel::sql_types::Text;
+use diesel::{dsl::any, sql_types::Text};
 use diesel::{
     dsl::{delete, insert_into, sql, update},
     r2d2::PooledConnection,
@@ -9,8 +9,8 @@ use diesel::{
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
 use diesel::{
     prelude::{
-        ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
-        RunQueryDsl,
+        ExpressionMethods, GroupByDsl, JoinOnDsl, NullableExpressionMethods, OptionalExtension,
+        QueryDsl, RunQueryDsl,
     },
     Connection as _,
 };
@@ -566,6 +566,42 @@ impl Connection {
             }
         }
         JsonNotification::send("store_events", &v, &self.0)
+    }
+
+    /// Return the name of the node that has the fewest assignments out of the
+    /// given `nodes`. If `nodes` is empty, return `None`
+    pub fn least_assigned_node(&self, nodes: &Vec<NodeId>) -> Result<Option<NodeId>, StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        let nodes: Vec<_> = nodes.iter().map(|n| n.as_str()).collect();
+
+        let assigned = a::table
+            .filter(a::node_id.eq(any(&nodes)))
+            .select((a::node_id, sql("count(*)")))
+            .group_by(a::node_id)
+            .order_by(sql::<i64>("count(*)"))
+            .load::<(String, i64)>(&self.0)?;
+
+        // Any nodes without assignments will be missing from `assigned`
+        let missing = nodes
+            .into_iter()
+            .filter(|node| !assigned.iter().any(|(a, _)| a == node))
+            .map(|node| (node, 0));
+
+        assigned
+            .iter()
+            .map(|(node, count)| (node.as_str(), count.clone()))
+            .chain(missing)
+            .min_by(|(_, a), (_, b)| a.cmp(b))
+            .map(|(node, _)| NodeId::new(node).map_err(|()| node))
+            .transpose()
+            // This can't really happen since we filtered by valid NodeId's
+            .map_err(|node| {
+                StoreError::ConstraintViolation(format!(
+                    "database has assignment for illegal node name {:?}",
+                    node
+                ))
+            })
     }
 }
 
