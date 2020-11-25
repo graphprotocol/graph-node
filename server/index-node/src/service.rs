@@ -4,8 +4,8 @@ use hyper::{Body, Method, Request, Response, StatusCode};
 use std::task::Context;
 use std::task::Poll;
 
-use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
+use graph::{components::server::query::GraphQLServerError, data::query::QueryResults};
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
 
 use crate::request::IndexNodeRequest;
@@ -92,7 +92,7 @@ where
         let query = IndexNodeRequest::new(body, schema).compat().await?;
         let query = match PreparedQuery::new(&self.logger, query, None, 100) {
             Ok(query) => query,
-            Err(e) => return Ok(QueryResult::from(e).as_http_response()),
+            Err(e) => return Ok(QueryResults::from(QueryResult::from(e)).as_http_response()),
         };
 
         let graphql_runner = graphql_runner.clone();
@@ -117,7 +117,7 @@ where
             )
         };
 
-        Ok(result.as_http_response())
+        Ok(QueryResults::from(result).as_http_response())
     }
 
     // Handles OPTIONS requests

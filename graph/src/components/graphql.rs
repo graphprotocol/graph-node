@@ -1,9 +1,9 @@
 use futures::prelude::*;
 
-use crate::data::graphql::effort::LoadManager;
-use crate::data::query::{CacheStatus, Query, QueryResult};
+use crate::data::query::{CacheStatus, Query};
 use crate::data::subgraph::DeploymentState;
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
+use crate::data::{graphql::effort::LoadManager, query::QueryResults};
 
 use async_trait::async_trait;
 use failure::format_err;
@@ -25,7 +25,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         query: Query,
         state: DeploymentState,
         nested_resolver: bool,
-    ) -> Arc<QueryResult>;
+    ) -> QueryResults;
 
     /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
     async fn run_query_with_complexity(
@@ -37,7 +37,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         max_first: Option<u32>,
         max_skip: Option<u32>,
         nested_resolver: bool,
-    ) -> Arc<QueryResult>;
+    ) -> QueryResults;
 
     /// Runs a GraphQL subscription and returns a stream of results.
     async fn run_subscription(
@@ -52,8 +52,8 @@ pub trait GraphQlRunner: Send + Sync + 'static {
             .await;
 
         // Metadata queries are not cached.
-        Arc::try_unwrap(result)
-            .unwrap()
+        result
+            .unwrap_first()
             .to_result()
             .map_err(|errors| format_err!("Failed to query metadata: {:?}", errors))
             .and_then(|data| {

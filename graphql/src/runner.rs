@@ -7,10 +7,11 @@ use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecution
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::data::graphql::effort::LoadManager;
+use graph::data::query::QueryResults;
 use graph::prelude::{
     async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
-    Query, QueryExecutionError, QueryResult, Store, SubgraphDeploymentStore, Subscription,
-    SubscriptionError, SubscriptionResult,
+    Query, QueryExecutionError, Store, SubgraphDeploymentStore, Subscription, SubscriptionError,
+    SubscriptionResult,
 };
 
 use lazy_static::lazy_static;
@@ -109,7 +110,7 @@ where
         max_first: Option<u32>,
         max_skip: Option<u32>,
         nested_resolver: bool,
-    ) -> Result<Arc<QueryResult>, QueryResult> {
+    ) -> Result<QueryResults, QueryResults> {
         // We need to use the same `QueryStore` for the entire query to ensure
         // we have a consistent view if the world, even when replicas, which
         // are eventually consistent, are in use. If we run different parts
@@ -130,9 +131,22 @@ where
                 query.query_text.as_ref(),
             )
             .to_result()?;
+        let by_block_constraint = query.block_constraint()?;
+        let mut max_block = 0;
+        let mut result: QueryResults = QueryResults::empty();
 
-        let execute = |selection_set, resolver: StoreResolver| {
-            execute_query(
+        // Note: This will always iterate at least once.
+        for (bc, (selection_set, error_policy)) in by_block_constraint {
+            let resolver = StoreResolver::at_block(
+                &self.logger,
+                store.cheap_clone(),
+                bc,
+                error_policy,
+                query.schema.id().clone(),
+            )
+            .await?;
+            max_block = max_block.max(resolver.block_number());
+            let query_res = execute_query(
                 query.clone(),
                 Some(selection_set),
                 resolver.block_ptr.clone(),
@@ -145,45 +159,13 @@ where
                 },
                 nested_resolver,
             )
-        };
-        // Unwrap: There is always at least one block constraint, even if it
-        // is an implicit 'BlockContraint::Latest'.
-        let mut by_block_constraint = query.block_constraint()?.into_iter();
-        let (bc, (selection_set, error_policy)) = by_block_constraint.next().unwrap();
-
-        let resolver = StoreResolver::at_block(
-            &self.logger,
-            store.cheap_clone(),
-            bc,
-            error_policy,
-            query.schema.id().clone(),
-        )
-        .await?;
-        let mut max_block = resolver.block_number();
-        let mut result = execute(selection_set, resolver).await;
-
-        // We want to optimize for the common case of a single block constraint, where we can avoid
-        // cloning the result. If there are multiple constraints we have to clone.
-        if by_block_constraint.len() > 0 {
-            let mut partial_res = result.as_ref().clone();
-            for (bc, (selection_set, error_policy)) in by_block_constraint {
-                let resolver = StoreResolver::at_block(
-                    &self.logger,
-                    store.cheap_clone(),
-                    bc,
-                    error_policy,
-                    query.schema.id().clone(),
-                )
-                .await?;
-                max_block = max_block.max(resolver.block_number());
-                partial_res.append(execute(selection_set, resolver).await.as_ref().clone());
-            }
-            result = Arc::new(partial_res);
+            .await;
+            result.append(query_res);
         }
 
         query.log_execution(max_block);
         self.deployment_changed(state, max_block as u64)
-            .map_err(QueryResult::from)
+            .map_err(QueryResults::from)
             .map(|()| result)
     }
 }
@@ -198,7 +180,7 @@ where
         query: Query,
         state: DeploymentState,
         nested_resolver: bool,
-    ) -> Arc<QueryResult> {
+    ) -> QueryResults {
         self.run_query_with_complexity(
             query,
             state,
@@ -220,7 +202,7 @@ where
         max_first: Option<u32>,
         max_skip: Option<u32>,
         nested_resolver: bool,
-    ) -> Arc<QueryResult> {
+    ) -> QueryResults {
         self.execute(
             query,
             state,
@@ -231,7 +213,7 @@ where
             nested_resolver,
         )
         .await
-        .unwrap_or_else(|e| Arc::new(e))
+        .unwrap_or_else(|e| e)
     }
 
     async fn run_subscription(

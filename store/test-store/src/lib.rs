@@ -3,6 +3,7 @@ extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
 use graph::data::graphql::effort::LoadManager;
+use graph::data::query::QueryResults;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{Store as _, *};
@@ -444,21 +445,21 @@ pub mod block_store {
 }
 
 /// Run a GraphQL query against the `STORE`
-pub fn execute_subgraph_query(query: Query) -> QueryResult {
+pub fn execute_subgraph_query(query: Query) -> QueryResults {
     execute_subgraph_query_with_complexity(query, None)
 }
 
 pub fn execute_subgraph_query_with_complexity(
     query: Query,
     max_complexity: Option<u64>,
-) -> QueryResult {
+) -> QueryResults {
     execute_subgraph_query_internal(query, max_complexity, None)
 }
 
 pub fn execute_subgraph_query_with_deadline(
     query: Query,
     deadline: Option<Instant>,
-) -> QueryResult {
+) -> QueryResults {
     execute_subgraph_query_internal(query, None, deadline)
 }
 
@@ -478,7 +479,7 @@ fn execute_subgraph_query_internal(
     query: Query,
     max_complexity: Option<u64>,
     deadline: Option<Instant>,
-) -> QueryResult {
+) -> QueryResults {
     let mut rt = tokio::runtime::Builder::new()
         .basic_scheduler()
         .enable_io()
@@ -487,7 +488,7 @@ fn execute_subgraph_query_internal(
         .unwrap();
     let logger = Logger::root(slog::Discard, o!());
     let query = return_err!(PreparedQuery::new(&logger, query, max_complexity, 100));
-    let mut result = QueryResult::empty();
+    let mut result = QueryResults::empty();
     for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
         let resolver = return_err!(rt.block_on(StoreResolver::at_block(
@@ -497,23 +498,19 @@ fn execute_subgraph_query_internal(
             error_policy,
             query.schema.id().clone()
         )));
-        result.append(
-            rt.block_on(execute_query(
-                query.clone(),
-                Some(selection_set),
-                None,
-                QueryExecutionOptions {
-                    resolver,
-                    deadline,
-                    load_manager: LOAD_MANAGER.clone(),
-                    max_first: std::u32::MAX,
-                    max_skip: std::u32::MAX,
-                },
-                false,
-            ))
-            .as_ref()
-            .clone(),
-        )
+        result.append(rt.block_on(execute_query(
+            query.clone(),
+            Some(selection_set),
+            None,
+            QueryExecutionOptions {
+                resolver,
+                deadline,
+                load_manager: LOAD_MANAGER.clone(),
+                max_first: std::u32::MAX,
+                max_skip: std::u32::MAX,
+            },
+            false,
+        )))
     }
     result
 }

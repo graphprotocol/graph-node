@@ -252,7 +252,7 @@ where
 
         let result = match query {
             Ok(query) => service.graphql_runner.run_query(query, state, false).await,
-            Err(GraphQLServerError::QueryError(e)) => Arc::new(QueryResult::from(e)),
+            Err(GraphQLServerError::QueryError(e)) => QueryResult::from(e).into(),
             Err(e) => return Err(e),
         };
 
@@ -431,7 +431,7 @@ mod tests {
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
 
-    use graph::data::graphql::effort::LoadManager;
+    use graph::data::{graphql::effort::LoadManager, query::QueryResults};
     use graph::prelude::*;
     use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
     use graphql_parser::query as q;
@@ -455,7 +455,7 @@ mod tests {
             _max_first: Option<u32>,
             _max_skip: Option<u32>,
             _nested_resolver: bool,
-        ) -> Arc<QueryResult> {
+        ) -> QueryResults {
             unimplemented!();
         }
 
@@ -464,14 +464,14 @@ mod tests {
             _query: Query,
             _state: DeploymentState,
             _: bool,
-        ) -> Arc<QueryResult> {
-            Arc::new(QueryResult::new(vec![Arc::new(BTreeMap::from_iter(
+        ) -> QueryResults {
+            QueryResults::from(BTreeMap::from_iter(
                 vec![(
                     String::from("name"),
                     q::Value::String(String::from("Jordi")),
                 )]
                 .into_iter(),
-            ))]))
+            ))
         }
 
         async fn run_subscription(
