@@ -246,10 +246,7 @@ where
 
         // Get pointers from database for comparison
         let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
-        let subgraph_ptr = ctx
-            .subgraph_store
-            .block_ptr(ctx.subgraph_id.clone())
-            .unwrap();
+        let subgraph_ptr = ctx.subgraph_store.block_ptr(&ctx.subgraph_id).unwrap();
 
         // If chain head ptr is not set yet
         if head_ptr_opt.is_none() {
@@ -626,7 +623,7 @@ where
     /// caught up to the head block pointer.
     fn update_subgraph_synced_status(&self) -> Result<(), Error> {
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
+        let subgraph_ptr = self.subgraph_store.block_ptr(&self.subgraph_id)?;
 
         if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
             // Not synced yet

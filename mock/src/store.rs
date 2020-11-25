@@ -58,7 +58,7 @@ mock! {
 impl Store for MockStore {
     fn block_ptr(
         &self,
-        _subgraph_id: SubgraphDeploymentId,
+        _subgraph_id: &SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
         unimplemented!()
     }

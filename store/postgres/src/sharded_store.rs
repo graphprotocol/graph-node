@@ -340,9 +340,9 @@ impl ShardedStore {
 impl StoreTrait for ShardedStore {
     fn block_ptr(
         &self,
-        id: SubgraphDeploymentId,
+        id: &SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, failure::Error> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())
     }
 

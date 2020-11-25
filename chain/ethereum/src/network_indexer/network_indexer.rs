@@ -101,7 +101,7 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
         context.metrics,
         load_local_head,
         load_local_head_problems,
-        future::result(context.store.clone().block_ptr(context.subgraph_id.clone()))
+        future::result(context.store.clone().block_ptr(&context.subgraph_id))
     ))
 }
 

@@ -56,7 +56,7 @@ impl NetworkStore {
 impl StoreTrait for NetworkStore {
     fn block_ptr(
         &self,
-        subgraph_id: graph::prelude::SubgraphDeploymentId,
+        subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, failure::Error> {
         self.store.block_ptr(subgraph_id)
     }
