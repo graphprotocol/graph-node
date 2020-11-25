@@ -622,43 +622,40 @@ impl Connection {
             })
             .transpose()
     }
-}
 
-pub(crate) fn deployments_for_subgraph(
-    conn: &PgConnection,
-    name: String,
-) -> Result<Vec<String>, StoreError> {
-    use subgraph as s;
-    use subgraph_version as v;
+    pub(crate) fn deployments_for_subgraph(&self, name: String) -> Result<Vec<String>, StoreError> {
+        use subgraph as s;
+        use subgraph_version as v;
 
-    Ok(v::table
-        .inner_join(s::table.on(v::subgraph.eq(s::id)))
-        .filter(s::name.eq(&name))
-        .order_by(v::created_at.asc())
-        .select(v::deployment)
-        .load(conn)?)
-}
-
-pub fn subgraph_version(
-    conn: &PgConnection,
-    name: String,
-    use_current: bool,
-) -> Result<Option<String>, StoreError> {
-    use subgraph as s;
-    use subgraph_version as v;
-
-    let deployment = if use_current {
-        v::table
-            .select(v::deployment.nullable())
-            .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
+        Ok(v::table
+            .inner_join(s::table.on(v::subgraph.eq(s::id)))
             .filter(s::name.eq(&name))
-            .first::<Option<String>>(conn)
-    } else {
-        v::table
-            .select(v::deployment.nullable())
-            .inner_join(s::table.on(s::pending_version.eq(v::id.nullable())))
-            .filter(s::name.eq(&name))
-            .first::<Option<String>>(conn)
-    };
-    Ok(deployment.optional()?.flatten())
+            .order_by(v::created_at.asc())
+            .select(v::deployment)
+            .load(&self.0)?)
+    }
+
+    pub fn subgraph_version(
+        &self,
+        name: String,
+        use_current: bool,
+    ) -> Result<Option<String>, StoreError> {
+        use subgraph as s;
+        use subgraph_version as v;
+
+        let deployment = if use_current {
+            v::table
+                .select(v::deployment.nullable())
+                .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
+                .filter(s::name.eq(&name))
+                .first::<Option<String>>(&self.0)
+        } else {
+            v::table
+                .select(v::deployment.nullable())
+                .inner_join(s::table.on(s::pending_version.eq(v::id.nullable())))
+                .filter(s::name.eq(&name))
+                .first::<Option<String>>(&self.0)
+        };
+        Ok(deployment.optional()?.flatten())
+    }
 }

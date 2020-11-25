@@ -573,26 +573,26 @@ impl StoreTrait for ShardedStore {
     }
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        let conn = self.primary.get_conn()?;
-        let (deployments, empty_means_all) = conn.transaction(|| -> Result<_, StoreError> {
-            match filter {
-                status::Filter::SubgraphName(name) => {
-                    let deployments = primary::deployments_for_subgraph(&conn, name)?;
-                    Ok((deployments, false))
+        let primary = self.primary_conn()?;
+        let deployments = match filter {
+            status::Filter::SubgraphName(name) => {
+                let deployments = primary.deployments_for_subgraph(name)?;
+                if deployments.is_empty() {
+                    return Ok(Vec::new());
                 }
-                status::Filter::SubgraphVersion(name, use_current) => {
-                    let deployments = primary::subgraph_version(&conn, name, use_current)?
-                        .map(|d| vec![d])
-                        .unwrap_or_else(|| vec![]);
-                    Ok((deployments, false))
-                }
-                status::Filter::Deployments(deployments) => Ok((deployments, true)),
+                deployments
             }
-        })?;
-
-        if deployments.is_empty() && !empty_means_all {
-            return Ok(Vec::new());
-        }
+            status::Filter::SubgraphVersion(name, use_current) => {
+                let deployment = primary.subgraph_version(name, use_current)?;
+                match deployment {
+                    Some(deployment) => vec![deployment],
+                    None => {
+                        return Ok(Vec::new());
+                    }
+                }
+            }
+            status::Filter::Deployments(deployments) => deployments,
+        };
 
         // Ignore invalid subgraph ids
         let deployments: Vec<SubgraphDeploymentId> = deployments
