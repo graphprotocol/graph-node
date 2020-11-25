@@ -17,6 +17,8 @@ use diesel::{
 use failure::format_err;
 use graph::{
     data::subgraph::schema::SUBGRAPHS_ID,
+    data::subgraph::status,
+    prelude::EthereumBlockPointer,
     prelude::{
         entity, serde_json, EntityChange, EntityChangeOperation, MetadataOperation, NodeId,
         StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
@@ -27,8 +29,10 @@ use graph::{
     prelude::StoreEvent,
 };
 use std::{
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     convert::TryInto,
+    iter::FromIterator,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -621,6 +625,61 @@ impl Connection {
                 })
             })
             .transpose()
+    }
+
+    pub fn fill_assignments(
+        &self,
+        mut infos: Vec<status::Info>,
+    ) -> Result<Vec<status::Info>, StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        let ids: Vec<_> = infos.iter().map(|info| &info.subgraph).collect();
+        let nodes: HashMap<_, _> = a::table
+            .filter(a::id.eq(any(ids)))
+            .select((a::id, a::node_id))
+            .load::<(String, String)>(&self.0)?
+            .into_iter()
+            .collect();
+        for mut info in &mut infos {
+            info.node = nodes.get(&info.subgraph).map(|s| s.clone());
+        }
+        Ok(infos)
+    }
+
+    pub fn fill_chain_head_pointers(
+        &self,
+        mut infos: Vec<status::Info>,
+    ) -> Result<Vec<status::Info>, StoreError> {
+        use crate::db_schema::ethereum_networks as n;
+        let networks: Vec<_> = infos
+            .iter()
+            .map(|info| info.chains.iter().map(|chain| &chain.network))
+            .flatten()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let pointers: Vec<(String, EthereumBlockPointer)> = n::table
+            .filter(n::name.eq(any(networks)))
+            .select((n::name, n::head_block_hash, n::head_block_number))
+            .load::<(String, Option<String>, Option<i64>)>(&self.0)?
+            .into_iter()
+            .filter_map(|(name, hash, number)| match (hash, number) {
+                (Some(hash), Some(number)) => Some((name, hash, number)),
+                _ => None,
+            })
+            .map(|(name, hash, number)| {
+                EthereumBlockPointer::try_from((hash.as_str(), number)).map(|ptr| (name, ptr))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let pointers: HashMap<_, _> = HashMap::from_iter(pointers);
+        for info in &mut infos {
+            for chain in &mut info.chains {
+                chain.chain_head_block = pointers
+                    .get(&chain.network)
+                    .map(|ptr| ptr.to_owned().into());
+            }
+        }
+        Ok(infos)
     }
 
     pub(crate) fn deployments_for_subgraph(&self, name: String) -> Result<Vec<String>, StoreError> {

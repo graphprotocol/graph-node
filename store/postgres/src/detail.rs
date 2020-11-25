@@ -36,10 +36,7 @@ table! {
         graft_base -> Nullable<Text>,
         graft_block_hash -> Nullable<Binary>,
         graft_block_number -> Nullable<Numeric>,
-        ethereum_head_block_hash -> Nullable<Binary>,
-        ethereum_head_block_number -> Nullable<BigInt>,
         network -> Text,
-        node_id -> Nullable<Text>,
         // We don't map block_range
         // block_range -> Range<Integer>,
     }
@@ -73,10 +70,7 @@ struct Detail {
     graft_base: Option<String>,
     graft_block_hash: Option<Bytes>,
     graft_block_number: Option<BigDecimal>,
-    ethereum_head_block_hash: Option<Bytes>,
-    ethereum_head_block_number: Option<i64>,
     network: String,
-    node_id: Option<String>,
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -184,18 +178,12 @@ impl TryFrom<DetailAndError> for status::Info {
             graft_base: _,
             graft_block_hash: _,
             graft_block_number: _,
-            ethereum_head_block_hash,
-            ethereum_head_block_number,
             network,
-            node_id,
         } = detail;
 
-        let chain_head_block = block(
-            &id,
-            "ethereum_head_block",
-            ethereum_head_block_hash,
-            ethereum_head_block_number.map(|n| BigDecimal::from(n)),
-        )?;
+        // This needs to be filled in later since it lives in a
+        // different shard
+        let chain_head_block = None;
         let earliest_block = block(
             &id,
             "earliest_ethereum_block",
@@ -222,6 +210,7 @@ impl TryFrom<DetailAndError> for status::Info {
             ))
         })?;
         let fatal_error = error.map(|e| SubgraphError::try_from(e)).transpose()?;
+        // 'node' needs to be filled in later from a different shard
         Ok(status::Info {
             subgraph: id,
             synced,
@@ -230,7 +219,7 @@ impl TryFrom<DetailAndError> for status::Info {
             non_fatal_errors: vec![],
             chains: vec![chain],
             entity_count,
-            node: node_id,
+            node: None,
         })
     }
 }

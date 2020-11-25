@@ -1,9 +1,10 @@
 use ethabi::LogParam;
+use failure::format_err;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
-use std::cmp::Ordering;
-use std::fmt;
+use std::{cmp::Ordering, convert::TryFrom};
+use std::{fmt, str::FromStr};
 use web3::types::*;
 
 use crate::prelude::{EntityKey, SubgraphDeploymentId, ToEntityKey};
@@ -512,6 +513,18 @@ impl From<(H256, i64)> for EthereumBlockPointer {
             hash,
             number: number as u64,
         }
+    }
+}
+
+impl TryFrom<(&str, i64)> for EthereumBlockPointer {
+    type Error = failure::Error;
+
+    fn try_from((hash, number): (&str, i64)) -> Result<Self, Self::Error> {
+        let hash = hash.trim_start_matches("0x");
+        let hash = H256::from_str(hash)
+            .map_err(|e| format_err!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+
+        Ok(EthereumBlockPointer::from((hash, number)))
     }
 }
 

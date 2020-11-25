@@ -35,6 +35,12 @@ impl IntoValue for EthereumBlock {
     }
 }
 
+impl From<EthereumBlockPointer> for EthereumBlock {
+    fn from(ptr: EthereumBlockPointer) -> Self {
+        Self(ptr)
+    }
+}
+
 /// Indexing status information related to the chain. Right now, we only
 /// support Ethereum, but once we support more chains, we'll have to turn this into
 /// an enum

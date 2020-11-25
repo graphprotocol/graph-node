@@ -627,7 +627,8 @@ impl StoreTrait for ShardedStore {
                 .collect();
             infos.extend(store.deployment_statuses(ids)?);
         }
-
+        let infos = primary.fill_assignments(infos)?;
+        let infos = primary.fill_chain_head_pointers(infos)?;
         Ok(infos)
     }
 
