@@ -4,7 +4,7 @@ use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use graph::data::graphql::effort::LoadManager;
+use graph::data::{graphql::effort::LoadManager, query::QueryResults};
 use graph::prelude::*;
 
 use graph_server_http::test_utils;
@@ -26,7 +26,7 @@ impl GraphQlRunner for TestGraphQlRunner {
         _max_first: Option<u32>,
         _max_skip: Option<u32>,
         _nested_resolver: bool,
-    ) -> Arc<QueryResult> {
+    ) -> QueryResults {
         unimplemented!();
     }
 
@@ -35,36 +35,34 @@ impl GraphQlRunner for TestGraphQlRunner {
         query: Query,
         _state: DeploymentState,
         _: bool,
-    ) -> Arc<QueryResult> {
-        Arc::new(QueryResult::new(vec![Arc::new(
-            if query.variables.is_some()
-                && query
-                    .variables
-                    .as_ref()
-                    .unwrap()
-                    .get(&String::from("equals"))
-                    .is_some()
-                && query
-                    .variables
-                    .unwrap()
-                    .get(&String::from("equals"))
-                    .unwrap()
-                    == &q::Value::String(String::from("John"))
-            {
-                BTreeMap::from_iter(
-                    vec![(String::from("name"), q::Value::String(String::from("John")))]
-                        .into_iter(),
-                )
-            } else {
-                BTreeMap::from_iter(
-                    vec![(
-                        String::from("name"),
-                        q::Value::String(String::from("Jordi")),
-                    )]
-                    .into_iter(),
-                )
-            },
-        )]))
+    ) -> QueryResults {
+        if query.variables.is_some()
+            && query
+                .variables
+                .as_ref()
+                .unwrap()
+                .get(&String::from("equals"))
+                .is_some()
+            && query
+                .variables
+                .unwrap()
+                .get(&String::from("equals"))
+                .unwrap()
+                == &q::Value::String(String::from("John"))
+        {
+            BTreeMap::from_iter(
+                vec![(String::from("name"), q::Value::String(String::from("John")))].into_iter(),
+            )
+        } else {
+            BTreeMap::from_iter(
+                vec![(
+                    String::from("name"),
+                    q::Value::String(String::from("Jordi")),
+                )]
+                .into_iter(),
+            )
+        }
+        .into()
     }
 
     async fn run_subscription(

@@ -73,7 +73,7 @@ impl CacheWeight for WeightedResult {
 impl Default for WeightedResult {
     fn default() -> Self {
         WeightedResult {
-            result: Arc::new(QueryResult::new(vec![Arc::new(BTreeMap::default())])),
+            result: Arc::new(QueryResult::new(BTreeMap::default())),
             weight: 0,
         }
     }

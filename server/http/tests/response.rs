@@ -1,4 +1,4 @@
-use graph::data::graphql::object;
+use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
 use graph_server_http::test_utils;
 use graphql_parser::{self, query as q};
@@ -7,14 +7,14 @@ use std::collections::BTreeMap;
 #[test]
 fn generates_200_for_query_results() {
     let data = BTreeMap::new();
-    let query_result = QueryResult::from(data).as_http_response();
+    let query_result = QueryResults::from(data).as_http_response();
     test_utils::assert_successful_response(query_result);
 }
 
 #[test]
 fn generates_valid_json_for_an_empty_result() {
     let data = BTreeMap::new();
-    let query_result = QueryResult::from(data).as_http_response();
+    let query_result = QueryResults::from(data).as_http_response();
     let data = test_utils::assert_successful_response(query_result);
     assert!(data.is_empty());
 }

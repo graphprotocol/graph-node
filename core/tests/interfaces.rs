@@ -42,7 +42,7 @@ fn insert_and_query(
         None,
         STORE.network_name(&subgraph_id).unwrap(),
     );
-    Ok(execute_subgraph_query(query))
+    Ok(execute_subgraph_query(query).unwrap_first())
 }
 
 /// Extract the data from a `QueryResult`, and panic if it has errors

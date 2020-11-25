@@ -261,8 +261,7 @@ async fn execute_query_document_with_variables(
     runner
         .run_query_with_complexity(query, state, None, None, None, None, false)
         .await
-        .as_ref()
-        .clone()
+        .unwrap_first()
 }
 
 async fn execute_query_document_with_state(
@@ -280,8 +279,7 @@ async fn execute_query_document_with_state(
     graph::prelude::futures03::executor::block_on(
         runner.run_query_with_complexity(query, state, None, None, None, None, false),
     )
-    .as_ref()
-    .clone()
+    .unwrap_first()
 }
 
 struct MockQueryLoadManager(Arc<tokio::sync::Semaphore>);
@@ -814,7 +812,8 @@ fn query_complexity() {
             execute_subgraph_query_with_complexity(query, max_complexity)
         })
         .await
-        .unwrap();
+        .unwrap()
+        .unwrap_first();
         assert!(!result.has_errors());
 
         let query = Query::new(
@@ -848,7 +847,7 @@ fn query_complexity() {
         })
         .await
         .unwrap();
-        match result.to_result().unwrap_err()[0] {
+        match result.unwrap_first().to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
             _ => panic!("did not catch complexity"),
         };
@@ -963,6 +962,7 @@ fn instant_timeout() {
         })
         .await
         .unwrap()
+        .unwrap_first()
         .to_result()
         .unwrap_err()[0]
         {
@@ -1309,9 +1309,9 @@ fn subscription_gets_result_even_without_events() {
             .unwrap();
 
         assert_eq!(results.len(), 1);
-        let result = &results[0];
+        let result = Arc::try_unwrap(results.into_iter().next().unwrap()).unwrap();
         assert_eq!(
-            extract_data!(result.as_ref().clone()),
+            extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
                 q::Value::List(vec![
