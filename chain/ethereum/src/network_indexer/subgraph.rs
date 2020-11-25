@@ -6,12 +6,7 @@ fn check_subgraph_exists(
     store: Arc<dyn NetworkStore>,
     subgraph_id: SubgraphDeploymentId,
 ) -> impl Future<Item = bool, Error = Error> {
-    future::result(
-        store
-            .get(SubgraphDeploymentEntity::key(subgraph_id))
-            .map_err(|e| e.into())
-            .map(|entity| entity.map_or(false, |_| true)),
-    )
+    future::result(store.is_deployed(&subgraph_id))
 }
 
 fn create_subgraph(

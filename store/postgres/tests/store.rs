@@ -283,15 +283,11 @@ fn remove_test_data(store: Arc<DieselStore>) {
 }
 
 fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId) -> u64 {
-    let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
-    let entity = store.get(key).unwrap().unwrap();
-    entity
-        .get("entityCount")
-        .unwrap()
-        .clone()
-        .as_bigint()
-        .unwrap()
-        .to_u64()
+    let info = store
+        .status(status::Filter::Deployments(vec![subgraph_id.to_string()]))
+        .unwrap();
+    let info = info.first().unwrap();
+    info.entity_count
 }
 
 #[test]

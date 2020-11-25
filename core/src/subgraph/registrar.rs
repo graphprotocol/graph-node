@@ -183,39 +183,31 @@ where
                     match entity_change.operation {
                         EntityChangeOperation::Set => {
                             store
-                                .get(SubgraphDeploymentAssignmentEntity::key(
-                                    subgraph_hash.clone(),
-                                ))
+                                .assigned_node(&subgraph_hash)
                                 .map_err(|e| {
                                     format_err!("Failed to get subgraph assignment entity: {}", e)
                                 })
-                                .map(
-                                    |entity_opt| -> Box<dyn Stream<Item = _, Error = _> + Send> {
-                                        if let Some(entity) = entity_opt {
-                                            if entity.get("nodeId")
-                                                == Some(&node_id.to_string().into())
-                                            {
-                                                // Start subgraph on this node
-                                                Box::new(stream::once(Ok(AssignmentEvent::Add {
-                                                    subgraph_id: subgraph_hash,
-                                                    node_id: node_id.clone(),
-                                                })))
-                                            } else {
-                                                // Ensure it is removed from this node
-                                                Box::new(stream::once(Ok(
-                                                    AssignmentEvent::Remove {
-                                                        subgraph_id: subgraph_hash,
-                                                        node_id: node_id.clone(),
-                                                    },
-                                                )))
-                                            }
+                                .map(|assigned| -> Box<dyn Stream<Item = _, Error = _> + Send> {
+                                    if let Some(assigned) = assigned {
+                                        if assigned == node_id {
+                                            // Start subgraph on this node
+                                            Box::new(stream::once(Ok(AssignmentEvent::Add {
+                                                subgraph_id: subgraph_hash,
+                                                node_id: node_id.clone(),
+                                            })))
                                         } else {
-                                            // Was added/updated, but is now gone.
-                                            // We will get a separate Removed event later.
-                                            Box::new(stream::empty())
+                                            // Ensure it is removed from this node
+                                            Box::new(stream::once(Ok(AssignmentEvent::Remove {
+                                                subgraph_id: subgraph_hash,
+                                                node_id: node_id.clone(),
+                                            })))
                                         }
-                                    },
-                                )
+                                    } else {
+                                        // Was added/updated, but is now gone.
+                                        // We will get a separate Removed event later.
+                                        Box::new(stream::empty())
+                                    }
+                                })
                         }
                         EntityChangeOperation::Removed => {
                             // Send remove event without checking node ID.

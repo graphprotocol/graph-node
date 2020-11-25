@@ -603,6 +603,25 @@ impl Connection {
                 ))
             })
     }
+
+    pub fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        a::table
+            .filter(a::id.eq(id.as_str()))
+            .select(a::node_id)
+            .first::<String>(&self.0)
+            .optional()?
+            .map(|node| {
+                NodeId::new(&node).map_err(|()| {
+                    StoreError::ConstraintViolation(format!(
+                        "invalid node id `{}` in assignment for `{}`",
+                        node, id
+                    ))
+                })
+            })
+            .transpose()
+    }
 }
 
 pub(crate) fn deployments_for_subgraph(

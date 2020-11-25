@@ -101,15 +101,6 @@ pub trait TypedEntity {
     fn subgraph_entity_pair() -> SubgraphEntityPair {
         (SUBGRAPHS_ID.clone(), Self::TYPENAME.to_string())
     }
-
-    fn key(entity_id: Self::IdType) -> EntityKey {
-        let (subgraph_id, entity_type) = Self::subgraph_entity_pair();
-        EntityKey {
-            subgraph_id,
-            entity_type,
-            entity_id: entity_id.to_string(),
-        }
-    }
 }
 
 // See also: ed42d219c6704a4aab57ce1ea66698e7.

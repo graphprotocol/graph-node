@@ -688,7 +688,7 @@ where
             // While the version is pending we fail the subgraph even if the error is deterministic.
             // This prevents a buggy pending version from replacing a current version.
             let store = &ctx.inputs.store;
-            let id = ctx.inputs.deployment_id.clone();
+            let id = &ctx.inputs.deployment_id;
             let fail_fast = || -> Result<bool, BlockProcessingError> {
                 Ok(!*DISABLE_FAIL_FAST
                     && !store

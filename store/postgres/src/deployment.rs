@@ -315,6 +315,25 @@ pub fn revert_block_ptr(
         .map_err(|e| e.into())
 }
 
+pub fn block_ptr(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+) -> Result<Option<EthereumBlockPointer>, StoreError> {
+    use subgraph_deployment as d;
+
+    let (number, hash) = d::table
+        .filter(d::id.eq(id.as_str()))
+        .select((
+            d::latest_ethereum_block_number,
+            d::latest_ethereum_block_hash,
+        ))
+        .first::<(Option<BigDecimal>, Option<Vec<u8>>)>(conn)?;
+
+    let ptr = crate::detail::block(id.as_str(), "latest_ethereum_block", hash, number)?
+        .map(|block| block.to_ptr());
+    Ok(ptr)
+}
+
 fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u32, StoreError> {
     number
         .ok_or_else(|| {

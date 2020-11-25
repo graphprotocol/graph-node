@@ -220,6 +220,10 @@ impl StoreTrait for NetworkStore {
         self.store.cheap_clone().query_store(id, for_subscription)
     }
 
+    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+        self.store.is_deployment_synced(id)
+    }
+
     fn deployment_synced(&self, id: &graph::prelude::SubgraphDeploymentId) -> Result<(), Error> {
         self.store.deployment_synced(id)
     }
@@ -249,6 +253,10 @@ impl StoreTrait for NetworkStore {
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.store.load_dynamic_data_sources(subgraph_id)
+    }
+
+    fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+        self.store.assigned_node(id)
     }
 }
 

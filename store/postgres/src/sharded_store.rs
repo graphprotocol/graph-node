@@ -509,6 +509,11 @@ impl StoreTrait for ShardedStore {
         store.clone().query_store(site, for_subscription)
     }
 
+    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+        let (store, _) = self.store(&id)?;
+        Ok(store.exists_and_synced(&id)?)
+    }
+
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
         let pconn = self.primary_conn()?;
         let (dstore, _) = self.store(id)?;
@@ -641,6 +646,11 @@ impl StoreTrait for ShardedStore {
     ) -> Result<(), StoreError> {
         let (store, _) = self.store(&id)?;
         store.fail_subgraph(id, error).await
+    }
+
+    fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+        let primary = self.primary_conn()?;
+        primary.assigned_node(id)
     }
 }
 

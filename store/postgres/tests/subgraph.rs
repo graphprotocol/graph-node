@@ -1,6 +1,5 @@
 use graph::{
     data::subgraph::schema::MetadataType,
-    data::subgraph::schema::SubgraphDeploymentAssignmentEntity,
     data::subgraph::schema::SubgraphEntity,
     data::subgraph::schema::SUBGRAPHS_ID,
     prelude::EntityChange,
@@ -55,10 +54,9 @@ fn reassign_subgraph() {
 
     fn find_assignment(store: &NetworkStore, id: &SubgraphDeploymentId) -> Option<String> {
         store
-            .get(SubgraphDeploymentAssignmentEntity::key(id.clone()))
+            .assigned_node(id)
             .unwrap()
-            .and_then(|entity| entity.get("nodeId").cloned())
-            .and_then(|value| value.as_string())
+            .map(|node| node.to_string())
     }
 
     run_test_sequentially(setup, |store, id| async move {

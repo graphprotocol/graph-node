@@ -36,7 +36,7 @@ use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE, SUBGRAPHS_ID};
 use graph::prelude::{
     format_err, info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
     EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, BLOCK_NUMBER_MAX,
+    SubgraphDeploymentId,
 };
 
 use crate::block_range::block_number;
@@ -207,14 +207,6 @@ impl Connection<'_> {
         entity: &Entity,
     ) -> Result<usize, StoreError> {
         self.metadata.update_unversioned(&self.conn, key, entity)
-    }
-
-    pub(crate) fn find_metadata(
-        &self,
-        entity: &String,
-        id: &String,
-    ) -> Result<Option<Entity>, StoreError> {
-        self.metadata.find(&self.conn, entity, id, BLOCK_NUMBER_MAX)
     }
 
     pub(crate) fn delete(
