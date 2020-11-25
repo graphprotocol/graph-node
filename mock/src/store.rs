@@ -2,8 +2,8 @@ use mockall::predicate::*;
 use mockall::*;
 use std::collections::BTreeMap;
 
-use graph::components::store::*;
 use graph::data::subgraph::schema::*;
+use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
@@ -202,6 +202,10 @@ impl Store for MockStore {
     }
 
     fn deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn status(&self, _: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         unimplemented!()
     }
 }

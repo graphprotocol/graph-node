@@ -982,6 +982,8 @@ pub trait Store: Send + Sync + 'static {
     ///
     /// If `for_subscription` is true, the main replica will always be used.
     fn query_store(self: Arc<Self>, for_subscription: bool) -> Arc<dyn QueryStore + Send + Sync>;
+
+    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 }
 
 mock! {
@@ -1144,6 +1146,10 @@ impl Store for MockStore {
     fn deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<(), Error> {
         unimplemented!()
     }
+
+    fn status(&self, _: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+        unimplemented!()
+    }
 }
 
 #[automock]
@@ -1280,8 +1286,6 @@ pub trait QueryStore: Send + Sync {
     ) -> Result<Option<BlockNumber>, StoreError>;
 
     fn wait_stats(&self) -> &PoolWaitStats;
-
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to

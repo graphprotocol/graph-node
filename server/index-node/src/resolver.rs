@@ -49,8 +49,6 @@ where
 
         let infos = self
             .store
-            .cheap_clone()
-            .query_store(false)
             .status(status::Filter::Deployments(deployments))?;
         Ok(status::Infos::from(infos).into())
     }
@@ -74,8 +72,6 @@ where
 
         let infos = self
             .store
-            .cheap_clone()
-            .query_store(false)
             .status(status::Filter::SubgraphName(subgraph_name))?;
 
         Ok(status::Infos::from(infos).into())
@@ -136,14 +132,10 @@ where
             "current_version" => current_version,
         );
 
-        let infos =
-            self.store
-                .cheap_clone()
-                .query_store(false)
-                .status(status::Filter::SubgraphVersion(
-                    subgraph_name,
-                    current_version,
-                ))?;
+        let infos = self.store.status(status::Filter::SubgraphVersion(
+            subgraph_name,
+            current_version,
+        ))?;
 
         Ok(status::Infos::from(infos)
             .to_vec()

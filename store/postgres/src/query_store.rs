@@ -4,7 +4,6 @@ use web3::types::H256;
 
 use crate::store::ReplicaId;
 use graph::components::store::QueryStore as QueryStoreTrait;
-use graph::data::subgraph::status;
 use graph::prelude::{Store as _, *};
 
 pub(crate) struct QueryStore {
@@ -66,9 +65,5 @@ impl QueryStoreTrait for QueryStore {
 
     fn wait_stats(&self) -> &PoolWaitStats {
         self.store.wait_stats(self.replica_id)
-    }
-
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        self.store.status(filter)
     }
 }

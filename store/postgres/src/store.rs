@@ -815,7 +815,10 @@ impl Store {
         self.create_deployment_internal(name, schema, deployment, node_id, mode, true)
     }
 
-    pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+    pub(crate) fn status_internal(
+        &self,
+        filter: status::Filter,
+    ) -> Result<Vec<status::Info>, StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
             match filter {
@@ -1335,6 +1338,10 @@ impl StoreTrait for Store {
             econn.send_store_event(&StoreEvent::new(changes))?;
             Ok(())
         })
+    }
+
+    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+        self.status_internal(filter)
     }
 }
 
