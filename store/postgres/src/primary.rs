@@ -21,11 +21,11 @@ use graph::{
     prelude::EthereumBlockPointer,
     prelude::{
         entity, serde_json, EntityChange, EntityChangeOperation, MetadataOperation, NodeId,
-        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
+        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 use graph::{
-    data::subgraph::schema::{generate_entity_id, SubgraphDeploymentAssignmentEntity},
+    data::subgraph::schema::{generate_entity_id, MetadataType},
     prelude::StoreEvent,
 };
 use std::{
@@ -228,7 +228,7 @@ impl Connection {
             .into_iter()
             .map(|r| {
                 MetadataOperation::Remove {
-                    entity: SubgraphDeploymentAssignmentEntity::TYPENAME,
+                    entity: MetadataType::SubgraphDeploymentAssignment,
                     id: r.id,
                 }
                 .into()
@@ -430,7 +430,7 @@ impl Connection {
         if new_assignment {
             let change = EntityChange::from_key(
                 MetadataOperation::entity_key(
-                    SubgraphDeploymentAssignmentEntity::TYPENAME,
+                    MetadataType::SubgraphDeploymentAssignment,
                     id.to_string(),
                 ),
                 EntityChangeOperation::Set,
@@ -477,7 +477,7 @@ impl Connection {
             0 => Err(StoreError::DeploymentNotFound(id.to_string())),
             1 => {
                 let op = MetadataOperation::Set {
-                    entity: SubgraphDeploymentAssignmentEntity::TYPENAME,
+                    entity: MetadataType::SubgraphDeploymentAssignment,
                     id: id.to_string(),
                     data: entity! { node_id: node.to_string() },
                 };

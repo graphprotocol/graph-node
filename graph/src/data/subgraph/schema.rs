@@ -27,7 +27,7 @@ use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
 use crate::components::store::{EntityKey, EntityOperation, MetadataOperation};
 use crate::data::graphql::{TryFromValue, ValueMap};
-use crate::data::store::{Entity, NodeId, Value};
+use crate::data::store::{Entity, Value};
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
 
@@ -43,6 +43,8 @@ pub const POI_OBJECT: &str = "Poi$";
 #[derive(Debug, Clone, IntoStaticStr, EnumString)]
 pub enum MetadataType {
     SubgraphDeployment,
+    // This is the only metadata type that is stored in the primary. We only
+    // need this type so we can send store events for assignment changes
     SubgraphDeploymentAssignment,
     SubgraphManifest,
     EthereumContractDataSource,
@@ -312,32 +314,6 @@ impl SubgraphDeploymentEntity {
         ));
 
         ops
-    }
-}
-
-#[derive(Debug)]
-pub struct SubgraphDeploymentAssignmentEntity {
-    node_id: NodeId,
-    cost: u64,
-}
-
-impl TypedEntity for SubgraphDeploymentAssignmentEntity {
-    const TYPENAME: MetadataType = MetadataType::SubgraphDeploymentAssignment;
-    type IdType = SubgraphDeploymentId;
-}
-
-impl SubgraphDeploymentAssignmentEntity {
-    pub fn new(node_id: NodeId) -> Self {
-        Self { node_id, cost: 1 }
-    }
-
-    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id.to_string(),
-            nodeId: self.node_id.to_string(),
-            cost: self.cost,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id.as_str(), entity)]
     }
 }
 
