@@ -1,20 +1,19 @@
 use graph::{
     data::subgraph::schema::MetadataType,
-    data::subgraph::schema::SubgraphEntity,
     data::subgraph::schema::SUBGRAPHS_ID,
     prelude::EntityChange,
     prelude::EntityChangeOperation,
-    prelude::EntityKey,
     prelude::Schema,
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
-    prelude::TypedEntity,
     prelude::{NodeId, Store as _, SubgraphDeploymentId},
 };
+use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::NetworkStore;
+
 use std::collections::HashSet;
 use test_store::*;
 
@@ -85,49 +84,18 @@ fn reassign_subgraph() {
 fn create_subgraph() {
     const SUBGRAPH_NAME: &str = "create/subgraph";
 
-    /// Get the deployment for the given `SubgraphVersion`
-    fn deployment_from_version(store: &NetworkStore, version: String) -> String {
-        let entity = store
-            .get(EntityKey {
-                subgraph_id: SUBGRAPHS_ID.clone(),
-                entity_type: "SubgraphVersion".to_string(),
-                entity_id: version,
-            })
-            .unwrap()
-            .unwrap();
-        entity.get("deployment").unwrap().to_string()
-    }
-
     // Return the versions (not deployments) for a subgraph
-    fn subgraph_versions(
-        store: &NetworkStore,
-        entity_id: &str,
-    ) -> (Option<String>, Option<String>) {
-        let entity = store
-            .get(EntityKey {
-                subgraph_id: SUBGRAPHS_ID.clone(),
-                entity_type: SubgraphEntity::TYPENAME.to_string(),
-                entity_id: entity_id.to_string(),
-            })
-            .unwrap()
-            .unwrap();
-
-        (
-            entity.get("currentVersion").map(|v| v.to_string()),
-            entity.get("pendingVersion").map(|v| v.to_string()),
-        )
+    fn subgraph_versions(primary: &Primary) -> (Option<String>, Option<String>) {
+        primary.versions_for_subgraph(&*SUBGRAPH_NAME).unwrap()
     }
 
     /// Return the deployment for the current and the pending version of the
     /// subgraph with the given `entity_id`
-    fn subgraph_deployments(
-        store: &NetworkStore,
-        entity_id: &str,
-    ) -> (Option<String>, Option<String>) {
-        let (current, pending) = subgraph_versions(store, entity_id);
+    fn subgraph_deployments(primary: &Primary) -> (Option<String>, Option<String>) {
+        let (current, pending) = subgraph_versions(primary);
         (
-            current.map(|v| deployment_from_version(store, v)),
-            pending.map(|v| deployment_from_version(store, v)),
+            current.and_then(|v| primary.deployment_for_version(&v).unwrap()),
+            pending.and_then(|v| primary.deployment_for_version(&v).unwrap()),
         )
     }
 
@@ -191,12 +159,14 @@ fn create_subgraph() {
         const ID2: &str = "instant2";
         const ID3: &str = "instant3";
 
+        let primary = primary_connection();
+
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let mut subgraph = String::from("none");
         let events = tap_store_events(|| {
             subgraph = store.create_subgraph(name.clone()).unwrap();
         });
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let (current, pending) = subgraph_deployments(&primary);
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
@@ -207,7 +177,7 @@ fn create_subgraph() {
         let events = deploy(store.as_ref(), ID, MODE);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID), current.as_deref());
         assert!(pending.is_none());
 
@@ -218,7 +188,7 @@ fn create_subgraph() {
         let events = deploy(store.as_ref(), ID2, MODE);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert!(pending.is_none());
 
@@ -234,7 +204,7 @@ fn create_subgraph() {
         let events = deploy(store.as_ref(), ID3, MODE);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID3), current.as_deref());
         assert!(pending.is_none());
     });
@@ -246,12 +216,14 @@ fn create_subgraph() {
         const ID2: &str = "synced2";
         const ID3: &str = "synced3";
 
+        let primary = primary_connection();
+
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let mut subgraph = String::from("none");
         let events = tap_store_events(|| {
             subgraph = store.create_subgraph(name.clone()).unwrap();
         });
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let (current, pending) = subgraph_deployments(&primary);
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
@@ -262,15 +234,15 @@ fn create_subgraph() {
         let events = deploy(store.as_ref(), ID, MODE);
         assert_eq!(expected, events);
 
-        let versions = subgraph_versions(store.as_ref(), &subgraph);
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let versions = subgraph_versions(&primary);
+        let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID), current.as_deref());
         assert!(pending.is_none());
 
         // Deploying the same thing again does nothing
         let events = deploy(store.as_ref(), ID, MODE);
         assert!(events.is_empty());
-        let versions2 = subgraph_versions(store.as_ref(), &subgraph);
+        let versions2 = subgraph_versions(&primary);
         assert_eq!(versions, versions2);
 
         // Deploy again, current is not synced, so it gets replaced
@@ -280,7 +252,7 @@ fn create_subgraph() {
         let events = deploy(store.as_ref(), ID2, MODE);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert!(pending.is_none());
 
@@ -293,15 +265,15 @@ fn create_subgraph() {
         let events = deploy(store.as_ref(), ID3, MODE);
         assert_eq!(expected, events);
 
-        let versions = subgraph_versions(store.as_ref(), &subgraph);
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let versions = subgraph_versions(&primary);
+        let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(Some(ID3), pending.as_deref());
 
         // Deploying that same thing again changes nothing
         let events = deploy(store.as_ref(), ID3, MODE);
         assert!(events.is_empty());
-        let versions2 = subgraph_versions(store.as_ref(), &subgraph);
+        let versions2 = subgraph_versions(&primary);
         assert_eq!(versions, versions2);
 
         // Deploy the current version once more; we wind up with current and pending
@@ -314,7 +286,7 @@ fn create_subgraph() {
         let events = deploy(store.as_ref(), ID2, MODE);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(store.as_ref(), &subgraph);
+        let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(Some(ID2), pending.as_deref());
     })

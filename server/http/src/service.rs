@@ -6,7 +6,7 @@ use std::task::Poll;
 use std::time::Instant;
 
 use graph::components::server::query::GraphQLServerError;
-use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
+use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::*;
 use http::header;
 use hyper::service::Service;
@@ -123,37 +123,13 @@ where
     }
 
     async fn index(self) -> GraphQLServiceResult {
-        // Ask for two to find out if there is more than one
-        let entity_query = SubgraphEntity::query().first(2);
-
-        let mut subgraph_entities = self
-            .store
-            .find(entity_query)
-            .map_err(|e| GraphQLServerError::InternalError(e.to_string()))?;
-
-        // If there is only one subgraph, redirect to it
-        match subgraph_entities.len() {
-            0 => Ok(Response::builder()
-                .status(200)
-                .body(Body::from(String::from("No subgraphs deployed yet")))
-                .unwrap()),
-            1 => {
-                let subgraph_entity = subgraph_entities.pop().unwrap();
-                let subgraph_name = subgraph_entity
-                    .get("name")
-                    .expect("subgraph entity without name");
-                let name = format!("/subgraphs/name/{}", subgraph_name);
-                self.handle_temp_redirect(name).await
-            }
-            _ => Ok(Response::builder()
-                .status(200)
-                .body(Body::from(String::from(
-                    "Multiple subgraphs deployed. \
-                     Try /subgraphs/id/<ID> or \
-                     /subgraphs/name/<NAME>",
-                )))
-                .unwrap()),
-        }
+        Ok(Response::builder()
+            .status(200)
+            .body(Body::from(String::from(
+                "Access deployed subgraphs by deployment ID at \
+                /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>",
+            )))
+            .unwrap())
     }
 
     /// Serves a static file.

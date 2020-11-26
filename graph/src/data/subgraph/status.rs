@@ -6,8 +6,12 @@ use crate::data::graphql::{object, IntoValue};
 use crate::prelude::{web3::types::H256, EthereumBlockPointer, Value};
 
 pub enum Filter {
+    /// Get all versions for the named subgraph
     SubgraphName(String),
+    /// Get the current (`true`) or pending (`false`) version of the named
+    /// subgraph
     SubgraphVersion(String, bool),
+    /// Get the status of all deployments whose ids are given
     Deployments(Vec<String>),
 }
 

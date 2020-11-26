@@ -30,7 +30,7 @@ use crate::components::store::{
 };
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value};
-use crate::data::subgraph::{SubgraphManifest, SubgraphName};
+use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
 
 lazy_static! {
@@ -44,7 +44,6 @@ pub const POI_OBJECT: &str = "Poi$";
 
 #[derive(Debug, Clone, IntoStaticStr, EnumString)]
 pub enum MetadataType {
-    Subgraph,
     SubgraphDeployment,
     SubgraphDeploymentAssignment,
     SubgraphManifest,
@@ -106,19 +105,6 @@ pub trait TypedEntity {
 // See also: ed42d219c6704a4aab57ce1ea66698e7.
 // Note: The types here need to be in sync with the metadata GraphQL schema.
 
-#[derive(Debug)]
-pub struct SubgraphEntity {
-    name: SubgraphName,
-    current_version_id: Option<String>,
-    pending_version_id: Option<String>,
-    created_at: u64,
-}
-
-impl TypedEntity for SubgraphEntity {
-    const TYPENAME: MetadataType = MetadataType::Subgraph;
-    type IdType = String;
-}
-
 trait OperationList {
     fn add(&mut self, entity: MetadataType, id: String, data: Entity);
 }
@@ -159,55 +145,6 @@ trait WriteOperations: Sized {
         let mut ops = EntityOperationList(Vec::new());
         self.generate(id, &mut ops);
         ops.0
-    }
-}
-
-impl SubgraphEntity {
-    pub fn new(
-        name: SubgraphName,
-        current_version_id: Option<String>,
-        pending_version_id: Option<String>,
-        created_at: u64,
-    ) -> SubgraphEntity {
-        SubgraphEntity {
-            name,
-            current_version_id,
-            pending_version_id,
-            created_at,
-        }
-    }
-
-    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id,
-            name: self.name.to_string(),
-            currentVersion: self.current_version_id,
-            pendingVersion: self.pending_version_id,
-            createdAt: self.created_at,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-
-    pub fn update_current_version_operations(
-        id: &str,
-        version_id_opt: Option<String>,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            currentVersion: version_id_opt,
-        };
-
-        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-
-    pub fn update_pending_version_operations(
-        id: &str,
-        version_id_opt: Option<String>,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            pendingVersion: version_id_opt,
-        };
-
-        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
     }
 }
 

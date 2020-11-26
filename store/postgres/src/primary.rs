@@ -717,4 +717,30 @@ impl Connection {
         };
         Ok(deployment.optional()?.flatten())
     }
+
+    #[cfg(debug_assertions)]
+    pub fn versions_for_subgraph(
+        &self,
+        name: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        use subgraph as s;
+
+        Ok(s::table
+            .select((s::current_version.nullable(), s::pending_version.nullable()))
+            .filter(s::name.eq(&name))
+            .first::<(Option<String>, Option<String>)>(&self.0)
+            .optional()?
+            .unwrap_or((None, None)))
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn deployment_for_version(&self, name: &str) -> Result<Option<String>, StoreError> {
+        use subgraph_version as v;
+
+        Ok(v::table
+            .select(v::deployment)
+            .filter(v::id.eq(name))
+            .first::<String>(&self.0)
+            .optional()?)
+    }
 }

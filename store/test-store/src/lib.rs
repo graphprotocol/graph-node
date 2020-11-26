@@ -533,3 +533,9 @@ fn build_store() -> (Arc<NetworkStore>, ConnectionPool) {
     .join()
     .unwrap()
 }
+
+#[cfg(debug_assertions)]
+pub fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection {
+    let conn = PRIMARY_POOL.get().unwrap();
+    graph_store_postgres::layout_for_tests::Connection::new(conn)
+}
