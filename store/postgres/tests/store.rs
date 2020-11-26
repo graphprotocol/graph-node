@@ -1411,50 +1411,12 @@ fn revert_block_with_dynamic_data_source_operations() {
         let expected_events = vec![StoreEvent {
             tag: 3,
             changes: HashSet::from_iter(
-                vec![
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
-                        entity_type: USER.into(),
-                        entity_id: "1".into(),
-                        operation: EntityChangeOperation::Set,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "DynamicEthereumContractDataSource".into(),
-                        entity_id: "dynamic-data-source".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractSource".into(),
-                        entity_id: "dynamic-data-source-source".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractMapping".into(),
-                        entity_id: "dynamic-data-source-mapping".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractDataSourceTemplate".into(),
-                        entity_id: "dynamic-data-source-templates-0".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractDataSourceTemplateSource".into(),
-                        entity_id: "dynamic-data-source-templates-0-source".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractMapping".into(),
-                        entity_id: "dynamic-data-source-templates-0-mapping".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                ]
+                vec![EntityChange {
+                    subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
+                    entity_type: USER.into(),
+                    entity_id: "1".into(),
+                    operation: EntityChangeOperation::Set,
+                }]
                 .into_iter(),
             ),
         }];

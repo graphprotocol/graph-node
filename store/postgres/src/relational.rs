@@ -27,11 +27,14 @@ use crate::relational_queries::{
     DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
     FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
 };
-use graph::data::graphql::ext::{DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
+};
+use graph::data::{
+    graphql::ext::{DocumentExt, ObjectTypeExt},
+    subgraph::schema::MetadataType,
 };
 use graph::prelude::{
     format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
@@ -783,9 +786,9 @@ impl Layout {
         conn: &PgConnection,
         subgraph: &SubgraphDeploymentId,
         block: BlockNumber,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(), StoreError> {
         assert!(self.subgraph.is_meta());
-        const DDS: &str = "DynamicEthereumContractDataSource";
+        const DDS: MetadataType = MetadataType::DynamicEthereumContractDataSource;
 
         // Delete dynamic data sources for this subgraph at the given block
         // and get their id's
@@ -799,16 +802,6 @@ impl Layout {
         let prefix_len = dds.iter().map(|id| id.len()).min();
         assert_eq!(prefix_len, dds.iter().map(|id| id.len()).max());
         let prefix_len = prefix_len.unwrap_or(0) as i32;
-
-        let mut changes: Vec<EntityChange> = dds
-            .iter()
-            .map(|id| EntityChange {
-                subgraph_id: self.subgraph.clone(),
-                entity_type: DDS.to_owned(),
-                entity_id: id.to_owned(),
-                operation: EntityChangeOperation::Removed,
-            })
-            .collect();
 
         if !dds.is_empty() {
             // Remove subordinate entities for the dynamic data sources from
@@ -824,27 +817,16 @@ impl Layout {
             // assumptions, most importantly, that the id of any entity that
             // belongs to a dynmaic data source starts with the id of that data
             // source
-            for table in self
-                .tables
-                .values()
-                .filter(|table| table.object != DDS && !table.object.starts_with("Subgraph"))
-            {
-                let deleted = DeleteByPrefixQuery::new(table, &dds, prefix_len)
-                    .get_results(conn)?
-                    .into_iter()
-                    .map(|data| EntityChange {
-                        subgraph_id: self.subgraph.clone(),
-                        entity_type: table.object.clone(),
-                        entity_id: data.id,
-                        operation: EntityChangeOperation::Removed,
-                    });
-                changes.extend(deleted);
+            for table in self.tables.values().filter(|table| {
+                table.object != DDS.as_str() && !table.object.starts_with("Subgraph")
+            }) {
+                DeleteByPrefixQuery::new(table, &dds, prefix_len).get_results(conn)?;
             }
         }
 
         crate::deployment::revert_subgraph_errors(conn, &self.subgraph, block)?;
 
-        Ok(StoreEvent::new(changes))
+        Ok(())
     }
 
     pub fn is_cacheable(&self) -> bool {

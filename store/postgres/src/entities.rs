@@ -239,10 +239,9 @@ impl Connection<'_> {
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        let meta_event =
-            self.metadata
-                .revert_metadata(&self.conn, &self.storage.subgraph, block)?;
-        Ok((event.extend(meta_event), count))
+        self.metadata
+            .revert_metadata(&self.conn, &self.storage.subgraph, block)?;
+        Ok((event, count))
     }
 
     pub(crate) fn update_entity_count(&self, count: i32) -> Result<(), StoreError> {
