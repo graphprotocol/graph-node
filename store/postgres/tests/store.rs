@@ -7,7 +7,7 @@ use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
-use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery};
+use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
@@ -266,11 +266,11 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: entity_type.to_owned(),
-            entity_id: id.to_owned(),
-        },
+        key: EntityKey::data(
+            TEST_SUBGRAPH_ID.clone(),
+            entity_type.to_owned(),
+            id.to_owned(),
+        ),
         data: test_entity,
     }
 }
@@ -293,11 +293,7 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId)
 #[test]
 fn delete_entity() {
     run_test(|store| async move {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "3".to_owned(),
-        };
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
 
         // Check that there is an entity to remove.
         store.get(entity_key.clone()).unwrap().unwrap();
@@ -326,11 +322,7 @@ fn delete_entity() {
 #[test]
 fn get_entity_1() {
     run_test(|store| async move {
-        let key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
@@ -361,11 +353,7 @@ fn get_entity_1() {
 #[test]
 fn get_entity_3() {
     run_test(|store| async move {
-        let key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "3".to_owned(),
-        };
+        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
@@ -395,11 +383,7 @@ fn get_entity_3() {
 #[test]
 fn insert_entity() {
     run_test(|store| async move {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "7".to_owned(),
-        };
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "7".to_owned());
         let test_entity = create_test_entity(
             "7",
             USER,
@@ -431,11 +415,7 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|store| async move {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
 
         let op = create_test_entity(
             "1",
@@ -481,11 +461,7 @@ fn update_existing() {
 #[test]
 fn partially_update_existing() {
     run_test(|store| async move {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
 
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
@@ -936,16 +912,7 @@ fn make_entity_change(
 ) -> EntityChange {
     EntityChange {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_owned(),
-        entity_id: entity_id.to_owned(),
-        operation: op,
-    }
-}
-
-fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityChange {
-    EntityChange {
-        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-        entity_type: "SubgraphDeployment".to_owned(),
+        entity_type: EntityType::data(entity_type.to_owned()),
         entity_id: entity_id.to_owned(),
         operation: op,
     }
@@ -1003,7 +970,7 @@ fn subscribe(
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
     let subscription = store.subscribe(vec![SubscriptionFilter::Entities(
         subgraph.clone(),
-        entity_type.to_owned(),
+        EntityType::data(entity_type.to_owned()),
     )]);
 
     StoreEventStream::new(subscription)
@@ -1023,12 +990,10 @@ async fn check_basic_revert(
         .desc("name");
 
     let subscription = subscribe(store.clone(), subgraph_id, entity_type);
-    if !subgraph_id.is_meta() {
-        let state = store
-            .deployment_state_from_id(subgraph_id.to_owned())
-            .expect("can get deployment state");
-        assert_eq!(subgraph_id, &state.id);
-    }
+    let state = store
+        .deployment_state_from_id(subgraph_id.to_owned())
+        .expect("can get deployment state");
+    assert_eq!(subgraph_id, &state.id);
 
     // Revert block 3
     store
@@ -1052,12 +1017,10 @@ async fn check_basic_revert(
     assert!(returned_name.is_some());
     assert_eq!(&test_value, returned_name.unwrap());
 
-    if !subgraph_id.is_meta() {
-        let state = store
-            .deployment_state_from_id(subgraph_id.to_owned())
-            .expect("can get deployment state");
-        assert_eq!(subgraph_id, &state.id);
-    }
+    let state = store
+        .deployment_state_from_id(subgraph_id.to_owned())
+        .expect("can get deployment state");
+    assert_eq!(subgraph_id, &state.id);
 
     check_events(subscription, vec![expected]).await
 }
@@ -1088,11 +1051,7 @@ fn revert_block_with_delete() {
             .desc("name");
 
         // Delete entity with id=2
-        let del_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "2".to_owned(),
-        };
+        let del_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "2".to_owned());
 
         // Process deletion
         transact_entity_operations(
@@ -1148,11 +1107,7 @@ fn revert_block_with_delete() {
 #[test]
 fn revert_block_with_partial_update() {
     run_test(|store| async move {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
 
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
@@ -1264,11 +1219,7 @@ fn mock_data_source() -> DataSource {
 fn revert_block_with_dynamic_data_source_operations() {
     run_test(|store| async move {
         // Create operations to add a user
-        let user_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+        let user_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
             ("name", Value::from("Johnny Boy")),
@@ -1293,7 +1244,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             key: user_key.clone(),
             data: partial_entity.clone(),
         }];
-        ops.extend(dynamic_ds.write_entity_operations("dynamic-data-source"));
+        ops.extend(dynamic_ds.write_entity_operations(&*TEST_SUBGRAPH_ID, "dynamic-data-source"));
 
         // Add user and dynamic data source to the store
         transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
@@ -1309,11 +1260,11 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source exists afterwards
-        let dynamic_ds_key = EntityKey {
-            subgraph_id: SUBGRAPHS_ID.clone(),
-            entity_type: String::from(DynamicEthereumContractDataSourceEntity::TYPENAME),
-            entity_id: String::from("dynamic-data-source"),
-        };
+        let dynamic_ds_key = EntityKey::metadata(
+            TEST_SUBGRAPH_ID.clone(),
+            MetadataType::DynamicEthereumContractDataSource,
+            String::from("dynamic-data-source"),
+        );
         store
             .get(dynamic_ds_key.clone())
             .unwrap()
@@ -1348,7 +1299,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             changes: HashSet::from_iter(
                 vec![EntityChange {
                     subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
-                    entity_type: USER.into(),
+                    entity_type: EntityType::data(USER.into()),
                     entity_id: "1".into(),
                     operation: EntityChangeOperation::Set,
                 }]
@@ -1393,8 +1344,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .unwrap();
 
-        // Create store subscriptions
-        let meta_subscription = subscribe(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment");
         let subscription = subscribe(store.clone(), &subgraph_id, USER);
 
         // Add two entities to the store
@@ -1421,11 +1370,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: EntityKey {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_type: USER.to_owned(),
-                        entity_id: id.to_owned(),
-                    },
+                    key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), id.to_owned()),
                     data: data.to_owned(),
                 })
                 .collect(),
@@ -1438,21 +1383,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ("name", Value::from("Johnny")),
         ]);
         let update_op = EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: USER.to_owned(),
-                entity_id: "1".to_owned(),
-            },
+            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "1".to_owned()),
             data: updated_entity.clone(),
         };
 
         // Delete an entity in the store
         let delete_op = EntityOperation::Remove {
-            key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: USER.to_owned(),
-                entity_id: "2".to_owned(),
-            },
+            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "2".to_owned()),
         };
 
         // Commit update & delete ops
@@ -1464,36 +1401,19 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         )
         .unwrap();
 
-        // We're expecting two meta data events to be written to the meta data subscription
-        let meta_expected = vec![
-            StoreEvent::new(vec![EntityChange {
-                subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                entity_type: "SubgraphDeployment".to_owned(),
-                entity_id: "EntityChangeTestSubgraph".to_owned(),
-                operation: EntityChangeOperation::Set,
-            }]),
-            StoreEvent::new(vec![EntityChange {
-                subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                entity_type: "SubgraphDeployment".to_owned(),
-                entity_id: "EntityChangeTestSubgraph".to_owned(),
-                operation: EntityChangeOperation::Set,
-            }]),
-        ];
-
-        check_events(meta_subscription, meta_expected).await;
-
         // We're expecting two events to be written to the subscription stream
+        let user_type = EntityType::data(USER.to_owned());
         let expected = vec![
             StoreEvent::new(vec![
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: added_entities[0].clone().0,
                     operation: EntityChangeOperation::Set,
                 },
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: added_entities[1].clone().0,
                     operation: EntityChangeOperation::Set,
                 },
@@ -1501,13 +1421,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             StoreEvent::new(vec![
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: "1".to_owned(),
                     operation: EntityChangeOperation::Set,
                 },
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: added_entities[1].clone().0,
                     operation: EntityChangeOperation::Removed,
                 },
@@ -1521,14 +1441,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 #[test]
 fn throttle_subscription_delivers() {
     run_test(|store| async move {
-        let meta_subscription = subscribe(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment")
-            .throttle_while_syncing(
-                &*LOGGER,
-                store.clone().query_store(&TEST_SUBGRAPH_ID, true).unwrap(),
-                SUBGRAPHS_ID.clone(),
-                Duration::from_millis(500),
-            );
-
         let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER)
             .throttle_while_syncing(
                 &*LOGGER,
@@ -1555,15 +1467,6 @@ fn throttle_subscription_delivers() {
             vec![user4],
         )
         .unwrap();
-
-        let meta_expected = StoreEvent::new(vec![make_deployment_change(
-            "testsubgraph",
-            EntityChangeOperation::Set,
-        )]);
-
-        // FIXME: This does not await, meaning calling this doesn't
-        // do anything. But, waiting here causes the test to hang.
-        let _ignore_future = check_events(meta_subscription, vec![meta_expected]);
 
         let expected = StoreEvent::new(vec![make_entity_change(
             USER,
@@ -1667,11 +1570,7 @@ fn handle_large_string_with_index() {
         data.set("id", id);
         data.set(NAME, name);
 
-        let key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: id.to_owned(),
-        };
+        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), id.to_owned());
 
         EntityModification::Insert { key, data }
     };
@@ -1859,11 +1758,11 @@ fn window() {
         entity.set("age", age);
         entity.set("favorite_color", color);
         EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: TEST_SUBGRAPH_ID.clone(),
-                entity_type: entity_type.to_owned(),
-                entity_id: id.to_owned(),
-            },
+            key: EntityKey::data(
+                TEST_SUBGRAPH_ID.clone(),
+                entity_type.to_owned(),
+                id.to_owned(),
+            ),
             data: entity,
         }
     }

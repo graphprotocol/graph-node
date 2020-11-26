@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use graph::components::link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait};
+use graph::components::{
+    link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait},
+    store::EntityType,
+};
 use graph::prelude::{
     Entity, Link, SubgraphDeploymentId, SubgraphManifest, SubgraphManifestValidationError,
     UnvalidatedSubgraphManifest,
@@ -160,7 +163,11 @@ specVersion: 0.0.1
 
         let mut thing = Entity::new();
         thing.set("id", "datthing");
-        test_store::insert_entities(subgraph, vec![("Thing", thing)]).expect("Can insert a thing");
+        test_store::insert_entities(
+            subgraph,
+            vec![(EntityType::data("Thing".to_string()), thing)],
+        )
+        .expect("Can insert a thing");
 
         // Validation against subgraph that has not reached the graft point fails
         let unvalidated = resolve_unvalidated(YAML).await;

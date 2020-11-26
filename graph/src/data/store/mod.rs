@@ -1,4 +1,7 @@
-use crate::prelude::{format_err, CacheWeight, EntityKey, QueryExecutionError};
+use crate::{
+    components::store::EntityType,
+    prelude::{format_err, CacheWeight, EntityKey, QueryExecutionError},
+};
 use crate::{data::subgraph::SubgraphDeploymentId, prelude::EntityChange};
 use failure::Error;
 use graphql_parser::query;
@@ -27,7 +30,7 @@ pub mod ethereum;
 pub enum SubscriptionFilter {
     /// Receive updates about all entities from the given deployment of the
     /// given type
-    Entities(SubgraphDeploymentId, String),
+    Entities(SubgraphDeploymentId, EntityType),
     /// Subscripe to changes in deployment assignments
     Assignment,
 }
@@ -39,7 +42,7 @@ impl SubscriptionFilter {
                 &change.subgraph_id == id && &change.entity_type == entity_type
             }
             Self::Assignment => {
-                &change.entity_type == MetadataType::SubgraphDeploymentAssignment.as_str()
+                &change.entity_type == &MetadataType::SubgraphDeploymentAssignment.into()
             }
         }
     }

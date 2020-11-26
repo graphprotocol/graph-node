@@ -71,11 +71,11 @@ fn remove_test_data(conn: &PgConnection) {
 }
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey {
-        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_owned(),
-        entity_id: entity.id().unwrap(),
-    };
+    let key = EntityKey::data(
+        THINGS_SUBGRAPH_ID.clone(),
+        entity_type.to_owned(),
+        entity.id().unwrap(),
+    );
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout.insert(&conn, &key, entity, 0).expect(&errmsg);
 }
@@ -225,8 +225,9 @@ fn find_many() {
         insert_thing(&conn, &layout, ID, NAME);
         insert_thing(&conn, &layout, ID2, NAME2);
 
-        let mut id_map: BTreeMap<&str, Vec<&str>> = BTreeMap::default();
-        id_map.insert("Thing", vec![ID, ID2, "badd"]);
+        let mut id_map: BTreeMap<&str, &Vec<&str>> = BTreeMap::default();
+        let ids = vec![ID, ID2, "badd"];
+        id_map.insert("Thing", &ids);
 
         let entities = layout
             .find_many(conn, id_map, BLOCK_NUMBER_MAX)
@@ -254,11 +255,11 @@ fn update() {
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo");
-        let key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Thing".to_owned(),
-            entity_id: entity.id().unwrap().clone(),
-        };
+        let key = EntityKey::data(
+            THINGS_SUBGRAPH_ID.clone(),
+            "Thing".to_owned(),
+            entity.id().unwrap().clone(),
+        );
         layout
             .update(&conn, &key, entity.clone(), 1)
             .expect("Failed to update");
@@ -282,11 +283,11 @@ fn delete() {
         insert_entity(&conn, &layout, "Thing", two);
 
         // Delete where nothing is getting deleted
-        let mut key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Thing".to_owned(),
-            entity_id: "ffff".to_owned(),
-        };
+        let mut key = EntityKey::data(
+            THINGS_SUBGRAPH_ID.clone(),
+            "Thing".to_owned(),
+            "ffff".to_owned(),
+        );
         let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(0, count);
 

@@ -17,7 +17,7 @@ use diesel::{
 use failure::format_err;
 use graph::{
     constraint_violation,
-    data::subgraph::schema::SUBGRAPHS_ID,
+    data::subgraph::schema::MetadataType,
     data::subgraph::status,
     prelude::EthereumBlockPointer,
     prelude::{
@@ -25,10 +25,7 @@ use graph::{
         NodeId, StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
-use graph::{
-    data::subgraph::schema::{generate_entity_id, MetadataType},
-    prelude::StoreEvent,
-};
+use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
@@ -183,18 +180,6 @@ pub struct Site {
     pub namespace: Namespace,
 }
 
-impl Site {
-    /// A site that can be used to access the metadata subgraph in the given
-    /// shard
-    pub fn meta(shard: Shard) -> Self {
-        Site {
-            deployment: SUBGRAPHS_ID.clone(),
-            namespace: METADATA_NAMESPACE.clone(),
-            shard,
-        }
-    }
-}
-
 impl TryFrom<Schema> for Site {
     type Error = StoreError;
 
@@ -278,13 +263,19 @@ impl Connection {
             .load::<Removed>(&self.0)?
             .into_iter()
             .map(|r| {
-                MetadataOperation::Remove {
-                    entity: MetadataType::SubgraphDeploymentAssignment,
-                    id: r.id,
-                }
-                .into()
+                SubgraphDeploymentId::new(r.id.clone())
+                    .map(|id| {
+                        let key = MetadataType::SubgraphDeploymentAssignment.key(id, r.id);
+                        MetadataOperation::Remove { key }.into()
+                    })
+                    .map_err(|id| {
+                        StoreError::ConstraintViolation(format!(
+                            "invalid id `{}` for deployment assignment",
+                            id
+                        ))
+                    })
             })
-            .collect::<Vec<_>>())
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Promote the deployment `id` to the current version everywhere where it was
@@ -480,10 +471,9 @@ impl Connection {
         let mut changes = self.remove_unused_assignments()?;
         if new_assignment {
             let change = EntityChange::from_key(
-                MetadataOperation::entity_key(
-                    MetadataType::SubgraphDeploymentAssignment,
-                    id.to_string(),
-                ),
+                MetadataType::SubgraphDeploymentAssignment
+                    .key(id.clone(), id.to_string())
+                    .into(),
                 EntityChangeOperation::Set,
             );
             changes.push(change);
@@ -527,9 +517,10 @@ impl Connection {
         match updates {
             0 => Err(StoreError::DeploymentNotFound(id.to_string())),
             1 => {
+                let key =
+                    MetadataType::SubgraphDeploymentAssignment.key(id.clone(), id.to_string());
                 let op = MetadataOperation::Set {
-                    entity: MetadataType::SubgraphDeploymentAssignment,
-                    id: id.to_string(),
+                    key,
                     data: entity! { node_id: node.to_string() },
                 };
                 Ok(vec![op.into()])

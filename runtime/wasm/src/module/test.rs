@@ -301,11 +301,11 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let key = EntityKey {
-        subgraph_id: SubgraphDeploymentId::new(subgraph_id).unwrap(),
-        entity_type: "Thing".to_string(),
-        entity_id: id.to_string(),
-    };
+    let key = EntityKey::data(
+        SubgraphDeploymentId::new(subgraph_id).unwrap(),
+        "Thing".to_string(),
+        id.to_string(),
+    );
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::Insert { key, data },
@@ -647,7 +647,12 @@ async fn entity_store() {
     steve.set("id", "steve");
     steve.set("name", "Steve");
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
-    test_store::insert_entities(subgraph_id, vec![("User", alex), ("User", steve)]).unwrap();
+    let user_type = EntityType::data("User".to_string());
+    test_store::insert_entities(
+        subgraph_id,
+        vec![(user_type.clone(), alex), (user_type, steve)],
+    )
+    .unwrap();
 
     let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
         let id = module.asc_new(id);

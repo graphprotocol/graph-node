@@ -4,13 +4,11 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
+use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
     error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
-};
-use graph::{
-    components::store::StoredDynamicDataSource,
-    prelude::{SubgraphDeploymentEntity, SubscriptionFilter},
+    SubgraphDeploymentEntity, SubscriptionFilter,
 };
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -25,7 +23,7 @@ use tokio::sync::Semaphore;
 
 use graph::components::store::{EntityCollection, QueryStore};
 use graph::components::subgraph::ProofOfIndexingFinisher;
-use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT, SUBGRAPHS_ID};
+use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, web3,
     ApiSchema, BlockNumber, CheapClone, CompatErr, DeploymentState, DynTryFuture, Entity,
@@ -287,19 +285,17 @@ impl Store {
     fn get_entity(
         &self,
         conn: &e::Connection,
-        op_subgraph: &SubgraphDeploymentId,
-        op_entity: &String,
-        op_id: &String,
+        key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         // We should really have callers pass in a block number; but until
         // that is fully plumbed in, we just use the biggest possible block
         // number so that we will always return the latest version,
         // i.e., the one with an infinite upper bound
-        conn.find(op_entity, op_id, BLOCK_NUMBER_MAX).map_err(|e| {
+        conn.find(key, BLOCK_NUMBER_MAX).map_err(|e| {
             QueryExecutionError::ResolveEntityError(
-                op_subgraph.clone(),
-                op_entity.clone(),
-                op_id.clone(),
+                key.subgraph_id.clone(),
+                key.entity_type.to_string(),
+                key.entity_id.clone(),
                 format!("Invalid entity {}", e),
             )
         })
@@ -338,23 +334,26 @@ impl Store {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        if key.subgraph_id.is_meta() {
-            // No interfaces in the metadata
-            return Ok(());
-        }
         let schema = self
             .subgraph_info_with_conn(&conn.conn, &key.subgraph_id)?
             .api;
         let types_for_interface = schema.types_for_interface();
+        let entity_type = match &key.entity_type {
+            EntityType::Data(s) => s,
+            EntityType::Metadata(_) => {
+                // Metadata has no interfaces
+                return Ok(());
+            }
+        };
         let types_with_shared_interface = Vec::from_iter(
             schema
-                .interfaces_for_type(&key.entity_type)
+                .interfaces_for_type(entity_type)
                 .into_iter()
                 .flatten()
                 .map(|interface| &types_for_interface[&interface.name])
                 .flatten()
                 .map(|object_type| &object_type.name)
-                .filter(|type_name| **type_name != key.entity_type),
+                .filter(|type_name| *type_name != entity_type),
         );
 
         if !types_with_shared_interface.is_empty() {
@@ -362,7 +361,7 @@ impl Store {
                 conn.conflicting_entity(&key.entity_id, types_with_shared_interface)?
             {
                 return Err(StoreError::ConflictingId(
-                    key.entity_type.clone(),
+                    entity_type.clone(),
                     key.entity_id.clone(),
                     conflicting_entity,
                 ));
@@ -378,15 +377,11 @@ impl Store {
         operation: MetadataOperation,
     ) -> Result<i32, StoreError> {
         match operation {
-            MetadataOperation::Set { entity, id, data } => {
-                let key = MetadataOperation::entity_key(entity, id);
-
-                self.check_interface_entity_uniqueness(conn, &key)?;
+            MetadataOperation::Set { key, data } => {
+                let key = key.into();
 
                 // Load the entity if exists
-                let entity = self
-                    .get_entity(conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
-                    .map_err(Error::from)?;
+                let entity = self.get_entity(conn, &key)?;
 
                 // Identify whether this is an insert or an update operation and
                 // merge the changes into the entity.
@@ -415,10 +410,8 @@ impl Store {
                     .into()
                 })
             }
-            MetadataOperation::Update { entity, id, data } => {
-                let key = MetadataOperation::entity_key(entity, id);
-
-                self.check_interface_entity_uniqueness(conn, &key)?;
+            MetadataOperation::Update { key, data } => {
+                let key = key.into();
 
                 // Update the entity in Postgres
                 match conn.update_metadata(&key, &data)? {
@@ -440,8 +433,8 @@ impl Store {
                     .into()),
                 }
             }
-            MetadataOperation::Remove { entity, id } => {
-                let key = MetadataOperation::entity_key(entity, id);
+            MetadataOperation::Remove { key } => {
+                let key = key.into();
                 conn.delete(&key, None)
                     // This conversion is ok since n will only be 0 or 1
                     .map(|n| -(n as i32))
@@ -471,7 +464,7 @@ impl Store {
         for modification in mods {
             use EntityModification::*;
 
-            let do_count = !modification.entity_key().subgraph_id.is_meta();
+            let do_count = modification.entity_key().entity_type.is_data_type();
             let n = match modification {
                 Overwrite { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -752,7 +745,7 @@ impl Store {
         let graft_block =
             deployment::graft_point(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
 
-        let features = metadata::subgraph_features(&conn, subgraph_id)?;
+        let features = deployment::features(&conn, subgraph_id)?;
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
@@ -955,36 +948,24 @@ impl Store {
         site: &Site,
         key: EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        if site.deployment.is_meta() {
-            let conn = self
-                .get_conn()
-                .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-            Ok(METADATA_LAYOUT.find(&conn, &key.entity_type, &key.entity_id, BLOCK_NUMBER_MAX)?)
-        } else {
-            let conn = self
-                .get_entity_conn(site, ReplicaId::Main)
-                .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-            self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
-        }
+        let conn = self
+            .get_entity_conn(site, ReplicaId::Main)
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        self.get_entity(&conn, &key)
     }
 
     pub(crate) fn get_many(
         &self,
         site: &Site,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
-        if site.deployment.is_meta() {
-            let conn = self.get_conn()?;
-            METADATA_LAYOUT.find_many(&conn, ids_for_type, BLOCK_NUMBER_MAX)
-        } else {
-            let conn = self
-                .get_entity_conn(site, ReplicaId::Main)
-                .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-            conn.find_many(ids_for_type, BLOCK_NUMBER_MAX)
-        }
+        let conn = self
+            .get_entity_conn(site, ReplicaId::Main)
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        conn.find_many(ids_for_type, BLOCK_NUMBER_MAX)
     }
 
     pub(crate) fn find(
@@ -1043,12 +1024,11 @@ impl Store {
         stopwatch: StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<StoreEvent, StoreError> {
-        // All operations should apply only to entities in this subgraph or
-        // the subgraph of subgraphs
+        // All operations should apply only to data or metadata for this subgraph
         if mods
             .iter()
             .map(|modification| modification.entity_key())
-            .any(|key| key.subgraph_id != site.deployment && key.subgraph_id != *SUBGRAPHS_ID)
+            .any(|key| key.subgraph_id != site.deployment)
         {
             panic!(
                 "transact_block_operations must affect only entities \
@@ -1160,12 +1140,8 @@ impl Store {
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {
-        if id.is_meta() {
-            Ok(DeploymentState::meta())
-        } else {
-            let conn = self.get_conn()?;
-            deployment::state(&conn, id)
-        }
+        let conn = self.get_conn()?;
+        deployment::state(&conn, id)
     }
 
     pub(crate) async fn fail_subgraph(

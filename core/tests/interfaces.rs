@@ -2,8 +2,8 @@
 
 use pretty_assertions::assert_eq;
 
-use graph::data::graphql::object;
 use graph::prelude::*;
+use graph::{components::store::EntityType, data::graphql::object};
 use graphql_parser::query as q;
 use test_store::*;
 
@@ -22,7 +22,7 @@ fn insert_and_query(
         .map(|(data, entity_type)| EntityOperation::Set {
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
-                entity_type: entity_type.to_owned(),
+                entity_type: EntityType::data(entity_type.to_owned()),
                 entity_id: data["id"].clone().as_string().unwrap(),
             },
             data,

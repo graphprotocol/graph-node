@@ -7,7 +7,6 @@ use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{info, o, BlockNumber, CheapClone, Logger, QueryExecutionError};
 use graph::{
     data::graphql::{
@@ -385,10 +384,6 @@ impl Query {
     ) -> Vec<QueryExecutionError> {
         let schema = self.schema.document();
 
-        // The dynamic data sources query uses empty selection sets, though ideally it shouldn't.
-        if selection_set.items.is_empty() && *self.schema.id() != *SUBGRAPHS_ID {
-            return vec![QueryExecutionError::EmptySelectionSet(ty.name().to_owned())];
-        }
         selection_set
             .items
             .iter()

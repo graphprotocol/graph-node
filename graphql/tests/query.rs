@@ -212,11 +212,11 @@ fn insert_test_entities(store: &impl Store, manifest: SubgraphManifest) {
 
     fn insert_at(entities: Vec<Entity>, id: SubgraphDeploymentId, block_ptr: EthereumBlockPointer) {
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: id.clone(),
-                entity_type: data["__typename"].clone().as_string().unwrap(),
-                entity_id: data["id"].clone().as_string().unwrap(),
-            },
+            key: EntityKey::data(
+                id.clone(),
+                data["__typename"].clone().as_string().unwrap(),
+                data["id"].clone().as_string().unwrap(),
+            ),
             data,
         });
 

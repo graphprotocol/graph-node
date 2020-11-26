@@ -6,7 +6,6 @@ use std::task::Poll;
 use std::time::Instant;
 
 use graph::components::server::query::GraphQLServerError;
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::*;
 use http::header;
 use hyper::service::Service;
@@ -337,12 +336,6 @@ where
             (Method::OPTIONS, ["subgraphs", "name", _])
             | (Method::OPTIONS, ["subgraphs", "name", _, _])
             | (Method::OPTIONS, ["subgraphs", "network", _, _]) => self.handle_graphql_options(req),
-
-            // `/subgraphs` acts as an alias to `/subgraphs/id/SUBGRAPHS_ID`
-            (Method::POST, &["subgraphs"]) => {
-                self.handle_graphql_query_by_id(SUBGRAPHS_ID.to_string(), req)
-            }
-            (Method::OPTIONS, ["subgraphs"]) => self.handle_graphql_options(req),
 
             _ => self.handle_not_found(),
         }

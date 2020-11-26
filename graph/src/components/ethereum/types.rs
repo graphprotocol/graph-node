@@ -560,11 +560,7 @@ impl From<EthereumBlockPointer> for u64 {
 
 impl ToEntityKey for EthereumBlockPointer {
     fn to_entity_key(&self, subgraph: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
-            subgraph_id: subgraph,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", self.hash),
-        }
+        EntityKey::data(subgraph, "Block".into(), format!("{:x}", self.hash))
     }
 }
 

@@ -2,6 +2,8 @@ use graph::prelude::*;
 
 use super::*;
 
+const BLOCK: &str = "Block";
+
 impl ToEntityId for Ommer {
     fn to_entity_id(&self) -> String {
         format!("{:x}", self.0.hash.unwrap())
@@ -10,11 +12,11 @@ impl ToEntityId for Ommer {
 
 impl ToEntityKey for Ommer {
     fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
+        EntityKey::data(
             subgraph_id,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", self.0.hash.unwrap()),
-        }
+            BLOCK.to_string(),
+            format!("{:x}", self.0.hash.unwrap()),
+        )
     }
 }
 
@@ -26,11 +28,11 @@ impl ToEntityId for BlockWithOmmers {
 
 impl ToEntityKey for &BlockWithOmmers {
     fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
+        EntityKey::data(
             subgraph_id,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", (*self).block.block.hash.unwrap()),
-        }
+            BLOCK.to_string(),
+            format!("{:x}", (*self).block.block.hash.unwrap()),
+        )
     }
 }
 

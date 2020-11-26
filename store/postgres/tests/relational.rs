@@ -176,21 +176,21 @@ fn remove_test_data(conn: &PgConnection) {
 }
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey {
-        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_owned(),
-        entity_id: entity.id().unwrap(),
-    };
+    let key = EntityKey::data(
+        THINGS_SUBGRAPH_ID.clone(),
+        entity_type.to_owned(),
+        entity.id().unwrap(),
+    );
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout.insert(&conn, &key, entity, 0).expect(&errmsg);
 }
 
 fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey {
-        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_owned(),
-        entity_id: entity.id().unwrap(),
-    };
+    let key = EntityKey::data(
+        THINGS_SUBGRAPH_ID.clone(),
+        entity_type.to_owned(),
+        entity.id().unwrap(),
+    );
     let errmsg = format!("Failed to update entity {}[{}]", entity_type, key.entity_id);
     layout.update(&conn, &key, entity, 1).expect(&errmsg);
 }
@@ -455,11 +455,11 @@ fn update() {
         entity.set("string", "updated");
         entity.remove("strings");
         entity.set("bool", Value::Null);
-        let key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Scalar".to_owned(),
-            entity_id: entity.id().unwrap().clone(),
-        };
+        let key = EntityKey::data(
+            THINGS_SUBGRAPH_ID.clone(),
+            "Scalar".to_owned(),
+            entity.id().unwrap().clone(),
+        );
         layout
             .update(&conn, &key, entity.clone(), 1)
             .expect("Failed to update");
@@ -489,11 +489,11 @@ fn serialize_bigdecimal() {
             let d = BigDecimal::from_str(d).unwrap();
             entity.set("bigDecimal", d);
 
-            let key = EntityKey {
-                subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-                entity_type: "Scalar".to_owned(),
-                entity_id: entity.id().unwrap().clone(),
-            };
+            let key = EntityKey::data(
+                THINGS_SUBGRAPH_ID.clone(),
+                "Scalar".to_owned(),
+                entity.id().unwrap().clone(),
+            );
             layout
                 .update(&conn, &key, entity.clone(), 1)
                 .expect("Failed to update");
@@ -540,11 +540,11 @@ fn delete() {
         insert_entity(&conn, &layout, "Scalar", two);
 
         // Delete where nothing is getting deleted
-        let mut key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Scalar".to_owned(),
-            entity_id: "no such entity".to_owned(),
-        };
+        let mut key = EntityKey::data(
+            THINGS_SUBGRAPH_ID.clone(),
+            "Scalar".to_owned(),
+            "no such entity".to_owned(),
+        );
         let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout));

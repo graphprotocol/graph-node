@@ -242,11 +242,11 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: entity_type.to_owned(),
-            entity_id: id.to_owned(),
-        },
+        key: EntityKey::data(
+            TEST_SUBGRAPH_ID.clone(),
+            entity_type.to_owned(),
+            id.to_owned(),
+        ),
         data: test_entity,
     }
 }
@@ -301,11 +301,7 @@ fn graft() {
         // Make our own entries for block 2
         shaq.set("email", "shaq@gmail.com");
         let op = EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: USER.to_owned(),
-                entity_id: "3".to_owned(),
-            },
+            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "3".to_owned()),
             data: shaq,
         };
         transact_entity_operations(&store, subgraph_id.clone(), BLOCKS[2], vec![op]).unwrap();

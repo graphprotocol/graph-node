@@ -1,20 +1,16 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::mock::MockStore;
 use graph::prelude::{
     Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, Value,
 };
+use graph::{components::store::EntityType, mock::MockStore};
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
     let subgraph_id = SubgraphDeploymentId::new("entity_cache").unwrap();
 
     (
-        EntityKey {
-            subgraph_id: subgraph_id.clone(),
-            entity_type: "Band".into(),
-            entity_id: id.into(),
-        },
+        EntityKey::data(subgraph_id.clone(), "Band".to_string(), id.into()),
         Entity::from(data),
     )
 }
@@ -83,7 +79,7 @@ fn overwrite_modifications() {
         let mut map = BTreeMap::new();
 
         map.insert(
-            "Band".into(),
+            EntityType::data("Band".to_string()),
             vec![
                 make_band(
                     "mogwai",
@@ -150,7 +146,7 @@ fn consecutive_modifications() {
         let mut map = BTreeMap::new();
 
         map.insert(
-            "Band".into(),
+            EntityType::data("Band".to_string()),
             vec![
                 make_band(
                     "mogwai",

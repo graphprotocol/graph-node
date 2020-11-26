@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use graph::{
-    components::store::StoredDynamicDataSource,
+    components::store::{EntityType, StoredDynamicDataSource},
     data::subgraph::schema::SubgraphError,
     data::subgraph::status,
     prelude::{
@@ -89,9 +89,9 @@ impl StoreTrait for NetworkStore {
     fn get_many(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-        ids_for_type: std::collections::BTreeMap<&str, Vec<&str>>,
+        ids_for_type: std::collections::BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<
-        std::collections::BTreeMap<String, Vec<graph::prelude::Entity>>,
+        std::collections::BTreeMap<EntityType, Vec<graph::prelude::Entity>>,
         graph::prelude::StoreError,
     > {
         self.store.get_many(subgraph_id, ids_for_type)

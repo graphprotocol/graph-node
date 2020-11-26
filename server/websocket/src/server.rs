@@ -1,4 +1,3 @@
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -59,7 +58,6 @@ where
         };
 
         match path_segments.as_slice() {
-            &["subgraphs"] => Ok(Some(SUBGRAPHS_ID.clone())),
             &["subgraphs", "id", subgraph_id] => Ok(SubgraphDeploymentId::new(subgraph_id).ok()),
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
                 Ok(id_from_name(store, path_segments[2..].join("/")))

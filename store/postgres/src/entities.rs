@@ -28,16 +28,17 @@ use diesel::RunQueryDsl;
 use maybe_owned::MaybeOwned;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use graph::data::schema::Schema as SubgraphSchema;
-use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE, SUBGRAPHS_ID};
+use graph::data::subgraph::schema::{MetadataType, POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     format_err, info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
     EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId,
 };
+use graph::{components::store::EntityType, data::schema::Schema as SubgraphSchema};
 
 use crate::deployment;
 use crate::primary::Site;
@@ -90,17 +91,17 @@ impl Connection<'_> {
     /// If `key` does not reference the connection's subgraph or the metadata
     /// subgraph
     fn layout_for(&self, key: &EntityKey) -> &Layout {
-        if key.subgraph_id == *SUBGRAPHS_ID {
-            METADATA_LAYOUT.as_ref()
-        } else if &key.subgraph_id == &self.subgraph {
-            self.data.as_ref()
-        } else {
+        if &key.subgraph_id != &self.subgraph {
             panic!(
                 "A connection can only be used with one subgraph and \
                  the metadata subgraph.\nThe connection for {} is also \
                  used with {}",
                 self.subgraph, key.subgraph_id
             );
+        }
+        match &key.entity_type {
+            EntityType::Metadata(_) => METADATA_LAYOUT.as_ref(),
+            EntityType::Data(_) => self.data.as_ref(),
         }
     }
 
@@ -134,21 +135,62 @@ impl Connection<'_> {
 
     pub(crate) fn find(
         &self,
-        entity: &String,
-        id: &String,
+        key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        self.data.find(&self.conn, entity, id, block)
+        assert_eq!(&self.subgraph, &key.subgraph_id);
+
+        match &key.entity_type {
+            EntityType::Data(name) => self.data.find(&self.conn, name, &key.entity_id, block),
+            EntityType::Metadata(typ) => {
+                METADATA_LAYOUT.find(&self.conn, typ.as_str(), &key.entity_id, block)
+            }
+        }
     }
 
     /// Returns a sequence of `(type, entity)`.
     /// If the entity isn't present that means it wasn't found.
     pub(crate) fn find_many(
         &self,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
-        self.data.find_many(&self.conn, ids_for_type, block)
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        // Split the entities into data and metadata depending on their type
+        let data = ids_for_type
+            .iter()
+            .filter(|(typ, _)| typ.is_data_type())
+            .map(|(typ, ids)| (typ.as_str(), ids))
+            .collect();
+        let metadata = ids_for_type
+            .iter()
+            .filter(|(typ, _)| !typ.is_data_type())
+            .map(|(typ, ids)| (typ.as_str(), ids))
+            .collect();
+
+        // Look the entities up in the correct layout and lift their type names
+        // (strings) to proper `EntityTypes`
+        let mut data: BTreeMap<EntityType, Vec<Entity>> = self
+            .data
+            .find_many(&self.conn, data, block)?
+            .into_iter()
+            .map(|(name, entities)| (EntityType::data(name), entities))
+            .collect();
+        let metadata: BTreeMap<EntityType, Vec<Entity>> = METADATA_LAYOUT
+            .find_many(&self.conn, metadata, block)?
+            .into_iter()
+            .map(|(name, entities)| {
+                MetadataType::from_str(name.as_str())
+                    .map(|typ| (EntityType::metadata(typ), entities))
+                    .map_err(|e| {
+                        StoreError::ConstraintViolation(format!(
+                            "unknown metadata type in database: {}",
+                            e
+                        ))
+                    })
+            })
+            .collect::<Result<_, _>>()?;
+        data.extend(metadata.into_iter());
+        Ok(data)
     }
 
     pub(crate) fn query<T: crate::relational_queries::FromEntityData>(
@@ -181,14 +223,20 @@ impl Connection<'_> {
         entity: Entity,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
-        let layout = &self.layout_for(key);
-        match ptr {
-            Some(ptr) => layout.insert(&self.conn, key, entity, block_number(ptr)),
-            None => layout.insert_unversioned(&self.conn, key, entity),
+        use EntityType::*;
+
+        let layout = self.layout_for(key);
+        match (&key.entity_type, ptr) {
+            (Data(_), Some(ptr)) => layout.insert(&self.conn, key, entity, block_number(ptr)),
+            (Metadata(_), Some(ptr)) => {
+                METADATA_LAYOUT.insert(&self.conn, key, entity, block_number(ptr))
+            }
+            (Metadata(_), None) => layout.insert_unversioned(&self.conn, key, entity),
+            (Data(_), None) => unreachable!("data changes are always versioned"),
         }
     }
 
-    /// Overwrite an entity with a new version. The `history_event` indicates
+    /// Overwrite an entity with a new version. The `ptr` indicates
     /// at which block the new version becomes valid if it is given. If it is
     /// `None`, the entity is treated as unversioned
     pub(crate) fn update(
@@ -197,12 +245,18 @@ impl Connection<'_> {
         entity: Entity,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
-        let layout = &self.layout_for(key);
-        match ptr {
-            Some(ptr) => layout.update(&self.conn, key, entity, block_number(&ptr)),
-            None => layout
+        use EntityType::*;
+
+        let layout = self.layout_for(key);
+        match (&key.entity_type, ptr) {
+            (Data(_), Some(ptr)) => layout.update(&self.conn, key, entity, block_number(ptr)),
+            (Metadata(_), Some(ptr)) => {
+                METADATA_LAYOUT.update(&self.conn, key, entity, block_number(ptr))
+            }
+            (Metadata(_), None) => layout
                 .overwrite_unversioned(&self.conn, key, entity)
                 .map(|_| ()),
+            (Data(_), None) => unreachable!("data changes are always versioned"),
         }
     }
 
@@ -213,6 +267,8 @@ impl Connection<'_> {
         key: &EntityKey,
         entity: &Entity,
     ) -> Result<usize, StoreError> {
+        assert!(!key.entity_type.is_data_type());
+
         METADATA_LAYOUT.update_unversioned(&self.conn, key, entity)
     }
 
@@ -221,10 +277,14 @@ impl Connection<'_> {
         key: &EntityKey,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<usize, StoreError> {
-        let layout = &self.layout_for(key);
-        match ptr {
-            Some(ptr) => layout.delete(&self.conn, key, block_number(&ptr)),
-            None => layout.delete_unversioned(&self.conn, key),
+        use EntityType::*;
+
+        let layout = self.layout_for(key);
+        match (&key.entity_type, ptr) {
+            (Data(_), Some(ptr)) => layout.delete(&self.conn, key, block_number(ptr)),
+            (Metadata(_), Some(ptr)) => METADATA_LAYOUT.delete(&self.conn, key, block_number(ptr)),
+            (Metadata(_), None) => layout.delete_unversioned(&self.conn, key),
+            (Data(_), None) => unreachable!("data changes are always versioned"),
         }
     }
 
@@ -349,7 +409,7 @@ impl Connection<'_> {
         assert!(!namespace.is_metadata());
 
         let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
-        let has_poi = supports_proof_of_indexing(conn, subgraph, &namespace)?;
+        let has_poi = supports_proof_of_indexing(conn, &namespace)?;
         let catalog = Catalog::new(conn, namespace)?;
         let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
 
@@ -359,10 +419,9 @@ impl Connection<'_> {
 
 fn supports_proof_of_indexing(
     conn: &diesel::pg::PgConnection,
-    subgraph_id: &SubgraphDeploymentId,
     namespace: &Namespace,
 ) -> Result<bool, StoreError> {
-    if subgraph_id == &*SUBGRAPHS_ID {
+    if namespace.is_metadata() {
         return Ok(false);
     }
     #[derive(Debug, QueryableByName)]

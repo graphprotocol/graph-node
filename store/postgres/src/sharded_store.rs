@@ -1,11 +1,10 @@
 use diesel::Connection;
 use std::fmt;
-use std::str::FromStr;
 use std::sync::RwLock;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 
 use graph::{
-    components::store,
+    components::store::{self, EntityType},
     constraint_violation,
     data::subgraph::schema::MetadataType,
     data::subgraph::schema::SubgraphError,
@@ -356,8 +355,8 @@ impl StoreTrait for ShardedStore {
     fn get_many(
         &self,
         id: &SubgraphDeploymentId,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         let (store, site) = self.store(&id)?;
         store.get_many(site.as_ref(), ids_for_type)
     }
@@ -483,10 +482,6 @@ impl StoreTrait for ShardedStore {
         id: &SubgraphDeploymentId,
         for_subscription: bool,
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, StoreError> {
-        assert!(
-            !id.is_meta(),
-            "a query store can only be retrieved for a concrete subgraph"
-        );
         let (store, site) = self.store(&id)?;
         store.clone().query_store(site, for_subscription)
     }
@@ -719,8 +714,8 @@ impl ShardData for MetadataOperation {
     fn in_shard(&self, id: &SubgraphDeploymentId) -> bool {
         use MetadataOperation::*;
         match self {
-            Set { entity, .. } | Remove { entity, .. } | Update { entity, .. } => {
-                entity.in_shard(id)
+            Set { key, .. } | Remove { key, .. } | Update { key, .. } => {
+                &key.subgraph_id == id && key.entity_type.in_shard(id)
             }
         }
     }
@@ -738,19 +733,10 @@ where
 impl ShardData for EntityModification {
     fn in_shard(&self, id: &SubgraphDeploymentId) -> bool {
         let key = self.entity_key();
-        let mod_id = &key.subgraph_id;
 
-        if mod_id.is_meta() {
-            // We do not flag an unknown MetadataType as an error here since
-            // there are some valid types of metadata, e.g. SubgraphVersion
-            // that are not reflected in the enum. We are just careful and
-            // assume they are not stored in the same shard as subgraph data
-            MetadataType::from_str(&key.entity_type)
-                .ok()
-                .map(|typ| typ.in_shard(id))
-                .unwrap_or(false)
-        } else {
-            mod_id == id
+        match &key.entity_type {
+            EntityType::Data(_) => &key.subgraph_id == id,
+            EntityType::Metadata(typ) => &key.subgraph_id == id && typ.in_shard(id),
         }
     }
 }

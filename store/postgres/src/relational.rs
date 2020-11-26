@@ -30,6 +30,7 @@ use crate::{
         FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
     },
 };
+use graph::components::store::EntityType;
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{
@@ -538,12 +539,16 @@ impl Layout {
             .transpose()
     }
 
-    pub fn find_many(
+    pub fn find_many<'a>(
         &self,
         conn: &PgConnection,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
+        ids_for_type: BTreeMap<&str, &Vec<&str>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        if ids_for_type.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+
         let mut tables = Vec::new();
         for entity_type in ids_for_type.keys() {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
@@ -571,7 +576,7 @@ impl Layout {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(key.entity_type.as_str())?;
         let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
         Ok(())
@@ -583,7 +588,7 @@ impl Layout {
         key: &EntityKey,
         entity: Entity,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(key.entity_type.expect_metadata())?;
         let query = InsertQuery::new(table, key, entity, BLOCK_UNVERSIONED)?;
         query.execute(conn)?;
         Ok(())
@@ -680,7 +685,7 @@ impl Layout {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_data())?;
         ClampRangeQuery::new(table, key, block).execute(conn)?;
         let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
@@ -693,7 +698,7 @@ impl Layout {
         key: &EntityKey,
         entity: &Entity,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
         let query = UpdateQuery::new(table, key, entity)?;
         Ok(query.execute(conn)?)
     }
@@ -704,7 +709,7 @@ impl Layout {
         key: &EntityKey,
         mut entity: Entity,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
         // Set any attributes not mentioned in the entity to
         // their default (NULL)
         for column in table.columns.iter() {
@@ -722,7 +727,7 @@ impl Layout {
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_data())?;
         Ok(ClampRangeQuery::new(table, key, block).execute(conn)?)
     }
 
@@ -731,7 +736,7 @@ impl Layout {
         conn: &PgConnection,
         key: &EntityKey,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
         Ok(DeleteQuery::new(table, key).execute(conn)?)
     }
 
@@ -774,7 +779,7 @@ impl Layout {
                 .filter(|id| !unclamped.contains(id))
                 .map(|id| EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: table.object.clone(),
+                    entity_type: EntityType::data(table.object.clone()),
                     entity_id: id,
                     operation: EntityChangeOperation::Removed,
                 });
@@ -782,7 +787,7 @@ impl Layout {
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|id| EntityChange {
                 subgraph_id: subgraph_id.clone(),
-                entity_type: table.object.clone(),
+                entity_type: EntityType::Data(table.object.clone()),
                 entity_id: id,
                 operation: EntityChangeOperation::Set,
             });

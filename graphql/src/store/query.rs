@@ -2,8 +2,8 @@ use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
-use graph::data::graphql::ObjectOrInterface;
 use graph::prelude::*;
+use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::schema::ast as sast;
 
@@ -330,7 +330,7 @@ pub fn collect_entities_from_query_field(
 
     entities
         .into_iter()
-        .map(|(id, entity_type)| SubscriptionFilter::Entities(id, entity_type))
+        .map(|(id, entity_type)| SubscriptionFilter::Entities(id, EntityType::data(entity_type)))
         .collect()
 }
 

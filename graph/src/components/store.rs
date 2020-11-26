@@ -32,6 +32,86 @@ lazy_static! {
             .unwrap_or_else(|| Duration::from_millis(1000));
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EntityType {
+    Data(String),
+    Metadata(MetadataType),
+}
+
+impl EntityType {
+    pub fn data(entity_type: String) -> Self {
+        Self::Data(entity_type)
+    }
+
+    pub fn metadata(entity_type: MetadataType) -> Self {
+        Self::Metadata(entity_type)
+    }
+
+    pub fn is_data_type(&self) -> bool {
+        match self {
+            Self::Data(_) => true,
+            Self::Metadata(_) => false,
+        }
+    }
+
+    pub fn is_data(&self, entity_type: &str) -> bool {
+        match self {
+            Self::Data(s) => s == entity_type,
+            Self::Metadata(_) => false,
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Data(name) => name.as_str(),
+            Self::Metadata(typ) => typ.as_str(),
+        }
+    }
+
+    /// Expect `self` to reference a `Data` entity type and return the
+    /// type's name
+    ///
+    /// # Panics
+    /// This method will panic if `self` is a `Metadata` type
+    pub fn expect_data(&self) -> &str {
+        match self {
+            Self::Data(s) => s.as_str(),
+            Self::Metadata(_) => {
+                unreachable!("callers check that this is never called for metadata")
+            }
+        }
+    }
+
+    /// Expect `self` to reference a `Metadata` entity type and return the
+    /// type's name
+    ///
+    /// # Panics
+    /// This method will panic if `self` is a `Data` type
+    pub fn expect_metadata(&self) -> &str {
+        match self {
+            Self::Data(_) => {
+                unreachable!("callers check that this is never called for data")
+            }
+            Self::Metadata(typ) => typ.as_str(),
+        }
+    }
+}
+
+impl fmt::Display for EntityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Data(s) => write!(f, "{}", s),
+            Self::Metadata(typ) => write!(f, "%{}", typ.as_str()),
+        }
+    }
+}
+
+impl From<MetadataType> for EntityType {
+    fn from(typ: MetadataType) -> Self {
+        EntityType::Metadata(typ)
+    }
+}
+
 // Note: Do not modify fields without making a backward compatible change to
 // the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.
@@ -41,7 +121,7 @@ pub struct EntityKey {
     pub subgraph_id: SubgraphDeploymentId,
 
     /// Name of the entity type.
-    pub entity_type: String,
+    pub entity_type: EntityType,
 
     /// ID of the individual entity.
     pub entity_id: String,
@@ -49,12 +129,50 @@ pub struct EntityKey {
 
 impl StableHash for EntityKey {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        self.subgraph_id
-            .stable_hash(sequence_number.next_child(), state);
-        self.entity_type
-            .stable_hash(sequence_number.next_child(), state);
-        self.entity_id
-            .stable_hash(sequence_number.next_child(), state);
+        use EntityType::*;
+
+        match &self.entity_type {
+            Data(name) => {
+                // EntityType used to just be a string for normal entities
+                self.subgraph_id
+                    .stable_hash(sequence_number.next_child(), state);
+                name.stable_hash(sequence_number.next_child(), state);
+                self.entity_id
+                    .stable_hash(sequence_number.next_child(), state);
+            }
+            Metadata(typ) => {
+                // We used to represent metadata entities with
+                // SubgraphDeploymentId("subgraphs") and the entity type was just
+                // the string representation of MetadataType.
+                let name = typ.to_string();
+                "subgraphs".stable_hash(sequence_number.next_child().next_child(), state);
+                name.stable_hash(sequence_number.next_child(), state);
+                self.entity_id
+                    .stable_hash(sequence_number.next_child(), state);
+            }
+        }
+    }
+}
+
+impl EntityKey {
+    pub fn data(subgraph_id: SubgraphDeploymentId, entity_type: String, entity_id: String) -> Self {
+        Self {
+            subgraph_id,
+            entity_type: EntityType::Data(entity_type),
+            entity_id,
+        }
+    }
+
+    pub fn metadata(
+        subgraph_id: SubgraphDeploymentId,
+        entity_type: MetadataType,
+        entity_id: String,
+    ) -> Self {
+        Self {
+            subgraph_id,
+            entity_type: EntityType::Metadata(entity_type),
+            entity_id,
+        }
     }
 }
 
@@ -70,21 +188,17 @@ fn key_stable_hash() {
     }
 
     let id = SubgraphDeploymentId::new("QmP9MRvVzwHxr3sGvujihbvJzcTz2LYLMfi5DyihBg6VUd").unwrap();
-    let key = EntityKey {
-        subgraph_id: id.clone(),
-        entity_type: "Account".to_string(),
-        entity_id: "0xdeadbeef".to_string(),
-    };
+    let key = EntityKey::data(id.clone(), "Account".to_string(), "0xdeadbeef".to_string());
     hashes_to(
         &key,
         "905b57035d6f98cff8281e7b055e10570a2bd31190507341c6716af2d3c1ad98",
     );
 
-    let key = EntityKey {
-        subgraph_id: SUBGRAPHS_ID.clone(),
-        entity_type: MetadataType::DynamicEthereumContractDataSource.to_string(),
-        entity_id: format!("{}-manifest-data-source-1", &id),
-    };
+    let key = EntityKey::metadata(
+        id.clone(),
+        MetadataType::DynamicEthereumContractDataSource,
+        format!("{}-manifest-data-source-1", &id),
+    );
     hashes_to(
         &key,
         "062283bacf94a7910f1332889e0a11f4abce34fa666eb883aabbcd248e8be1c3",
@@ -408,7 +522,7 @@ pub struct EntityChange {
     /// ID of the subgraph the changed entity belongs to.
     pub subgraph_id: SubgraphDeploymentId,
     /// Entity type name of the changed entity.
-    pub entity_type: String,
+    pub entity_type: EntityType,
     /// ID of the changed entity.
     pub entity_id: String,
     /// Operation that caused the change.
@@ -434,14 +548,12 @@ impl From<MetadataOperation> for EntityChange {
     fn from(operation: MetadataOperation) -> Self {
         use self::MetadataOperation::*;
         match operation {
-            Set { entity, id, .. } | Update { entity, id, .. } => EntityChange::from_key(
-                MetadataOperation::entity_key(entity, id),
-                EntityChangeOperation::Set,
-            ),
-            Remove { entity, id, .. } => EntityChange::from_key(
-                MetadataOperation::entity_key(entity, id),
-                EntityChangeOperation::Removed,
-            ),
+            Set { key, .. } | Update { key, .. } => {
+                EntityChange::from_key(key.into(), EntityChangeOperation::Set)
+            }
+            Remove { key, .. } => {
+                EntityChange::from_key(key.into(), EntityChangeOperation::Removed)
+            }
         }
     }
 }
@@ -600,11 +712,9 @@ where
         // bit longer than we really should
         static SYNC_REFRESH_FREQ: u32 = 4;
 
-        // Check whether a deployment is marked as synced in the store. The
-        // special 'subgraphs' subgraph is never considered synced so that
-        // we always throttle it
+        // Check whether a deployment is marked as synced in the store
         let check_synced = |store: &dyn QueryStore, deployment: &SubgraphDeploymentId| {
-            deployment != &*SUBGRAPHS_ID && store.is_deployment_synced(deployment).unwrap_or(false)
+            store.is_deployment_synced(deployment).unwrap_or(false)
         };
         let mut synced = check_synced(&*store, &deployment);
         let synced_check_interval = interval.checked_mul(SYNC_REFRESH_FREQ).unwrap();
@@ -692,6 +802,30 @@ pub enum EntityOperation {
     Remove { key: EntityKey },
 }
 
+/// This is almost the same as `EntityKey`, but we only allow `MetadataType`
+/// as the `entity_type`
+#[derive(Clone, Debug)]
+pub struct MetadataKey {
+    /// ID of the subgraph.
+    pub subgraph_id: SubgraphDeploymentId,
+
+    /// Name of the entity type.
+    pub entity_type: MetadataType,
+
+    /// ID of the individual entity.
+    pub entity_id: String,
+}
+
+impl From<MetadataKey> for EntityKey {
+    fn from(key: MetadataKey) -> Self {
+        EntityKey {
+            subgraph_id: key.subgraph_id,
+            entity_type: EntityType::Metadata(key.entity_type),
+            entity_id: key.entity_id,
+        }
+    }
+}
+
 /// An operation on subgraph metadata. All operations implicitly only concern
 /// the subgraph of subgraphs.
 #[derive(Clone, Debug)]
@@ -699,32 +833,24 @@ pub enum MetadataOperation {
     /// Locates the entity with type `entity` and the given `id` in the
     /// subgraph of subgraphs and sets its attributes according to the
     /// contents of `data`.  If no such entity exists, creates a new entity.
-    Set {
-        entity: MetadataType,
-        id: String,
-        data: Entity,
-    },
+    Set { key: MetadataKey, data: Entity },
 
     /// Removes an entity with the specified entity type and id if one exists.
-    Remove { entity: MetadataType, id: String },
+    Remove { key: MetadataKey },
 
     /// Update an entity. The `data` should only contain the attributes that
     /// need to be changed, not the entire entity. The update will only happen
     /// if the given entity matches `guard` when the update is made. `Update`
     /// provides a way to atomically do a check-and-set change to an entity.
-    Update {
-        entity: MetadataType,
-        id: String,
-        data: Entity,
-    },
+    Update { key: MetadataKey, data: Entity },
 }
 
 impl MetadataOperation {
-    pub fn entity_key(entity: MetadataType, id: String) -> EntityKey {
-        EntityKey {
-            subgraph_id: SUBGRAPHS_ID.clone(),
-            entity_type: entity.to_string(),
-            entity_id: id,
+    pub fn key(&self) -> &MetadataKey {
+        use MetadataOperation::*;
+
+        match self {
+            Set { key, .. } | Remove { key, .. } | Update { key, .. } => key,
         }
     }
 }
@@ -879,8 +1005,8 @@ pub trait Store: Send + Sync + 'static {
     fn get_many(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError>;
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
 
     /// Queries the store for entities that match the store query.
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;
@@ -953,11 +1079,6 @@ pub trait Store: Send + Sync + 'static {
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
     fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
-        // The subgraph of subgraphs is always deployed.
-        if id == &*SUBGRAPHS_ID {
-            return Ok(true);
-        }
-
         self.block_ptr(id).map(|ptr| ptr.is_some())
     }
 
@@ -1056,8 +1177,8 @@ mock! {
         fn get_many_mock<'a>(
             &self,
             _subgraph_id: &SubgraphDeploymentId,
-            _ids_for_type: BTreeMap<&'a str, Vec<&'a str>>,
-        ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError>;
+            _ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
+        ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
     }
 }
 
@@ -1098,8 +1219,8 @@ impl Store for MockStore {
     fn get_many(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         self.get_many_mock(subgraph_id, ids_for_type)
     }
 
@@ -1407,11 +1528,6 @@ impl EntityModification {
         }
     }
 
-    /// Return `true` if self modifies the metadata subgraph
-    pub fn is_meta(&self) -> bool {
-        self.entity_key().subgraph_id.is_meta()
-    }
-
     pub fn is_remove(&self) -> bool {
         match self {
             EntityModification::Remove { .. } => true,
@@ -1624,7 +1740,8 @@ impl EntityCache {
             .keys()
             .filter(|key| !self.current.contains_key(key));
 
-        let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&str, Vec<&str>>> = BTreeMap::new();
+        let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&EntityType, Vec<&str>>> =
+            BTreeMap::new();
         for key in missing {
             missing_by_subgraph
                 .entry(&key.subgraph_id)

@@ -7,19 +7,16 @@ use diesel::{
     dsl::{delete, insert_into, select, sql, update},
     sql_types::Integer,
 };
-use graph::{
-    data::subgraph::schema::{SubgraphError, SubgraphManifestEntity, SUBGRAPHS_ID},
-    prelude::BLOCK_NUMBER_MAX,
+use graph::data::subgraph::{
+    schema::{MetadataType, SubgraphManifestEntity},
+    SubgraphFeature,
 };
-use graph::{
-    data::subgraph::SubgraphFeature,
-    prelude::{
-        anyhow, bigdecimal::ToPrimitive, format_err, hex, web3::types::H256, BigDecimal,
-        BlockNumber, DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer,
-        Schema, StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId,
-        TypedEntity,
-    },
+use graph::prelude::{
+    anyhow, bigdecimal::ToPrimitive, format_err, hex, web3::types::H256, BigDecimal, BlockNumber,
+    DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError,
+    StoreEvent, SubgraphDeploymentId,
 };
+use graph::{data::subgraph::schema::SubgraphError, prelude::BLOCK_NUMBER_MAX};
 use stable_hash::crypto::SetHasher;
 use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
@@ -137,43 +134,38 @@ fn graft(
 ) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
     use subgraph_deployment as sd;
 
-    if id.is_meta() {
-        // There is no SubgraphDeployment for the metadata subgraph
-        Ok(None)
+    let graft_query = sd::table
+        .select((sd::graft_base, sd::graft_block_hash, sd::graft_block_number))
+        .filter(sd::id.eq(id.as_str()));
+    // The name of the base subgraph, the hash, and block number
+    let graft: (Option<String>, Option<Vec<u8>>, Option<BigDecimal>) = if pending_only {
+        graft_query
+            .filter(sd::graft_block_number.ge(sql("coalesce(latest_ethereum_block_number, 0)")))
+            .first(conn)
+            .optional()?
+            .unwrap_or((None, None, None))
     } else {
-        let graft_query = sd::table
-            .select((sd::graft_base, sd::graft_block_hash, sd::graft_block_number))
-            .filter(sd::id.eq(id.as_str()));
-        // The name of the base subgraph, the hash, and block number
-        let graft: (Option<String>, Option<Vec<u8>>, Option<BigDecimal>) = if pending_only {
-            graft_query
-                .filter(sd::graft_block_number.ge(sql("coalesce(latest_ethereum_block_number, 0)")))
-                .first(conn)
-                .optional()?
-                .unwrap_or((None, None, None))
-        } else {
-            graft_query
-                .first(conn)
-                .optional()?
-                .unwrap_or((None, None, None))
-        };
-        match graft {
-            (None, None, None) => Ok(None),
-            (Some(subgraph), Some(hash), Some(block)) => {
-                let hash = H256::from_slice(hash.as_slice());
-                let block = block.to_u64().expect("block numbers fit into a u64");
-                let subgraph = SubgraphDeploymentId::new(subgraph.clone()).map_err(|_| {
-                    StoreError::Unknown(format_err!(
-                        "the base subgraph for a graft must be a valid subgraph id but is `{}`",
-                        subgraph
-                    ))
-                })?;
-                Ok(Some((subgraph, EthereumBlockPointer::from((hash, block)))))
-            }
-            _ => unreachable!(
-                "graftBlockHash and graftBlockNumber are either both set or neither is set"
-            ),
+        graft_query
+            .first(conn)
+            .optional()?
+            .unwrap_or((None, None, None))
+    };
+    match graft {
+        (None, None, None) => Ok(None),
+        (Some(subgraph), Some(hash), Some(block)) => {
+            let hash = H256::from_slice(hash.as_slice());
+            let block = block.to_u64().expect("block numbers fit into a u64");
+            let subgraph = SubgraphDeploymentId::new(subgraph.clone()).map_err(|_| {
+                StoreError::Unknown(format_err!(
+                    "the base subgraph for a graft must be a valid subgraph id but is `{}`",
+                    subgraph
+                ))
+            })?;
+            Ok(Some((subgraph, EthereumBlockPointer::from((hash, block)))))
         }
+        _ => unreachable!(
+            "graftBlockHash and graftBlockNumber are either both set or neither is set"
+        ),
     }
 }
 
@@ -232,15 +224,11 @@ pub fn network(
     }
 }
 
-pub fn subgraph_features(
+pub fn features(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
 ) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
     use subgraph_manifest as sm;
-
-    if id.is_meta() {
-        return Ok(BTreeSet::new());
-    }
 
     let manifest_id = SubgraphManifestEntity::id(&id);
     let features: Vec<String> = sm::table
@@ -256,9 +244,9 @@ pub fn subgraph_features(
 
 fn block_ptr_store_event(id: &SubgraphDeploymentId) -> StoreEvent {
     let change = EntityChange {
-        entity_type: SubgraphDeploymentEntity::TYPENAME.to_string(),
+        entity_type: MetadataType::SubgraphDeployment.into(),
         entity_id: id.to_string(),
-        subgraph_id: SUBGRAPHS_ID.to_owned(),
+        subgraph_id: id.to_owned(),
         operation: EntityChangeOperation::Set,
     };
     StoreEvent::new(vec![change])

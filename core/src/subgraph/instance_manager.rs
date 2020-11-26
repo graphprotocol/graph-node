@@ -7,16 +7,17 @@ use std::time::Instant;
 
 use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
+use graph::components::{
+    ethereum::{triggers_in_block, EthereumNetworks},
+    store::EntityType,
+};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphError, POI_OBJECT,
 };
+use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
-use graph::{
-    components::ethereum::{triggers_in_block, EthereumNetworks},
-    data::subgraph::SubgraphFeature,
-};
 
 use super::SubgraphInstance;
 
@@ -906,7 +907,7 @@ async fn update_proof_of_indexing(
         // Create the special POI entity key specific to this causality_region
         let entity_key = EntityKey {
             subgraph_id: deployment_id.clone(),
-            entity_type: POI_OBJECT.to_owned(),
+            entity_type: EntityType::data(POI_OBJECT.to_owned()),
             entity_id: causality_region,
         };
 
@@ -1062,7 +1063,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
             &block_ptr,
         ));
         let id = DynamicEthereumContractDataSourceEntity::make_id();
-        let operations = entity.write_entity_operations(id.as_ref());
+        let operations = entity.write_entity_operations(&ctx.inputs.deployment_id, id.as_ref());
         entity_cache.append(operations);
     }
 

@@ -95,75 +95,56 @@ impl StoreResolver {
         bc: BlockConstraint,
         subgraph: SubgraphDeploymentId,
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {
-        if !subgraph.is_meta() {
-            // Relational storage (most subgraphs); block constraints fully
-            // supported
-            match bc {
-                BlockConstraint::Number(number) => store
-                    .block_ptr(subgraph.clone())
-                    .map_err(|e| StoreError::from(e).into())
-                    .and_then(|ptr| {
-                        let ptr =
-                            ptr.expect("we should have already checked that the subgraph exists");
-                        if ptr.number < number as u64 {
-                            Err(QueryExecutionError::ValueParseError(
-                                "block.number".to_owned(),
-                                format!(
-                                    "subgraph {} has only indexed up to block number {} \
+        // Relational storage (most subgraphs); block constraints fully
+        // supported
+        match bc {
+            BlockConstraint::Number(number) => store
+                .block_ptr(subgraph.clone())
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| {
+                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
+                    if ptr.number < number as u64 {
+                        Err(QueryExecutionError::ValueParseError(
+                            "block.number".to_owned(),
+                            format!(
+                                "subgraph {} has only indexed up to block number {} \
                                  and data for block number {} is therefore not yet available",
-                                    subgraph, ptr.number, number
-                                ),
-                            ))
-                        } else {
-                            // We don't have a way here to look the block hash up from
-                            // the database, and even if we did, there is no guarantee
-                            // that we have the block in our cache. We therefore
-                            // always return an all zeroes hash when users specify
-                            // a block number
-                            // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                            Ok(EthereumBlockPointer::from((
-                                web3::types::H256::zero(),
-                                number as u64,
-                            )))
-                        }
-                    }),
-                BlockConstraint::Hash(hash) => store
-                    .block_number(&subgraph, hash)
-                    .map_err(|e| e.into())
-                    .and_then(|number| {
-                        number
-                            .ok_or_else(|| {
-                                QueryExecutionError::ValueParseError(
-                                    "block.hash".to_owned(),
-                                    "no block with that hash found".to_owned(),
-                                )
-                            })
-                            .map(|number| EthereumBlockPointer::from((hash, number as u64)))
-                    }),
-                BlockConstraint::Latest => store
-                    .block_ptr(subgraph.clone())
-                    .map_err(|e| StoreError::from(e).into())
-                    .and_then(|ptr| {
-                        let ptr =
-                            ptr.expect("we should have already checked that the subgraph exists");
-                        Ok(ptr)
-                    }),
-            }
-        } else {
-            // JSONB storage or subgraph metadata; only allow BlockConstraint::Latest
-            if matches!(bc, BlockConstraint::Latest) {
-                Ok(EthereumBlockPointer::from((
-                    web3::types::H256::zero(),
-                    BLOCK_NUMBER_MAX as u64,
-                )))
-            } else {
-                Err(QueryExecutionError::NotSupported(
-                    "This subgraph uses JSONB storage, which does not \
-            support querying at a specific block height. Redeploy \
-            a new version of this subgraph to enable this feature."
-                        .to_owned(),
-                ))
-            }
+                                subgraph, ptr.number, number
+                            ),
+                        ))
+                    } else {
+                        // We don't have a way here to look the block hash up from
+                        // the database, and even if we did, there is no guarantee
+                        // that we have the block in our cache. We therefore
+                        // always return an all zeroes hash when users specify
+                        // a block number
+                        // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
+                        Ok(EthereumBlockPointer::from((
+                            web3::types::H256::zero(),
+                            number as u64,
+                        )))
+                    }
+                }),
+            BlockConstraint::Hash(hash) => store
+                .block_number(&subgraph, hash)
+                .map_err(|e| e.into())
+                .and_then(|number| {
+                    number
+                        .ok_or_else(|| {
+                            QueryExecutionError::ValueParseError(
+                                "block.hash".to_owned(),
+                                "no block with that hash found".to_owned(),
+                            )
+                        })
+                        .map(|number| EthereumBlockPointer::from((hash, number as u64)))
+                }),
+            BlockConstraint::Latest => store
+                .block_ptr(subgraph.clone())
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| {
+                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
+                    Ok(ptr)
+                }),
         }
     }
 
