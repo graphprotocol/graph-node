@@ -18,7 +18,7 @@ use graph::{
         EntityModification, EntityQuery, Error, EthereumBlockPointer, EthereumCallCache, Logger,
         MetadataOperation, NodeId, QueryExecutionError, QueryStore, Schema, StopwatchMetrics,
         Store as StoreTrait, StoreError, StoreEventStreamBox, SubgraphDeploymentId,
-        SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName, SubgraphVersionSwitchingMode,
+        SubgraphDeploymentStore, SubgraphName, SubgraphVersionSwitchingMode, SubscriptionFilter,
     },
 };
 use store::StoredDynamicDataSource;
@@ -443,7 +443,7 @@ impl StoreTrait for ShardedStore {
         self.send_store_event(&event)
     }
 
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         // Subscriptions always go through the primary
         self.primary.subscribe(entities)
     }

@@ -45,7 +45,7 @@ impl QueryStoreTrait for QueryStore {
         self.store.execute_query(&conn, query)
     }
 
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         assert!(self.for_subscription);
         assert_eq!(self.replica_id, ReplicaId::Main);
         self.store.subscribe(entities)

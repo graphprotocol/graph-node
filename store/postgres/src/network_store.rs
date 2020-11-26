@@ -156,7 +156,7 @@ impl StoreTrait for NetworkStore {
 
     fn subscribe(
         &self,
-        entities: Vec<graph::prelude::SubgraphEntityPair>,
+        entities: Vec<graph::prelude::SubscriptionFilter>,
     ) -> graph::prelude::StoreEventStreamBox {
         self.store.subscribe(entities)
     }

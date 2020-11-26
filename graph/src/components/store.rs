@@ -392,7 +392,7 @@ impl EntityChange {
         }
     }
 
-    pub fn subgraph_entity_pair(&self) -> SubgraphEntityPair {
+    pub fn subgraph_entity_pair(&self) -> SubscriptionFilter {
         (self.subgraph_id.clone(), self.entity_type.clone())
     }
 }
@@ -534,7 +534,7 @@ where
     /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
     /// at least one change to one of the given (subgraph, entity) combinations
     /// will be delivered by the filtered stream.
-    pub fn filter_by_entities(self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    pub fn filter_by_entities(self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         let source = self.source.filter(move |event| {
             event.changes.iter().any({
                 |change| {
@@ -887,7 +887,7 @@ pub trait Store: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
     ///
     /// Returns a stream of store events that match the input arguments.
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
+    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
 
     /// Find the deployment for the current version of subgraph `name` and
     /// return details about it needed for executing queries
@@ -1100,7 +1100,7 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    fn subscribe(&self, _entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         unimplemented!()
     }
 
@@ -1314,7 +1314,7 @@ pub trait QueryStore: Send + Sync {
         query: EntityQuery,
     ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError>;
 
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
+    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
 
     fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
 

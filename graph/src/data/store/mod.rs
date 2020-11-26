@@ -22,7 +22,7 @@ pub mod scalar;
 pub mod ethereum;
 
 /// A pair of subgraph ID and entity type name.
-pub type SubgraphEntityPair = (SubgraphDeploymentId, String);
+pub type SubscriptionFilter = (SubgraphDeploymentId, String);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);

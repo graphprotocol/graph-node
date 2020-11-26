@@ -4,11 +4,11 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
-use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::status;
 use graph::prelude::{
     error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
 };
+use graph::{components::store::StoredDynamicDataSource, prelude::SubscriptionFilter};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -29,7 +29,7 @@ use graph::prelude::{
     EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
     EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
     QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox,
-    SubgraphDeploymentId, SubgraphEntityPair, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    SubgraphDeploymentId, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -1086,7 +1086,7 @@ impl Store {
         Ok(event)
     }
 
-    pub(crate) fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    pub(crate) fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         self.subscriptions.subscribe(entities)
     }
 
