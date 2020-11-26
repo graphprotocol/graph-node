@@ -15,6 +15,8 @@ use std::str::FromStr;
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
+use super::subgraph::schema::MetadataType;
+
 /// Custom scalars in GraphQL.
 pub mod scalar;
 
@@ -26,6 +28,8 @@ pub enum SubscriptionFilter {
     /// Receive updates about all entities from the given deployment of the
     /// given type
     Entities(SubgraphDeploymentId, String),
+    /// Subscripe to changes in deployment assignments
+    Assignment,
 }
 
 impl SubscriptionFilter {
@@ -33,6 +37,9 @@ impl SubscriptionFilter {
         match self {
             Self::Entities(id, entity_type) => {
                 &change.subgraph_id == id && &change.entity_type == entity_type
+            }
+            Self::Assignment => {
+                &change.entity_type == MetadataType::SubgraphDeploymentAssignment.as_str()
             }
         }
     }

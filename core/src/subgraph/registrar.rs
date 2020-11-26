@@ -151,15 +151,16 @@ where
         let logger = self.logger.clone();
 
         store
-            .subscribe(vec![SubgraphDeploymentAssignmentEntity::as_filter()])
+            .subscribe(vec![SubscriptionFilter::Assignment])
             .map_err(|()| format_err!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
                 // know that there is at least one, as that is what we subscribed to
+                let filter = SubscriptionFilter::Assignment;
                 let assignments = event
                     .changes
                     .iter()
-                    .filter(|change| change.entity_type == "SubgraphDeploymentAssignment")
+                    .filter(|change| filter.matches(change))
                     .map(|change| change.to_owned())
                     .collect::<Vec<_>>();
                 stream::iter_ok(assignments)
