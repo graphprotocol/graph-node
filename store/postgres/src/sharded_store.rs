@@ -653,6 +653,11 @@ impl StoreTrait for ShardedStore {
         let primary = self.primary_conn()?;
         primary.assigned_node(id)
     }
+
+    fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+        let primary = self.primary_conn()?;
+        primary.assignments(node)
+    }
 }
 
 /// Methods similar to those for SubgraphDeploymentStore

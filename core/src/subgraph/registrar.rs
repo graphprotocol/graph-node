@@ -5,9 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
-use graph::data::subgraph::schema::{
-    SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity, TypedEntity,
-};
+use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
@@ -227,30 +225,14 @@ where
         let provider = self.provider.clone();
         let logger = self.logger.clone();
 
-        // Create a query to find all assignments with this node ID
-        let assignment_query = SubgraphDeploymentAssignmentEntity::query()
-            .filter(EntityFilter::new_equal("nodeId", self.node_id.to_string()));
-
-        future::result(self.store.find(assignment_query))
+        future::result(self.store.assignments(&self.node_id))
             .map_err(|e| format_err!("Error querying subgraph assignments: {}", e))
-            .and_then(move |assignment_entities| {
-                assignment_entities
-                    .into_iter()
-                    .map(|assignment_entity| {
-                        // Parse as subgraph hash
-                        assignment_entity.id().and_then(|id| {
-                            SubgraphDeploymentId::new(id).map_err(|s| {
-                                format_err!("Invalid subgraph hash `{}` in assignment entity", s)
-                            })
-                        })
-                    })
-                    .collect::<Result<HashSet<SubgraphDeploymentId>, _>>()
-            })
             .and_then(move |subgraph_ids| {
                 // This operation should finish only after all subgraphs are
                 // started. We wait for the spawned tasks to complete by giving
                 // each a `sender` and waiting for all of them to be dropped, so
                 // the receiver terminates without receiving anything.
+                let subgraph_ids = HashSet::<SubgraphDeploymentId>::from_iter(subgraph_ids);
                 let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
                 for id in subgraph_ids {
                     let sender = sender.clone();

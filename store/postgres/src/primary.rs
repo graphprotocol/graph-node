@@ -627,6 +627,25 @@ impl Connection {
             .transpose()
     }
 
+    pub fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        a::table
+            .filter(a::node_id.eq(node.as_str()))
+            .select(a::id)
+            .load::<String>(&self.0)?
+            .into_iter()
+            .map(|id| {
+                SubgraphDeploymentId::new(id).map_err(|id| {
+                    StoreError::ConstraintViolation(format!(
+                        "invalid deployment id `{}` assigned to node `{}`",
+                        id, node
+                    ))
+                })
+            })
+            .collect()
+    }
+
     pub fn fill_assignments(
         &self,
         mut infos: Vec<status::Info>,

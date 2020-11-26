@@ -25,9 +25,7 @@ use web3::types::*;
 
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
-use crate::components::store::{
-    EntityCollection, EntityKey, EntityOperation, EntityQuery, EntityRange, MetadataOperation,
-};
+use crate::components::store::{EntityKey, EntityOperation, MetadataOperation};
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::store::{Entity, NodeId, Value};
 use crate::data::subgraph::SubgraphManifest;
@@ -83,19 +81,6 @@ impl From<MetadataType> for String {
 pub trait TypedEntity {
     const TYPENAME: MetadataType;
     type IdType: ToString;
-
-    fn query() -> EntityQuery {
-        let range = EntityRange {
-            first: None,
-            skip: 0,
-        };
-        EntityQuery::new(
-            SUBGRAPHS_ID.clone(),
-            BLOCK_NUMBER_MAX,
-            EntityCollection::All(vec![Self::TYPENAME.to_string()]),
-        )
-        .range(range)
-    }
 }
 
 // See also: ed42d219c6704a4aab57ce1ea66698e7.

@@ -258,6 +258,10 @@ impl StoreTrait for NetworkStore {
     fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
         self.store.assigned_node(id)
     }
+
+    fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+        self.store.assignments(node)
+    }
 }
 
 impl SubgraphDeploymentStore for NetworkStore {

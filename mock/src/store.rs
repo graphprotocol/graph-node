@@ -232,6 +232,10 @@ impl Store for MockStore {
     fn assigned_node(&self, _: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
         unimplemented!()
     }
+
+    fn assignments(&self, _: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+        unimplemented!()
+    }
 }
 
 pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId) {
