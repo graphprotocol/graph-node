@@ -288,7 +288,7 @@ pub fn collect_entities_from_query_field(
     schema: &s::Document,
     object_type: &s::ObjectType,
     field: &q::Field,
-) -> Vec<(SubgraphDeploymentId, String)> {
+) -> Vec<SubscriptionFilter> {
     // Output entities
     let mut entities = HashSet::new();
 
@@ -328,7 +328,10 @@ pub fn collect_entities_from_query_field(
         }
     }
 
-    entities.into_iter().collect()
+    entities
+        .into_iter()
+        .map(|(id, entity_type)| SubscriptionFilter::Entities(id, entity_type))
+        .collect()
 }
 
 #[cfg(test)]

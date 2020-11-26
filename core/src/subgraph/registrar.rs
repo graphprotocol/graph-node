@@ -151,9 +151,7 @@ where
         let logger = self.logger.clone();
 
         store
-            .subscribe(vec![
-                SubgraphDeploymentAssignmentEntity::subgraph_entity_pair(),
-            ])
+            .subscribe(vec![SubgraphDeploymentAssignmentEntity::as_filter()])
             .map_err(|()| format_err!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we

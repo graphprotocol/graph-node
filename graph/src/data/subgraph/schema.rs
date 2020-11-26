@@ -97,8 +97,8 @@ pub trait TypedEntity {
         .range(range)
     }
 
-    fn subgraph_entity_pair() -> SubscriptionFilter {
-        (SUBGRAPHS_ID.clone(), Self::TYPENAME.to_string())
+    fn as_filter() -> SubscriptionFilter {
+        SubscriptionFilter::Entities(SUBGRAPHS_ID.clone(), Self::TYPENAME.to_string())
     }
 }
 

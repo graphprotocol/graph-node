@@ -392,8 +392,8 @@ impl EntityChange {
         }
     }
 
-    pub fn subgraph_entity_pair(&self) -> SubscriptionFilter {
-        (self.subgraph_id.clone(), self.entity_type.clone())
+    pub fn as_filter(&self) -> SubscriptionFilter {
+        SubscriptionFilter::Entities(self.subgraph_id.clone(), self.entity_type.clone())
     }
 }
 
@@ -534,15 +534,12 @@ where
     /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
     /// at least one change to one of the given (subgraph, entity) combinations
     /// will be delivered by the filtered stream.
-    pub fn filter_by_entities(self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
+    pub fn filter_by_entities(self, filters: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         let source = self.source.filter(move |event| {
-            event.changes.iter().any({
-                |change| {
-                    entities.iter().any(|(subgraph_id, entity_type)| {
-                        subgraph_id == &change.subgraph_id && entity_type == &change.entity_type
-                    })
-                }
-            })
+            event
+                .changes
+                .iter()
+                .any(|change| filters.iter().any(|filter| filter.matches(change)))
         });
 
         StoreEventStream::new(Box::new(source))

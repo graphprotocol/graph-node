@@ -1,5 +1,5 @@
-use crate::data::subgraph::SubgraphDeploymentId;
 use crate::prelude::{format_err, CacheWeight, EntityKey, QueryExecutionError};
+use crate::{data::subgraph::SubgraphDeploymentId, prelude::EntityChange};
 use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
@@ -21,8 +21,22 @@ pub mod scalar;
 // Ethereum compatibility.
 pub mod ethereum;
 
-/// A pair of subgraph ID and entity type name.
-pub type SubscriptionFilter = (SubgraphDeploymentId, String);
+/// Filter subscriptions
+pub enum SubscriptionFilter {
+    /// Receive updates about all entities from the given deployment of the
+    /// given type
+    Entities(SubgraphDeploymentId, String),
+}
+
+impl SubscriptionFilter {
+    pub fn matches(&self, change: &EntityChange) -> bool {
+        match self {
+            Self::Entities(id, entity_type) => {
+                &change.subgraph_id == id && &change.entity_type == entity_type
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);

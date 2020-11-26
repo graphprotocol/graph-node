@@ -1007,8 +1007,8 @@ fn subscribe_and_consume(
     const MARKER_ID: &str = "fake marker to skip previous events";
 
     let subscription = store.subscribe(vec![
-        (subgraph.clone(), entity_type.to_owned()),
-        (SUBGRAPHS_ID.clone(), MARKER.to_string()),
+        SubscriptionFilter::Entities(subgraph.clone(), entity_type.to_owned()),
+        SubscriptionFilter::Entities(SUBGRAPHS_ID.clone(), MARKER.to_string()),
     ]);
 
     // Generate fake activity on the stream by removing a nonexistent entity and
