@@ -829,7 +829,7 @@ impl Layout {
             }
         }
 
-        crate::deployment::revert_subgraph_errors(conn, &self.subgraph, block)?;
+        crate::deployment::revert_subgraph_errors(conn, &subgraph, block)?;
 
         Ok(())
     }

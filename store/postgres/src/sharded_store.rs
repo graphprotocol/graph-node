@@ -118,9 +118,9 @@ impl ShardedStore {
     // Only needed for tests
     #[cfg(debug_assertions)]
     #[allow(dead_code)]
-    pub(crate) fn clear_storage_cache(&self) {
+    pub(crate) fn clear_layout_cache(&self) {
         for store in self.stores.values() {
-            store.storage_cache.lock().unwrap().clear();
+            store.layout_cache.lock().unwrap().clear();
         }
     }
 
@@ -331,7 +331,7 @@ impl ShardedStore {
             let conn = store.get_conn()?;
             conn.batch_execute(query)?;
         }
-        self.clear_storage_cache();
+        self.clear_layout_cache();
         Ok(())
     }
 }

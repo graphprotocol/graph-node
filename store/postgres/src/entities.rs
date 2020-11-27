@@ -55,12 +55,12 @@ pub const STRING_PREFIX_SIZE: usize = 256;
 /// Marker trait for tables that store entities
 pub(crate) trait EntitySource {}
 
-/// A cache for storage objects as constructing them takes a bit of
+/// A cache for layout objects as constructing them takes a bit of
 /// computation. The cache lives as an attribute on the Store, but is managed
 /// solely from this module
-pub(crate) type StorageCache = Mutex<HashMap<SubgraphDeploymentId, Arc<Layout>>>;
+pub(crate) type LayoutCache = Mutex<HashMap<SubgraphDeploymentId, Arc<Layout>>>;
 
-pub(crate) fn make_storage_cache() -> StorageCache {
+pub(crate) fn make_layout_cache() -> LayoutCache {
     Mutex::new(HashMap::new())
 }
 
@@ -74,29 +74,28 @@ pub(crate) fn make_storage_cache() -> StorageCache {
 #[derive(Constructor)]
 pub struct Connection<'a> {
     pub conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
-    /// The storage of the subgraph we are dealing with; entities
+    /// The layout of the actual subgraph data; entities
     /// go into this
-    storage: Arc<Layout>,
-    /// The layout of the subgraph of subgraphs where we keep subgraph
-    /// metadata
+    data: Arc<Layout>,
+    /// The layout of the metdata
     metadata: Arc<Layout>,
     /// The subgraph that is accessible through this connection
     subgraph: SubgraphDeploymentId,
 }
 
 impl Connection<'_> {
-    /// Return the storage for `key`, which must refer either to the subgraph
+    /// Return the layout for `key`, which must refer either to the subgraph
     /// for this connection, or the metadata subgraph.
     ///
     /// # Panics
     ///
     /// If `key` does not reference the connection's subgraph or the metadata
     /// subgraph
-    fn storage_for(&self, key: &EntityKey) -> &Layout {
+    fn layout_for(&self, key: &EntityKey) -> &Layout {
         if key.subgraph_id == *SUBGRAPHS_ID {
             self.metadata.as_ref()
         } else if &key.subgraph_id == &self.subgraph {
-            self.storage.as_ref()
+            self.data.as_ref()
         } else {
             panic!(
                 "A connection can only be used with one subgraph and \
@@ -114,7 +113,7 @@ impl Connection<'_> {
         graft_base: Option<(Site, EthereumBlockPointer)>,
     ) -> Result<(), StoreError> {
         if let Some((base, block)) = graft_base {
-            let layout = &self.storage;
+            let layout = &self.data;
             let start = Instant::now();
             let base_layout =
                 &Connection::layout(&self.conn, base.namespace.clone(), &base.deployment)?;
@@ -142,7 +141,7 @@ impl Connection<'_> {
         id: &String,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        self.storage.find(&self.conn, entity, id, block)
+        self.data.find(&self.conn, entity, id, block)
     }
 
     /// Returns a sequence of `(type, entity)`.
@@ -152,7 +151,7 @@ impl Connection<'_> {
         ids_for_type: BTreeMap<&str, Vec<&str>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
-        self.storage.find_many(&self.conn, ids_for_type, block)
+        self.data.find_many(&self.conn, ids_for_type, block)
     }
 
     pub(crate) fn query<T: crate::relational_queries::FromEntityData>(
@@ -165,7 +164,7 @@ impl Connection<'_> {
         block: BlockNumber,
         query_id: Option<String>,
     ) -> Result<Vec<T>, QueryExecutionError> {
-        self.storage.query(
+        self.data.query(
             logger, &self.conn, collection, filter, order, range, block, query_id,
         )
     }
@@ -175,7 +174,7 @@ impl Connection<'_> {
         entity_id: &String,
         entities: Vec<&String>,
     ) -> Result<Option<String>, StoreError> {
-        self.storage
+        self.data
             .conflicting_entity(&self.conn, entity_id, entities)
     }
 
@@ -185,7 +184,7 @@ impl Connection<'_> {
         entity: Entity,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
-        let layout = &self.storage_for(key);
+        let layout = &self.layout_for(key);
         match ptr {
             Some(ptr) => layout.insert(&self.conn, key, entity, block_number(ptr)),
             None => layout.insert_unversioned(&self.conn, key, entity),
@@ -201,7 +200,7 @@ impl Connection<'_> {
         entity: Entity,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
-        let layout = &self.storage_for(key);
+        let layout = &self.layout_for(key);
         match ptr {
             Some(ptr) => layout.update(&self.conn, key, entity, block_number(&ptr)),
             None => layout
@@ -225,7 +224,7 @@ impl Connection<'_> {
         key: &EntityKey,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<usize, StoreError> {
-        let layout = &self.storage_for(key);
+        let layout = &self.layout_for(key);
         match ptr {
             Some(ptr) => layout.delete(&self.conn, key, block_number(&ptr)),
             None => layout.delete_unversioned(&self.conn, key),
@@ -244,9 +243,7 @@ impl Connection<'_> {
             .expect("block numbers fit into an i32");
 
         // Revert the block in the subgraph itself
-        let (event, count) = self
-            .storage
-            .revert_block(&self.conn, &self.subgraph, block)?;
+        let (event, count) = self.data.revert_block(&self.conn, &self.subgraph, block)?;
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
         // importantly creation of dynamic data sources. We ensure in the
@@ -262,7 +259,7 @@ impl Connection<'_> {
             return Ok(());
         }
 
-        let count_query = self.storage.count_query.as_str();
+        let count_query = self.data.count_query.as_str();
 
         // The big complication in this query is how to determine what the
         // new entityCount should be. We want to make sure that if the entityCount
@@ -341,10 +338,10 @@ impl Connection<'_> {
     }
 
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {
-        self.storage.tables.contains_key(POI_OBJECT)
+        self.data.tables.contains_key(POI_OBJECT)
     }
 
-    /// Look up the schema for `subgraph` and return its entity storage.
+    /// Look up the schema for `subgraph` and return its entity layout.
     /// Returns an error if `subgraph` does not have an entry in
     /// `deployment_schemas`, which can only happen if `create_schema` was not
     /// called for that `subgraph`

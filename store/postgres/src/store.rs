@@ -171,10 +171,10 @@ pub struct StoreInner {
     /// A cache of commonly needed data about a subgraph.
     subgraph_cache: Mutex<LruCache<SubgraphDeploymentId, SubgraphInfo>>,
 
-    /// A cache for the storage metadata for subgraphs. The Store just
+    /// A cache for the layout metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
-    pub(crate) storage_cache: e::StorageCache,
+    pub(crate) layout_cache: e::LayoutCache,
 
     registry: Arc<dyn MetricsRegistry>,
 }
@@ -237,7 +237,7 @@ impl Store {
             replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
-            storage_cache: e::make_storage_cache(),
+            layout_cache: e::make_layout_cache(),
             registry,
         };
         let store = Store(Arc::new(store));
@@ -606,11 +606,11 @@ impl Store {
                 .inc_by(start.elapsed().as_secs_f64());
 
             cancel_handle.check_cancel()?;
-            let storage = store.storage(&conn, &site.namespace, &site.deployment)?;
+            let layout = store.layout(&conn, &site.namespace, &site.deployment)?;
             cancel_handle.check_cancel()?;
-            let metadata = store.storage(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
+            let metadata = store.layout(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
             cancel_handle.check_cancel()?;
-            let conn = e::Connection::new(conn.into(), storage, metadata, site.deployment.clone());
+            let conn = e::Connection::new(conn.into(), layout, metadata, site.deployment.clone());
 
             f(&conn, cancel_handle)
         })
@@ -652,8 +652,8 @@ impl Store {
                 site.deployment.as_str(),
             )?
             .inc_by(start.elapsed().as_secs_f64());
-        let storage = self.storage(&conn, &site.namespace, &site.deployment)?;
-        let metadata = self.storage(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
+        let storage = self.layout(&conn, &site.namespace, &site.deployment)?;
+        let metadata = self.layout(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
         Ok(e::Connection::new(
             conn.into(),
             storage,
@@ -669,31 +669,31 @@ impl Store {
         }
     }
 
-    /// Return the storage for the subgraph. Since constructing a `Storage`
-    /// object takes a bit of computation, we cache storage objects that do
+    /// Return the layout for the subgraph. Since constructing a `Layout`
+    /// object takes a bit of computation, we cache layout objects that do
     /// not have a pending migration in the Store, i.e., for the lifetime of
-    /// the Store. Storage objects with a pending migration can not be
+    /// the Store. Layout objects with a pending migration can not be
     /// cached for longer than a transaction since they might change
     /// without us knowing
-    pub(crate) fn storage(
+    pub(crate) fn layout(
         &self,
         conn: &PgConnection,
         namespace: &Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Arc<Layout>, StoreError> {
-        if let Some(storage) = self.storage_cache.lock().unwrap().get(subgraph) {
-            return Ok(storage.clone());
+        if let Some(layout) = self.layout_cache.lock().unwrap().get(subgraph) {
+            return Ok(layout.clone());
         }
 
-        let storage = Arc::new(e::Connection::layout(conn, namespace.clone(), subgraph)?);
-        if storage.is_cacheable() {
+        let layout = Arc::new(e::Connection::layout(conn, namespace.clone(), subgraph)?);
+        if layout.is_cacheable() {
             &self
-                .storage_cache
+                .layout_cache
                 .lock()
                 .unwrap()
-                .insert(subgraph.clone(), storage.clone());
+                .insert(subgraph.clone(), layout.clone());
         }
-        Ok(storage.clone())
+        Ok(layout.clone())
     }
 
     fn subgraph_info_with_conn(

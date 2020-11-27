@@ -90,9 +90,9 @@ table! {
     }
 }
 
-/// We used to support different storage schemes. The old 'Split' scheme
-/// which used JSONB storage has been removed, and we will only deal
-/// with relational storage. Trying to do anything with a 'Split' subgraph
+/// We used to support different layout schemes. The old 'Split' scheme
+/// which used JSONB layout has been removed, and we will only deal
+/// with relational layout. Trying to do anything with a 'Split' subgraph
 /// will result in an error.
 #[derive(DbEnum, Debug, Clone, Copy)]
 pub enum DeploymentSchemaVersion {
@@ -106,7 +106,7 @@ table! {
         subgraph -> Text,
         name -> Text,
         shard -> Text,
-        /// The subgraph storage scheme used for this subgraph
+        /// The subgraph layout scheme used for this subgraph
         version -> crate::primary::DeploymentSchemaVersionMapping,
     }
 }
@@ -589,7 +589,7 @@ impl Connection {
         if let Some(Schema { version, .. }) = schema {
             if matches!(version, DeploymentSchemaVersion::Split) {
                 return Err(StoreError::ConstraintViolation(format!(
-                    "the subgraph {} uses JSONB storage which is not supported any longer",
+                    "the subgraph {} uses JSONB layout which is not supported any longer",
                     subgraph.as_str()
                 )));
             }
