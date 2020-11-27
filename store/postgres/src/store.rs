@@ -301,7 +301,9 @@ impl Store {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.subgraph_info(&key.subgraph_id)?.api;
+        let schema = self
+            .subgraph_info_with_conn(&conn.conn, &key.subgraph_id)?
+            .api;
         let types_for_interface = schema.types_for_interface();
         let types_with_shared_interface = Vec::from_iter(
             schema
@@ -694,15 +696,15 @@ impl Store {
         Ok(storage.clone())
     }
 
-    pub(crate) fn subgraph_info(
+    fn subgraph_info_with_conn(
         &self,
+        conn: &PgConnection,
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<SubgraphInfo, Error> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }
 
-        let conn = self.get_conn()?;
         let input_schema = deployment::schema(&conn, subgraph_id.to_owned())?;
         let network = if subgraph_id.is_meta() {
             // The subgraph of subgraphs schema is built-in. Use an impossible
@@ -738,6 +740,18 @@ impl Store {
         cache.insert(subgraph_id.clone(), info);
 
         Ok(cache.get(&subgraph_id).unwrap().clone())
+    }
+
+    pub(crate) fn subgraph_info(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<SubgraphInfo, Error> {
+        if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
+            return Ok(info.clone());
+        }
+
+        let conn = self.get_conn()?;
+        self.subgraph_info_with_conn(&conn, subgraph_id)
     }
 
     fn block_ptr_with_conn(
@@ -1059,7 +1073,8 @@ impl Store {
             panic!("revert_block_operations must revert a single block only");
         }
         // Don't revert past a graft point
-        let info = self.subgraph_info(&site.deployment)?;
+        let econn = self.get_entity_conn(site, ReplicaId::Main)?;
+        let info = self.subgraph_info_with_conn(&econn.conn, &site.deployment)?;
         if let Some(graft_block) = info.graft_block {
             if graft_block as u64 > block_ptr_to.number {
                 return Err(format_err!(
@@ -1074,7 +1089,6 @@ impl Store {
             }
         }
 
-        let econn = self.get_entity_conn(site, ReplicaId::Main)?;
         let event = econn.transaction(|| -> Result<_, StoreError> {
             assert_eq!(
                 Some(block_ptr_from),
