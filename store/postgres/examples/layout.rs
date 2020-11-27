@@ -92,7 +92,7 @@ fn print_views(layout: &Layout) {
             }
             print!(" as {}", column.name.as_str());
         }
-        println!("\n  from {}.entities", layout.catalog.schema);
+        println!("\n  from {}.entities", layout.catalog.namespace);
         println!(" where entity = '{}';", table.object);
     }
 }

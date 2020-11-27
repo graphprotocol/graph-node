@@ -196,8 +196,6 @@ type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 pub struct Layout {
     /// Maps the GraphQL name of a type to the relational table
     pub tables: HashMap<String, Arc<Table>>,
-    /// The subgraph id
-    pub subgraph: SubgraphDeploymentId,
     /// The database schema for this subgraph
     pub catalog: Catalog,
     /// Enums defined in the schema and their possible values. The names
@@ -304,7 +302,7 @@ impl Layout {
             .map(|table| {
                 format!(
                     "select count(*) from \"{}\".\"{}\" where upper_inf(block_range)",
-                    &catalog.schema, table.name
+                    &catalog.namespace, table.name
                 )
             })
             .collect::<Vec<_>>()
@@ -319,7 +317,6 @@ impl Layout {
             });
 
         Ok(Layout {
-            subgraph: schema.id.clone(),
             catalog,
             tables,
             enums,
@@ -331,7 +328,7 @@ impl Layout {
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
             object: POI_OBJECT.to_owned(),
-            qualified_name: SqlName::qualified_name(&catalog.schema, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
             name: table_name,
             columns: vec![
                 Column {
@@ -368,7 +365,7 @@ impl Layout {
         schema: &Schema,
         namespace: Namespace,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(conn, namespace)?;
+        let catalog = Catalog::new(conn, namespace.clone())?;
         let layout = Self::new(schema, catalog, true)?;
         let sql = layout
             .as_ddl()
@@ -381,17 +378,21 @@ impl Layout {
         &self,
         logger: &Logger,
         conn: &PgConnection,
-        base: &Layout,
+        dest_subgraph: &SubgraphDeploymentId,
+        base_layout: &Layout,
+        base_subgraph: &SubgraphDeploymentId,
         block: EthereumBlockPointer,
         metadata: &Layout,
     ) -> Result<(), StoreError> {
         // This can not be used to copy data to or from the metadata subgraph
-        assert!(!self.subgraph.is_meta());
-        assert!(!base.subgraph.is_meta());
+        assert!(!self.catalog.namespace.is_metadata());
+        assert!(!base_layout.catalog.namespace.is_metadata());
 
         info!(
             logger,
-            "Initializing graft by copying data from {} to {}", base.subgraph, self.subgraph
+            "Initializing graft by copying data from {} to {}",
+            base_layout.catalog.namespace,
+            self.catalog.namespace
         );
 
         // 1. Copy subgraph data
@@ -402,7 +403,7 @@ impl Layout {
         for (dst, src) in self
             .tables
             .values()
-            .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
+            .filter_map(|dst| base_layout.table(&dst.name).map(|src| (dst, src)))
         {
             let start = Instant::now();
             let count = rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
@@ -416,15 +417,15 @@ impl Layout {
         let start = Instant::now();
         let dds = decds::table
             .select(decds::id)
-            .filter(decds::deployment.eq(base.subgraph.as_str()))
+            .filter(decds::deployment.eq(base_subgraph.as_str()))
             .load::<String>(conn)?;
         // Create an equal number of brand new ids
         let new_dds = (0..dds.len())
             .map(|_| DynamicEthereumContractDataSourceEntity::make_id())
             .collect::<Vec<_>>();
         // Copy the data sources and all their subordinate entities, translating
-        // ids into new ids in the process and attaching them to `self.subgraph`
-        rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, self.subgraph.as_str())
+        // ids into new ids in the process and attaching them to `dest_subgraph`
+        rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, dest_subgraph.as_str())
             .execute(conn)?;
         info!(logger, "Copied {} dynamic data sources", dds.len();
               "time_ms" => start.elapsed().as_millis());
@@ -436,8 +437,8 @@ impl Layout {
         let block_to_revert: BlockNumber = (block.number + 1)
             .try_into()
             .expect("block numbers fit into an i32");
-        self.revert_block(conn, block_to_revert)?;
-        metadata.revert_metadata(conn, &self.subgraph, block_to_revert)?;
+        self.revert_block(conn, dest_subgraph, block_to_revert)?;
+        metadata.revert_metadata(conn, dest_subgraph, block_to_revert)?;
         info!(logger, "Rewound subgraph to block {}", block.number;
               "time_ms" => start.elapsed().as_millis());
         Ok(())
@@ -475,7 +476,7 @@ impl Layout {
             write!(
                 out,
                 "create type {}.{}\n    as enum (",
-                self.catalog.schema,
+                self.catalog.namespace,
                 name.quoted()
             )?;
             for value in values.iter() {
@@ -537,7 +538,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            namespace: &self.catalog.schema,
+            namespace: &self.catalog.namespace,
             ids_for_type,
             tables,
             block,
@@ -726,6 +727,7 @@ impl Layout {
     pub fn revert_block(
         &self,
         conn: &PgConnection,
+        subgraph_id: &SubgraphDeploymentId,
         block: BlockNumber,
     ) -> Result<(StoreEvent, i32), StoreError> {
         let mut changes: Vec<EntityChange> = Vec::new();
@@ -760,7 +762,7 @@ impl Layout {
                 .into_iter()
                 .filter(|id| !unclamped.contains(id))
                 .map(|id| EntityChange {
-                    subgraph_id: self.subgraph.clone(),
+                    subgraph_id: subgraph_id.clone(),
                     entity_type: table.object.clone(),
                     entity_id: id,
                     operation: EntityChangeOperation::Removed,
@@ -768,7 +770,7 @@ impl Layout {
             changes.extend(deleted);
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|id| EntityChange {
-                subgraph_id: self.subgraph.clone(),
+                subgraph_id: subgraph_id.clone(),
                 entity_type: table.object.clone(),
                 entity_id: id,
                 operation: EntityChangeOperation::Set,
@@ -790,7 +792,7 @@ impl Layout {
         subgraph: &SubgraphDeploymentId,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        assert!(self.subgraph.is_meta());
+        assert!(self.catalog.namespace.is_metadata());
         const DDS: MetadataType = MetadataType::DynamicEthereumContractDataSource;
 
         // Delete dynamic data sources for this subgraph at the given block
@@ -909,7 +911,7 @@ impl ColumnType {
         if let Some(values) = enums.get(&*name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
-            let name = SqlName::qualified_name(&catalog.schema, &SqlName::from(name));
+            let name = SqlName::qualified_name(&catalog.namespace, &SqlName::from(name));
             if is_existing_text_column {
                 // We used to have a bug where columns that should have really
                 // been of an enum type were created as text columns. To make
@@ -1179,11 +1181,11 @@ impl Table {
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let is_account_like =
-            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.schema, table_name));
+            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.namespace, table_name));
         let table = Table {
             object: defn.name.clone(),
             name: table_name.clone(),
-            qualified_name: SqlName::qualified_name(&catalog.schema, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
             is_account_like,
             columns,
             position,
@@ -1248,7 +1250,7 @@ impl Table {
         writeln!(
             out,
             "create table {}.{} (",
-            layout.catalog.schema,
+            layout.catalog.namespace,
             self.name.quoted()
         )?;
         for column in self.columns.iter() {
@@ -1291,7 +1293,7 @@ impl Table {
                     on {schema_name}.{table_name}\n \
                        using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
             table_name = self.name,
-            schema_name = layout.catalog.schema,
+            schema_name = layout.catalog.namespace,
             block_max = BLOCK_NUMBER_MAX)?;
 
         // Add a BTree index that helps with the `RevertClampQuery` by making
@@ -1302,7 +1304,7 @@ impl Table {
                      on {schema_name}.{table_name}(coalesce(upper(block_range), {block_max}))\n \
                      where coalesce(upper(block_range), {block_max}) < {block_max};\n",
             table_name = self.name,
-            schema_name = layout.catalog.schema,
+            schema_name = layout.catalog.namespace,
             block_max = BLOCK_NUMBER_MAX
         )?;
 
@@ -1348,7 +1350,7 @@ impl Table {
                 table_name = self.name,
                 column_index = i,
                 column_name = column.name,
-                schema_name = layout.catalog.schema,
+                schema_name = layout.catalog.namespace,
                 method = method,
                 index_expr = index_expr,
             )?;

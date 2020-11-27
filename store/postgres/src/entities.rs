@@ -80,6 +80,8 @@ pub struct Connection<'a> {
     /// The layout of the subgraph of subgraphs where we keep subgraph
     /// metadata
     metadata: Arc<Layout>,
+    /// The subgraph that is accessible through this connection
+    subgraph: SubgraphDeploymentId,
 }
 
 impl Connection<'_> {
@@ -93,14 +95,14 @@ impl Connection<'_> {
     fn storage_for(&self, key: &EntityKey) -> &Layout {
         if key.subgraph_id == *SUBGRAPHS_ID {
             self.metadata.as_ref()
-        } else if &key.subgraph_id == &self.storage.subgraph {
+        } else if &key.subgraph_id == &self.subgraph {
             self.storage.as_ref()
         } else {
             panic!(
                 "A connection can only be used with one subgraph and \
                  the metadata subgraph.\nThe connection for {} is also \
                  used with {}",
-                self.storage.subgraph, key.subgraph_id
+                self.subgraph, key.subgraph_id
             );
         }
     }
@@ -114,11 +116,20 @@ impl Connection<'_> {
         if let Some((base, block)) = graft_base {
             let layout = &self.storage;
             let start = Instant::now();
-            let base = &Connection::layout(&self.conn, &base.namespace, &base.deployment)?;
-            layout.copy_from(logger, &self.conn, &base, block, &self.metadata)?;
+            let base_layout =
+                &Connection::layout(&self.conn, base.namespace.clone(), &base.deployment)?;
+            layout.copy_from(
+                logger,
+                &self.conn,
+                &self.subgraph,
+                &base_layout,
+                &base.deployment,
+                block,
+                &self.metadata,
+            )?;
             // Set the block ptr to the graft point to signal that we successfully
             // performed the graft
-            deployment::forward_block_ptr(&self.conn, &self.storage.subgraph, block.clone())?;
+            deployment::forward_block_ptr(&self.conn, &self.subgraph, block.clone())?;
             info!(logger, "Subgraph successfully initialized";
             "time_ms" => start.elapsed().as_millis());
         }
@@ -233,14 +244,16 @@ impl Connection<'_> {
             .expect("block numbers fit into an i32");
 
         // Revert the block in the subgraph itself
-        let (event, count) = self.storage.revert_block(&self.conn, block)?;
+        let (event, count) = self
+            .storage
+            .revert_block(&self.conn, &self.subgraph, block)?;
         // Revert the meta data changes that correspond to this subgraph.
         // Only certain meta data changes need to be reverted, most
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
         self.metadata
-            .revert_metadata(&self.conn, &self.storage.subgraph, block)?;
+            .revert_metadata(&self.conn, &self.subgraph, block)?;
         Ok((event, count))
     }
 
@@ -278,7 +291,7 @@ impl Connection<'_> {
         let conn: &PgConnection = &self.conn;
         Ok(diesel::sql_query(query)
             .bind::<Integer, _>(count)
-            .bind::<Text, _>(self.storage.subgraph.as_str())
+            .bind::<Text, _>(self.subgraph.as_str())
             .execute(conn)
             .map(|_| ())?)
     }
@@ -308,15 +321,18 @@ impl Connection<'_> {
         let layout = Layout::create_relational_schema(&self.conn, schema, namespace)?;
         // See if we are grafting and check that the graft is permissible
         if let Some(graft_site) = graft_site {
-            let base =
-                &Connection::layout(&self.conn, &graft_site.namespace, &graft_site.deployment)?;
+            let base = &Connection::layout(
+                &self.conn,
+                graft_site.namespace.clone(),
+                &graft_site.deployment,
+            )?;
             let errors = layout.can_copy_from(&base);
             if !errors.is_empty() {
                 return Err(StoreError::Unknown(format_err!(
                     "The subgraph `{}` cannot be used as the graft base \
                                         for `{}` because the schemas are incompatible:\n    - {}",
-                    &base.subgraph,
-                    &layout.subgraph,
+                    &base.catalog.namespace,
+                    &layout.catalog.namespace,
                     errors.join("\n    - ")
                 )));
             }
@@ -334,12 +350,12 @@ impl Connection<'_> {
     /// called for that `subgraph`
     pub(crate) fn layout(
         conn: &PgConnection,
-        namespace: &Namespace,
+        namespace: Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Layout, StoreError> {
         let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
-        let has_poi = supports_proof_of_indexing(conn, subgraph, namespace)?;
-        let catalog = Catalog::new(conn, namespace.clone())?;
+        let has_poi = supports_proof_of_indexing(conn, subgraph, &namespace)?;
+        let catalog = Catalog::new(conn, namespace)?;
         let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
 
         Ok(layout)

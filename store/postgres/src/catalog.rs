@@ -10,7 +10,7 @@ use crate::{primary::Namespace, relational::SqlName};
 /// Information about what tables and columns we have in the database
 #[derive(Debug, Clone)]
 pub struct Catalog {
-    pub schema: Namespace,
+    pub namespace: Namespace,
     text_columns: HashMap<String, HashSet<String>>,
 }
 
@@ -18,7 +18,7 @@ impl Catalog {
     pub fn new(conn: &PgConnection, namespace: Namespace) -> Result<Self, StoreError> {
         let text_columns = get_text_columns(conn, &namespace)?;
         Ok(Catalog {
-            schema: namespace,
+            namespace,
             text_columns,
         })
     }
@@ -28,7 +28,7 @@ impl Catalog {
     /// connection is definitely not available, such as in unit tests
     pub fn make_empty(namespace: Namespace) -> Result<Self, StoreError> {
         Ok(Catalog {
-            schema: namespace,
+            namespace,
             text_columns: HashMap::default(),
         })
     }

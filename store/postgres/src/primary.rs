@@ -154,6 +154,10 @@ impl Namespace {
         Ok(Namespace(s))
     }
 
+    pub fn is_metadata(&self) -> bool {
+        self == &*METADATA_NAMESPACE
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
