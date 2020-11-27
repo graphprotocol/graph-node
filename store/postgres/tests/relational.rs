@@ -10,7 +10,7 @@ use graph::prelude::{
     web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityQuery,
     EntityRange, Schema, SubgraphDeploymentId, Value, ValueType, BLOCK_NUMBER_MAX,
 };
-use graph_store_postgres::layout_for_tests::{Layout, STRING_PREFIX_SIZE};
+use graph_store_postgres::layout_for_tests::{Layout, Namespace, STRING_PREFIX_SIZE};
 
 use test_store::*;
 
@@ -107,11 +107,10 @@ const THINGS_GQL: &str = r#"
     }
 "#;
 
-const SCHEMA_NAME: &str = "layout";
-
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new("things").unwrap();
+    static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
     static ref LARGE_DECIMAL: BigDecimal =
         BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);
@@ -171,7 +170,7 @@ lazy_static! {
 
 /// Removes test data from the database behind the store.
 fn remove_test_data(conn: &PgConnection) {
-    let query = format!("drop schema if exists {} cascade", SCHEMA_NAME);
+    let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
 }
@@ -333,10 +332,10 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
 fn insert_test_data(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
-    let query = format!("create schema {}", SCHEMA_NAME);
+    let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME.to_owned())
+    Layout::create_relational_schema(&conn, &schema, NAMESPACE.to_owned())
         .expect("Failed to create relational schema")
 }
 

@@ -20,8 +20,8 @@ use graph::{
     data::subgraph::status,
     prelude::EthereumBlockPointer,
     prelude::{
-        entity, serde_json, EntityChange, EntityChangeOperation, MetadataOperation, NodeId,
-        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
+        entity, lazy_static, serde_json, EntityChange, EntityChangeOperation, MetadataOperation,
+        NodeId, StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 use graph::{
@@ -32,6 +32,7 @@ use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
     convert::TryInto,
+    fmt,
     iter::FromIterator,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -126,6 +127,44 @@ struct Schema {
     version: DeploymentSchemaVersion,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A namespace (schema) in the database
+pub struct Namespace(String);
+
+lazy_static! {
+    pub static ref METADATA_NAMESPACE: Namespace = Namespace(String::from("subgraphs"));
+}
+
+impl Namespace {
+    pub fn new(s: String) -> Result<Self, String> {
+        if s.as_str() == METADATA_NAMESPACE.as_str() {
+            return Ok(Namespace(s));
+        }
+
+        // Normal database namespaces must be of the form `sgd[0-9]+`
+        if !s.starts_with("sgd") || s.len() <= 3 {
+            return Err(s);
+        }
+        for c in s.chars().skip(3) {
+            if !c.is_numeric() {
+                return Err(s);
+            }
+        }
+
+        Ok(Namespace(s))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for Namespace {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Details about a deployment and the shard in which it is stored. We need
 /// the database namespace for the deployment as that information is only
 /// stored in the primary database
@@ -135,7 +174,7 @@ pub struct Site {
     /// The name of the database shard
     pub shard: Shard,
     /// The database namespace (schema) that holds the data for the deployment
-    pub namespace: String,
+    pub namespace: Namespace,
 }
 
 impl Site {
@@ -144,7 +183,7 @@ impl Site {
     pub fn meta(shard: Shard) -> Self {
         Site {
             deployment: SUBGRAPHS_ID.clone(),
-            namespace: SUBGRAPHS_ID.to_string(),
+            namespace: METADATA_NAMESPACE.clone(),
             shard,
         }
     }
@@ -154,12 +193,18 @@ impl TryFrom<Schema> for Site {
     type Error = StoreError;
 
     fn try_from(schema: Schema) -> Result<Self, Self::Error> {
-        let deployment = SubgraphDeploymentId::new(schema.subgraph)
+        let deployment = SubgraphDeploymentId::new(&schema.subgraph)
             .map_err(|s| StoreError::ConstraintViolation(format!("Invalid deployment id {}", s)))?;
+        let namespace = Namespace::new(schema.name.clone()).map_err(|nsp| {
+            StoreError::ConstraintViolation(format!(
+                "Invalid schema name {} for deployment {}",
+                nsp, &schema.subgraph
+            ))
+        })?;
         let shard = Shard::new(schema.shard)?;
         Ok(Self {
             deployment,
-            namespace: schema.name,
+            namespace,
             shard,
         })
     }
@@ -514,14 +559,20 @@ impl Connection {
             ))
             .returning(ds::name)
             .get_results(conn)?;
-        let name = schemas
+        let namespace = schemas
             .first()
             .cloned()
             .ok_or_else(|| format_err!("failed to read schema name for {} back", subgraph))?;
+        let namespace = Namespace::new(namespace).map_err(|name| {
+            StoreError::ConstraintViolation(format!(
+                "Generated database schema name {} is invalid",
+                name
+            ))
+        })?;
 
         Ok(Site {
             deployment: subgraph.clone(),
-            namespace: name,
+            namespace,
             shard,
         })
     }

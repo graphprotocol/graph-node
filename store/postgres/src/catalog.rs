@@ -5,21 +5,20 @@ use std::collections::{HashMap, HashSet};
 
 use graph::prelude::StoreError;
 
-use crate::relational::SqlName;
+use crate::{primary::Namespace, relational::SqlName};
 
 /// Information about what tables and columns we have in the database
 #[derive(Debug, Clone)]
 pub struct Catalog {
-    pub schema: String,
+    pub schema: Namespace,
     text_columns: HashMap<String, HashSet<String>>,
 }
 
 impl Catalog {
-    pub fn new(conn: &PgConnection, schema: String) -> Result<Self, StoreError> {
-        SqlName::check_valid_identifier(&schema, "database schema")?;
-        let text_columns = get_text_columns(conn, &schema)?;
+    pub fn new(conn: &PgConnection, namespace: Namespace) -> Result<Self, StoreError> {
+        let text_columns = get_text_columns(conn, &namespace)?;
         Ok(Catalog {
-            schema,
+            schema: namespace,
             text_columns,
         })
     }
@@ -27,10 +26,9 @@ impl Catalog {
     /// Make a catalog as if the given `schema` did not exist in the database
     /// yet. This function should only be used in situations where a database
     /// connection is definitely not available, such as in unit tests
-    pub fn make_empty(schema: String) -> Result<Self, StoreError> {
-        SqlName::check_valid_identifier(&schema, "database schema")?;
+    pub fn make_empty(namespace: Namespace) -> Result<Self, StoreError> {
         Ok(Catalog {
-            schema,
+            schema: namespace,
             text_columns: HashMap::default(),
         })
     }
@@ -47,7 +45,7 @@ impl Catalog {
 
 fn get_text_columns(
     conn: &PgConnection,
-    schema: &str,
+    namespace: &Namespace,
 ) -> Result<HashMap<String, HashSet<String>>, StoreError> {
     const QUERY: &str = "
         select table_name, column_name
@@ -63,7 +61,7 @@ fn get_text_columns(
     }
 
     let map: HashMap<String, HashSet<String>> = diesel::sql_query(QUERY)
-        .bind::<Text, _>(schema)
+        .bind::<Text, _>(namespace.as_str())
         .load::<Column>(conn)?
         .into_iter()
         .fold(HashMap::new(), |mut map, col| {

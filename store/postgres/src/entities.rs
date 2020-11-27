@@ -39,10 +39,10 @@ use graph::prelude::{
     SubgraphDeploymentId,
 };
 
-use crate::block_range::block_number;
 use crate::deployment;
 use crate::primary::Site;
 use crate::relational::{Catalog, Layout};
+use crate::{block_range::block_number, primary::Namespace};
 
 /// The size of string prefixes that we index. This is chosen so that we
 /// will index strings that people will do string comparisons like
@@ -298,14 +298,14 @@ impl Connection<'_> {
     /// of subgraphs
     pub(crate) fn create_schema(
         &self,
-        db_schema: String,
+        namespace: Namespace,
         schema: &SubgraphSchema,
         graft_site: Option<Site>,
     ) -> Result<(), StoreError> {
-        let query = format!("create schema {}", db_schema);
+        let query = format!("create schema {}", namespace);
         self.conn.batch_execute(&*query)?;
 
-        let layout = Layout::create_relational_schema(&self.conn, schema, db_schema.to_owned())?;
+        let layout = Layout::create_relational_schema(&self.conn, schema, namespace)?;
         // See if we are grafting and check that the graft is permissible
         if let Some(graft_site) = graft_site {
             let base =
@@ -334,12 +334,12 @@ impl Connection<'_> {
     /// called for that `subgraph`
     pub(crate) fn layout(
         conn: &PgConnection,
-        schema: &str,
+        namespace: &Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Layout, StoreError> {
         let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
-        let has_poi = supports_proof_of_indexing(conn, subgraph, schema)?;
-        let catalog = Catalog::new(conn, schema.to_string())?;
+        let has_poi = supports_proof_of_indexing(conn, subgraph, namespace)?;
+        let catalog = Catalog::new(conn, namespace.clone())?;
         let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
 
         Ok(layout)
@@ -349,7 +349,7 @@ impl Connection<'_> {
 fn supports_proof_of_indexing(
     conn: &diesel::pg::PgConnection,
     subgraph_id: &SubgraphDeploymentId,
-    schema: &str,
+    namespace: &Namespace,
 ) -> Result<bool, StoreError> {
     if subgraph_id == &*SUBGRAPHS_ID {
         return Ok(false);
@@ -362,7 +362,7 @@ fn supports_proof_of_indexing(
     let query =
         "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name=$2";
     let result: Vec<Table> = diesel::sql_query(query)
-        .bind::<Text, _>(schema)
+        .bind::<Text, _>(namespace.as_str())
         .bind::<Text, _>(POI_TABLE)
         .load(conn)?;
     Ok(result.len() > 0)

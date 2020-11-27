@@ -26,12 +26,13 @@ use graph::prelude::{
     QueryExecutionError, StoreError, Value,
 };
 
-use crate::block_range::{
-    BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
-};
 use crate::entities::STRING_PREFIX_SIZE;
 use crate::relational::{Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
+use crate::{
+    block_range::{BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
+    primary::Namespace,
+};
 
 lazy_static! {
     /// Use a variant of the query for child_type_a when we are looking up
@@ -1134,7 +1135,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
-    pub(crate) schema: &'a str,
+    pub(crate) namespace: &'a Namespace,
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.

@@ -53,7 +53,7 @@ pub mod db_schema_for_tests {
 pub mod layout_for_tests {
     pub use crate::block_range::*;
     pub use crate::entities::STRING_PREFIX_SIZE;
-    pub use crate::primary::{Connection, EVENT_TAP, EVENT_TAP_ENABLED};
+    pub use crate::primary::{Connection, Namespace, EVENT_TAP, EVENT_TAP_ENABLED};
     pub use crate::relational::*;
 }
 
@@ -72,5 +72,6 @@ pub mod command_support {
         pub use crate::primary::{deployment_schemas, subgraph, subgraph_version};
     }
     pub use crate::entities::Connection;
+    pub use crate::primary::Namespace;
     pub use crate::relational::{Catalog, Column, ColumnType, Layout};
 }

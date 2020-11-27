@@ -22,10 +22,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{
-    self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery,
-    DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
-    FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
+use crate::{
+    primary::Namespace,
+    relational_queries::{
+        self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery,
+        DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
+        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
+    },
 };
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
@@ -125,8 +128,8 @@ impl SqlName {
         SqlName(s)
     }
 
-    pub fn qualified_name(schema: &str, name: &SqlName) -> Self {
-        SqlName(format!("\"{}\".\"{}\"", schema, name.as_str()))
+    pub fn qualified_name(namespace: &Namespace, name: &SqlName) -> Self {
+        SqlName(format!("\"{}\".\"{}\"", namespace, name.as_str()))
     }
 }
 
@@ -363,9 +366,9 @@ impl Layout {
     pub fn create_relational_schema(
         conn: &PgConnection,
         schema: &Schema,
-        schema_name: String,
+        namespace: Namespace,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(conn, schema_name)?;
+        let catalog = Catalog::new(conn, namespace)?;
         let layout = Self::new(schema, catalog, true)?;
         let sql = layout
             .as_ddl()
@@ -534,7 +537,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            schema: &self.catalog.schema,
+            namespace: &self.catalog.schema,
             ids_for_type,
             tables,
             block,
@@ -1386,7 +1389,8 @@ mod tests {
     fn test_layout(gql: &str) -> Layout {
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph).expect("Test schema invalid");
-        let catalog = Catalog::make_empty("rel".to_owned()).expect("Can not create catalog");
+        let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
+        let catalog = Catalog::make_empty(namespace).expect("Can not create catalog");
         Layout::new(&schema, catalog, false).expect("Failed to construct Layout")
     }
 
@@ -1535,11 +1539,11 @@ mod tests {
             color: Color,
         }";
 
-    const THING_DDL: &str = "create type rel.\"color\"
+    const THING_DDL: &str = "create type sgd0815.\"color\"
     as enum ('BLUE', 'red', 'yellow');
-create type rel.\"size\"
+create type sgd0815.\"size\"
     as enum (\'large\', \'medium\', \'small\');
-create table rel.\"thing\" (
+create table sgd0815.\"thing\" (
         \"id\"                 text not null,
         \"big_thing\"          text not null,
 
@@ -1548,17 +1552,17 @@ create table rel.\"thing\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_thing
-    on rel.thing
+    on sgd0815.thing
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index thing_block_range_closed
-    on rel.thing(coalesce(upper(block_range), 2147483647))
+    on sgd0815.thing(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_thing_id
-    on rel.\"thing\" using btree(\"id\");
+    on sgd0815.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_big_thing
-    on rel.\"thing\" using gist(\"big_thing\", block_range);
+    on sgd0815.\"thing\" using gist(\"big_thing\", block_range);
 
-create table rel.\"scalar\" (
+create table sgd0815.\"scalar\" (
         \"id\"                 text not null,
         \"bool\"               boolean,
         \"int\"                integer,
@@ -1566,34 +1570,34 @@ create table rel.\"scalar\" (
         \"string\"             text,
         \"bytes\"              bytea,
         \"big_int\"            numeric,
-        \"color\"              \"rel\".\"color\",
+        \"color\"              \"sgd0815\".\"color\",
 
         vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_scalar
-    on rel.scalar
+    on sgd0815.scalar
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index scalar_block_range_closed
-    on rel.scalar(coalesce(upper(block_range), 2147483647))
+    on sgd0815.scalar(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_scalar_id
-    on rel.\"scalar\" using btree(\"id\");
+    on sgd0815.\"scalar\" using btree(\"id\");
 create index attr_1_1_scalar_bool
-    on rel.\"scalar\" using btree(\"bool\");
+    on sgd0815.\"scalar\" using btree(\"bool\");
 create index attr_1_2_scalar_int
-    on rel.\"scalar\" using btree(\"int\");
+    on sgd0815.\"scalar\" using btree(\"int\");
 create index attr_1_3_scalar_big_decimal
-    on rel.\"scalar\" using btree(\"big_decimal\");
+    on sgd0815.\"scalar\" using btree(\"big_decimal\");
 create index attr_1_4_scalar_string
-    on rel.\"scalar\" using btree(left(\"string\", 256));
+    on sgd0815.\"scalar\" using btree(left(\"string\", 256));
 create index attr_1_5_scalar_bytes
-    on rel.\"scalar\" using btree(\"bytes\");
+    on sgd0815.\"scalar\" using btree(\"bytes\");
 create index attr_1_6_scalar_big_int
-    on rel.\"scalar\" using btree(\"big_int\");
+    on sgd0815.\"scalar\" using btree(\"big_int\");
 create index attr_1_7_scalar_color
-    on rel.\"scalar\" using btree(\"color\");
+    on sgd0815.\"scalar\" using btree(\"color\");
 
 ";
 
@@ -1624,7 +1628,7 @@ type SongStat @entity {
     song: Song @derivedFrom(field: \"id\")
     played: Int!
 }";
-    const MUSIC_DDL: &str = "create table rel.\"musician\" (
+    const MUSIC_DDL: &str = "create table sgd0815.\"musician\" (
         \"id\"                 text not null,
         \"name\"               text not null,
         \"main_band\"          text,
@@ -1635,21 +1639,21 @@ type SongStat @entity {
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_musician
-    on rel.musician
+    on sgd0815.musician
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index musician_block_range_closed
-    on rel.musician(coalesce(upper(block_range), 2147483647))
+    on sgd0815.musician(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_musician_id
-    on rel.\"musician\" using btree(\"id\");
+    on sgd0815.\"musician\" using btree(\"id\");
 create index attr_0_1_musician_name
-    on rel.\"musician\" using btree(left(\"name\", 256));
+    on sgd0815.\"musician\" using btree(left(\"name\", 256));
 create index attr_0_2_musician_main_band
-    on rel.\"musician\" using gist(\"main_band\", block_range);
+    on sgd0815.\"musician\" using gist(\"main_band\", block_range);
 create index attr_0_3_musician_bands
-    on rel.\"musician\" using gin(\"bands\");
+    on sgd0815.\"musician\" using gin(\"bands\");
 
-create table rel.\"band\" (
+create table sgd0815.\"band\" (
         \"id\"                 text not null,
         \"name\"               text not null,
         \"original_songs\"     text[] not null,
@@ -1659,19 +1663,19 @@ create table rel.\"band\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_band
-    on rel.band
+    on sgd0815.band
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index band_block_range_closed
-    on rel.band(coalesce(upper(block_range), 2147483647))
+    on sgd0815.band(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_band_id
-    on rel.\"band\" using btree(\"id\");
+    on sgd0815.\"band\" using btree(\"id\");
 create index attr_1_1_band_name
-    on rel.\"band\" using btree(left(\"name\", 256));
+    on sgd0815.\"band\" using btree(left(\"name\", 256));
 create index attr_1_2_band_original_songs
-    on rel.\"band\" using gin(\"original_songs\");
+    on sgd0815.\"band\" using gin(\"original_songs\");
 
-create table rel.\"song\" (
+create table sgd0815.\"song\" (
         \"id\"                 text not null,
         \"title\"              text not null,
         \"written_by\"         text not null,
@@ -1681,19 +1685,19 @@ create table rel.\"song\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_song
-    on rel.song
+    on sgd0815.song
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index song_block_range_closed
-    on rel.song(coalesce(upper(block_range), 2147483647))
+    on sgd0815.song(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_song_id
-    on rel.\"song\" using btree(\"id\");
+    on sgd0815.\"song\" using btree(\"id\");
 create index attr_2_1_song_title
-    on rel.\"song\" using btree(left(\"title\", 256));
+    on sgd0815.\"song\" using btree(left(\"title\", 256));
 create index attr_2_2_song_written_by
-    on rel.\"song\" using gist(\"written_by\", block_range);
+    on sgd0815.\"song\" using gist(\"written_by\", block_range);
 
-create table rel.\"song_stat\" (
+create table sgd0815.\"song_stat\" (
         \"id\"                 text not null,
         \"played\"             integer not null,
 
@@ -1702,15 +1706,15 @@ create table rel.\"song_stat\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_song_stat
-    on rel.song_stat
+    on sgd0815.song_stat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index song_stat_block_range_closed
-    on rel.song_stat(coalesce(upper(block_range), 2147483647))
+    on sgd0815.song_stat(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_3_0_song_stat_id
-    on rel.\"song_stat\" using btree(\"id\");
+    on sgd0815.\"song_stat\" using btree(\"id\");
 create index attr_3_1_song_stat_played
-    on rel.\"song_stat\" using btree(\"played\");
+    on sgd0815.\"song_stat\" using btree(\"played\");
 
 ";
 
@@ -1735,7 +1739,7 @@ type Habitat @entity {
     dwellers: [ForestDweller!]!
 }";
 
-    const FOREST_DDL: &str = "create table rel.\"animal\" (
+    const FOREST_DDL: &str = "create table sgd0815.\"animal\" (
         \"id\"                 text not null,
         \"forest\"             text,
 
@@ -1744,17 +1748,17 @@ type Habitat @entity {
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_animal
-    on rel.animal
+    on sgd0815.animal
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index animal_block_range_closed
-    on rel.animal(coalesce(upper(block_range), 2147483647))
+    on sgd0815.animal(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_animal_id
-    on rel.\"animal\" using btree(\"id\");
+    on sgd0815.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_forest
-    on rel.\"animal\" using gist(\"forest\", block_range);
+    on sgd0815.\"animal\" using gist(\"forest\", block_range);
 
-create table rel.\"forest\" (
+create table sgd0815.\"forest\" (
         \"id\"                 text not null,
 
         vid                  bigserial primary key,
@@ -1762,15 +1766,15 @@ create table rel.\"forest\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_forest
-    on rel.forest
+    on sgd0815.forest
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index forest_block_range_closed
-    on rel.forest(coalesce(upper(block_range), 2147483647))
+    on sgd0815.forest(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_forest_id
-    on rel.\"forest\" using btree(\"id\");
+    on sgd0815.\"forest\" using btree(\"id\");
 
-create table rel.\"habitat\" (
+create table sgd0815.\"habitat\" (
         \"id\"                 text not null,
         \"most_common\"        text not null,
         \"dwellers\"           text[] not null,
@@ -1780,17 +1784,17 @@ create table rel.\"habitat\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_habitat
-    on rel.habitat
+    on sgd0815.habitat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index habitat_block_range_closed
-    on rel.habitat(coalesce(upper(block_range), 2147483647))
+    on sgd0815.habitat(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_habitat_id
-    on rel.\"habitat\" using btree(\"id\");
+    on sgd0815.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
-    on rel.\"habitat\" using gist(\"most_common\", block_range);
+    on sgd0815.\"habitat\" using gist(\"most_common\", block_range);
 create index attr_2_2_habitat_dwellers
-    on rel.\"habitat\" using gin(\"dwellers\");
+    on sgd0815.\"habitat\" using gin(\"dwellers\");
 
 ";
     const FULLTEXT_GQL: &str = "
@@ -1824,7 +1828,7 @@ type Habitat @entity {
     dwellers: [Animal!]!
 }";
 
-    const FULLTEXT_DDL: &str = "create table rel.\"animal\" (
+    const FULLTEXT_DDL: &str = "create table sgd0815.\"animal\" (
         \"id\"                 text not null,
         \"name\"               text not null,
         \"species\"            text not null,
@@ -1836,23 +1840,23 @@ type Habitat @entity {
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_animal
-    on rel.animal
+    on sgd0815.animal
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index animal_block_range_closed
-    on rel.animal(coalesce(upper(block_range), 2147483647))
+    on sgd0815.animal(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_animal_id
-    on rel.\"animal\" using btree(\"id\");
+    on sgd0815.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_name
-    on rel.\"animal\" using btree(left(\"name\", 256));
+    on sgd0815.\"animal\" using btree(left(\"name\", 256));
 create index attr_0_2_animal_species
-    on rel.\"animal\" using btree(left(\"species\", 256));
+    on sgd0815.\"animal\" using btree(left(\"species\", 256));
 create index attr_0_3_animal_forest
-    on rel.\"animal\" using gist(\"forest\", block_range);
+    on sgd0815.\"animal\" using gist(\"forest\", block_range);
 create index attr_0_4_animal_search
-    on rel.\"animal\" using gin(\"search\");
+    on sgd0815.\"animal\" using gin(\"search\");
 
-create table rel.\"forest\" (
+create table sgd0815.\"forest\" (
         \"id\"                 text not null,
 
         vid                  bigserial primary key,
@@ -1860,15 +1864,15 @@ create table rel.\"forest\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_forest
-    on rel.forest
+    on sgd0815.forest
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index forest_block_range_closed
-    on rel.forest(coalesce(upper(block_range), 2147483647))
+    on sgd0815.forest(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_forest_id
-    on rel.\"forest\" using btree(\"id\");
+    on sgd0815.\"forest\" using btree(\"id\");
 
-create table rel.\"habitat\" (
+create table sgd0815.\"habitat\" (
         \"id\"                 text not null,
         \"most_common\"        text not null,
         \"dwellers\"           text[] not null,
@@ -1878,17 +1882,17 @@ create table rel.\"habitat\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_habitat
-    on rel.habitat
+    on sgd0815.habitat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index habitat_block_range_closed
-    on rel.habitat(coalesce(upper(block_range), 2147483647))
+    on sgd0815.habitat(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_habitat_id
-    on rel.\"habitat\" using btree(\"id\");
+    on sgd0815.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
-    on rel.\"habitat\" using gist(\"most_common\", block_range);
+    on sgd0815.\"habitat\" using gist(\"most_common\", block_range);
 create index attr_2_2_habitat_dwellers
-    on rel.\"habitat\" using gin(\"dwellers\");
+    on sgd0815.\"habitat\" using gin(\"dwellers\");
 
 ";
 
@@ -1903,26 +1907,26 @@ enum Orientation {
 }
 ";
 
-    const FORWARD_ENUM_SQL: &str = "create type rel.\"orientation\"
+    const FORWARD_ENUM_SQL: &str = "create type sgd0815.\"orientation\"
     as enum (\'DOWN\', \'UP\');
-create table rel.\"thing\" (
+create table sgd0815.\"thing\" (
         \"id\"                 text not null,
-        \"orientation\"        \"rel\".\"orientation\" not null,
+        \"orientation\"        \"sgd0815\".\"orientation\" not null,
 
         vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_thing
-    on rel.thing
+    on sgd0815.thing
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index thing_block_range_closed
-    on rel.thing(coalesce(upper(block_range), 2147483647))
+    on sgd0815.thing(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_thing_id
-    on rel.\"thing\" using btree(\"id\");
+    on sgd0815.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_orientation
-    on rel.\"thing\" using btree(\"orientation\");
+    on sgd0815.\"thing\" using btree(\"orientation\");
 
 ";
 }

@@ -35,12 +35,12 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
-use crate::deployment;
-use crate::primary::Site;
+use crate::primary::{Site, METADATA_NAMESPACE};
 use crate::relational::Layout;
 use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
+use crate::{deployment, primary::Namespace};
 
 lazy_static! {
     static ref CONNECTION_LIMITER: Semaphore = {
@@ -606,7 +606,7 @@ impl Store {
             cancel_handle.check_cancel()?;
             let storage = store.storage(&conn, &site.namespace, &site.deployment)?;
             cancel_handle.check_cancel()?;
-            let metadata = store.storage(&conn, &*SUBGRAPHS_ID, &*SUBGRAPHS_ID)?;
+            let metadata = store.storage(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
             cancel_handle.check_cancel()?;
             let conn = e::Connection::new(conn.into(), storage, metadata);
 
@@ -651,7 +651,7 @@ impl Store {
             )?
             .inc_by(start.elapsed().as_secs_f64());
         let storage = self.storage(&conn, &site.namespace, &site.deployment)?;
-        let metadata = self.storage(&conn, &*SUBGRAPHS_ID, &*SUBGRAPHS_ID)?;
+        let metadata = self.storage(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
         Ok(e::Connection::new(conn.into(), storage, metadata))
     }
 
@@ -671,14 +671,14 @@ impl Store {
     pub(crate) fn storage(
         &self,
         conn: &PgConnection,
-        schema: &str,
+        namespace: &Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Arc<Layout>, StoreError> {
         if let Some(storage) = self.storage_cache.lock().unwrap().get(subgraph) {
             return Ok(storage.clone());
         }
 
-        let storage = Arc::new(e::Connection::layout(conn, schema, subgraph)?);
+        let storage = Arc::new(e::Connection::layout(conn, namespace, subgraph)?);
         if storage.is_cacheable() {
             &self
                 .storage_cache

@@ -11,7 +11,7 @@ use graph::prelude::{
     EntityOrder, EntityRange, EntityWindow, ParentLink, Schema, SubgraphDeploymentId, Value,
     WindowAttribute, BLOCK_NUMBER_MAX,
 };
-use graph_store_postgres::layout_for_tests::Layout;
+use graph_store_postgres::layout_for_tests::{Layout, Namespace};
 
 use test_store::*;
 
@@ -24,8 +24,6 @@ const THINGS_GQL: &str = "
         children: [Thing!]
     }
 ";
-
-const SCHEMA_NAME: &str = "layout";
 
 macro_rules! entity {
     ($($name:ident: $value:expr,)*) => {
@@ -62,11 +60,12 @@ lazy_static! {
         name: "Beef",
         __typename: "Thing"
     };
+    static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
 }
 
 /// Removes test data from the database behind the store.
 fn remove_test_data(conn: &PgConnection) {
-    let query = format!("drop schema if exists {} cascade", SCHEMA_NAME);
+    let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
 }
@@ -96,10 +95,10 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
 fn create_schema(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
-    let query = format!("create schema {}", SCHEMA_NAME);
+    let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME.to_owned())
+    Layout::create_relational_schema(&conn, &schema, NAMESPACE.to_owned())
         .expect("Failed to create relational schema")
 }
 
