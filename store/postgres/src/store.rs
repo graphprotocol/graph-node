@@ -1041,19 +1041,6 @@ impl Store {
         Ok(event)
     }
 
-    /// Apply a series of entity operations. Return `true` if the subgraph
-    /// mentioned in `history_event` should have its schema migrated
-    pub(crate) fn apply_metadata_operations(
-        &self,
-        site: &Site,
-        operations: Vec<MetadataOperation>,
-    ) -> Result<StoreEvent, StoreError> {
-        let econn = self.get_entity_conn(site, ReplicaId::Main)?;
-        let event =
-            econn.transaction(|| self.apply_metadata_operations_with_conn(&econn, operations))?;
-        Ok(event)
-    }
-
     pub(crate) fn revert_block_operations(
         &self,
         site: &Site,

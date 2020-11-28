@@ -1000,14 +1000,6 @@ pub trait Store: Send + Sync + 'static {
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError>;
 
-    /// Apply the specified metadata operations which only concern metadata
-    /// for the `target_deployment`.
-    fn apply_metadata_operations(
-        &self,
-        target_deployment: &SubgraphDeploymentId,
-        operations: Vec<MetadataOperation>,
-    ) -> Result<(), StoreError>;
-
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
     ///
@@ -1206,14 +1198,6 @@ impl Store for MockStore {
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
         _deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn apply_metadata_operations(
-        &self,
-        _target_deployment: &SubgraphDeploymentId,
-        _operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }

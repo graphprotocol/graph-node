@@ -418,21 +418,6 @@ impl StoreTrait for ShardedStore {
         self.send_store_event(&event)
     }
 
-    fn apply_metadata_operations(
-        &self,
-        target_deployment: &SubgraphDeploymentId,
-        operations: Vec<MetadataOperation>,
-    ) -> Result<(), StoreError> {
-        assert!(
-            operations.in_shard(target_deployment),
-            "can only apply metadata operations for SubgraphDeployment and its subobjects"
-        );
-
-        let (store, site) = self.store(&target_deployment)?;
-        let event = store.apply_metadata_operations(site.as_ref(), operations)?;
-        self.send_store_event(&event)
-    }
-
     fn revert_block_operations(
         &self,
         id: SubgraphDeploymentId,

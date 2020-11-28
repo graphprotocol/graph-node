@@ -116,14 +116,6 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn apply_metadata_operations(
-        &self,
-        _target_deployment: &SubgraphDeploymentId,
-        _operations: Vec<MetadataOperation>,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
     fn revert_block_operations(
         &self,
         _subgraph_id: SubgraphDeploymentId,

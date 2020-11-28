@@ -135,15 +135,6 @@ impl StoreTrait for NetworkStore {
         )
     }
 
-    fn apply_metadata_operations(
-        &self,
-        target_deployment: &SubgraphDeploymentId,
-        operations: Vec<graph::prelude::MetadataOperation>,
-    ) -> Result<(), graph::prelude::StoreError> {
-        self.store
-            .apply_metadata_operations(target_deployment, operations)
-    }
-
     fn revert_block_operations(
         &self,
         subgraph_id: graph::prelude::SubgraphDeploymentId,
