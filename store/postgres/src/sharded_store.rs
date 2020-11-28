@@ -714,7 +714,7 @@ impl ShardData for MetadataOperation {
     fn in_shard(&self, id: &SubgraphDeploymentId) -> bool {
         use MetadataOperation::*;
         match self {
-            Set { key, .. } | Remove { key, .. } | Update { key, .. } => {
+            Set { key, .. } | Remove { key, .. } => {
                 &key.subgraph_id == id && key.entity_type.in_shard(id)
             }
         }

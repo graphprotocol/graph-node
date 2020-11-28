@@ -30,7 +30,7 @@ use graph::prelude::{
     EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
     EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
     QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox,
-    SubgraphDeploymentId, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -409,29 +409,6 @@ impl Store {
                     )
                     .into()
                 })
-            }
-            MetadataOperation::Update { key, data } => {
-                let key = key.into();
-
-                // Update the entity in Postgres
-                match conn.update_metadata(&key, &data)? {
-                    0 => Err(TransactionAbortError::AbortUnless {
-                        expected_entity_ids: vec![key.entity_id.clone()],
-                        actual_entity_ids: vec![],
-                        description: format!("update for entity {:?} with data {:?} did not change any rows", key, data),
-                    }
-                    .into()),
-                    1 => Ok(0),
-                    res => Err(TransactionAbortError::AbortUnless {
-                        expected_entity_ids: vec![key.entity_id.clone()],
-                        actual_entity_ids: vec![],
-                        description: format!(
-                            "update for entity {:?} with data {:?} changed {} rows instead of just one",
-                            key, data, res
-                        ),
-                    }
-                    .into()),
-                }
             }
             MetadataOperation::Remove { key } => {
                 let key = key.into();

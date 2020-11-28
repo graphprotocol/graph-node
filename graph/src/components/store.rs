@@ -548,9 +548,7 @@ impl From<MetadataOperation> for EntityChange {
     fn from(operation: MetadataOperation) -> Self {
         use self::MetadataOperation::*;
         match operation {
-            Set { key, .. } | Update { key, .. } => {
-                EntityChange::from_key(key.into(), EntityChangeOperation::Set)
-            }
+            Set { key, .. } => EntityChange::from_key(key.into(), EntityChangeOperation::Set),
             Remove { key, .. } => {
                 EntityChange::from_key(key.into(), EntityChangeOperation::Removed)
             }
@@ -837,12 +835,6 @@ pub enum MetadataOperation {
 
     /// Removes an entity with the specified entity type and id if one exists.
     Remove { key: MetadataKey },
-
-    /// Update an entity. The `data` should only contain the attributes that
-    /// need to be changed, not the entire entity. The update will only happen
-    /// if the given entity matches `guard` when the update is made. `Update`
-    /// provides a way to atomically do a check-and-set change to an entity.
-    Update { key: MetadataKey, data: Entity },
 }
 
 impl MetadataOperation {
@@ -850,15 +842,13 @@ impl MetadataOperation {
         use MetadataOperation::*;
 
         match self {
-            Set { key, .. } | Remove { key, .. } | Update { key, .. } => key,
+            Set { key, .. } | Remove { key, .. } => key,
         }
     }
 }
 
 #[derive(Fail, Debug)]
 pub enum StoreError {
-    #[fail(display = "store transaction failed, need to retry: {}", _0)]
-    Aborted(TransactionAbortError),
     #[fail(display = "store error: {}", _0)]
     Unknown(Error),
     #[fail(
@@ -908,12 +898,6 @@ macro_rules! constraint_violation {
     }}
 }
 
-impl From<TransactionAbortError> for StoreError {
-    fn from(e: TransactionAbortError) -> Self {
-        StoreError::Aborted(e)
-    }
-}
-
 impl From<::diesel::result::Error> for StoreError {
     fn from(e: ::diesel::result::Error) -> Self {
         StoreError::Unknown(e.into())
@@ -948,21 +932,6 @@ impl From<QueryExecutionError> for StoreError {
     fn from(e: QueryExecutionError) -> Self {
         StoreError::QueryExecutionError(e.to_string())
     }
-}
-
-#[derive(Fail, PartialEq, Eq, Debug)]
-pub enum TransactionAbortError {
-    #[fail(
-        display = "AbortUnless triggered abort, expected {:?} but got {:?}: {}",
-        expected_entity_ids, actual_entity_ids, description
-    )]
-    AbortUnless {
-        expected_entity_ids: Vec<String>,
-        actual_entity_ids: Vec<String>,
-        description: String,
-    },
-    #[fail(display = "transaction aborted: {}", _0)]
-    Other(String),
 }
 
 pub struct StoredDynamicDataSource {

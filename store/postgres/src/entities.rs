@@ -260,18 +260,6 @@ impl Connection<'_> {
         }
     }
 
-    /// Update a metadata entity. The `entity` should only contain the fields
-    /// that should be changed.
-    pub(crate) fn update_metadata(
-        &self,
-        key: &EntityKey,
-        entity: &Entity,
-    ) -> Result<usize, StoreError> {
-        assert!(!key.entity_type.is_data_type());
-
-        METADATA_LAYOUT.update_unversioned(&self.conn, key, entity)
-    }
-
     pub(crate) fn delete(
         &self,
         key: &EntityKey,
