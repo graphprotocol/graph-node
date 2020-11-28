@@ -253,7 +253,7 @@ impl Connection<'_> {
             (Metadata(_), Some(ptr)) => {
                 METADATA_LAYOUT.update(&self.conn, key, entity, block_number(ptr))
             }
-            (Metadata(_), None) => layout
+            (Metadata(_), None) => METADATA_LAYOUT
                 .overwrite_unversioned(&self.conn, key, entity)
                 .map(|_| ()),
             (Data(_), None) => unreachable!("data changes are always versioned"),
@@ -270,8 +270,8 @@ impl Connection<'_> {
         let layout = self.layout_for(key);
         match (&key.entity_type, ptr) {
             (Data(_), Some(ptr)) => layout.delete(&self.conn, key, block_number(ptr)),
-            (Metadata(_), Some(ptr)) => METADATA_LAYOUT.delete(&self.conn, key, block_number(ptr)),
-            (Metadata(_), None) => layout.delete_unversioned(&self.conn, key),
+            (Metadata(_), Some(_)) => unreachable!("versioned metadata is never deleted"),
+            (Metadata(_), None) => unreachable!("unversioned metadata is never deleted"),
             (Data(_), None) => unreachable!("data changes are always versioned"),
         }
     }

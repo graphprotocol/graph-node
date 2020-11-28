@@ -410,21 +410,8 @@ impl Store {
                     .into()
                 })
             }
-            MetadataOperation::Remove { key } => {
-                let key = key.into();
-                conn.delete(&key, None)
-                    // This conversion is ok since n will only be 0 or 1
-                    .map(|n| -(n as i32))
-                    .map_err(|e| {
-                        format_err!(
-                            "Failed to remove entity ({}, {}, {}): {}",
-                            key.subgraph_id,
-                            key.entity_type,
-                            key.entity_id,
-                            e
-                        )
-                        .into()
-                    })
+            MetadataOperation::Remove { .. } => {
+                unreachable!("metadata is never deleted")
             }
         }
     }
