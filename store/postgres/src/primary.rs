@@ -16,6 +16,7 @@ use diesel::{
 };
 use failure::format_err;
 use graph::{
+    constraint_violation,
     data::subgraph::schema::SUBGRAPHS_ID,
     data::subgraph::status,
     prelude::EthereumBlockPointer,
@@ -199,12 +200,13 @@ impl TryFrom<Schema> for Site {
 
     fn try_from(schema: Schema) -> Result<Self, Self::Error> {
         let deployment = SubgraphDeploymentId::new(&schema.subgraph)
-            .map_err(|s| StoreError::ConstraintViolation(format!("Invalid deployment id {}", s)))?;
+            .map_err(|s| constraint_violation!("Invalid deployment id {}", s))?;
         let namespace = Namespace::new(schema.name.clone()).map_err(|nsp| {
-            StoreError::ConstraintViolation(format!(
+            constraint_violation!(
                 "Invalid schema name {} for deployment {}",
-                nsp, &schema.subgraph
-            ))
+                nsp,
+                &schema.subgraph
+            )
         })?;
         let shard = Shard::new(schema.shard)?;
         Ok(Self {
@@ -246,9 +248,8 @@ impl Connection {
             .first::<String>(&self.0)
             .optional()?;
         match id {
-            Some(id) => SubgraphDeploymentId::new(id).map_err(|id| {
-                StoreError::ConstraintViolation(format!("illegal deployment id: {}", id))
-            }),
+            Some(id) => SubgraphDeploymentId::new(id)
+                .map_err(|id| constraint_violation!("illegal deployment id: {}", id)),
             None => Err(StoreError::QueryExecutionError(format!(
                 "Subgraph `{}` not found",
                 name.as_str()
@@ -569,10 +570,7 @@ impl Connection {
             .cloned()
             .ok_or_else(|| format_err!("failed to read schema name for {} back", subgraph))?;
         let namespace = Namespace::new(namespace).map_err(|name| {
-            StoreError::ConstraintViolation(format!(
-                "Generated database schema name {} is invalid",
-                name
-            ))
+            constraint_violation!("Generated database schema name {} is invalid", name)
         })?;
 
         Ok(Site {
@@ -589,10 +587,10 @@ impl Connection {
             .optional()?;
         if let Some(Schema { version, .. }) = schema {
             if matches!(version, DeploymentSchemaVersion::Split) {
-                return Err(StoreError::ConstraintViolation(format!(
+                return Err(constraint_violation!(
                     "the subgraph {} uses JSONB layout which is not supported any longer",
                     subgraph.as_str()
-                )));
+                ));
             }
         }
         schema.map(|schema| schema.try_into()).transpose()
@@ -657,10 +655,7 @@ impl Connection {
             .transpose()
             // This can't really happen since we filtered by valid NodeId's
             .map_err(|node| {
-                StoreError::ConstraintViolation(format!(
-                    "database has assignment for illegal node name {:?}",
-                    node
-                ))
+                constraint_violation!("database has assignment for illegal node name {:?}", node)
             })
     }
 
@@ -674,10 +669,7 @@ impl Connection {
             .optional()?
             .map(|node| {
                 NodeId::new(&node).map_err(|()| {
-                    StoreError::ConstraintViolation(format!(
-                        "invalid node id `{}` in assignment for `{}`",
-                        node, id
-                    ))
+                    constraint_violation!("invalid node id `{}` in assignment for `{}`", node, id)
                 })
             })
             .transpose()
@@ -693,10 +685,11 @@ impl Connection {
             .into_iter()
             .map(|id| {
                 SubgraphDeploymentId::new(id).map_err(|id| {
-                    StoreError::ConstraintViolation(format!(
+                    constraint_violation!(
                         "invalid deployment id `{}` assigned to node `{}`",
-                        id, node
-                    ))
+                        id,
+                        node
+                    )
                 })
             })
             .collect()

@@ -1078,19 +1078,6 @@ fn revert_block_basic_user() {
 }
 
 #[test]
-fn revert_block_basic_subgraphs() {
-    run_test(|store| async move {
-        let expected = StoreEvent::new(vec![make_deployment_change(
-            "testsubgraph",
-            EntityChangeOperation::Set,
-        )]);
-        let subgraphs = SubgraphDeploymentId::new("subgraphs").unwrap();
-
-        check_basic_revert(store.clone(), expected, &subgraphs, "SubgraphDeployment").await
-    })
-}
-
-#[test]
 fn revert_block_with_delete() {
     run_test(|store| async move {
         let this_query = user_query()

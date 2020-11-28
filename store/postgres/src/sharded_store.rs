@@ -6,6 +6,7 @@ use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 
 use graph::{
     components::store,
+    constraint_violation,
     data::subgraph::schema::MetadataType,
     data::subgraph::schema::SubgraphError,
     data::subgraph::status,
@@ -163,10 +164,7 @@ impl ShardedStore {
             .placer
             .place(name.as_str(), network_name)
             .map_err(|msg| {
-                StoreError::ConstraintViolation(format!(
-                    "illegal indexer name in deployment rule: {}",
-                    msg
-                ))
+                constraint_violation!("illegal indexer name in deployment rule: {}", msg)
             })?;
 
         match placement {
@@ -215,7 +213,7 @@ impl ShardedStore {
             .transpose()?;
         if let Some(ref graft_site) = graft_site {
             if &graft_site.shard != &shard {
-                return Err(StoreError::ConstraintViolation(format!("Can not graft across shards. {} is in shard {}, and the base {} is in shard {}", site.deployment, site.shard, graft_site.deployment, graft_site.shard)));
+                return Err(constraint_violation!("Can not graft across shards. {} is in shard {}, and the base {} is in shard {}", site.deployment, site.shard, graft_site.deployment, graft_site.shard));
             }
         }
 

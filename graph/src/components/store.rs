@@ -738,6 +738,17 @@ pub enum StoreError {
     UnknownShard(String),
 }
 
+// Convenience to report a constraint violation
+#[macro_export]
+macro_rules! constraint_violation {
+    ($msg:expr) => {{
+        StoreError::ConstraintViolation(format!("{}", $msg))
+    }};
+    ($fmt:expr, $($arg:tt)*) => {{
+        StoreError::ConstraintViolation(format!($fmt, $($arg)*))
+    }}
+}
+
 impl From<TransactionAbortError> for StoreError {
     fn from(e: TransactionAbortError) -> Self {
         StoreError::Aborted(e)
