@@ -1221,26 +1221,6 @@ impl StableHash for SubgraphError {
     }
 }
 
-impl TryFromValue for SubgraphError {
-    fn try_from_value(value: &q::Value) -> Result<SubgraphError, Error> {
-        let block_number = value.get_optional("blockNumber")?;
-        let block_hash = value.get_optional("blockHash")?;
-
-        let block_ptr = match (block_number, block_hash) {
-            (Some(number), Some(hash)) => Some(EthereumBlockPointer { number, hash }),
-            _ => None,
-        };
-
-        Ok(SubgraphError {
-            subgraph_id: value.get_required("subgraphId")?,
-            message: value.get_required("message")?,
-            block_ptr,
-            handler: value.get_optional("handler")?,
-            deterministic: value.get_optional("deterministic")?.unwrap_or(false),
-        })
-    }
-}
-
 pub fn generate_entity_id() -> String {
     // Fast crypto RNG from operating system
     let mut rng = OsRng::new().unwrap();
