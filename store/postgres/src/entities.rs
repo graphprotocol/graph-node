@@ -41,7 +41,7 @@ use graph::prelude::{
 
 use crate::deployment;
 use crate::primary::Site;
-use crate::relational::{Catalog, Layout};
+use crate::relational::{Catalog, Layout, METADATA_LAYOUT};
 use crate::{block_range::block_number, primary::Namespace};
 
 /// The size of string prefixes that we index. This is chosen so that we
@@ -77,8 +77,6 @@ pub struct Connection<'a> {
     /// The layout of the actual subgraph data; entities
     /// go into this
     data: Arc<Layout>,
-    /// The layout of the metdata
-    metadata: Arc<Layout>,
     /// The subgraph that is accessible through this connection
     subgraph: SubgraphDeploymentId,
 }
@@ -93,7 +91,7 @@ impl Connection<'_> {
     /// subgraph
     fn layout_for(&self, key: &EntityKey) -> &Layout {
         if key.subgraph_id == *SUBGRAPHS_ID {
-            self.metadata.as_ref()
+            METADATA_LAYOUT.as_ref()
         } else if &key.subgraph_id == &self.subgraph {
             self.data.as_ref()
         } else {
@@ -124,7 +122,6 @@ impl Connection<'_> {
                 &base_layout,
                 &base.deployment,
                 block,
-                &self.metadata,
             )?;
             // Set the block ptr to the graft point to signal that we successfully
             // performed the graft
@@ -216,7 +213,7 @@ impl Connection<'_> {
         key: &EntityKey,
         entity: &Entity,
     ) -> Result<usize, StoreError> {
-        self.metadata.update_unversioned(&self.conn, key, entity)
+        METADATA_LAYOUT.update_unversioned(&self.conn, key, entity)
     }
 
     pub(crate) fn delete(
@@ -249,8 +246,7 @@ impl Connection<'_> {
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        self.metadata
-            .revert_metadata(&self.conn, &self.subgraph, block)?;
+        METADATA_LAYOUT.revert_metadata(&self.conn, &self.subgraph, block)?;
         Ok((event, count))
     }
 
@@ -350,6 +346,8 @@ impl Connection<'_> {
         namespace: Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Layout, StoreError> {
+        assert!(!namespace.is_metadata());
+
         let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
         let has_poi = supports_proof_of_indexing(conn, subgraph, &namespace)?;
         let catalog = Catalog::new(conn, namespace)?;

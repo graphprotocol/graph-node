@@ -203,10 +203,6 @@ impl ShardedStore {
 
         let (shard, node_id) = self.place(&name, &network_name, node_id)?;
 
-        let deployment_store = self
-            .stores
-            .get(&shard)
-            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
         let pconn = self.primary_conn()?;
 
         // TODO: Check this for behavior on failure
@@ -222,27 +218,15 @@ impl ShardedStore {
                 return Err(StoreError::ConstraintViolation(format!("Can not graft across shards. {} is in shard {}, and the base {} is in shard {}", site.deployment, site.shard, graft_site.deployment, graft_site.shard)));
             }
         }
-        // We can only use this for the metadata subgraph, since the subgraph
-        // we are creating does not exist in the database yet
-        let meta_site = Site::meta(shard);
 
-        let econn = deployment_store.get_entity_conn(&meta_site, ReplicaId::Main)?;
-
-        let mut event = econn.transaction(|| -> Result<_, StoreError> {
-            let exists = deployment::exists(&econn.conn, &site.deployment)?;
-            let event = if replace || !exists {
-                let ops = deployment.create_operations(&schema.id);
-                deployment_store.apply_metadata_operations_with_conn(&econn, ops)?
-            } else {
-                StoreEvent::new(vec![])
-            };
-
-            if !exists {
-                econn.create_schema(site.namespace.clone(), schema, graft_site)?;
-            }
-
-            Ok(event)
-        })?;
+        let mut event = {
+            // Create the actual databases schema and metadata entries
+            let deployment_store = self
+                .stores
+                .get(&shard)
+                .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
+            deployment_store.create_deployment(schema, deployment, &site, graft_site, replace)?
+        };
 
         let exists_and_synced = |id: &SubgraphDeploymentId| {
             let (store, _) = self.store(id)?;

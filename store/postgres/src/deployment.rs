@@ -198,21 +198,13 @@ pub fn graft_point(
 }
 
 pub fn schema(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<Schema, StoreError> {
-    // The subgraph of subgraphs schema is built-in and doesn't have a
-    // SubgraphManifest in the database
-    const SUBGRAPHS_SCHEMA: &str = include_str!("subgraphs.graphql");
-    let res = if id.is_meta() {
-        Schema::parse(SUBGRAPHS_SCHEMA, id)
-    } else {
-        use subgraph_manifest as sm;
-        let manifest_id = SubgraphManifestEntity::id(&id);
-        let s: String = sm::table
-            .select(sm::schema)
-            .filter(sm::id.eq(manifest_id.as_str()))
-            .first(conn)?;
-        Schema::parse(s.as_str(), id)
-    };
-    res.map_err(|e| StoreError::Unknown(e))
+    use subgraph_manifest as sm;
+    let manifest_id = SubgraphManifestEntity::id(&id);
+    let s: String = sm::table
+        .select(sm::schema)
+        .filter(sm::id.eq(manifest_id.as_str()))
+        .first(conn)?;
+    Schema::parse(s.as_str(), id).map_err(|e| StoreError::Unknown(e))
 }
 
 pub fn network(

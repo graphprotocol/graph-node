@@ -8,7 +8,10 @@ use graph::data::subgraph::status;
 use graph::prelude::{
     error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
 };
-use graph::{components::store::StoredDynamicDataSource, prelude::SubscriptionFilter};
+use graph::{
+    components::store::StoredDynamicDataSource,
+    prelude::{SubgraphDeploymentEntity, SubscriptionFilter},
+};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -35,8 +38,8 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
-use crate::primary::{Site, METADATA_NAMESPACE};
-use crate::relational::Layout;
+use crate::primary::Site;
+use crate::relational::{Layout, METADATA_LAYOUT};
 use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
@@ -246,6 +249,40 @@ impl Store {
         store
     }
 
+    pub(crate) fn create_deployment(
+        &self,
+        schema: &Schema,
+        deployment: SubgraphDeploymentEntity,
+        site: &Site,
+        graft_site: Option<Site>,
+        replace: bool,
+    ) -> Result<StoreEvent, StoreError> {
+        let conn = self.get_conn()?;
+        // This is a bit of a Frankenconnection: we don't have the actual
+        // layout yet; but for applying metadata, it's fine to use the metadata
+        // layout
+        let econn = e::Connection::new(
+            conn.into(),
+            METADATA_LAYOUT.clone(),
+            site.deployment.clone(),
+        );
+        econn.transaction(|| -> Result<_, StoreError> {
+            let exists = deployment::exists(&econn.conn, &site.deployment)?;
+
+            let event = if replace || !exists {
+                let ops = deployment.create_operations(&site.deployment);
+                self.apply_metadata_operations_with_conn(&econn, ops)?
+            } else {
+                StoreEvent::new(vec![])
+            };
+
+            if !exists {
+                econn.create_schema(site.namespace.clone(), schema, graft_site)?;
+            }
+            Ok(event)
+        })
+    }
+
     /// Gets an entity from Postgres.
     fn get_entity(
         &self,
@@ -301,6 +338,10 @@ impl Store {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
+        if key.subgraph_id.is_meta() {
+            // No interfaces in the metadata
+            return Ok(());
+        }
         let schema = self
             .subgraph_info_with_conn(&conn.conn, &key.subgraph_id)?
             .api;
@@ -608,9 +649,7 @@ impl Store {
             cancel_handle.check_cancel()?;
             let layout = store.layout(&conn, &site.namespace, &site.deployment)?;
             cancel_handle.check_cancel()?;
-            let metadata = store.layout(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
-            cancel_handle.check_cancel()?;
-            let conn = e::Connection::new(conn.into(), layout, metadata, site.deployment.clone());
+            let conn = e::Connection::new(conn.into(), layout, site.deployment.clone());
 
             f(&conn, cancel_handle)
         })
@@ -640,6 +679,8 @@ impl Store {
         site: &Site,
         replica: ReplicaId,
     ) -> Result<e::Connection, Error> {
+        assert!(!site.namespace.is_metadata());
+
         let start = Instant::now();
         let conn = match replica {
             ReplicaId::Main => self.get_conn()?,
@@ -652,12 +693,10 @@ impl Store {
                 site.deployment.as_str(),
             )?
             .inc_by(start.elapsed().as_secs_f64());
-        let storage = self.layout(&conn, &site.namespace, &site.deployment)?;
-        let metadata = self.layout(&conn, &*METADATA_NAMESPACE, &*SUBGRAPHS_ID)?;
+        let data = self.layout(&conn, &site.namespace, &site.deployment)?;
         Ok(e::Connection::new(
             conn.into(),
-            storage,
-            metadata,
+            data,
             site.deployment.clone(),
         ))
     }
@@ -681,6 +720,8 @@ impl Store {
         namespace: &Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Arc<Layout>, StoreError> {
+        assert!(!namespace.is_metadata());
+
         if let Some(layout) = self.layout_cache.lock().unwrap().get(subgraph) {
             return Ok(layout.clone());
         }
@@ -706,13 +747,7 @@ impl Store {
         }
 
         let input_schema = deployment::schema(&conn, subgraph_id.to_owned())?;
-        let network = if subgraph_id.is_meta() {
-            // The subgraph of subgraphs schema is built-in. Use an impossible
-            // network name so that we will never find blocks for this subgraph
-            Some(subgraph_id.as_str().to_owned())
-        } else {
-            deployment::network(&conn, &subgraph_id)?
-        };
+        let network = deployment::network(&conn, &subgraph_id)?;
 
         let graft_block =
             deployment::graft_point(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
@@ -920,10 +955,17 @@ impl Store {
         site: &Site,
         key: EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        let conn = self
-            .get_entity_conn(site, ReplicaId::Main)
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+        if site.deployment.is_meta() {
+            let conn = self
+                .get_conn()
+                .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+            Ok(METADATA_LAYOUT.find(&conn, &key.entity_type, &key.entity_id, BLOCK_NUMBER_MAX)?)
+        } else {
+            let conn = self
+                .get_entity_conn(site, ReplicaId::Main)
+                .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+            self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+        }
     }
 
     pub(crate) fn get_many(
@@ -934,10 +976,15 @@ impl Store {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let conn = self
-            .get_entity_conn(site, ReplicaId::Main)
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        conn.find_many(ids_for_type, BLOCK_NUMBER_MAX)
+        if site.deployment.is_meta() {
+            let conn = self.get_conn()?;
+            METADATA_LAYOUT.find_many(&conn, ids_for_type, BLOCK_NUMBER_MAX)
+        } else {
+            let conn = self
+                .get_entity_conn(site, ReplicaId::Main)
+                .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+            conn.find_many(ids_for_type, BLOCK_NUMBER_MAX)
+        }
     }
 
     pub(crate) fn find(

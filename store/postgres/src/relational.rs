@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::{
-    primary::Namespace,
+    primary::{Namespace, METADATA_NAMESPACE},
     relational_queries::{
         self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery,
         DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
@@ -64,6 +64,18 @@ lazy_static! {
             .ok()
             .map(|v| v.split(",").map(|s| s.to_owned()).collect())
             .unwrap_or(HashSet::new())
+    };
+
+    pub static ref METADATA_LAYOUT: Arc<Layout> = {
+        const SUBGRAPHS_SCHEMA: &str = include_str!("subgraphs.graphql");
+        // This is pretty awful: we need to have some deployment id so
+        // we can parse the GraphQL schema. The deployment id won't stick
+        // around since it gets dropped once the layout is constructed
+        let id = SubgraphDeploymentId::new("Qmsubgraphs").unwrap();
+        let schema = Schema::parse(SUBGRAPHS_SCHEMA, id).expect("the metadata schema is valid GraphQL");
+        let catalog = Catalog::make_empty(METADATA_NAMESPACE.clone()).expect("we can successfully construct a catalog for metadata");
+        let layout = Layout::new(&schema, catalog, false).expect("we can successfully construct a layout for metadata");
+        Arc::new(layout)
     };
 }
 
@@ -382,7 +394,6 @@ impl Layout {
         base_layout: &Layout,
         base_subgraph: &SubgraphDeploymentId,
         block: EthereumBlockPointer,
-        metadata: &Layout,
     ) -> Result<(), StoreError> {
         // This can not be used to copy data to or from the metadata subgraph
         assert!(!self.catalog.namespace.is_metadata());
@@ -438,7 +449,7 @@ impl Layout {
             .try_into()
             .expect("block numbers fit into an i32");
         self.revert_block(conn, dest_subgraph, block_to_revert)?;
-        metadata.revert_metadata(conn, dest_subgraph, block_to_revert)?;
+        METADATA_LAYOUT.revert_metadata(conn, dest_subgraph, block_to_revert)?;
         info!(logger, "Rewound subgraph to block {}", block.number;
               "time_ms" => start.elapsed().as_millis());
         Ok(())
