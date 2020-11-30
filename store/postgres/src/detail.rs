@@ -12,6 +12,7 @@ use graph::{
     data::subgraph::{schema::SubgraphHealth, status},
     prelude::web3::types::H256,
 };
+use std::ops::Bound;
 use std::{convert::TryFrom, str::FromStr};
 
 use crate::metadata::{subgraph, subgraph_version};
@@ -45,20 +46,7 @@ table! {
     }
 }
 
-table! {
-    subgraphs.subgraph_error (vid) {
-        vid -> BigInt,
-        id -> Text,
-        subgraph_id -> Nullable<Text>,
-        message -> Text,
-        block_number -> Nullable<Numeric>,
-        block_hash -> Nullable<Binary>,
-        handler -> Nullable<Text>,
-        deterministic -> Bool,
-        // We don't map block_range
-        // block_range -> Range<Integer>,
-    }
-}
+use crate::metadata::subgraph_error;
 
 allow_tables_to_appear_in_same_query!(subgraph_deployment_detail, subgraph_error);
 
@@ -106,6 +94,7 @@ struct ErrorDetail {
     block_hash: Option<Bytes>,
     handler: Option<String>,
     deterministic: bool,
+    block_range: (Bound<i32>, Bound<i32>),
 }
 
 struct DetailAndError(Detail, Option<ErrorDetail>);
@@ -150,6 +139,7 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             block_hash,
             handler,
             deterministic,
+            block_range: _,
         } = value;
         let block_ptr = block(
             subgraph_id.as_deref().unwrap_or("unknown"),
