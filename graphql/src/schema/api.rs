@@ -1059,7 +1059,11 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            vec!["id".to_string(), "block".to_string()],
+            vec![
+                "id".to_string(),
+                "block".to_string(),
+                "subgraphError".to_string()
+            ],
         );
 
         let user_plural_field = match query_type {
@@ -1151,7 +1155,11 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            vec!["id".to_string(), "block".to_string()],
+            vec![
+                "id".to_string(),
+                "block".to_string(),
+                "subgraphError".to_string()
+            ],
         );
 
         let plural_field = match query_type {
