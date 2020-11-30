@@ -76,7 +76,17 @@ before_script:
   - psql -c 'create database graph_node_test;' -U travis
 
 script:
-  - cargo audit
+  # This advisory is about the `im` persistent vector data structures crate.
+  # It is depended on by `cargo` itself and is by far the most widely used
+  # persistent data structures crate. But it has a subdependency with soundness
+  # issues reported here https://github.com/bodil/sized-chunks/issues/11.
+  # As far as it is known, this would only affect direct use of the crate and
+  # not transient use through `im` https://github.com/vorner/cargo-depdiff/issues/7#issuecomment-735360113.
+  # It seems preferable to continue to use it, over the alternatives
+  # of using a less tested and unaudited crate, or being vulnerable to performance
+  # issues from using regular `Vec` instead of a persistent one.
+  # So we ignore the advisory until the community figures out how to patch it.
+  - cargo audit --ignore RUSTSEC-2020-0041
   # Run tests
   - ipfs daemon &> /dev/null &
   - RUST_BACKTRACE=1 cargo test --verbose --all -- --nocapture
