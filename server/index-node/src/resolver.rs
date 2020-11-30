@@ -1,7 +1,7 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
-use graph::data::graphql::{ObjectOrInterface, ValueMap};
+use graph::data::graphql::{IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph_graphql::prelude::{ExecutionContext, Resolver};
@@ -50,7 +50,7 @@ where
         let infos = self
             .store
             .status(status::Filter::Deployments(deployments))?;
-        Ok(status::Infos::from(infos).into())
+        Ok(infos.into_value())
     }
 
     fn resolve_indexing_statuses_for_subgraph_name(
@@ -74,7 +74,7 @@ where
             .store
             .status(status::Filter::SubgraphName(subgraph_name))?;
 
-        Ok(status::Infos::from(infos).into())
+        Ok(infos.into_value())
     }
 
     fn resolve_proof_of_indexing(
@@ -137,11 +137,10 @@ where
             current_version,
         ))?;
 
-        Ok(status::Infos::from(infos)
-            .to_vec()
+        Ok(infos
             .into_iter()
             .next()
-            .map(Into::into)
+            .map(|info| info.into_value())
             .unwrap_or(q::Value::Null))
     }
 }

@@ -25,19 +25,13 @@ impl EthereumBlock {
     }
 }
 
-impl From<EthereumBlock> for q::Value {
-    fn from(block: EthereumBlock) -> Self {
-        object! {
-            __typename: "EthereumBlock",
-            hash: block.0.hash_hex(),
-            number: format!("{}", block.0.number),
-        }
-    }
-}
-
 impl IntoValue for EthereumBlock {
     fn into_value(self) -> q::Value {
-        self.into()
+        object! {
+            __typename: "EthereumBlock",
+            hash: self.0.hash_hex(),
+            number: format!("{}", self.0.number),
+        }
     }
 }
 
@@ -56,14 +50,14 @@ pub struct ChainInfo {
     pub latest_block: Option<EthereumBlock>,
 }
 
-impl From<ChainInfo> for q::Value {
-    fn from(info: ChainInfo) -> Self {
+impl IntoValue for ChainInfo {
+    fn into_value(self) -> q::Value {
         let ChainInfo {
             network,
             chain_head_block,
             earliest_block,
             latest_block,
-        } = info;
+        } = self;
         object! {
             // `__typename` is needed for the `ChainIndexingStatus` interface
             // in GraphQL to work.
@@ -96,8 +90,8 @@ pub struct Info {
     pub node: Option<String>,
 }
 
-impl From<Info> for q::Value {
-    fn from(status: Info) -> Self {
+impl IntoValue for Info {
+    fn into_value(self) -> q::Value {
         let Info {
             subgraph,
             chains,
@@ -107,7 +101,7 @@ impl From<Info> for q::Value {
             node,
             non_fatal_errors,
             synced,
-        } = status;
+        } = self;
 
         fn subgraph_error_to_value(subgraph_error: SubgraphError) -> q::Value {
             let SubgraphError {
@@ -145,29 +139,9 @@ impl From<Info> for q::Value {
             health: q::Value::from(health),
             fatalError: fatal_error_val,
             nonFatalErrors: non_fatal_errors,
-            chains: chains.into_iter().map(q::Value::from).collect::<Vec<_>>(),
+            chains: chains.into_iter().map(|chain| chain.into_value()).collect::<Vec<_>>(),
             entityCount: format!("{}", entity_count),
             node: node,
         }
-    }
-}
-
-pub struct Infos(Vec<Info>);
-
-impl Infos {
-    pub fn to_vec(self) -> Vec<Info> {
-        self.0
-    }
-}
-
-impl From<Vec<Info>> for Infos {
-    fn from(infos: Vec<Info>) -> Self {
-        Infos(infos)
-    }
-}
-
-impl From<Infos> for q::Value {
-    fn from(infos: Infos) -> Self {
-        q::Value::List(infos.0.into_iter().map(q::Value::from).collect())
     }
 }
