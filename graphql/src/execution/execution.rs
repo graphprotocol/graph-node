@@ -487,11 +487,15 @@ pub async fn execute_root_selection_set<R: Resolver>(
         let query_text = execute_ctx.query.query_text.cheap_clone();
         let variables_text = execute_ctx.query.variables_text.cheap_clone();
         match graph::spawn_blocking_allow_panic(move || {
-            Arc::new(QueryResult::from(execute_root_selection_set_uncached(
+            let mut query_res = QueryResult::from(execute_root_selection_set_uncached(
                 &execute_ctx,
                 &execute_selection_set,
                 &execute_root_type,
-            )))
+            ));
+
+            // Unwrap: In practice should never fail, but if it does we will catch the panic.
+            execute_ctx.resolver.post_process(&mut query_res).unwrap();
+            Arc::new(query_res)
         })
         .await
         {

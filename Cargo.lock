@@ -1088,7 +1088,7 @@ dependencies = [
 [[package]]
 name = "ethabi"
 version = "12.0.0-graph"
-source = "git+https://github.com/graphprotocol/ethabi.git?branch=master#35977d1ce69d4c2db652c502d70e4e53a7aa9897"
+source = "git+https://github.com/graphprotocol/ethabi.git#35977d1ce69d4c2db652c502d70e4e53a7aa9897"
 dependencies = [
  "ethereum-types",
  "rustc-hex",
@@ -5319,7 +5319,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.10.0-graph"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=master#c37ecac19fb46e8b3991d64bb83d6bfbf578bae0"
+source = "git+https://github.com/graphprotocol/rust-web3#c37ecac19fb46e8b3991d64bb83d6bfbf578bae0"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",

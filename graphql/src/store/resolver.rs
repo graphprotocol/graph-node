@@ -204,6 +204,10 @@ impl StoreResolver {
                 "deployment".to_string(),
                 q::Value::String(self.deployment.to_string()),
             );
+            map.insert(
+                "hasIndexingErrors".to_string(),
+                q::Value::Boolean(self.has_non_fatal_errors),
+            );
             return Ok((None, Some(q::Value::Object(map))));
         }
         return Ok((prefetched_object, None));
@@ -295,5 +299,29 @@ impl Resolver for StoreResolver {
             deployment_id,
             *SUBSCRIPTION_THROTTLE_INTERVAL,
         ))
+    }
+
+    fn post_process(&self, result: &mut QueryResult) -> Result<(), anyhow::Error> {
+        // Post-processing is only necessary for queries with indexing errors, and no query errors.
+        if !self.has_non_fatal_errors || result.has_errors() {
+            return Ok(());
+        }
+
+        // Add the "indexing_error" to the response.
+        assert!(result.errors_mut().is_empty());
+        *result.errors_mut() = vec![QueryError::IndexingError];
+
+        match self.error_policy {
+            // If indexing errors are denied, we omit results, except for the `_meta` response.
+            // Note that the meta field could have been queried under a different response key,
+            // or a different field queried under the response key `_meta`.
+            ErrorPolicy::Deny => {
+                let data = result.take_data();
+                let meta = data.and_then(|mut d| d.remove_entry("_meta"));
+                result.set_data(meta.map(|m| BTreeMap::from_iter(Some(m))));
+            }
+            ErrorPolicy::Allow => (),
+        }
+        Ok(())
     }
 }

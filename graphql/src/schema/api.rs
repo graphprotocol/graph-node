@@ -26,7 +26,7 @@ const BLOCK_HEIGHT: &str = "Block_height";
 
 const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
 
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ErrorPolicy {
     Allow,
     Deny,
@@ -34,7 +34,7 @@ pub enum ErrorPolicy {
 
 impl ErrorPolicy {
     fn graphql_variants() -> [&'static str; 2] {
-        ["ALLOW", "DENY"]
+        ["allow", "deny"]
     }
 }
 
@@ -43,8 +43,8 @@ impl std::str::FromStr for ErrorPolicy {
 
     fn from_str(s: &str) -> Result<ErrorPolicy, anyhow::Error> {
         match s {
-            "ALLOW" => Ok(ErrorPolicy::Allow),
-            "DENY" => Ok(ErrorPolicy::Deny),
+            "allow" => Ok(ErrorPolicy::Allow),
+            "deny" => Ok(ErrorPolicy::Deny),
             _ => Err(anyhow::anyhow!("failed to parse `{}` as ErrorPolicy", s)),
         }
     }
@@ -679,7 +679,7 @@ fn subgraph_error_argument() -> InputValue {
         ),
         name: "subgraphError".to_string(),
         value_type: Type::NonNullType(Box::new(Type::NamedType(ERROR_POLICY_TYPE.to_string()))),
-        default_value: Some(Value::Enum("DENY".to_string())),
+        default_value: Some(Value::Enum("deny".to_string())),
         directives: vec![],
     }
 }
@@ -706,6 +706,7 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
                     directives: vec![],
                 },
                 block_argument(),
+                subgraph_error_argument(),
             ],
             field_type: Type::NamedType(type_name.to_owned()),
             directives: vec![],

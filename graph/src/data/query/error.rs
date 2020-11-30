@@ -264,6 +264,7 @@ pub enum QueryError {
     EncodingError(FromUtf8Error),
     ParseError(Arc<anyhow::Error>),
     ExecutionError(QueryExecutionError),
+    IndexingError,
 }
 
 impl From<FromUtf8Error> for QueryError {
@@ -298,6 +299,9 @@ impl fmt::Display for QueryError {
             QueryError::EncodingError(ref e) => write!(f, "{}", e),
             QueryError::ExecutionError(ref e) => write!(f, "{}", e),
             QueryError::ParseError(ref e) => write!(f, "{}", e),
+
+            // This error message is part of attestable responses.
+            QueryError::IndexingError => write!(f, "indexing_error"),
         }
     }
 }

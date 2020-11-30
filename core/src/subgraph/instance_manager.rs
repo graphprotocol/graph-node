@@ -5,7 +5,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use graph::components::ethereum::{triggers_in_block, EthereumNetworks};
 use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
 use graph::data::store::scalar::Bytes;
@@ -14,6 +13,10 @@ use graph::data::subgraph::schema::{
 };
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
+use graph::{
+    components::ethereum::{triggers_in_block, EthereumNetworks},
+    data::subgraph::SubgraphFeature,
+};
 
 use super::SubgraphInstance;
 
@@ -35,7 +38,7 @@ type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, Cance
 
 struct IndexingInputs<B, S> {
     deployment_id: SubgraphDeploymentId,
-    features: BTreeSet<SubgraphFeatures>,
+    features: BTreeSet<SubgraphFeature>,
     network_name: String,
     start_blocks: Vec<u64>,
     store: Arc<S>,
@@ -680,7 +683,7 @@ where
     {
         // The triggers were processed but some were skipped due to deterministic errors.
         Ok(block_state) if block_state.has_errors() => {
-            use SubgraphFeatures::*;
+            use SubgraphFeature::*;
 
             // While the version is pending we fail the subgraph even if the error is determinsitic.
             // This prevents a buggy pending version from replacing a current version.

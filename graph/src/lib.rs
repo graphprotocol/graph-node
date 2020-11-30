@@ -133,7 +133,7 @@ pub mod prelude {
         BlockHandlerFilter, CreateSubgraphResult, DataSource, DataSourceContext,
         DataSourceTemplate, DeploymentState, Link, MappingABI, MappingBlockHandler,
         MappingCallHandler, MappingEventHandler, SubgraphAssignmentProviderError,
-        SubgraphAssignmentProviderEvent, SubgraphDeploymentId, SubgraphFeatures, SubgraphManifest,
+        SubgraphAssignmentProviderEvent, SubgraphDeploymentId, SubgraphManifest,
         SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphName,
         SubgraphRegistrarError, UnvalidatedSubgraphManifest,
     };

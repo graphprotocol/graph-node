@@ -2,24 +2,21 @@
 extern crate pretty_assertions;
 
 use graphql_parser::{query as q, Pos};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use graph::{
     data::graphql::{object, object_value},
-    data::query::CacheStatus,
-    prelude::{NodeId, SubgraphName},
-};
-use graph::{
     data::subgraph::schema::SubgraphError,
+    data::{query::CacheStatus, subgraph::SubgraphFeature},
     prelude::{
         async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
-        o, slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
-        EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, Query, QueryError,
-        QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema, Store,
-        SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest,
+        o, serde_json, slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
+        EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, NodeId, Query,
+        QueryError, QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema,
+        Store, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphName,
         SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value, BLOCK_NUMBER_MAX,
     },
 };
@@ -31,6 +28,10 @@ use test_store::{
 };
 
 fn setup() -> SubgraphDeploymentId {
+    setup_with_features(BTreeSet::new())
+}
+
+fn setup_with_features(features: BTreeSet<SubgraphFeature>) -> SubgraphDeploymentId {
     use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
 
     let id = SubgraphDeploymentId::new("graphqlTestsQuery").unwrap();
@@ -39,7 +40,22 @@ fn setup() -> SubgraphDeploymentId {
     block_store::remove();
     block_store::insert(chain, "fake_network");
     test_store::remove_subgraphs();
-    insert_test_entities(STORE.as_ref(), id.clone());
+
+    let schema = test_schema(id.clone());
+    let manifest = SubgraphManifest {
+        id: id.clone(),
+        location: String::new(),
+        spec_version: "1".to_owned(),
+        features,
+        description: None,
+        repository: None,
+        schema: schema.clone(),
+        data_sources: vec![],
+        graft: None,
+        templates: vec![],
+    };
+
+    insert_test_entities(STORE.as_ref(), manifest);
 
     id
 }
@@ -87,30 +103,14 @@ fn api_test_schema(id: &SubgraphDeploymentId) -> ApiSchema {
     ApiSchema::from_api_schema(schema).unwrap()
 }
 
-fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
-    let schema = test_schema(id.clone());
-
-    // First insert the manifest.
-    let manifest = SubgraphManifest {
-        id: id.clone(),
-        location: String::new(),
-        spec_version: "1".to_owned(),
-        features: Default::default(),
-        description: None,
-        repository: None,
-        schema: schema.clone(),
-        data_sources: vec![],
-        graft: None,
-        templates: vec![],
-    };
-
+fn insert_test_entities(store: &impl Store, manifest: SubgraphManifest) {
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
     let name = SubgraphName::new("test/query").unwrap();
     let node_id = NodeId::new("test").unwrap();
     store
         .create_subgraph_deployment(
             name,
-            &schema,
+            &manifest.schema,
             deployment,
             node_id,
             SubgraphVersionSwitchingMode::Instant,
@@ -232,8 +232,8 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
         .unwrap();
     }
 
-    insert_at(entities0, id.clone(), GENESIS_PTR.clone());
-    insert_at(entities1, id.clone(), BLOCK_ONE.clone());
+    insert_at(entities0, manifest.id.clone(), GENESIS_PTR.clone());
+    insert_at(entities1, manifest.id.clone(), BLOCK_ONE.clone());
 }
 
 async fn execute_query_document(id: &SubgraphDeploymentId, query: q::Document) -> QueryResult {
@@ -1643,25 +1643,96 @@ fn can_query_meta() {
 }
 
 #[test]
-#[ignore]
 fn non_fatal_errors() {
+    use serde_json::json;
     use test_store::block_store::BLOCK_TWO;
 
-    run_test_sequentially(setup, |_, id| async move {
-        let err = SubgraphError {
-            subgraph_id: id.clone(),
-            message: "cow template handler could not moo event transaction".to_string(),
-            block_ptr: Some(BLOCK_TWO.block_ptr()),
-            handler: Some("handleMoo".to_string()),
-            deterministic: true,
-        };
+    run_test_sequentially(
+        || setup_with_features(BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors))),
+        |_, id| async move {
+            let err = SubgraphError {
+                subgraph_id: id.clone(),
+                message: "cow template handler could not moo event transaction".to_string(),
+                block_ptr: Some(BLOCK_TWO.block_ptr()),
+                handler: Some("handleMoo".to_string()),
+                deterministic: true,
+            };
 
-        transact_errors(&*STORE, id.clone(), BLOCK_TWO.block_ptr(), vec![err]).unwrap();
+            transact_errors(&*STORE, id.clone(), BLOCK_TWO.block_ptr(), vec![err]).unwrap();
 
-        let query = "query { musician(id: \"m1\") { id } }";
-        let query = graphql_parser::parse_query(query).unwrap();
+            // `subgraphError` is implicitly `deny`, data is omitted.
+            let query = "query { musician(id: \"m1\") { id } }";
+            let query = graphql_parser::parse_query(query).unwrap();
+            let result = execute_query_document(&id, query).await;
+            let expected = json!({
+                "errors": [
+                    {
+                        "message": "indexing_error"
+                    }
+                ]
+            });
+            assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
-        dbg!(execute_query_document(&id, query).await);
-        assert!(false);
-    })
+            // Same result for explicit `deny`.
+            let query = "query { musician(id: \"m1\", subgraphError: deny) { id } }";
+            let query = graphql_parser::parse_query(query).unwrap();
+            let result = execute_query_document(&id, query).await;
+            assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+            // But `_meta` is still returned.
+            let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
+            let query = graphql_parser::parse_query(query).unwrap();
+            let result = execute_query_document(&id, query).await;
+            let expected = json!({
+                "data": {
+                    "_meta": {
+                        "hasIndexingErrors": true
+                    }
+                },
+                "errors": [
+                    {
+                        "message": "indexing_error"
+                    }
+                ]
+            });
+            assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+            // With `allow`, the error remains but the data is included.
+            let query = "query { musician(id: \"m1\", subgraphError: allow) { id } }";
+            let query = graphql_parser::parse_query(query).unwrap();
+            let result = execute_query_document(&id, query).await;
+            let expected = json!({
+                "data": {
+                    "musician": {
+                        "id": "m1"
+                    }
+                },
+                "errors": [
+                    {
+                        "message": "indexing_error"
+                    }
+                ]
+            });
+            assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+            // Test error reverts.
+            STORE
+                .revert_block_operations(id.clone(), BLOCK_TWO.block_ptr(), *BLOCK_ONE)
+                .unwrap();
+            let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
+            let query = graphql_parser::parse_query(query).unwrap();
+            let result = execute_query_document(&id, query).await;
+            let expected = json!({
+                "data": {
+                    "musician": {
+                        "id": "m1"
+                    },
+                    "_meta": {
+                        "hasIndexingErrors": false
+                    }
+                }
+            });
+            assert_eq!(expected, serde_json::to_value(&result).unwrap());
+        },
+    )
 }

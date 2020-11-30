@@ -215,6 +215,18 @@ impl QueryResult {
             Ok(self.data.map(|v| q::Value::Object(v)))
         }
     }
+
+    pub fn take_data(&mut self) -> Option<Data> {
+        self.data.take()
+    }
+
+    pub fn set_data(&mut self, data: Option<Data>) {
+        self.data = data
+    }
+
+    pub fn errors_mut(&mut self) -> &mut Vec<QueryError> {
+        &mut self.errors
+    }
 }
 
 impl From<QueryExecutionError> for QueryResult {
