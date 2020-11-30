@@ -2,8 +2,11 @@ use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 
 use crate::execution::ExecutionContext;
-use graph::data::graphql::{ext::DocumentExt, ObjectOrInterface};
-use graph::prelude::{QueryExecutionError, StoreEventStreamBox};
+use graph::prelude::{anyhow, QueryExecutionError, StoreEventStreamBox};
+use graph::{
+    data::graphql::{ext::DocumentExt, ObjectOrInterface},
+    prelude::QueryResult,
+};
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 pub trait Resolver: Sized + Send + Sync + 'static {
@@ -113,5 +116,9 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         Err(QueryExecutionError::NotSupported(String::from(
             "Resolving field streams is not supported by this resolver",
         )))
+    }
+
+    fn post_process(&self, _result: &mut QueryResult) -> Result<(), anyhow::Error> {
+        Ok(())
     }
 }

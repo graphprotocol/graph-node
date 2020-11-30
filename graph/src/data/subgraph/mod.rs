@@ -955,7 +955,7 @@ pub struct BaseSubgraphManifest<S, D, T> {
     pub location: String,
     pub spec_version: String,
     #[serde(default)]
-    pub features: BTreeSet<SubgraphFeatures>,
+    pub features: BTreeSet<SubgraphFeature>,
     pub description: Option<String>,
     pub repository: Option<String>,
     pub schema: S,
@@ -1300,6 +1300,6 @@ impl DeploymentState {
 
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[allow(non_camel_case_types)]
-pub enum SubgraphFeatures {
+pub enum SubgraphFeature {
     nonFatalErrors,
 }
