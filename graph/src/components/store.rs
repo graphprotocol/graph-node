@@ -1362,7 +1362,6 @@ impl EntityModification {
 ///   (1) no entity appears in more than one operation
 ///   (2) only entities that will actually be changed from what they
 ///       are in the store are changed
-#[derive(Clone)] // TODO: Check where this is used.
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store

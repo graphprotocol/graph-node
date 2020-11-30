@@ -58,7 +58,7 @@ type Priority = (bool, Reverse<u64>);
 /// of least frequency until the max weight is respected. This cache only removes entries on calls
 /// to `evict`, so the max weight may be exceeded until `evict` is called. Every STALE_PERIOD
 /// evictions entities are checked for staleness.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct LfuCache<K: Eq + Hash, V> {
     queue: PriorityQueue<CacheEntry<K, V>, Priority>,
     total_weight: usize,

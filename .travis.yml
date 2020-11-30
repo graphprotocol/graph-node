@@ -84,7 +84,7 @@ script:
   # not transient use through `im` https://github.com/vorner/cargo-depdiff/issues/7#issuecomment-735360113.
   # It seems preferable to continue to use it, over the alternatives
   # of using a less tested and unaudited crate, or being vulnerable to performance
-  # issues from using regular `Vec` instead of a persistent one.
+  # issues from using regular data structures instead of persistent ones.
   # So we ignore the advisory until the community figures out how to patch it.
   - cargo audit --ignore RUSTSEC-2020-0041
   # Run tests
