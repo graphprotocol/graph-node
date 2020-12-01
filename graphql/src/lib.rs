@@ -1,7 +1,5 @@
 pub extern crate graphql_parser;
 
-use graph::prelude::failure;
-
 /// Utilities for working with GraphQL schemas.
 pub mod schema;
 
@@ -36,7 +34,7 @@ pub mod prelude {
     pub use super::subscription::{execute_subscription, SubscriptionExecutionOptions};
     pub use super::values::{object_value, IntoValue, MaybeCoercible};
 
-    pub use super::graphql_parser::{query::Name, schema::ObjectType};
+    pub use super::graphql_parser::schema::ObjectType;
     pub use super::runner::GraphQlRunner;
 
     pub use crate::object;

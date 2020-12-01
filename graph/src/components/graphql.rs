@@ -5,9 +5,8 @@ use crate::data::query::{CacheStatus, Query, QueryResult};
 use crate::data::subgraph::DeploymentState;
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 
+use anyhow::Error;
 use async_trait::async_trait;
-use failure::format_err;
-use failure::Error;
 use graphql_parser::query as q;
 use std::sync::Arc;
 use std::time::Duration;
@@ -45,7 +44,10 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         subscription: Subscription,
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
-    async fn query_metadata(self: Arc<Self>, query: Query) -> Result<Arc<q::Value>, Error> {
+    async fn query_metadata(
+        self: Arc<Self>,
+        query: Query,
+    ) -> Result<Arc<q::Value<'static, String>>, Error> {
         let state = DeploymentState::meta();
         let result = self
             .run_query_with_complexity(query, state, None, None, None, None, false)
@@ -55,10 +57,10 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         Arc::try_unwrap(result)
             .unwrap()
             .to_result()
-            .map_err(|errors| format_err!("Failed to query metadata: {:?}", errors))
+            .map_err(|errors| anyhow::anyhow!("Failed to query metadata: {:?}", errors))
             .and_then(|data| {
                 data.map(|data| Ok(Arc::new(data)))
-                    .unwrap_or_else(|| Err(format_err!("No metadata found")))
+                    .unwrap_or_else(|| Err(anyhow::anyhow!("No metadata found")))
             })
     }
 

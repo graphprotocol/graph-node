@@ -1,4 +1,4 @@
-use failure::Error;
+use anyhow::Error;
 use futures::future::Fuse;
 use futures::prelude::{Future, Poll, Stream};
 use futures::sync::oneshot;

@@ -1,4 +1,5 @@
 mod asc_abi;
+mod gas;
 mod to_from;
 
 /// Public interface of the crate, receives triggers to be processed.

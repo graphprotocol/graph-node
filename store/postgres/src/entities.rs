@@ -39,9 +39,9 @@ use std::time::Instant;
 use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE, SUBGRAPHS_ID};
 use graph::prelude::{
-    debug, format_err, info, serde_json, warn, BlockNumber, Entity, EntityCollection, EntityFilter,
-    EntityKey, EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger, QueryExecutionError,
-    StoreError, StoreEvent, SubgraphDeploymentId, BLOCK_NUMBER_MAX,
+    debug, info, serde_json, warn, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey,
+    EntityOrder, EntityRange, Error, EthereumBlockPointer, Logger, QueryExecutionError, StoreError,
+    StoreEvent, SubgraphDeploymentId, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::block_number;
@@ -558,7 +558,7 @@ impl Connection<'_> {
     ) -> Result<bool, Error> {
         unreachable!("The curent code base does not require any subgraph migrations");
         self.conn.transaction(|| -> Result<bool, Error> {
-            let errmsg = format_err!(
+            let errmsg = anyhow::anyhow!(
                 "subgraph {} has no entry in deployment_schemas and can not be migrated",
                 subgraph.to_string()
             );
@@ -645,7 +645,7 @@ impl Connection<'_> {
             .get_results(self.conn.deref())?;
         let schema_name = schemas
             .first()
-            .ok_or_else(|| format_err!("failed to read schema name for {} back", &schema.id))?;
+            .ok_or_else(|| anyhow::anyhow!("failed to read schema name for {} back", &schema.id))?;
 
         let query = format!("create schema {}", schema_name);
         self.conn.batch_execute(&*query)?;
@@ -656,7 +656,7 @@ impl Connection<'_> {
             let base = &Connection::layout(&self.conn, &base)?;
             let errors = layout.can_copy_from(&base);
             if !errors.is_empty() {
-                return Err(StoreError::Unknown(format_err!(
+                return Err(StoreError::Unknown(anyhow::anyhow!(
                     "The subgraph `{}` cannot be used as the graft base \
                                         for `{}` because the schemas are incompatible:\n    - {}",
                     &base.subgraph,
@@ -683,7 +683,7 @@ impl Connection<'_> {
         use public::DeploymentSchemaVersion as V;
 
         let schema = find_schema(conn, subgraph)?
-            .ok_or_else(|| StoreError::Unknown(format_err!("unknown subgraph {}", subgraph)))?;
+            .ok_or_else(|| StoreError::Unknown(anyhow::anyhow!("unknown subgraph {}", subgraph)))?;
         let layout = match schema.version {
             V::Split => {
                 return Err(StoreError::ConstraintViolation(format!(
@@ -751,7 +751,7 @@ pub fn delete_all_entities_for_test_use_only(
         .get_results::<String>(conn)?
     {
         let subgraph = SubgraphDeploymentId::new(subgraph.clone())
-            .map_err(|_| StoreError::Unknown(format_err!("illegal subgraph {}", subgraph)))?;
+            .map_err(|_| StoreError::Unknown(anyhow::anyhow!("illegal subgraph {}", subgraph)))?;
         drop_schema(conn, &subgraph)?;
     }
     // Delete subgraphs entities

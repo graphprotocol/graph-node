@@ -1,5 +1,5 @@
 //! Calculate a hash for a GraphQL query that reflects the shape of
-//! the query. The shape hash will be the same for two instancs of a query
+//! the query. The shape hash will be the same for two instances of a query
 //! that are deemed identical except for unimportant details. Those details
 //! are any values used with filters, and any differences in the query
 //! name or response keys
@@ -15,7 +15,7 @@ pub trait ShapeHash {
     fn shape_hash(&self, hasher: &mut ShapeHasher);
 }
 
-pub fn shape_hash(query: &q::Document) -> u64 {
+pub fn shape_hash(query: &q::Document<'static, String>) -> u64 {
     let mut hasher = DefaultHasher::new();
     query.shape_hash(&mut hasher);
     hasher.finish()
@@ -25,7 +25,7 @@ pub fn shape_hash(query: &q::Document) -> u64 {
 // the position of the element in the query, i.e., fields that involve
 // `Pos`
 
-impl ShapeHash for q::Document {
+impl ShapeHash for q::Document<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         for defn in &self.definitions {
             use q::Definition::*;
@@ -37,7 +37,7 @@ impl ShapeHash for q::Document {
     }
 }
 
-impl ShapeHash for q::OperationDefinition {
+impl ShapeHash for q::OperationDefinition<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         use q::OperationDefinition::*;
         // We want `[query|subscription|mutation] things { BODY }` to hash
@@ -51,7 +51,7 @@ impl ShapeHash for q::OperationDefinition {
     }
 }
 
-impl ShapeHash for q::FragmentDefinition {
+impl ShapeHash for q::FragmentDefinition<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         // Omit directives
         self.name.hash(hasher);
@@ -60,7 +60,7 @@ impl ShapeHash for q::FragmentDefinition {
     }
 }
 
-impl ShapeHash for q::SelectionSet {
+impl ShapeHash for q::SelectionSet<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         for item in &self.items {
             item.shape_hash(hasher);
@@ -68,7 +68,7 @@ impl ShapeHash for q::SelectionSet {
     }
 }
 
-impl ShapeHash for q::Selection {
+impl ShapeHash for q::Selection<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         use q::Selection::*;
         match self {
@@ -79,7 +79,7 @@ impl ShapeHash for q::Selection {
     }
 }
 
-impl ShapeHash for q::Field {
+impl ShapeHash for q::Field<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         // Omit alias, directives
         self.name.hash(hasher);
@@ -91,7 +91,7 @@ impl ShapeHash for q::Field {
     }
 }
 
-impl ShapeHash for s::Value {
+impl ShapeHash for s::Value<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         use s::Value::*;
 
@@ -114,14 +114,14 @@ impl ShapeHash for s::Value {
     }
 }
 
-impl ShapeHash for q::FragmentSpread {
+impl ShapeHash for q::FragmentSpread<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         // Omit directives
         self.fragment_name.hash(hasher)
     }
 }
 
-impl ShapeHash for q::InlineFragment {
+impl ShapeHash for q::InlineFragment<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         // Omit directives
         self.type_condition.shape_hash(hasher);
@@ -141,7 +141,7 @@ impl<T: ShapeHash> ShapeHash for Option<T> {
     }
 }
 
-impl ShapeHash for q::TypeCondition {
+impl ShapeHash for q::TypeCondition<'static, String> {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
         match self {
             q::TypeCondition::On(value) => value.hash(hasher),

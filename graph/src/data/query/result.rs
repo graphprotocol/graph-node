@@ -7,7 +7,10 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-fn serialize_data<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_data<S>(
+    data: &Option<q::Value<'static, String>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -29,7 +32,7 @@ where
     ser.end()
 }
 
-pub type Data = BTreeMap<String, q::Value>;
+pub type Data = BTreeMap<String, q::Value<'static, String>>;
 
 /// The result of running a query, if successful.
 #[derive(Debug, Clone, Serialize)]
@@ -45,7 +48,7 @@ pub struct QueryResult {
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_data"
     )]
-    pub extensions: Option<q::Value>,
+    pub extensions: Option<q::Value<'static, String>>,
 }
 
 impl QueryResult {
@@ -66,7 +69,10 @@ impl QueryResult {
         }
     }
 
-    pub fn with_extensions(mut self, extensions: BTreeMap<q::Name, q::Value>) -> Self {
+    pub fn with_extensions(
+        mut self,
+        extensions: BTreeMap<String, q::Value<'static, String>>,
+    ) -> Self {
         self.extensions = Some(q::Value::Object(extensions));
         self
     }
@@ -100,7 +106,7 @@ impl QueryResult {
 
     /// Combine all the data into one `q::Value`. This method might clone
     /// all of the data in this result
-    fn take_data(self) -> Option<q::Value> {
+    fn take_data(self) -> Option<q::Value<'static, String>> {
         fn take_or_clone(value: Arc<Data>) -> Data {
             Arc::try_unwrap(value).unwrap_or_else(|value| value.as_ref().clone())
         }
@@ -124,7 +130,7 @@ impl QueryResult {
     /// Return either the data or the errors for this `QueryResult`. The data
     /// will be cloned for any of the entries in `self.data` that have a
     /// reference count greater than 1. If there are errors, the data is ignored.
-    pub fn to_result(self) -> Result<Option<q::Value>, Vec<QueryError>> {
+    pub fn to_result(self) -> Result<Option<q::Value<'static, String>>, Vec<QueryError>> {
         if self.has_errors() {
             Err(self.errors)
         } else {
@@ -173,10 +179,10 @@ impl From<Arc<Data>> for QueryResult {
     }
 }
 
-impl TryFrom<q::Value> for QueryResult {
+impl TryFrom<q::Value<'static, String>> for QueryResult {
     type Error = &'static str;
 
-    fn try_from(value: q::Value) -> Result<Self, Self::Error> {
+    fn try_from(value: q::Value<'static, String>) -> Result<Self, Self::Error> {
         match value {
             q::Value::Object(map) => Ok(QueryResult::from(map)),
             _ => Err("only objects can be turned into a QueryResult"),

@@ -123,9 +123,9 @@ fn create_source_event_stream(
 
 fn resolve_field_stream(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    field: &q::Field,
-    _argument_values: HashMap<&q::Name, q::Value>,
+    object_type: &s::ObjectType<'static, String>,
+    field: &q::Field<'static, String>,
+    _argument_values: HashMap<&String, q::Value<'static, String>>,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
     ctx.resolver
         .resolve_field_stream(&ctx.query.schema.document(), object_type, field)

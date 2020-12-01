@@ -302,12 +302,12 @@ impl SubgraphInstanceManager {
         let network = manifest.network_name();
 
         let store = store.ok_or_else(|| {
-            format_err!("expected store that matches subgraph network: {}", &network)
+            anyhow::anyhow!("expected store that matches subgraph network: {}", &network)
         })?;
 
         let eth_adapter = eth_networks
             .adapter_with_capabilities(network.clone(), &required_capabilities).map_err(|e|
-                format_err!(
+                anyhow::anyhow!(
                 "expected eth adapter that matches subgraph network {} with required capabilities: {}: {}",
                 &network,
                 &required_capabilities, e))?.clone();
@@ -589,9 +589,9 @@ impl BlockProcessingError {
     }
 }
 
-impl From<failure::Error> for BlockProcessingError {
-    fn from(e: failure::Error) -> Self {
-        BlockProcessingError::Unknown(e.compat_err())
+impl From<anyhow::Error> for BlockProcessingError {
+    fn from(e: anyhow::Error) -> Self {
+        BlockProcessingError::Unknown(e)
     }
 }
 
@@ -709,8 +709,7 @@ where
             &mut ctx,
             host_metrics.clone(),
             block_state.created_data_sources.drain(..),
-        )
-        .compat_err()?;
+        )?;
 
         // Reprocess the triggers from this block that match the new data sources
         let block_with_triggers = triggers_in_block(
@@ -804,7 +803,7 @@ where
         .entity_cache
         .as_modifications(ctx.inputs.store.as_ref())
         .map_err(|e| {
-            CancelableError::from(format_err!(
+            CancelableError::from(anyhow::anyhow!(
                 "Error while processing block stream for a subgraph: {}",
                 e
             ))
@@ -851,7 +850,7 @@ where
             Ok((ctx, needs_restart))
         }
         Err(e) => {
-            Err(format_err!("Error while processing block stream for a subgraph: {}", e).into())
+            Err(anyhow::anyhow!("Error while processing block stream for a subgraph: {}", e).into())
         }
     }
 }

@@ -7,7 +7,7 @@ use graph::prelude::*;
 use crate::prelude::*;
 use crate::schema::ast as sast;
 
-type TypeObjectsMap = BTreeMap<String, q::Value>;
+type TypeObjectsMap = BTreeMap<String, q::Value<'static, String>>;
 
 fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
     sast::get_type_definitions(&schema.document).iter().fold(
@@ -23,7 +23,11 @@ fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
     )
 }
 
-fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) -> q::Value {
+fn type_object(
+    schema: &Schema,
+    type_objects: &mut TypeObjectsMap,
+    t: &s::Type<'static, String>,
+) -> q::Value<'static, String> {
     match t {
         // We store the name of the named type here to be able to resolve it dynamically later
         s::Type::NamedType(s) => q::Value::String(s.to_owned()),
@@ -35,8 +39,8 @@ fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) 
 fn list_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    inner_type: &s::Type,
-) -> q::Value {
+    inner_type: &s::Type<'static, String>,
+) -> q::Value<'static, String> {
     object! {
         kind: q::Value::Enum(String::from("LIST")),
         ofType: type_object(schema, type_objects, inner_type),
@@ -46,8 +50,8 @@ fn list_type_object(
 fn non_null_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    inner_type: &s::Type,
-) -> q::Value {
+    inner_type: &s::Type<'static, String>,
+) -> q::Value<'static, String> {
     object! {
         kind: q::Value::Enum(String::from("NON_NULL")),
         ofType: type_object(schema, type_objects, inner_type),
@@ -57,8 +61,8 @@ fn non_null_type_object(
 fn type_definition_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    typedef: &s::TypeDefinition,
-) -> q::Value {
+    typedef: &s::TypeDefinition<'static, String>,
+) -> q::Value<'static, String> {
     let type_name = sast::get_type_name(typedef);
 
     type_objects.get(type_name).cloned().unwrap_or_else(|| {
@@ -82,7 +86,7 @@ fn type_definition_object(
     })
 }
 
-fn enum_type_object(enum_type: &s::EnumType) -> q::Value {
+fn enum_type_object(enum_type: &s::EnumType<'static, String>) -> q::Value<'static, String> {
     object! {
         kind: q::Value::Enum(String::from("ENUM")),
         name: enum_type.name.to_owned(),
@@ -91,11 +95,11 @@ fn enum_type_object(enum_type: &s::EnumType) -> q::Value {
     }
 }
 
-fn enum_values(enum_type: &s::EnumType) -> q::Value {
+fn enum_values(enum_type: &s::EnumType<'static, String>) -> q::Value<'static, String> {
     q::Value::List(enum_type.values.iter().map(enum_value).collect())
 }
 
-fn enum_value(enum_value: &s::EnumValue) -> q::Value {
+fn enum_value(enum_value: &s::EnumValue<'static, String>) -> q::Value<'static, String> {
     object! {
         name: enum_value.name.to_owned(),
         description: enum_value.description.clone(),
@@ -107,8 +111,8 @@ fn enum_value(enum_value: &s::EnumValue) -> q::Value {
 fn input_object_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    input_object_type: &s::InputObjectType,
-) -> q::Value {
+    input_object_type: &s::InputObjectType<'static, String>,
+) -> q::Value<'static, String> {
     let input_values = input_values(schema, type_objects, &input_object_type.fields);
     object! {
         name: input_object_type.name.to_owned(),
@@ -121,8 +125,8 @@ fn input_object_type_object(
 fn interface_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    interface_type: &s::InterfaceType,
-) -> q::Value {
+    interface_type: &s::InterfaceType<'static, String>,
+) -> q::Value<'static, String> {
     object! {
         name: interface_type.name.to_owned(),
         kind: q::Value::Enum(String::from("INTERFACE")),
@@ -139,8 +143,8 @@ fn interface_type_object(
 fn object_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    object_type: &s::ObjectType,
-) -> q::Value {
+    object_type: &s::ObjectType<'static, String>,
+) -> q::Value<'static, String> {
     type_objects
         .get(&object_type.name)
         .cloned()
@@ -161,8 +165,8 @@ fn object_type_object(
 fn field_objects(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    fields: &[s::Field],
-) -> q::Value {
+    fields: &[s::Field<'static, String>],
+) -> q::Value<'static, String> {
     q::Value::List(
         fields
             .into_iter()
@@ -171,7 +175,11 @@ fn field_objects(
     )
 }
 
-fn field_object(schema: &Schema, type_objects: &mut TypeObjectsMap, field: &s::Field) -> q::Value {
+fn field_object(
+    schema: &Schema,
+    type_objects: &mut TypeObjectsMap,
+    field: &s::Field<'static, String>,
+) -> q::Value<'static, String> {
     object! {
         name: field.name.to_owned(),
         description: field.description.clone(),
@@ -185,8 +193,8 @@ fn field_object(schema: &Schema, type_objects: &mut TypeObjectsMap, field: &s::F
 fn object_interfaces(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    object_type: &s::ObjectType,
-) -> q::Value {
+    object_type: &s::ObjectType<'static, String>,
+) -> q::Value<'static, String> {
     q::Value::List(
         schema
             .interfaces_for_type(&object_type.name)
@@ -197,7 +205,7 @@ fn object_interfaces(
     )
 }
 
-fn scalar_type_object(scalar_type: &s::ScalarType) -> q::Value {
+fn scalar_type_object(scalar_type: &s::ScalarType<'static, String>) -> q::Value<'static, String> {
     object! {
         name: scalar_type.name.to_owned(),
         kind: q::Value::Enum(String::from("SCALAR")),
@@ -207,7 +215,10 @@ fn scalar_type_object(scalar_type: &s::ScalarType) -> q::Value {
     }
 }
 
-fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
+fn union_type_object(
+    schema: &Schema,
+    union_type: &s::UnionType<'static, String>,
+) -> q::Value<'static, String> {
     object! {
         name: union_type.name.to_owned(),
         kind: q::Value::Enum(String::from("UNION")),
@@ -226,7 +237,10 @@ fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
     }
 }
 
-fn schema_directive_objects(schema: &Schema, type_objects: &mut TypeObjectsMap) -> q::Value {
+fn schema_directive_objects(
+    schema: &Schema,
+    type_objects: &mut TypeObjectsMap,
+) -> q::Value<'static, String> {
     q::Value::List(
         schema
             .document
@@ -244,8 +258,8 @@ fn schema_directive_objects(schema: &Schema, type_objects: &mut TypeObjectsMap) 
 fn directive_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    directive: &s::DirectiveDefinition,
-) -> q::Value {
+    directive: &s::DirectiveDefinition<'static, String>,
+) -> q::Value<'static, String> {
     object! {
         name: directive.name.to_owned(),
         description: directive.description.clone(),
@@ -254,7 +268,9 @@ fn directive_object(
     }
 }
 
-fn directive_locations(directive: &s::DirectiveDefinition) -> q::Value {
+fn directive_locations(
+    directive: &s::DirectiveDefinition<'static, String>,
+) -> q::Value<'static, String> {
     q::Value::List(
         directive
             .locations
@@ -268,8 +284,8 @@ fn directive_locations(directive: &s::DirectiveDefinition) -> q::Value {
 fn input_values(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    input_values: &[s::InputValue],
-) -> Vec<q::Value> {
+    input_values: &[s::InputValue<'static, String>],
+) -> Vec<q::Value<'static, String>> {
     input_values
         .iter()
         .map(|value| input_value(schema, type_objects, value))
@@ -279,8 +295,8 @@ fn input_values(
 fn input_value(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
-    input_value: &s::InputValue,
-) -> q::Value {
+    input_value: &s::InputValue<'static, String>,
+) -> q::Value<'static, String> {
     object! {
         name: input_value.name.to_owned(),
         description: input_value.description.clone(),
@@ -299,7 +315,7 @@ fn input_value(
 pub struct IntrospectionResolver {
     logger: Logger,
     type_objects: TypeObjectsMap,
-    directives: q::Value,
+    directives: q::Value<'static, String>,
 }
 
 impl IntrospectionResolver {
@@ -319,7 +335,7 @@ impl IntrospectionResolver {
         }
     }
 
-    fn schema_object(&self) -> q::Value {
+    fn schema_object(&self) -> q::Value<'static, String> {
         object! {
             queryType:
                 self.type_objects
@@ -335,7 +351,7 @@ impl IntrospectionResolver {
         }
     }
 
-    fn type_object(&self, name: &q::Value) -> q::Value {
+    fn type_object(&self, name: &q::Value<'static, String>) -> q::Value<'static, String> {
         match name {
             q::Value::String(s) => Some(s),
             _ => None,
@@ -354,19 +370,19 @@ impl Resolver for IntrospectionResolver {
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+        _: &q::SelectionSet<'static, String>,
+    ) -> Result<Option<q::Value<'static, String>>, Vec<QueryExecutionError>> {
         Ok(None)
     }
 
     fn resolve_objects(
         &self,
-        prefetched_objects: Option<q::Value>,
-        field: &q::Field,
-        _field_definition: &s::Field,
+        prefetched_objects: Option<q::Value<'static, String>>,
+        field: &q::Field<'static, String>,
+        _field_definition: &s::Field<'static, String>,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
                 let type_names = match prefetched_objects {
@@ -396,12 +412,12 @@ impl Resolver for IntrospectionResolver {
 
     fn resolve_object(
         &self,
-        prefetched_object: Option<q::Value>,
-        field: &q::Field,
-        _field_definition: &s::Field,
+        prefetched_object: Option<q::Value<'static, String>>,
+        field: &q::Field<'static, String>,
+        _field_definition: &s::Field<'static, String>,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),
             "__type" => {

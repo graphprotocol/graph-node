@@ -5,7 +5,7 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
 use graph::prelude::{
-    CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
+    CancelGuard, CancelHandle, CancelToken, CancelableError, Error, NodeId, PoolWaitStats,
     SubgraphVersionSwitchingMode,
 };
 use lazy_static::lazy_static;
@@ -25,13 +25,12 @@ use graph::data::subgraph::schema::{
     SubgraphDeploymentEntity, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, warn, web3,
-    ApiSchema, BigInt, BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey,
-    EntityModification, EntityOrder, EntityQuery, EntityRange, Error, EthereumBlockPointer,
-    EthereumCallCache, Logger, MetadataOperation, MetricsRegistry, QueryExecutionError, Schema,
-    StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox, SubgraphDeploymentId,
-    SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName, TransactionAbortError, Value,
-    BLOCK_NUMBER_MAX,
+    debug, ethabi, futures03, info, o, tiny_keccak, tokio, trace, warn, web3, ApiSchema, BigInt,
+    BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
+    EntityOrder, EntityQuery, EntityRange, EthereumBlockPointer, EthereumCallCache, Logger,
+    MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+    StoreEvent, StoreEventStreamBox, SubgraphDeploymentId, SubgraphDeploymentStore,
+    SubgraphEntityPair, SubgraphName, TransactionAbortError, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -358,7 +357,7 @@ impl Store {
                 };
 
                 result.map_err(|e| {
-                    format_err!(
+                    anyhow::anyhow!(
                         "Failed to set entity ({}, {}, {}): {}",
                         key.subgraph_id,
                         key.entity_type,
@@ -399,7 +398,7 @@ impl Store {
                     // This conversion is ok since n will only be 0 or 1
                     .map(|n| -(n as i32))
                     .map_err(|e| {
-                        format_err!(
+                        anyhow::anyhow!(
                             "Failed to remove entity ({}, {}, {}): {}",
                             key.subgraph_id,
                             key.entity_type,
@@ -447,7 +446,7 @@ impl Store {
                     // This conversion is ok since n will only be 0 or 1
                     .map(|n| -(n as i32))
                     .map_err(|e| {
-                        format_err!(
+                        anyhow::anyhow!(
                             "Failed to remove entity ({}, {}, {}): {}",
                             key.subgraph_id,
                             key.entity_type,
@@ -614,16 +613,16 @@ impl Store {
     }
 
     /// Deprecated. Use `with_conn` instead.
-    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        self.conn.get().map_err(Error::from)
+    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, anyhow::Error> {
+        self.conn.get().map_err(anyhow::Error::from)
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
     fn read_only_conn(
         &self,
         idx: usize,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        self.read_only_pools[idx].get().map_err(Error::from)
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, anyhow::Error> {
+        self.read_only_pools[idx].get().map_err(anyhow::Error::from)
     }
 
     // Duplicated logic - this function may eventually go away.
@@ -633,7 +632,7 @@ impl Store {
         &self,
         subgraph: &SubgraphDeploymentId,
         replica: ReplicaId,
-    ) -> Result<e::Connection, Error> {
+    ) -> Result<e::Connection, anyhow::Error> {
         let start = Instant::now();
         let conn = match replica {
             ReplicaId::Main => self.get_conn()?,
@@ -684,7 +683,10 @@ impl Store {
         Ok(storage.clone())
     }
 
-    fn subgraph_info(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SubgraphInfo, Error> {
+    fn subgraph_info(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<SubgraphInfo, anyhow::Error> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }
@@ -710,10 +712,7 @@ impl Store {
 
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
-            api: Arc::new(
-                ApiSchema::from_api_schema(schema)
-                    .map_err(|e| Error::from_boxed_compat(Box::from(e)))?,
-            ),
+            api: Arc::new(ApiSchema::from_api_schema(schema)?),
             network,
             graft_block,
         };
@@ -732,9 +731,9 @@ impl Store {
         let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
         let subgraph_entity = conn
             .find_metadata(&key.entity_type, &key.entity_id)
-            .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
+            .map_err(|e| anyhow::anyhow!("error reading subgraph entity: {}", e))?
             .ok_or_else(|| {
-                format_err!(
+                anyhow::anyhow!(
                     "could not read block ptr for non-existent subgraph {}",
                     subgraph_id
                 )
@@ -756,7 +755,7 @@ impl Store {
                 number: number.to_u64(),
             })),
             (None, None) => Ok(None),
-            _ => Err(format_err!(
+            _ => Err(anyhow::anyhow!(
                 "Ethereum block pointer has invalid `latestEthereumBlockHash` \
                  or `latestEthereumBlockNumber`"
             )),
@@ -929,7 +928,7 @@ impl StoreTrait for Store {
                     let causality_region = e.id()?;
                     let digest = match e.get("digest") {
                         Some(Value::Bytes(b)) => Ok(b.to_owned()),
-                        other => Err(format_err!(
+                        other => Err(anyhow::anyhow!(
                             "Entity has non-bytes digest attribute: {:?}",
                             other
                         )),
@@ -1009,7 +1008,7 @@ impl StoreTrait for Store {
             .optional()
             .map_err(|e| {
                 QueryExecutionError::StoreError(
-                    format_err!("error looking up ens_name for hash {}: {}", hash, e).into(),
+                    anyhow::anyhow!("error looking up ens_name for hash {}: {}", hash, e).into(),
                 )
             })
     }
@@ -1104,7 +1103,7 @@ impl StoreTrait for Store {
         let info = self.subgraph_info(&subgraph_id)?;
         if let Some(graft_block) = info.graft_block {
             if graft_block as u64 > block_ptr_to.number {
-                return Err(format_err!(
+                return Err(anyhow::anyhow!(
                     "Can not revert subgraph `{}` to block {} as it was \
                     grafted at block {} and reverting past a graft point \
                     is not possible",
@@ -1313,7 +1312,10 @@ impl StoreTrait for Store {
 }
 
 impl SubgraphDeploymentStore for Store {
-    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+    fn input_schema(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<Arc<Schema>, anyhow::Error> {
         Ok(self.subgraph_info(subgraph_id)?.input)
     }
 
@@ -1391,7 +1393,7 @@ impl EthereumCallCache for Store {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
         return_value: &[u8],
-    ) -> Result<(), Error> {
+    ) -> Result<(), anyhow::Error> {
         use crate::db_schema::{eth_call_cache, eth_call_meta};
         use diesel::dsl::sql;
 

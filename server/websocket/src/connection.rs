@@ -262,8 +262,8 @@ where
 
                     // Parse the GraphQL query document; respond with a GQL_ERROR if
                     // the query is invalid
-                    let query = match parse_query(&payload.query) {
-                        Ok(query) => query,
+                    let query = match parse_query::<'_, String>(&payload.query) {
+                        Ok(query) => query.into_static(),
                         Err(e) => {
                             return send_error_string(
                                 &msg_sink,

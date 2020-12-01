@@ -111,7 +111,7 @@ impl CacheWeight for Value {
     }
 }
 
-impl CacheWeight for graphql_parser::query::Value {
+impl CacheWeight for graphql_parser::query::Value<'static, String> {
     fn indirect_weight(&self) -> usize {
         use graphql_parser::query as q;
 

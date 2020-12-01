@@ -11,7 +11,7 @@ use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
 
 pub trait ValueExt: Sized {
-    fn as_object(&self) -> &BTreeMap<q::Name, q::Value>;
+    fn as_object(&self) -> &BTreeMap<String, q::Value<'static, String>>;
     fn as_string(&self) -> &str;
 
     /// If `self` is a variable reference, look it up in `vars` and return
@@ -21,13 +21,13 @@ pub trait ValueExt: Sized {
     /// an error
     fn lookup<'a>(
         &'a self,
-        vars: &'a HashMap<q::Name, Self>,
+        vars: &'a HashMap<String, Self>,
         pos: Pos,
     ) -> Result<&'a Self, QueryExecutionError>;
 }
 
-impl ValueExt for q::Value {
-    fn as_object(&self) -> &BTreeMap<q::Name, q::Value> {
+impl ValueExt for q::Value<'static, String> {
+    fn as_object(&self) -> &BTreeMap<String, q::Value<'static, String>> {
         match self {
             q::Value::Object(object) => object,
             _ => panic!("expected a Value::Object"),
@@ -43,9 +43,9 @@ impl ValueExt for q::Value {
 
     fn lookup<'a>(
         &'a self,
-        vars: &'a HashMap<q::Name, q::Value>,
+        vars: &'a HashMap<String, q::Value<'static, String>>,
         pos: Pos,
-    ) -> Result<&'a q::Value, QueryExecutionError> {
+    ) -> Result<&'a q::Value<'static, String>, QueryExecutionError> {
         match self {
             q::Value::Variable(name) => vars
                 .get(name)
@@ -71,16 +71,20 @@ impl Default for BlockConstraint {
 pub trait FieldExt {
     fn block_constraint<'a>(
         &self,
-        vars: &HashMap<q::Name, q::Value>,
+        vars: &HashMap<String, q::Value<'static, String>>,
     ) -> Result<BlockConstraint, QueryExecutionError>;
 }
 
-impl FieldExt for q::Field {
+impl FieldExt for q::Field<'static, String> {
     fn block_constraint<'a>(
         &self,
-        vars: &HashMap<q::Name, q::Value>,
+        vars: &HashMap<String, q::Value<'static, String>>,
     ) -> Result<BlockConstraint, QueryExecutionError> {
-        fn invalid_argument(arg: &str, field: &q::Field, value: &q::Value) -> QueryExecutionError {
+        fn invalid_argument(
+            arg: &str,
+            field: &q::Field<'static, String>,
+            value: &q::Value<'static, String>,
+        ) -> QueryExecutionError {
             QueryExecutionError::InvalidArgumentError(
                 field.position.clone(),
                 arg.to_owned(),

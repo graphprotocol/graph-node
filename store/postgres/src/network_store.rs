@@ -52,7 +52,7 @@ impl StoreTrait for NetworkStore {
     fn block_ptr(
         &self,
         subgraph_id: graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, failure::Error> {
+    ) -> Result<Option<EthereumBlockPointer>, anyhow::Error> {
         self.store.block_ptr(subgraph_id)
     }
 
@@ -233,21 +233,21 @@ impl SubgraphDeploymentStore for NetworkStore {
     fn input_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Arc<graph::prelude::Schema>, failure::Error> {
+    ) -> Result<Arc<graph::prelude::Schema>, anyhow::Error> {
         self.store.input_schema(subgraph_id)
     }
 
     fn api_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Arc<graph::prelude::ApiSchema>, failure::Error> {
+    ) -> Result<Arc<graph::prelude::ApiSchema>, anyhow::Error> {
         self.store.api_schema(subgraph_id)
     }
 
     fn network_name(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Option<String>, failure::Error> {
+    ) -> Result<Option<String>, anyhow::Error> {
         self.store.network_name(subgraph_id)
     }
 }
@@ -258,7 +258,7 @@ impl EthereumCallCache for NetworkStore {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: EthereumBlockPointer,
-    ) -> Result<Option<Vec<u8>>, failure::Error> {
+    ) -> Result<Option<Vec<u8>>, anyhow::Error> {
         self.store.get_call(contract_address, encoded_call, block)
     }
 
@@ -268,14 +268,14 @@ impl EthereumCallCache for NetworkStore {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
         return_value: &[u8],
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), anyhow::Error> {
         self.store
             .set_call(contract_address, encoded_call, block, return_value)
     }
 }
 
 impl ChainStoreTrait for NetworkStore {
-    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, failure::Error> {
+    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, anyhow::Error> {
         self.chain_store.genesis_block_ptr()
     }
 
@@ -291,11 +291,11 @@ impl ChainStoreTrait for NetworkStore {
         self.chain_store.upsert_blocks(blocks)
     }
 
-    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), failure::Error> {
+    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), anyhow::Error> {
         self.chain_store.upsert_light_blocks(blocks)
     }
 
-    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, failure::Error> {
+    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, anyhow::Error> {
         self.chain_store.attempt_chain_head_update(ancestor_count)
     }
 
@@ -303,11 +303,11 @@ impl ChainStoreTrait for NetworkStore {
         self.chain_store.chain_head_updates()
     }
 
-    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, failure::Error> {
+    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, anyhow::Error> {
         self.chain_store.chain_head_ptr()
     }
 
-    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, failure::Error> {
+    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, anyhow::Error> {
         self.chain_store.blocks(hashes)
     }
 
@@ -315,22 +315,22 @@ impl ChainStoreTrait for NetworkStore {
         &self,
         block_ptr: EthereumBlockPointer,
         offset: u64,
-    ) -> Result<Option<EthereumBlock>, failure::Error> {
+    ) -> Result<Option<EthereumBlock>, anyhow::Error> {
         self.chain_store.ancestor_block(block_ptr, offset)
     }
 
     fn cleanup_cached_blocks(
         &self,
         ancestor_count: u64,
-    ) -> Result<(BlockNumber, usize), failure::Error> {
+    ) -> Result<(BlockNumber, usize), anyhow::Error> {
         self.chain_store.cleanup_cached_blocks(ancestor_count)
     }
 
-    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, failure::Error> {
+    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, anyhow::Error> {
         self.chain_store.block_hashes_by_block_number(number)
     }
 
-    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, failure::Error> {
+    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, anyhow::Error> {
         self.chain_store.confirm_block_hash(number, hash)
     }
 }

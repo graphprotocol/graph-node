@@ -1,6 +1,6 @@
+use anyhow::Error;
 use async_trait::async_trait;
 use bytes::Bytes;
-use failure::Error;
 
 #[async_trait]
 pub trait ArweaveAdapter: Send + Sync {

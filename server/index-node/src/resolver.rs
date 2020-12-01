@@ -60,7 +60,7 @@ struct DeploymentAssignment {
 }
 
 impl TryFromValue for DeploymentAssignment {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+    fn try_from_value(value: &q::Value<'static, String>) -> Result<Self, Error> {
         Ok(Self {
             subgraph: value.get_required("id")?,
             node: value.get_required("nodeId")?,
@@ -72,7 +72,7 @@ impl TryFromValue for DeploymentAssignment {
 #[derive(Debug)]
 struct EthereumBlock(EthereumBlockPointer);
 
-impl From<EthereumBlock> for q::Value {
+impl From<EthereumBlock> for q::Value<'static, String> {
     fn from(block: EthereumBlock) -> Self {
         object! {
             __typename: "EthereumBlock",
@@ -83,7 +83,7 @@ impl From<EthereumBlock> for q::Value {
 }
 
 impl IntoValue for EthereumBlock {
-    fn into_value(self) -> q::Value {
+    fn into_value(self) -> q::Value<'static, String> {
         self.into()
     }
 }
@@ -107,7 +107,7 @@ enum ChainIndexingStatus {
     Ethereum(EthereumIndexingStatus),
 }
 
-impl From<ChainIndexingStatus> for q::Value {
+impl From<ChainIndexingStatus> for q::Value<'static, String> {
     fn from(status: ChainIndexingStatus) -> Self {
         match status {
             ChainIndexingStatus::Ethereum(inner) => object! {
@@ -174,7 +174,7 @@ impl IndexingStatusWithoutNode {
     /// Attempts to parse `${prefix}Hash` and `${prefix}Number` fields on a
     /// GraphQL object value into an `EthereumBlock`.
     fn block_from_value(
-        value: &q::Value,
+        value: &q::Value<'static, String>,
         prefix: &'static str,
     ) -> Result<Option<EthereumBlock>, Error> {
         let hash_key = format!("{}Hash", prefix);
@@ -196,7 +196,7 @@ impl IndexingStatusWithoutNode {
 }
 
 impl TryFromValue for IndexingStatusWithoutNode {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+    fn try_from_value(value: &q::Value<'static, String>) -> Result<Self, Error> {
         Ok(Self {
             subgraph: value.get_required("id")?,
             synced: value.get_required("synced")?,
@@ -205,9 +205,9 @@ impl TryFromValue for IndexingStatusWithoutNode {
             non_fatal_errors: value.get_required("nonFatalErrors")?,
             chains: vec![ChainIndexingStatus::Ethereum(EthereumIndexingStatus {
                 network: value
-                    .get_required::<q::Value>("manifest")?
-                    .get_required::<q::Value>("dataSources")?
-                    .get_values::<q::Value>()?[0]
+                    .get_required::<q::Value<'static, String>>("manifest")?
+                    .get_required::<q::Value<'static, String>>("dataSources")?
+                    .get_values::<q::Value<'static, String>>()?[0]
                     .get_required("network")?,
                 chain_head_block: Self::block_from_value(value, "ethereumHeadBlock")?,
                 earliest_block: Self::block_from_value(value, "earliestEthereumBlock")?,
@@ -217,7 +217,7 @@ impl TryFromValue for IndexingStatusWithoutNode {
     }
 }
 
-impl From<IndexingStatus> for q::Value {
+impl From<IndexingStatus> for q::Value<'static, String> {
     fn from(status: IndexingStatus) -> Self {
         let IndexingStatus {
             subgraph,
@@ -229,7 +229,7 @@ impl From<IndexingStatus> for q::Value {
             synced,
         } = status;
 
-        fn subgraph_error_to_value(subgraph_error: SubgraphError) -> q::Value {
+        fn subgraph_error_to_value(subgraph_error: SubgraphError) -> q::Value<'static, String> {
             let SubgraphError {
                 subgraph_id,
                 message,
@@ -252,7 +252,7 @@ impl From<IndexingStatus> for q::Value {
             }
         }
 
-        let non_fatal_errors: Vec<q::Value> = non_fatal_errors
+        let non_fatal_errors: Vec<q::Value<'static, String>> = non_fatal_errors
             .into_iter()
             .map(subgraph_error_to_value)
             .collect();
@@ -273,18 +273,18 @@ impl From<IndexingStatus> for q::Value {
 
 struct IndexingStatuses(Vec<IndexingStatus>);
 
-impl From<q::Value> for IndexingStatuses {
-    fn from(data: q::Value) -> Self {
+impl From<q::Value<'static, String>> for IndexingStatuses {
+    fn from(data: q::Value<'static, String>) -> Self {
         // Extract deployment assignment IDs from the query result
         let assignments = data
-            .get_required::<q::Value>("subgraphDeploymentAssignments")
+            .get_required::<q::Value<'static, String>>("subgraphDeploymentAssignments")
             .expect("no subgraph deployment assignments in the result")
             .get_values::<DeploymentAssignment>()
             .expect("failed to parse subgraph deployment assignments");
 
         IndexingStatuses(
             // Parse indexing statuses from deployments
-            data.get_required::<q::Value>("subgraphDeployments")
+            data.get_required::<q::Value<'static, String>>("subgraphDeployments")
                 .expect("no subgraph deployments in the result")
                 .get_values()
                 .expect("failed to parse subgraph deployments")
@@ -301,7 +301,7 @@ impl From<q::Value> for IndexingStatuses {
     }
 }
 
-impl From<IndexingStatuses> for q::Value {
+impl From<IndexingStatuses> for q::Value<'static, String> {
     fn from(statuses: IndexingStatuses) -> Self {
         q::Value::List(statuses.0.into_iter().map(q::Value::from).collect())
     }
@@ -323,8 +323,8 @@ where
 
     fn resolve_indexing_statuses(
         &self,
-        arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         // Extract optional "subgraphs" argument
         let subgraphs = arguments
             .get(&String::from("subgraphs"))
@@ -365,7 +365,8 @@ where
                 }
                 "#,
             ))
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             // If the `subgraphs` argument was provided, build a suitable `where`
             // filter to match the IDs; otherwise leave the `where` filter empty
             Some(QueryVariables::new(HashMap::from_iter(
@@ -413,8 +414,8 @@ where
 
     fn resolve_indexing_statuses_for_subgraph_name(
         &self,
-        arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         // Get the subgraph name from the arguments; we can safely use `expect` here
         // because the argument will already have been validated prior to the resolver
         // being called
@@ -457,7 +458,8 @@ where
                 }
                 "#,
             ))
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             // If the `subgraphs` argument was provided, build a suitable `where`
             // filter to match the IDs; otherwise leave the `where` filter empty
             Some(QueryVariables::new(HashMap::from_iter(
@@ -497,7 +499,7 @@ where
         };
 
         let subgraphs = match data
-            .get_optional::<q::Value>("subgraphs")
+            .get_optional::<q::Value<'static, String>>("subgraphs")
             .expect("invalid subgraphs")
         {
             Some(subgraphs) => subgraphs,
@@ -505,7 +507,7 @@ where
         };
 
         let subgraphs = subgraphs
-            .get_values::<q::Value>()
+            .get_values::<q::Value<'static, String>>()
             .expect("invalid subgraph values");
 
         let subgraph = if subgraphs.len() > 0 {
@@ -515,14 +517,14 @@ where
         };
 
         let deployments = subgraph
-            .get_required::<q::Value>("versions")
+            .get_required::<q::Value<'static, String>>("versions")
             .expect("missing subgraph versions")
-            .get_values::<q::Value>()
+            .get_values::<q::Value<'static, String>>()
             .expect("invalid subgraph versions")
             .into_iter()
             .map(|version| {
                 version
-                    .get_required::<q::Value>("deployment")
+                    .get_required::<q::Value<'static, String>>("deployment")
                     .expect("missing deployment")
             })
             .collect::<Vec<_>>();
@@ -530,7 +532,7 @@ where
         let transformed_data = object! {
             subgraphDeployments: deployments,
             subgraphDeploymentAssignments:
-                data.get_required::<q::Value>("subgraphDeploymentAssignments")
+                data.get_required::<q::Value<'static, String>>("subgraphDeploymentAssignments")
                     .expect("missing deployment assignments"),
         };
 
@@ -539,8 +541,8 @@ where
 
     fn resolve_proof_of_indexing(
         &self,
-        argument_values: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        argument_values: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         let deployment_id = argument_values
             .get_required::<SubgraphDeploymentId>("subgraph")
             .expect("Valid subgraphId required");
@@ -577,11 +579,11 @@ where
 
     fn resolve_indexing_status_for_version(
         &self,
-        arguments: &HashMap<&q::Name, q::Value>,
+        arguments: &HashMap<&String, q::Value<'static, String>>,
 
         // If `true` return the current version, if `false` return the pending version.
         current_version: bool,
-    ) -> Result<q::Value, QueryExecutionError> {
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         // We can safely unwrap because the argument is non-nullable and has been validated.
         let subgraph_name = arguments.get_required::<String>("subgraphName").unwrap();
 
@@ -624,7 +626,8 @@ where
                 }
                 "#,
             ))
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             Some(QueryVariables::new(HashMap::from_iter(
                 vec![
                     ("where".into(), where_filter),
@@ -664,7 +667,7 @@ where
         };
 
         let subgraphs = match data
-            .get_optional::<q::Value>("subgraphs")
+            .get_optional::<q::Value<'static, String>>("subgraphs")
             .expect("invalid subgraphs")
         {
             Some(subgraphs) => subgraphs,
@@ -672,7 +675,7 @@ where
         };
 
         let subgraphs = subgraphs
-            .get_values::<q::Value>()
+            .get_values::<q::Value<'static, String>>()
             .expect("invalid subgraph values");
 
         let subgraph = match subgraphs.into_iter().next() {
@@ -686,11 +689,11 @@ where
         };
 
         let deployments = subgraph
-            .get_optional::<q::Value>(field_name)
+            .get_optional::<q::Value<'static, String>>(field_name)
             .unwrap()
             .map(|version| {
                 q::Value::List(vec![version
-                    .get_required::<q::Value>("deployment")
+                    .get_required::<q::Value<'static, String>>("deployment")
                     .expect("missing deployment")])
             })
             .unwrap_or(q::Value::List(vec![]));
@@ -698,7 +701,7 @@ where
         let transformed_data = object!(
             subgraphDeployments: deployments,
             subgraphDeploymentAssignments:
-                data.get_required::<q::Value>("subgraphDeploymentAssignments")
+                data.get_required::<q::Value<'static, String>>("subgraphDeploymentAssignments")
                     .expect("missing deployment assignments"),
         );
 
@@ -735,20 +738,20 @@ where
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+        _: &q::SelectionSet<'static, String>,
+    ) -> Result<Option<q::Value<'static, String>>, Vec<QueryExecutionError>> {
         Ok(None)
     }
 
     /// Resolves a scalar value for a given scalar type.
     fn resolve_scalar_value(
         &self,
-        parent_object_type: &s::ObjectType,
-        field: &q::Field,
-        scalar_type: &s::ScalarType,
-        value: Option<q::Value>,
-        argument_values: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        parent_object_type: &s::ObjectType<'static, String>,
+        field: &q::Field<'static, String>,
+        scalar_type: &s::ScalarType<'static, String>,
+        value: Option<q::Value<'static, String>>,
+        argument_values: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         // Check if we are resolving the proofOfIndexing bytes
         if &parent_object_type.name == "Query"
             && &field.name == "proofOfIndexing"
@@ -766,12 +769,12 @@ where
 
     fn resolve_objects(
         &self,
-        prefetched_objects: Option<q::Value>,
-        field: &q::Field,
-        _field_definition: &s::Field,
+        prefetched_objects: Option<q::Value<'static, String>>,
+        field: &q::Field<'static, String>,
+        _field_definition: &s::Field<'static, String>,
         object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         match (prefetched_objects, object_type.name(), field.name.as_str()) {
             // The top-level `indexingStatuses` field
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
@@ -790,12 +793,12 @@ where
 
     fn resolve_object(
         &self,
-        prefetched_object: Option<q::Value>,
-        field: &q::Field,
-        _field_definition: &s::Field,
+        prefetched_object: Option<q::Value<'static, String>>,
+        field: &q::Field<'static, String>,
+        _field_definition: &s::Field<'static, String>,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         match (prefetched_object, field.name.as_str()) {
             // The top-level `indexingStatusForCurrentVersion` field
             (None, "indexingStatusForCurrentVersion") => {

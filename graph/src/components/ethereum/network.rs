@@ -1,4 +1,4 @@
-use failure::{format_err, Error};
+use anyhow::{anyhow, Error};
 use rand::seq::IteratorRandom;
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::HashMap;
@@ -102,7 +102,7 @@ impl EthereumNetworkAdapters {
             .filter(|adapter| &adapter.capabilities >= required_capabilities)
             .collect();
         if sufficient_adapters.is_empty() {
-            return Err(format_err!(
+            return Err(anyhow!(
                 "A matching Ethereum network with {:?} was not found.",
                 required_capabilities
             ));
@@ -188,7 +188,7 @@ impl EthereumNetworks {
     ) -> Result<&Arc<dyn EthereumAdapter>, Error> {
         self.networks
             .get(&network_name)
-            .ok_or(format_err!("network not supported: {}", &network_name))
+            .ok_or(anyhow::anyhow!("network not supported: {}", &network_name))
             .and_then(|adapters| adapters.cheapest_with(requirements))
     }
 }

@@ -64,7 +64,7 @@ enum ConnectionType {
     WS,
 }
 
-fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
+fn read_expensive_queries() -> Result<Vec<Arc<q::Document<'static, String>>>, std::io::Error> {
     // A file with a list of expensive queries, one query per line
     // Attempts to run these queries will return a
     // QueryExecutionError::TooExpensive to clients
@@ -85,7 +85,7 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
                 );
                 std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
             })?;
-            queries.push(Arc::new(query));
+            queries.push(Arc::new(query.into_static()));
         }
     }
     Ok(queries)

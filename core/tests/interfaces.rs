@@ -35,7 +35,7 @@ fn insert_and_query(
         insert_ops.collect::<Vec<_>>(),
     )?;
 
-    let document = graphql_parser::parse_query(query).unwrap();
+    let document = graphql_parser::parse_query(query).unwrap().into_static();
     let query = Query::new(
         STORE.api_schema(&subgraph_id).unwrap(),
         document,
@@ -770,7 +770,7 @@ fn fragments_dont_duplicate_data() {
         object! {
             parents: vec![
                 object! {
-                    children: Vec::<q::Value>::new()
+                    children: Vec::<q::Value<'static, String>>::new()
                 },
                 object! {
                     children: vec![

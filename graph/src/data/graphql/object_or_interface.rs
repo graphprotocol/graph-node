@@ -6,18 +6,18 @@ use super::ObjectTypeExt;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
-    Object(&'a s::ObjectType),
-    Interface(&'a s::InterfaceType),
+    Object(&'a s::ObjectType<'static, String>),
+    Interface(&'a s::InterfaceType<'static, String>),
 }
 
-impl<'a> From<&'a s::ObjectType> for ObjectOrInterface<'a> {
-    fn from(object: &'a s::ObjectType) -> Self {
+impl<'a> From<&'a s::ObjectType<'static, String>> for ObjectOrInterface<'a> {
+    fn from(object: &'a s::ObjectType<'static, String>) -> Self {
         ObjectOrInterface::Object(object)
     }
 }
 
-impl<'a> From<&'a s::InterfaceType> for ObjectOrInterface<'a> {
-    fn from(interface: &'a s::InterfaceType) -> Self {
+impl<'a> From<&'a s::InterfaceType<'static, String>> for ObjectOrInterface<'a> {
+    fn from(interface: &'a s::InterfaceType<'static, String>) -> Self {
         ObjectOrInterface::Interface(interface)
     }
 }
@@ -44,25 +44,28 @@ impl<'a> ObjectOrInterface<'a> {
         }
     }
 
-    pub fn directives(self) -> &'a Vec<s::Directive> {
+    pub fn directives(self) -> &'a Vec<s::Directive<'static, String>> {
         match self {
             ObjectOrInterface::Object(object) => &object.directives,
             ObjectOrInterface::Interface(interface) => &interface.directives,
         }
     }
 
-    pub fn fields(self) -> &'a Vec<s::Field> {
+    pub fn fields(self) -> &'a Vec<s::Field<'static, String>> {
         match self {
             ObjectOrInterface::Object(object) => &object.fields,
             ObjectOrInterface::Interface(interface) => &interface.fields,
         }
     }
 
-    pub fn field(&self, name: &s::Name) -> Option<&s::Field> {
+    pub fn field(&self, name: &String) -> Option<&s::Field<'static, String>> {
         self.fields().iter().find(|field| &field.name == name)
     }
 
-    pub fn object_types(self, schema: &'a Schema) -> Option<Vec<&'a s::ObjectType>> {
+    pub fn object_types(
+        self,
+        schema: &'a Schema,
+    ) -> Option<Vec<&'a s::ObjectType<'static, String>>> {
         match self {
             ObjectOrInterface::Object(object) => Some(vec![object]),
             ObjectOrInterface::Interface(interface) => schema
@@ -77,7 +80,7 @@ impl<'a> ObjectOrInterface<'a> {
     pub fn matches(
         self,
         typename: &str,
-        types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
+        types_for_interface: &BTreeMap<String, Vec<s::ObjectType<'static, String>>>,
     ) -> bool {
         match self {
             ObjectOrInterface::Object(o) => o.name == typename,

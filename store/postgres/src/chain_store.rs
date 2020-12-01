@@ -265,7 +265,7 @@ impl ChainStoreTrait for ChainStore {
         offset: u64,
     ) -> Result<Option<EthereumBlock>, Error> {
         if block_ptr.number < offset {
-            failure::bail!("block offset points to before genesis block");
+            anyhow::bail!("block offset points to before genesis block");
         }
 
         select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))

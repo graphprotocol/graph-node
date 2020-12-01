@@ -154,7 +154,7 @@ where
             .subscribe(vec![
                 SubgraphDeploymentAssignmentEntity::subgraph_entity_pair(),
             ])
-            .map_err(|()| format_err!("Entity change stream failed"))
+            .map_err(|()| anyhow::anyhow!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
                 // know that there is at least one, as that is what we subscribed to
@@ -173,7 +173,7 @@ where
                                    "entity_change" => format!("{:?}", entity_change));
                     let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
                         .map_err(|s| {
-                            format_err!(
+                            anyhow::anyhow!(
                                 "Invalid subgraph hash `{}` in assignment entity: {:#?}",
                                 s,
                                 entity_change.clone(),
@@ -187,7 +187,7 @@ where
                                     subgraph_hash.clone(),
                                 ))
                                 .map_err(|e| {
-                                    format_err!("Failed to get subgraph assignment entity: {}", e)
+                                    anyhow::anyhow!("Failed to get subgraph assignment entity: {}", e)
                                 })
                                 .map(
                                     |entity_opt| -> Box<dyn Stream<Item = _, Error = _> + Send> {
@@ -241,7 +241,7 @@ where
             .filter(EntityFilter::new_equal("nodeId", self.node_id.to_string()));
 
         future::result(self.store.find(assignment_query))
-            .map_err(|e| format_err!("Error querying subgraph assignments: {}", e))
+            .map_err(|e| anyhow::anyhow!("Error querying subgraph assignments: {}", e))
             .and_then(move |assignment_entities| {
                 assignment_entities
                     .into_iter()
@@ -249,7 +249,7 @@ where
                         // Parse as subgraph hash
                         assignment_entity.id().and_then(|id| {
                             SubgraphDeploymentId::new(id).map_err(|s| {
-                                format_err!("Invalid subgraph hash `{}` in assignment entity", s)
+                                anyhow::anyhow!("Invalid subgraph hash `{}` in assignment entity", s)
                             })
                         })
                     })

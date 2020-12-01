@@ -261,7 +261,7 @@ pub struct LoadManager {
 impl LoadManager {
     pub fn new(
         logger: &Logger,
-        blocked_queries: Vec<Arc<q::Document>>,
+        blocked_queries: Vec<Arc<q::Document<'static, String>>>,
         registry: Arc<dyn MetricsRegistry>,
         store_conn_pool_size: usize,
     ) -> Self {

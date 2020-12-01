@@ -2,7 +2,7 @@ use graphql_parser::query::*;
 use serde::ser::*;
 
 /// Serializable wrapper around a GraphQL value.
-pub struct SerializableValue<'a>(pub &'a Value);
+pub struct SerializableValue<'a>(pub &'a Value<'static, String>);
 
 impl<'a> Serialize for SerializableValue<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

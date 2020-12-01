@@ -27,7 +27,7 @@ pub(crate) enum FilterOp {
 }
 
 /// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
-pub(crate) fn parse_field_as_filter(key: &Name) -> (Name, FilterOp) {
+pub(crate) fn parse_field_as_filter(key: &String) -> (String, FilterOp) {
     let (suffix, op) = match key {
         k if k.ends_with("_not") => ("_not", FilterOp::Not),
         k if k.ends_with("_gt") => ("_gt", FilterOp::GreaterThan),
@@ -49,7 +49,9 @@ pub(crate) fn parse_field_as_filter(key: &Name) -> (Name, FilterOp) {
     (key.trim_end_matches(suffix).to_owned(), op)
 }
 
-pub fn get_root_query_type_def(schema: &Document) -> Option<&TypeDefinition> {
+pub fn get_root_query_type_def<'a>(
+    schema: &'a Document<'static, String>,
+) -> Option<&'a TypeDefinition<'static, String>> {
     schema.definitions.iter().find_map(|d| match d {
         Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
             TypeDefinition::Object(t) if t.name == "Query" => Some(def),
@@ -60,7 +62,9 @@ pub fn get_root_query_type_def(schema: &Document) -> Option<&TypeDefinition> {
 }
 
 /// Returns all type definitions in the schema.
-pub fn get_type_definitions(schema: &Document) -> Vec<&TypeDefinition> {
+pub fn get_type_definitions<'a>(
+    schema: &'a Document<'static, String>,
+) -> Vec<&'a TypeDefinition<'static, String>> {
     schema
         .definitions
         .iter()
@@ -72,7 +76,9 @@ pub fn get_type_definitions(schema: &Document) -> Vec<&TypeDefinition> {
 }
 
 /// Returns all object type definitions in the schema.
-pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
+pub fn get_object_type_definitions<'a>(
+    schema: &'a Document<'static, String>,
+) -> Vec<&'a ObjectType<'static, String>> {
     schema
         .definitions
         .iter()
@@ -85,9 +91,9 @@ pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
 
 /// Returns the object type with the given name.
 pub fn get_object_type_mut<'a>(
-    schema: &'a mut Document,
-    name: &Name,
-) -> Option<&'a mut ObjectType> {
+    schema: &'a mut Document<'static, String>,
+    name: &String,
+) -> Option<&'a mut ObjectType<'static, String>> {
     use self::TypeDefinition::*;
 
     get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
@@ -97,7 +103,9 @@ pub fn get_object_type_mut<'a>(
 }
 
 /// Returns all interface definitions in the schema.
-pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> {
+pub fn get_interface_type_definitions<'a>(
+    schema: &'a Document<'static, String>,
+) -> Vec<&'a InterfaceType<'static, String>> {
     schema
         .definitions
         .iter()
@@ -110,9 +118,9 @@ pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> 
 
 /// Returns the interface type with the given name.
 pub fn get_interface_type_mut<'a>(
-    schema: &'a mut Document,
-    name: &Name,
-) -> Option<&'a mut InterfaceType> {
+    schema: &'a mut Document<'static, String>,
+    name: &String,
+) -> Option<&'a mut InterfaceType<'static, String>> {
     use self::TypeDefinition::*;
 
     get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
@@ -124,10 +132,10 @@ pub fn get_interface_type_mut<'a>(
 /// Returns the type of a field of an object type.
 pub fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &Name,
-) -> Option<&'a Field> {
+    name: &String,
+) -> Option<&'a Field<'static, String>> {
     lazy_static! {
-        pub static ref TYPENAME_FIELD: Field = Field {
+        pub static ref TYPENAME_FIELD: Field<'static, String> = Field {
             position: Pos::default(),
             description: None,
             name: "__typename".to_owned(),
@@ -149,18 +157,18 @@ pub fn get_field<'a>(
 }
 
 /// Returns the value type for a GraphQL field type.
-pub fn get_field_value_type(field_type: &Type) -> Result<ValueType, Error> {
+pub fn get_field_value_type(field_type: &Type<'static, String>) -> Result<ValueType, Error> {
     match field_type {
         Type::NamedType(ref name) => ValueType::from_str(&name),
         Type::NonNullType(inner) => get_field_value_type(&inner),
-        Type::ListType(_) => Err(format_err!(
+        Type::ListType(_) => Err(anyhow::anyhow!(
             "Only scalar values are supported in this context"
         )),
     }
 }
 
 /// Returns the value type for a GraphQL field type.
-pub fn get_field_name(field_type: &Type) -> Name {
+pub fn get_field_name(field_type: &Type<'static, String>) -> String {
     match field_type {
         Type::NamedType(name) => name.to_string(),
         Type::NonNullType(inner) => get_field_name(&inner),
@@ -169,7 +177,10 @@ pub fn get_field_name(field_type: &Type) -> Name {
 }
 
 /// Returns the type with the given name.
-pub fn get_named_type<'a>(schema: &'a Document, name: &str) -> Option<&'a TypeDefinition> {
+pub fn get_named_type<'a>(
+    schema: &'a Document<'static, String>,
+    name: &str,
+) -> Option<&'a TypeDefinition<'static, String>> {
     schema
         .definitions
         .iter()
@@ -189,9 +200,9 @@ pub fn get_named_type<'a>(schema: &'a Document, name: &str) -> Option<&'a TypeDe
 
 /// Returns a mutable version of the type with the given name.
 pub fn get_named_type_definition_mut<'a>(
-    schema: &'a mut Document,
-    name: &Name,
-) -> Option<&'a mut TypeDefinition> {
+    schema: &'a mut Document<'static, String>,
+    name: &String,
+) -> Option<&'a mut TypeDefinition<'static, String>> {
     schema
         .definitions
         .iter_mut()
@@ -210,7 +221,7 @@ pub fn get_named_type_definition_mut<'a>(
 }
 
 /// Returns the name of a type.
-pub fn get_type_name(t: &TypeDefinition) -> &Name {
+pub fn get_type_name<'a>(t: &'a TypeDefinition<'static, String>) -> &'a String {
     match t {
         TypeDefinition::Enum(t) => &t.name,
         TypeDefinition::InputObject(t) => &t.name,
@@ -222,7 +233,7 @@ pub fn get_type_name(t: &TypeDefinition) -> &Name {
 }
 
 /// Returns the description of a type.
-pub fn get_type_description(t: &TypeDefinition) -> &Option<String> {
+pub fn get_type_description<'a>(t: &'a TypeDefinition<'static, String>) -> &'a Option<String> {
     match t {
         TypeDefinition::Enum(t) => &t.description,
         TypeDefinition::InputObject(t) => &t.description,
@@ -235,11 +246,11 @@ pub fn get_type_description(t: &TypeDefinition) -> &Option<String> {
 
 /// Returns the argument definitions for a field of an object type.
 pub fn get_argument_definitions<'a>(
-    object_type: &'a ObjectType,
-    name: &Name,
-) -> Option<&'a Vec<InputValue>> {
+    object_type: &'a ObjectType<'static, String>,
+    name: &String,
+) -> Option<&'a Vec<InputValue<'static, String>>> {
     lazy_static! {
-        pub static ref NAME_ARGUMENT: Vec<InputValue> = vec![InputValue {
+        pub static ref NAME_ARGUMENT: Vec<InputValue<'static, String>> = vec![InputValue {
             position: Pos::default(),
             description: None,
             name: "name".to_owned(),
@@ -259,17 +270,17 @@ pub fn get_argument_definitions<'a>(
 
 /// Returns the type definition that a field type corresponds to.
 pub fn get_type_definition_from_field<'a>(
-    schema: &'a Document,
-    field: &Field,
-) -> Option<&'a TypeDefinition> {
+    schema: &'a Document<'static, String>,
+    field: &Field<'static, String>,
+) -> Option<&'a TypeDefinition<'static, String>> {
     get_type_definition_from_type(schema, &field.field_type)
 }
 
 /// Returns the type definition for a type.
 pub fn get_type_definition_from_type<'a>(
-    schema: &'a Document,
-    t: &Type,
-) -> Option<&'a TypeDefinition> {
+    schema: &'a Document<'static, String>,
+    t: &Type<'static, String>,
+) -> Option<&'a TypeDefinition<'static, String>> {
     match t {
         Type::NamedType(name) => get_named_type(schema, name),
         Type::ListType(inner) => get_type_definition_from_type(schema, inner),
@@ -278,7 +289,10 @@ pub fn get_type_definition_from_type<'a>(
 }
 
 /// Looks up a directive in a object type, if it is provided.
-pub fn get_object_type_directive(object_type: &ObjectType, name: Name) -> Option<&Directive> {
+pub fn get_object_type_directive<'a>(
+    object_type: &'a ObjectType<'static, String>,
+    name: String,
+) -> Option<&'a Directive<'static, String>> {
     object_type
         .directives
         .iter()
@@ -286,7 +300,7 @@ pub fn get_object_type_directive(object_type: &ObjectType, name: Name) -> Option
 }
 
 // Returns true if the given type is a non-null type.
-pub fn is_non_null_type(t: &Type) -> bool {
+pub fn is_non_null_type(t: &Type<'static, String>) -> bool {
     match t {
         Type::NonNullType(_) => true,
         _ => false,
@@ -297,7 +311,7 @@ pub fn is_non_null_type(t: &Type) -> bool {
 ///
 /// Uses the algorithm outlined on
 /// https://facebook.github.io/graphql/draft/#IsInputType().
-pub fn is_input_type(schema: &Document, t: &Type) -> bool {
+pub fn is_input_type(schema: &Document<'static, String>, t: &Type<'static, String>) -> bool {
     use self::TypeDefinition::*;
 
     match t {
@@ -313,7 +327,7 @@ pub fn is_input_type(schema: &Document, t: &Type) -> bool {
     }
 }
 
-pub fn is_entity_type(schema: &Document, t: &Type) -> bool {
+pub fn is_entity_type(schema: &Document<'static, String>, t: &Type<'static, String>) -> bool {
     use self::Type::*;
 
     match t {
@@ -323,13 +337,13 @@ pub fn is_entity_type(schema: &Document, t: &Type) -> bool {
     }
 }
 
-pub fn is_entity_type_definition(type_def: &TypeDefinition) -> bool {
+pub fn is_entity_type_definition(type_def: &TypeDefinition<'static, String>) -> bool {
     use self::TypeDefinition::*;
 
     match type_def {
         // Entity types are obvious
         Object(object_type) => {
-            get_object_type_directive(object_type, Name::from("entity")).is_some()
+            get_object_type_directive(object_type, String::from("entity")).is_some()
         }
 
         // For now, we'll assume that only entities can implement interfaces;
@@ -342,7 +356,7 @@ pub fn is_entity_type_definition(type_def: &TypeDefinition) -> bool {
     }
 }
 
-pub fn is_list_or_non_null_list_field(field: &Field) -> bool {
+pub fn is_list_or_non_null_list_field(field: &Field<'static, String>) -> bool {
     use self::Type::*;
 
     match &field.field_type {
@@ -355,7 +369,10 @@ pub fn is_list_or_non_null_list_field(field: &Field) -> bool {
     }
 }
 
-fn unpack_type<'a>(schema: &'a Document, t: &Type) -> Option<&'a TypeDefinition> {
+fn unpack_type<'a>(
+    schema: &'a Document<'static, String>,
+    t: &Type<'static, String>,
+) -> Option<&'a TypeDefinition<'static, String>> {
     use self::Type::*;
 
     match t {
@@ -366,13 +383,15 @@ fn unpack_type<'a>(schema: &'a Document, t: &Type) -> Option<&'a TypeDefinition>
 }
 
 pub fn get_referenced_entity_type<'a>(
-    schema: &'a Document,
-    field: &Field,
-) -> Option<&'a TypeDefinition> {
+    schema: &'a Document<'static, String>,
+    field: &Field<'static, String>,
+) -> Option<&'a TypeDefinition<'static, String>> {
     unpack_type(schema, &field.field_type).filter(|ty| is_entity_type_definition(ty))
 }
 
-pub fn get_input_object_definitions(schema: &Document) -> Vec<InputObjectType> {
+pub fn get_input_object_definitions(
+    schema: &Document<'static, String>,
+) -> Vec<InputObjectType<'static, String>> {
     schema
         .definitions
         .iter()
@@ -385,17 +404,19 @@ pub fn get_input_object_definitions(schema: &Document) -> Vec<InputObjectType> {
 
 /// If the field has a `@derivedFrom(field: "foo")` directive, obtain the
 /// name of the field (e.g. `"foo"`)
-pub fn get_derived_from_directive<'a>(field_definition: &Field) -> Option<&Directive> {
+pub fn get_derived_from_directive<'a>(
+    field_definition: &'a Field<'static, String>,
+) -> Option<&'a Directive<'static, String>> {
     field_definition
         .directives
         .iter()
-        .find(|directive| directive.name == Name::from("derivedFrom"))
+        .find(|directive| directive.name == String::from("derivedFrom"))
 }
 
 pub fn get_derived_from_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    field_definition: &'a Field,
-) -> Option<&'a Field> {
+    field_definition: &'a Field<'static, String>,
+) -> Option<&'a Field<'static, String>> {
     get_derived_from_directive(field_definition)
         .and_then(|directive| qast::get_argument_value(&directive.arguments, "field"))
         .and_then(|value| match value {
@@ -405,7 +426,10 @@ pub fn get_derived_from_field<'a>(
         .and_then(|derived_from_field_name| get_field(object_type, derived_from_field_name))
 }
 
-fn scalar_value_type(schema: &Document, field_type: &Type) -> ValueType {
+fn scalar_value_type(
+    schema: &Document<'static, String>,
+    field_type: &Type<'static, String>,
+) -> ValueType {
     use TypeDefinition as t;
     match field_type {
         Type::NamedType(name) => {
@@ -422,7 +446,7 @@ fn scalar_value_type(schema: &Document, field_type: &Type) -> ValueType {
     }
 }
 
-fn is_list(field_type: &Type) -> bool {
+fn is_list(field_type: &Type<'static, String>) -> bool {
     match field_type {
         Type::NamedType(_) => false,
         Type::NonNullType(inner) => is_list(inner),
@@ -447,7 +471,7 @@ fn is_assignable(value: &store::Value, scalar_type: &ValueType, is_list: bool) -
 }
 
 pub fn validate_entity(
-    schema: &Document,
+    schema: &Document<'static, String>,
     key: &EntityKey,
     entity: &Entity,
 ) -> Result<(), anyhow::Error> {

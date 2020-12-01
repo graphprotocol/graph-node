@@ -1,10 +1,10 @@
 use diesel::deserialize::FromSql;
 use diesel::serialize::ToSql;
 use diesel_derives::{AsExpression, FromSqlRow};
-use failure::Fail;
 use hex;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
+use thiserror::Error;
 use web3::types::*;
 
 use stable_hash::{
@@ -209,11 +209,11 @@ impl StableHash for BigInt {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum BigIntOutOfRangeError {
-    #[fail(display = "Cannot convert negative BigInt into type")]
+    #[error("Cannot convert negative BigInt into type")]
     Negative,
-    #[fail(display = "BigInt value is too large for type")]
+    #[error("BigInt value is too large for type")]
     Overflow,
 }
 

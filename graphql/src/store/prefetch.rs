@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use graph::data::graphql::*;
 use graph::prelude::{
-    ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
+    anyhow, ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
     EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore,
     Value as StoreValue, WindowAttribute,
 };
@@ -30,7 +30,7 @@ lazy_static! {
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
-struct ObjectCondition<'a>(&'a s::ObjectType);
+struct ObjectCondition<'a>(&'a s::ObjectType<'static, String>);
 
 impl std::hash::Hash for ObjectCondition<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -51,7 +51,7 @@ impl Eq for ObjectCondition<'_> {}
 /// has an entry mapping the response key to the list of nodes.
 #[derive(Debug, Clone)]
 struct Node {
-    entity: BTreeMap<String, q::Value>,
+    entity: BTreeMap<String, q::Value<'static, String>>,
     /// We are using an `Rc` here for two reasons: it allows us to defer
     /// copying objects until the end, when converting to `q::Value` forces
     /// us to copy any child that is referenced by multiple parents. It also
@@ -61,8 +61,8 @@ struct Node {
     children: BTreeMap<String, Vec<Rc<Node>>>,
 }
 
-impl From<BTreeMap<String, q::Value>> for Node {
-    fn from(entity: BTreeMap<String, q::Value>) -> Self {
+impl From<BTreeMap<String, q::Value<'static, String>>> for Node {
+    fn from(entity: BTreeMap<String, q::Value<'static, String>>) -> Self {
         Node {
             entity,
             children: BTreeMap::default(),
@@ -72,7 +72,7 @@ impl From<BTreeMap<String, q::Value>> for Node {
 
 /// Convert a list of nodes into a `q::Value::List` where each node has also
 /// been converted to a `q::Value`
-fn node_list_as_value(nodes: Vec<Rc<Node>>) -> q::Value {
+fn node_list_as_value(nodes: Vec<Rc<Node>>) -> q::Value<'static, String> {
     q::Value::List(
         nodes
             .into_iter()
@@ -110,7 +110,7 @@ fn make_root_node() -> Vec<Node> {
 /// always a `q::Value::Object`. The entity's associations are mapped to
 /// entries `r:{response_key}` as that name is guaranteed to not conflict
 /// with any field of the entity.
-impl From<Node> for q::Value {
+impl From<Node> for q::Value<'static, String> {
     fn from(node: Node) -> Self {
         let mut map = node.entity;
         for (key, nodes) in node.children.into_iter() {
@@ -124,7 +124,7 @@ trait ValueExt {
     fn as_str(&self) -> Option<&str>;
 }
 
-impl ValueExt for q::Value {
+impl ValueExt for q::Value<'static, String> {
     fn as_str(&self) -> Option<&str> {
         match self {
             q::Value::String(s) => Some(s),
@@ -134,19 +134,15 @@ impl ValueExt for q::Value {
 }
 
 impl Node {
-    fn id(&self) -> Result<String, graph::prelude::failure::Error> {
+    fn id(&self) -> Result<String, graph::prelude::anyhow::Error> {
         match self.get("id") {
-            None => Err(graph::prelude::failure::format_err!(
-                "Entity is missing an `id` attribute"
-            )),
+            None => Err(anyhow::anyhow!("Entity is missing an `id` attribute")),
             Some(q::Value::String(s)) => Ok(s.to_owned()),
-            _ => Err(graph::prelude::failure::format_err!(
-                "Entity has non-string `id` attribute"
-            )),
+            _ => Err(anyhow::anyhow!("Entity has non-string `id` attribute")),
         }
     }
 
-    fn get(&self, key: &str) -> Option<&q::Value> {
+    fn get(&self, key: &str) -> Option<&q::Value<'static, String>> {
         self.entity.get(key)
     }
 
@@ -168,7 +164,7 @@ enum JoinField<'a> {
 }
 
 impl<'a> JoinField<'a> {
-    fn new(field: &'a s::Field) -> Self {
+    fn new(field: &'a s::Field<'static, String>) -> Self {
         let name = field.name.as_str();
         if sast::is_list_or_non_null_list_field(field) {
             JoinField::List(name)
@@ -206,9 +202,9 @@ struct JoinCond<'a> {
 
 impl<'a> JoinCond<'a> {
     fn new(
-        parent_type: &'a s::ObjectType,
-        child_type: &'a s::ObjectType,
-        field_name: &s::Name,
+        parent_type: &'a s::ObjectType<'static, String>,
+        child_type: &'a s::ObjectType<'static, String>,
+        field_name: &String,
     ) -> Self {
         let field = parent_type
             .field(field_name)
@@ -307,7 +303,7 @@ impl<'a> Join<'a> {
         schema: &'a ApiSchema,
         parent_type: ObjectOrInterface<'a>,
         child_type: ObjectOrInterface<'a>,
-        field_name: &s::Name,
+        field_name: &String,
     ) -> Self {
         let parent_types = parent_type
             .object_types(schema.schema())
@@ -427,8 +423,8 @@ impl<'a> Join<'a> {
 pub fn run(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    selection_set: &q::SelectionSet<'static, String>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
         let map = BTreeMap::default();
         q::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
@@ -445,7 +441,7 @@ pub fn run(
 fn execute_root_selection_set(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
+    selection_set: &q::SelectionSet<'static, String>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
     let query_type = ctx.query.schema.query_type.as_ref().into();
@@ -540,13 +536,17 @@ fn execute_selection_set<'a>(
 /// merged into each entry in `obj_types`. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
 #[derive(Default)]
 struct CollectedResponseKey<'a> {
-    iface_cond: Option<&'a s::InterfaceType>,
-    iface_fields: Vec<&'a q::Field>,
-    obj_types: IndexMap<ObjectCondition<'a>, Vec<&'a q::Field>>,
+    iface_cond: Option<&'a s::InterfaceType<'static, String>>,
+    iface_fields: Vec<&'a q::Field<'static, String>>,
+    obj_types: IndexMap<ObjectCondition<'a>, Vec<&'a q::Field<'static, String>>>,
 }
 
 impl<'a> CollectedResponseKey<'a> {
-    fn collect_field(&mut self, type_condition: ObjectOrInterface<'a>, field: &'a q::Field) {
+    fn collect_field(
+        &mut self,
+        type_condition: ObjectOrInterface<'a>,
+        field: &'a q::Field<'static, String>,
+    ) {
         match type_condition {
             ObjectOrInterface::Interface(i) => {
                 // `collect_fields` will never call this with two different interfaces types.
@@ -567,7 +567,7 @@ impl<'a> CollectedResponseKey<'a> {
 }
 
 impl<'a> IntoIterator for CollectedResponseKey<'a> {
-    type Item = (ObjectOrInterface<'a>, Vec<&'a q::Field>);
+    type Item = (ObjectOrInterface<'a>, Vec<&'a q::Field<'static, String>>);
     type IntoIter = Box<dyn Iterator<Item = Self::Item> + 'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -593,7 +593,7 @@ impl<'a> IntoIterator for CollectedResponseKey<'a> {
 fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     parent_ty: ObjectOrInterface<'a>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet<'static, String>>,
 ) -> IndexMap<&'a String, CollectedResponseKey<'a>> {
     let mut grouped_fields = IndexMap::new();
 
@@ -628,14 +628,14 @@ fn collect_fields<'a>(
 fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     type_condition: ObjectOrInterface<'a>,
-    selection_set: &'a q::SelectionSet,
-    visited_fragments: &mut HashSet<&'a q::Name>,
+    selection_set: &'a q::SelectionSet<'static, String>,
+    visited_fragments: &mut HashSet<&'a String>,
     output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) {
     fn is_reference_field(
-        schema: &s::Document,
+        schema: &s::Document<'static, String>,
         object_type: ObjectOrInterface,
-        field: &q::Field,
+        field: &q::Field<'static, String>,
     ) -> bool {
         object_type
             .field(&field.name)
@@ -651,9 +651,9 @@ fn collect_fields_inner<'a>(
     fn collect_fragment<'a>(
         ctx: &'a ExecutionContext<impl Resolver>,
         outer_type_condition: ObjectOrInterface<'a>,
-        frag_ty_condition: Option<&'a q::TypeCondition>,
-        frag_selection_set: &'a q::SelectionSet,
-        visited_fragments: &mut HashSet<&'a q::Name>,
+        frag_ty_condition: Option<&'a q::TypeCondition<'static, String>>,
+        frag_selection_set: &'a q::SelectionSet<'static, String>,
+        visited_fragments: &mut HashSet<&'a String>,
         output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
     ) {
         let schema = &ctx.query.schema.document();
@@ -761,8 +761,8 @@ fn execute_field(
     object_type: ObjectOrInterface<'_>,
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
-    field: &q::Field,
-    field_definition: &s::Field,
+    field: &q::Field<'static, String>,
+    field_definition: &s::Field<'static, String>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let argument_values = match object_type {
         ObjectOrInterface::Object(object_type) => {
@@ -819,9 +819,9 @@ fn fetch(
     store: &(impl QueryStore + ?Sized),
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
-    arguments: HashMap<&q::Name, q::Value>,
+    arguments: HashMap<&String, q::Value<'static, String>>,
     multiplicity: ChildMultiplicity,
-    types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
+    types_for_interface: &BTreeMap<String, Vec<s::ObjectType<'static, String>>>,
     block: BlockNumber,
     max_first: u32,
     max_skip: u32,

@@ -1,7 +1,8 @@
-use graphql_parser::schema::{Name, Value, *};
+use graphql_parser::schema::{Value, *};
 use graphql_parser::Pos;
 use inflector::Inflector;
 use lazy_static::lazy_static;
+use thiserror::Error;
 
 use crate::schema::ast;
 
@@ -11,11 +12,11 @@ use graph::data::{
 };
 use graph::prelude::*;
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum APISchemaError {
-    #[fail(display = "type {} already exists in the input schema", _0)]
+    #[error("type {0} already exists in the input schema")]
     TypeExists(String),
-    #[fail(display = "Type {} not found", _0)]
+    #[error("Type {0} not found")]
     TypeNotFound(String),
 }
 
@@ -27,7 +28,9 @@ const BLOCK_HEIGHT: &str = "Block_height";
 /// and must not include a root Query type. This Query type is derived,
 /// with all its fields and their input arguments, based on the existing
 /// types.
-pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
+pub fn api_schema(
+    input_schema: &Document<'static, String>,
+) -> Result<Document<'static, String>, APISchemaError> {
     // Refactor: Take `input_schema` by value.
     let object_types = ast::get_object_type_definitions(input_schema);
     let interface_types = ast::get_interface_type_definitions(input_schema);
@@ -48,7 +51,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 }
 
 /// Adds built-in GraphQL scalar types (`Int`, `String` etc.) to the schema.
-fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError> {
+fn add_builtin_scalar_types(schema: &mut Document<'static, String>) -> Result<(), APISchemaError> {
     for name in [
         "Boolean",
         "ID",
@@ -78,7 +81,7 @@ fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError>
 }
 
 /// Add directive definitions for our custom directives
-fn add_directives(schema: &mut Document) {
+fn add_directives(schema: &mut Document<'static, String>) {
     let entity = Definition::DirectiveDefinition(DirectiveDefinition {
         position: Pos::default(),
         description: None,
@@ -123,7 +126,7 @@ fn add_directives(schema: &mut Document) {
 }
 
 /// Adds a global `OrderDirection` type to the schema.
-fn add_order_direction_enum(schema: &mut Document) {
+fn add_order_direction_enum(schema: &mut Document<'static, String>) {
     let typedef = TypeDefinition::Enum(EnumType {
         position: Pos::default(),
         description: None,
@@ -145,7 +148,7 @@ fn add_order_direction_enum(schema: &mut Document) {
 
 /// Adds a global `Block_height` type to the schema. The `block` argument
 /// accepts values of this type
-fn add_block_height_type(schema: &mut Document) {
+fn add_block_height_type(schema: &mut Document<'static, String>) {
     let typedef = TypeDefinition::InputObject(InputObjectType {
         position: Pos::default(),
         description: None,
@@ -176,9 +179,9 @@ fn add_block_height_type(schema: &mut Document) {
 
 /// Adds a global `_Meta_` type to the schema. The `_meta` field
 /// accepts values of this type
-fn add_meta_field_type(schema: &mut Document) {
+fn add_meta_field_type(schema: &mut Document<'static, String>) {
     lazy_static! {
-        static ref META_FIELD_SCHEMA: Document = {
+        static ref META_FIELD_SCHEMA: Document<'static, String> = {
             let schema = include_str!("meta.graphql");
             parse_schema(schema).expect("the schema `meta.graphql` is invalid")
         };
@@ -190,8 +193,8 @@ fn add_meta_field_type(schema: &mut Document) {
 }
 
 fn add_types_for_object_types(
-    schema: &mut Document,
-    object_types: &Vec<&ObjectType>,
+    schema: &mut Document<'static, String>,
+    object_types: &Vec<&ObjectType<'static, String>>,
 ) -> Result<(), APISchemaError> {
     for object_type in object_types {
         add_order_by_type(schema, &object_type.name, &object_type.fields)?;
@@ -202,8 +205,8 @@ fn add_types_for_object_types(
 
 /// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
 fn add_types_for_interface_types(
-    schema: &mut Document,
-    interface_types: &[&InterfaceType],
+    schema: &mut Document<'static, String>,
+    interface_types: &[&InterfaceType<'static, String>],
 ) -> Result<(), APISchemaError> {
     for interface_type in interface_types {
         add_order_by_type(schema, &interface_type.name, &interface_type.fields)?;
@@ -214,9 +217,9 @@ fn add_types_for_interface_types(
 
 /// Adds a `<type_name>_orderBy` enum type for the given fields to the schema.
 fn add_order_by_type(
-    schema: &mut Document,
-    type_name: &Name,
-    fields: &[Field],
+    schema: &mut Document<'static, String>,
+    type_name: &String,
+    fields: &[Field<'static, String>],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name).to_string();
 
@@ -248,9 +251,9 @@ fn add_order_by_type(
 
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
 fn add_filter_type(
-    schema: &mut Document,
-    type_name: &Name,
-    fields: &[Field],
+    schema: &mut Document<'static, String>,
+    type_name: &String,
+    fields: &[Field<'static, String>],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name).to_string();
     match ast::get_named_type(schema, &filter_type_name) {
@@ -282,9 +285,9 @@ fn add_filter_type(
 
 /// Generates `*_filter` input values for the given set of fields.
 fn field_input_values(
-    schema: &Document,
-    fields: &[Field],
-) -> Result<Vec<InputValue>, APISchemaError> {
+    schema: &Document<'static, String>,
+    fields: &[Field<'static, String>],
+) -> Result<Vec<InputValue<'static, String>>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
         input_values.extend(field_filter_input_values(
@@ -298,10 +301,10 @@ fn field_input_values(
 
 /// Generates `*_filter` input values for the given field.
 fn field_filter_input_values(
-    schema: &Document,
-    field: &Field,
-    field_type: &Type,
-) -> Result<Vec<InputValue>, APISchemaError> {
+    schema: &Document<'static, String>,
+    field: &Field<'static, String>,
+    field_type: &Type<'static, String>,
+) -> Result<Vec<InputValue<'static, String>>, APISchemaError> {
     match field_type {
         Type::NamedType(ref name) => {
             let named_type = ast::get_named_type(schema, name)
@@ -320,7 +323,7 @@ fn field_filter_input_values(
                         field_scalar_filter_input_values(
                             schema,
                             field,
-                            &ScalarType::new(Name::from("String")),
+                            &ScalarType::new(String::from("String")),
                         )
                     }
                 }
@@ -338,10 +341,10 @@ fn field_filter_input_values(
 
 /// Generates `*_filter` input values for the given scalar field.
 fn field_scalar_filter_input_values(
-    _schema: &Document,
-    field: &Field,
-    field_type: &ScalarType,
-) -> Vec<InputValue> {
+    _schema: &Document<'static, String>,
+    field: &Field<'static, String>,
+    field_type: &ScalarType<'static, String>,
+) -> Vec<InputValue<'static, String>> {
     match field_type.name.as_ref() {
         "BigInt" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "Boolean" => vec!["", "not", "in", "not_in"],
@@ -382,10 +385,10 @@ fn field_scalar_filter_input_values(
 
 /// Generates `*_filter` input values for the given enum field.
 fn field_enum_filter_input_values(
-    _schema: &Document,
-    field: &Field,
-    field_type: &EnumType,
-) -> Vec<InputValue> {
+    _schema: &Document<'static, String>,
+    field: &Field<'static, String>,
+    field_type: &EnumType<'static, String>,
+) -> Vec<InputValue<'static, String>> {
     vec![
         Some(input_value(
             &field.name,
@@ -405,10 +408,10 @@ fn field_enum_filter_input_values(
 
 /// Generates `*_filter` input values for the given list field.
 fn field_list_filter_input_values(
-    schema: &Document,
-    field: &Field,
-    field_type: &Type,
-) -> Option<Vec<InputValue>> {
+    schema: &Document<'static, String>,
+    field: &Field<'static, String>,
+    field_type: &Type<'static, String>,
+) -> Option<Vec<InputValue<'static, String>>> {
     // Only add a filter field if the type of the field exists in the schema
     ast::get_type_definition_from_type(schema, field_type).and_then(|typedef| {
         // Decide what type of values can be passed to the filter. In the case
@@ -445,7 +448,11 @@ fn field_list_filter_input_values(
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
-fn input_value(name: &Name, suffix: &'static str, value_type: Type) -> InputValue {
+fn input_value(
+    name: &String,
+    suffix: &'static str,
+    value_type: Type<'static, String>,
+) -> InputValue<'static, String> {
     InputValue {
         position: Pos::default(),
         description: None,
@@ -462,9 +469,9 @@ fn input_value(name: &Name, suffix: &'static str, value_type: Type) -> InputValu
 
 /// Adds a root `Query` object type to the schema.
 fn add_query_type(
-    schema: &mut Document,
-    object_types: &[&ObjectType],
-    interface_types: &[&InterfaceType],
+    schema: &mut Document<'static, String>,
+    object_types: &[&ObjectType<'static, String>],
+    interface_types: &[&InterfaceType<'static, String>],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
@@ -477,7 +484,7 @@ fn add_query_type(
         .map(|t| &t.name)
         .chain(interface_types.iter().map(|t| &t.name))
         .flat_map(|name| query_fields_for_type(schema, name))
-        .collect::<Vec<Field>>();
+        .collect::<Vec<_>>();
     let mut fulltext_fields = schema
         .get_fulltext_directives()
         .iter()
@@ -499,7 +506,9 @@ fn add_query_type(
     Ok(())
 }
 
-fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
+fn query_field_for_fulltext(
+    fulltext: &Directive<'static, String>,
+) -> Option<Field<'static, String>> {
     let name = fulltext
         .argument("name")
         .unwrap()
@@ -565,9 +574,9 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
 
 /// Adds a root `Subscription` object type to the schema.
 fn add_subscription_type(
-    schema: &mut Document,
-    object_types: &[&ObjectType],
-    interface_types: &[&InterfaceType],
+    schema: &mut Document<'static, String>,
+    object_types: &[&ObjectType<'static, String>],
+    interface_types: &[&InterfaceType<'static, String>],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
@@ -575,7 +584,7 @@ fn add_subscription_type(
         return Err(APISchemaError::TypeExists(type_name));
     }
 
-    let mut fields: Vec<Field> = object_types
+    let mut fields: Vec<_> = object_types
         .iter()
         .map(|t| &t.name)
         .chain(interface_types.iter().map(|t| &t.name))
@@ -596,7 +605,7 @@ fn add_subscription_type(
     Ok(())
 }
 
-fn block_argument() -> InputValue {
+fn block_argument() -> InputValue<'static, String> {
     InputValue {
         position: Pos::default(),
         description: Some(
@@ -614,7 +623,10 @@ fn block_argument() -> InputValue {
 }
 
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
+fn query_fields_for_type(
+    schema: &Document<'static, String>,
+    type_name: &String,
+) -> Vec<Field<'static, String>> {
     let input_objects = ast::get_input_object_definitions(schema);
     let mut collection_arguments = collection_arguments_for_named_type(&input_objects, type_name);
     collection_arguments.push(block_argument());
@@ -651,9 +663,9 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
     ]
 }
 
-fn meta_field() -> Field {
+fn meta_field() -> Field<'static, String> {
     lazy_static! {
-        static ref META_FIELD: Field = Field {
+        static ref META_FIELD: Field<'static, String> = Field {
             position: Pos::default(),
             description: Some("Access to subgraph metadata".to_string()),
             name: META_FIELD_NAME.to_string(),
@@ -677,9 +689,9 @@ fn meta_field() -> Field {
 
 /// Generates arguments for collection queries of a named type (e.g. User).
 fn collection_arguments_for_named_type(
-    input_objects: &[InputObjectType],
-    type_name: &Name,
-) -> Vec<InputValue> {
+    input_objects: &[InputObjectType<'static, String>],
+    type_name: &String,
+) -> Vec<InputValue<'static, String>> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
     // non-nullable field, regardless of the presence of a default.
@@ -718,8 +730,8 @@ fn collection_arguments_for_named_type(
 }
 
 fn add_field_arguments(
-    schema: &mut Document,
-    input_schema: &Document,
+    schema: &mut Document<'static, String>,
+    input_schema: &Document<'static, String>,
 ) -> Result<(), APISchemaError> {
     let input_objects = ast::get_input_object_definitions(schema);
 
@@ -834,7 +846,7 @@ mod tests {
         }
         .expect("OrderDirection type is not an enum");
 
-        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"asc".to_string(), &"desc".to_string()]);
     }
 
@@ -862,7 +874,7 @@ mod tests {
         }
         .expect("User_orderBy type is not an enum");
 
-        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"id".to_string(), &"name".to_string()]);
     }
 

@@ -26,35 +26,35 @@ impl Resolver for MockResolver {
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+        _: &q::SelectionSet<'static, String>,
+    ) -> Result<Option<q::Value<'static, String>>, Vec<QueryExecutionError>> {
         Ok(None)
     }
 
     fn resolve_objects<'a>(
         &self,
-        _: Option<q::Value>,
-        _field: &q::Field,
-        _field_definition: &s::Field,
+        _: Option<q::Value<'static, String>>,
+        _field: &q::Field<'static, String>,
+        _field_definition: &s::Field<'static, String>,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         Ok(q::Value::Null)
     }
 
     fn resolve_object(
         &self,
-        __: Option<q::Value>,
-        _field: &q::Field,
-        _field_definition: &s::Field,
+        __: Option<q::Value<'static, String>>,
+        _field: &q::Field<'static, String>,
+        _field_definition: &s::Field<'static, String>,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         Ok(q::Value::Null)
     }
 }
 
-/// Creates a basic GraphQL schema that exercies scalars, directives,
+/// Creates a basic GraphQL schema that exercises scalars, directives,
 /// enums, interfaces, input objects, object types and field arguments.
 fn mock_schema() -> Schema {
     Schema::parse(
@@ -106,7 +106,7 @@ fn mock_schema() -> Schema {
 
 /// Builds the expected result for GraphiQL's introspection query that we are
 /// using for testing.
-fn expected_mock_schema_introspection() -> q::Value {
+fn expected_mock_schema_introspection() -> q::Value<'static, String> {
     let string_type = object! {
         kind: q::Value::Enum("SCALAR".to_string()),
         name: "String",
@@ -553,7 +553,7 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
     let query = Query::new(
         Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-        graphql_parser::parse_query(query).unwrap(),
+        graphql_parser::parse_query(query).unwrap().into_static(),
         None,
         None,
     );

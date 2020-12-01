@@ -1,17 +1,20 @@
 use crate::schema;
 use graph::prelude::QueryExecutionError;
 use graphql_parser::query as q;
-use graphql_parser::schema::{EnumType, InputValue, Name, ScalarType, Type, TypeDefinition, Value};
+use graphql_parser::schema::{EnumType, InputValue, ScalarType, Type, TypeDefinition, Value};
 use std::collections::{BTreeMap, HashMap};
 
 /// A GraphQL value that can be coerced according to a type.
 pub trait MaybeCoercible<T> {
     /// On error,  `self` is returned as `Err(self)`.
-    fn coerce(self, using_type: &T) -> Result<Value, Value>;
+    fn coerce(self, using_type: &T) -> Result<Value<'static, String>, Value<'static, String>>;
 }
 
-impl MaybeCoercible<EnumType> for Value {
-    fn coerce(self, using_type: &EnumType) -> Result<Value, Value> {
+impl MaybeCoercible<EnumType<'static, String>> for Value<'static, String> {
+    fn coerce(
+        self,
+        using_type: &EnumType<'static, String>,
+    ) -> Result<Value<'static, String>, Value<'static, String>> {
         match self {
             Value::Null => Ok(Value::Null),
             Value::String(name) | Value::Enum(name)
@@ -24,8 +27,11 @@ impl MaybeCoercible<EnumType> for Value {
     }
 }
 
-impl MaybeCoercible<ScalarType> for Value {
-    fn coerce(self, using_type: &ScalarType) -> Result<Value, Value> {
+impl MaybeCoercible<ScalarType<'static, String>> for Value<'static, String> {
+    fn coerce(
+        self,
+        using_type: &ScalarType<'static, String>,
+    ) -> Result<Value<'static, String>, Value<'static, String>> {
         match (using_type.name.as_str(), self) {
             (_, v @ Value::Null) => Ok(v),
             ("Boolean", v @ Value::Boolean(_)) => Ok(v),
@@ -59,11 +65,11 @@ impl MaybeCoercible<ScalarType> for Value {
 
 /// On error, the `value` is returned as `Err(value)`.
 fn coerce_to_definition<'a>(
-    value: Value,
-    definition: &Name,
-    resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
-    variables: &HashMap<q::Name, q::Value>,
-) -> Result<Value, Value> {
+    value: Value<'static, String>,
+    definition: &String,
+    resolver: &impl Fn(&String) -> Option<&'a TypeDefinition<'static, String>>,
+    variables: &HashMap<String, q::Value<'static, String>>,
+) -> Result<Value<'static, String>, Value<'static, String>> {
     match resolver(definition).ok_or_else(|| value.clone())? {
         // Accept enum values if they match a value in the enum type
         TypeDefinition::Enum(t) => value.coerce(t),
@@ -104,11 +110,11 @@ fn coerce_to_definition<'a>(
 ///
 /// `Ok(None)` happens when no value is found for a nullable type.
 pub(crate) fn coerce_input_value<'a>(
-    mut value: Option<Value>,
-    def: &InputValue,
-    resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
-    variable_values: &HashMap<q::Name, q::Value>,
-) -> Result<Option<Value>, QueryExecutionError> {
+    mut value: Option<Value<'static, String>>,
+    def: &InputValue<'static, String>,
+    resolver: &impl Fn(&String) -> Option<&'a TypeDefinition<'static, String>>,
+    variable_values: &HashMap<String, q::Value<'static, String>>,
+) -> Result<Option<Value<'static, String>>, QueryExecutionError> {
     if let Some(Value::Variable(name)) = value {
         value = variable_values.get(&name).cloned();
     };
@@ -144,11 +150,11 @@ pub(crate) fn coerce_input_value<'a>(
 
 /// On error, the `value` is returned as `Err(value)`.
 pub(crate) fn coerce_value<'a>(
-    value: Value,
-    ty: &Type,
-    resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
-    variable_values: &HashMap<q::Name, q::Value>,
-) -> Result<Value, Value> {
+    value: Value<'static, String>,
+    ty: &Type<'static, String>,
+    resolver: &impl Fn(&String) -> Option<&'a TypeDefinition<'static, String>>,
+    variable_values: &HashMap<String, q::Value<'static, String>>,
+) -> Result<Value<'static, String>, Value<'static, String>> {
     match (ty, value) {
         // Null values cannot be coerced into non-null types.
         (Type::NonNullType(_), Value::Null) => Err(Value::Null),

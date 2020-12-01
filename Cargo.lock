@@ -1478,7 +1478,6 @@ dependencies = [
  "diesel",
  "diesel_derives",
  "ethabi 12.0.0-graph",
- "failure",
  "futures 0.1.30",
  "futures 0.3.8",
  "graphql-parser",
@@ -1535,7 +1534,6 @@ dependencies = [
  "config",
  "diesel",
  "dirs 3.0.1",
- "failure",
  "futures 0.1.30",
  "graph",
  "graph-core",
@@ -1601,7 +1599,6 @@ dependencies = [
 name = "graph-mock"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.1.30",
  "graph",
  "graph-graphql",
@@ -1652,6 +1649,7 @@ dependencies = [
 name = "graph-runtime-wasm"
 version = "0.19.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "atomic_refcell",
  "bs58",
@@ -1669,6 +1667,9 @@ dependencies = [
  "hex 0.4.2",
  "ipfs-api",
  "lazy_static",
+ "never",
+ "parity-wasm",
+ "pwasm-utils",
  "semver 0.10.0",
  "strum",
  "strum_macros",
@@ -1681,7 +1682,6 @@ dependencies = [
 name = "graph-server-http"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.1.30",
  "graph",
  "graph-graphql",
@@ -1696,7 +1696,6 @@ dependencies = [
 name = "graph-server-index-node"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.3.8",
  "graph",
  "graph-graphql",
@@ -1720,7 +1719,6 @@ dependencies = [
 name = "graph-server-metrics"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.1.30",
  "graph",
  "http 0.2.1",
@@ -1750,6 +1748,7 @@ name = "graph-store-postgres"
 version = "0.19.2"
 dependencies = [
  "Inflector",
+ "anyhow",
  "async-trait",
  "blake3",
  "clap",
@@ -1758,7 +1757,6 @@ dependencies = [
  "diesel-derive-enum",
  "diesel-dynamic-schema",
  "diesel_migrations",
- "failure",
  "fallible-iterator 0.1.6",
  "futures 0.1.30",
  "graph",
@@ -1789,12 +1787,11 @@ dependencies = [
 
 [[package]]
 name = "graphql-parser"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5613c31f18676f164112732202124f373bb2103ff017b3b85ca954ea6a66ada"
+version = "0.3.0"
+source = "git+https://github.com/graphql-rust/graphql-parser#45167b53e9533c331298683577ba8df7e43480ac"
 dependencies = [
  "combine",
- "failure",
+ "thiserror",
 ]
 
 [[package]]
@@ -2600,6 +2597,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "never"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c96aba5aa877601bb3f6dd6a63a969e1f82e60646e81e71b14496995e9853c91"
+
+[[package]]
 name = "nom"
 version = "5.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2788,6 +2791,12 @@ dependencies = [
  "byte-slice-cast",
  "serde",
 ]
+
+[[package]]
+name = "parity-wasm"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
 
 [[package]]
 name = "parking_lot"
@@ -3178,6 +3187,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96e0536f6528466dbbbbe6b986c34175a8d0ff25b794c4bacda22e068cd2f2c5"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "pwasm-utils"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c8ac87af529432d3a4f0e2b3bbf08af49f28f09cc73ed7e551161bdaef5f78d"
+dependencies = [
+ "byteorder",
+ "log 0.4.11",
+ "parity-wasm",
 ]
 
 [[package]]

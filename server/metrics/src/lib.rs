@@ -5,13 +5,14 @@ use hyper;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
 use prometheus::{Encoder, Registry, TextEncoder};
+use thiserror::Error;
 
 use graph::prelude::{MetricsServer as MetricsServerTrait, *};
 
 /// Errors that may occur when starting the server.
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum PrometheusMetricsServeError {
-    #[fail(display = "Bind error: {}", _0)]
+    #[error("Bind error: {0}")]
     BindError(hyper::Error),
 }
 

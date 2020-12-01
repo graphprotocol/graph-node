@@ -1,4 +1,5 @@
 use crate::asc_abi::AscPtr;
+use never::Never;
 use wasmtime::Trap;
 
 /// Helper trait for the `link!` macro.
@@ -6,6 +7,13 @@ pub(crate) trait IntoWasmRet {
     type Ret: wasmtime::WasmRet;
 
     fn into_wasm_ret(self) -> Self::Ret;
+}
+
+impl IntoWasmRet for Never {
+    type Ret = ();
+    fn into_wasm_ret(self) -> Self::Ret {
+        unreachable!();
+    }
 }
 
 impl IntoWasmRet for () {

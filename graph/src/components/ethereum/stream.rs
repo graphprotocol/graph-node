@@ -1,4 +1,3 @@
-use failure::Error;
 use futures::Stream;
 
 use crate::prelude::*;

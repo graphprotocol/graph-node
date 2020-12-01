@@ -1,6 +1,5 @@
 use crate::data::subgraph::SubgraphDeploymentId;
-use crate::prelude::{format_err, CacheWeight, EntityKey, QueryExecutionError};
-use failure::Error;
+use crate::prelude::{CacheWeight, EntityKey, Error, QueryExecutionError};
 use graphql_parser::query;
 use graphql_parser::schema;
 use serde::de;
@@ -120,7 +119,7 @@ impl FromStr for ValueType {
             "Int" => Ok(ValueType::Int),
             "String" | "ID" => Ok(ValueType::String),
             "List" => Ok(ValueType::List),
-            s => Err(format_err!("Type not available in this context: {}", s)),
+            s => Err(anyhow::anyhow!("Type not available in this context: {}", s)),
         }
     }
 }
@@ -186,8 +185,8 @@ impl StableHash for Value {
 
 impl Value {
     pub fn from_query_value(
-        value: &query::Value,
-        ty: &schema::Type,
+        value: &query::Value<'static, String>,
+        ty: &schema::Type<'static, String>,
     ) -> Result<Value, QueryExecutionError> {
         use self::schema::Type::{ListType, NamedType, NonNullType};
 
@@ -354,7 +353,7 @@ impl fmt::Display for Value {
     }
 }
 
-impl From<Value> for query::Value {
+impl From<Value> for query::Value<'static, String> {
     fn from(value: Value) -> Self {
         match value {
             Value::String(s) => query::Value::String(s),
@@ -432,7 +431,7 @@ impl TryFrom<Value> for Option<scalar::BigInt> {
         match value {
             Value::BigInt(n) => Ok(Some(n.clone())),
             Value::Null => Ok(None),
-            _ => Err(format_err!("Value is not an BigInt")),
+            _ => Err(anyhow::anyhow!("Value is not an BigInt")),
         }
     }
 }
@@ -497,9 +496,9 @@ impl Entity {
     /// Try to get this entity's ID
     pub fn id(&self) -> Result<String, Error> {
         match self.get("id") {
-            None => Err(format_err!("Entity is missing an `id` attribute")),
+            None => Err(anyhow::anyhow!("Entity is missing an `id` attribute")),
             Some(Value::String(s)) => Ok(s.to_owned()),
-            _ => Err(format_err!("Entity has non-string `id` attribute")),
+            _ => Err(anyhow::anyhow!("Entity has non-string `id` attribute")),
         }
     }
 
@@ -548,14 +547,14 @@ impl DerefMut for Entity {
     }
 }
 
-impl From<Entity> for BTreeMap<String, query::Value> {
-    fn from(entity: Entity) -> BTreeMap<String, query::Value> {
+impl From<Entity> for BTreeMap<String, query::Value<'static, String>> {
+    fn from(entity: Entity) -> BTreeMap<String, query::Value<'static, String>> {
         entity.0.into_iter().map(|(k, v)| (k, v.into())).collect()
     }
 }
 
-impl From<Entity> for query::Value {
-    fn from(entity: Entity) -> query::Value {
+impl From<Entity> for query::Value<'static, String> {
+    fn from(entity: Entity) -> query::Value<'static, String> {
         query::Value::Object(entity.into())
     }
 }

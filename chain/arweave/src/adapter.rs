@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use graph::bytes::Bytes;
 use graph::components::arweave::ArweaveAdapter as ArweaveAdapterTrait;
 use graph::prelude::*;
@@ -32,7 +33,7 @@ impl ArweaveAdapterTrait for ArweaveAdapter {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
-            return Err(format_err!("Invalid Arweave transaction id: `{}`", tx_id));
+            return Err(anyhow!("Invalid Arweave transaction id: `{}`", tx_id));
         }
 
         self.http_client

@@ -14,7 +14,7 @@ mock! {
     }
 
     trait SubgraphDeploymentStore: Send + Sync + 'static {
-        fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+        fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, anyhow::Error>;
 
         fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error>;
 

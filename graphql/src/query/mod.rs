@@ -34,7 +34,7 @@ pub struct QueryExecutionOptions<R> {
 /// If the query is not cacheable, the `Arc` may be unwrapped.
 pub async fn execute_query<R>(
     query: Arc<Query>,
-    selection_set: Option<q::SelectionSet>,
+    selection_set: Option<q::SelectionSet<'static, String>>,
     block_ptr: Option<EthereumBlockPointer>,
     options: QueryExecutionOptions<R>,
     nested_resolver: bool,

@@ -1,4 +1,3 @@
-use failure;
 use graphql_parser::{query as q, Pos};
 use hex::FromHexError;
 use num_bigint;
@@ -14,7 +13,7 @@ use crate::data::subgraph::*;
 use crate::{components::store::StoreError, prelude::CacheWeight};
 
 #[derive(Debug)]
-pub struct CloneableFailureError(Arc<failure::Error>);
+pub struct CloneableFailureError(Arc<anyhow::Error>);
 
 impl Clone for CloneableFailureError {
     fn clone(&self) -> Self {
@@ -22,8 +21,8 @@ impl Clone for CloneableFailureError {
     }
 }
 
-impl From<failure::Error> for CloneableFailureError {
-    fn from(f: failure::Error) -> Self {
+impl From<anyhow::Error> for CloneableFailureError {
+    fn from(f: anyhow::Error) -> Self {
         Self(Arc::new(f))
     }
 }
@@ -39,7 +38,7 @@ pub enum QueryExecutionError {
     ListValueError(Pos, String),
     NamedTypeError(String),
     AbstractTypeError(String),
-    InvalidArgumentError(Pos, String, q::Value),
+    InvalidArgumentError(Pos, String, q::Value<'static, String>),
     MissingArgumentError(Pos, String),
     InvalidVariableTypeError(Pos, String),
     MissingVariableError(Pos, String),
@@ -65,15 +64,18 @@ pub enum QueryExecutionError {
     EmptySelectionSet(String),
     AmbiguousDerivedFromResult(Pos, String, String, String),
     Unimplemented(String),
-    EnumCoercionError(Pos, String, q::Value, String, Vec<String>),
-    ScalarCoercionError(Pos, String, q::Value, String),
+    EnumCoercionError(Pos, String, q::Value<'static, String>, String, Vec<String>),
+    ScalarCoercionError(Pos, String, q::Value<'static, String>, String),
     TooComplex(u64, u64), // (complexity, max_complexity)
     TooDeep(u8),          // max_depth
     TooExpensive,
     Throttled,
     UndefinedFragment(String),
     // Using slow and prefetch query resolution yield different results
-    IncorrectPrefetchResult { slow: q::Value, prefetch: q::Value },
+    IncorrectPrefetchResult {
+        slow: q::Value<'static, String>,
+        prefetch: q::Value<'static, String>,
+    },
     Panic(String),
     EventStreamError,
     FulltextQueryRequiresFilter,

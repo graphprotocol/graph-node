@@ -100,7 +100,7 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
     }
 }
 
-type ValueMap = BTreeMap<String, q::Value>;
+type ValueMap = BTreeMap<String, q::Value<'static, String>>;
 
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
 impl Template<ValueMap> for ValueMap {

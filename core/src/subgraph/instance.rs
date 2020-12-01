@@ -71,7 +71,7 @@ where
                 .map(|e| e.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-            return Err(format_err!(
+            return Err(anyhow::anyhow!(
                 "Errors loading data sources: {}",
                 joined_errors
             ));
@@ -109,16 +109,14 @@ where
                 sender
             }
         };
-        self.host_builder
-            .build(
-                self.network.clone(),
-                self.subgraph_id.clone(),
-                data_source,
-                top_level_templates,
-                mapping_request_sender,
-                host_metrics,
-            )
-            .compat_err()
+        self.host_builder.build(
+            self.network.clone(),
+            self.subgraph_id.clone(),
+            data_source,
+            top_level_templates,
+            mapping_request_sender,
+            host_metrics,
+        )
     }
 }
 

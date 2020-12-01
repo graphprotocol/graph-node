@@ -1,8 +1,8 @@
 use std::pin::Pin;
 use std::time::Duration;
 
+use anyhow::Error;
 use async_trait::async_trait;
-use failure::Error;
 use futures03::prelude::Stream;
 use serde_json::Value;
 use slog::Logger;

@@ -155,9 +155,15 @@ impl StoreResolver {
 
     fn handle_meta(
         &self,
-        prefetched_object: Option<q::Value>,
+        prefetched_object: Option<q::Value<'static, String>>,
         object_type: &ObjectOrInterface<'_>,
-    ) -> Result<(Option<q::Value>, Option<q::Value>), QueryExecutionError> {
+    ) -> Result<
+        (
+            Option<q::Value<'static, String>>,
+            Option<q::Value<'static, String>>,
+        ),
+        QueryExecutionError,
+    > {
         // Pretend that the whole `_meta` field was loaded by prefetch. Eager
         // loading this is ok until we add more information to this field
         // that would force us to query the database; when that happens, we
@@ -202,19 +208,19 @@ impl Resolver for StoreResolver {
     fn prefetch(
         &self,
         ctx: &ExecutionContext<Self>,
-        selection_set: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+        selection_set: &q::SelectionSet<'static, String>,
+    ) -> Result<Option<q::Value<'static, String>>, Vec<QueryExecutionError>> {
         super::prefetch::run(&self, ctx, selection_set).map(|value| Some(value))
     }
 
     fn resolve_objects(
         &self,
-        prefetched_objects: Option<q::Value>,
-        field: &q::Field,
-        _field_definition: &s::Field,
+        prefetched_objects: Option<q::Value<'static, String>>,
+        field: &q::Field<'static, String>,
+        _field_definition: &s::Field<'static, String>,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         if let Some(child) = prefetched_objects {
             Ok(child)
         } else {
@@ -229,12 +235,12 @@ impl Resolver for StoreResolver {
 
     fn resolve_object(
         &self,
-        prefetched_object: Option<q::Value>,
-        field: &q::Field,
-        field_definition: &s::Field,
+        prefetched_object: Option<q::Value<'static, String>>,
+        field: &q::Field<'static, String>,
+        field_definition: &s::Field<'static, String>,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&String, q::Value<'static, String>>,
+    ) -> Result<q::Value<'static, String>, QueryExecutionError> {
         let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
         if let Some(meta) = meta {
             return Ok(meta);
@@ -266,9 +272,9 @@ impl Resolver for StoreResolver {
 
     fn resolve_field_stream<'a, 'b>(
         &self,
-        schema: &'a s::Document,
-        object_type: &'a s::ObjectType,
-        field: &'b q::Field,
+        schema: &'a s::Document<'static, String>,
+        object_type: &'a s::ObjectType<'static, String>,
+        field: &'b q::Field<'static, String>,
     ) -> result::Result<StoreEventStreamBox, QueryExecutionError> {
         // Collect all entities involved in the query field
         let entities = collect_entities_from_query_field(schema, object_type, field);

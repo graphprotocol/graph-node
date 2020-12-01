@@ -1,4 +1,3 @@
-use failure::Error;
 use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
 use lazy_static::lazy_static;
@@ -13,6 +12,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+use thiserror::Error;
 use web3::types::{Address, H256};
 
 use crate::data::store::*;
@@ -701,40 +701,38 @@ impl MetadataOperation {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum StoreError {
-    #[fail(display = "store transaction failed, need to retry: {}", _0)]
+    #[error("store transaction failed, need to retry: `{0}`")]
     Aborted(TransactionAbortError),
-    #[fail(display = "store error: {}", _0)]
+    #[error("store error: `{0}`")]
     Unknown(Error),
-    #[fail(
-        display = "tried to set entity of type `{}` with ID \"{}\" but an entity of type `{}`, \
-                   which has an interface in common with `{}`, exists with the same ID",
-        _0, _1, _2, _0
+    #[error(
+        "tried to set entity of type `{0}` with ID \"{1}\" but an entity of type `{2}`, \
+            which has an interface in common with `{0}`, exists with the same ID"
     )]
     ConflictingId(String, String, String), // (entity, id, conflicting_entity)
-    #[fail(display = "unknown field '{}'", _0)]
+    #[error("unknown field `{0}`")]
     UnknownField(String),
-    #[fail(display = "unknown table '{}'", _0)]
+    #[error("unknown table `{0}`")]
     UnknownTable(String),
-    #[fail(display = "malformed directive '{}'", _0)]
+    #[error("malformed directive `{0}`")]
     MalformedDirective(String),
-    #[fail(display = "query execution failed: {}", _0)]
+    #[error("query execution failed: `{0}`")]
     QueryExecutionError(String),
-    #[fail(display = "invalid identifier: {}", _0)]
+    #[error("invalid identifier: `{0}`")]
     InvalidIdentifier(String),
-    #[fail(
-        display = "subgraph `{}` has already processed block `{}`; \
-                   there are most likely two (or more) nodes indexing this subgraph",
-        _0, _1
+    #[error(
+        "subgraph `{0}` has already processed block `{1}`; \
+                   there are most likely two (or more) nodes indexing this subgraph"
     )]
     DuplicateBlockProcessing(SubgraphDeploymentId, u64),
     /// An internal error where we expected the application logic to enforce
     /// some constraint, e.g., that subgraph names are unique, but found that
     /// constraint to not hold
-    #[fail(display = "internal constraint violated: {}", _0)]
+    #[error("internal constraint violated: `{0}`")]
     ConstraintViolation(String),
-    #[fail(display = "deployment not found: {}", _0)]
+    #[error("deployment not found: `{0}`")]
     DeploymentNotFound(String),
 }
 
@@ -768,18 +766,15 @@ impl From<QueryExecutionError> for StoreError {
     }
 }
 
-#[derive(Fail, PartialEq, Eq, Debug)]
+#[derive(Error, PartialEq, Eq, Debug)]
 pub enum TransactionAbortError {
-    #[fail(
-        display = "AbortUnless triggered abort, expected {:?} but got {:?}: {}",
-        expected_entity_ids, actual_entity_ids, description
-    )]
+    #[error("AbortUnless triggered abort, expected {expected_entity_ids:?} but got {actual_entity_ids:?}: {description}")]
     AbortUnless {
         expected_entity_ids: Vec<String>,
         actual_entity_ids: Vec<String>,
         description: String,
     },
-    #[fail(display = "transaction aborted: {}", _0)]
+    #[error("transaction aborted: {0}")]
     Other(String),
 }
 
@@ -892,7 +887,7 @@ pub trait Store: Send + Sync + 'static {
 
         // Check store for a deployment entity for this subgraph ID
         self.get(SubgraphDeploymentEntity::key(id.to_owned()))
-            .map_err(|e| format_err!("Failed to query SubgraphDeployment entities: {}", e))
+            .map_err(|e| anyhow::anyhow!("Failed to query SubgraphDeployment entities: {}", e))
             .map(|entity_opt| entity_opt.is_some())
     }
 
@@ -1148,7 +1143,10 @@ impl Store for MockStore {
 #[automock]
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+    fn input_schema(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<Arc<Schema>, anyhow::Error>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
@@ -1253,7 +1251,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
         return_value: &[u8],
-    ) -> Result<(), Error>;
+    ) -> Result<(), anyhow::Error>;
 }
 
 /// Store operations used when serving queries
@@ -1261,7 +1259,10 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError>;
+    ) -> Result<
+        Vec<BTreeMap<String, graphql_parser::query::Value<'static, String>>>,
+        QueryExecutionError,
+    >;
 
     fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox;
 

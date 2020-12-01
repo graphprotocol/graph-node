@@ -40,11 +40,10 @@ pub use url;
 /// ```
 pub mod prelude {
     pub use super::entity;
-    pub use anyhow::{self, Context as _};
+    pub use anyhow::{self, Context as _, Error};
     pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use ethabi;
-    pub use failure::{self, err_msg, format_err, Error, Fail, SyncFailure};
     pub use futures::future;
     pub use futures::prelude::*;
     pub use futures::stream;
@@ -70,7 +69,7 @@ pub mod prelude {
     pub use tokio;
     pub use web3;
 
-    pub type DynTryFuture<'a, Ok = (), Err = Error> =
+    pub type DynTryFuture<'a, Ok = (), Err = anyhow::Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::components::ethereum::{
@@ -150,7 +149,6 @@ pub mod prelude {
     };
     pub use crate::log::split::split_logger;
     pub use crate::util::cache_weight::CacheWeight;
-    pub use crate::util::error::CompatErr;
     pub use crate::util::futures::{retry, TimeoutError};
     pub use crate::util::stats::MovingStats;
 }

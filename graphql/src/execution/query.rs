@@ -38,7 +38,7 @@ enum Kind {
 /// uses ',' to separate key/value pairs.
 /// If `SelectionSet` is `None`, log `*` to indicate that the query was
 /// for the entire selection set of the query
-struct SelectedFields<'a>(&'a q::SelectionSet);
+struct SelectedFields<'a>(&'a q::SelectionSet<'static, String>);
 
 impl<'a> std::fmt::Display for SelectedFields<'a> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
@@ -74,9 +74,9 @@ pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,
     /// The variables for the query, coerced into proper values
-    pub variables: HashMap<q::Name, q::Value>,
+    pub variables: HashMap<String, q::Value<'static, String>>,
     /// The root selection set of the query
-    pub selection_set: Arc<q::SelectionSet>,
+    pub selection_set: Arc<q::SelectionSet<'static, String>>,
     /// The ShapeHash of the original query
     pub shape_hash: u64,
 
@@ -86,7 +86,7 @@ pub struct Query {
 
     start: Instant,
 
-    pub(crate) fragments: HashMap<String, q::FragmentDefinition>,
+    pub(crate) fragments: HashMap<String, q::FragmentDefinition<'static, String>>,
     kind: Kind,
 
     /// Used only for logging; if logging is configured off, these will
@@ -178,7 +178,8 @@ impl Query {
     /// selection sets of fields that have the same block constraint.
     pub fn block_constraint(
         &self,
-    ) -> Result<HashMap<BlockConstraint, q::SelectionSet>, Vec<QueryExecutionError>> {
+    ) -> Result<HashMap<BlockConstraint, q::SelectionSet<'static, String>>, Vec<QueryExecutionError>>
+    {
         let mut bcs = HashMap::new();
         let mut errors = Vec::new();
 
@@ -229,7 +230,7 @@ impl Query {
 
     /// Should only be called for fragments that exist in the query, and therefore have been
     /// validated to exist. Panics otherwise.
-    pub fn get_fragment(&self, name: &q::Name) -> &q::FragmentDefinition {
+    pub fn get_fragment(&self, name: &String) -> &q::FragmentDefinition<'static, String> {
         self.fragments.get(name).unwrap()
     }
 
@@ -268,7 +269,7 @@ impl Query {
     /// `selection_set` was cached
     pub fn log_cache_status(
         &self,
-        selection_set: &q::SelectionSet,
+        selection_set: &q::SelectionSet<'static, String>,
         block: u64,
         start: Instant,
         cache_status: String,
@@ -335,9 +336,9 @@ impl Query {
     // Checks for invalid selections.
     fn validate_fields_inner(
         &self,
-        type_name: &q::Name,
+        type_name: &String,
         ty: ObjectOrInterface<'_>,
-        selection_set: &q::SelectionSet,
+        selection_set: &q::SelectionSet<'static, String>,
     ) -> Vec<QueryExecutionError> {
         let schema = self.schema.document();
 
@@ -414,8 +415,8 @@ impl Query {
 
     fn complexity_inner(
         &self,
-        ty: &s::TypeDefinition,
-        selection_set: &q::SelectionSet,
+        ty: &s::TypeDefinition<'static, String>,
+        selection_set: &q::SelectionSet<'static, String>,
         max_depth: u8,
         depth: u8,
     ) -> Result<u64, ComplexityError> {
@@ -502,9 +503,9 @@ impl Query {
 /// Coerces variable values for an operation.
 pub fn coerce_variables(
     schema: &ApiSchema,
-    operation: &q::OperationDefinition,
+    operation: &q::OperationDefinition<'static, String>,
     mut variables: Option<QueryVariables>,
-) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<HashMap<String, q::Value<'static, String>>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
@@ -556,12 +557,12 @@ pub fn coerce_variables(
 
 fn coerce_variable(
     schema: &ApiSchema,
-    variable_def: &q::VariableDefinition,
-    value: q::Value,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    variable_def: &q::VariableDefinition<'static, String>,
+    value: q::Value<'static, String>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
-    let resolver = |name: &q::Name| sast::get_named_type(schema.document(), name);
+    let resolver = |name: &String| sast::get_named_type(schema.document(), name);
 
     coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(

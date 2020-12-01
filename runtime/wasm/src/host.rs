@@ -125,7 +125,7 @@ where
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         let store = self.stores.get(&network_name).ok_or_else(|| {
-            format_err!(
+            anyhow::anyhow!(
                 "No store found that matches subgraph network: \"{}\"",
                 &network_name
             )
@@ -193,7 +193,7 @@ impl RuntimeHost {
     ) -> Result<Self, Error> {
         let api_version = Version::parse(&config.mapping.api_version)?;
         if !VersionReq::parse("<= 0.0.4").unwrap().matches(&api_version) {
-            return Err(format_err!(
+            return Err(anyhow::anyhow!(
                 "This Graph Node only supports mapping API versions <= 0.0.4, but subgraph `{}` uses `{}`",
                 config.subgraph_id,
                 api_version
@@ -206,7 +206,7 @@ impl RuntimeHost {
             .iter()
             .find(|abi| abi.name == config.contract.abi)
             .ok_or_else(|| {
-                format_err!(
+                anyhow::anyhow!(
                     "No ABI entry found for the main contract of data source \"{}\": {}",
                     &config.data_source_name,
                     config.contract.abi,
@@ -338,7 +338,7 @@ impl RuntimeHost {
             })
             .cloned()
             .with_context(|| {
-                format_err!(
+                anyhow::anyhow!(
                     "No call handler found for call in data source \"{}\"",
                     self.data_source_name,
                 )
@@ -356,7 +356,7 @@ impl RuntimeHost {
                 .find(move |handler| handler.filter == None)
                 .cloned()
                 .with_context(|| {
-                    format_err!(
+                    anyhow::anyhow!(
                         "No block handler for `Every` block trigger \
                          type found in data source \"{}\"",
                         self.data_source_name,
@@ -371,7 +371,7 @@ impl RuntimeHost {
                 })
                 .cloned()
                 .with_context(|| {
-                    format_err!(
+                    anyhow::anyhow!(
                         "No block handler for `WithCallTo` block trigger \
                          type found in data source \"{}\"",
                         self.data_source_name,
@@ -492,7 +492,7 @@ impl RuntimeHostTrait for RuntimeHost {
             call_handler.function.as_str(),
         )
         .with_context(|| {
-            format_err!(
+            anyhow::anyhow!(
                 "Function with the signature \"{}\" not found in \
                     contract \"{}\" of data source \"{}\"",
                 call_handler.function,
@@ -635,7 +635,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     event_handler.event.as_str(),
                 )
                 .with_context(|| {
-                    format_err!(
+                    anyhow::anyhow!(
                         "Event with the signature \"{}\" not found in \
                                 contract \"{}\" of data source \"{}\"",
                         event_handler.event,

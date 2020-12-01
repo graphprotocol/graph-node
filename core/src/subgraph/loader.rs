@@ -100,11 +100,11 @@ where
     fn parse_data_sources(
         &self,
         deployment_id: &SubgraphDeploymentId,
-        query_result: q::Value,
+        query_result: q::Value<'static, String>,
     ) -> Result<Vec<UnresolvedDataSource>, Error> {
         let data = match query_result {
             q::Value::Object(obj) => Ok(obj),
-            _ => Err(format_err!(
+            _ => Err(anyhow::anyhow!(
                 "Query result for deployment `{}` is not an on object",
                 deployment_id,
             )),
@@ -113,7 +113,7 @@ where
         // Extract the deployment from the query result
         let deployment = match data.get("subgraphDeployment") {
             Some(q::Value::Object(obj)) => Ok(obj),
-            _ => Err(format_err!(
+            _ => Err(anyhow::anyhow!(
                 "Deployment `{}` is not an object",
                 deployment_id,
             )),
@@ -128,13 +128,13 @@ where
                 }) {
                     Ok(objs)
                 } else {
-                    Err(format_err!(
+                    Err(anyhow::anyhow!(
                         "Not all dynamic data sources of deployment `{}` are objects",
                         deployment_id
                     ))
                 }
             }
-            _ => Err(format_err!(
+            _ => Err(anyhow::anyhow!(
                 "Dynamic data sources of deployment `{}` are not a list",
                 deployment_id
             )),
@@ -147,7 +147,7 @@ where
         });
 
         entities.map_err(|e: Error| {
-            format_err!(
+            anyhow::anyhow!(
                 "Failed to parse dynamic data source entities of deployment `{}`: {}",
                 deployment_id,
                 e

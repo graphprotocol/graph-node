@@ -30,7 +30,10 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError> {
+    ) -> Result<
+        Vec<BTreeMap<String, graphql_parser::query::Value<'static, String>>>,
+        QueryExecutionError,
+    > {
         let conn = self
             .store
             .get_entity_conn(&query.subgraph_id, self.replica_id)

@@ -16,7 +16,7 @@ where
     Ok(q::Number::from(i))
 }
 
-fn deserialize_list<'de, D>(deserializer: D) -> Result<Vec<q::Value>, D::Error>
+fn deserialize_list<'de, D>(deserializer: D) -> Result<Vec<q::Value<'static, String>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -24,7 +24,9 @@ where
     Ok(values.into_iter().map(|v| v.0).collect())
 }
 
-fn deserialize_object<'de, D>(deserializer: D) -> Result<BTreeMap<String, q::Value>, D::Error>
+fn deserialize_object<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, q::Value<'static, String>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -33,8 +35,10 @@ where
     Ok(pairs.into_iter().map(|(k, v)| (k, v.0)).collect())
 }
 
+type StaticValueAlias = q::Value<'static, String>;
+
 #[derive(Deserialize)]
-#[serde(untagged, remote = "q::Value")]
+#[serde(untagged, remote = "StaticValueAlias")]
 enum GraphQLValue {
     #[serde(deserialize_with = "deserialize_number")]
     Int(q::Number),
@@ -44,16 +48,18 @@ enum GraphQLValue {
     Null,
     Enum(String),
     #[serde(deserialize_with = "deserialize_list")]
-    List(Vec<q::Value>),
+    List(Vec<q::Value<'static, String>>),
     #[serde(deserialize_with = "deserialize_object")]
-    Object(BTreeMap<String, q::Value>),
+    Object(BTreeMap<String, q::Value<'static, String>>),
 }
 
 /// Variable value for a GraphQL query.
 #[derive(Clone, Debug, Deserialize)]
-pub struct DeserializableGraphQlValue(#[serde(with = "GraphQLValue")] q::Value);
+pub struct DeserializableGraphQlValue(#[serde(with = "GraphQLValue")] q::Value<'static, String>);
 
-fn deserialize_variables<'de, D>(deserializer: D) -> Result<HashMap<String, q::Value>, D::Error>
+fn deserialize_variables<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, q::Value<'static, String>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -65,17 +71,17 @@ where
 /// Variable values for a GraphQL query.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct QueryVariables(
-    #[serde(deserialize_with = "deserialize_variables")] HashMap<String, q::Value>,
+    #[serde(deserialize_with = "deserialize_variables")] HashMap<String, q::Value<'static, String>>,
 );
 
 impl QueryVariables {
-    pub fn new(variables: HashMap<String, q::Value>) -> Self {
+    pub fn new(variables: HashMap<String, q::Value<'static, String>>) -> Self {
         QueryVariables(variables)
     }
 }
 
 impl Deref for QueryVariables {
-    type Target = HashMap<String, q::Value>;
+    type Target = HashMap<String, q::Value<'static, String>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -83,7 +89,7 @@ impl Deref for QueryVariables {
 }
 
 impl DerefMut for QueryVariables {
-    fn deref_mut(&mut self) -> &mut HashMap<String, q::Value> {
+    fn deref_mut(&mut self) -> &mut HashMap<String, q::Value<'static, String>> {
         &mut self.0
     }
 }
@@ -108,7 +114,7 @@ impl serde::ser::Serialize for QueryVariables {
 #[derive(Clone, Debug)]
 pub struct Query {
     pub schema: Arc<ApiSchema>,
-    pub document: q::Document,
+    pub document: q::Document<'static, String>,
     pub variables: Option<QueryVariables>,
     pub shape_hash: u64,
     pub network: Option<String>,
@@ -121,7 +127,7 @@ impl Query {
     /// The `network` is currently used only for caching purposes, so it is not mandatory.
     pub fn new(
         schema: Arc<ApiSchema>,
-        document: q::Document,
+        document: q::Document<'static, String>,
         variables: Option<QueryVariables>,
         network: Option<String>,
     ) -> Self {

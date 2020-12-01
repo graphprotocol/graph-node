@@ -1,3 +1,4 @@
+use anyhow::Error;
 use futures::future::FutureResult;
 
 use super::*;
@@ -80,5 +81,7 @@ pub fn ensure_subgraph_exists(
                 )
             }
         })
-        .map_err(move |e| format_err!("Failed to ensure Ethereum network subgraph exists: {}", e))
+        .map_err(move |e| {
+            anyhow::anyhow!("Failed to ensure Ethereum network subgraph exists: {}", e)
+        })
 }

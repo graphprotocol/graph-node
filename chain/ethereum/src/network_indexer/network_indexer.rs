@@ -149,7 +149,7 @@ fn fetch_ommers(
                         .collect::<Vec<_>>();
 
                     // Fail if we couldn't fetch all ommers
-                    future::err(format_err!(
+                    future::err(anyhow::anyhow!(
                         "Ommers of block {} missing: {}",
                         block_ptr,
                         missing_hashes.join(", ")
@@ -290,7 +290,7 @@ fn load_parent_block_from_store(
                 .get(block_ptr.to_entity_key(context.subgraph_id.clone()))
                 .map_err(|e| e.into())
                 .and_then(|entity| {
-                    entity.ok_or_else(|| format_err!("block {} is missing in store", block_ptr))
+                    entity.ok_or_else(|| anyhow::anyhow!("block {} is missing in store", block_ptr))
                 }),
         )
         // Get the parent hash from the block
@@ -299,7 +299,7 @@ fn load_parent_block_from_store(
                 block
                     .get("parent")
                     .ok_or_else(move || {
-                        format_err!("block {} has no parent", block_ptr_for_missing_parent,)
+                        anyhow::anyhow!("block {} has no parent", block_ptr_for_missing_parent,)
                     })
                     .and_then(|value| {
                         let s = value
@@ -307,7 +307,7 @@ fn load_parent_block_from_store(
                             .as_string()
                             .expect("the `parent` field of `Block` is a reference/string");
                         H256::from_str(s.as_str()).map_err(|e| {
-                            format_err!(
+                            anyhow::anyhow!(
                                 "block {} has an invalid parent `{}`: {}",
                                 block_ptr_for_invalid_parent,
                                 s,
@@ -418,7 +418,7 @@ fn send_event(
         event_sink
             .send(event)
             .map(|_| ())
-            .map_err(|e| format_err!("failed to emit events: {}", e)),
+            .map_err(|e| anyhow::anyhow!("failed to emit events: {}", e)),
     )
 }
 

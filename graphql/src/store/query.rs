@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
+use graphql_parser::{query as q, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
@@ -19,8 +19,8 @@ enum OrderDirection {
 pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
-    arguments: &HashMap<&q::Name, q::Value>,
-    types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+    arguments: &HashMap<&String, q::Value<'static, String>>,
+    types_for_interface: &BTreeMap<String, Vec<ObjectType<'static, String>>>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityQuery, QueryExecutionError> {
@@ -55,7 +55,7 @@ pub fn build_query<'a>(
 
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value<'static, String>>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityRange, QueryExecutionError> {
@@ -98,7 +98,7 @@ fn build_range(
 /// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value<'static, String>>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
         Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
@@ -113,7 +113,7 @@ fn build_filter(
 }
 
 fn build_fulltext_filter_from_object(
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value<'static, String>>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     object.into_iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -133,7 +133,7 @@ fn build_fulltext_filter_from_object(
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: ObjectOrInterface,
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value<'static, String>>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     Ok(Some(EntityFilter::And({
         object
@@ -205,7 +205,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value<'static, String>>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     match arguments.get(&"orderBy".to_string()) {
         Some(q::Value::Enum(name)) => {
@@ -230,7 +230,7 @@ fn build_order_by(
 }
 
 fn build_fulltext_order_by_from_object(
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value<'static, String>>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     object.into_iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -246,7 +246,7 @@ fn build_fulltext_order_by_from_object(
 
 /// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value<'static, String>>,
 ) -> Result<OrderDirection, QueryExecutionError> {
     Ok(arguments
         .get(&"orderDirection".to_string())
@@ -285,9 +285,9 @@ pub fn parse_subgraph_id<'a>(
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
 pub fn collect_entities_from_query_field(
-    schema: &s::Document,
-    object_type: &s::ObjectType,
-    field: &q::Field,
+    schema: &s::Document<'static, String>,
+    object_type: &s::ObjectType<'static, String>,
+    field: &q::Field<'static, String>,
 ) -> Vec<(SubgraphDeploymentId, String)> {
     // Output entities
     let mut entities = HashSet::new();
@@ -344,9 +344,9 @@ mod tests {
 
     use super::build_query;
 
-    fn default_object() -> ObjectType {
+    fn default_object() -> ObjectType<'static, String> {
         let subgraph_id_argument = (
-            s::Name::from("id"),
+            String::from("id"),
             s::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()),
         );
         let subgraph_id_directive = Directive {
@@ -389,14 +389,14 @@ mod tests {
         }
     }
 
-    fn object(name: &str) -> ObjectType {
+    fn object(name: &str) -> ObjectType<'static, String> {
         ObjectType {
             name: name.to_owned(),
             ..default_object()
         }
     }
 
-    fn field(name: &str, field_type: Type) -> Field {
+    fn field(name: &str, field_type: Type<'static, String>) -> Field<'static, String> {
         Field {
             position: Default::default(),
             description: None,
@@ -407,7 +407,7 @@ mod tests {
         }
     }
 
-    fn default_arguments<'a>() -> HashMap<&'a String, q::Value> {
+    fn default_arguments<'a>() -> HashMap<&'a String, q::Value<'static, String>> {
         let mut map = HashMap::new();
         let first: &String = Box::leak(Box::new("first".to_owned()));
         let skip: &String = Box::leak(Box::new("skip".to_owned()));

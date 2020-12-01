@@ -231,13 +231,16 @@ fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
     insert_at(entities1, id.clone(), BLOCK_ONE.clone());
 }
 
-async fn execute_query_document(id: &SubgraphDeploymentId, query: q::Document) -> QueryResult {
+async fn execute_query_document(
+    id: &SubgraphDeploymentId,
+    query: q::Document<'static, String>,
+) -> QueryResult {
     execute_query_document_with_variables(id, query, None).await
 }
 
 async fn execute_query_document_with_variables(
     id: &SubgraphDeploymentId,
-    query: q::Document,
+    query: q::Document<'static, String>,
     variables: Option<QueryVariables>,
 ) -> QueryResult {
     let runner = Arc::new(GraphQlRunner::new(
@@ -262,7 +265,7 @@ async fn execute_query_document_with_variables(
 
 async fn execute_query_document_with_state(
     id: &SubgraphDeploymentId,
-    query: q::Document,
+    query: q::Document<'static, String>,
     state: DeploymentState,
 ) -> QueryResult {
     let runner = Arc::new(GraphQlRunner::new(
@@ -1378,11 +1381,13 @@ fn can_use_nested_filter() {
 async fn check_musicians_at(
     id: &SubgraphDeploymentId,
     query: &str,
-    block_var: Option<(&str, q::Value)>,
+    block_var: Option<(&str, q::Value<'static, String>)>,
     expected: Result<Vec<&str>, &str>,
     qid: &str,
 ) {
-    let query = graphql_parser::parse_query(query).expect("invalid test query");
+    let query = graphql_parser::parse_query(query)
+        .expect("invalid test query")
+        .into_static();
     let vars = block_var.map(|(name, value)| {
         let mut map = HashMap::new();
         map.insert(name.to_owned(), value);

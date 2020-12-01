@@ -2,18 +2,18 @@ use crate::components::store::{Store, SubgraphDeploymentStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::store::ValueType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
-use crate::prelude::Fail;
 
 use anyhow::Context;
-use failure::Error;
+use anyhow::Error;
 use graphql_parser;
 use graphql_parser::{
-    query::{Name, Value},
+    query::Value,
     schema::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
     Pos,
 };
 use inflector::Inflector;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -38,79 +38,68 @@ impl fmt::Display for Strings {
     }
 }
 
-#[derive(Debug, Fail, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum SchemaValidationError {
-    #[fail(display = "Interface `{}` not defined", _0)]
+    #[error("Interface `{0}` not defined")]
     InterfaceUndefined(String),
 
-    #[fail(display = "@entity directive missing on the following types: `{}`", _0)]
+    #[error("@entity directive missing on the following types: `{0}`")]
     EntityDirectivesMissing(Strings),
 
-    #[fail(
-        display = "Entity type `{}` does not satisfy interface `{}` because it is missing \
-                   the following fields: {}",
-        _0, _1, _2
+    #[error(
+        "Entity type `{0}` does not satisfy interface `{1}` because it is missing \
+            the following fields: {2}"
     )]
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
-    #[fail(
-        display = "Field `{}` in type `{}` has invalid @derivedFrom: {}",
-        _1, _0, _2
-    )]
+    #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
-    #[fail(display = "_Schema_ type is only for @imports and must not have any fields")]
+    #[error("_Schema_ type is only for @imports and must not have any fields")]
     SchemaTypeWithFields,
-    #[fail(display = "Imported subgraph name `{}` is invalid", _0)]
+    #[error("Imported subgraph name `{0}` is invalid")]
     ImportedSubgraphNameInvalid(String),
-    #[fail(display = "Imported subgraph id `{}` is invalid", _0)]
+    #[error("Imported subgraph id `{0}` is invalid")]
     ImportedSubgraphIdInvalid(String),
-    #[fail(display = "The _Schema_ type only allows @import directives")]
+    #[error("The _Schema_ type only allows @import directives")]
     InvalidSchemaTypeDirectives,
-    #[fail(display = r#"@import directives must have the form \
+    #[error(
+        r#"@import directives must have the form \
 @import(types: ["A", {{ name: "B", as: "C"}}], from: {{ name: "org/subgraph"}}) or \
-@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#)]
+@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#
+    )]
     ImportDirectiveInvalid,
-    #[fail(
-        display = "Type `{}`, field `{}`: type `{}` is neither defined nor imported",
-        _0, _1, _2
-    )]
+    #[error("Type `{0}`, field `{1}`: type `{2}` is neither defined nor imported")]
     FieldTypeUnknown(String, String, String), // (type_name, field_name, field_type)
-    #[fail(
-        display = "Imported type `{}` does not exist in the `{}` schema",
-        _0, _1
-    )]
+    #[error("Imported type `{0}` does not exist in the `{1}` schema")]
     ImportedTypeUndefined(String, String), // (type_name, schema)
-    #[fail(display = "Fulltext directive name undefined")]
+    #[error("Fulltext directive name undefined")]
     FulltextNameUndefined,
-    #[fail(display = "Fulltext directive name overlaps with type: {}", _0)]
+    #[error("Fulltext directive name overlaps with type: `{0}`")]
     FulltextNameConflict(String),
-    #[fail(
-        display = "Fulltext directive name overlaps with an existing entity field or a top-level query field: {}",
-        _0
-    )]
+    #[error("Fulltext directive name overlaps with an existing entity field or a top-level query field: `{0}`")]
     FulltextNameCollision(String),
-    #[fail(display = "Fulltext language is undefined")]
+    #[error("Fulltext language is undefined")]
     FulltextLanguageUndefined,
-    #[fail(display = "Fulltext language is invalid: {}", _0)]
+    #[error("Fulltext language is invalid: `{0}`")]
     FulltextLanguageInvalid(String),
-    #[fail(display = "Fulltext algorithm is undefined")]
+    #[error("Fulltext algorithm is undefined")]
     FulltextAlgorithmUndefined,
-    #[fail(display = "Fulltext algorithm is invalid: {}", _0)]
+    #[error("Fulltext algorithm is invalid: `{0}`")]
     FulltextAlgorithmInvalid(String),
-    #[fail(display = "Fulltext include is invalid")]
+    #[error("Fulltext include is invalid")]
     FulltextIncludeInvalid,
-    #[fail(display = "Fulltext directive requires an 'include' list")]
+    #[error("Fulltext directive requires an 'include' list")]
     FulltextIncludeUndefined,
-    #[fail(display = "Fulltext 'include' list must contain an object")]
+    #[error("Fulltext 'include' list must contain an object")]
     FulltextIncludeObjectMissing,
-    #[fail(
-        display = "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
+    #[error(
+        "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
     )]
     FulltextIncludeEntityMissingOrIncorrectAttributes,
-    #[fail(display = "Fulltext directive includes an entity not found on the subgraph schema")]
+    #[error("Fulltext directive includes an entity not found on the subgraph schema")]
     FulltextIncludedEntityNotFound,
-    #[fail(display = "Fulltext include field must have a 'name' attribute")]
+    #[error("Fulltext include field must have a 'name' attribute")]
     FulltextIncludedFieldMissingRequiredProperty,
-    #[fail(display = "Fulltext entity field, {}, not found or not a string", _0)]
+    #[error("Fulltext entity field, `{0}`, not found or not a string")]
     FulltextIncludedFieldInvalid(String),
 }
 
@@ -217,10 +206,10 @@ pub struct FulltextDefinition {
     pub name: String,
 }
 
-impl From<&Directive> for FulltextDefinition {
+impl From<&Directive<'static, String>> for FulltextDefinition {
     // Assumes the input is a Fulltext Directive that has already been validated because it makes
     // liberal use of unwrap() where specific types are expected
-    fn from(directive: &Directive) -> Self {
+    fn from(directive: &Directive<'static, String>) -> Self {
         let name = directive
             .argument("name")
             .unwrap()
@@ -265,11 +254,11 @@ impl From<&Directive> for FulltextDefinition {
         }
     }
 }
-#[derive(Debug, Fail, PartialEq, Eq, Clone)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum SchemaImportError {
-    #[fail(display = "Schema for imported subgraph `{}` was not found", _0)]
+    #[error("Schema for imported subgraph `{0}` was not found")]
     ImportedSchemaNotFound(SchemaReference),
-    #[fail(display = "Subgraph for imported schema `{}` is not deployed", _0)]
+    #[error("Subgraph for imported schema `{0}` is not deployed")]
     ImportedSubgraphNotFound(SchemaReference),
 }
 
@@ -298,7 +287,7 @@ impl fmt::Display for ImportedType {
 }
 
 impl ImportedType {
-    fn parse(type_import: &Value) -> Option<Self> {
+    fn parse(type_import: &Value<'static, String>) -> Option<Self> {
         match type_import {
             Value::String(type_name) => Some(ImportedType {
                 name: type_name.to_string(),
@@ -345,7 +334,7 @@ impl SchemaReference {
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
     }
 
-    fn parse(value: &Value) -> Option<Self> {
+    fn parse(value: &Value<'static, String>) -> Option<Self> {
         match value {
             Value::Object(map) => match map.get("id") {
                 Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
@@ -364,8 +353,8 @@ pub struct ApiSchema {
     pub schema: Schema,
 
     // Root types for the api schema.
-    pub query_type: Arc<ObjectType>,
-    pub subscription_type: Option<Arc<ObjectType>>,
+    pub query_type: Arc<ObjectType<'static, String>>,
+    pub subscription_type: Option<Arc<ObjectType<'static, String>>>,
 }
 
 impl ApiSchema {
@@ -389,7 +378,7 @@ impl ApiSchema {
         })
     }
 
-    pub fn document(&self) -> &schema::Document {
+    pub fn document(&self) -> &schema::Document<'static, String> {
         &self.schema.document
     }
 
@@ -401,12 +390,15 @@ impl ApiSchema {
         &self.schema
     }
 
-    pub fn types_for_interface(&self) -> &BTreeMap<Name, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType<'static, String>>> {
         &self.schema.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &Name) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(
+        &self,
+        type_name: &String,
+    ) -> Option<&Vec<InterfaceType<'static, String>>> {
         self.schema.interfaces_for_type(type_name)
     }
 }
@@ -415,20 +407,20 @@ impl ApiSchema {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
     pub id: SubgraphDeploymentId,
-    pub document: schema::Document,
+    pub document: schema::Document<'static, String>,
 
     // Maps type name to implemented interfaces.
-    pub interfaces_for_type: BTreeMap<Name, Vec<InterfaceType>>,
+    pub interfaces_for_type: BTreeMap<String, Vec<InterfaceType<'static, String>>>,
 
     // Maps an interface name to the list of entities that implement it.
-    pub types_for_interface: BTreeMap<Name, Vec<ObjectType>>,
+    pub types_for_interface: BTreeMap<String, Vec<ObjectType<'static, String>>>,
 }
 
 impl Schema {
     /// Create a new schema. The document must already have been
     /// validated. This function is only useful for creating an introspection
     /// schema, and should not be used otherwise
-    pub fn new(id: SubgraphDeploymentId, document: schema::Document) -> Self {
+    pub fn new(id: SubgraphDeploymentId, document: schema::Document<'static, String>) -> Self {
         Schema {
             id,
             document,
@@ -482,11 +474,11 @@ impl Schema {
     }
 
     pub fn collect_interfaces(
-        document: &schema::Document,
+        document: &schema::Document<'static, String>,
     ) -> Result<
         (
-            BTreeMap<Name, Vec<InterfaceType>>,
-            BTreeMap<Name, Vec<ObjectType>>,
+            BTreeMap<String, Vec<InterfaceType<'static, String>>>,
+            BTreeMap<String, Vec<ObjectType<'static, String>>>,
         ),
         SchemaValidationError,
     > {
@@ -535,7 +527,9 @@ impl Schema {
     }
 
     pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
-        let document = graphql_parser::parse_schema(&raw)?;
+        let document = graphql_parser::parse_schema::<String>(raw)
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .into_static();
 
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
 
@@ -551,7 +545,7 @@ impl Schema {
     }
 
     fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
-        fn parse_types(import: &Directive) -> Vec<ImportedType> {
+        fn parse_types(import: &Directive<'static, String>) -> Vec<ImportedType> {
             import
                 .argument("types")
                 .map_or(vec![], |value| match value {
@@ -593,7 +587,9 @@ impl Schema {
         })
     }
 
-    pub fn name_argument_value_from_directive(directive: &Directive) -> Value {
+    pub fn name_argument_value_from_directive(
+        directive: &Directive<'static, String>,
+    ) -> Value<'static, String> {
         directive
             .argument("name")
             .expect("fulltext directive must have name argument")
@@ -601,22 +597,22 @@ impl Schema {
     }
 
     /// Returned map has one an entry for each interface in the schema.
-    pub fn types_for_interface(&self) -> &BTreeMap<Name, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType<'static, String>>> {
         &self.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &Name) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(
+        &self,
+        type_name: &String,
+    ) -> Option<&Vec<InterfaceType<'static, String>>> {
         self.interfaces_for_type.get(type_name)
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
     pub fn add_subgraph_id_directives(&mut self, id: SubgraphDeploymentId) {
         for definition in self.document.definitions.iter_mut() {
-            let subgraph_id_argument = (
-                schema::Name::from("id"),
-                schema::Value::String(id.to_string()),
-            );
+            let subgraph_id_argument = (String::from("id"), schema::Value::String(id.to_string()));
 
             let subgraph_id_directive = schema::Directive {
                 name: "subgraphId".to_string(),
@@ -705,7 +701,7 @@ impl Schema {
                     .filter(|directive| {
                         !directive.name.eq("import") && !directive.name.eq("fulltext")
                     })
-                    .collect::<Vec<&Directive>>()
+                    .collect::<Vec<&Directive<'static, String>>>()
                     .is_empty()
                 {
                     Some(SchemaValidationError::InvalidSchemaTypeDirectives)
@@ -719,8 +715,10 @@ impl Schema {
     }
 
     /// Check the syntax of a single `@import` directive
-    fn validate_import_directive_arguments(import: &Directive) -> Option<SchemaValidationError> {
-        fn validate_import_type(typ: &Value) -> Result<(), ()> {
+    fn validate_import_directive_arguments(
+        import: &Directive<'static, String>,
+    ) -> Option<SchemaValidationError> {
+        fn validate_import_type(typ: &Value<'static, String>) -> Result<(), ()> {
             match typ {
                 Value::String(_) => Ok(()),
                 Value::Object(typ) => match (typ.get("name"), typ.get("as")) {
@@ -731,7 +729,7 @@ impl Schema {
             }
         }
 
-        fn types_are_valid(types: Option<&Value>) -> bool {
+        fn types_are_valid(types: Option<&Value<'static, String>>) -> bool {
             // All of the elements in the `types` field are valid: either
             // a string or an object with keys `name` and `as` which are strings
             if let Some(Value::List(types)) = types {
@@ -745,7 +743,7 @@ impl Schema {
             }
         }
 
-        fn from_is_valid(from: Option<&Value>) -> bool {
+        fn from_is_valid(from: Option<&Value<'static, String>>) -> bool {
             if let Some(Value::Object(from)) = from {
                 let has_id = match from.get("id") {
                     Some(Value::String(_)) => true,
@@ -769,7 +767,7 @@ impl Schema {
     }
 
     fn validate_import_directive_schema_reference_parses(
-        directive: &Directive,
+        directive: &Directive<'static, String>,
     ) -> Option<SchemaValidationError> {
         directive.argument("from").and_then(|from| match from {
             Value::Object(from) => {
@@ -823,13 +821,16 @@ impl Schema {
             })
     }
 
-    fn validate_fulltext_directive_name(&self, fulltext: &Directive) -> Vec<SchemaValidationError> {
+    fn validate_fulltext_directive_name(
+        &self,
+        fulltext: &Directive<'static, String>,
+    ) -> Vec<SchemaValidationError> {
         let name = match fulltext.argument("name") {
             Some(Value::String(name)) => name,
             _ => return vec![SchemaValidationError::FulltextNameUndefined],
         };
 
-        let local_types: Vec<&ObjectType> = self
+        let local_types: Vec<&ObjectType<'static, String>> = self
             .document
             .get_object_type_definitions()
             .into_iter()
@@ -885,7 +886,7 @@ impl Schema {
 
     fn validate_fulltext_directive_language(
         &self,
-        fulltext: &Directive,
+        fulltext: &Directive<'static, String>,
     ) -> Vec<SchemaValidationError> {
         let language = match fulltext.argument("language") {
             Some(Value::Enum(language)) => language,
@@ -901,7 +902,7 @@ impl Schema {
 
     fn validate_fulltext_directive_algorithm(
         &self,
-        fulltext: &Directive,
+        fulltext: &Directive<'static, String>,
     ) -> Vec<SchemaValidationError> {
         let algorithm = match fulltext.argument("algorithm") {
             Some(Value::Enum(algorithm)) => algorithm,
@@ -917,10 +918,10 @@ impl Schema {
 
     fn validate_fulltext_directive_includes(
         &self,
-        fulltext: &Directive,
+        fulltext: &Directive<'static, String>,
     ) -> Vec<SchemaValidationError> {
         // Only allow fulltext directive on local types
-        let local_types: Vec<&ObjectType> = self
+        let local_types: Vec<&ObjectType<'static, String>> = self
             .document
             .get_object_type_definitions()
             .into_iter()
@@ -1107,7 +1108,7 @@ impl Schema {
     fn validate_derived_from(&self) -> Result<(), SchemaValidationError> {
         // Helper to construct a DerivedFromInvalid
         fn invalid(
-            object_type: &ObjectType,
+            object_type: &ObjectType<'static, String>,
             field_name: &str,
             reason: &str,
         ) -> SchemaValidationError {
@@ -1248,8 +1249,8 @@ impl Schema {
 
     /// Validate that `object` implements `interface`.
     fn validate_interface_implementation(
-        object: &ObjectType,
-        interface: &InterfaceType,
+        object: &ObjectType<'static, String>,
+        interface: &InterfaceType<'static, String>,
     ) -> Result<(), SchemaValidationError> {
         // Check that all fields in the interface exist in the object with same name and type.
         let mut missing_fields = vec![];
@@ -1274,7 +1275,7 @@ impl Schema {
         }
     }
 
-    fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
+    fn subgraph_schema_object_type(&self) -> Option<&ObjectType<'static, String>> {
         self.document
             .get_object_type_definitions()
             .into_iter()
@@ -1283,7 +1284,7 @@ impl Schema {
 
     pub fn entity_fulltext_definitions<'a>(
         entity: &str,
-        document: &'a Document,
+        document: &'a Document<'static, String>,
     ) -> Vec<FulltextDefinition> {
         document
             .get_fulltext_directives()
@@ -1361,7 +1362,9 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
     fn validate(field: &str, errmsg: &str) {
         let raw = format!("type A @entity {{ id: ID!\n {} }}\n{}", field, OTHER_TYPES);
 
-        let document = graphql_parser::parse_schema(&raw).expect("Failed to parse raw schema");
+        let document = graphql_parser::parse_schema(&raw)
+            .expect("Failed to parse raw schema")
+            .into_static();
         let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
         match schema.validate_derived_from() {
             Err(ref e) => match e {

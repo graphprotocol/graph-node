@@ -1,5 +1,5 @@
+use anyhow::Error;
 use async_trait::async_trait;
-use failure::Error;
 
 #[async_trait]
 pub trait ThreeBoxAdapter: Send + Sync {

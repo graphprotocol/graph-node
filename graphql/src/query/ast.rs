@@ -5,9 +5,9 @@ use graph::prelude::QueryExecutionError;
 
 /// Returns the operation for the given name (or the only operation if no name is defined).
 pub fn get_operation<'a>(
-    document: &'a Document,
+    document: &'a Document<'static, String>,
     name: Option<&str>,
-) -> Result<&'a OperationDefinition, QueryExecutionError> {
+) -> Result<&'a OperationDefinition<'static, String>, QueryExecutionError> {
     let operations = get_operations(document);
 
     match (name, operations.len()) {
@@ -25,7 +25,9 @@ pub fn get_operation<'a>(
 }
 
 /// Returns all operation definitions in the document.
-pub fn get_operations(document: &Document) -> Vec<&OperationDefinition> {
+pub fn get_operations<'a>(
+    document: &'a Document<'static, String>,
+) -> Vec<&'a OperationDefinition<'static, String>> {
     document
         .definitions
         .iter()
@@ -37,7 +39,9 @@ pub fn get_operations(document: &Document) -> Vec<&OperationDefinition> {
 }
 
 /// Returns the name of the given operation (if it has one).
-pub fn get_operation_name(operation: &OperationDefinition) -> Option<&Name> {
+pub fn get_operation_name<'a>(
+    operation: &'a OperationDefinition<'static, String>,
+) -> Option<&'a String> {
     match operation {
         OperationDefinition::Mutation(m) => m.name.as_ref(),
         OperationDefinition::Query(q) => q.name.as_ref(),
@@ -47,7 +51,10 @@ pub fn get_operation_name(operation: &OperationDefinition) -> Option<&Name> {
 }
 
 /// Looks up a directive in a selection, if it is provided.
-pub fn get_directive(selection: &Selection, name: Name) -> Option<&Directive> {
+pub fn get_directive<'a>(
+    selection: &'a Selection<'static, String>,
+    name: String,
+) -> Option<&'a Directive<'static, String>> {
     match selection {
         Selection::Field(field) => field
             .directives
@@ -58,12 +65,18 @@ pub fn get_directive(selection: &Selection, name: Name) -> Option<&Directive> {
 }
 
 /// Looks up the value of an argument in a vector of (name, value) tuples.
-pub fn get_argument_value<'a>(arguments: &'a [(Name, Value)], name: &str) -> Option<&'a Value> {
+pub fn get_argument_value<'a>(
+    arguments: &'a [(String, Value<'static, String>)],
+    name: &str,
+) -> Option<&'a Value<'static, String>> {
     arguments.iter().find(|(n, _)| n == name).map(|(_, v)| v)
 }
 
 /// Returns true if a selection should be skipped (as per the `@skip` directive).
-pub fn skip_selection(selection: &Selection, variables: &HashMap<Name, Value>) -> bool {
+pub fn skip_selection(
+    selection: &Selection<'static, String>,
+    variables: &HashMap<String, Value<'static, String>>,
+) -> bool {
     match get_directive(selection, "skip".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
@@ -85,7 +98,10 @@ pub fn skip_selection(selection: &Selection, variables: &HashMap<Name, Value>) -
 }
 
 /// Returns true if a selection should be included (as per the `@include` directive).
-pub fn include_selection(selection: &Selection, variables: &HashMap<Name, Value>) -> bool {
+pub fn include_selection(
+    selection: &Selection<'static, String>,
+    variables: &HashMap<String, Value<'static, String>>,
+) -> bool {
     match get_directive(selection, "include".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
@@ -107,12 +123,15 @@ pub fn include_selection(selection: &Selection, variables: &HashMap<Name, Value>
 }
 
 /// Returns the response key of a field, which is either its name or its alias (if there is one).
-pub fn get_response_key(field: &Field) -> &Name {
+pub fn get_response_key<'a>(field: &'a Field<'static, String>) -> &'a String {
     field.alias.as_ref().unwrap_or(&field.name)
 }
 
 /// Returns up the fragment with the given name, if it exists.
-pub fn get_fragment<'a>(document: &'a Document, name: &Name) -> Option<&'a FragmentDefinition> {
+pub fn get_fragment<'a>(
+    document: &'a Document<'static, String>,
+    name: &String,
+) -> Option<&'a FragmentDefinition<'static, String>> {
     document
         .definitions
         .iter()
@@ -124,9 +143,9 @@ pub fn get_fragment<'a>(document: &'a Document, name: &Name) -> Option<&'a Fragm
 }
 
 /// Returns the variable definitions for an operation.
-pub fn get_variable_definitions(
-    operation: &OperationDefinition,
-) -> Option<&Vec<VariableDefinition>> {
+pub fn get_variable_definitions<'a>(
+    operation: &'a OperationDefinition<'static, String>,
+) -> Option<&'a Vec<VariableDefinition<'static, String>>> {
     match operation {
         OperationDefinition::Query(q) => Some(&q.variable_definitions),
         OperationDefinition::Subscription(s) => Some(&s.variable_definitions),

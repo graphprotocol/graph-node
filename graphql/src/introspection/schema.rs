@@ -1,4 +1,4 @@
-use graphql_parser::{self, schema::Document, schema::Name, schema::ObjectType};
+use graphql_parser::{self, schema::Document, schema::ObjectType};
 
 use graph::data::graphql::ext::DocumentExt;
 use graph::data::graphql::ext::ObjectTypeExt;
@@ -114,9 +114,9 @@ enum __DirectiveLocation {
 }";
 
 lazy_static! {
-    pub static ref INTROSPECTION_DOCUMENT: Document =
+    pub static ref INTROSPECTION_DOCUMENT: Document<'static, String> =
         graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap();
-    pub static ref INTROSPECTION_QUERY_TYPE: &'static ObjectType =
+    pub static ref INTROSPECTION_QUERY_TYPE: &'static ObjectType<'static, String> =
         INTROSPECTION_DOCUMENT.get_root_query_type().unwrap();
 }
 
@@ -124,6 +124,6 @@ pub fn introspection_schema(id: SubgraphDeploymentId) -> ApiSchema {
     ApiSchema::from_api_schema(Schema::new(id, INTROSPECTION_DOCUMENT.clone())).unwrap()
 }
 
-pub fn is_introspection_field(name: &Name) -> bool {
+pub fn is_introspection_field(name: &String) -> bool {
     INTROSPECTION_QUERY_TYPE.field(name).is_some()
 }

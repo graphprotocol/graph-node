@@ -30,7 +30,7 @@ pub fn main() {
         _ => usage("too many arguments"),
     };
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
-    let schema = ensure(parse_schema(&schema), "Failed to parse schema");
+    let schema = ensure(parse_schema(&schema), "Failed to parse schema").into_static();
     let schema = ensure(api_schema(&schema), "Failed to convert to API schema");
 
     println!("{}", schema);

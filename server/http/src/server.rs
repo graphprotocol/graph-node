@@ -3,14 +3,15 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use hyper;
 use hyper::service::make_service_fn;
 use hyper::Server;
+use thiserror::Error;
 
 use crate::service::{GraphQLService, GraphQLServiceMetrics};
 use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 
 /// Errors that may occur when starting the server.
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum GraphQLServeError {
-    #[fail(display = "Bind error: {}", _0)]
+    #[error("Bind error: {0}")]
     BindError(hyper::Error),
 }
 

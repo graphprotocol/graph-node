@@ -207,9 +207,9 @@ lazy_static! {
 
 struct HashableQuery<'a> {
     query_schema_id: &'a SubgraphDeploymentId,
-    query_variables: &'a HashMap<q::Name, q::Value>,
-    query_fragments: &'a HashMap<String, q::FragmentDefinition>,
-    selection_set: &'a q::SelectionSet,
+    query_variables: &'a HashMap<String, q::Value<'static, String>>,
+    query_fragments: &'a HashMap<String, q::FragmentDefinition<'static, String>>,
+    selection_set: &'a q::SelectionSet<'static, String>,
     block_ptr: &'a EthereumBlockPointer,
 }
 
@@ -261,7 +261,7 @@ impl StableHash for HashableQuery<'_> {
 // The key is: subgraph id + selection set + variables + fragment definitions
 fn cache_key(
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
+    selection_set: &q::SelectionSet<'static, String>,
     block_ptr: &EthereumBlockPointer,
 ) -> QueryHash {
     // It is very important that all data used for the query is included.
@@ -310,7 +310,10 @@ where
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
-pub(crate) fn get_named_type(schema: &s::Document, name: &Name) -> Option<s::TypeDefinition> {
+pub(crate) fn get_named_type(
+    schema: &s::Document<'static, String>,
+    name: &String,
+) -> Option<s::TypeDefinition<'static, String>> {
     if name.starts_with("__") {
         sast::get_named_type(&INTROSPECTION_DOCUMENT, name).cloned()
     } else {
@@ -320,8 +323,8 @@ pub(crate) fn get_named_type(schema: &s::Document, name: &Name) -> Option<s::Typ
 
 pub(crate) fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &Name,
-) -> Option<s::Field> {
+    name: &String,
+) -> Option<s::Field<'static, String>> {
     if name == "__schema" || name == "__type" {
         let object_type = *INTROSPECTION_QUERY_TYPE;
         sast::get_field(object_type, name).cloned()
@@ -331,8 +334,8 @@ pub(crate) fn get_field<'a>(
 }
 
 pub(crate) fn object_or_interface<'a>(
-    schema: &'a s::Document,
-    name: &Name,
+    schema: &'a s::Document<'static, String>,
+    name: &String,
 ) -> Option<ObjectOrInterface<'a>> {
     if name.starts_with("__") {
         INTROSPECTION_DOCUMENT.object_or_interface(name)
@@ -367,9 +370,9 @@ where
 
 pub fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
-    root_type: &s::ObjectType,
-) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+    selection_set: &q::SelectionSet<'static, String>,
+    root_type: &s::ObjectType<'static, String>,
+) -> Result<BTreeMap<String, q::Value<'static, String>>, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = q::SelectionSet {
@@ -424,8 +427,8 @@ pub fn execute_root_selection_set_uncached(
 /// Executes the root selection set of a query.
 pub async fn execute_root_selection_set<R: Resolver>(
     ctx: Arc<ExecutionContext<R>>,
-    selection_set: Arc<q::SelectionSet>,
-    root_type: Arc<s::ObjectType>,
+    selection_set: Arc<q::SelectionSet<'static, String>>,
+    root_type: Arc<s::ObjectType<'static, String>>,
     block_ptr: Option<EthereumBlockPointer>,
 ) -> Arc<QueryResult> {
     // Cache the cache key to not have to calculate it twice - once for lookup
@@ -572,10 +575,10 @@ pub async fn execute_root_selection_set<R: Resolver>(
 /// Allows passing in a parent value during recursive processing of objects and their fields.
 fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    object_type: &s::ObjectType,
-    prefetched_value: Option<q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet<'static, String>>,
+    object_type: &s::ObjectType<'static, String>,
+    prefetched_value: Option<q::Value<'static, String>>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     Ok(q::Value::Object(execute_selection_set_to_map(
         ctx,
         selection_sets,
@@ -586,17 +589,17 @@ fn execute_selection_set<'a>(
 
 fn execute_selection_set_to_map<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    object_type: &s::ObjectType,
-    prefetched_value: Option<q::Value>,
-) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet<'static, String>>,
+    object_type: &s::ObjectType<'static, String>,
+    prefetched_value: Option<q::Value<'static, String>>,
+) -> Result<BTreeMap<String, q::Value<'static, String>>, Vec<QueryExecutionError>> {
     let mut prefetched_object = match prefetched_value {
         Some(q::Value::Object(object)) => Some(object),
         Some(_) => unreachable!(),
         None => None,
     };
     let mut errors: Vec<QueryExecutionError> = Vec::new();
-    let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
+    let mut result_map: BTreeMap<String, q::Value<'static, String>> = BTreeMap::new();
 
     // Group fields with the same response key, so we can execute them together
     let grouped_field_set = collect_fields(ctx, object_type, selection_sets);
@@ -665,9 +668,9 @@ fn execute_selection_set_to_map<'a>(
 /// logic will effectively merged them into the output for the response key.
 pub fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> IndexMap<&'a String, Vec<&'a q::Field>> {
+    object_type: &s::ObjectType<'static, String>,
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet<'static, String>>,
+) -> IndexMap<&'a String, Vec<&'a q::Field<'static, String>>> {
     let mut grouped_fields = IndexMap::new();
     collect_fields_inner(
         ctx,
@@ -681,10 +684,10 @@ pub fn collect_fields<'a>(
 
 pub fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    visited_fragments: &mut HashSet<&'a q::Name>,
-    output: &mut IndexMap<&'a String, Vec<&'a q::Field>>,
+    object_type: &s::ObjectType<'static, String>,
+    selection_sets: impl Iterator<Item = &'a q::SelectionSet<'static, String>>,
+    visited_fragments: &mut HashSet<&'a String>,
+    output: &mut IndexMap<&'a String, Vec<&'a q::Field<'static, String>>>,
 ) {
     for selection_set in selection_sets {
         // Only consider selections that are not skipped and should be included
@@ -748,8 +751,8 @@ pub fn collect_fields_inner<'a>(
 /// Determines whether a fragment is applicable to the given object type.
 fn does_fragment_type_apply(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    fragment_type: &q::TypeCondition,
+    object_type: &s::ObjectType<'static, String>,
+    fragment_type: &q::TypeCondition<'static, String>,
 ) -> bool {
     // This is safe to do, as TypeCondition only has a single `On` variant.
     let q::TypeCondition::On(ref name) = fragment_type;
@@ -779,12 +782,12 @@ fn does_fragment_type_apply(
 /// Executes a field.
 fn execute_field(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
-    field: &q::Field,
-    field_definition: &s::Field,
-    fields: Vec<&q::Field>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    object_type: &s::ObjectType<'static, String>,
+    field_value: Option<q::Value<'static, String>>,
+    field: &q::Field<'static, String>,
+    field_definition: &s::Field<'static, String>,
+    fields: Vec<&q::Field<'static, String>>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     coerce_argument_values(ctx, object_type, field)
         .and_then(|argument_values| {
             resolve_field_value(
@@ -803,13 +806,13 @@ fn execute_field(
 /// Resolves the value of a field.
 fn resolve_field_value(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
-    field: &q::Field,
-    field_definition: &s::Field,
-    field_type: &s::Type,
-    argument_values: &HashMap<&q::Name, q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    object_type: &s::ObjectType<'static, String>,
+    field_value: Option<q::Value<'static, String>>,
+    field: &q::Field<'static, String>,
+    field_definition: &s::Field<'static, String>,
+    field_type: &s::Type<'static, String>,
+    argument_values: &HashMap<&String, q::Value<'static, String>>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     match field_type {
         s::Type::NonNullType(inner_type) => resolve_field_value(
             ctx,
@@ -846,13 +849,13 @@ fn resolve_field_value(
 /// Resolves the value of a field that corresponds to a named type.
 fn resolve_field_value_for_named_type(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
-    field: &q::Field,
-    field_definition: &s::Field,
-    type_name: &s::Name,
-    argument_values: &HashMap<&q::Name, q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    object_type: &s::ObjectType<'static, String>,
+    field_value: Option<q::Value<'static, String>>,
+    field: &q::Field<'static, String>,
+    field_definition: &s::Field<'static, String>,
+    type_name: &String,
+    argument_values: &HashMap<&String, q::Value<'static, String>>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
     let named_type = sast::get_named_type(ctx.query.schema.document(), type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
@@ -895,13 +898,13 @@ fn resolve_field_value_for_named_type(
 /// Resolves the value of a field that corresponds to a list type.
 fn resolve_field_value_for_list_type(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
-    field: &q::Field,
-    field_definition: &s::Field,
-    inner_type: &s::Type,
-    argument_values: &HashMap<&q::Name, q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    object_type: &s::ObjectType<'static, String>,
+    field_value: Option<q::Value<'static, String>>,
+    field: &q::Field<'static, String>,
+    field_definition: &s::Field<'static, String>,
+    inner_type: &s::Type<'static, String>,
+    argument_values: &HashMap<&String, q::Value<'static, String>>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     match inner_type {
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
             ctx,
@@ -974,11 +977,11 @@ fn resolve_field_value_for_list_type(
 /// Ensures that a value matches the expected return type.
 fn complete_value(
     ctx: &ExecutionContext<impl Resolver>,
-    field: &q::Field,
-    field_type: &s::Type,
-    fields: &Vec<&q::Field>,
-    resolved_value: q::Value,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    field: &q::Field<'static, String>,
+    field_type: &s::Type<'static, String>,
+    fields: &Vec<&q::Field<'static, String>>,
+    resolved_value: q::Value<'static, String>,
+) -> Result<q::Value<'static, String>, Vec<QueryExecutionError>> {
     match field_type {
         // Fail if the field type is non-null but the value is null
         s::Type::NonNullType(inner_type) => {
@@ -1105,9 +1108,9 @@ fn complete_value(
 /// Resolves an abstract type (interface, union) into an object type based on the given value.
 fn resolve_abstract_type<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    abstract_type: &s::TypeDefinition,
-    object_value: &q::Value,
-) -> Result<&'a s::ObjectType, Vec<QueryExecutionError>> {
+    abstract_type: &s::TypeDefinition<'static, String>,
+    object_value: &q::Value<'static, String>,
+) -> Result<&'a s::ObjectType<'static, String>, Vec<QueryExecutionError>> {
     // Let the resolver handle the type resolution, return an error if the resolution
     // yields nothing
     ctx.resolver
@@ -1122,13 +1125,13 @@ fn resolve_abstract_type<'a>(
 /// Coerces argument values into GraphQL values.
 pub fn coerce_argument_values<'a>(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &'a s::ObjectType,
-    field: &q::Field,
-) -> Result<HashMap<&'a q::Name, q::Value>, Vec<QueryExecutionError>> {
+    object_type: &'a s::ObjectType<'static, String>,
+    field: &q::Field<'static, String>,
+) -> Result<HashMap<&'a String, q::Value<'static, String>>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &Name| sast::get_named_type(ctx.query.schema.document(), name);
+    let resolver = |name: &String| sast::get_named_type(ctx.query.schema.document(), name);
 
     for argument_def in sast::get_argument_definitions(object_type, &field.name)
         .into_iter()

@@ -67,8 +67,8 @@ async fn select_fastest_client_with_stat<'a>(
     path: &'_ str,
     timeout: Duration,
     do_retry: bool,
-) -> Result<(ObjectStatResponse, &'a IpfsClient), failure::Error> {
-    let mut err: Option<failure::Error> = None;
+) -> Result<(ObjectStatResponse, &'a IpfsClient), anyhow::Error> {
+    let mut err: Option<anyhow::Error> = None;
 
     let mut stats: FuturesUnordered<_> = clients
         .iter()
@@ -97,7 +97,7 @@ async fn select_fastest_client_with_stat<'a>(
     }
 
     Err(err.unwrap_or_else(|| {
-        format_err!(
+        anyhow::anyhow!(
             "No IPFS clients were supplied to handle the call to object.stat. File: {}",
             path
         )
@@ -109,10 +109,10 @@ fn restrict_file_size(
     path: &str,
     stat: &ObjectStatResponse,
     max_file_bytes: &Option<u64>,
-) -> Result<(), failure::Error> {
+) -> Result<(), anyhow::Error> {
     if let Some(max_file_bytes) = max_file_bytes {
         if stat.cumulative_size > *max_file_bytes {
-            return Err(format_err!(
+            return Err(anyhow::anyhow!(
                 "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
                 path,
                 max_file_bytes,
@@ -198,7 +198,8 @@ impl LinkResolverTrait for LinkResolver {
                         .cat(&path)
                         .map_ok(|b| BytesMut::from_iter(b.into_iter()))
                         .try_concat()
-                        .await?
+                        .await
+                        .map_err(|e| anyhow::anyhow!("{}", e))?
                         .to_vec();
 
                     // Only cache files if they are not too large
@@ -242,7 +243,7 @@ impl LinkResolverTrait for LinkResolver {
         let mut count = 0;
 
         let stream: JsonValueStream = Box::pin(
-            poll_fn(move || -> Poll<Option<JsonStreamValue>, failure::Error> {
+            poll_fn(move || -> Poll<Option<JsonStreamValue>, anyhow::Error> {
                 loop {
                     if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
                         let line_bytes = buf.split_to(offset + 1);
@@ -260,7 +261,7 @@ impl LinkResolverTrait for LinkResolver {
                                     // message, and not the error message without line number
                                     let msg = e.to_string();
                                     let msg = msg.split(" at line ").next().unwrap();
-                                    Err(format_err!(
+                                    Err(anyhow::anyhow!(
                                         "{} at line {} column {}: '{}'",
                                         msg,
                                         e.line() + count - 1,
@@ -279,7 +280,7 @@ impl LinkResolverTrait for LinkResolver {
                         // that means the input was not terminated with a newline. We
                         // add that so that the last line gets picked up in the next
                         // run through the loop.
-                        match try_ready!(stream.poll()) {
+                        match try_ready!(stream.poll().map_err(|e| anyhow::anyhow!("{}", e))) {
                             Some(b) => buf.extend_from_slice(&b),
                             None if buf.len() > 0 => buf.extend_from_slice(&[b'\n']),
                             None => return Ok(Async::Ready(None)),
@@ -323,7 +324,7 @@ mod tests {
         );
     }
 
-    async fn json_round_trip(text: &'static str) -> Result<Vec<Value>, failure::Error> {
+    async fn json_round_trip(text: &'static str) -> Result<Vec<Value>, anyhow::Error> {
         let client = IpfsClient::default();
         let resolver = super::LinkResolver::from(client.clone());
 

@@ -10,10 +10,10 @@ use graph::data::subgraph::schema::{
     generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphManifestEntity, SUBGRAPHS_ID,
 };
 use graph::prelude::{
-    bigdecimal::ToPrimitive, entity, format_err, web3::types::H256, BigDecimal, BlockNumber,
-    DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, MetadataOperation,
-    NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId,
-    SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
+    bigdecimal::ToPrimitive, entity, web3::types::H256, BigDecimal, BlockNumber, DeploymentState,
+    EntityChange, EntityChangeOperation, EthereumBlockPointer, MetadataOperation, NodeId, Schema,
+    StoreError, StoreEvent, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName,
+    SubgraphVersionSwitchingMode, TypedEntity,
 };
 use std::convert::TryFrom;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -174,7 +174,7 @@ pub fn deployment_graft(
                 let hash = H256::from_slice(hash.as_slice());
                 let block = block.to_u64().expect("block numbers fit into a u64");
                 let subgraph = SubgraphDeploymentId::new(subgraph.clone()).map_err(|_| {
-                    StoreError::Unknown(format_err!(
+                    StoreError::Unknown(anyhow::anyhow!(
                         "the base subgraph for a graft must be a valid subgraph id but is `{}`",
                         subgraph
                     ))

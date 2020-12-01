@@ -34,10 +34,9 @@ use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
 };
 use graph::prelude::{
-    format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
-    EntityFilter, EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
+    EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger, QueryExecutionError,
+    StoreError, StoreEvent, SubgraphDeploymentId, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, BLOCK_UNVERSIONED};
@@ -153,10 +152,10 @@ pub(crate) enum IdType {
     Bytes,
 }
 
-impl TryFrom<&s::ObjectType> for IdType {
+impl TryFrom<&s::ObjectType<'static, String>> for IdType {
     type Error = StoreError;
 
-    fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
+    fn try_from(obj_type: &s::ObjectType<'static, String>) -> Result<Self, Self::Error> {
         let pk = obj_type
             .field(&PRIMARY_KEY_COLUMN.to_owned())
             .expect("Each ObjectType has an `id` field");
@@ -164,16 +163,16 @@ impl TryFrom<&s::ObjectType> for IdType {
     }
 }
 
-impl TryFrom<&s::Type> for IdType {
+impl TryFrom<&s::Type<'static, String>> for IdType {
     type Error = StoreError;
 
-    fn try_from(field_type: &s::Type) -> Result<Self, Self::Error> {
+    fn try_from(field_type: &s::Type<'static, String>) -> Result<Self, Self::Error> {
         let name = named_type(field_type);
 
         match ValueType::from_str(name)? {
             ValueType::String => Ok(IdType::String),
             ValueType::Bytes => Ok(IdType::Bytes),
-            _ => Err(format_err!(
+            _ => Err(anyhow::anyhow!(
                 "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
                 &name
             )
@@ -249,7 +248,7 @@ impl Layout {
                 .collect::<Result<HashSet<_>, _>>()
                 .and_then(move |types| {
                     if types.len() > 1 {
-                        Err(format_err!(
+                        Err(anyhow::anyhow!(
                             "The implementations of interface \
                             `{}` use different types for the `id` field",
                             interface
@@ -364,9 +363,9 @@ impl Layout {
     ) -> Result<Layout, StoreError> {
         let catalog = Catalog::new(conn, schema_name)?;
         let layout = Self::new(schema, catalog, true)?;
-        let sql = layout
-            .as_ddl()
-            .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
+        let sql = layout.as_ddl().map_err(|_| {
+            StoreError::Unknown(anyhow::anyhow!("failed to generate DDL for layout"))
+        })?;
         conn.batch_execute(&sql)?;
         Ok(layout)
     }
@@ -903,7 +902,7 @@ impl From<IdType> for ColumnType {
 
 impl ColumnType {
     fn from_field_type(
-        field_type: &q::Type,
+        field_type: &q::Type<'static, String>,
         catalog: &Catalog,
         enums: &EnumMap,
         id_types: &IdTypeMap,
@@ -945,7 +944,7 @@ impl ColumnType {
             ValueType::Bytes => Ok(ColumnType::Bytes),
             ValueType::Int => Ok(ColumnType::Int),
             ValueType::String => Ok(ColumnType::String),
-            ValueType::List => Err(StoreError::Unknown(format_err!(
+            ValueType::List => Err(StoreError::Unknown(anyhow::anyhow!(
                 "can not convert ValueType::List to ColumnType"
             ))),
         }
@@ -983,7 +982,7 @@ impl ColumnType {
 pub struct Column {
     pub name: SqlName,
     pub field: String,
-    pub field_type: q::Type,
+    pub field_type: q::Type<'static, String>,
     pub column_type: ColumnType,
     pub fulltext_fields: Option<HashSet<String>>,
     is_reference: bool,
@@ -992,7 +991,7 @@ pub struct Column {
 impl Column {
     fn new(
         table_name: &SqlName,
-        field: &s::Field,
+        field: &s::Field<'static, String>,
         catalog: &Catalog,
         enums: &EnumMap,
         id_types: &IdTypeMap,
@@ -1044,7 +1043,7 @@ impl Column {
     }
 
     pub fn is_nullable(&self) -> bool {
-        fn is_nullable(field_type: &q::Type) -> bool {
+        fn is_nullable(field_type: &q::Type<'static, String>) -> bool {
             match field_type {
                 q::Type::NonNullType(_) => false,
                 _ => true,
@@ -1054,7 +1053,7 @@ impl Column {
     }
 
     pub fn is_list(&self) -> bool {
-        fn is_list(field_type: &q::Type) -> bool {
+        fn is_list(field_type: &q::Type<'static, String>) -> bool {
             use q::Type::*;
 
             match field_type {
@@ -1149,7 +1148,7 @@ pub(crate) const VID_COLUMN: &str = "vid";
 #[derive(Clone, Debug)]
 pub struct Table {
     /// The name of the GraphQL object type ('Thing')
-    pub object: s::Name,
+    pub object: String,
     /// The name of the database table for this type ('thing'), snakecased
     /// version of `object`
     pub name: SqlName,
@@ -1173,7 +1172,7 @@ pub struct Table {
 
 impl Table {
     fn new(
-        defn: &s::ObjectType,
+        defn: &s::ObjectType<'static, String>,
         catalog: &Catalog,
         fulltexts: Vec<FulltextDefinition>,
         enums: &EnumMap,
@@ -1371,7 +1370,7 @@ impl Table {
 
 /// Return the enclosed named type for a field type, i.e., the type after
 /// stripping List and NonNull.
-fn named_type(field_type: &q::Type) -> &str {
+fn named_type<'a>(field_type: &'a q::Type<'static, String>) -> &'a str {
     match field_type {
         q::Type::NamedType(name) => name.as_str(),
         q::Type::ListType(child) => named_type(child),
@@ -1379,14 +1378,14 @@ fn named_type(field_type: &q::Type) -> &str {
     }
 }
 
-fn derived_column(field: &s::Field) -> bool {
+fn derived_column(field: &s::Field<'static, String>) -> bool {
     field
         .directives
         .iter()
-        .any(|dir| dir.name == s::Name::from("derivedFrom"))
+        .any(|dir| dir.name == String::from("derivedFrom"))
 }
 
-fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
+fn is_object_type(field_type: &q::Type<'static, String>, enums: &EnumMap) -> bool {
     let name = named_type(field_type);
 
     !enums.contains_key(&*name) && !ValueType::is_scalar(name)
