@@ -60,7 +60,15 @@ fn reassign_subgraph() {
     run_test_sequentially(setup, |store, id| async move {
         // Check our setup
         let node = find_assignment(store.as_ref(), &id);
-        assert_eq!(Some("test".to_string()), node);
+        let placement = place("test").expect("the test config places deployments");
+        if let Some((_, nodes)) = placement {
+            // If the test config does not have deployment rules, we can't check
+            // anything here. This will happen when the tests do not use
+            // a configuration file
+            assert_eq!(1, nodes.len());
+            let placed_node = nodes.first().map(|node| node.to_string());
+            assert_eq!(placed_node, node);
+        }
 
         // Assign to node 'left' twice, the first time we assign from 'test'
         // to 'left', the second time from 'left' to 'left', with the same results

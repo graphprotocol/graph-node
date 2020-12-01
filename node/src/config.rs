@@ -36,10 +36,10 @@ impl Default for Opt {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
     #[serde(rename = "store")]
-    stores: BTreeMap<String, Shard>,
+    pub stores: BTreeMap<String, Shard>,
     pub deployment: Deployment,
     ingestor: Ingestor,
 }
@@ -141,7 +141,7 @@ impl Config {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Shard {
     pub connection: String,
     #[serde(default = "one")]
@@ -203,7 +203,7 @@ impl Shard {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Replica {
     pub connection: String,
     #[serde(default = "one")]
@@ -349,7 +349,7 @@ impl Default for Predicate {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Ingestor {
     node: String,
 }

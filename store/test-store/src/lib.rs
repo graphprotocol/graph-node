@@ -3,20 +3,21 @@ extern crate diesel;
 
 use crate::tokio::runtime::{Builder, Runtime};
 use diesel::PgConnection;
-use graph::components::store::EntityType;
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, Store as _, *};
+use graph::{components::store::EntityType, prelude::NodeId};
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
 use graph_mock::MockMetricsRegistry;
+use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
-use graph_store_postgres::connection_pool::ConnectionPool;
-use graph_store_postgres::NetworkStore;
+use graph_store_postgres::{connection_pool::ConnectionPool, Shard};
+use graph_store_postgres::{DeploymentPlacer, NetworkStore};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
@@ -47,9 +48,10 @@ lazy_static! {
         Arc::new(MockMetricsRegistry::new()),
         CONN_POOL_SIZE as usize
     ));
-    static ref STORE_AND_POOL: (Arc<NetworkStore>, ConnectionPool) = build_store();
-    static ref PRIMARY_POOL: ConnectionPool = STORE_AND_POOL.1.clone();
-    pub static ref STORE: Arc<NetworkStore> = STORE_AND_POOL.0.clone();
+    static ref STORE_POOL_CONFIG: (Arc<NetworkStore>, ConnectionPool, Config) = build_store();
+    static ref PRIMARY_POOL: ConnectionPool = STORE_POOL_CONFIG.1.clone();
+    pub static ref STORE: Arc<NetworkStore> = STORE_POOL_CONFIG.0.clone();
+    static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
     pub static ref GENESIS_PTR: EthereumBlockPointer = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -112,6 +114,11 @@ pub fn remove_subgraphs() {
     STORE
         .delete_all_entities_for_test_use_only()
         .expect("deleting test entities succeeds");
+}
+
+#[cfg(debug_assertions)]
+pub fn place(name: &str) -> Result<Option<(Shard, Vec<NodeId>)>, String> {
+    CONFIG.deployment.place(name, NETWORK_NAME)
 }
 
 #[cfg(debug_assertions)]
@@ -511,9 +518,7 @@ fn execute_subgraph_query_internal(
     result
 }
 
-fn build_store() -> (Arc<NetworkStore>, ConnectionPool) {
-    use graph_node::config::{Config, Opt};
-
+fn build_store() -> (Arc<NetworkStore>, ConnectionPool, Config) {
     let mut opt = Opt::default();
     let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| s.len() > 0);
     let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| s.len() > 0);
@@ -544,6 +549,7 @@ fn build_store() -> (Arc<NetworkStore>, ConnectionPool) {
             (
                 builder.network_store(NETWORK_NAME.to_string(), net_identifiers),
                 builder.primary_pool(),
+                config,
             )
         })
     })

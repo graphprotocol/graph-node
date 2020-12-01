@@ -12,7 +12,7 @@ use graph::{
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::{connection_pool::ConnectionPool, PRIMARY_SHARD};
 
 use crate::config::Config;
 use graph_node::manager::commands;
@@ -78,8 +78,8 @@ fn make_main_pool(logger: &Logger, config: &Config) -> ConnectionPool {
         logger.clone(),
         prometheus_registry.clone(),
     ));
-
-    StoreBuilder::main_pool(&logger, &config, metrics_registry)
+    let primary = config.primary_store();
+    StoreBuilder::main_pool(&logger, PRIMARY_SHARD.as_str(), primary, metrics_registry)
 }
 
 #[tokio::main]

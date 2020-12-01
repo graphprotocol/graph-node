@@ -93,16 +93,10 @@ pub struct ShardedStore {
 }
 
 impl ShardedStore {
-    #[allow(dead_code)]
     pub fn new(
         stores: HashMap<Shard, Arc<Store>>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     ) -> Self {
-        assert_eq!(
-            1,
-            stores.len(),
-            "The sharded store can only handle one shard for now"
-        );
         let primary = stores
             .get(&PRIMARY_SHARD)
             .expect("we always have a primary store")
@@ -119,10 +113,11 @@ impl ShardedStore {
     // Only needed for tests
     #[cfg(debug_assertions)]
     #[allow(dead_code)]
-    pub(crate) fn clear_layout_cache(&self) {
+    pub(crate) fn clear_caches(&self) {
         for store in self.stores.values() {
             store.layout_cache.lock().unwrap().clear();
         }
+        self.sites.write().unwrap().clear();
     }
 
     fn site(&self, id: &SubgraphDeploymentId) -> Result<Arc<Site>, StoreError> {
@@ -331,8 +326,9 @@ impl ShardedStore {
         for store in self.stores.values() {
             let conn = store.get_conn()?;
             conn.batch_execute(query)?;
+            conn.batch_execute("delete from deployment_schemas;")?;
         }
-        self.clear_layout_cache();
+        self.clear_caches();
         Ok(())
     }
 }
