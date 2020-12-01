@@ -1563,7 +1563,7 @@ dependencies = [
  "graph",
  "graph-core",
  "graph-store-postgres",
- "hyper 0.12.35",
+ "hyper 0.13.9",
  "jsonrpc-core",
  "lazy_static",
  "mockall",
