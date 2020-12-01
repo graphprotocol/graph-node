@@ -259,7 +259,6 @@ async fn main() {
                 &logger_factory,
                 graphql_metrics_registry,
                 graphql_runner.clone(),
-                store_builder.store(),
                 node_id.clone(),
             );
             let subscription_server = GraphQLSubscriptionServer::new(

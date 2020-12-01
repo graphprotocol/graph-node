@@ -84,7 +84,11 @@ impl GraphQlRunner for TestGraphQlRunner {
 #[cfg(test)]
 mod test {
     use super::*;
-    use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
+    use graph_mock::MockMetricsRegistry;
+
+    lazy_static! {
+        static ref USERS: SubgraphDeploymentId = SubgraphDeploymentId::new("users").unwrap();
+    }
 
     #[test]
     fn rejects_empty_json() {
@@ -94,10 +98,10 @@ mod test {
                 let logger = Logger::root(slog::Discard, o!());
                 let logger_factory = LoggerFactory::new(logger, None);
                 let metrics_registry = Arc::new(MockMetricsRegistry::new());
-                let (store, id) = mock_store_with_users_subgraph();
+                let id = USERS.clone();
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let node_id = NodeId::new("test").unwrap();
-                let mut server = HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, store, node_id);
+                let mut server = HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
                 let http_server = server
                     .serve(8001, 8002)
                     .expect("Failed to start GraphQL server");
@@ -136,16 +140,11 @@ mod test {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger, None);
             let metrics_registry = Arc::new(MockMetricsRegistry::new());
-            let (store, id) = mock_store_with_users_subgraph();
+            let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
-            let mut server = HyperGraphQLServer::new(
-                &logger_factory,
-                metrics_registry,
-                query_runner,
-                store,
-                node_id,
-            );
+            let mut server =
+                HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
             let http_server = server
                 .serve(8002, 8003)
                 .expect("Failed to start GraphQL server");
@@ -223,16 +222,11 @@ mod test {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger, None);
             let metrics_registry = Arc::new(MockMetricsRegistry::new());
-            let (store, id) = mock_store_with_users_subgraph();
+            let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
-            let mut server = HyperGraphQLServer::new(
-                &logger_factory,
-                metrics_registry,
-                query_runner,
-                store,
-                node_id,
-            );
+            let mut server =
+                HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
             let http_server = server
                 .serve(8003, 8004)
                 .expect("Failed to start GraphQL server");
@@ -275,16 +269,11 @@ mod test {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger, None);
             let metrics_registry = Arc::new(MockMetricsRegistry::new());
-            let (store, id) = mock_store_with_users_subgraph();
+            let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
-            let mut server = HyperGraphQLServer::new(
-                &logger_factory,
-                metrics_registry,
-                query_runner,
-                store,
-                node_id,
-            );
+            let mut server =
+                HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
             let http_server = server
                 .serve(8005, 8006)
                 .expect("Failed to start GraphQL server");

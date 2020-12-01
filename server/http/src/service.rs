@@ -70,39 +70,35 @@ pub type GraphQLServiceResponse =
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct GraphQLService<Q, S> {
+pub struct GraphQLService<Q> {
     logger: Logger,
     metrics: Arc<GraphQLServiceMetrics>,
     graphql_runner: Arc<Q>,
-    store: Arc<S>,
     ws_port: u16,
     node_id: NodeId,
 }
 
-impl<Q, S> Clone for GraphQLService<Q, S> {
+impl<Q> Clone for GraphQLService<Q> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             metrics: self.metrics.clone(),
             graphql_runner: self.graphql_runner.clone(),
-            store: self.store.clone(),
             ws_port: self.ws_port,
             node_id: self.node_id.clone(),
         }
     }
 }
 
-impl<Q, S> GraphQLService<Q, S>
+impl<Q> GraphQLService<Q>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
 {
     /// Creates a new GraphQL service.
     pub fn new(
         logger: Logger,
         metrics: Arc<GraphQLServiceMetrics>,
         graphql_runner: Arc<Q>,
-        store: Arc<S>,
         ws_port: u16,
         node_id: NodeId,
     ) -> Self {
@@ -110,7 +106,6 @@ where
             logger,
             metrics,
             graphql_runner,
-            store,
             ws_port,
             node_id,
         }
@@ -318,10 +313,9 @@ where
     }
 }
 
-impl<Q, S> Service<Request<Body>> for GraphQLService<Q, S>
+impl<Q> Service<Request<Body>> for GraphQLService<Q>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
 {
     type Response = Response<Body>;
     type Error = GraphQLServerError;
@@ -381,7 +375,7 @@ mod tests {
         query::{QueryResults, QueryTarget},
     };
     use graph::prelude::*;
-    use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
+    use graph_mock::MockMetricsRegistry;
     use graphql_parser::query as q;
 
     use crate::test_utils;
@@ -391,6 +385,10 @@ mod tests {
 
     /// A simple stupid query runner for testing.
     pub struct TestGraphQlRunner;
+
+    lazy_static! {
+        static ref USERS: SubgraphDeploymentId = SubgraphDeploymentId::new("users").unwrap();
+    }
 
     #[async_trait]
     impl GraphQlRunner for TestGraphQlRunner {
@@ -440,12 +438,11 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
         let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
-        let (store, subgraph_id) = mock_store_with_users_subgraph();
+        let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
         let node_id = NodeId::new("test").unwrap();
-        let mut service =
-            GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
+        let mut service = GraphQLService::new(logger, metrics, graphql_runner, 8001, node_id);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -473,12 +470,11 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
         let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
-        let (store, subgraph_id) = mock_store_with_users_subgraph();
+        let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
         let node_id = NodeId::new("test").unwrap();
-        let mut service =
-            GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
+        let mut service = GraphQLService::new(logger, metrics, graphql_runner, 8001, node_id);
 
         let request = Request::builder()
             .method(Method::POST)
