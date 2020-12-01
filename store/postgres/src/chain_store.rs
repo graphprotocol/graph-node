@@ -1,4 +1,4 @@
-use graph::prelude::ChainStore as ChainStoreTrait;
+use graph::prelude::{ChainStore as ChainStoreTrait, StoreError};
 
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
@@ -364,5 +364,22 @@ impl ChainStoreTrait for ChainStore {
             .filter(dsl::hash.ne(&format!("{:x}", hash)))
             .execute(&conn)
             .map_err(Error::from)
+    }
+
+    fn block_number(&self, hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
+        use crate::db_schema::ethereum_blocks::dsl;
+
+        let conn = self.get_conn()?;
+        dsl::ethereum_blocks
+            .select((dsl::network_name, dsl::number))
+            .filter(dsl::hash.eq(format!("{:x}", hash)))
+            .first::<(String, i64)>(&conn)
+            .optional()?
+            .map(|(name, number)| {
+                BlockNumber::try_from(number)
+                    .map(|number| (name, number))
+                    .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
+            })
+            .transpose()
     }
 }

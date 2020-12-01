@@ -1102,14 +1102,6 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError>;
 
-    /// Return the number of the block with the given hash for the given
-    /// subgraph
-    fn block_number(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-        block_hash: H256,
-    ) -> Result<Option<BlockNumber>, StoreError>;
-
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
     /// Load the dynamic data sources for the given deployment
@@ -1290,14 +1282,6 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn block_number(
-        &self,
-        _subgraph_id: &SubgraphDeploymentId,
-        _block_hash: H256,
-    ) -> Result<Option<BlockNumber>, StoreError> {
-        unimplemented!()
-    }
-
     fn is_deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
         unimplemented!()
     }
@@ -1419,6 +1403,9 @@ pub trait ChainStore: Send + Sync + 'static {
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number
     fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error>;
+
+    /// Find the block with `block_hash` and return the network name and number
+    fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {
@@ -1457,11 +1444,7 @@ pub trait QueryStore: Send + Sync {
         subgraph_id: SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error>;
 
-    fn block_number(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-        block_hash: H256,
-    ) -> Result<Option<BlockNumber>, StoreError>;
+    fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
     fn wait_stats(&self) -> &PoolWaitStats;
 

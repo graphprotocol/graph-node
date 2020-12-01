@@ -132,7 +132,10 @@ impl StoreBuilder {
             self.chain_head_update_listener.clone(),
             self.conn_pool.clone(),
         );
-        Arc::new(DieselNetworkStore::new(self.store.clone(), chain_store))
+        Arc::new(DieselNetworkStore::new(
+            self.store.clone(),
+            Arc::new(chain_store),
+        ))
     }
 
     /// Return the store for subgraph and other storage; this store can

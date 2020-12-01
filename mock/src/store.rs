@@ -51,6 +51,8 @@ mock! {
         fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
 
         fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error>;
+
+        fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
     }
 }
 
@@ -188,14 +190,6 @@ impl Store for MockStore {
         _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn block_number(
-        &self,
-        _subgraph_id: &SubgraphDeploymentId,
-        _block_hash: H256,
-    ) -> Result<Option<BlockNumber>, StoreError> {
         unimplemented!()
     }
 

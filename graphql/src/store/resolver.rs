@@ -125,19 +125,21 @@ impl StoreResolver {
                         )))
                     }
                 }),
-            BlockConstraint::Hash(hash) => store
-                .block_number(&subgraph, hash)
-                .map_err(|e| e.into())
-                .and_then(|number| {
-                    number
-                        .ok_or_else(|| {
-                            QueryExecutionError::ValueParseError(
-                                "block.hash".to_owned(),
-                                "no block with that hash found".to_owned(),
-                            )
-                        })
-                        .map(|number| EthereumBlockPointer::from((hash, number as u64)))
-                }),
+            BlockConstraint::Hash(hash) => {
+                store
+                    .block_number(hash)
+                    .map_err(|e| e.into())
+                    .and_then(|number| {
+                        number
+                            .ok_or_else(|| {
+                                QueryExecutionError::ValueParseError(
+                                    "block.hash".to_owned(),
+                                    "no block with that hash found".to_owned(),
+                                )
+                            })
+                            .map(|number| EthereumBlockPointer::from((hash, number as u64)))
+                    })
+            }
             BlockConstraint::Latest => store
                 .block_ptr(subgraph.clone())
                 .map_err(|e| StoreError::from(e).into())

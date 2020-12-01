@@ -12,12 +12,14 @@ pub(crate) struct QueryStore {
     site: Arc<Site>,
     replica_id: ReplicaId,
     store: Arc<crate::Store>,
+    chain_store: Arc<crate::ChainStore>,
     for_subscription: bool,
 }
 
 impl QueryStore {
     pub(crate) fn new(
         store: Arc<crate::Store>,
+        chain_store: Arc<crate::ChainStore>,
         for_subscription: bool,
         site: Arc<Site>,
         replica_id: ReplicaId,
@@ -26,6 +28,7 @@ impl QueryStore {
             site,
             replica_id,
             store,
+            chain_store,
             for_subscription,
         }
     }
@@ -66,12 +69,31 @@ impl QueryStoreTrait for QueryStore {
         self.store.block_ptr(&self.site)
     }
 
-    fn block_number(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-        block_hash: H256,
-    ) -> Result<Option<BlockNumber>, StoreError> {
-        self.store.block_number(subgraph_id, block_hash)
+    fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError> {
+        // We should also really check that the block with the given hash is
+        // on the chain starting at the subgraph's current head. That check is
+        // very expensive though with the data structures we have currently
+        // available. Ideally, we'd have the last REORG_THRESHOLD blocks in
+        // memory so that we can check against them, and then mark in the
+        // database the blocks on the main chain that we consider final
+        let subgraph_network = self.network_name()?;
+        self.chain_store
+            .block_number(block_hash)?
+            .map(|(network_name, number)| {
+                if subgraph_network.is_none() || Some(&network_name) == subgraph_network.as_ref() {
+                    BlockNumber::try_from(number)
+                        .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
+                } else {
+                    Err(StoreError::QueryExecutionError(format!(
+                        "subgraph {} belongs to network {} but block {:x} belongs to network {}",
+                        &self.site.deployment,
+                        subgraph_network.unwrap_or("(none)".to_owned()),
+                        block_hash,
+                        network_name
+                    )))
+                }
+            })
+            .transpose()
     }
 
     fn wait_stats(&self) -> &PoolWaitStats {

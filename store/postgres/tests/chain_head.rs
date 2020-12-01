@@ -5,8 +5,8 @@ use futures::future::IntoFuture;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use graph::components::store::{ChainStore, Store as _};
 use graph::prelude::{Future01CompatExt, SubgraphDeploymentId};
+use graph::{components::store::ChainStore, prelude::QueryStoreManager};
 use graph_store_postgres::NetworkStore as DieselStore;
 
 use test_store::block_store::{
@@ -157,18 +157,19 @@ fn block_number() {
     run_test(chain, move |store| -> Result<(), ()> {
         create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
 
-        let block = store
-            .block_number(&subgraph, GENESIS_BLOCK.block_hash())
+        let query_store = store.query_store(subgraph.into(), false).unwrap();
+        let block = query_store
+            .block_number(GENESIS_BLOCK.block_hash())
             .expect("Found genesis block");
         assert_eq!(Some(0), block);
 
-        let block = store
-            .block_number(&subgraph, BLOCK_ONE.block_hash())
+        let block = query_store
+            .block_number(BLOCK_ONE.block_hash())
             .expect("Found block 1");
         assert_eq!(Some(1), block);
 
-        let block = store
-            .block_number(&subgraph, BLOCK_THREE.block_hash())
+        let block = query_store
+            .block_number(BLOCK_THREE.block_hash())
             .expect("Looked for block 3");
         assert!(block.is_none());
 
