@@ -83,10 +83,10 @@ impl Config {
 
         // Check that deployment rules only reference existing stores
         for (i, rule) in self.deployment.rules.iter().enumerate() {
-            if !self.stores.contains_key(&rule.store) {
+            if !self.stores.contains_key(&rule.shard) {
                 return Err(anyhow!(
                     "unknown shard {} in deployment rule {}",
-                    rule.store,
+                    rule.shard,
                     i
                 ));
             }
@@ -266,7 +266,7 @@ impl DeploymentPlacer for Deployment {
         // rather than crashing the node and burying the crash in the logs
         let placement = match self.rules.iter().find(|rule| rule.matches(name, network)) {
             Some(rule) => {
-                let shard = ShardName::new(rule.store.clone()).map_err(|e| e.to_string())?;
+                let shard = ShardName::new(rule.shard.clone()).map_err(|e| e.to_string())?;
                 let indexers: Vec<_> = rule
                     .indexers
                     .iter()
@@ -288,7 +288,7 @@ struct Rule {
     #[serde(rename = "match", default)]
     pred: Predicate,
     #[serde(default = "primary_store")]
-    store: String,
+    shard: String,
     indexers: Vec<String>,
 }
 
@@ -308,8 +308,8 @@ impl Rule {
         for indexer in &self.indexers {
             NodeId::new(indexer).map_err(|()| anyhow!("invalid node id {}", &indexer))?;
         }
-        ShardName::new(self.store.clone())
-            .map_err(|e| anyhow!("illegal name for store shard `{}`: {}", &self.store, e))?;
+        ShardName::new(self.shard.clone())
+            .map_err(|e| anyhow!("illegal name for store shard `{}`: {}", &self.shard, e))?;
         Ok(())
     }
 }

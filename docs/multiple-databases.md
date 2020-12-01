@@ -3,7 +3,9 @@
 For most use cases, a single Postgres database is sufficient to support a
 `graph-node` instance. When a `graph-node` instance outgrows a single
 Postgres database, it is possible to split the storage of `graph-node`'s
-data across multiple Postgres databases.
+data across multiple Postgres databases. All databases together form the
+store of the `graph-node` instance. Each individual database is called a
+_shard_.
 
 Support for multiple databases is configured through a TOML configuration
 file. The location of the file is passed with the `--config` command line
@@ -17,17 +19,17 @@ The TOML file consists of two sections:
 
 ## Configuring Multiple Databases
 
-The `[store]` section must always have a primary store configured, which
-must be called `primary`. Each store can have additional read replicas that
+The `[store]` section must always have a primary shard configured, which
+must be called `primary`. Each shard can have additional read replicas that
 are used for responding to queries. Only queries are processed by read
 replicas. Indexing and block ingestion will always use the main database.
 
-Any number of additional stores, with their own read replicas, can also be
+Any number of additional shards, with their own read replicas, can also be
 configured. When read replicas are used, query traffic is split between the
 main database and the replicas according to their weights. In the example
-below, for the primary store, no queries will be sent to the main database,
-and the replicas will receive 50% of the traffic each. In the `vip` store,
-50% of the traffic go to the main database, and 50% to the replica.
+below, for the primary shard, no queries will be sent to the main database,
+and the replicas will receive 50% of the traffic each. In the `vip` shard,
+50% of the traffic goes to the main database, and 50% to the replica.
 
 ```toml
 [store]
@@ -57,7 +59,7 @@ in the string are expanded.
 ## Controlling Deployment
 
 When `graph-node` receives a request to deploy a new subgraph deployment,
-it needs to decide in which store to store the data for the deployment, and
+it needs to decide in which shard to store the data for the deployment, and
 which of any number of nodes connected to the store should index the
 deployment. That decision is based on a number of rules defined in the
 `[deployment]` which can match on the subgraph name and the network that
@@ -71,9 +73,9 @@ that is matched against the subgraph name for the deployment, and a
 indexes.
 
 The last rule must not have a `match` statement to make sure that there is
-always some store and some indexer that will work on a deployment.
+always some shard and some indexer that will work on a deployment.
 
-The rule indicates the name of the `store` where the data for the
+The rule indicates the name of the `shard` where the data for the
 deployment should be stored, which defaults to `primary`, and a list of
 `indexers`. For the matching rule, one indexer is chosen from the
 `indexers` list so that deployments are spread evenly across all the nodes
@@ -84,11 +86,11 @@ that are passed with `--node-id` when those index nodes are started.
 [deployment]
 [[deployment.rule]]
 match = { name = "(vip|important)/.*" }
-store = "vip"
+shard = "vip"
 indexers = [ "index-node-vip-0", "index-node-vip-1" ]
 [[deployment.rule]]
 match = { network = "kovan" }
-# No store, so we use the default store called 'primary'
+# No shard, so we use the default shard called 'primary'
 indexers = [ "index-node-kovan-0" ]
 [[deployment.rule]]
 # There's no 'match', so any subgraph matches
