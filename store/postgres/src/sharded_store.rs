@@ -639,19 +639,19 @@ impl StoreTrait for ShardedStore {
 
 /// Methods similar to those for SubgraphDeploymentStore
 impl SubgraphDeploymentStore for ShardedStore {
-    fn input_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
+    fn input_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
         let (store, _) = self.store(&id)?;
         let info = store.subgraph_info(id)?;
         Ok(info.input)
     }
 
-    fn api_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error> {
+    fn api_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
         let (store, _) = self.store(&id)?;
         let info = store.subgraph_info(id)?;
         Ok(info.api)
     }
 
-    fn network_name(&self, id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {
+    fn network_name(&self, id: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
         let (store, _) = self.store(&id)?;
         let info = store.subgraph_info(id)?;
         Ok(info.network)

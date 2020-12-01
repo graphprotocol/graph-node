@@ -698,7 +698,7 @@ impl Store {
         &self,
         conn: &PgConnection,
         subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<SubgraphInfo, Error> {
+    ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }
@@ -714,7 +714,8 @@ impl Store {
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
-        schema.document = api_schema(&schema.document, &features)?;
+        schema.document =
+            api_schema(&schema.document, &features).map_err(|e| StoreError::Unknown(e.into()))?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
         let info = SubgraphInfo {
@@ -737,7 +738,7 @@ impl Store {
     pub(crate) fn subgraph_info(
         &self,
         subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<SubgraphInfo, Error> {
+    ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }

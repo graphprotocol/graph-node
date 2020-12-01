@@ -1335,15 +1335,18 @@ impl Store for MockStore {
 #[automock]
 pub trait SubgraphDeploymentStore: Send + Sync + 'static {
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
-    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error>;
+    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
 
     /// Return the name of the network that the subgraph is indexing from. The
     /// names returned are things like `mainnet` or `ropsten`
-    fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error>;
+    fn network_name(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<Option<String>, StoreError>;
 }
 
 /// Common trait for blockchain store implementations.

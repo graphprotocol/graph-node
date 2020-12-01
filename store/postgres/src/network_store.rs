@@ -268,21 +268,21 @@ impl SubgraphDeploymentStore for NetworkStore {
     fn input_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Arc<graph::prelude::Schema>, failure::Error> {
+    ) -> Result<Arc<graph::prelude::Schema>, StoreError> {
         self.store.input_schema(subgraph_id)
     }
 
     fn api_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Arc<graph::prelude::ApiSchema>, failure::Error> {
+    ) -> Result<Arc<graph::prelude::ApiSchema>, StoreError> {
         self.store.api_schema(subgraph_id)
     }
 
     fn network_name(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Option<String>, failure::Error> {
+    ) -> Result<Option<String>, StoreError> {
         self.store.network_name(subgraph_id)
     }
 }

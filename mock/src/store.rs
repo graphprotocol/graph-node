@@ -15,11 +15,11 @@ mock! {
     }
 
     trait SubgraphDeploymentStore: Send + Sync + 'static {
-        fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+        fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError>;
 
-        fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error>;
+        fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
 
-        fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error>;
+        fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, StoreError>;
     }
 
     trait ChainStore: Send + Sync + 'static {
