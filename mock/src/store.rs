@@ -1,12 +1,11 @@
 use mockall::predicate::*;
 use mockall::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use graph::components::store::StoredDynamicDataSource;
-use graph::data::subgraph::schema::{MetadataType, SubgraphError};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
 use graph::{components::store::EntityType, data::subgraph::status};
-use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
 mock! {
@@ -234,52 +233,4 @@ impl Store for MockStore {
     fn assignments(&self, _: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
         unimplemented!()
     }
-}
-
-pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId) {
-    let mut store = MockStore::new();
-
-    let subgraph_id = SubgraphDeploymentId::new("users").unwrap();
-    let subgraph_id_for_deployment_entity = subgraph_id.clone();
-    let subgraph_id_for_api_schema_match = subgraph_id.clone();
-    let subgraph_id_for_api_schema = subgraph_id.clone();
-
-    // Simulate that the "users" subgraph is deployed
-    store
-        .expect_get_mock()
-        .withf(move |key| {
-            key.entity_type == MetadataType::SubgraphDeployment.into()
-                && key.entity_id.as_str() == subgraph_id_for_deployment_entity.as_str()
-        })
-        .returning(|_| Ok(Some(Entity::from(vec![]))));
-
-    // Simulate an API schema for the "users" subgraph
-    store
-        .expect_api_schema()
-        .withf(move |key| key == &subgraph_id_for_api_schema_match)
-        .returning(move |_| {
-            const USERS_SCHEMA: &str = "
-                type User @entity {
-                    id: ID!,
-                    name: String,
-                }
-
-                # Needed by ipfs_map in runtime/wasm/src/test.rs
-                type Thing @entity {
-                    id: ID!,
-                    value: String,
-                    extra: String
-                }
-            ";
-
-            let mut schema = Schema::parse(USERS_SCHEMA, subgraph_id_for_api_schema.clone())
-                .expect("failed to parse users schema");
-            schema.document = api_schema(&schema.document, &BTreeSet::new())
-                .expect("failed to generate users API schema");
-            Ok(Arc::new(ApiSchema::from_api_schema(schema).unwrap()))
-        });
-
-    store.expect_network_name().returning(|_| Ok(None));
-
-    (Arc::new(store), subgraph_id)
 }
