@@ -7,7 +7,8 @@ use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecution
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::data::graphql::effort::LoadManager;
-use graph::data::query::QueryResults;
+use graph::data::query::{QueryResults, QueryTarget};
+use graph::prelude::ApiSchema;
 use graph::prelude::{
     async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
     Query, QueryExecutionError, Store, SubgraphDeploymentStore, Subscription, SubscriptionError,
@@ -58,6 +59,12 @@ lazy_static! {
         .unwrap_or(false);
 }
 
+#[cfg(debug_assertions)]
+lazy_static! {
+    // Test only, see c435c25decbc4ad7bbbadf8e0ced0ff2
+    pub static ref INITIAL_DEPLOYMENT_STATE_FOR_TESTS: std::sync::Mutex<Option<DeploymentState>> = std::sync::Mutex::new(None);
+}
+
 impl<S> GraphQlRunner<S>
 where
     S: Store + SubgraphDeploymentStore,
@@ -101,10 +108,35 @@ where
         Ok(())
     }
 
+    fn resolve_target(
+        &self,
+        target: QueryTarget,
+    ) -> Result<(Arc<ApiSchema>, Option<String>, DeploymentState), QueryExecutionError> {
+        use QueryTarget::*;
+
+        let state = match target {
+            Name(name) => self.store.deployment_state_from_name(name),
+            Deployment(id) => self.store.deployment_state_from_id(id),
+        }?;
+
+        // Test only, see c435c25decbc4ad7bbbadf8e0ced0ff2
+        #[cfg(debug_assertions)]
+        let state = INITIAL_DEPLOYMENT_STATE_FOR_TESTS
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or(state);
+
+        let schema = self.store.api_schema(&state.id)?;
+        let network = self.store.network_name(&state.id)?;
+
+        Ok((schema, network, state))
+    }
+
     async fn execute(
         &self,
         query: Query,
-        state: DeploymentState,
+        target: QueryTarget,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
@@ -120,14 +152,22 @@ where
         // while the query is running. `self.store` can not be used after this
         // point, and everything needs to go through the `store` we are
         // setting up here
+        let (schema, network, state) = self.resolve_target(target)?;
         let store = self
             .store
             .cheap_clone()
-            .query_store(query.schema.id(), false)
+            .query_store(schema.id(), false)
             .map_err(|e| QueryExecutionError::from(e))?;
 
         let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
-        let query = crate::execution::Query::new(&self.logger, query, max_complexity, max_depth)?;
+        let query = crate::execution::Query::new(
+            &self.logger,
+            schema,
+            network,
+            query,
+            max_complexity,
+            max_depth,
+        )?;
         self.load_manager
             .decide(
                 store.wait_stats(),
@@ -182,12 +222,12 @@ where
     async fn run_query(
         self: Arc<Self>,
         query: Query,
-        state: DeploymentState,
+        target: QueryTarget,
         nested_resolver: bool,
     ) -> QueryResults {
         self.run_query_with_complexity(
             query,
-            state,
+            target,
             *GRAPHQL_MAX_COMPLEXITY,
             Some(*GRAPHQL_MAX_DEPTH),
             Some(*GRAPHQL_MAX_FIRST),
@@ -200,7 +240,7 @@ where
     async fn run_query_with_complexity(
         self: Arc<Self>,
         query: Query,
-        state: DeploymentState,
+        target: QueryTarget,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
@@ -209,7 +249,7 @@ where
     ) -> QueryResults {
         self.execute(
             query,
-            state,
+            target,
             max_complexity,
             max_depth,
             max_first,
@@ -223,9 +263,13 @@ where
     async fn run_subscription(
         self: Arc<Self>,
         subscription: Subscription,
+        target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError> {
+        let (schema, network, _) = self.resolve_target(target)?;
         let query = crate::execution::Query::new(
             &self.logger,
+            schema,
+            network,
             subscription.query,
             *GRAPHQL_MAX_COMPLEXITY,
             *GRAPHQL_MAX_DEPTH,

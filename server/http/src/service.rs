@@ -5,8 +5,8 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Instant;
 
-use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
+use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -166,14 +166,8 @@ where
             GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
         })?;
 
-        let store = self.store.cheap_clone();
-        let state =
-            tokio::task::spawn_blocking(move || store.deployment_state_from_name(subgraph_name))
-                .await
-                .unwrap() // Propagate panics.
-                .map_err(|e| GraphQLServerError::from(e))?;
-
-        self.handle_graphql_query(state, request.into_body()).await
+        self.handle_graphql_query(subgraph_name.into(), request.into_body())
+            .await
     }
 
     fn handle_graphql_query_by_id(
@@ -182,57 +176,39 @@ where
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
         let res = SubgraphDeploymentId::new(id)
-            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)))
-            .and_then(|id| {
-                self.store
-                    .deployment_state_from_id(id)
-                    .map_err(|e| GraphQLServerError::from(e))
-            });
+            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)));
         match res {
             Err(_) => self.handle_not_found(),
-            Ok(state) => self
-                .handle_graphql_query(state, request.into_body())
+            Ok(id) => self
+                .handle_graphql_query(id.into(), request.into_body())
                 .boxed(),
         }
     }
 
     async fn handle_graphql_query(
         self,
-        state: DeploymentState,
+        target: QueryTarget,
         request_body: Body,
     ) -> GraphQLServiceResult {
         let service = self.clone();
         let service_metrics = self.metrics.clone();
-        let sd_id = state.id.clone();
-
-        let schema = match self.store.api_schema(&state.id) {
-            Ok(schema) => schema,
-            Err(e) => {
-                return Err(GraphQLServerError::InternalError(e.to_string()));
-            }
-        };
-
-        let network = match self.store.network_name(&sd_id) {
-            Ok(network) => network,
-            Err(e) => {
-                return Err(GraphQLServerError::InternalError(e.to_string()));
-            }
-        };
 
         let start = Instant::now();
         let body = hyper::body::to_bytes(request_body)
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .await?;
-        let query = GraphQLRequest::new(body, schema, network).compat().await;
+        let query = GraphQLRequest::new(body).compat().await;
 
         let result = match query {
-            Ok(query) => service.graphql_runner.run_query(query, state, false).await,
+            Ok(query) => service.graphql_runner.run_query(query, target, false).await,
             Err(GraphQLServerError::QueryError(e)) => QueryResult::from(e).into(),
             Err(e) => return Err(e),
         };
 
-        service_metrics
-            .observe_query_execution_time(start.elapsed().as_secs_f64(), sd_id.to_string());
+        if let Some(id) = result.first().and_then(|res| res.deployment.clone()) {
+            service_metrics
+                .observe_query_execution_time(start.elapsed().as_secs_f64(), id.to_string());
+        }
 
         Ok(result.as_http_response())
     }
@@ -400,7 +376,10 @@ mod tests {
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
 
-    use graph::data::{graphql::effort::LoadManager, query::QueryResults};
+    use graph::data::{
+        graphql::effort::LoadManager,
+        query::{QueryResults, QueryTarget},
+    };
     use graph::prelude::*;
     use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
     use graphql_parser::query as q;
@@ -418,7 +397,7 @@ mod tests {
         async fn run_query_with_complexity(
             self: Arc<Self>,
             _query: Query,
-            _state: DeploymentState,
+            _target: QueryTarget,
             _complexity: Option<u64>,
             _max_depth: Option<u8>,
             _max_first: Option<u32>,
@@ -431,7 +410,7 @@ mod tests {
         async fn run_query(
             self: Arc<Self>,
             _query: Query,
-            _state: DeploymentState,
+            _target: QueryTarget,
             _: bool,
         ) -> QueryResults {
             QueryResults::from(BTreeMap::from_iter(
@@ -446,6 +425,7 @@ mod tests {
         async fn run_subscription(
             self: Arc<Self>,
             _subscription: Subscription,
+            _target: QueryTarget,
         ) -> Result<SubscriptionResult, SubscriptionError> {
             unreachable!();
         }

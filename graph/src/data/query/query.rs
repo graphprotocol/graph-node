@@ -5,8 +5,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use crate::data::graphql::shape_hash::shape_hash;
-use crate::data::schema::ApiSchema;
+use crate::{
+    data::graphql::shape_hash::shape_hash,
+    prelude::{SubgraphDeploymentId, SubgraphName},
+};
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
 where
@@ -104,27 +106,37 @@ impl serde::ser::Serialize for QueryVariables {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum QueryTarget {
+    Name(SubgraphName),
+    Deployment(SubgraphDeploymentId),
+}
+
+impl From<SubgraphDeploymentId> for QueryTarget {
+    fn from(id: SubgraphDeploymentId) -> Self {
+        Self::Deployment(id)
+    }
+}
+
+impl From<SubgraphName> for QueryTarget {
+    fn from(name: SubgraphName) -> Self {
+        QueryTarget::Name(name)
+    }
+}
+
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
 #[derive(Clone, Debug)]
 pub struct Query {
-    pub schema: Arc<ApiSchema>,
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
     pub shape_hash: u64,
-    pub network: Option<String>,
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
     _force_use_of_new: (),
 }
 
 impl Query {
-    /// The `network` is currently used only for caching purposes, so it is not mandatory.
-    pub fn new(
-        schema: Arc<ApiSchema>,
-        document: q::Document,
-        variables: Option<QueryVariables>,
-        network: Option<String>,
-    ) -> Self {
+    pub fn new(document: q::Document, variables: Option<QueryVariables>) -> Self {
         let shape_hash = shape_hash(&document);
 
         let (query_text, variables_text) = if *crate::log::LOG_GQL_TIMING {
@@ -139,11 +151,9 @@ impl Query {
         };
 
         Query {
-            schema,
             document,
             variables,
             shape_hash,
-            network,
             query_text: Arc::new(query_text),
             variables_text: Arc::new(variables_text),
             _force_use_of_new: (),

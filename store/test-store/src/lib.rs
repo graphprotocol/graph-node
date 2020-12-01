@@ -6,6 +6,7 @@ use diesel::PgConnection;
 use graph::components::store::EntityType;
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::QueryResults;
+use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{Store as _, *};
@@ -16,7 +17,6 @@ use graph_mock::MockMetricsRegistry;
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::NetworkStore;
-
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::env;
@@ -423,22 +423,24 @@ pub mod block_store {
 }
 
 /// Run a GraphQL query against the `STORE`
-pub fn execute_subgraph_query(query: Query) -> QueryResults {
-    execute_subgraph_query_with_complexity(query, None)
+pub fn execute_subgraph_query(query: Query, target: QueryTarget) -> QueryResults {
+    execute_subgraph_query_with_complexity(query, target, None)
 }
 
 pub fn execute_subgraph_query_with_complexity(
     query: Query,
+    target: QueryTarget,
     max_complexity: Option<u64>,
 ) -> QueryResults {
-    execute_subgraph_query_internal(query, max_complexity, None)
+    execute_subgraph_query_internal(query, target, max_complexity, None)
 }
 
 pub fn execute_subgraph_query_with_deadline(
     query: Query,
+    target: QueryTarget,
     deadline: Option<Instant>,
 ) -> QueryResults {
-    execute_subgraph_query_internal(query, None, deadline)
+    execute_subgraph_query_internal(query, target, None, deadline)
 }
 
 /// Like `try!`, but we return the contents of an `Err`, not the
@@ -455,6 +457,7 @@ macro_rules! return_err {
 
 fn execute_subgraph_query_internal(
     query: Query,
+    target: QueryTarget,
     max_complexity: Option<u64>,
     deadline: Option<Instant>,
 ) -> QueryResults {
@@ -465,7 +468,20 @@ fn execute_subgraph_query_internal(
         .build()
         .unwrap();
     let logger = Logger::root(slog::Discard, o!());
-    let query = return_err!(PreparedQuery::new(&logger, query, max_complexity, 100));
+    let id = match target {
+        QueryTarget::Deployment(id) => id,
+        _ => unreachable!("tests do not use this"),
+    };
+    let schema = STORE.api_schema(&id).unwrap();
+    let network = STORE.network_name(&id).unwrap();
+    let query = return_err!(PreparedQuery::new(
+        &logger,
+        schema,
+        network,
+        query,
+        max_complexity,
+        100
+    ));
     let mut result = QueryResults::empty();
     let deployment = query.schema.id().clone();
     let store = STORE.clone().query_store(&deployment, false).unwrap();

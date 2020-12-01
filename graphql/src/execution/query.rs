@@ -109,6 +109,8 @@ impl Query {
     /// or the query is too complex, errors are returned
     pub fn new(
         logger: &Logger,
+        schema: Arc<ApiSchema>,
+        network: Option<String>,
         query: GraphDataQuery,
         max_complexity: Option<u64>,
         max_depth: u8,
@@ -128,7 +130,7 @@ impl Query {
         }
         let operation = operation.ok_or(QueryExecutionError::OperationNameRequired)?;
 
-        let variables = coerce_variables(&query.schema, &operation, query.variables)?;
+        let variables = coerce_variables(schema.as_ref(), &operation, query.variables)?;
         let (kind, selection_set) = match operation {
             q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
                 (Kind::Query, selection_set)
@@ -153,18 +155,18 @@ impl Query {
         };
         let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
         let logger = logger.new(o!(
-            "subgraph_id" => query.schema.id().clone(),
+            "subgraph_id" => schema.id().clone(),
             "query_id" => query_id.clone()
         ));
 
         let mut query = Self {
-            schema: query.schema,
+            schema,
             variables,
             fragments,
             selection_set: Arc::new(selection_set),
             shape_hash: query.shape_hash,
             kind,
-            network: query.network,
+            network,
             logger,
             start: Instant::now(),
             query_text: query.query_text.cheap_clone(),

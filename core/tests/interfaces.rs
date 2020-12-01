@@ -2,8 +2,8 @@
 
 use pretty_assertions::assert_eq;
 
-use graph::prelude::*;
 use graph::{components::store::EntityType, data::graphql::object};
+use graph::{data::query::QueryTarget, prelude::*};
 use graphql_parser::query as q;
 use test_store::*;
 
@@ -36,13 +36,9 @@ fn insert_and_query(
     )?;
 
     let document = graphql_parser::parse_query(query).unwrap();
-    let query = Query::new(
-        STORE.api_schema(&subgraph_id).unwrap(),
-        document,
-        None,
-        STORE.network_name(&subgraph_id).unwrap(),
-    );
-    Ok(execute_subgraph_query(query).unwrap_first())
+    let target = QueryTarget::Deployment(subgraph_id);
+    let query = Query::new(document, None);
+    Ok(execute_subgraph_query(query, target).unwrap_first())
 }
 
 /// Extract the data from a `QueryResult`, and panic if it has errors

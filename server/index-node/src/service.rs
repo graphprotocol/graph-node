@@ -89,8 +89,8 @@ where
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .await?;
 
-        let query = IndexNodeRequest::new(body, schema).compat().await?;
-        let query = match PreparedQuery::new(&self.logger, query, None, 100) {
+        let query = IndexNodeRequest::new(body).compat().await?;
+        let query = match PreparedQuery::new(&self.logger, schema, None, query, None, 100) {
             Ok(query) => query,
             Err(e) => return Ok(QueryResults::from(QueryResult::from(e)).as_http_response()),
         };

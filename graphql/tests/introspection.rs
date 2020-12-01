@@ -551,12 +551,7 @@ fn expected_mock_schema_introspection() -> q::Value {
 /// Execute an introspection query.
 async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
-    let query = Query::new(
-        Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-        graphql_parser::parse_query(query).unwrap(),
-        None,
-        None,
-    );
+    let query = Query::new(graphql_parser::parse_query(query).unwrap(), None);
 
     // Execute it
     let logger = Logger::root(slog::Discard, o!());
@@ -568,7 +563,8 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         load_manager: LOAD_MANAGER.clone(),
     };
 
-    let result = match PreparedQuery::new(&logger, query, None, 100) {
+    let schema = Arc::new(ApiSchema::from_api_schema(schema).unwrap());
+    let result = match PreparedQuery::new(&logger, schema, None, query, None, 100) {
         Ok(query) => {
             Ok(Arc::try_unwrap(execute_query(query, None, None, options, false).await).unwrap())
         }

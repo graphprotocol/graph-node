@@ -12,7 +12,7 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
 
-use graph::prelude::*;
+use graph::{data::query::QueryTarget, prelude::*};
 
 lazy_static! {
     static ref MAX_OPERATIONS_PER_CONNECTION: Option<usize> =
@@ -298,10 +298,11 @@ where
                     };
 
                     // Construct a subscription
+                    let target = QueryTarget::Deployment(schema.schema.id.clone());
                     let subscription = Subscription {
                         // Subscriptions currently do not benefit from the generational cache
                         // anyways, so don't bother passing a network.
-                        query: Query::new(schema.clone(), query, variables, None),
+                        query: Query::new(query, variables),
                     };
 
                     debug!(logger, "Start operation";
@@ -317,7 +318,7 @@ where
                     let err_logger = logger.clone();
                     let run_subscription = graphql_runner
                         .cheap_clone()
-                        .run_subscription(subscription)
+                        .run_subscription(subscription, target)
                         .compat()
                         .map_err(move |e| {
                             debug!(err_logger, "Subscription error";
