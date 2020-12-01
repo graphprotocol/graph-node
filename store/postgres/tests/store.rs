@@ -1444,7 +1444,10 @@ fn throttle_subscription_delivers() {
         let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER)
             .throttle_while_syncing(
                 &*LOGGER,
-                store.clone().query_store(&TEST_SUBGRAPH_ID, true).unwrap(),
+                store
+                    .clone()
+                    .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                    .unwrap(),
                 TEST_SUBGRAPH_ID.clone(),
                 Duration::from_millis(500),
             );
@@ -1485,7 +1488,10 @@ fn throttle_subscription_throttles() {
         let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER)
             .throttle_while_syncing(
                 &*LOGGER,
-                store.clone().query_store(&TEST_SUBGRAPH_ID, true).unwrap(),
+                store
+                    .clone()
+                    .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                    .unwrap(),
                 TEST_SUBGRAPH_ID.clone(),
                 Duration::from_secs(30),
             );

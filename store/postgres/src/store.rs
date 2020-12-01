@@ -21,7 +21,7 @@ use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::Semaphore;
 
-use graph::components::store::{EntityCollection, QueryStore};
+use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
@@ -1159,11 +1159,10 @@ impl Store {
             .transpose()
     }
 
-    pub(crate) fn query_store(
-        self: Arc<Self>,
-        site: Arc<Site>,
+    pub(crate) fn replica_for_query(
+        &self,
         for_subscription: bool,
-    ) -> Result<Arc<(dyn QueryStore + Send + Sync + 'static)>, StoreError> {
+    ) -> Result<ReplicaId, StoreError> {
         use std::sync::atomic::Ordering;
 
         let replica_id = match for_subscription {
@@ -1179,12 +1178,7 @@ impl Store {
             true => ReplicaId::Main,
         };
 
-        Ok(Arc::new(crate::query_store::QueryStore::new(
-            self,
-            for_subscription,
-            site,
-            replica_id,
-        )))
+        Ok(replica_id)
     }
 
     pub(crate) fn load_dynamic_data_sources(

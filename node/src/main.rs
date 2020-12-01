@@ -250,9 +250,10 @@ async fn main() {
                 metrics_registry.clone(),
                 store_conn_pool_size as usize,
             ));
+            let generic_network_store = network_stores.values().next().unwrap().clone();
             let graphql_runner = Arc::new(GraphQlRunner::new(
                 &logger,
-                store_builder.store(),
+                generic_network_store,
                 load_manager,
             ));
             let mut graphql_server = GraphQLQueryServer::new(

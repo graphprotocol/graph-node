@@ -16,9 +16,9 @@ use graph::{
         async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
         o, serde_json, slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
         FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
-        QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema, Store,
-        SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphName,
-        SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
+        QueryExecutionError, QueryLoadManager, QueryResult, QueryStoreManager, QueryVariables,
+        Schema, Store, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest,
+        SubgraphName, SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
     },
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
@@ -829,7 +829,7 @@ fn query_complexity() {
 fn query_complexity_subscriptions() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store = STORE.clone().query_store(&id, true).unwrap();
+        let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let query = Query::new(
@@ -890,7 +890,7 @@ fn query_complexity_subscriptions() {
             None,
         );
 
-        let store = STORE.clone().query_store(&id, true).unwrap();
+        let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let options = SubscriptionExecutionOptions {
@@ -1234,7 +1234,7 @@ fn cannot_filter_by_derved_relationship_fields() {
 fn subscription_gets_result_even_without_events() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store = STORE.clone().query_store(&id, true).unwrap();
+        let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
         let schema = STORE.api_schema(&id).unwrap();
 
