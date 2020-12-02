@@ -5,12 +5,12 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
+use graph::components::ethereum::EthereumNetworks;
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-use graph::{components::ethereum::EthereumNetworks, data::subgraph::status};
 
 lazy_static! {
     // The timeout for IPFS requests in seconds
@@ -504,10 +504,9 @@ fn create_subgraph_version(
     let store = store.clone();
     let deployment_store = store.clone();
 
-    let filter = status::Filter::SubgraphName(name.to_string());
-    match store.status(filter) {
+    match store.subgraph_exists(&name) {
         Err(e) => return Box::new(future::err(e.into())),
-        Ok(infos) if infos.len() == 0 => {
+        Ok(false) => {
             debug!(
                 logger,
                 "Subgraph not found, could not create_subgraph_version";
@@ -517,7 +516,7 @@ fn create_subgraph_version(
                 name.to_string(),
             )));
         }
-        _ => { /* everything is fine, continue */ }
+        Ok(true) => { /* everything is fine, continue */ }
     }
 
     Box::new(

@@ -1,7 +1,10 @@
 //! Utilities for dealing with subgraph metadata that resides in the primary
 //! shard. Anything in this module can only be used with a database connection
 //! for the primary shard.
-use diesel::{dsl::any, sql_types::Text};
+use diesel::{
+    dsl::{any, exists},
+    sql_types::Text,
+};
 use diesel::{
     dsl::{delete, insert_into, sql, update},
     r2d2::PooledConnection,
@@ -501,6 +504,15 @@ impl Connection {
         } else {
             Ok(vec![])
         }
+    }
+
+    pub fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
+        use subgraph as s;
+
+        Ok(
+            diesel::select(exists(s::table.filter(s::name.eq(name.as_str()))))
+                .get_result::<bool>(&self.0)?,
+        )
     }
 
     pub fn reassign_subgraph(

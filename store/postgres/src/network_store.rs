@@ -237,6 +237,10 @@ impl StoreTrait for NetworkStore {
     fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
         self.store.assignments(node)
     }
+
+    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
+        self.store.subgraph_exists(name)
+    }
 }
 
 impl SubgraphDeploymentStore for NetworkStore {

@@ -211,4 +211,8 @@ impl Store for MockStore {
     fn assignments(&self, _: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
         unimplemented!()
     }
+
+    fn subgraph_exists(&self, _: &SubgraphName) -> Result<bool, StoreError> {
+        unimplemented!()
+    }
 }

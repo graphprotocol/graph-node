@@ -627,6 +627,11 @@ impl StoreTrait for ShardedStore {
         let primary = self.primary_conn()?;
         primary.assignments(node)
     }
+
+    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
+        let primary = self.primary_conn()?;
+        primary.subgraph_exists(name)
+    }
 }
 
 /// Methods similar to those for SubgraphDeploymentStore

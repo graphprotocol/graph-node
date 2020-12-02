@@ -1108,6 +1108,10 @@ pub trait Store: Send + Sync + 'static {
     ) -> Result<Option<NodeId>, StoreError>;
 
     fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError>;
+
+    /// Return `true` if a subgraph `name` exists, regardless of whether the
+    /// subgraph has any deployments attached to it
+    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
 }
 
 pub trait QueryStoreManager: Send + Sync + 'static {
@@ -1290,6 +1294,10 @@ impl Store for MockStore {
     }
 
     fn assignments(&self, _: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+        unimplemented!()
+    }
+
+    fn subgraph_exists(&self, _: &SubgraphName) -> Result<bool, StoreError> {
         unimplemented!()
     }
 }
