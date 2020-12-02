@@ -1,5 +1,7 @@
 use graph::{
     data::subgraph::schema::MetadataType,
+    data::subgraph::schema::SubgraphError,
+    data::subgraph::schema::SubgraphHealth,
     prelude::EntityChange,
     prelude::EntityChangeOperation,
     prelude::Schema,
@@ -384,5 +386,27 @@ fn status() {
             ))
             .unwrap();
         assert_eq!(0, infos.len());
+
+        const MSG: &str = "your father smells of elderberries";
+        let error = SubgraphError {
+            subgraph_id: id.clone(),
+            message: MSG.to_string(),
+            block_ptr: Some(GENESIS_PTR.clone()),
+            handler: None,
+            deterministic: true,
+        };
+
+        store.fail_subgraph(id.clone(), error).await.unwrap();
+        let infos = store
+            .status(status::Filter::Deployments(vec![id.to_string()]))
+            .unwrap();
+        assert_eq!(1, infos.len());
+        let info = infos.first().unwrap();
+        assert_eq!(NAME, info.subgraph);
+        assert!(!info.synced);
+        assert_eq!(SubgraphHealth::Failed, info.health);
+        let error = info.fatal_error.as_ref().unwrap();
+        assert_eq!(MSG, error.message.as_str());
+        assert!(error.deterministic);
     })
 }
