@@ -592,9 +592,6 @@ impl Connection {
             .ok_or_else(|| StoreError::DeploymentNotFound(subgraph.to_string()))
     }
 
-    // Only restricted to tests because we don't need it anywhere else
-    // Would be fine to expose in 'normal' code
-    #[cfg(debug_assertions)]
     pub fn sites(&self) -> Result<Vec<Site>, StoreError> {
         use deployment_schemas as ds;
 

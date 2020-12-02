@@ -308,3 +308,81 @@ fn create_subgraph() {
         assert_eq!(Some(ID2), pending.as_deref());
     })
 }
+
+#[test]
+fn status() {
+    const NAME: &str = "infoSubgraph";
+    const OTHER: &str = "otherInfoSubgraph";
+
+    fn setup() -> SubgraphDeploymentId {
+        let id = SubgraphDeploymentId::new(NAME).unwrap();
+        remove_subgraphs();
+        create_test_subgraph(&id, SUBGRAPH_GQL);
+        create_test_subgraph(&SubgraphDeploymentId::new(OTHER).unwrap(), SUBGRAPH_GQL);
+        id
+    }
+
+    run_test_sequentially(setup, |store, id| async move {
+        use graph::data::subgraph::status;
+
+        let infos = store
+            .status(status::Filter::Deployments(vec![
+                id.to_string(),
+                "notASubgraph".to_string(),
+                "not-even-a-valid-id".to_string(),
+            ]))
+            .unwrap();
+        assert_eq!(1, infos.len());
+        let info = infos.first().unwrap();
+        assert_eq!(NAME, info.subgraph);
+        assert!(!info.synced);
+
+        let infos = store.status(status::Filter::Deployments(vec![])).unwrap();
+        assert_eq!(2, infos.len());
+        let info = infos
+            .into_iter()
+            .find(|info| info.subgraph == NAME)
+            .expect("the NAME subgraph is in infos");
+        assert_eq!(NAME, info.subgraph);
+        assert!(!info.synced);
+
+        let infos = store
+            .status(status::Filter::SubgraphName(NAME.to_string()))
+            .unwrap();
+        assert_eq!(1, infos.len());
+        let info = infos.first().unwrap();
+        assert_eq!(NAME, info.subgraph);
+        assert!(!info.synced);
+
+        let infos = store
+            .status(status::Filter::SubgraphVersion(NAME.to_string(), true))
+            .unwrap();
+        assert_eq!(1, infos.len());
+        let info = infos.first().unwrap();
+        assert_eq!(NAME, info.subgraph);
+        assert!(!info.synced);
+
+        let infos = store
+            .status(status::Filter::SubgraphVersion(NAME.to_string(), false))
+            .unwrap();
+        assert!(infos.is_empty());
+
+        let infos = store
+            .status(status::Filter::SubgraphName("invalid name".to_string()))
+            .unwrap();
+        assert_eq!(0, infos.len());
+
+        let infos = store
+            .status(status::Filter::SubgraphName("notASubgraph".to_string()))
+            .unwrap();
+        assert_eq!(0, infos.len());
+
+        let infos = store
+            .status(status::Filter::SubgraphVersion(
+                "notASubgraph".to_string(),
+                true,
+            ))
+            .unwrap();
+        assert_eq!(0, infos.len());
+    })
+}

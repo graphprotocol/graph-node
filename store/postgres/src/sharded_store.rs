@@ -554,22 +554,31 @@ impl StoreTrait for ShardedStore {
             status::Filter::Deployments(deployments) => deployments,
         };
 
-        // Ignore invalid subgraph ids
-        let deployments: Vec<SubgraphDeploymentId> = deployments
-            .iter()
-            .filter_map(|d| SubgraphDeploymentId::new(d).ok())
-            .collect();
+        let sites: Vec<_> = if deployments.is_empty() {
+            primary
+                .sites()?
+                .into_iter()
+                .map(|site| Arc::new(site))
+                .collect()
+        } else {
+            // Ignore invalid subgraph ids
+            let deployments: Vec<SubgraphDeploymentId> = deployments
+                .iter()
+                .filter_map(|d| SubgraphDeploymentId::new(d).ok())
+                .collect();
 
-        // For each deployment, find the shard it lives in
-        let deployments_with_shard: Vec<_> = deployments
-            .into_iter()
-            .map(|id| self.site(&id))
-            .collect::<Result<Vec<_>, StoreError>>()?;
+            // For each deployment, find the shard it lives in, but ignore
+            // deployments that do not exist
+            deployments
+                .into_iter()
+                .map(|id| self.site(&id))
+                .filter(|res| !matches!(res, Err(StoreError::DeploymentNotFound(_))))
+                .collect::<Result<Vec<_>, StoreError>>()?
+        };
 
         // Partition the list of deployments by shard
-        let deployments_by_shard: HashMap<Shard, Vec<Arc<Site>>> = deployments_with_shard
-            .into_iter()
-            .fold(HashMap::new(), |mut map, site| {
+        let deployments_by_shard: HashMap<Shard, Vec<Arc<Site>>> =
+            sites.into_iter().fold(HashMap::new(), |mut map, site| {
                 map.entry(site.shard.clone()).or_default().push(site);
                 map
             });
