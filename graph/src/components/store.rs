@@ -1112,6 +1112,20 @@ pub trait Store: Send + Sync + 'static {
     /// Return `true` if a subgraph `name` exists, regardless of whether the
     /// subgraph has any deployments attached to it
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
+
+    /// Return the GraphQL schema supplied by the user
+    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError>;
+
+    /// Return the GraphQL schema that was derived from the user's schema by
+    /// adding a root query type etc. to it
+    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
+
+    /// Return the name of the network that the subgraph is indexing from. The
+    /// names returned are things like `mainnet` or `ropsten`
+    fn network_name(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<Option<String>, StoreError>;
 }
 
 pub trait QueryStoreManager: Send + Sync + 'static {
@@ -1300,23 +1314,18 @@ impl Store for MockStore {
     fn subgraph_exists(&self, _: &SubgraphName) -> Result<bool, StoreError> {
         unimplemented!()
     }
-}
 
-#[automock]
-pub trait SubgraphDeploymentStore: Send + Sync + 'static {
-    /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError>;
+    fn input_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
+        unimplemented!()
+    }
 
-    /// Return the GraphQL schema that was derived from the user's schema by
-    /// adding a root query type etc. to it
-    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
+    fn api_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
+        unimplemented!()
+    }
 
-    /// Return the name of the network that the subgraph is indexing from. The
-    /// names returned are things like `mainnet` or `ropsten`
-    fn network_name(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<Option<String>, StoreError>;
+    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
+        unimplemented!()
+    }
 }
 
 /// Common trait for blockchain store implementations.

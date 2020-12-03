@@ -10,7 +10,7 @@ use graph::{
         BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
         EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock, NodeId,
         Schema, Store as StoreTrait, StoreError, Stream, SubgraphDeploymentEntity,
-        SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphName, SubgraphVersionSwitchingMode,
+        SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 
@@ -241,9 +241,7 @@ impl StoreTrait for NetworkStore {
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
         self.store.subgraph_exists(name)
     }
-}
 
-impl SubgraphDeploymentStore for NetworkStore {
     fn input_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,

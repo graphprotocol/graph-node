@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use graph::prelude::SubgraphDeploymentStore;
 use graphql_parser::{query as q, Pos};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;

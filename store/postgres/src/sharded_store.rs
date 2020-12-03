@@ -18,8 +18,8 @@ use graph::{
         ApiSchema, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
         EntityQuery, Error, EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation,
         NodeId, QueryExecutionError, Schema, StopwatchMetrics, Store as StoreTrait, StoreError,
-        StoreEventStreamBox, SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphName,
-        SubgraphVersionSwitchingMode, SubscriptionFilter,
+        StoreEventStreamBox, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
+        SubscriptionFilter,
     },
 };
 use store::StoredDynamicDataSource;
@@ -632,10 +632,7 @@ impl StoreTrait for ShardedStore {
         let primary = self.primary_conn()?;
         primary.subgraph_exists(name)
     }
-}
 
-/// Methods similar to those for SubgraphDeploymentStore
-impl SubgraphDeploymentStore for ShardedStore {
     fn input_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
         let (store, _) = self.store(&id)?;
         let info = store.subgraph_info(id)?;

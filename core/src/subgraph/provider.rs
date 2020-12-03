@@ -78,7 +78,7 @@ impl<L, Q, S> SubgraphAssignmentProviderTrait for SubgraphAssignmentProvider<L, 
 where
     L: LinkResolver + Clone,
     Q: GraphQlRunner,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
 {
     async fn start(
         &self,

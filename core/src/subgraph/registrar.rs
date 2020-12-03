@@ -39,7 +39,7 @@ impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
     CS: ChainStore,
 {
     pub fn new(
@@ -257,7 +257,7 @@ impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
     CS: ChainStore,
 {
     async fn create_subgraph(

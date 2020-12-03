@@ -13,7 +13,7 @@ pub struct DataSourceLoader<S> {
 
 impl<S> DataSourceLoader<S>
 where
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
 {
     pub fn new(store: Arc<S>) -> Self {
         Self { store }
@@ -23,7 +23,7 @@ where
 #[async_trait]
 impl<S> DataSourceLoaderTrait for DataSourceLoader<S>
 where
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
 {
     async fn load_dynamic_data_sources(
         &self,
