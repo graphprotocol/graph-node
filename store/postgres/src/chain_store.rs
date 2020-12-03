@@ -297,6 +297,15 @@ impl ChainStoreTrait for ChainStore {
         // chain since the block ingestor consults these blocks frequently
         //
         // Only consider active subgraphs that have not failed
+
+        // This assumes that subgraph metadata and blocks are stored in the
+        // same shard. We disallow setting GRAPH_ETHEREUM_CLEANUP_BLOCKS in
+        // graph_node::config so that we only run this query when we know
+        // it will work. Running this with a sharded store might remove
+        // blocks that are still needed by deployments in other shard
+        //
+        // See 8b6ad0c64e244023ac20ced7897fe666
+
         let conn = self.get_conn()?;
         let query = "
             select coalesce(

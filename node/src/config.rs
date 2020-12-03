@@ -2,6 +2,7 @@ use graph::prelude::{
     anyhow::{anyhow, Result},
     info, serde_json, Logger, NodeId,
 };
+use graph_chain_ethereum::CLEANUP_BLOCKS;
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use regex::Regex;
@@ -74,6 +75,12 @@ impl Config {
     fn validate(&mut self, opt: &Opt) -> Result<()> {
         if !self.stores.contains_key(PRIMARY_SHARD.as_str()) {
             return Err(anyhow!("missing a primary store"));
+        }
+        if self.stores.len() > 1 && *CLEANUP_BLOCKS {
+            // See 8b6ad0c64e244023ac20ced7897fe666
+            return Err(anyhow!(
+                "GRAPH_ETHEREUM_CLEANUP_BLOCKS can not be used with a sharded store"
+            ));
         }
         for (key, shard) in self.stores.iter_mut() {
             ShardName::new(key.clone()).map_err(|e| anyhow!(e))?;
