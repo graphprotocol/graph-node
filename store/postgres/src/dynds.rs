@@ -58,7 +58,7 @@ fn to_source(
     ds_id: &str,
     (address, abi, start_block): (Option<Vec<u8>>, String, Option<BigDecimal>),
 ) -> Result<Source, StoreError> {
-    // Treat a missing address as an error. TODO: Is that correct?
+    // Treat a missing address as an error
     let address = match address {
         Some(address) => address,
         None => {
