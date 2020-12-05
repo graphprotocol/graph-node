@@ -58,6 +58,39 @@ impl StableHash for EntityKey {
     }
 }
 
+#[test]
+fn key_stable_hash() {
+    use stable_hash::crypto::SetHasher;
+    use stable_hash::utils::stable_hash;
+
+    #[track_caller]
+    fn hashes_to(key: &EntityKey, exp: &str) {
+        let hash = hex::encode(stable_hash::<SetHasher, _>(&key));
+        assert_eq!(exp, hash.as_str());
+    }
+
+    let id = SubgraphDeploymentId::new("QmP9MRvVzwHxr3sGvujihbvJzcTz2LYLMfi5DyihBg6VUd").unwrap();
+    let key = EntityKey {
+        subgraph_id: id.clone(),
+        entity_type: "Account".to_string(),
+        entity_id: "0xdeadbeef".to_string(),
+    };
+    hashes_to(
+        &key,
+        "905b57035d6f98cff8281e7b055e10570a2bd31190507341c6716af2d3c1ad98",
+    );
+
+    let key = EntityKey {
+        subgraph_id: SUBGRAPHS_ID.clone(),
+        entity_type: MetadataType::DynamicEthereumContractDataSource.to_string(),
+        entity_id: format!("{}-manifest-data-source-1", &id),
+    };
+    hashes_to(
+        &key,
+        "062283bacf94a7910f1332889e0a11f4abce34fa666eb883aabbcd248e8be1c3",
+    );
+}
+
 /// Supported types of store filters.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityFilter {
