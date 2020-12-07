@@ -107,7 +107,6 @@ table! {
         id -> Text,
         subgraph_id -> Text,
         message -> Text,
-        block_number -> Nullable<Numeric>,
         block_hash -> Nullable<Binary>,
         handler -> Nullable<Text>,
         deterministic -> Bool,
@@ -788,7 +787,6 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
             e::handler.eq(handler),
             e::deterministic.eq(deterministic),
             e::block_hash.eq(block_ptr.as_ref().map(|ptr| ptr.hash.as_bytes())),
-            e::block_number.eq(sql(&format!("{}::numeric", block_num))),
             e::block_range.eq((Bound::Included(block_num), Bound::Unbounded)),
         ))
         .on_conflict_do_nothing()

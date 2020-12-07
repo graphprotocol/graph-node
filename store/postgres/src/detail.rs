@@ -90,7 +90,6 @@ struct ErrorDetail {
     id: String,
     subgraph_id: String,
     message: String,
-    block_number: Option<BigDecimal>,
     block_hash: Option<Bytes>,
     handler: Option<String>,
     deterministic: bool,
@@ -135,12 +134,12 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             id: _,
             subgraph_id,
             message,
-            block_number,
             block_hash,
             handler,
             deterministic,
-            block_range: _,
+            block_range,
         } = value;
+        let block_number = crate::block_range::first_block_in_range(&block_range).map(|n| n.into());
         let block_ptr = block(&subgraph_id, "fatal_error", block_hash, block_number)?
             .map(|block| block.to_ptr());
         let subgraph_id = SubgraphDeploymentId::new(subgraph_id).map_err(|id| {
