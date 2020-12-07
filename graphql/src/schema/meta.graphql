@@ -21,3 +21,11 @@ type _Block_ {
   "The block number"
   number: Int!
 }
+
+enum _SubgraphErrorPolicy_ {
+  "Data will be returned even if the subgraph has indexing errors"
+  allow,
+
+  "If the subgraph has indexing errors, data will be omitted. The default."
+  deny
+}
