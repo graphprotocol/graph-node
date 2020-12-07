@@ -1672,7 +1672,7 @@ dependencies = [
 name = "graph-runtime-derive"
 version = "0.19.2"
 dependencies = [
- "quote 0.6.13",
+ "quote 1.0.7",
  "syn 0.15.44",
 ]
 
