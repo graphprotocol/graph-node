@@ -23,6 +23,9 @@ use std::sync::Mutex;
 use std::time::Instant;
 use web3::types::H256;
 
+#[cfg(debug_assertions)]
+pub use graph_store_postgres::store::delete_all_entities_for_test_use_only;
+
 pub fn postgres_test_url() -> String {
     std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
         .expect("The THEGRAPH_STORE_POSTGRES_DIESEL_URL environment variable is not set")
