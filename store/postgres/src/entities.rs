@@ -773,6 +773,7 @@ pub fn delete_all_entities_for_test_use_only(
         delete from subgraphs.ethereum_contract_data_source_template;
         delete from subgraphs.ethereum_contract_data_source_template_source;
         delete from subgraphs.ethereum_contract_event_handler;
+        delete from subgraphs.subgraph_error;
     ";
     conn.batch_execute(query)?;
     store.clear_storage_cache();
