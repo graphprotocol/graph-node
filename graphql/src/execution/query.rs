@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, schema as s};
+use graphql_parser::{query as q, schema as s, Pos};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::data::subgraph::schema::SUBGRAPHS_ID;
-use graph::prelude::{info, o, BlockNumber, CheapClone, CompatErr, Logger, QueryExecutionError};
+use graph::prelude::{info, o, BlockNumber, CheapClone, Logger, QueryExecutionError};
 use graph::{
     data::graphql::{
         ext::{DocumentExt, TypeExt},
@@ -208,14 +208,24 @@ impl Query {
             };
 
             let bc = match args.get(&"block".to_string()) {
-                Some(bc) => {
-                    BlockConstraint::try_from_value(bc).map_err(|e| vec![e.compat_err().into()])?
-                }
+                Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
+                    vec![QueryExecutionError::InvalidArgumentError(
+                        Pos::default(),
+                        "block".to_string(),
+                        bc.clone(),
+                    )]
+                })?,
                 None => BlockConstraint::Latest,
             };
 
             let field_error_policy = match args.get(&"subgraphError".to_string()) {
-                Some(value) => ErrorPolicy::try_from(value).map_err(|e| vec![e.into()])?,
+                Some(value) => ErrorPolicy::try_from(value).map_err(|_| {
+                    vec![QueryExecutionError::InvalidArgumentError(
+                        Pos::default(),
+                        "subgraphError".to_string(),
+                        value.clone(),
+                    )]
+                })?,
                 None => ErrorPolicy::Deny,
             };
 

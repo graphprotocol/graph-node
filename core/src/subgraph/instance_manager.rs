@@ -29,7 +29,8 @@ lazy_static! {
             .parse::<usize>()
             .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
 
-    // Keep deterministic errors non-fatal even if the subgraph is pending. For test purposes.
+    // Keep deterministic errors non-fatal even if the subgraph is pending.
+    // Used for testing Graph Node itself.
     pub static ref DISABLE_FAIL_FAST: bool =
         std::env::var("GRAPH_DISABLE_FAIL_FAST").is_ok();
 }
@@ -683,9 +684,7 @@ where
     {
         // The triggers were processed but some were skipped due to deterministic errors.
         Ok(block_state) if block_state.has_errors() => {
-            use SubgraphFeature::*;
-
-            // While the version is pending we fail the subgraph even if the error is determinsitic.
+            // While the version is pending we fail the subgraph even if the error is deterministic.
             // This prevents a buggy pending version from replacing a current version.
             let store = &ctx.inputs.store;
             let id = ctx.inputs.deployment_id.clone();
@@ -697,7 +696,12 @@ where
                         .map_err(BlockProcessingError::Unknown)?)
             };
 
-            if !ctx.inputs.features.contains(&nonFatalErrors) || fail_fast()? {
+            if !ctx
+                .inputs
+                .features
+                .contains(&SubgraphFeature::nonFatalErrors)
+                || fail_fast()?
+            {
                 // Take just the first error to report.
                 return Err(BlockProcessingError::Deterministic(
                     block_state.deterministic_errors.into_iter().next().unwrap(),
