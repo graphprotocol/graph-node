@@ -252,12 +252,6 @@ impl From<StoreError> for QueryExecutionError {
     }
 }
 
-// impl From<anyhow::Error> for QueryExecutionError {
-//     fn from(e: anyhow::Error) -> Self {
-//         QueryExecutionError::StoreError(CloneableFailureError(Arc::new(e.compat_err())))
-//     }
-// }
-
 /// Error caused while processing a [Query](struct.Query.html) request.
 #[derive(Clone, Debug)]
 pub enum QueryError {

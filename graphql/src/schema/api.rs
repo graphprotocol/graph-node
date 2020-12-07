@@ -32,12 +32,6 @@ pub enum ErrorPolicy {
     Deny,
 }
 
-impl ErrorPolicy {
-    fn graphql_variants() -> [&'static str; 2] {
-        ["allow", "deny"]
-    }
-}
-
 impl std::str::FromStr for ErrorPolicy {
     type Err = anyhow::Error;
 
@@ -79,7 +73,6 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
     add_block_height_type(&mut schema);
-    add_subgraph_error_policy_type(&mut schema);
     add_meta_field_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
@@ -211,26 +204,6 @@ fn add_block_height_type(schema: &mut Document) {
                 directives: vec![],
             },
         ],
-    });
-    let def = Definition::TypeDefinition(typedef);
-    schema.definitions.push(def);
-}
-
-fn add_subgraph_error_policy_type(schema: &mut Document) {
-    let typedef = TypeDefinition::Enum(EnumType {
-        position: Pos::default(),
-        description: None,
-        name: ERROR_POLICY_TYPE.to_string(),
-        directives: vec![],
-        values: ErrorPolicy::graphql_variants()
-            .iter()
-            .map(|name| EnumValue {
-                position: Pos::default(),
-                description: None,
-                name: name.to_string(),
-                directives: vec![],
-            })
-            .collect(),
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
