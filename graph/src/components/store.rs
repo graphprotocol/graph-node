@@ -6,7 +6,7 @@ use mockall::predicate::*;
 use mockall::*;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::fmt;
 use std::str::FromStr;
@@ -1355,6 +1355,47 @@ impl EntityModification {
     }
 }
 
+/// A representation of entity operations that can be accumulated.
+#[derive(Debug, Clone)]
+enum EntityOp {
+    Remove,
+    Update(Entity),
+    Overwrite(Entity),
+}
+
+impl EntityOp {
+    fn apply_to(self, entity: Option<Entity>) -> Option<Entity> {
+        use EntityOp::*;
+        match (self, entity) {
+            (Remove, _) => None,
+            (Overwrite(new), _) | (Update(new), None) => Some(new),
+            (Update(updates), Some(mut entity)) => {
+                entity.merge_remove_null_fields(updates);
+                Some(entity)
+            }
+        }
+    }
+
+    fn accumulate(&mut self, next: EntityOp) {
+        use EntityOp::*;
+        let update = match next {
+            // Remove and Overwrite ignore the current value.
+            Remove | Overwrite(_) => {
+                *self = next;
+                return;
+            }
+            Update(update) => update,
+        };
+
+        // We have an update, apply it.
+        match self {
+            // This is how `Overwrite` is constructed, by accumulating `Update` onto `Remove`.
+            Remove => *self = Overwrite(update),
+            Update(current) | Overwrite(current) => current.merge(update),
+        }
+    }
+}
+
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
 /// how entities are modified, and caches all entities looked up from the
@@ -1367,9 +1408,14 @@ pub struct EntityCache {
     /// means that the entity is not present in the store
     current: LfuCache<EntityKey, Option<Entity>>,
 
-    /// The accumulated changes to an entity. An entry of `None` means that the entity should be
-    /// deleted. This is a persistent collection to cheapen cloning, see the `im` crate docs.
-    updates: im::HashMap<EntityKey, Option<Entity>>,
+    /// The accumulated changes to an entity.
+    updates: HashMap<EntityKey, EntityOp>,
+
+    // Updates for a currently executing handler.
+    handler_updates: HashMap<EntityKey, EntityOp>,
+
+    // Marks whether updates should go in `handler_updates`.
+    in_handler: bool,
 
     /// The store is only used to read entities.
     pub store: Arc<dyn Store>,
@@ -1393,7 +1439,9 @@ impl EntityCache {
     pub fn new(store: Arc<dyn Store>) -> Self {
         Self {
             current: LfuCache::new(),
-            updates: im::HashMap::new(),
+            updates: HashMap::new(),
+            handler_updates: HashMap::new(),
+            in_handler: false,
             store,
         }
     }
@@ -1404,101 +1452,93 @@ impl EntityCache {
     ) -> EntityCache {
         EntityCache {
             current,
-            updates: im::HashMap::new(),
+            updates: HashMap::new(),
+            handler_updates: HashMap::new(),
+            in_handler: false,
             store,
         }
     }
 
-    pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        let current = self.current.get_entity(&*self.store, &key)?;
-        let updates = self.updates.get(&key).cloned();
-        match (current, updates) {
-            // Entity is unchanged
-            (current, None) => Ok(current),
-            // Entity was deleted
-            (_, Some(None)) => Ok(None),
-            // Entity created
-            (None, Some(updates)) => Ok(updates),
-            // Entity updated
-            (Some(current), Some(Some(updates))) => {
-                let mut current = current;
-                current.merge_remove_null_fields(updates);
-                Ok(Some(current))
-            }
+    pub(crate) fn enter_handler(&mut self) {
+        assert!(!self.in_handler);
+        self.in_handler = true;
+    }
+
+    pub(crate) fn exit_handler(&mut self) {
+        assert!(self.in_handler);
+        self.in_handler = false;
+
+        // Apply all handler updates to the main `updates`.
+        let handler_updates = Vec::from_iter(self.handler_updates.drain());
+        for (key, op) in handler_updates {
+            self.entity_op(key, op)
         }
+    }
+
+    pub(crate) fn exit_handler_and_discard_changes(&mut self) {
+        assert!(self.in_handler);
+        self.in_handler = false;
+        self.handler_updates.clear();
+    }
+
+    pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+        // Get the current entity, apply any updates from `updates`, then from `handler_updates`.
+        let mut entity = self.current.get_entity(&*self.store, &key)?;
+        if let Some(op) = self.updates.get(&key).cloned() {
+            entity = op.apply_to(entity)
+        }
+        if let Some(op) = self.handler_updates.get(&key).cloned() {
+            entity = op.apply_to(entity)
+        }
+        Ok(entity)
     }
 
     pub fn remove(&mut self, key: EntityKey) {
-        self.updates.insert(key, None);
+        self.entity_op(key, EntityOp::Remove);
     }
 
-    pub fn set(&mut self, key: EntityKey, mut entity: Entity) -> Result<(), QueryExecutionError> {
-        use im::hashmap::Entry;
-
-        let update = self.updates.entry(key.clone());
-
-        match update {
-            // First change.
-            Entry::Vacant(entry) => {
-                entry.insert(Some(entity));
-            }
-
-            // Previously changed.
-            Entry::Occupied(mut entry) => match entry.get_mut() {
-                Some(prev_update) => prev_update.merge(entity),
-
-                // Previous change was a removal, clear fields in `current`.
-                None => {
-                    if let Some(current) = self.current.get_entity(&*self.store, &key)? {
-                        // Entity was removed so the fields not updated need to be unset.
-                        for field in current.keys().cloned() {
-                            entity.entry(field).or_insert(Value::Null);
-                        }
-                    }
-
-                    entry.insert(Some(entity));
-                }
-            },
-        }
-        Ok(())
+    pub fn set(&mut self, key: EntityKey, entity: Entity) {
+        self.entity_op(key, EntityOp::Update(entity))
     }
 
-    pub fn append(&mut self, operations: Vec<EntityOperation>) -> Result<(), QueryExecutionError> {
+    pub fn append(&mut self, operations: Vec<EntityOperation>) {
+        assert!(!self.in_handler);
+
         for operation in operations {
             match operation {
                 EntityOperation::Set { key, data } => {
-                    self.set(key, data)?;
+                    self.entity_op(key, EntityOp::Update(data));
                 }
                 EntityOperation::Remove { key } => {
-                    self.remove(key);
+                    self.entity_op(key, EntityOp::Remove);
                 }
             }
         }
-        Ok(())
     }
 
-    pub(crate) fn extend(&mut self, other: EntityCache) -> Result<(), QueryExecutionError> {
-        self.current.extend(other.current);
-        for (key, update) in other.updates {
-            match update {
-                Some(update) => self.set(key, update)?,
-                None => self.remove(key),
+    fn entity_op(&mut self, key: EntityKey, op: EntityOp) {
+        use std::collections::hash_map::Entry;
+
+        let updates = match self.in_handler {
+            true => &mut self.handler_updates,
+            false => &mut self.updates,
+        };
+
+        match updates.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(op);
             }
+            Entry::Occupied(mut entry) => entry.get_mut().accumulate(op),
         }
-        Ok(())
     }
 
-    /// A copy of the pending updates. Those are kept in a persistent data structure so this is a
-    /// cheap operation.
-    pub(crate) fn updates_snapshot(&self) -> im::HashMap<EntityKey, Option<Entity>> {
-        self.updates.clone()
-    }
+    pub(crate) fn extend(&mut self, other: EntityCache) {
+        assert!(!other.in_handler);
 
-    pub(crate) fn restore_updates_snapshot(
-        &mut self,
-        snapshot: im::HashMap<EntityKey, Option<Entity>>,
-    ) {
-        self.updates = snapshot;
+        self.current.extend(other.current);
+        for (key, op) in other.updates {
+            self.entity_op(key, op);
+        }
     }
 
     /// Return the changes that have been made via `set` and `remove` as
@@ -1510,6 +1550,8 @@ impl EntityCache {
         mut self,
         store: &(impl Store + ?Sized),
     ) -> Result<ModificationsAndCache, QueryExecutionError> {
+        assert!(!self.in_handler);
+
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
         let missing = self
@@ -1546,7 +1588,7 @@ impl EntityCache {
             let current = self.current.remove(&key).and_then(|entity| entity);
             let modification = match (current, update) {
                 // Entity was created
-                (None, Some(updates)) => {
+                (None, EntityOp::Update(updates)) | (None, EntityOp::Overwrite(updates)) => {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
                     data.merge_remove_null_fields(updates);
@@ -1554,7 +1596,7 @@ impl EntityCache {
                     Some(Insert { key, data })
                 }
                 // Entity may have been changed
-                (Some(current), Some(updates)) => {
+                (Some(current), EntityOp::Update(updates)) => {
                     let mut data = current.clone();
                     data.merge_remove_null_fields(updates);
                     self.current.insert(key.clone(), Some(data.clone()));
@@ -1564,13 +1606,22 @@ impl EntityCache {
                         None
                     }
                 }
+                // Entity was removed and then updated, so it will be overwritten
+                (Some(current), EntityOp::Overwrite(data)) => {
+                    self.current.insert(key.clone(), Some(data.clone()));
+                    if current != data {
+                        Some(Overwrite { key, data })
+                    } else {
+                        None
+                    }
+                }
                 // Existing entity was deleted
-                (Some(_), None) => {
+                (Some(_), EntityOp::Remove) => {
                     self.current.insert(key.clone(), None);
                     Some(Remove { key })
                 }
                 // Entity was deleted, but it doesn't exist in the store
-                (None, None) => None,
+                (None, EntityOp::Remove) => None,
             };
             if let Some(modification) = modification {
                 mods.push(modification)

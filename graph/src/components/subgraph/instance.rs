@@ -20,12 +20,13 @@ pub struct DataSourceTemplateInfo {
 pub struct BlockState {
     pub entity_cache: EntityCache,
     pub deterministic_errors: Vec<SubgraphError>,
-    pub created_data_sources: im::Vector<DataSourceTemplateInfo>,
-}
+    created_data_sources: Vec<DataSourceTemplateInfo>,
 
-pub struct BlockStateUpdatesSnapshot {
-    pub entity_updates: im::HashMap<EntityKey, Option<Entity>>,
-    pub created_data_sources: im::Vector<DataSourceTemplateInfo>,
+    // Data sources created in the current handler.
+    handler_created_data_sources: Vec<DataSourceTemplateInfo>,
+
+    // Marks whether a handler is currently executing.
+    in_handler: bool,
 }
 
 impl BlockState {
@@ -33,46 +34,70 @@ impl BlockState {
         BlockState {
             entity_cache: EntityCache::with_current(store, lfu_cache),
             deterministic_errors: Vec::new(),
-            created_data_sources: im::Vector::new(),
+            created_data_sources: Vec::new(),
+            handler_created_data_sources: Vec::new(),
+            in_handler: false,
         }
     }
 
-    pub fn extend(&mut self, other: BlockState) -> Result<(), anyhow::Error> {
+    pub fn extend(&mut self, other: BlockState) {
+        assert!(!other.in_handler);
+
         let BlockState {
             entity_cache,
             deterministic_errors,
             created_data_sources,
+            handler_created_data_sources,
+            in_handler,
         } = self;
-        entity_cache
-            .extend(other.entity_cache)
-            .map_err(anyhow::Error::from)?;
-        created_data_sources.extend(other.created_data_sources);
-        deterministic_errors.extend(other.deterministic_errors);
-        Ok(())
-    }
 
-    /// Returns a clone of the pending updates in the block state.
-    /// This uses peristent data structures so it is a cheap operation.
-    pub fn updates_snapshot(&self) -> BlockStateUpdatesSnapshot {
-        BlockStateUpdatesSnapshot {
-            entity_updates: self.entity_cache.updates_snapshot(),
-            created_data_sources: self.created_data_sources.clone(),
+        match in_handler {
+            true => handler_created_data_sources.extend(other.created_data_sources),
+            false => created_data_sources.extend(other.created_data_sources),
         }
-    }
-
-    pub fn restore_updates_snapshot_due_to_error(
-        &mut self,
-        snapshot: BlockStateUpdatesSnapshot,
-        error: SubgraphError,
-    ) {
-        self.entity_cache
-            .restore_updates_snapshot(snapshot.entity_updates);
-        self.created_data_sources = snapshot.created_data_sources;
-        self.deterministic_errors.push(error);
+        deterministic_errors.extend(other.deterministic_errors);
+        entity_cache.extend(other.entity_cache);
     }
 
     pub fn has_errors(&self) -> bool {
         !self.deterministic_errors.is_empty()
+    }
+
+    pub fn has_created_data_sources(&self) -> bool {
+        assert!(!self.in_handler);
+        !self.created_data_sources.is_empty()
+    }
+
+    pub fn drain_created_data_sources(&mut self) -> Vec<DataSourceTemplateInfo> {
+        assert!(!self.in_handler);
+        std::mem::replace(&mut self.created_data_sources, Vec::new())
+    }
+
+    pub fn enter_handler(&mut self) {
+        assert!(!self.in_handler);
+        self.in_handler = true;
+        self.entity_cache.enter_handler()
+    }
+
+    pub fn exit_handler(&mut self) {
+        assert!(self.in_handler);
+        self.in_handler = false;
+        self.created_data_sources
+            .extend(self.handler_created_data_sources.drain(..));
+        self.entity_cache.exit_handler()
+    }
+
+    pub fn exit_handler_and_discard_changes_due_to_error(&mut self, e: SubgraphError) {
+        assert!(self.in_handler);
+        self.in_handler = false;
+        self.handler_created_data_sources.clear();
+        self.entity_cache.exit_handler_and_discard_changes();
+        self.deterministic_errors.push(e);
+    }
+
+    pub fn push_created_data_source(&mut self, ds: DataSourceTemplateInfo) {
+        assert!(self.in_handler);
+        self.handler_created_data_sources.push(ds);
     }
 }
 

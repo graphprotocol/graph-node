@@ -189,7 +189,7 @@ impl HostExports {
         let entity = Entity::from(data);
         let schema = self.store.input_schema(&self.subgraph_id).compat()?;
         let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
-        state.entity_cache.set(key.clone(), entity).compat()?;
+        state.entity_cache.set(key.clone(), entity);
 
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
@@ -592,14 +592,12 @@ impl HostExports {
             .clone();
 
         // Remember that we need to create this data source
-        state
-            .created_data_sources
-            .push_back(DataSourceTemplateInfo {
-                data_source: self.data_source_name.clone(),
-                template,
-                params,
-                context,
-            });
+        state.push_created_data_source(DataSourceTemplateInfo {
+            data_source: self.data_source_name.clone(),
+            template,
+            params,
+            context,
+        });
 
         Ok(())
     }

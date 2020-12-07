@@ -49,15 +49,13 @@ fn insert_modifications() {
         "mogwai",
         vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
+    cache.set(mogwai_key.clone(), mogwai_data.clone());
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
         vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
     );
-    cache
-        .set(sigurros_key.clone(), sigurros_data.clone())
-        .unwrap();
+    cache.set(sigurros_key.clone(), sigurros_data.clone());
 
     let result = cache.as_modifications(&*store);
     assert_eq!(
@@ -114,7 +112,7 @@ fn overwrite_modifications() {
             ("founded", 1995.into()),
         ],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
+    cache.set(mogwai_key.clone(), mogwai_data.clone());
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
@@ -124,9 +122,7 @@ fn overwrite_modifications() {
             ("founded", 1994.into()),
         ],
     );
-    cache
-        .set(sigurros_key.clone(), sigurros_data.clone())
-        .unwrap();
+    cache.set(sigurros_key.clone(), sigurros_data.clone());
 
     let result = cache.as_modifications(&*store);
     assert_eq!(
@@ -183,14 +179,14 @@ fn consecutive_modifications() {
             ("label", "Rock Action Records".into()),
         ],
     );
-    cache.set(update_key.clone(), update_data.clone()).unwrap();
+    cache.set(update_key.clone(), update_data.clone());
 
     // Then, just reset the "label".
     let (update_key, update_data) = make_band(
         "mogwai",
         vec![("id", "mogwai".into()), ("label", Value::Null)],
     );
-    cache.set(update_key.clone(), update_data.clone()).unwrap();
+    cache.set(update_key.clone(), update_data.clone());
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
