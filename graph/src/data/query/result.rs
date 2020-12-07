@@ -20,13 +20,6 @@ where
     ser.end()
 }
 
-fn serialize_extensions<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    SerializableValue(data.as_ref().unwrap_or(&q::Value::Null)).serialize(serializer)
-}
-
 fn serialize_value_map<'a, S>(
     data: impl Iterator<Item = &'a Data>,
     serializer: S,
@@ -60,9 +53,6 @@ impl QueryResults {
 
 impl Serialize for QueryResults {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // We don't use extensions.
-        assert!(!self.results.iter().any(|r| r.extensions.is_some()));
-
         let mut len = 0;
         let has_data = self.results.iter().any(|r| r.has_data());
         if has_data {
@@ -184,11 +174,6 @@ pub struct QueryResult {
     data: Option<Data>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     errors: Vec<QueryError>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_extensions"
-    )]
-    extensions: Option<q::Value>,
 }
 
 impl QueryResult {
@@ -196,7 +181,6 @@ impl QueryResult {
         QueryResult {
             data: Some(data),
             errors: Vec::new(),
-            extensions: None,
         }
     }
 
@@ -234,7 +218,6 @@ impl From<QueryExecutionError> for QueryResult {
         QueryResult {
             data: None,
             errors: vec![e.into()],
-            extensions: None,
         }
     }
 }
@@ -244,7 +227,6 @@ impl From<QueryError> for QueryResult {
         QueryResult {
             data: None,
             errors: vec![e],
-            extensions: None,
         }
     }
 }
@@ -254,7 +236,6 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
         QueryResult {
             data: None,
             errors: e.into_iter().map(QueryError::from).collect(),
-            extensions: None,
         }
     }
 }
@@ -287,9 +268,7 @@ impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryRes
 
 impl CacheWeight for QueryResult {
     fn indirect_weight(&self) -> usize {
-        self.data.indirect_weight()
-            + self.errors.indirect_weight()
-            + self.extensions.indirect_weight()
+        self.data.indirect_weight() + self.errors.indirect_weight()
     }
 }
 
