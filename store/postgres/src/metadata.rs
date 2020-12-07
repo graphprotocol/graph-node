@@ -105,7 +105,7 @@ table! {
     subgraphs.subgraph_error (vid) {
         vid -> BigInt,
         id -> Text,
-        subgraph_id -> Nullable<Text>,
+        subgraph_id -> Text,
         message -> Text,
         block_number -> Nullable<Numeric>,
         block_hash -> Nullable<Binary>,

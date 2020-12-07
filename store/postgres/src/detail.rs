@@ -88,7 +88,7 @@ struct Detail {
 struct ErrorDetail {
     vid: i64,
     id: String,
-    subgraph_id: Option<String>,
+    subgraph_id: String,
     message: String,
     block_number: Option<BigDecimal>,
     block_hash: Option<Bytes>,
@@ -141,25 +141,11 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             deterministic,
             block_range: _,
         } = value;
-        let block_ptr = block(
-            subgraph_id.as_deref().unwrap_or("unknown"),
-            "fatal_error",
-            block_hash,
-            block_number,
-        )?
-        .map(|block| block.to_ptr());
-        let subgraph_id = subgraph_id
-            .map(|id| SubgraphDeploymentId::new(id))
-            .transpose()
-            .map_err(|id| {
-                StoreError::ConstraintViolation(format!(
-                    "invalid subgraph id `{}` in fatal error",
-                    id
-                ))
-            })?
-            .ok_or_else(|| {
-                StoreError::ConstraintViolation(format!("missing subgraph id for fatal error"))
-            })?;
+        let block_ptr = block(&subgraph_id, "fatal_error", block_hash, block_number)?
+            .map(|block| block.to_ptr());
+        let subgraph_id = SubgraphDeploymentId::new(subgraph_id).map_err(|id| {
+            StoreError::ConstraintViolation(format!("invalid subgraph id `{}` in fatal error", id))
+        })?;
         Ok(SubgraphError {
             subgraph_id,
             message,
