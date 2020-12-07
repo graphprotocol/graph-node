@@ -267,9 +267,24 @@ pub enum CancelableError<E: Display + Debug> {
     Error(E),
 }
 
-impl From<crate::prelude::StoreError> for CancelableError<anyhow::Error> {
+impl From<StoreError> for CancelableError<anyhow::Error> {
     fn from(e: StoreError) -> Self {
         Self::Error(failure::Error::from(e).compat_err())
+    }
+}
+
+impl From<CancelableError<anyhow::Error>> for CancelableError<StoreError> {
+    fn from(e: CancelableError<anyhow::Error>) -> Self {
+        match e {
+            CancelableError::Error(e) => CancelableError::Error(e.into()),
+            CancelableError::Cancel => CancelableError::Cancel,
+        }
+    }
+}
+
+impl From<StoreError> for CancelableError<StoreError> {
+    fn from(e: StoreError) -> Self {
+        Self::Error(e)
     }
 }
 

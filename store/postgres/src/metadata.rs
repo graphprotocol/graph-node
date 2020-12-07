@@ -26,7 +26,7 @@ use stable_hash::crypto::SetHasher;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{convert::TryFrom, ops::Bound};
 
-use crate::block_range::UNVERSIONED_RANGE;
+use crate::block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE};
 
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
@@ -801,7 +801,7 @@ pub fn fail_subgraph(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     error: SubgraphError,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     let error_id = insert_subgraph_error(conn, error)?;
@@ -820,7 +820,7 @@ pub(crate) fn has_non_fatal_errors(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     block: Option<BlockNumber>,
-) -> Result<bool, anyhow::Error> {
+) -> Result<bool, StoreError> {
     use subgraph_error as e;
 
     let block = block.unwrap_or(BLOCK_NUMBER_MAX);
@@ -866,7 +866,7 @@ pub(crate) fn insert_subgraph_errors(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     deterministic_errors: Vec<SubgraphError>,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), StoreError> {
     for error in deterministic_errors {
         insert_subgraph_error(conn, error)?;
     }
@@ -876,7 +876,7 @@ pub(crate) fn insert_subgraph_errors(
 
 /// Checks if the subgraph is healthy or unhealthy as of the latest block, based on the presence of
 /// deterministic errors. Has no effect on failed subgraphs.
-fn check_health(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), anyhow::Error> {
+fn check_health(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     // Errors have unbounded upper bounds so if one exists, it exists as of the latest block.
@@ -903,13 +903,14 @@ pub(crate) fn revert_subgraph_errors(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     reverted_block: BlockNumber,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), StoreError> {
     use subgraph_error as e;
 
+    let lower_geq = format!("lower({}) >= ", BLOCK_RANGE_COLUMN);
     delete(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(sql("lower(block_range) >= ").bind::<Integer, _>(reverted_block)),
+            .filter(sql(&lower_geq).bind::<Integer, _>(reverted_block)),
     )
     .execute(conn)?;
 

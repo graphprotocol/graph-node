@@ -155,7 +155,7 @@ impl Store for MockStore {
         &self,
         _: SubgraphDeploymentId,
         _: SubgraphError,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 

@@ -1,5 +1,4 @@
 specVersion: 0.0.2
-features
 schema:
   file: ./schema.graphql
 dataSources:

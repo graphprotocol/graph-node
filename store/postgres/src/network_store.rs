@@ -4,7 +4,7 @@ use graph::{
     data::subgraph::schema::SubgraphError,
     data::subgraph::status,
     prelude::{
-        anyhow, ethabi,
+        ethabi,
         web3::types::{Address, H256},
         BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
         EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock, NodeId,
@@ -178,7 +178,7 @@ impl StoreTrait for NetworkStore {
         &self,
         id: SubgraphDeploymentId,
         error: SubgraphError,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), StoreError> {
         self.store.fail_subgraph(id, error).await
     }
 

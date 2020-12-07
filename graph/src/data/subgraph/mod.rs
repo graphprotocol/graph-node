@@ -10,7 +10,7 @@ use lazy_static::lazy_static;
 use serde::de;
 use serde::ser;
 use serde_yaml;
-use slog::{info, debug, Logger};
+use slog::{debug, info, Logger};
 use stable_hash::prelude::*;
 use std::collections::BTreeSet;
 use wasmparser;

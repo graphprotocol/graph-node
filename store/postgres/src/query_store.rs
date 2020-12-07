@@ -72,7 +72,7 @@ impl QueryStoreTrait for QueryStore {
         &self,
         id: SubgraphDeploymentId,
         block: Option<BlockNumber>,
-    ) -> Result<bool, anyhow::Error> {
+    ) -> Result<bool, StoreError> {
         self.store
             .with_conn(move |conn, _| {
                 crate::metadata::has_non_fatal_errors(conn, &id, block).map_err(|e| e.into())

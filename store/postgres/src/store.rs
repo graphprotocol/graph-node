@@ -4,11 +4,11 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
-use graph::data::subgraph::status;
 use graph::prelude::{
     CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
     SubgraphVersionSwitchingMode,
 };
+use graph::{data::subgraph::status, prelude::TryFutureExt};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -528,8 +528,8 @@ impl Store {
             + FnOnce(
                 &PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
-            ) -> Result<T, CancelableError<anyhow::Error>>,
-    ) -> Result<T, anyhow::Error> {
+            ) -> Result<T, CancelableError<StoreError>>,
+    ) -> Result<T, StoreError> {
         let _permit = CONNECTION_LIMITER.acquire().await;
         let store = self.clone();
 
@@ -543,7 +543,9 @@ impl Store {
 
             // A failure to establish a connection is propagated as though the
             // closure failed.
-            let conn = store.get_conn().compat_err()?;
+            let conn = store
+                .get_conn()
+                .map_err(|e| CancelableError::Error(StoreError::Unknown(e)))?;
 
             // It is possible time has passed while establishing a connection.
             // Time to check for cancel.
@@ -578,8 +580,8 @@ impl Store {
         subgraph: &SubgraphDeploymentId,
         f: impl 'static
             + Send
-            + FnOnce(&e::Connection, &CancelHandle) -> Result<T, CancelableError<anyhow::Error>>,
-    ) -> Result<T, anyhow::Error> {
+            + FnOnce(&e::Connection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
+    ) -> Result<T, StoreError> {
         let store = self.cheap_clone();
         // Unfortunate clone in order to pass a 'static closure to with_conn.
         let subgraph = subgraph.clone();
@@ -597,7 +599,7 @@ impl Store {
                     "total time spent getting an entity connection",
                     subgraph.as_str(),
                 )
-                .map_err(|e| CancelableError::Error(e.into()))?
+                .map_err(|e| CancelableError::Error(StoreError::Unknown(e.into())))?
                 .inc_by(start.elapsed().as_secs_f64());
 
             cancel_handle.check_cancel()?;
@@ -864,6 +866,7 @@ impl StoreTrait for Store {
             cancel.check_cancel()?;
             Ok(conn.supports_proof_of_indexing())
         })
+        .map_err(|e| e.into())
         .boxed()
     }
 
@@ -943,6 +946,7 @@ impl StoreTrait for Store {
 
                         Ok(Some((entities, block_number)))
                     })
+                    .map_err(|e| e.into())
                 })
                 .await?;
 
@@ -1204,9 +1208,10 @@ impl StoreTrait for Store {
         &self,
         id: SubgraphDeploymentId,
         error: SubgraphError,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| metadata::fail_subgraph(&conn, &id, error).map_err(|e| e.into()))
+            conn.transaction(|| metadata::fail_subgraph(&conn, &id, error))
+                .map_err(|e| e.into())
         })
         .await?;
         Ok(())

@@ -763,6 +763,12 @@ impl From<anyhow::Error> for StoreError {
     }
 }
 
+impl From<StoreError> for anyhow::Error {
+    fn from(e: StoreError) -> Self {
+        failure::Error::from(e).compat_err()
+    }
+}
+
 impl From<serde_json::Error> for StoreError {
     fn from(e: serde_json::Error) -> Self {
         StoreError::Unknown(e.into())
@@ -895,7 +901,7 @@ pub trait Store: Send + Sync + 'static {
         &self,
         id: SubgraphDeploymentId,
         error: SubgraphError,
-    ) -> Result<(), anyhow::Error>;
+    ) -> Result<(), StoreError>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
@@ -1112,7 +1118,7 @@ impl Store for MockStore {
         &self,
         _: SubgraphDeploymentId,
         _: SubgraphError,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -1318,7 +1324,7 @@ pub trait QueryStore: Send + Sync {
         &self,
         id: SubgraphDeploymentId,
         block: Option<BlockNumber>,
-    ) -> Result<bool, anyhow::Error>;
+    ) -> Result<bool, StoreError>;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to

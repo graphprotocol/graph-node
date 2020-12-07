@@ -9,9 +9,9 @@ use std::fmt;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 
+use crate::data::graphql::SerializableValue;
 use crate::data::subgraph::*;
 use crate::{components::store::StoreError, prelude::CacheWeight};
-use crate::{data::graphql::SerializableValue, prelude::CompatErr};
 
 #[derive(Debug)]
 pub struct CloneableFailureError(Arc<failure::Error>);
@@ -252,11 +252,11 @@ impl From<StoreError> for QueryExecutionError {
     }
 }
 
-impl From<anyhow::Error> for QueryExecutionError {
-    fn from(e: anyhow::Error) -> Self {
-        QueryExecutionError::StoreError(CloneableFailureError(Arc::new(e.compat_err())))
-    }
-}
+// impl From<anyhow::Error> for QueryExecutionError {
+//     fn from(e: anyhow::Error) -> Self {
+//         QueryExecutionError::StoreError(CloneableFailureError(Arc::new(e.compat_err())))
+//     }
+// }
 
 /// Error caused while processing a [Query](struct.Query.html) request.
 #[derive(Clone, Debug)]
