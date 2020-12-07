@@ -49,6 +49,20 @@ fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
     }
 }
 
+pub(crate) fn first_block_in_range(
+    bound: &(Bound<BlockNumber>, Bound<BlockNumber>),
+) -> Option<BlockNumber> {
+    if bound == &UNVERSIONED_RANGE {
+        return None;
+    }
+
+    match bound.0 {
+        Bound::Included(nr) => Some(nr),
+        Bound::Excluded(nr) => Some(nr + 1),
+        Bound::Unbounded => None,
+    }
+}
+
 /// Return the block number contained in the history event. If it is
 /// `None` panic because that indicates that we want to perform an
 /// operation that does not record history, which should not happen
