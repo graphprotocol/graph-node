@@ -112,3 +112,10 @@ fn big_decimal() {
     let _m = TEST_MUTEX.lock();
     run_test("big-decimal");
 }
+
+#[test]
+fn non_fatal_errors() {
+    let _m = TEST_MUTEX.lock();
+    std::env::set_var("GRAPH_DISABLE_FAIL_FAST", "yesplease");
+    run_test("non-fatal-errors");
+}

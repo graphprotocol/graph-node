@@ -206,22 +206,23 @@ impl WasmInstance {
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
 
-        // Store the state of entity updates for this block previous to the trigger being run,
-        // in case the trigger encounters an error and has its changes ignored.
-        let snapshot = self.instance_ctx().ctx.state.updates_snapshot();
+        // Caution: Make sure all exit paths from this function call `exit_handler`.
+        self.instance_ctx_mut().ctx.state.enter_handler();
 
         // This `match` will return early if there was a non-determinstic trap.
         let deterministic_error: Option<Error> = match func.get1()?(arg.wasm_ptr()) {
             Ok(()) => None,
             Err(trap) if self.instance_ctx().possible_reorg => {
-                return Err(MappingError::PossibleReorg(trap.into()))
+                self.instance_ctx_mut().ctx.state.exit_handler();
+                return Err(MappingError::PossibleReorg(trap.into()));
             }
             Err(trap) if trap.to_string().contains(TRAP_TIMEOUT) => {
+                self.instance_ctx_mut().ctx.state.exit_handler();
                 return Err(MappingError::Unknown(Error::from(trap).context(format!(
                     "Handler '{}' hit the timeout of '{}' seconds",
                     handler,
                     self.instance_ctx().timeout.unwrap().as_secs()
-                ))))
+                ))));
             }
             Err(trap) => {
                 use wasmtime::TrapCode::*;
@@ -238,7 +239,10 @@ impl WasmInstance {
                     | Some(BadConversionToInteger)
                     | Some(UnreachableCodeReached) => Some(e),
                     _ if self.instance_ctx().deterministic_host_trap => Some(e),
-                    _ => return Err(MappingError::Unknown(e)),
+                    _ => {
+                        self.instance_ctx_mut().ctx.state.exit_handler();
+                        return Err(MappingError::Unknown(e));
+                    }
                 }
             }
         };
@@ -250,7 +254,7 @@ impl WasmInstance {
                 "handler" => handler,
                 "error" => format!("{:#}", deterministic_error)
             );
-            let subgraph = SubgraphError {
+            let subgraph_error = SubgraphError {
                 subgraph_id: self.instance_ctx().ctx.host_exports.subgraph_id.clone(),
                 message: format!("{:#}", deterministic_error),
                 block_ptr: Some(self.instance_ctx().ctx.block.block_ptr()),
@@ -260,7 +264,9 @@ impl WasmInstance {
             self.instance_ctx_mut()
                 .ctx
                 .state
-                .restore_updates_snapshot_due_to_error(snapshot, subgraph);
+                .exit_handler_and_discard_changes_due_to_error(subgraph_error);
+        } else {
+            self.instance_ctx_mut().ctx.state.exit_handler();
         }
 
         Ok(self.take_ctx().ctx.state)
@@ -947,10 +953,7 @@ impl WasmInstanceContext {
             "time" => format!("{}ms", start_time.elapsed().as_millis())
         );
         for output_state in output_states {
-            self.ctx
-                .state
-                .extend(output_state)
-                .map_err(anyhow::Error::from)?;
+            self.ctx.state.extend(output_state);
         }
 
         Ok(())

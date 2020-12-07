@@ -222,7 +222,7 @@ pub fn transact_entity_operations(
     ops: Vec<EntityOperation>,
 ) -> Result<bool, StoreError> {
     let mut entity_cache = EntityCache::new(store.clone());
-    entity_cache.append(ops)?;
+    entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications(store.as_ref())
         .expect("failed to convert to modifications")

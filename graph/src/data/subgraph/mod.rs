@@ -10,7 +10,7 @@ use lazy_static::lazy_static;
 use serde::de;
 use serde::ser;
 use serde_yaml;
-use slog::{info, Logger};
+use slog::{info, debug, Logger};
 use stable_hash::prelude::*;
 use std::collections::BTreeSet;
 use wasmparser;
@@ -1137,6 +1137,8 @@ impl SubgraphManifest {
 
         // Parse the YAML data into an UnresolvedSubgraphManifest
         let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
+
+        debug!(logger, "Features {:?}", unresolved.features);
 
         unresolved
             .resolve(&*resolver, logger)

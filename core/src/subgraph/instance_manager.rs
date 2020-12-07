@@ -732,7 +732,7 @@ where
 
     // If new data sources have been created, restart the subgraph after this block.
     // This is necessary to re-create the block stream.
-    let needs_restart = !block_state.created_data_sources.is_empty();
+    let needs_restart = block_state.has_created_data_sources();
     let host_metrics = ctx.host_metrics.clone();
 
     // This loop will:
@@ -743,13 +743,13 @@ where
     // Note that this algorithm processes data sources spawned on the same block _breadth
     // first_ on the tree implied by the parent-child relationship between data sources. Only a
     // very contrived subgraph would be able to observe this.
-    while !block_state.created_data_sources.is_empty() {
+    while block_state.has_created_data_sources() {
         // Instantiate dynamic data sources, removing them from the block state.
         let (data_sources, runtime_hosts) = create_dynamic_data_sources(
             logger.clone(),
             &mut ctx,
             host_metrics.clone(),
-            block_state.created_data_sources.split_off(0).into_iter(),
+            block_state.drain_created_data_sources(),
         )
         .compat_err()?;
 
@@ -789,7 +789,7 @@ where
             &mut block_state.entity_cache,
             data_sources,
             block_ptr_for_new_data_sources,
-        )?;
+        );
 
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
@@ -933,7 +933,7 @@ async fn update_proof_of_indexing(
             digest: updated_proof_of_indexing,
         };
 
-        entity_cache.set(entity_key, new_poi_entity)?;
+        entity_cache.set(entity_key, new_poi_entity);
     }
 
     Ok(())
@@ -989,7 +989,7 @@ fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     logger: Logger,
     ctx: &mut IndexingContext<B, T, S>,
     host_metrics: Arc<HostMetrics>,
-    created_data_sources: impl Iterator<Item = DataSourceTemplateInfo>,
+    created_data_sources: Vec<DataSourceTemplateInfo>,
 ) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), anyhow::Error>
 where
     B: BlockStreamBuilder,
@@ -1037,8 +1037,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
     block_ptr: EthereumBlockPointer,
-) -> Result<(), Error>
-where
+) where
     B: BlockStreamBuilder,
     S: ChainStore + Store,
 {
@@ -1066,7 +1065,7 @@ where
         ));
         let id = DynamicEthereumContractDataSourceEntity::make_id();
         let operations = entity.write_entity_operations(id.as_ref());
-        entity_cache.append(operations)?;
+        entity_cache.append(operations);
     }
 
     // Merge log filters from data sources into the block stream builder
@@ -1083,6 +1082,4 @@ where
     ctx.state
         .block_filter
         .extend(EthereumBlockFilter::from_data_sources(&data_sources));
-
-    Ok(())
 }
