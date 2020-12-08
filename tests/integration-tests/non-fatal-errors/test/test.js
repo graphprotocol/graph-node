@@ -22,7 +22,7 @@ const exec = (cmd) => {
   }
 };
 
-const waitForSubgraphToBeSynced = async () =>
+const waitForSubgraphToBeUnhealthy = async () =>
   new Promise((resolve, reject) => {
     // Wait for 5s
     let deadline = Date.now() + 50 * 1000;
@@ -34,16 +34,17 @@ const waitForSubgraphToBeSynced = async () =>
           query: `{ indexingStatuses { synced, health } }`,
         });
 
-        if (result.data.indexingStatuses[0].synced) {
+        let health = result.data.indexingStatuses[0].health
+        if (result.data.indexingStatuses[0].synced && health == "unhealthy") {
           resolve();
-        } else if (result.data.indexingStatuses[0].health != "healthy") {
+        } else if (health == "failed") {
           reject(new Error("Subgraph failed"));
         } else {
           throw new Error("reject or retry");
         }
       } catch (e) {
         if (Date.now() > deadline) {
-          reject(new Error(`Timed out waiting for the subgraph to sync`));
+          reject(new Error(`Timed out waiting for the subgraph to be uhealthy`));
         } else {
           setTimeout(checkSubgraphSynced, 500);
         }
@@ -74,7 +75,7 @@ contract("Contract", (accounts) => {
     exec(`yarn deploy:test`);
 
     // Wait for the subgraph to be indexed
-    await waitForSubgraphToBeSynced();
+    await waitForSubgraphToBeUnhealthy();
   });
 
   it("only sucessful handler register changes", async () => {
