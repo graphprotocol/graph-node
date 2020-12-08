@@ -25,7 +25,7 @@ const exec = (cmd) => {
 const waitForSubgraphToBeSynced = async () =>
   new Promise((resolve, reject) => {
     // Wait for 5s
-    let deadline = Date.now() + 5 * 1000;
+    let deadline = Date.now() + 50 * 1000;
 
     // Function to check if the subgraph is synced
     const checkSubgraphSynced = async () => {
@@ -77,7 +77,7 @@ contract("Contract", (accounts) => {
     await waitForSubgraphToBeSynced();
   });
 
-  it("all overloads of the contract function are called", async () => {
+  it("only sucessful handler register changes", async () => {
     let result = await fetchSubgraph({
       query: `{ foos(orderBy: id, subgraphError: allow) { id } }`,
     });
