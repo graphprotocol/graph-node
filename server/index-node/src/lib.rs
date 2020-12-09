@@ -1,3 +1,4 @@
+mod explorer;
 mod request;
 mod resolver;
 mod schema;

@@ -8,6 +8,7 @@ use graph::prelude::*;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryResults};
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
 
+use crate::explorer::Explorer;
 use crate::request::IndexNodeRequest;
 use crate::resolver::IndexNodeResolver;
 use crate::schema::SCHEMA;
@@ -22,6 +23,7 @@ pub struct IndexNodeService<Q, S> {
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     node_id: NodeId,
+    explorer: Explorer<S>,
 }
 
 impl<Q, S> Clone for IndexNodeService<Q, S> {
@@ -31,6 +33,7 @@ impl<Q, S> Clone for IndexNodeService<Q, S> {
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
             node_id: self.node_id.clone(),
+            explorer: self.explorer.clone(),
         }
     }
 }
@@ -44,11 +47,14 @@ where
 {
     /// Creates a new GraphQL service.
     pub fn new(logger: Logger, graphql_runner: Arc<Q>, store: Arc<S>, node_id: NodeId) -> Self {
+        let explorer = Explorer::new(store.clone());
+
         IndexNodeService {
             logger,
             graphql_runner,
             store,
             node_id,
+            explorer,
         }
     }
 
@@ -147,7 +153,7 @@ where
     }
 
     /// Handles 404s.
-    fn handle_not_found() -> Response<Body> {
+    pub(crate) fn handle_not_found() -> Response<Body> {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(Body::from("Not found"))
@@ -184,6 +190,8 @@ where
 
             (Method::POST, ["graphql"]) => self.handle_graphql_query(req.into_body()).await,
             (Method::OPTIONS, ["graphql"]) => Ok(Self::handle_graphql_options(req)),
+
+            (Method::GET, ["explorer", rest @ ..]) => self.explorer.handle(rest),
 
             _ => Ok(Self::handle_not_found()),
         }
