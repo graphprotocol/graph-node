@@ -7,7 +7,7 @@ pub enum BlockStreamEvent {
     Block(EthereumBlockWithTriggers),
 
     /// Signals that a revert happened and was processed.
-    Revert,
+    Revert(EthereumBlockPointer),
 }
 
 pub trait BlockStream: Stream<Item = BlockStreamEvent, Error = Error> {}

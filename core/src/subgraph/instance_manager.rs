@@ -1,7 +1,7 @@
 use atomic_refcell::AtomicRefCell;
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 use lazy_static::lazy_static;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -477,8 +477,61 @@ where
         loop {
             let block = match block_stream.next().await {
                 Some(Ok(BlockStreamEvent::Block(block))) => block,
-                Some(Ok(BlockStreamEvent::Revert)) => {
-                    // On revert, clear the entity cache.
+                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr))) => {
+                    debug!(
+                        logger,
+                        "Reverting block to get back to main chain";
+                        "block_number" => format!("{}", subgraph_ptr.number),
+                        "block_hash" => format!("{}", subgraph_ptr.hash)
+                    );
+
+                    // We would like to move to the parent of the current block.
+                    // First, load the block in order to get the parent hash.
+                    if let Err(e) = ctx
+                        .inputs
+                        .eth_adapter
+                        .load_blocks(
+                            logger.cheap_clone(),
+                            ctx.inputs.store.cheap_clone(),
+                            HashSet::from_iter(Some(subgraph_ptr.hash)),
+                        )
+                        .collect()
+                        .compat()
+                        .await
+                        .map(|blocks| {
+                            assert_eq!(blocks.len(), 1);
+                            blocks.into_iter().next().unwrap()
+                        })
+                        .and_then(|block| {
+                            // Produce pointer to parent block (using parent hash).
+                            let parent_ptr = block
+                                .parent_ptr()
+                                .expect("genesis block cannot be reverted");
+
+                            // Revert entity changes from this block, and update subgraph ptr.
+                            ctx.inputs
+                                .store
+                                .revert_block_operations(
+                                    ctx.inputs.deployment_id.clone(),
+                                    subgraph_ptr,
+                                    parent_ptr,
+                                )
+                                .map_err(Into::into)
+                        })
+                    {
+                        debug!(
+                            &logger,
+                            "Block stream produced a non-fatal error";
+                            "error" => e.to_string(),
+                        );
+                        continue;
+                    }
+
+                    ctx.block_stream_metrics
+                        .reverted_blocks
+                        .set(subgraph_ptr.number as f64);
+
+                    // Clear the entity cache.
                     ctx.state.entity_lfu_cache = LfuCache::new();
                     continue;
                 }
