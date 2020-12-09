@@ -1,5 +1,5 @@
 use std::cmp;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::mem;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -26,32 +26,32 @@ lazy_static! {
 }
 
 enum BlockStreamState {
-    /// The BlockStream is new and has not yet been polled.
+    /// Starting or restarting reconciliation.
     ///
     /// Valid next states: Reconciliation
-    New,
+    BeginReconciliation,
 
     /// The BlockStream is reconciling the subgraph store state with the chain store state.
     ///
-    /// Valid next states: YieldingBlocks, Idle
+    /// Valid next states: YieldingBlocks, Idle, BeginReconciliation (in case of revert)
     Reconciliation(Box<dyn Future<Item = NextBlocks, Error = Error> + Send>),
 
     /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
     /// store up to date with the chain store.
     ///
-    /// Valid next states: Reconciliation
+    /// Valid next states: BeginReconciliation
     YieldingBlocks(VecDeque<EthereumBlockWithTriggers>),
 
     /// The BlockStream experienced an error and is pausing before attempting to produce
     /// blocks again.
     ///
-    /// Valid next states: Reconciliation
+    /// Valid next states: BeginReconciliation
     RetryAfterDelay(Box<dyn Future<Item = (), Error = Error> + Send>),
 
     /// The BlockStream has reconciled the subgraph store and chain store states.
     /// No more work is needed until a chain head update.
     ///
-    /// Valid next states: Reconciliation
+    /// Valid next states: BeginReconciliation
     Idle,
 
     /// Not a real state, only used when going from one state to another.
@@ -62,7 +62,7 @@ enum BlockStreamState {
 /// chain store.
 enum ReconciliationStep {
     /// Revert the current block pointed at by the subgraph pointer.
-    RevertBlock(EthereumBlockPointer),
+    Revert(EthereumBlockPointer),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
     ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>, u64),
@@ -73,23 +73,6 @@ enum ReconciliationStep {
     /// Subgraph pointer now matches chain head pointer.
     /// Reconciliation is complete.
     Done,
-}
-
-/// The result of performing a single ReconciliationStep.
-enum ReconciliationStepOutcome {
-    /// These blocks must be processed before reconciliation can continue.
-    /// Second element is the block range size.
-    YieldBlocks(Vec<EthereumBlockWithTriggers>, u64),
-
-    /// Continue to the next reconciliation step.
-    MoreSteps,
-
-    /// Subgraph pointer now matches chain head pointer.
-    /// Reconciliation is complete.
-    Done,
-
-    /// A revert was detected and processed.
-    Revert,
 }
 
 struct BlockStreamContext<S, C> {
@@ -144,7 +127,7 @@ pub struct BlockStream<S, C> {
 enum NextBlocks {
     /// Blocks and range size
     Blocks(VecDeque<EthereumBlockWithTriggers>, u64),
-    Revert,
+    Revert(EthereumBlockPointer),
     Done,
 }
 
@@ -169,7 +152,7 @@ where
         metrics: Arc<BlockStreamMetrics>,
     ) -> Self {
         BlockStream {
-            state: Mutex::new(BlockStreamState::New),
+            state: Mutex::new(BlockStreamState::BeginReconciliation),
             consecutive_err_count: 0,
             chain_head_update_stream: chain_store.chain_head_updates(),
             ctx: BlockStreamContext {
@@ -208,30 +191,25 @@ where
         Box::new(future::loop_fn((), move |()| {
             let ctx1 = ctx.clone();
             let ctx2 = ctx.clone();
-            let ctx3 = ctx.clone();
 
-            ctx1.get_next_step()
-                .and_then(move |step| ctx2.do_step(step))
-                // Check outcome.
-                // Exit loop if done or there are blocks to process.
-                .and_then(move |outcome| match outcome {
-                    ReconciliationStepOutcome::YieldBlocks(next_blocks, range_size) => {
-                        Ok(future::Loop::Break(NextBlocks::Blocks(
-                            next_blocks.into_iter().collect(),
-                            range_size,
-                        )))
-                    }
-                    ReconciliationStepOutcome::MoreSteps => Ok(future::Loop::Continue(())),
-                    ReconciliationStepOutcome::Done => {
-                        // Reconciliation is complete, so try to mark subgraph as Synced
-                        ctx3.update_subgraph_synced_status()?;
+            ctx1.get_next_step().and_then(move |outcome| match outcome {
+                ReconciliationStep::ProcessDescendantBlocks(next_blocks, range_size) => {
+                    Ok(future::Loop::Break(NextBlocks::Blocks(
+                        next_blocks.into_iter().collect(),
+                        range_size,
+                    )))
+                }
+                ReconciliationStep::Retry => Ok(future::Loop::Continue(())),
+                ReconciliationStep::Done => {
+                    // Reconciliation is complete, so try to mark subgraph as Synced
+                    ctx2.update_subgraph_synced_status()?;
 
-                        Ok(future::Loop::Break(NextBlocks::Done))
-                    }
-                    ReconciliationStepOutcome::Revert => {
-                        Ok(future::Loop::Break(NextBlocks::Revert))
-                    }
-                })
+                    Ok(future::Loop::Break(NextBlocks::Done))
+                }
+                ReconciliationStep::Revert(block) => {
+                    Ok(future::Loop::Break(NextBlocks::Revert(block)))
+                }
+            })
         }))
     }
 
@@ -347,7 +325,7 @@ where
                                 //
                                 // Note: We can safely unwrap the subgraph ptr here, because
                                 // if it was `None`, `is_on_main_chain` would be true.
-                                return Box::new(future::ok(ReconciliationStep::RevertBlock(
+                                return Box::new(future::ok(ReconciliationStep::Revert(
                                     subgraph_ptr.unwrap(),
                                 )));
                             }
@@ -539,82 +517,9 @@ where
                         // The subgraph ptr is not on the main chain.
                         // We will need to step back (possibly repeatedly) one block at a time
                         // until we are back on the main chain.
-                        Box::new(future::ok(ReconciliationStep::RevertBlock(subgraph_ptr)))
+                        Box::new(future::ok(ReconciliationStep::Revert(subgraph_ptr)))
                     }
                 }
-            }
-        }
-    }
-
-    /// Perform a reconciliation step.
-    fn do_step(
-        &self,
-        step: ReconciliationStep,
-    ) -> Box<dyn Future<Item = ReconciliationStepOutcome, Error = Error> + Send> {
-        let ctx = self.clone();
-
-        // We now know where to take the subgraph ptr.
-        match step {
-            ReconciliationStep::Retry => Box::new(future::ok(ReconciliationStepOutcome::MoreSteps)),
-            ReconciliationStep::Done => Box::new(future::ok(ReconciliationStepOutcome::Done)),
-            ReconciliationStep::RevertBlock(subgraph_ptr) => {
-                let metrics = self.metrics.clone();
-                let reverted_block_number = subgraph_ptr.number as f64;
-
-                // We would like to move to the parent of the current block.
-                // This means we need to revert this block.
-
-                // First, load the block in order to get the parent hash.
-                Box::new(
-                    self.eth_adapter
-                        .load_blocks(
-                            ctx.logger.clone(),
-                            ctx.chain_store.clone(),
-                            HashSet::from_iter(std::iter::once(subgraph_ptr.hash)),
-                        )
-                        .into_future()
-                        .map_err(|(e, _)| e)
-                        .and_then(move |(block, _)| {
-                            // There will be exactly one item in the stream.
-                            let block = block.unwrap();
-                            debug!(
-                                ctx.logger,
-                                "Reverting block to get back to main chain";
-                                "block_number" => format!("{}", block.number.unwrap()),
-                                "block_hash" => format!("{}", block.hash.unwrap())
-                            );
-
-                            // Produce pointer to parent block (using parent hash).
-                            let parent_ptr = block
-                                .parent_ptr()
-                                .expect("genesis block cannot be reverted");
-
-                            // Revert entity changes from this block, and update subgraph ptr.
-                            future::result(
-                                ctx.subgraph_store
-                                    .revert_block_operations(
-                                        ctx.subgraph_id.clone(),
-                                        subgraph_ptr,
-                                        parent_ptr,
-                                    )
-                                    .map_err(Error::from)
-                                    .map(|()| {
-                                        metrics.reverted_blocks.set(reverted_block_number);
-                                        // At this point, the loop repeats, and we try to move
-                                        // the subgraph ptr another step in the right direction.
-                                        ReconciliationStepOutcome::Revert
-                                    }),
-                            )
-                        }),
-                )
-            }
-            ReconciliationStep::ProcessDescendantBlocks(descendant_blocks, range_size) => {
-                // Advance the subgraph ptr to each of the specified descendants and yield each
-                // block with relevant events.
-                Box::new(future::ok(ReconciliationStepOutcome::YieldBlocks(
-                    descendant_blocks,
-                    range_size,
-                ))) as Box<dyn Future<Item = _, Error = _> + Send>
             }
         }
     }
@@ -654,14 +559,9 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
 
         let result = loop {
             match state {
-                // First time being polled
-                BlockStreamState::New => {
+                BlockStreamState::BeginReconciliation => {
                     // Start the reconciliation process by asking for blocks
-                    let next_blocks_future = self.ctx.next_blocks();
-                    state = BlockStreamState::Reconciliation(next_blocks_future);
-
-                    // Poll the next_blocks() future
-                    continue;
+                    state = BlockStreamState::Reconciliation(self.ctx.next_blocks());
                 }
 
                 // Waiting for the reconciliation to complete or yield blocks
@@ -712,9 +612,9 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                             continue;
                         }
 
-                        Ok(Async::Ready(NextBlocks::Revert)) => {
-                            state = BlockStreamState::Reconciliation(self.ctx.next_blocks());
-                            break Ok(Async::Ready(Some(BlockStreamEvent::Revert)));
+                        Ok(Async::Ready(NextBlocks::Revert(block))) => {
+                            state = BlockStreamState::BeginReconciliation;
+                            break Ok(Async::Ready(Some(BlockStreamEvent::Revert(block))));
                         }
 
                         Ok(Async::NotReady) => {
@@ -752,12 +652,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
 
                         // Done yielding blocks
                         None => {
-                            // Restart reconciliation until more blocks or done
-                            let next_blocks_future = self.ctx.next_blocks();
-                            state = BlockStreamState::Reconciliation(next_blocks_future);
-
-                            // Poll the next_blocks() future
-                            continue;
+                            state = BlockStreamState::BeginReconciliation;
                         }
                     }
                 }
@@ -765,10 +660,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                 // Pausing after an error, before looking for more blocks
                 BlockStreamState::RetryAfterDelay(mut delay) => match delay.poll() {
                     Ok(Async::Ready(())) | Err(_) => {
-                        state = BlockStreamState::Reconciliation(self.ctx.next_blocks());
-
-                        // Poll the next_blocks() future
-                        continue;
+                        state = BlockStreamState::BeginReconciliation;
                     }
 
                     Ok(Async::NotReady) => {
@@ -782,12 +674,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                     match self.chain_head_update_stream.poll() {
                         // Chain head was updated
                         Ok(Async::Ready(Some(()))) => {
-                            // Start reconciliation process
-                            let next_blocks_future = self.ctx.next_blocks();
-                            state = BlockStreamState::Reconciliation(next_blocks_future);
-
-                            // Poll the next_blocks() future
-                            continue;
+                            state = BlockStreamState::BeginReconciliation;
                         }
 
                         // Chain head update stream ended
