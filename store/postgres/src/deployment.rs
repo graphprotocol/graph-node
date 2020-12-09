@@ -200,6 +200,21 @@ pub fn schema(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<Schema, S
     Schema::parse(s.as_str(), id).map_err(|e| StoreError::Unknown(e))
 }
 
+pub fn manifest_info(
+    conn: &PgConnection,
+    id: SubgraphDeploymentId,
+) -> Result<(Schema, Option<String>, Option<String>), StoreError> {
+    use subgraph_manifest as sm;
+    let manifest_id = SubgraphManifestEntity::id(&id);
+    let (s, description, repository): (String, Option<String>, Option<String>) = sm::table
+        .select((sm::schema, sm::description, sm::repository))
+        .filter(sm::id.eq(manifest_id.as_str()))
+        .first(conn)?;
+    Schema::parse(s.as_str(), id)
+        .map_err(|e| StoreError::Unknown(e))
+        .map(|schema| (schema, description, repository))
+}
+
 pub fn network(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,

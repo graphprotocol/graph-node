@@ -158,6 +158,8 @@ pub(crate) struct SubgraphInfo {
     /// The block number at which this subgraph was grafted onto
     /// another one. We do not allow reverting past this block
     pub(crate) graft_block: Option<BlockNumber>,
+    pub(crate) description: Option<String>,
+    pub(crate) repository: Option<String>,
 }
 
 pub struct StoreInner {
@@ -703,7 +705,8 @@ impl Store {
             return Ok(info.clone());
         }
 
-        let input_schema = deployment::schema(&conn, subgraph_id.to_owned())?;
+        let (input_schema, description, repository) =
+            deployment::manifest_info(&conn, subgraph_id.to_owned())?;
         let network = deployment::network(&conn, &subgraph_id)?;
 
         let graft_block =
@@ -726,6 +729,8 @@ impl Store {
             ),
             network,
             graft_block,
+            description,
+            repository,
         };
 
         // Insert the schema into the cache.
