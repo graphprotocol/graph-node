@@ -4,7 +4,10 @@ use std::sync::RwLock;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 
 use graph::{
-    components::store::{self, EntityType},
+    components::{
+        server::index_node::VersionInfo,
+        store::{self, EntityType},
+    },
     constraint_violation,
     data::query::QueryTarget,
     data::subgraph::schema::MetadataType,
@@ -648,6 +651,48 @@ impl StoreTrait for ShardedStore {
         let (store, _) = self.store(&id)?;
         let info = store.subgraph_info(id)?;
         Ok(info.network)
+    }
+
+    fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
+        let primary = self.primary_conn()?;
+        if let Some((deployment_id, created_at)) = primary.version_info(version)? {
+            let id = SubgraphDeploymentId::new(deployment_id.clone())
+                .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
+            let (store, _) = self.store(&id)?;
+            let statuses = store.deployment_statuses(vec![deployment_id.clone()])?;
+            let status = statuses
+                .first()
+                .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;
+            let chain = status
+                .chains
+                .first()
+                .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
+            let latest_ethereum_block_number =
+                chain.latest_block.as_ref().map(|ref block| block.number());
+            let subgraph_info = store.subgraph_info(&id)?;
+            let total_ethereum_blocks_count = subgraph_info
+                .network
+                .as_ref()
+                .map(|network| primary.chain_head_block(network))
+                .transpose()?
+                .flatten();
+
+            let info = VersionInfo {
+                created_at,
+                deployment_id,
+                latest_ethereum_block_number,
+                total_ethereum_blocks_count,
+                synced: status.synced,
+                failed: status.health.is_failed(),
+                description: subgraph_info.description,
+                repository: subgraph_info.repository,
+                schema: subgraph_info.input,
+                network: subgraph_info.network,
+            };
+            Ok(info)
+        } else {
+            Err(StoreError::DeploymentNotFound(version.to_string()))
+        }
     }
 }
 

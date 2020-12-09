@@ -21,6 +21,8 @@ use crate::data::{store::*, subgraph::Source};
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 
+use crate::components::server::index_node::VersionInfo;
+
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
         env::var("SUBSCRIPTION_THROTTLE_INTERVAL")
@@ -1126,6 +1128,9 @@ pub trait Store: Send + Sync + 'static {
         &self,
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<Option<String>, StoreError>;
+
+    /// Support for the explorer-specific API
+    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
 }
 
 pub trait QueryStoreManager: Send + Sync + 'static {
@@ -1324,6 +1329,10 @@ impl Store for MockStore {
     }
 
     fn network_name(&self, _: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
+        unimplemented!()
+    }
+
+    fn version_info(&self, _: &str) -> Result<VersionInfo, StoreError> {
         unimplemented!()
     }
 }

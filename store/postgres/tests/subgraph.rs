@@ -410,3 +410,42 @@ fn status() {
         assert!(error.deterministic);
     })
 }
+
+#[test]
+fn version_info() {
+    const NAME: &str = "versionInfoSubgraph";
+
+    fn setup() -> SubgraphDeploymentId {
+        let id = SubgraphDeploymentId::new(NAME).unwrap();
+        remove_subgraphs();
+        create_test_subgraph(&id, SUBGRAPH_GQL);
+        id
+    }
+
+    run_test_sequentially(setup, |store, id| async move {
+        transact_entity_operations(&store, id.clone(), BLOCK_ONE.clone(), vec![]).unwrap();
+
+        let primary = primary_connection();
+        let (current, _) = primary.versions_for_subgraph(&*NAME).unwrap();
+        let current = current.unwrap();
+
+        let vi = store.version_info(&current).unwrap();
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.synced);
+        assert_eq!(false, vi.failed);
+        assert_eq!(
+            Some("manifest for versionInfoSubgraph"),
+            vi.description.as_deref()
+        );
+        assert_eq!(
+            Some("repo for versionInfoSubgraph"),
+            vi.repository.as_deref()
+        );
+        assert_eq!(&*NAME, vi.schema.id.as_str());
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+        // We don't have a data source on the manifest of the test subgraph
+        // and can therefore not find the network or the head block
+        assert_eq!(None, vi.total_ethereum_blocks_count);
+        assert_eq!(None, vi.network);
+    })
+}

@@ -27,6 +27,10 @@ impl EthereumBlock {
     pub fn to_ptr(self) -> EthereumBlockPointer {
         self.0
     }
+
+    pub fn number(&self) -> u64 {
+        self.0.number
+    }
 }
 
 impl IntoValue for EthereumBlock {

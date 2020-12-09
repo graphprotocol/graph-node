@@ -750,6 +750,28 @@ impl Connection {
         Ok(infos)
     }
 
+    pub fn chain_head_block(&self, network: &str) -> Result<Option<u64>, StoreError> {
+        use crate::db_schema::ethereum_networks as n;
+
+        let number: Option<i64> = n::table
+            .filter(n::name.eq(network))
+            .select(n::head_block_number)
+            .first::<Option<i64>>(&self.0)
+            .optional()?
+            .flatten();
+
+        number.map(|number| number.try_into()).transpose().map_err(
+            |e: std::num::TryFromIntError| {
+                constraint_violation!(
+                    "head block number for {} is {:?} which does not fit into a u32: {}",
+                    network,
+                    number,
+                    e.to_string()
+                )
+            },
+        )
+    }
+
     pub(crate) fn deployments_for_subgraph(&self, name: String) -> Result<Vec<String>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
@@ -809,6 +831,16 @@ impl Connection {
             .select(v::deployment)
             .filter(v::id.eq(name))
             .first::<String>(&self.0)
+            .optional()?)
+    }
+
+    pub fn version_info(&self, version: &str) -> Result<Option<(String, String)>, StoreError> {
+        use subgraph_version as v;
+
+        Ok(v::table
+            .select((v::deployment, sql("created_at::text")))
+            .filter(v::id.eq(version))
+            .first::<(String, String)>(&self.0)
             .optional()?)
     }
 }

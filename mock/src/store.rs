@@ -2,7 +2,7 @@ use mockall::predicate::*;
 use mockall::*;
 use std::collections::BTreeMap;
 
-use graph::components::store::StoredDynamicDataSource;
+use graph::components::{server::index_node::VersionInfo, store::StoredDynamicDataSource};
 use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
 use graph::{components::store::EntityType, data::subgraph::status};
@@ -223,6 +223,10 @@ impl Store for MockStore {
     }
 
     fn network_name(&self, _: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
+        unimplemented!()
+    }
+
+    fn version_info(&self, _: &str) -> Result<VersionInfo, StoreError> {
         unimplemented!()
     }
 }

@@ -163,6 +163,14 @@ impl SubgraphHealth {
             SubgraphHealth::Failed => "failed",
         }
     }
+
+    pub fn is_failed(&self) -> bool {
+        match self {
+            SubgraphHealth::Healthy => false,
+            SubgraphHealth::Unhealthy => true,
+            SubgraphHealth::Failed => true,
+        }
+    }
 }
 
 impl FromStr for SubgraphHealth {

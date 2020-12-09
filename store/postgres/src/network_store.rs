@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use graph::{
-    components::store::{EntityType, QueryStoreManager, StoredDynamicDataSource},
+    components::{
+        server::index_node::VersionInfo,
+        store::{EntityType, QueryStoreManager, StoredDynamicDataSource},
+    },
     data::subgraph::schema::SubgraphError,
     data::subgraph::status,
     prelude::{
@@ -261,6 +264,10 @@ impl StoreTrait for NetworkStore {
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<Option<String>, StoreError> {
         self.store.network_name(subgraph_id)
+    }
+
+    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
+        self.store.version_info(version_id)
     }
 }
 
