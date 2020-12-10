@@ -107,6 +107,9 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
     use dynamic_ethereum_contract_data_source as decds;
     use ethereum_contract_source as ecs;
 
+    // Query to load the data sources. Ordering by `vid` makes sure they are in insertion order
+    // which is important for the correctness of reverts and the execution order of triggers.
+    // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     let dds: Vec<_> = decds::table
         .inner_join(ecs::table.on(decds::source.eq(ecs::id)))
         .filter(decds::deployment.eq(id))
@@ -117,6 +120,7 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
             (ecs::address, ecs::abi, ecs::start_block),
             decds::block_range,
         ))
+        .order_by(decds::vid)
         .load::<(
             String,
             String,
