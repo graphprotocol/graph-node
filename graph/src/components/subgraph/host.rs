@@ -77,6 +77,10 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError>;
+
+    /// Block number in which this host was created.
+    /// Returns `None` for static data sources.
+    fn creation_block_number(&self) -> Option<u64>;
 }
 
 pub struct HostMetrics {

@@ -14,6 +14,7 @@ pub struct DataSourceTemplateInfo {
     pub template: DataSourceTemplate,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,
+    pub creation_block: u64,
 }
 
 #[derive(Debug)]

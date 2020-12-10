@@ -556,6 +556,7 @@ impl HostExports {
         name: String,
         params: Vec<String>,
         context: Option<DataSourceContext>,
+        creation_block: u64,
     ) -> Result<(), anyhow::Error> {
         info!(
             logger,
@@ -591,6 +592,7 @@ impl HostExports {
             template,
             params,
             context,
+            creation_block,
         });
 
         Ok(())
