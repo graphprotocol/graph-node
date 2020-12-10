@@ -20,7 +20,7 @@ use web3::types::{Address, H256};
 use crate::components::link_resolver::LinkResolver;
 use crate::components::store::{Store, StoreError};
 use crate::components::subgraph::DataSourceTemplateInfo;
-use crate::data::graphql::{TryFromValue, ValueMap};
+use crate::data::graphql::TryFromValue;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
@@ -741,6 +741,8 @@ pub struct BaseDataSource<M> {
     pub source: Source,
     pub mapping: M,
     pub context: Option<DataSourceContext>,
+    #[serde(skip)]
+    pub creation_block: Option<u64>,
 }
 
 pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping>;
@@ -759,6 +761,7 @@ impl UnresolvedDataSource {
             source,
             mapping,
             context,
+            creation_block,
         } = self;
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
@@ -772,6 +775,7 @@ impl UnresolvedDataSource {
             source,
             mapping,
             context,
+            creation_block,
         })
     }
 }
@@ -785,6 +789,7 @@ impl TryFrom<DataSourceTemplateInfo> for DataSource {
             template,
             params,
             context,
+            creation_block,
         } = info;
 
         // Obtain the address from the parameters
@@ -816,30 +821,7 @@ impl TryFrom<DataSourceTemplateInfo> for DataSource {
             },
             mapping: template.mapping,
             context,
-        })
-    }
-}
-
-impl TryFromValue for UnresolvedDataSource {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        let map = match value {
-            q::Value::Object(map) => Ok(map),
-            _ => Err(anyhow!(
-                "Cannot parse value into a data source entity: {:?}",
-                value
-            )),
-        }?;
-
-        let source_entity: EthereumContractSourceEntity = map.get_required("source")?;
-        let mapping_entity: EthereumContractMappingEntity = map.get_required("mapping")?;
-
-        Ok(Self {
-            kind: map.get_required("kind")?,
-            name: map.get_required("name")?,
-            network: map.get_optional("network")?,
-            source: source_entity.into(),
-            mapping: mapping_entity.into(),
-            context: map.get_optional("context")?,
+            creation_block: Some(creation_block),
         })
     }
 }

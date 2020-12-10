@@ -50,6 +50,7 @@ where
                 name,
                 source,
                 context,
+                creation_block,
             } = stored;
 
             let template = template_map.get(name.as_str()).ok_or_else(|| {
@@ -70,6 +71,7 @@ where
                 source,
                 mapping: template.mapping.clone(),
                 context,
+                creation_block,
             };
             data_sources.push(ds);
         }

@@ -582,6 +582,7 @@ impl<'a, 'b, 'c>
             source,
             mapping,
             context,
+            creation_block: _,
         } = data_source;
 
         Self {

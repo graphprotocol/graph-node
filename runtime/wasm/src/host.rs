@@ -43,6 +43,7 @@ struct RuntimeHostConfig {
     data_source_network: String,
     data_source_name: String,
     data_source_context: Option<DataSourceContext>,
+    data_source_creation_block: Option<u64>,
     contract: Source,
     templates: Arc<Vec<DataSourceTemplate>>,
 }
@@ -148,6 +149,7 @@ where
                 data_source_network: network_name,
                 data_source_name: data_source.name,
                 data_source_context: data_source.context,
+                data_source_creation_block: data_source.creation_block,
                 contract: data_source.source,
                 templates,
             },
@@ -167,6 +169,7 @@ pub struct RuntimeHost {
     data_source_event_handlers: Vec<MappingEventHandler>,
     data_source_call_handlers: Vec<MappingCallHandler>,
     data_source_block_handlers: Vec<MappingBlockHandler>,
+    data_source_creation_block: Option<u64>,
     mapping_request_sender: Sender<MappingRequest>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
@@ -235,6 +238,7 @@ impl RuntimeHost {
             data_source_event_handlers: config.mapping.event_handlers,
             data_source_call_handlers: config.mapping.call_handlers,
             data_source_block_handlers: config.mapping.block_handlers,
+            data_source_creation_block: config.data_source_creation_block,
             mapping_request_sender,
             host_exports,
             metrics,
@@ -715,6 +719,10 @@ impl RuntimeHostTrait for RuntimeHost {
         .err_into()
         .await
     }
+
+    fn creation_block_number(&self) -> Option<u64> {
+        self.data_source_creation_block
+    }
 }
 
 impl PartialEq for RuntimeHost {
@@ -727,6 +735,9 @@ impl PartialEq for RuntimeHost {
             data_source_call_handlers,
             data_source_block_handlers,
             host_exports,
+
+            // Data sources created at different blocks can be considered duplicated.
+            data_source_creation_block: _,
             mapping_request_sender: _,
             metrics: _,
         } = self;

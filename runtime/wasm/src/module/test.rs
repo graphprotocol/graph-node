@@ -103,6 +103,7 @@ fn mock_data_source(path: &str) -> DataSource {
             runtime: Arc::new(runtime.clone()),
         },
         context: None,
+        creation_block: None,
     }
 }
 
@@ -163,9 +164,12 @@ fn mock_context(
     data_source: DataSource,
     store: Arc<impl Store + EthereumCallCache>,
 ) -> MappingContext {
+    let mut block = LightEthereumBlock::default();
+    block.hash = Some(Default::default());
+    block.number = Some(0.into());
     MappingContext {
         logger: test_store::LOGGER.clone(),
-        block: Default::default(),
+        block: Arc::new(block),
         host_exports: Arc::new(mock_host_exports(subgraph_id, data_source, store.clone())),
         state: BlockState::new(store, Default::default()),
         proof_of_indexing: None,

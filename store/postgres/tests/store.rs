@@ -1189,6 +1189,7 @@ fn mock_data_source() -> DataSource {
             runtime: Arc::new(Vec::new()),
         },
         context: None,
+        creation_block: None,
     }
 }
 

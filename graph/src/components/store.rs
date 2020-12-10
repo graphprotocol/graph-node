@@ -923,6 +923,7 @@ pub struct StoredDynamicDataSource {
     pub name: String,
     pub source: Source,
     pub context: Option<String>,
+    pub creation_block: Option<u64>,
 }
 
 /// Common trait for store implementations.

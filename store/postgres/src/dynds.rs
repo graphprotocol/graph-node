@@ -1,5 +1,7 @@
 //! SQL queries to load dynamic data sources
 
+use std::ops::Bound;
+
 use diesel::pg::PgConnection;
 use diesel::prelude::{ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
 
@@ -9,6 +11,8 @@ use graph::{
     data::subgraph::Source,
     prelude::{bigdecimal::ToPrimitive, web3::types::H160, BigDecimal, StoreError},
 };
+
+use crate::block_range::first_block_in_range;
 
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
@@ -111,21 +115,25 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
             decds::name,
             decds::context,
             (ecs::address, ecs::abi, ecs::start_block),
+            decds::block_range,
         ))
         .load::<(
             String,
             String,
             Option<String>,
             (Option<Vec<u8>>, String, Option<BigDecimal>),
+            (Bound<i32>, Bound<i32>),
         )>(conn)?;
 
     let mut data_sources = Vec::new();
-    for (ds_id, name, context, source) in dds.into_iter() {
+    for (ds_id, name, context, source, range) in dds.into_iter() {
         let source = to_source(id, &ds_id, source)?;
+        let creation_block = first_block_in_range(&range);
         let data_source = StoredDynamicDataSource {
             name,
             source,
             context,
+            creation_block: creation_block.map(|n| n as u64),
         };
         data_sources.push(data_source);
     }

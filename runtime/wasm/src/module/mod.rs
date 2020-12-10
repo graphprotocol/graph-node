@@ -1230,6 +1230,7 @@ impl WasmInstanceContext {
             name,
             params,
             None,
+            self.ctx.block.block_ptr().number,
         )?;
         Ok(())
     }
@@ -1250,6 +1251,7 @@ impl WasmInstanceContext {
             name,
             params,
             Some(context.into()),
+            self.ctx.block.block_ptr().number,
         )?;
         Ok(())
     }
