@@ -38,7 +38,7 @@ table! {
         graft_block_hash -> Nullable<Binary>,
         graft_block_number -> Nullable<Numeric>,
         ethereum_head_block_hash -> Nullable<Binary>,
-        ethereum_head_block_number -> Nullable<Numeric>,
+        ethereum_head_block_number -> Nullable<BigInt>,
         network -> Text,
         node_id -> Nullable<Text>,
         // We don't map block_range
@@ -75,7 +75,7 @@ struct Detail {
     graft_block_hash: Option<Bytes>,
     graft_block_number: Option<BigDecimal>,
     ethereum_head_block_hash: Option<Bytes>,
-    ethereum_head_block_number: Option<BigDecimal>,
+    ethereum_head_block_number: Option<i64>,
     network: String,
     node_id: Option<String>,
 }
@@ -188,7 +188,7 @@ impl TryFrom<DetailAndError> for status::Info {
             &id,
             "ethereum_head_block",
             ethereum_head_block_hash,
-            ethereum_head_block_number,
+            ethereum_head_block_number.map(|n| BigDecimal::from(n)),
         )?;
         let earliest_block = block(
             &id,
