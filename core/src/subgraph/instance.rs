@@ -278,6 +278,12 @@ where
             }
         }
 
+        // `hosts` will remain ordered by the creation block.
+        // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+        assert!(
+            self.hosts.last().and_then(|h| h.creation_block_number()) <= data_source.creation_block
+        );
+
         let host =
             Arc::new(self.new_host(logger.clone(), data_source, templates, metrics.clone())?);
 
