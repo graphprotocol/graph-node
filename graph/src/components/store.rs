@@ -1131,6 +1131,15 @@ pub trait Store: Send + Sync + 'static {
 
     /// Support for the explorer-specific API
     fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
+
+    /// Support for the explorer-specific API; note that `subgraph_id` must be
+    /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.
+    /// The return values are the ids of the `subgraphs.subgraph_version` for
+    /// the current and pending versions of the subgraph
+    fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError>;
 }
 
 pub trait QueryStoreManager: Send + Sync + 'static {
@@ -1333,6 +1342,13 @@ impl Store for MockStore {
     }
 
     fn version_info(&self, _: &str) -> Result<VersionInfo, StoreError> {
+        unimplemented!()
+    }
+
+    fn versions_for_subgraph_id(
+        &self,
+        _: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
         unimplemented!()
     }
 }

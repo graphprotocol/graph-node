@@ -843,4 +843,18 @@ impl Connection {
             .first::<(String, String)>(&self.0)
             .optional()?)
     }
+
+    pub fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        use subgraph as s;
+
+        Ok(s::table
+            .select((s::current_version.nullable(), s::pending_version.nullable()))
+            .filter(s::id.eq(subgraph_id))
+            .first::<(Option<String>, Option<String>)>(&self.0)
+            .optional()?
+            .unwrap_or((None, None)))
+    }
 }

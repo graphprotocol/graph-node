@@ -269,6 +269,13 @@ impl StoreTrait for NetworkStore {
     fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
         self.store.version_info(version_id)
     }
+
+    fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        self.store.versions_for_subgraph_id(subgraph_id)
+    }
 }
 
 impl QueryStoreManager for NetworkStore {

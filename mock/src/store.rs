@@ -229,4 +229,11 @@ impl Store for MockStore {
     fn version_info(&self, _: &str) -> Result<VersionInfo, StoreError> {
         unimplemented!()
     }
+
+    fn versions_for_subgraph_id(
+        &self,
+        _: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        unimplemented!()
+    }
 }

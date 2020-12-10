@@ -694,6 +694,15 @@ impl StoreTrait for ShardedStore {
             Err(StoreError::DeploymentNotFound(version.to_string()))
         }
     }
+
+    fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        let primary = self.primary_conn()?;
+
+        primary.versions_for_subgraph_id(subgraph_id)
+    }
 }
 
 impl EthereumCallCache for ShardedStore {
