@@ -112,7 +112,6 @@ impl ShardedStore {
 
     // Only needed for tests
     #[cfg(debug_assertions)]
-    #[allow(dead_code)]
     pub(crate) fn clear_caches(&self) {
         for store in self.stores.values() {
             store.layout_cache.lock().unwrap().clear();

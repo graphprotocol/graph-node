@@ -95,8 +95,6 @@ impl StoreResolver {
         bc: BlockConstraint,
         subgraph: SubgraphDeploymentId,
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {
-        // Relational storage (most subgraphs); block constraints fully
-        // supported
         match bc {
             BlockConstraint::Number(number) => store
                 .block_ptr(subgraph.clone())

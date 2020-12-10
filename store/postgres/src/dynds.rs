@@ -100,7 +100,6 @@ fn to_source(
     })
 }
 
-#[allow(dead_code)]
 pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
     use ethereum_contract_source as ecs;
