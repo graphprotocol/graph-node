@@ -45,7 +45,7 @@ You can replace this with anything else in `docker-compose.yaml`.
 >
 > ```
 > CONTAINER_ID=$(docker container ls | grep graph-node | cut -d' ' -f1)
-> docker exec $CONTAINER_ID /bin/bash -c 'ip route | awk \'/^default via /{print $3}\''
+> docker exec $CONTAINER_ID /bin/bash -c 'apt install -y iproute2 && ip route' | awk '/^default via /{print $3}'
 > ```
 >
 > This will print the host's IP address. Then, put it into `docker-compose.yml`:
