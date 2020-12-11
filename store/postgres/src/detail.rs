@@ -148,7 +148,7 @@ impl TryFrom<ErrorDetail> for SubgraphError {
         // has a hash. Conversely, it is also possible for an error to not have a
         // hash. In both cases, use a block pointer of `None`
         let block_ptr = match (block_number, block_hash) {
-            (Some(number), Some(hash)) => EthereumBlockPointer::from(number as u64, hash),
+            (Some(number), Some(hash)) => Some(EthereumBlockPointer::from((hash, number as u64))),
             _ => None,
         };
         let subgraph_id = SubgraphDeploymentId::new(subgraph_id).map_err(|id| {
