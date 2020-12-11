@@ -101,6 +101,7 @@ type SubgraphManifest @entity {
     specVersion: String!
     description: String
     repository: String
+    features: [String!]!
     schema: String!
     dataSources: [EthereumContractDataSource!]!
     templates: [EthereumContractDataSourceTemplate!]
