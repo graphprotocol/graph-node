@@ -18,14 +18,6 @@ pub struct Explorer<S> {
     store: Arc<S>,
 }
 
-impl<S> Clone for Explorer<S> {
-    fn clone(&self) -> Self {
-        Self {
-            store: self.store.clone(),
-        }
-    }
-}
-
 impl<S> Explorer<S>
 where
     S: Store,
