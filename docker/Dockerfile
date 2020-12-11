@@ -56,7 +56,7 @@ EXPOSE 8000
 EXPOSE 8001
 # JSON-RPC port
 EXPOSE 8020
-# HTTP-PLAYGROUND port
+# Indexing status port
 EXPOSE 8030
 
 RUN apt-get update \
