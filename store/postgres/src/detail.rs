@@ -6,7 +6,9 @@ use diesel::prelude::{
 };
 use graph::{
     data::subgraph::schema::SubgraphError,
-    prelude::{bigdecimal::ToPrimitive, BigDecimal, StoreError, SubgraphDeploymentId},
+    prelude::{
+        bigdecimal::ToPrimitive, BigDecimal, EthereumBlockPointer, StoreError, SubgraphDeploymentId,
+    },
 };
 use graph::{
     data::subgraph::{schema::SubgraphHealth, status},
@@ -139,9 +141,16 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             deterministic,
             block_range,
         } = value;
-        let block_number = crate::block_range::first_block_in_range(&block_range).map(|n| n.into());
-        let block_ptr = block(&subgraph_id, "fatal_error", block_hash, block_number)?
-            .map(|block| block.to_ptr());
+        let block_number = crate::block_range::first_block_in_range(&block_range);
+        let block_hash = block_hash.map(|hash| H256::from_slice(hash.as_slice()));
+        // In existing databases, we have errors that have a `block_range` of
+        // `UNVERSIONED_RANGE`, which leads to `None` as the block number, but
+        // has a hash. Conversely, it is also possible for an error to not have a
+        // hash. In both cases, use a block pointer of `None`
+        let block_ptr = match (block_number, block_hash) {
+            (Some(number), Some(hash)) => EthereumBlockPointer::from(number as u64, hash),
+            _ => None,
+        };
         let subgraph_id = SubgraphDeploymentId::new(subgraph_id).map_err(|id| {
             StoreError::ConstraintViolation(format!("invalid subgraph id `{}` in fatal error", id))
         })?;
