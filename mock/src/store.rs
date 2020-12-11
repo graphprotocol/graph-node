@@ -1,6 +1,6 @@
 use mockall::predicate::*;
 use mockall::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use graph::data::subgraph::status;
 use graph::prelude::*;
@@ -264,8 +264,8 @@ pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId
 
             let mut schema = Schema::parse(USERS_SCHEMA, subgraph_id_for_api_schema.clone())
                 .expect("failed to parse users schema");
-            schema.document =
-                api_schema(&schema.document).expect("failed to generate users API schema");
+            schema.document = api_schema(&schema.document, &BTreeSet::new())
+                .expect("failed to generate users API schema");
             Ok(Arc::new(ApiSchema::from_api_schema(schema).unwrap()))
         });
 

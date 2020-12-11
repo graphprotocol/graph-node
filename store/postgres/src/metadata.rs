@@ -9,12 +9,6 @@ use diesel::{
     dsl::{delete, exists, insert_into, select, sql, update},
     sql_types::Integer,
 };
-use graph::prelude::{
-    anyhow, bigdecimal::ToPrimitive, entity, format_err, hex, web3::types::H256, BigDecimal,
-    BlockNumber, DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer,
-    MetadataOperation, NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity,
-    SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
-};
 use graph::{
     data::subgraph::schema::{
         generate_entity_id, SubgraphDeploymentAssignmentEntity, SubgraphError,
@@ -22,9 +16,21 @@ use graph::{
     },
     prelude::BLOCK_NUMBER_MAX,
 };
+use graph::{
+    data::subgraph::SubgraphFeature,
+    prelude::{
+        anyhow, bigdecimal::ToPrimitive, entity, format_err, hex, web3::types::H256, BigDecimal,
+        BlockNumber, DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer,
+        MetadataOperation, NodeId, Schema, StoreError, StoreEvent, SubgraphDeploymentEntity,
+        SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode, TypedEntity,
+    },
+};
 use stable_hash::crypto::SetHasher;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{convert::TryFrom, ops::Bound};
+use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
+use std::{
+    str::FromStr,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE};
 
@@ -138,6 +144,7 @@ table! {
         spec_version -> Text,
         description -> Nullable<Text>,
         repository -> Nullable<Text>,
+        features -> Array<Text>,
         schema -> Text,
         data_sources -> Array<Text>,
         templates -> Nullable<Array<Text>>,
@@ -243,6 +250,28 @@ pub fn subgraph_network(
         .transpose()
         .map(|x| x.flatten())
         .map_err(|e| e.into())
+}
+
+pub fn subgraph_features(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
+    use subgraph_manifest as sm;
+
+    if id.is_meta() {
+        return Ok(BTreeSet::new());
+    }
+
+    let manifest_id = SubgraphManifestEntity::id(&id);
+    let features: Vec<String> = sm::table
+        .select(sm::features)
+        .filter(sm::id.eq(manifest_id.as_str()))
+        .first(conn)
+        .unwrap();
+    features
+        .iter()
+        .map(|f| SubgraphFeature::from_str(f).map_err(StoreError::from))
+        .collect()
 }
 
 fn block_ptr_store_event(id: &SubgraphDeploymentId) -> StoreEvent {
