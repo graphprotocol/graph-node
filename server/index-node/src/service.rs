@@ -22,7 +22,6 @@ pub struct IndexNodeService<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
-    node_id: NodeId,
     explorer: Arc<Explorer<S>>,
 }
 
@@ -32,7 +31,6 @@ impl<Q, S> Clone for IndexNodeService<Q, S> {
             logger: self.logger.clone(),
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
-            node_id: self.node_id.clone(),
             explorer: self.explorer.clone(),
         }
     }
@@ -46,14 +44,13 @@ where
     S: Store,
 {
     /// Creates a new GraphQL service.
-    pub fn new(logger: Logger, graphql_runner: Arc<Q>, store: Arc<S>, node_id: NodeId) -> Self {
+    pub fn new(logger: Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         let explorer = Arc::new(Explorer::new(store.clone()));
 
         IndexNodeService {
             logger,
             graphql_runner,
             store,
-            node_id,
             explorer,
         }
     }

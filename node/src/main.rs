@@ -272,7 +272,6 @@ async fn main() {
                 &logger_factory,
                 graphql_runner.clone(),
                 store_builder.store(),
-                node_id.clone(),
             );
 
             // Spawn Ethereum network indexers for all networks that are to be indexed

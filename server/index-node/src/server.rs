@@ -25,17 +25,11 @@ pub struct IndexNodeServer<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
-    node_id: NodeId,
 }
 
 impl<Q, S> IndexNodeServer<Q, S> {
     /// Creates a new GraphQL server.
-    pub fn new(
-        logger_factory: &LoggerFactory,
-        graphql_runner: Arc<Q>,
-        store: Arc<S>,
-        node_id: NodeId,
-    ) -> Self {
+    pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         let logger = logger_factory.component_logger(
             "IndexNodeServer",
             Some(ComponentLoggerConfig {
@@ -49,7 +43,6 @@ impl<Q, S> IndexNodeServer<Q, S> {
             logger,
             graphql_runner,
             store,
-            node_id,
         }
     }
 }
@@ -79,12 +72,10 @@ where
         let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
         let store = self.store.clone();
-        let node_id = self.node_id.clone();
         let service = IndexNodeService::new(
             logger_for_service.clone(),
             graphql_runner.clone(),
             store.clone(),
-            node_id.clone(),
         );
         let new_service =
             make_service_fn(move |_| futures03::future::ok::<_, Error>(service.clone()));
