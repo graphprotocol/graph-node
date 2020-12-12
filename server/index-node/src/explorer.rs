@@ -53,9 +53,9 @@ where
     pub fn new(store: Arc<S>) -> Self {
         Self {
             store,
-            versions: Cache::new(),
-            version_infos: Cache::new(),
-            entity_counts: Cache::new(),
+            versions: Cache::new(*TTL),
+            version_infos: Cache::new(*TTL),
+            entity_counts: Cache::new(*TTL),
         }
     }
 
@@ -184,6 +184,10 @@ struct CacheEntry<T> {
     expires: Instant,
 }
 
+/// A cache that keeps entries live for a fixed amount of time. It is assumed
+/// that all that data that could possibly wind up in the cache is very small,
+/// and that expired entries are replaced by an updated entry whenever expiry
+/// is detected. In other words, the cache does not ever remove entries.
 #[derive(Debug)]
 struct Cache<T> {
     ttl: Duration,
@@ -191,27 +195,28 @@ struct Cache<T> {
 }
 
 impl<T> Cache<T> {
-    fn new() -> Self {
+    fn new(ttl: Duration) -> Self {
         Self {
-            ttl: *TTL,
+            ttl,
             entries: RwLock::new(HashMap::new()),
         }
     }
 
+    /// Return the entry for `key` if it exists and is not expired yet, and
+    /// return `None` otherwise. Note that expired entries stay in the cache
+    /// as it is assumed that, after returning `None`, the caller will
+    /// immediately overwrite that entry with a call to `set`
     fn get(&self, key: &str) -> Option<Arc<T>> {
         match self.entries.read().unwrap().get(key) {
-            Some(CacheEntry { value, expires }) => {
-                let now = Instant::now();
-                if *expires < now {
-                    Some(value.clone())
-                } else {
-                    None
-                }
+            Some(CacheEntry { value, expires }) if *expires >= Instant::now() => {
+                Some(value.clone())
             }
-            None => None,
+            _ => None,
         }
     }
 
+    /// Associate `key` with `value` in the cache. The `value` will be
+    /// valid for `self.ttl` duration
     fn set(&self, key: String, value: Arc<T>) {
         let entry = CacheEntry {
             value,
@@ -219,4 +224,14 @@ impl<T> Cache<T> {
         };
         self.entries.write().unwrap().insert(key, entry);
     }
+}
+
+#[test]
+fn cache() {
+    const KEY: &str = "one";
+    let cache = Cache::<String>::new(Duration::from_millis(10));
+    cache.set(KEY.to_string(), Arc::new("value".to_string()));
+    assert!(cache.get(KEY).is_some());
+    std::thread::sleep(Duration::from_millis(15));
+    assert!(cache.get(KEY).is_none())
 }
