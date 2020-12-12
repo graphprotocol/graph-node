@@ -438,6 +438,7 @@ pub struct SubgraphManifestEntity {
     spec_version: String,
     description: Option<String>,
     repository: Option<String>,
+    features: Vec<String>,
     schema: String,
     data_sources: Vec<EthereumContractDataSourceEntity>,
     templates: Vec<EthereumContractDataSourceTemplateEntity>,
@@ -454,17 +455,26 @@ impl SubgraphManifestEntity {
     }
 
     fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+        let SubgraphManifestEntity {
+            spec_version,
+            description,
+            repository,
+            features,
+            schema,
+            data_sources,
+            templates,
+        } = self;
+
         let mut ops = vec![];
 
         let mut data_source_ids: Vec<Value> = vec![];
-        for (i, data_source) in self.data_sources.into_iter().enumerate() {
+        for (i, data_source) in data_sources.into_iter().enumerate() {
             let data_source_id = format!("{}-data-source-{}", id, i);
             ops.extend(data_source.write_operations(&data_source_id));
             data_source_ids.push(data_source_id.into());
         }
 
-        let template_ids: Vec<Value> = self
-            .templates
+        let template_ids: Vec<Value> = templates
             .into_iter()
             .enumerate()
             .map(|(i, template)| {
@@ -476,10 +486,11 @@ impl SubgraphManifestEntity {
 
         let entity = entity! {
             id: id,
-            specVersion: self.spec_version,
-            description: self.description,
-            repository: self.repository,
-            schema: self.schema,
+            specVersion: spec_version,
+            description: description,
+            repository: repository,
+            features: features,
+            schema: schema,
             dataSources: data_source_ids,
             templates: template_ids,
         };
@@ -496,6 +507,7 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
             spec_version: manifest.spec_version.clone(),
             description: manifest.description.clone(),
             repository: manifest.repository.clone(),
+            features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
             data_sources: manifest.data_sources.iter().map(Into::into).collect(),
             templates: manifest

@@ -1305,3 +1305,22 @@ impl DeploymentState {
 pub enum SubgraphFeature {
     nonFatalErrors,
 }
+
+impl std::fmt::Display for SubgraphFeature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SubgraphFeature::nonFatalErrors => write!(f, "nonFatalErrors"),
+        }
+    }
+}
+
+impl FromStr for SubgraphFeature {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        match s {
+            "nonFatalErrors" => Ok(SubgraphFeature::nonFatalErrors),
+            _ => Err(anyhow::anyhow!("invalid subgraph feature {}", s)),
+        }
+    }
+}

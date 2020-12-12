@@ -706,10 +706,12 @@ impl Store {
         let graft_block =
             metadata::deployment_graft(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
 
+        let features = metadata::subgraph_features(&conn, subgraph_id)?;
+
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
-        schema.document = api_schema(&schema.document)?;
+        schema.document = api_schema(&schema.document, &features)?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
         let info = SubgraphInfo {

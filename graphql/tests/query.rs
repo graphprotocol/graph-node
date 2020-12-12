@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate pretty_assertions;
 
+use graph::prelude::SubgraphDeploymentStore;
 use graphql_parser::{query as q, Pos};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
@@ -13,7 +14,7 @@ use graph::{
     data::{query::CacheStatus, subgraph::SubgraphFeature},
     prelude::{
         async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
-        o, serde_json, slog, tokio, ApiSchema, DeploymentState, Entity, EntityKey, EntityOperation,
+        o, serde_json, slog, tokio, DeploymentState, Entity, EntityKey, EntityOperation,
         EthereumBlockPointer, FutureExtension, GraphQlRunner as _, Logger, NodeId, Query,
         QueryError, QueryExecutionError, QueryLoadManager, QueryResult, QueryVariables, Schema,
         Store, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphName,
@@ -28,13 +29,13 @@ use test_store::{
 };
 
 fn setup() -> SubgraphDeploymentId {
-    setup_with_features(BTreeSet::new())
+    setup_with_features("graphqlTestsQuery", BTreeSet::new())
 }
 
-fn setup_with_features(features: BTreeSet<SubgraphFeature>) -> SubgraphDeploymentId {
+fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> SubgraphDeploymentId {
     use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
 
-    let id = SubgraphDeploymentId::new("graphqlTestsQuery").unwrap();
+    let id = SubgraphDeploymentId::new(id).unwrap();
 
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     block_store::remove();
@@ -94,13 +95,6 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
         id,
     )
     .expect("Test schema invalid")
-}
-
-fn api_test_schema(id: &SubgraphDeploymentId) -> ApiSchema {
-    let mut schema = test_schema(id.clone());
-    schema.document = api_schema(&schema.document).expect("Failed to derive API schema");
-    schema.add_subgraph_id_directives(id.clone());
-    ApiSchema::from_api_schema(schema).unwrap()
 }
 
 fn insert_test_entities(store: &impl Store, manifest: SubgraphManifest) {
@@ -250,7 +244,8 @@ async fn execute_query_document_with_variables(
         STORE.clone(),
         LOAD_MANAGER.clone(),
     ));
-    let query = Query::new(Arc::new(api_test_schema(id)), query, variables, None);
+    let schema = STORE.api_schema(id).unwrap();
+    let query = Query::new(schema, query, variables, None);
     let state = DeploymentState {
         id: query.schema.id().clone(),
         reorg_count: 0,
@@ -274,7 +269,8 @@ async fn execute_query_document_with_state(
         STORE.clone(),
         LOAD_MANAGER.clone(),
     ));
-    let query = Query::new(Arc::new(api_test_schema(id)), query, None, None);
+    let schema = STORE.api_schema(id).unwrap();
+    let query = Query::new(schema, query, None, None);
 
     graph::prelude::futures03::executor::block_on(
         runner.run_query_with_complexity(query, state, None, None, None, None, false),
@@ -786,8 +782,9 @@ fn include_directive_works_with_query_variables() {
 #[test]
 fn query_complexity() {
     run_test_sequentially(setup, |_, id| async move {
+        let schema = STORE.api_schema(&id).unwrap();
         let query = Query::new(
-            Arc::new(api_test_schema(&id)),
+            schema.clone(),
             graphql_parser::parse_query(
                 "query {
                 musicians(orderBy: id) {
@@ -817,7 +814,7 @@ fn query_complexity() {
         assert!(!result.has_errors());
 
         let query = Query::new(
-            Arc::new(api_test_schema(&id)),
+            schema,
             graphql_parser::parse_query(
                 "query {
                 musicians(orderBy: id) {
@@ -860,9 +857,10 @@ fn query_complexity_subscriptions() {
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE.clone().query_store(true);
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
+        let schema = STORE.api_schema(&id).unwrap();
 
         let query = Query::new(
-            Arc::new(api_test_schema(&id)),
+            schema.clone(),
             graphql_parser::parse_query(
                 "subscription {
                 musicians(orderBy: id) {
@@ -897,7 +895,7 @@ fn query_complexity_subscriptions() {
         let _ignore_stream = execute_subscription(Subscription { query }, options).unwrap();
 
         let query = Query::new(
-            Arc::new(api_test_schema(&id)),
+            schema,
             graphql_parser::parse_query(
                 "subscription {
                 musicians(orderBy: id) {
@@ -950,8 +948,9 @@ fn query_complexity_subscriptions() {
 #[test]
 fn instant_timeout() {
     run_test_sequentially(setup, |_, id| async move {
+        let schema = STORE.api_schema(&id).unwrap();
         let query = Query::new(
-            Arc::new(api_test_schema(&id)),
+            schema,
             graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
             None,
             None,
@@ -1269,9 +1268,10 @@ fn subscription_gets_result_even_without_events() {
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE.clone().query_store(true);
         let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
+        let schema = STORE.api_schema(&id).unwrap();
 
         let query = Query::new(
-            Arc::new(api_test_schema(&id)),
+            schema,
             graphql_parser::parse_query(
                 "subscription {
               musicians(orderBy: id, first: 2) {
@@ -1648,7 +1648,12 @@ fn non_fatal_errors() {
     use test_store::block_store::BLOCK_TWO;
 
     run_test_sequentially(
-        || setup_with_features(BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors))),
+        || {
+            setup_with_features(
+                "testNonFatalErrors",
+                BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
+            )
+        },
         |_, id| async move {
             let err = SubgraphError {
                 subgraph_id: id.clone(),
