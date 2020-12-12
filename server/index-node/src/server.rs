@@ -80,14 +80,14 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let store = self.store.clone();
         let node_id = self.node_id.clone();
-        let new_service = make_service_fn(move |_| {
-            futures03::future::ok::<_, Error>(IndexNodeService::new(
-                logger_for_service.clone(),
-                graphql_runner.clone(),
-                store.clone(),
-                node_id.clone(),
-            ))
-        });
+        let service = IndexNodeService::new(
+            logger_for_service.clone(),
+            graphql_runner.clone(),
+            store.clone(),
+            node_id.clone(),
+        );
+        let new_service =
+            make_service_fn(move |_| futures03::future::ok::<_, Error>(service.clone()));
 
         // Create a task to run the server and handle HTTP requests
         let task = Server::try_bind(&addr.into())?
