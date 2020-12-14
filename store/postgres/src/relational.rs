@@ -297,7 +297,8 @@ impl Layout {
                 Table::new(
                     obj_type,
                     &catalog,
-                    Schema::entity_fulltext_definitions(&obj_type.name, &schema.document),
+                    Schema::entity_fulltext_definitions(&obj_type.name, &schema.document)
+                        .map_err(|_| StoreError::FulltextSearchNonDeterministic)?,
                     &enums,
                     &id_types,
                     i as u32,

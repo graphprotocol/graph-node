@@ -21,6 +21,8 @@ pub enum APISchemaError {
     TypeExists(String),
     #[fail(display = "Type {} not found", _0)]
     TypeNotFound(String),
+    #[fail(display = "Fulltext search is not yet deterministic")]
+    FulltextSearchNonDeterministic,
 }
 
 const BLOCK_HEIGHT: &str = "Block_height";
@@ -520,6 +522,7 @@ fn add_query_type(
         .collect::<Vec<Field>>();
     let mut fulltext_fields = schema
         .get_fulltext_directives()
+        .map_err(|_| APISchemaError::FulltextSearchNonDeterministic)?
         .iter()
         .filter_map(|fulltext| query_field_for_fulltext(fulltext, features))
         .collect();

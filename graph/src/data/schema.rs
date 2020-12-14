@@ -1281,9 +1281,9 @@ impl Schema {
     pub fn entity_fulltext_definitions<'a>(
         entity: &str,
         document: &'a Document,
-    ) -> Vec<FulltextDefinition> {
-        document
-            .get_fulltext_directives()
+    ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
+        Ok(document
+            .get_fulltext_directives()?
             .into_iter()
             .filter(|directive| match directive.argument("include") {
                 Some(Value::List(includes)) if includes.len() > 0 => includes
@@ -1301,7 +1301,7 @@ impl Schema {
                 _ => false,
             })
             .map(|directive| FulltextDefinition::from(directive))
-            .collect()
+            .collect())
     }
 }
 

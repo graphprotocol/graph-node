@@ -887,6 +887,8 @@ pub enum StoreError {
         _0
     )]
     UnknownShard(String),
+    #[fail(display = "Fulltext search not yet deterministic")]
+    FulltextSearchNonDeterministic,
 }
 
 // Convenience to report a constraint violation
