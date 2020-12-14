@@ -136,4 +136,6 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<H>>, anyhow::Error>;
+
+    fn revert_data_sources(&mut self, reverted_block: u64);
 }
