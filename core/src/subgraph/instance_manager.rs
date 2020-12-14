@@ -478,14 +478,14 @@ where
             let block = match block_stream.next().await {
                 Some(Ok(BlockStreamEvent::Block(block))) => block,
                 Some(Ok(BlockStreamEvent::Revert(subgraph_ptr))) => {
-                    debug!(
+                    info!(
                         logger,
                         "Reverting block to get back to main chain";
                         "block_number" => format!("{}", subgraph_ptr.number),
                         "block_hash" => format!("{}", subgraph_ptr.hash)
                     );
 
-                    // We would like to move to the parent of the current block.
+                    // We would like to revert the DB state to the parent of the current block.
                     // First, load the block in order to get the parent hash.
                     if let Err(e) = ctx
                         .inputs
@@ -531,7 +531,10 @@ where
                         .reverted_blocks
                         .set(subgraph_ptr.number as f64);
 
-                    // Clear the entity cache.
+                    // Revert the in-memory state:
+                    // - Remove hosts for reverted dynamic data sources.
+                    // - Clear the entity cache.
+                    ctx.state.instance.revert_data_sources(subgraph_ptr.number);
                     ctx.state.entity_lfu_cache = LfuCache::new();
                     continue;
                 }
