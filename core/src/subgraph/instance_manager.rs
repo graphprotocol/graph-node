@@ -534,6 +534,9 @@ where
                     // Revert the in-memory state:
                     // - Remove hosts for reverted dynamic data sources.
                     // - Clear the entity cache.
+                    //
+                    // Note that we do not currently revert the filters,
+                    // which is not ideal, but also not incorrect.
                     ctx.state.instance.revert_data_sources(subgraph_ptr.number);
                     ctx.state.entity_lfu_cache = LfuCache::new();
                     continue;
