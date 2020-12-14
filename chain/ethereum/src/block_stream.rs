@@ -252,14 +252,14 @@ where
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
         if let Some(ptr) = subgraph_ptr {
-            self.metrics
-                .blocks_behind
-                .set((head_ptr.number - ptr.number) as f64);
-
             if ptr.number >= head_ptr.number {
                 return Box::new(future::ok(ReconciliationStep::Done))
                     as Box<dyn Future<Item = _, Error = _> + Send>;
             }
+
+            self.metrics
+                .blocks_behind
+                .set((head_ptr.number - ptr.number) as f64);
         }
 
         // Subgraph ptr is behind head ptr.
