@@ -153,7 +153,8 @@ where
     pub(crate) fn handle_not_found() -> Response<Body> {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body(Body::from("Not found"))
+            .header("Content-Type", "text/plain")
+            .body(Body::from("Not found\n"))
             .unwrap()
     }
 

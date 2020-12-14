@@ -161,7 +161,8 @@ where
 fn handle_not_found() -> Result<Response<Body>, GraphQLServerError> {
     Ok(Response::builder()
         .status(StatusCode::NOT_FOUND)
-        .body(Body::from("Not found"))
+        .header("Content-Type", "text/plain")
+        .body(Body::from("Not found\n"))
         .unwrap())
 }
 
