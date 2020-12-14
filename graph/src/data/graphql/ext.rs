@@ -1,12 +1,19 @@
+use super::ObjectOrInterface;
 use crate::data::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use graphql_parser::schema::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, Name, ObjectType, Type,
     TypeDefinition, Value,
 };
-
-use super::ObjectOrInterface;
-
+use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap};
+
+lazy_static! {
+    static ref ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH: bool = if cfg!(debug_assertions) {
+        true
+    } else {
+        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH").is_ok()
+    };
+}
 
 pub trait ObjectTypeExt {
     fn field(&self, name: &Name) -> Option<&Field>;
@@ -44,7 +51,7 @@ pub trait DocumentExt {
 
     fn find_interface(&self, name: &str) -> Option<&InterfaceType>;
 
-    fn get_fulltext_directives<'a>(&'a self) -> Vec<&'a Directive>;
+    fn get_fulltext_directives<'a>(&'a self) -> Result<Vec<&'a Directive>, anyhow::Error>;
 
     fn get_root_query_type(&self) -> Option<&ObjectType>;
 
@@ -102,15 +109,22 @@ impl DocumentExt for Document {
         })
     }
 
-    fn get_fulltext_directives(&self) -> Vec<&Directive> {
-        self.get_object_type_definition(SCHEMA_TYPE_NAME)
-            .map_or(vec![], |subgraph_schema_type| {
+    fn get_fulltext_directives(&self) -> Result<Vec<&Directive>, anyhow::Error> {
+        let directives = self.get_object_type_definition(SCHEMA_TYPE_NAME).map_or(
+            vec![],
+            |subgraph_schema_type| {
                 subgraph_schema_type
                     .directives
                     .iter()
                     .filter(|directives| directives.name.eq("fulltext"))
                     .collect()
-            })
+            },
+        );
+        if !*ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH && directives.len() != 0 {
+            Err(anyhow::anyhow!("Fulltext search is not yet deterministic"))
+        } else {
+            Ok(directives)
+        }
     }
 
     /// Returns the root query type (if there is one).
