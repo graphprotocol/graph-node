@@ -293,6 +293,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "476e9cd489f9e121e02ffa6014a8ef220ecb15c05ed23fc34cca13925dc283fb"
 
 [[package]]
+name = "bs58"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
+
+[[package]]
 name = "bstr"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1683,7 +1689,7 @@ version = "0.19.2"
 dependencies = [
  "async-trait",
  "atomic_refcell",
- "bs58",
+ "bs58 0.4.0",
  "bytes 0.5.6",
  "defer",
  "ethabi 12.0.0-graph",
@@ -2786,7 +2792,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f77055f9e81921a8cc7bebeb6cded3d128931d51f1e3dd6251f0770a6d431477"
 dependencies = [
  "arrayref",
- "bs58",
+ "bs58 0.3.1",
  "byteorder",
  "data-encoding",
  "parity-multihash",
