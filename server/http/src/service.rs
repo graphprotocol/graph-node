@@ -376,7 +376,6 @@ mod tests {
     };
     use graph::prelude::*;
     use graph_mock::MockMetricsRegistry;
-    use graphql_parser::query as q;
 
     use crate::test_utils;
 

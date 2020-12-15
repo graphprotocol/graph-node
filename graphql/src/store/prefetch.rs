@@ -1,8 +1,6 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
-use graphql_parser::query as q;
-use graphql_parser::schema as s;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -12,7 +10,7 @@ use std::time::Instant;
 
 use graph::data::graphql::*;
 use graph::prelude::{
-    ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
+    q, s, ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
     EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore,
     Value as StoreValue, WindowAttribute,
 };
@@ -208,7 +206,7 @@ impl<'a> JoinCond<'a> {
     fn new(
         parent_type: &'a s::ObjectType,
         child_type: &'a s::ObjectType,
-        field_name: &s::Name,
+        field_name: &String,
     ) -> Self {
         let field = parent_type
             .field(field_name)
@@ -307,7 +305,7 @@ impl<'a> Join<'a> {
         schema: &'a ApiSchema,
         parent_type: ObjectOrInterface<'a>,
         child_type: ObjectOrInterface<'a>,
-        field_name: &s::Name,
+        field_name: &String,
     ) -> Self {
         let parent_types = parent_type
             .object_types(schema.schema())
@@ -629,7 +627,7 @@ fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     type_condition: ObjectOrInterface<'a>,
     selection_set: &'a q::SelectionSet,
-    visited_fragments: &mut HashSet<&'a q::Name>,
+    visited_fragments: &mut HashSet<&'a String>,
     output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) {
     fn is_reference_field(
@@ -653,7 +651,7 @@ fn collect_fields_inner<'a>(
         outer_type_condition: ObjectOrInterface<'a>,
         frag_ty_condition: Option<&'a q::TypeCondition>,
         frag_selection_set: &'a q::SelectionSet,
-        visited_fragments: &mut HashSet<&'a q::Name>,
+        visited_fragments: &mut HashSet<&'a String>,
         output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
     ) {
         let schema = &ctx.query.schema.document();
@@ -795,9 +793,9 @@ fn fetch(
     store: &(impl QueryStore + ?Sized),
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
-    arguments: HashMap<&q::Name, q::Value>,
+    arguments: HashMap<&String, q::Value>,
     multiplicity: ChildMultiplicity,
-    types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
+    types_for_interface: &BTreeMap<String, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
     max_skip: u32,

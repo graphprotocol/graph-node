@@ -21,7 +21,7 @@ use std::str::FromStr;
 
 use graph::data::{schema::FulltextAlgorithm, store::scalar};
 use graph::prelude::{
-    format_err, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
+    format_err, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value,
 };
@@ -228,8 +228,8 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<String, graphql_parser::query::Value> {
-    type Value = graphql_parser::query::Value;
+impl FromEntityData for BTreeMap<String, q::Value> {
+    type Value = q::Value;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -260,7 +260,6 @@ pub trait FromColumnValue: Sized {
         column_type: &ColumnType,
         json: serde_json::Value,
     ) -> Result<Self, StoreError> {
-        //use graphql_parser::query::Value as q;
         use serde_json::Value as j;
         // Many possible conversion errors are already caught by how
         // we define the schema; for example, we can only get a NULL for
@@ -318,9 +317,9 @@ pub trait FromColumnValue: Sized {
     }
 }
 
-impl FromColumnValue for graphql_parser::query::Value {
+impl FromColumnValue for q::Value {
     fn is_null(&self) -> bool {
-        self == &graphql_parser::query::Value::Null
+        self == &q::Value::Null
     }
 
     fn null() -> Self {
@@ -328,31 +327,31 @@ impl FromColumnValue for graphql_parser::query::Value {
     }
 
     fn from_string(s: String) -> Self {
-        graphql_parser::query::Value::String(s)
+        q::Value::String(s)
     }
 
     fn from_bool(b: bool) -> Self {
-        graphql_parser::query::Value::Boolean(b)
+        q::Value::Boolean(b)
     }
 
     fn from_i32(i: i32) -> Self {
-        graphql_parser::query::Value::Int(i.into())
+        q::Value::Int(i.into())
     }
 
     fn from_big_decimal(d: scalar::BigDecimal) -> Self {
-        graphql_parser::query::Value::String(d.to_string())
+        q::Value::String(d.to_string())
     }
 
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
-        Ok(graphql_parser::query::Value::String(i.to_string()))
+        Ok(q::Value::String(i.to_string()))
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
-        Ok(graphql_parser::query::Value::String(format!("0x{}", b)))
+        Ok(q::Value::String(format!("0x{}", b)))
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
-        graphql_parser::query::Value::List(v)
+        q::Value::List(v)
     }
 }
 

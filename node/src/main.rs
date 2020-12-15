@@ -32,7 +32,6 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::NetworkStore as DieselNetworkStore;
-use graphql_parser::query as q;
 
 mod config;
 mod opt;
@@ -78,15 +77,17 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
         let reader = BufReader::new(file);
         for line in reader.lines() {
             let line = line?;
-            let query = graphql_parser::parse_query(&line).map_err(|e| {
-                let msg = format!(
-                    "invalid GraphQL query in {}: {}\n{}",
-                    EXPENSIVE_QUERIES,
-                    e.to_string(),
-                    line
-                );
-                std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
-            })?;
+            let query = graphql_parser::parse_query(&line)
+                .map_err(|e| {
+                    let msg = format!(
+                        "invalid GraphQL query in {}: {}\n{}",
+                        EXPENSIVE_QUERIES,
+                        e.to_string(),
+                        line
+                    );
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
+                })?
+                .into_static();
             queries.push(Arc::new(query));
         }
     }

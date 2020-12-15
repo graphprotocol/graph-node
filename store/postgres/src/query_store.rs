@@ -39,7 +39,7 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError> {
+    ) -> Result<Vec<BTreeMap<String, q::Value>>, QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let conn = self
             .store

@@ -1,9 +1,8 @@
 //! Support for the indexing status API
-use graphql_parser::query as q;
 
 use super::schema::{SubgraphError, SubgraphHealth};
 use crate::data::graphql::{object, IntoValue};
-use crate::prelude::{web3::types::H256, EthereumBlockPointer, Value};
+use crate::prelude::{q, web3::types::H256, EthereumBlockPointer, Value};
 
 pub enum Filter {
     /// Get all versions for the named subgraph

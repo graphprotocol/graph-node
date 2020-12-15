@@ -1,5 +1,4 @@
 use graph_mock::MockMetricsRegistry;
-use graphql_parser::schema as s;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::str::FromStr;

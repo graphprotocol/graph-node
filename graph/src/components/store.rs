@@ -1461,7 +1461,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, graphql_parser::query::Value>>, QueryExecutionError>;
+    ) -> Result<Vec<BTreeMap<String, q::Value>>, QueryExecutionError>;
 
     fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
 

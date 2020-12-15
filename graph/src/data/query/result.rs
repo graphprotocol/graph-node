@@ -1,9 +1,8 @@
 use super::error::{QueryError, QueryExecutionError};
 use crate::{
     data::graphql::SerializableValue,
-    prelude::{CacheWeight, SubgraphDeploymentId},
+    prelude::{q, CacheWeight, SubgraphDeploymentId},
 };
-use graphql_parser::query as q;
 use serde::ser::*;
 use serde::Serialize;
 use std::collections::BTreeMap;

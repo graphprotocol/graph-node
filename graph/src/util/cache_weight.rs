@@ -1,6 +1,6 @@
 use crate::{
     components::store::EntityType,
-    prelude::{BigDecimal, BigInt, EntityKey, Value},
+    prelude::{q, BigDecimal, BigInt, EntityKey, Value},
 };
 use std::mem;
 
@@ -114,10 +114,8 @@ impl CacheWeight for Value {
     }
 }
 
-impl CacheWeight for graphql_parser::query::Value {
+impl CacheWeight for q::Value {
     fn indirect_weight(&self) -> usize {
-        use graphql_parser::query as q;
-
         match self {
             q::Value::Boolean(_) | q::Value::Int(_) | q::Value::Null | q::Value::Float(_) => 0,
             q::Value::Enum(s) | q::Value::String(s) | q::Value::Variable(s) => s.indirect_weight(),

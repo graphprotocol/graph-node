@@ -1,7 +1,5 @@
 use std::{collections::BTreeSet, str::FromStr};
 
-use graphql_parser::query as q;
-use graphql_parser::schema::{Name, Value, *};
 use graphql_parser::Pos;
 use inflector::Inflector;
 use lazy_static::lazy_static;
@@ -13,6 +11,7 @@ use graph::data::{
     schema::{META_FIELD_NAME, META_FIELD_TYPE},
     subgraph::SubgraphFeature,
 };
+use graph::prelude::s::{Value, *};
 use graph::prelude::*;
 
 #[derive(Fail, Debug)]
@@ -256,7 +255,7 @@ fn add_types_for_interface_types(
 /// Adds a `<type_name>_orderBy` enum type for the given fields to the schema.
 fn add_order_by_type(
     schema: &mut Document,
-    type_name: &Name,
+    type_name: &String,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name).to_string();
@@ -290,7 +289,7 @@ fn add_order_by_type(
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
 fn add_filter_type(
     schema: &mut Document,
-    type_name: &Name,
+    type_name: &String,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name).to_string();
@@ -361,7 +360,7 @@ fn field_filter_input_values(
                         field_scalar_filter_input_values(
                             schema,
                             field,
-                            &ScalarType::new(Name::from("String")),
+                            &ScalarType::new(String::from("String")),
                         )
                     }
                 }
@@ -486,7 +485,7 @@ fn field_list_filter_input_values(
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
-fn input_value(name: &Name, suffix: &'static str, value_type: Type) -> InputValue {
+fn input_value(name: &String, suffix: &'static str, value_type: Type) -> InputValue {
     InputValue {
         position: Pos::default(),
         description: None,
@@ -675,7 +674,7 @@ fn subgraph_error_argument() -> InputValue {
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
 fn query_fields_for_type(
     schema: &Document,
-    type_name: &Name,
+    type_name: &String,
     features: &BTreeSet<SubgraphFeature>,
 ) -> Vec<Field> {
     let input_objects = ast::get_input_object_definitions(schema);
@@ -748,7 +747,7 @@ fn meta_field() -> Field {
 /// Generates arguments for collection queries of a named type (e.g. User).
 fn collection_arguments_for_named_type(
     input_objects: &[InputObjectType],
-    type_name: &Name,
+    type_name: &String,
 ) -> Vec<InputValue> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
@@ -910,7 +909,7 @@ mod tests {
         }
         .expect("OrderDirection type is not an enum");
 
-        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"asc".to_string(), &"desc".to_string()]);
     }
 
@@ -943,7 +942,7 @@ mod tests {
         }
         .expect("User_orderBy type is not an enum");
 
-        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"id".to_string(), &"name".to_string()]);
     }
 

@@ -1,8 +1,9 @@
 use super::cache::QueryCache;
 use crossbeam::atomic::AtomicCell;
-use graph::{data::schema::META_FIELD_NAME, prelude::CheapClone};
-use graphql_parser::query as q;
-use graphql_parser::schema as s;
+use graph::{
+    data::schema::META_FIELD_NAME,
+    prelude::{s, CheapClone},
+};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use stable_hash::crypto::SetHasher;
@@ -207,7 +208,7 @@ lazy_static! {
 
 struct HashableQuery<'a> {
     query_schema_id: &'a SubgraphDeploymentId,
-    query_variables: &'a HashMap<q::Name, q::Value>,
+    query_variables: &'a HashMap<String, q::Value>,
     query_fragments: &'a HashMap<String, q::FragmentDefinition>,
     selection_set: &'a q::SelectionSet,
     block_ptr: &'a EthereumBlockPointer,
@@ -310,7 +311,7 @@ where
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
-pub(crate) fn get_named_type(schema: &s::Document, name: &Name) -> Option<s::TypeDefinition> {
+pub(crate) fn get_named_type(schema: &s::Document, name: &String) -> Option<s::TypeDefinition> {
     if name.starts_with("__") {
         sast::get_named_type(&INTROSPECTION_DOCUMENT, name).cloned()
     } else {
@@ -320,7 +321,7 @@ pub(crate) fn get_named_type(schema: &s::Document, name: &Name) -> Option<s::Typ
 
 pub(crate) fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &Name,
+    name: &String,
 ) -> Option<s::Field> {
     if name == "__schema" || name == "__type" {
         let object_type = *INTROSPECTION_QUERY_TYPE;
@@ -332,7 +333,7 @@ pub(crate) fn get_field<'a>(
 
 pub(crate) fn object_or_interface<'a>(
     schema: &'a s::Document,
-    name: &Name,
+    name: &String,
 ) -> Option<ObjectOrInterface<'a>> {
     if name.starts_with("__") {
         INTROSPECTION_DOCUMENT.object_or_interface(name)
@@ -688,7 +689,7 @@ pub fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    visited_fragments: &mut HashSet<&'a q::Name>,
+    visited_fragments: &mut HashSet<&'a String>,
     output: &mut IndexMap<&'a String, Vec<&'a q::Field>>,
 ) {
     for selection_set in selection_sets {
@@ -813,7 +814,7 @@ fn resolve_field_value(
     field: &q::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
-    argument_values: &HashMap<&q::Name, q::Value>,
+    argument_values: &HashMap<&String, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     match field_type {
         s::Type::NonNullType(inner_type) => resolve_field_value(
@@ -855,8 +856,8 @@ fn resolve_field_value_for_named_type(
     field_value: Option<q::Value>,
     field: &q::Field,
     field_definition: &s::Field,
-    type_name: &s::Name,
-    argument_values: &HashMap<&q::Name, q::Value>,
+    type_name: &String,
+    argument_values: &HashMap<&String, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
     let named_type = sast::get_named_type(ctx.query.schema.document(), type_name)
@@ -905,7 +906,7 @@ fn resolve_field_value_for_list_type(
     field: &q::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
-    argument_values: &HashMap<&q::Name, q::Value>,
+    argument_values: &HashMap<&String, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     match inner_type {
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
@@ -1129,11 +1130,11 @@ pub fn coerce_argument_values<'a>(
     query: &crate::execution::Query,
     ty: impl Into<ObjectOrInterface<'a>>,
     field: &q::Field,
-) -> Result<HashMap<&'a q::Name, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<HashMap<&'a String, q::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &Name| sast::get_named_type(&query.schema.document(), name);
+    let resolver = |name: &String| sast::get_named_type(&query.schema.document(), name);
 
     for argument_def in sast::get_argument_definitions(ty, &field.name)
         .into_iter()

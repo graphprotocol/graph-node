@@ -1,5 +1,4 @@
-use graph::prelude::{CheapClone, EthereumBlockPointer, QueryExecutionError, QueryResult};
-use graphql_parser::query as q;
+use graph::prelude::{q, CheapClone, EthereumBlockPointer, QueryExecutionError, QueryResult};
 use std::sync::Arc;
 use std::time::Instant;
 

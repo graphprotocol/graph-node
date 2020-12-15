@@ -1,4 +1,4 @@
-use graphql_parser::{query as q, schema as s, Pos};
+use graphql_parser::Pos;
 use std::collections::{BTreeMap, HashMap};
 
 use graph::data::graphql::{object, ObjectOrInterface};
@@ -365,7 +365,7 @@ impl Resolver for IntrospectionResolver {
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<&String, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
@@ -400,7 +400,7 @@ impl Resolver for IntrospectionResolver {
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&q::Name, q::Value>,
+        arguments: &HashMap<&String, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),

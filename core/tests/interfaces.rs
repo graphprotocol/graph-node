@@ -2,9 +2,9 @@
 
 use pretty_assertions::assert_eq;
 
+use graph::prelude::q;
 use graph::{components::store::EntityType, data::graphql::object};
 use graph::{data::query::QueryTarget, prelude::*};
-use graphql_parser::query as q;
 use test_store::*;
 
 // `entities` is `(entity, type)`.
@@ -35,7 +35,7 @@ fn insert_and_query(
         insert_ops.collect::<Vec<_>>(),
     )?;
 
-    let document = graphql_parser::parse_query(query).unwrap();
+    let document = graphql_parser::parse_query(query).unwrap().into_static();
     let target = QueryTarget::Deployment(subgraph_id);
     let query = Query::new(document, None);
     Ok(execute_subgraph_query(query, target).unwrap_first())

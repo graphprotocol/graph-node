@@ -45,9 +45,11 @@ impl Future for IndexNodeRequest {
         })?;
 
         // Parse the "query" field of the JSON body
-        let document = graphql_parser::parse_query(query_string).map_err(|e| {
-            GraphQLServerError::from(QueryError::ParseError(Arc::new(e.compat().into())))
-        })?;
+        let document = graphql_parser::parse_query(query_string)
+            .map_err(|e| {
+                GraphQLServerError::from(QueryError::ParseError(Arc::new(e.compat().into())))
+            })?
+            .into_static();
 
         // Parse the "variables" field of the JSON body, if present
         let variables = match obj.get("variables") {
@@ -69,7 +71,6 @@ impl Future for IndexNodeRequest {
 #[cfg(test)]
 mod tests {
     use graphql_parser;
-    use graphql_parser::query as q;
     use hyper;
     use std::collections::{BTreeMap, HashMap};
 
@@ -113,7 +114,9 @@ mod tests {
         let query = request.wait().expect("Should accept valid queries");
         assert_eq!(
             query.document,
-            graphql_parser::parse_query("{ user { name } }").unwrap()
+            graphql_parser::parse_query("{ user { name } }")
+                .unwrap()
+                .into_static()
         );
     }
 
@@ -128,7 +131,9 @@ mod tests {
         ));
         let query = request.wait().expect("Should accept null variables");
 
-        let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
+        let expected_query = graphql_parser::parse_query("{ user { name } }")
+            .unwrap()
+            .into_static();
         assert_eq!(query.document, expected_query);
         assert_eq!(query.variables, None);
     }
@@ -158,7 +163,9 @@ mod tests {
         ));
         let query = request.wait().expect("Should accept valid queries");
 
-        let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
+        let expected_query = graphql_parser::parse_query("{ user { name } }")
+            .unwrap()
+            .into_static();
         let expected_variables = QueryVariables::new(HashMap::from_iter(
             vec![
                 (String::from("string"), q::Value::String(String::from("s"))),

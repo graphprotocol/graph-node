@@ -1,5 +1,5 @@
 use failure;
-use graphql_parser::{query as q, Pos};
+use graphql_parser::Pos;
 use hex::FromHexError;
 use num_bigint;
 use serde::ser::*;
@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use crate::data::graphql::SerializableValue;
 use crate::data::subgraph::*;
+use crate::prelude::q;
 use crate::{components::store::StoreError, prelude::CacheWeight};
 
 #[derive(Debug)]

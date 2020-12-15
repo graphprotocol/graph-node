@@ -36,8 +36,8 @@ pub mod prelude {
     pub use super::subscription::SubscriptionExecutionOptions;
     pub use super::values::MaybeCoercible;
 
-    pub use super::graphql_parser::{query::Name, schema::ObjectType};
     pub use super::runner::GraphQlRunner;
+    pub use graph::prelude::s::ObjectType;
 }
 
 #[cfg(debug_assertions)]

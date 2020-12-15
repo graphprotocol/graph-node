@@ -1,6 +1,5 @@
 //! Utilities to keep moving statistics about queries
 
-use graphql_parser::query as q;
 use lazy_static::lazy_static;
 use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
@@ -14,6 +13,7 @@ use crate::components::metrics::{Counter, Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
+use crate::prelude::q;
 use crate::prelude::{async_trait, debug, info, o, warn, CheapClone, Logger, QueryLoadManager};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 

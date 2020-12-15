@@ -1,19 +1,18 @@
-use graphql_parser::{query as q, schema as s, Pos};
+use graphql_parser::Pos;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
+use graph::data::graphql::{
+    ext::{DocumentExt, TypeExt},
+    ObjectOrInterface,
+};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
-use graph::prelude::{info, o, BlockNumber, CheapClone, Logger, QueryExecutionError};
-use graph::{
-    data::graphql::{
-        ext::{DocumentExt, TypeExt},
-        ObjectOrInterface,
-    },
-    prelude::TryFromValue,
+use graph::prelude::{
+    info, o, q, s, BlockNumber, CheapClone, Logger, QueryExecutionError, TryFromValue,
 };
 
 use crate::introspection::introspection_schema;
@@ -79,7 +78,7 @@ pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,
     /// The variables for the query, coerced into proper values
-    pub variables: HashMap<q::Name, q::Value>,
+    pub variables: HashMap<String, q::Value>,
     /// The root selection set of the query
     pub selection_set: Arc<q::SelectionSet>,
     /// The ShapeHash of the original query
@@ -190,7 +189,7 @@ impl Query {
         &self,
     ) -> Result<HashMap<BlockConstraint, (q::SelectionSet, ErrorPolicy)>, Vec<QueryExecutionError>>
     {
-        use q::Selection::Field;
+        use graphql_parser::query::Selection::Field;
 
         let mut bcs = HashMap::new();
         let mut errors = Vec::new();
@@ -274,7 +273,7 @@ impl Query {
 
     /// Should only be called for fragments that exist in the query, and therefore have been
     /// validated to exist. Panics otherwise.
-    pub fn get_fragment(&self, name: &q::Name) -> &q::FragmentDefinition {
+    pub fn get_fragment(&self, name: &String) -> &q::FragmentDefinition {
         self.fragments.get(name).unwrap()
     }
 
@@ -380,7 +379,7 @@ impl Query {
     // Checks for invalid selections.
     fn validate_fields_inner(
         &self,
-        type_name: &q::Name,
+        type_name: &String,
         ty: ObjectOrInterface<'_>,
         selection_set: &q::SelectionSet,
     ) -> Vec<QueryExecutionError> {
@@ -545,7 +544,7 @@ pub fn coerce_variables(
     schema: &ApiSchema,
     operation: &q::OperationDefinition,
     mut variables: Option<QueryVariables>,
-) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<HashMap<String, q::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
@@ -602,7 +601,7 @@ fn coerce_variable(
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
-    let resolver = |name: &q::Name| sast::get_named_type(schema.document(), name);
+    let resolver = |name: &String| sast::get_named_type(schema.document(), name);
 
     coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(

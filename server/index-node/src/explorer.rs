@@ -1,7 +1,6 @@
 //! Functionality to support the explorer in the hosted service. Everything
 //! in this file is private API and experimental and subject to change at
 //! any time
-use graphql_parser::query as q;
 use http::{Response, StatusCode};
 use hyper::Body;
 use std::{
@@ -16,7 +15,7 @@ use graph::{
     components::server::{index_node::VersionInfo, query::GraphQLServerError},
     data::subgraph::status,
     object,
-    prelude::{lazy_static, serde_json, SerializableValue, Store},
+    prelude::{lazy_static, q, serde_json, SerializableValue, Store},
 };
 
 lazy_static! {

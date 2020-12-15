@@ -1,4 +1,3 @@
-use graphql_parser::query as q;
 use serde::de::Deserializer;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
@@ -7,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{
     data::graphql::shape_hash::shape_hash,
-    prelude::{SubgraphDeploymentId, SubgraphName},
+    prelude::{q, SubgraphDeploymentId, SubgraphName},
 };
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>

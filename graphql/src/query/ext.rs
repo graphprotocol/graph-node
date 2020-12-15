@@ -1,18 +1,16 @@
 //! Extension traits for graphql_parser::query structs
 
-use graphql_parser::{query as q, Pos};
+use graphql_parser::Pos;
 
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 
 use graph::data::graphql::TryFromValue;
 use graph::data::query::QueryExecutionError;
-use graph::prelude::failure;
-use graph::prelude::web3::types::H256;
-use graph::prelude::BlockNumber;
+use graph::prelude::{failure, q, web3::types::H256, BlockNumber};
 
 pub trait ValueExt: Sized {
-    fn as_object(&self) -> &BTreeMap<q::Name, q::Value>;
+    fn as_object(&self) -> &BTreeMap<String, q::Value>;
     fn as_string(&self) -> &str;
 
     /// If `self` is a variable reference, look it up in `vars` and return
@@ -22,13 +20,13 @@ pub trait ValueExt: Sized {
     /// an error
     fn lookup<'a>(
         &'a self,
-        vars: &'a HashMap<q::Name, Self>,
+        vars: &'a HashMap<String, Self>,
         pos: Pos,
     ) -> Result<&'a Self, QueryExecutionError>;
 }
 
 impl ValueExt for q::Value {
-    fn as_object(&self) -> &BTreeMap<q::Name, q::Value> {
+    fn as_object(&self) -> &BTreeMap<String, q::Value> {
         match self {
             q::Value::Object(object) => object,
             _ => panic!("expected a Value::Object"),
@@ -44,7 +42,7 @@ impl ValueExt for q::Value {
 
     fn lookup<'a>(
         &'a self,
-        vars: &'a HashMap<q::Name, q::Value>,
+        vars: &'a HashMap<String, q::Value>,
         pos: Pos,
     ) -> Result<&'a q::Value, QueryExecutionError> {
         match self {

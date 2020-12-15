@@ -1,7 +1,6 @@
 use crate::schema;
-use graph::prelude::QueryExecutionError;
-use graphql_parser::query as q;
-use graphql_parser::schema::{EnumType, InputValue, Name, ScalarType, Type, TypeDefinition, Value};
+use graph::prelude::s::{EnumType, InputValue, ScalarType, Type, TypeDefinition, Value};
+use graph::prelude::{q, QueryExecutionError};
 use std::collections::{BTreeMap, HashMap};
 
 /// A GraphQL value that can be coerced according to a type.
@@ -60,9 +59,9 @@ impl MaybeCoercible<ScalarType> for Value {
 /// On error, the `value` is returned as `Err(value)`.
 fn coerce_to_definition<'a>(
     value: Value,
-    definition: &Name,
-    resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
-    variables: &HashMap<q::Name, q::Value>,
+    definition: &String,
+    resolver: &impl Fn(&String) -> Option<&'a TypeDefinition>,
+    variables: &HashMap<String, q::Value>,
 ) -> Result<Value, Value> {
     match resolver(definition).ok_or_else(|| value.clone())? {
         // Accept enum values if they match a value in the enum type
@@ -106,8 +105,8 @@ fn coerce_to_definition<'a>(
 pub(crate) fn coerce_input_value<'a>(
     mut value: Option<Value>,
     def: &InputValue,
-    resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
-    variable_values: &HashMap<q::Name, q::Value>,
+    resolver: &impl Fn(&String) -> Option<&'a TypeDefinition>,
+    variable_values: &HashMap<String, q::Value>,
 ) -> Result<Option<Value>, QueryExecutionError> {
     if let Some(Value::Variable(name)) = value {
         value = variable_values.get(&name).cloned();
@@ -146,8 +145,8 @@ pub(crate) fn coerce_input_value<'a>(
 pub(crate) fn coerce_value<'a>(
     value: Value,
     ty: &Type,
-    resolver: &impl Fn(&Name) -> Option<&'a TypeDefinition>,
-    variable_values: &HashMap<q::Name, q::Value>,
+    resolver: &impl Fn(&String) -> Option<&'a TypeDefinition>,
+    variable_values: &HashMap<String, q::Value>,
 ) -> Result<Value, Value> {
     match (ty, value) {
         // Null values cannot be coerced into non-null types.

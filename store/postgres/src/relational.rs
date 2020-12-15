@@ -10,8 +10,7 @@ use diesel::connection::SimpleConnection;
 use diesel::{
     debug_query, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
 };
-use graphql_parser::query as q;
-use graphql_parser::schema as s;
+use graph::prelude::{q, s};
 use inflector::Inflector;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -1062,7 +1061,7 @@ impl Column {
 
     pub fn is_list(&self) -> bool {
         fn is_list(field_type: &q::Type) -> bool {
-            use q::Type::*;
+            use graphql_parser::query::Type::*;
 
             match field_type {
                 ListType(_) => true,
@@ -1156,7 +1155,7 @@ pub(crate) const VID_COLUMN: &str = "vid";
 #[derive(Clone, Debug)]
 pub struct Table {
     /// The name of the GraphQL object type ('Thing')
-    pub object: s::Name,
+    pub object: String,
     /// The name of the database table for this type ('thing'), snakecased
     /// version of `object`
     pub name: SqlName,
@@ -1390,7 +1389,7 @@ fn derived_column(field: &s::Field) -> bool {
     field
         .directives
         .iter()
-        .any(|dir| dir.name == s::Name::from("derivedFrom"))
+        .any(|dir| dir.name == String::from("derivedFrom"))
 }
 
 fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
