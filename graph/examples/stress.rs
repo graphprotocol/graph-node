@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
-use graphql_parser::query as q;
+use graph::prelude::q;
 use rand::{thread_rng, Rng};
 use structopt::StructOpt;
 

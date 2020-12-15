@@ -1,4 +1,4 @@
-use graphql_parser::query::*;
+use crate::prelude::q::*;
 use serde::ser::*;
 
 /// Serializable wrapper around a GraphQL value.

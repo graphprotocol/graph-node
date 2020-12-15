@@ -1,4 +1,3 @@
-use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::iter;
 use std::result::Result;
@@ -128,7 +127,7 @@ fn resolve_field_stream(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field: &q::Field,
-    _argument_values: HashMap<&q::Name, q::Value>,
+    _argument_values: HashMap<&String, q::Value>,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
     ctx.resolver
         .resolve_field_stream(&ctx.query.schema.document(), object_type, field)

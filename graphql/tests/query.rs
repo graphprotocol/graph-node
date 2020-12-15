@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use graphql_parser::{query as q, Pos};
+use graphql_parser::Pos;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use graph::{
     data::{query::CacheStatus, query::QueryTarget, subgraph::SubgraphFeature},
     prelude::{
         async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
-        o, serde_json, slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
+        o, q, serde_json, slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
         FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
         QueryExecutionError, QueryLoadManager, QueryResult, QueryStoreManager, QueryVariables,
         Schema, Store, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest,
@@ -307,7 +307,8 @@ fn can_query_one_to_one_relationship() {
             }
             ",
             )
-            .expect("Invalid test query"),
+            .expect("Invalid test query")
+            .into_static(),
         )
         .await;
 
@@ -403,7 +404,8 @@ fn can_query_one_to_many_relationships_in_both_directions() {
         }
         ",
             )
-            .expect("Invalid test query"),
+            .expect("Invalid test query")
+            .into_static(),
         )
         .await;
 
@@ -502,7 +504,8 @@ fn can_query_many_to_many_relationship() {
             }
             ",
             )
-            .expect("Invalid test query"),
+            .expect("Invalid test query")
+            .into_static(),
         )
         .await;
 
@@ -574,7 +577,8 @@ fn query_variables_are_used() {
         }
     ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         let result = execute_query_document_with_variables(
             &id,
@@ -615,7 +619,8 @@ fn skip_directive_works_with_query_variables() {
         }
     ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         // Set variable $skip to true
         let result = execute_query_document_with_variables(
@@ -692,7 +697,8 @@ fn include_directive_works_with_query_variables() {
         }
     ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         // Set variable $include to true
         let result = execute_query_document_with_variables(
@@ -773,7 +779,8 @@ fn query_complexity() {
                 }
             }",
             )
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             None,
         );
         let max_complexity = Some(1_010_100);
@@ -807,7 +814,8 @@ fn query_complexity() {
                 }
             }",
             )
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             None,
         );
 
@@ -845,7 +853,8 @@ fn query_complexity_subscriptions() {
                 }
             }",
             )
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             None,
         );
         let max_complexity = Some(1_010_100);
@@ -885,7 +894,8 @@ fn query_complexity_subscriptions() {
                 }
             }",
             )
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             None,
         );
 
@@ -919,7 +929,9 @@ fn query_complexity_subscriptions() {
 fn instant_timeout() {
     run_test_sequentially(setup, |_, id| async move {
         let query = Query::new(
-            graphql_parser::parse_query("query { musicians(first: 100) { name } }").unwrap(),
+            graphql_parser::parse_query("query { musicians(first: 100) { name } }")
+                .unwrap()
+                .into_static(),
             None,
         );
 
@@ -950,7 +962,8 @@ fn variable_defaults() {
         }
     ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         // Assert that missing variables are defaulted.
         let result = execute_query_document_with_variables(
@@ -1006,7 +1019,8 @@ fn skip_is_nullable() {
         }
     ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         let result = execute_query_document_with_variables(&id, query, None).await;
 
@@ -1037,7 +1051,8 @@ fn first_is_nullable() {
         }
     ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         let result = execute_query_document_with_variables(&id, query, None).await;
 
@@ -1068,7 +1083,8 @@ fn nested_variable() {
         }
     ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         let result = execute_query_document_with_variables(
             &id,
@@ -1107,7 +1123,8 @@ fn ambiguous_derived_from_result() {
         }
         ",
         )
-        .expect("invalid test query");
+        .expect("invalid test query")
+        .into_static();
 
         let result = execute_query_document_with_variables(&id, query, None).await;
 
@@ -1156,7 +1173,8 @@ fn can_filter_by_relationship_fields() {
         }
         ",
             )
-            .expect("invalid test query"),
+            .expect("invalid test query")
+            .into_static(),
         )
         .await;
 
@@ -1209,7 +1227,8 @@ fn cannot_filter_by_derved_relationship_fields() {
         }
         ",
             )
-            .expect("invalid test query"),
+            .expect("invalid test query")
+            .into_static(),
         )
         .await;
 
@@ -1245,7 +1264,8 @@ fn subscription_gets_result_even_without_events() {
               }
             }",
             )
-            .unwrap(),
+            .unwrap()
+            .into_static(),
             None,
         );
 
@@ -1302,7 +1322,8 @@ fn can_use_nested_filter() {
         }
         ",
             )
-            .expect("invalid test query"),
+            .expect("invalid test query")
+            .into_static(),
         )
         .await;
 
@@ -1351,7 +1372,9 @@ async fn check_musicians_at(
     expected: Result<Vec<&str>, &str>,
     qid: &str,
 ) {
-    let query = graphql_parser::parse_query(query).expect("invalid test query");
+    let query = graphql_parser::parse_query(query)
+        .expect("invalid test query")
+        .into_static();
     let vars = block_var.map(|(name, value)| {
         let mut map = HashMap::new();
         map.insert(name.to_owned(), value);
@@ -1505,7 +1528,9 @@ fn query_at_block_with_vars() {
 fn query_detects_reorg() {
     run_test_sequentially(setup, |_, id| async move {
         let query = "query { musician(id: \"m1\") { id } }";
-        let query = graphql_parser::parse_query(query).expect("invalid test query");
+        let query = graphql_parser::parse_query(query)
+            .expect("invalid test query")
+            .into_static();
         let state = STORE
             .deployment_state_from_id(id.clone())
             .expect("failed to get state");
@@ -1560,7 +1585,9 @@ fn can_query_meta() {
     run_test_sequentially(setup, |_, id| async move {
         // metadata for the latest block (block 1)
         let query = "query { _meta { deployment block { hash number } } }";
-        let query = graphql_parser::parse_query(query).expect("invalid test query");
+        let query = graphql_parser::parse_query(query)
+            .expect("invalid test query")
+            .into_static();
 
         let result = execute_query_document(&id, query).await;
         let exp = object! {
@@ -1576,7 +1603,9 @@ fn can_query_meta() {
 
         // metadata for block 0 by number
         let query = "query { _meta(block: { number: 0 }) { deployment block { hash number } } }";
-        let query = graphql_parser::parse_query(query).expect("invalid test query");
+        let query = graphql_parser::parse_query(query)
+            .expect("invalid test query")
+            .into_static();
 
         let result = execute_query_document(&id, query).await;
         let exp = object! {
@@ -1593,7 +1622,9 @@ fn can_query_meta() {
         // metadata for block 0 by hash
         let query = "query { _meta(block: { hash: \"bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f\" }) { \
                                         deployment block { hash number } } }";
-        let query = graphql_parser::parse_query(query).expect("invalid test query");
+        let query = graphql_parser::parse_query(query)
+            .expect("invalid test query")
+            .into_static();
 
         let result = execute_query_document(&id, query).await;
         let exp = object! {
@@ -1609,7 +1640,9 @@ fn can_query_meta() {
 
         // metadata for block 2, which is beyond what the subgraph has indexed
         let query = "query { _meta(block: { number: 2 }) { deployment block { hash number } } }";
-        let query = graphql_parser::parse_query(query).expect("invalid test query");
+        let query = graphql_parser::parse_query(query)
+            .expect("invalid test query")
+            .into_static();
 
         let result = execute_query_document(&id, query).await;
         assert!(result.has_errors());
@@ -1641,7 +1674,7 @@ fn non_fatal_errors() {
 
             // `subgraphError` is implicitly `deny`, data is omitted.
             let query = "query { musician(id: \"m1\") { id } }";
-            let query = graphql_parser::parse_query(query).unwrap();
+            let query = graphql_parser::parse_query(query).unwrap().into_static();
             let result = execute_query_document(&id, query).await;
             let expected = json!({
                 "errors": [
@@ -1654,13 +1687,13 @@ fn non_fatal_errors() {
 
             // Same result for explicit `deny`.
             let query = "query { musician(id: \"m1\", subgraphError: deny) { id } }";
-            let query = graphql_parser::parse_query(query).unwrap();
+            let query = graphql_parser::parse_query(query).unwrap().into_static();
             let result = execute_query_document(&id, query).await;
             assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
             // But `_meta` is still returned.
             let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
-            let query = graphql_parser::parse_query(query).unwrap();
+            let query = graphql_parser::parse_query(query).unwrap().into_static();
             let result = execute_query_document(&id, query).await;
             let expected = json!({
                 "data": {
@@ -1678,7 +1711,7 @@ fn non_fatal_errors() {
 
             // With `allow`, the error remains but the data is included.
             let query = "query { musician(id: \"m1\", subgraphError: allow) { id } }";
-            let query = graphql_parser::parse_query(query).unwrap();
+            let query = graphql_parser::parse_query(query).unwrap().into_static();
             let result = execute_query_document(&id, query).await;
             let expected = json!({
                 "data": {
@@ -1699,7 +1732,7 @@ fn non_fatal_errors() {
                 .revert_block_operations(id.clone(), BLOCK_TWO.block_ptr(), *BLOCK_ONE)
                 .unwrap();
             let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
-            let query = graphql_parser::parse_query(query).unwrap();
+            let query = graphql_parser::parse_query(query).unwrap().into_static();
             let result = execute_query_document(&id, query).await;
             let expected = json!({
                 "data": {

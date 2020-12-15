@@ -31,10 +31,9 @@ use crate::data::subgraph::schema::{
 };
 use crate::prelude::{
     anyhow::{self, Context},
-    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize,
+    format_err, impl_slog_value, q, BlockNumber, Deserialize, Fail, Serialize,
 };
 use crate::util::ethereum::string_to_h256;
-use graphql_parser::query as q;
 
 use crate::components::ethereum::NodeCapabilities;
 use std::convert::TryFrom;

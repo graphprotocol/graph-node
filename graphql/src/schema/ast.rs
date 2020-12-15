@@ -1,4 +1,3 @@
-use graphql_parser::schema::{Value, *};
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
@@ -7,6 +6,7 @@ use std::str::FromStr;
 use crate::query::ast as qast;
 use graph::data::graphql::ObjectOrInterface;
 use graph::data::store;
+use graph::prelude::s::{Value, *};
 use graph::prelude::*;
 
 pub(crate) enum FilterOp {
@@ -27,7 +27,7 @@ pub(crate) enum FilterOp {
 }
 
 /// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
-pub(crate) fn parse_field_as_filter(key: &Name) -> (Name, FilterOp) {
+pub(crate) fn parse_field_as_filter(key: &String) -> (String, FilterOp) {
     let (suffix, op) = match key {
         k if k.ends_with("_not") => ("_not", FilterOp::Not),
         k if k.ends_with("_gt") => ("_gt", FilterOp::GreaterThan),
@@ -86,9 +86,9 @@ pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
 /// Returns the object type with the given name.
 pub fn get_object_type_mut<'a>(
     schema: &'a mut Document,
-    name: &Name,
+    name: &String,
 ) -> Option<&'a mut ObjectType> {
-    use self::TypeDefinition::*;
+    use graphql_parser::schema::TypeDefinition::*;
 
     get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
         Object(object_type) => Some(object_type),
@@ -111,9 +111,9 @@ pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> 
 /// Returns the interface type with the given name.
 pub fn get_interface_type_mut<'a>(
     schema: &'a mut Document,
-    name: &Name,
+    name: &String,
 ) -> Option<&'a mut InterfaceType> {
-    use self::TypeDefinition::*;
+    use graphql_parser::schema::TypeDefinition::*;
 
     get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
         Interface(interface_type) => Some(interface_type),
@@ -124,7 +124,7 @@ pub fn get_interface_type_mut<'a>(
 /// Returns the type of a field of an object type.
 pub fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &Name,
+    name: &String,
 ) -> Option<&'a Field> {
     lazy_static! {
         pub static ref TYPENAME_FIELD: Field = Field {
@@ -160,7 +160,7 @@ pub fn get_field_value_type(field_type: &Type) -> Result<ValueType, Error> {
 }
 
 /// Returns the value type for a GraphQL field type.
-pub fn get_field_name(field_type: &Type) -> Name {
+pub fn get_field_name(field_type: &Type) -> String {
     match field_type {
         Type::NamedType(name) => name.to_string(),
         Type::NonNullType(inner) => get_field_name(&inner),
@@ -190,7 +190,7 @@ pub fn get_named_type<'a>(schema: &'a Document, name: &str) -> Option<&'a TypeDe
 /// Returns a mutable version of the type with the given name.
 pub fn get_named_type_definition_mut<'a>(
     schema: &'a mut Document,
-    name: &Name,
+    name: &String,
 ) -> Option<&'a mut TypeDefinition> {
     schema
         .definitions
@@ -210,7 +210,7 @@ pub fn get_named_type_definition_mut<'a>(
 }
 
 /// Returns the name of a type.
-pub fn get_type_name(t: &TypeDefinition) -> &Name {
+pub fn get_type_name(t: &TypeDefinition) -> &String {
     match t {
         TypeDefinition::Enum(t) => &t.name,
         TypeDefinition::InputObject(t) => &t.name,
@@ -236,7 +236,7 @@ pub fn get_type_description(t: &TypeDefinition) -> &Option<String> {
 /// Returns the argument definitions for a field of an object type.
 pub fn get_argument_definitions<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &Name,
+    name: &String,
 ) -> Option<&'a Vec<InputValue>> {
     lazy_static! {
         pub static ref NAME_ARGUMENT: Vec<InputValue> = vec![InputValue {
@@ -278,7 +278,7 @@ pub fn get_type_definition_from_type<'a>(
 }
 
 /// Looks up a directive in a object type, if it is provided.
-pub fn get_object_type_directive(object_type: &ObjectType, name: Name) -> Option<&Directive> {
+pub fn get_object_type_directive(object_type: &ObjectType, name: String) -> Option<&Directive> {
     object_type
         .directives
         .iter()
@@ -298,7 +298,7 @@ pub fn is_non_null_type(t: &Type) -> bool {
 /// Uses the algorithm outlined on
 /// https://facebook.github.io/graphql/draft/#IsInputType().
 pub fn is_input_type(schema: &Document, t: &Type) -> bool {
-    use self::TypeDefinition::*;
+    use graphql_parser::schema::TypeDefinition::*;
 
     match t {
         Type::NamedType(name) => {
@@ -314,7 +314,7 @@ pub fn is_input_type(schema: &Document, t: &Type) -> bool {
 }
 
 pub fn is_entity_type(schema: &Document, t: &Type) -> bool {
-    use self::Type::*;
+    use graphql_parser::schema::Type::*;
 
     match t {
         NamedType(name) => get_named_type(schema, &name).map_or(false, is_entity_type_definition),
@@ -324,12 +324,12 @@ pub fn is_entity_type(schema: &Document, t: &Type) -> bool {
 }
 
 pub fn is_entity_type_definition(type_def: &TypeDefinition) -> bool {
-    use self::TypeDefinition::*;
+    use graphql_parser::schema::TypeDefinition::*;
 
     match type_def {
         // Entity types are obvious
         Object(object_type) => {
-            get_object_type_directive(object_type, Name::from("entity")).is_some()
+            get_object_type_directive(object_type, String::from("entity")).is_some()
         }
 
         // For now, we'll assume that only entities can implement interfaces;
@@ -343,7 +343,7 @@ pub fn is_entity_type_definition(type_def: &TypeDefinition) -> bool {
 }
 
 pub fn is_list_or_non_null_list_field(field: &Field) -> bool {
-    use self::Type::*;
+    use graphql_parser::schema::Type::*;
 
     match &field.field_type {
         ListType(_) => true,
@@ -356,7 +356,7 @@ pub fn is_list_or_non_null_list_field(field: &Field) -> bool {
 }
 
 fn unpack_type<'a>(schema: &'a Document, t: &Type) -> Option<&'a TypeDefinition> {
-    use self::Type::*;
+    use graphql_parser::schema::Type::*;
 
     match t {
         NamedType(name) => get_named_type(schema, &name),
@@ -389,7 +389,7 @@ pub fn get_derived_from_directive<'a>(field_definition: &Field) -> Option<&Direc
     field_definition
         .directives
         .iter()
-        .find(|directive| directive.name == Name::from("derivedFrom"))
+        .find(|directive| directive.name == String::from("derivedFrom"))
 }
 
 pub fn get_derived_from_field<'a>(

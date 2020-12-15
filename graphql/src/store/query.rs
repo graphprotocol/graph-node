@@ -1,4 +1,3 @@
-use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
@@ -19,8 +18,8 @@ enum OrderDirection {
 pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
-    arguments: &HashMap<&q::Name, q::Value>,
-    types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+    arguments: &HashMap<&String, q::Value>,
+    types_for_interface: &BTreeMap<String, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityQuery, QueryExecutionError> {
@@ -55,7 +54,7 @@ pub fn build_query<'a>(
 
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityRange, QueryExecutionError> {
@@ -98,7 +97,7 @@ fn build_range(
 /// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
         Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
@@ -113,7 +112,7 @@ fn build_filter(
 }
 
 fn build_fulltext_filter_from_object(
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     object.into_iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -133,7 +132,7 @@ fn build_fulltext_filter_from_object(
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: ObjectOrInterface,
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     Ok(Some(EntityFilter::And({
         object
@@ -205,7 +204,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     match arguments.get(&"orderBy".to_string()) {
         Some(q::Value::Enum(name)) => {
@@ -230,7 +229,7 @@ fn build_order_by(
 }
 
 fn build_fulltext_order_by_from_object(
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     object.into_iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -246,7 +245,7 @@ fn build_fulltext_order_by_from_object(
 
 /// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
 ) -> Result<OrderDirection, QueryExecutionError> {
     Ok(arguments
         .get(&"orderDirection".to_string())
@@ -336,11 +335,8 @@ pub fn collect_entities_from_query_field(
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser::{
-        query as q, schema as s,
-        schema::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
-        Pos,
-    };
+    use graph::prelude::s::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue};
+    use graphql_parser::Pos;
     use std::collections::{BTreeMap, HashMap};
 
     use graph::prelude::*;
@@ -349,7 +345,7 @@ mod tests {
 
     fn default_object() -> ObjectType {
         let subgraph_id_argument = (
-            s::Name::from("id"),
+            String::from("id"),
             s::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()),
         );
         let subgraph_id_directive = Directive {

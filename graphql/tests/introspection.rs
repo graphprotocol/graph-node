@@ -1,13 +1,12 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::prelude::{
-    o, slog, tokio, ApiSchema, Logger, Query, QueryExecutionError, QueryResult, Schema,
+    o, q, s, slog, tokio, ApiSchema, Logger, Query, QueryExecutionError, QueryResult, Schema,
     SubgraphDeploymentId,
 };
 use graph_graphql::prelude::{
@@ -37,7 +36,7 @@ impl Resolver for MockResolver {
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<&String, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
@@ -48,7 +47,7 @@ impl Resolver for MockResolver {
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<&String, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
@@ -551,7 +550,10 @@ fn expected_mock_schema_introspection() -> q::Value {
 /// Execute an introspection query.
 async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     // Create the query
-    let query = Query::new(graphql_parser::parse_query(query).unwrap(), None);
+    let query = Query::new(
+        graphql_parser::parse_query(query).unwrap().into_static(),
+        None,
+    );
 
     // Execute it
     let logger = Logger::root(slog::Discard, o!());

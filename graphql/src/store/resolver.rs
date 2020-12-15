@@ -1,4 +1,3 @@
-use graphql_parser::{query as q, schema as s};
 use std::collections::{BTreeMap, HashMap};
 use std::result;
 use std::sync::Arc;
@@ -212,7 +211,7 @@ impl Resolver for StoreResolver {
         field: &q::Field,
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<&String, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         if let Some(child) = prefetched_objects {
             Ok(child)
@@ -232,7 +231,7 @@ impl Resolver for StoreResolver {
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&q::Name, q::Value>,
+        _arguments: &HashMap<&String, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
         if let Some(meta) = meta {

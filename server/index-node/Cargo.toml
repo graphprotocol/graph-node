@@ -8,7 +8,7 @@ failure = "0.1.7"
 futures = "0.3.4"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-graphql-parser = "0.2.3"
+graphql-parser = "0.3"
 http = "0.2"
 hyper = "0.13"
 serde = "1.0"

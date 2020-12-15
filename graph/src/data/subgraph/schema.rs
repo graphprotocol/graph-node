@@ -11,7 +11,6 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
-use graphql_parser::query as q;
 use hex;
 use rand::rngs::OsRng;
 use rand::Rng;

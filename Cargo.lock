@@ -1824,12 +1824,11 @@ dependencies = [
 
 [[package]]
 name = "graphql-parser"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5613c31f18676f164112732202124f373bb2103ff017b3b85ca954ea6a66ada"
+version = "0.3.0"
+source = "git+https://github.com/graphql-rust/graphql-parser#45167b53e9533c331298683577ba8df7e43480ac"
 dependencies = [
  "combine",
- "failure",
+ "thiserror",
 ]
 
 [[package]]

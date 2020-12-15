@@ -1,7 +1,7 @@
 use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
 use graph_server_http::test_utils;
-use graphql_parser::{self, query as q};
+use graphql_parser;
 use std::collections::BTreeMap;
 
 #[test]
@@ -28,7 +28,7 @@ fn canonical_serialization() {
                 // get amended if q::Value ever gets more variants
                 // The order of the variants should be the same as the
                 // order of the tests below
-                use q::Value::*;
+                use graphql_parser::query::Value::*;
                 let _ = match $obj {
                     Variable(_) | Object(_) | List(_) | Enum(_) | Null | Int(_) | Float(_)
                     | String(_) | Boolean(_) => (),

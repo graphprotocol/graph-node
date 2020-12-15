@@ -4,8 +4,7 @@
 //! are any values used with filters, and any differences in the query
 //! name or response keys
 
-use graphql_parser::query as q;
-use graphql_parser::schema as s;
+use crate::prelude::{q, s};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -39,7 +38,7 @@ impl ShapeHash for q::Document {
 
 impl ShapeHash for q::OperationDefinition {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
-        use q::OperationDefinition::*;
+        use graphql_parser::query::OperationDefinition::*;
         // We want `[query|subscription|mutation] things { BODY }` to hash
         // to the same thing as just `things { BODY }`
         match self {
@@ -70,7 +69,7 @@ impl ShapeHash for q::SelectionSet {
 
 impl ShapeHash for q::Selection {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
-        use q::Selection::*;
+        use graphql_parser::query::Selection::*;
         match self {
             Field(field) => field.shape_hash(hasher),
             FragmentSpread(spread) => spread.shape_hash(hasher),
@@ -93,7 +92,7 @@ impl ShapeHash for q::Field {
 
 impl ShapeHash for s::Value {
     fn shape_hash(&self, hasher: &mut ShapeHasher) {
-        use s::Value::*;
+        use graphql_parser::schema::Value::*;
 
         match self {
             Variable(_) | Int(_) | Float(_) | String(_) | Boolean(_) | Null | Enum(_) => {
@@ -160,10 +159,18 @@ mod tests {
         const Q2: &str = "{ things(where: { stuff_gt: 42 }) { id } }";
         const Q3: &str = "{ things(where: { stuff_lte: 42 }) { id } }";
         const Q4: &str = "{ things(where: { stuff_gt: 42 }) { id name } }";
-        let q1 = parse_query(Q1).expect("q1 is syntactically valid");
-        let q2 = parse_query(Q2).expect("q2 is syntactically valid");
-        let q3 = parse_query(Q3).expect("q3 is syntactically valid");
-        let q4 = parse_query(Q4).expect("q4 is syntactically valid");
+        let q1 = parse_query(Q1)
+            .expect("q1 is syntactically valid")
+            .into_static();
+        let q2 = parse_query(Q2)
+            .expect("q2 is syntactically valid")
+            .into_static();
+        let q3 = parse_query(Q3)
+            .expect("q3 is syntactically valid")
+            .into_static();
+        let q4 = parse_query(Q4)
+            .expect("q4 is syntactically valid")
+            .into_static();
 
         assert_eq!(shape_hash(&q1), shape_hash(&q2));
         assert_ne!(shape_hash(&q1), shape_hash(&q3));
