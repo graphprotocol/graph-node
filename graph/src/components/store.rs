@@ -1099,9 +1099,9 @@ pub trait Store: Send + Sync + 'static {
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
     /// Load the dynamic data sources for the given deployment
-    fn load_dynamic_data_sources(
+    async fn load_dynamic_data_sources(
         &self,
-        subgraph_id: &SubgraphDeploymentId,
+        subgraph_id: SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
 
     fn assigned_node(
@@ -1310,9 +1310,9 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn load_dynamic_data_sources(
+    async fn load_dynamic_data_sources(
         &self,
-        _subgraph_id: &SubgraphDeploymentId,
+        _subgraph_id: SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         unimplemented!()
     }

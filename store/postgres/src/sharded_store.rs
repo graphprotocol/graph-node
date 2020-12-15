@@ -603,12 +603,12 @@ impl StoreTrait for ShardedStore {
         Ok(infos)
     }
 
-    fn load_dynamic_data_sources(
+    async fn load_dynamic_data_sources(
         &self,
-        id: &SubgraphDeploymentId,
+        id: SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        let (store, _) = self.store(id)?;
-        store.load_dynamic_data_sources(id)
+        let (store, _) = self.store(&id)?;
+        store.load_dynamic_data_sources(id).await
     }
 
     async fn fail_subgraph(

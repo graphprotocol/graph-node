@@ -1173,12 +1173,15 @@ impl Store {
         Ok(replica_id)
     }
 
-    pub(crate) fn load_dynamic_data_sources(
+    pub(crate) async fn load_dynamic_data_sources(
         &self,
-        id: &SubgraphDeploymentId,
+        id: SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        let conn = self.get_conn()?;
-        conn.transaction(|| crate::dynds::load(&conn, id.as_str()))
+        self.with_conn(move |conn, _| {
+            conn.transaction(|| crate::dynds::load(&conn, id.as_str()))
+                .map_err(|e| e.into())
+        })
+        .await
     }
 
     pub(crate) fn exists_and_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, StoreError> {
