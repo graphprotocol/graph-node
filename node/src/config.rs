@@ -45,7 +45,7 @@ pub struct Config {
     ingestor: Ingestor,
 }
 
-fn validate_name(s: &str) -> Result<()> {
+fn validate_replica_name(s: &str) -> Result<()> {
     if s.is_empty() {
         return Err(anyhow!("names must not be empty"));
     }
@@ -59,7 +59,7 @@ fn validate_name(s: &str) -> Result<()> {
 
     if !s
         .chars()
-        .all(|c| (c.is_ascii_alphanumeric() && c.is_lowercase()) || c == '-')
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
         return Err(anyhow!(
             "name `{}` is invalid: names can only contain lowercase alphanumeric characters or '-'",
@@ -180,7 +180,7 @@ impl Shard {
 
         check_pool_size(self.pool_size, &self.connection)?;
         for (name, replica) in self.replicas.iter_mut() {
-            validate_name(name)?;
+            validate_replica_name(name)?;
             replica.validate(opt)?;
         }
         Ok(())
