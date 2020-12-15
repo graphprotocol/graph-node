@@ -226,11 +226,11 @@ impl StoreTrait for NetworkStore {
         self.store.status(filter)
     }
 
-    fn load_dynamic_data_sources(
+    async fn load_dynamic_data_sources(
         &self,
-        subgraph_id: &SubgraphDeploymentId,
+        subgraph_id: SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        self.store.load_dynamic_data_sources(subgraph_id)
+        self.store.load_dynamic_data_sources(subgraph_id).await
     }
 
     fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {

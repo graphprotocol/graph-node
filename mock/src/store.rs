@@ -195,9 +195,9 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn load_dynamic_data_sources(
+    async fn load_dynamic_data_sources(
         &self,
-        _: &SubgraphDeploymentId,
+        _: SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         unimplemented!()
     }

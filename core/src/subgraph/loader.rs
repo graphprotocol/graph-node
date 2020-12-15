@@ -41,7 +41,11 @@ where
         );
         let mut data_sources = vec![];
 
-        for stored in self.store.load_dynamic_data_sources(&deployment_id)? {
+        for stored in self
+            .store
+            .load_dynamic_data_sources(deployment_id.clone())
+            .await?
+        {
             let StoredDynamicDataSource {
                 name,
                 source,
