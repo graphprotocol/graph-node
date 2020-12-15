@@ -112,7 +112,7 @@ async fn main() {
         render_testament!(TESTAMENT)
     );
 
-    let config = match Config::load(&logger, &opt) {
+    let config = match Config::load(&logger, &opt.clone().into()) {
         Err(e) => {
             eprintln!("configuration error: {}", e);
             std::process::exit(1);
@@ -250,16 +250,16 @@ async fn main() {
                 metrics_registry.clone(),
                 store_conn_pool_size as usize,
             ));
+            let generic_network_store = network_stores.values().next().unwrap().clone();
             let graphql_runner = Arc::new(GraphQlRunner::new(
                 &logger,
-                store_builder.store(),
+                generic_network_store,
                 load_manager,
             ));
             let mut graphql_server = GraphQLQueryServer::new(
                 &logger_factory,
                 graphql_metrics_registry,
                 graphql_runner.clone(),
-                store_builder.store(),
                 node_id.clone(),
             );
             let subscription_server = GraphQLSubscriptionServer::new(
@@ -272,7 +272,6 @@ async fn main() {
                 &logger_factory,
                 graphql_runner.clone(),
                 store_builder.store(),
-                node_id.clone(),
             );
 
             // Spawn Ethereum network indexers for all networks that are to be indexed
@@ -300,6 +299,7 @@ async fn main() {
                         metrics_registry.clone(),
                         format!("network/{}", network_subgraph).into(),
                         None,
+                        network_name,
                     );
                     graph::spawn(
                         indexer

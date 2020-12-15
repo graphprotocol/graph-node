@@ -1,4 +1,3 @@
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -19,7 +18,7 @@ pub struct SubscriptionServer<Q, S> {
 impl<Q, S> SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
+    S: Store,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         SubscriptionServer {
@@ -33,10 +32,7 @@ where
         store: Arc<S>,
         path: &str,
     ) -> Result<Option<SubgraphDeploymentId>, Error> {
-        fn id_from_name<S: SubgraphDeploymentStore + Store>(
-            store: Arc<S>,
-            name: String,
-        ) -> Option<SubgraphDeploymentId> {
+        fn id_from_name<S: Store>(store: Arc<S>, name: String) -> Option<SubgraphDeploymentId> {
             SubgraphName::new(name)
                 .ok()
                 .map(|subgraph_name| store.deployment_state_from_name(subgraph_name))
@@ -59,7 +55,6 @@ where
         };
 
         match path_segments.as_slice() {
-            &["subgraphs"] => Ok(Some(SUBGRAPHS_ID.clone())),
             &["subgraphs", "id", subgraph_id] => Ok(SubgraphDeploymentId::new(subgraph_id).ok()),
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
                 Ok(id_from_name(store, path_segments[2..].join("/")))
@@ -76,7 +71,7 @@ where
 impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
+    S: Store,
 {
     async fn serve(self, port: u16) {
         info!(

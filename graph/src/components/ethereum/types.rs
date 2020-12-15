@@ -1,9 +1,10 @@
 use ethabi::LogParam;
+use failure::format_err;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
-use std::cmp::Ordering;
-use std::fmt;
+use std::{cmp::Ordering, convert::TryFrom};
+use std::{fmt, str::FromStr};
 use web3::types::*;
 
 use crate::prelude::{EntityKey, SubgraphDeploymentId, ToEntityKey};
@@ -515,6 +516,18 @@ impl From<(H256, i64)> for EthereumBlockPointer {
     }
 }
 
+impl TryFrom<(&str, i64)> for EthereumBlockPointer {
+    type Error = failure::Error;
+
+    fn try_from((hash, number): (&str, i64)) -> Result<Self, Self::Error> {
+        let hash = hash.trim_start_matches("0x");
+        let hash = H256::from_str(hash)
+            .map_err(|e| format_err!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+
+        Ok(EthereumBlockPointer::from((hash, number)))
+    }
+}
+
 impl<'a> From<&'a EthereumCall> for EthereumBlockPointer {
     fn from(call: &'a EthereumCall) -> EthereumBlockPointer {
         EthereumBlockPointer {
@@ -547,11 +560,7 @@ impl From<EthereumBlockPointer> for u64 {
 
 impl ToEntityKey for EthereumBlockPointer {
     fn to_entity_key(&self, subgraph: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
-            subgraph_id: subgraph,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", self.hash),
-        }
+        EntityKey::data(subgraph, "Block".into(), format!("{:x}", self.hash))
     }
 }
 

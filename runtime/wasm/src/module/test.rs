@@ -24,10 +24,7 @@ mod abi;
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
-) -> (
-    WasmInstance,
-    Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
-) {
+) -> (WasmInstance, Arc<impl Store + EthereumCallCache>) {
     test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
 }
 
@@ -35,10 +32,7 @@ fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
     timeout: Option<Duration>,
-) -> (
-    WasmInstance,
-    Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
-) {
+) -> (WasmInstance, Arc<impl Store + EthereumCallCache>) {
     let store = STORE.clone();
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
@@ -137,7 +131,7 @@ fn mock_data_source(path: &str) -> DataSource {
 fn mock_host_exports(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
+    store: Arc<impl Store + EthereumCallCache>,
 ) -> HostExports {
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
@@ -166,7 +160,7 @@ fn mock_host_exports(
 fn mock_context(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
+    store: Arc<impl Store + EthereumCallCache>,
 ) -> MappingContext {
     MappingContext {
         logger: test_store::LOGGER.clone(),
@@ -301,11 +295,11 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let key = EntityKey {
-        subgraph_id: SubgraphDeploymentId::new(subgraph_id).unwrap(),
-        entity_type: "Thing".to_string(),
-        entity_id: id.to_string(),
-    };
+    let key = EntityKey::data(
+        SubgraphDeploymentId::new(subgraph_id).unwrap(),
+        "Thing".to_string(),
+        id.to_string(),
+    );
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::Insert { key, data },
@@ -647,7 +641,12 @@ async fn entity_store() {
     steve.set("id", "steve");
     steve.set("name", "Steve");
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
-    test_store::insert_entities(subgraph_id, vec![("User", alex), ("User", steve)]).unwrap();
+    let user_type = EntityType::data("User".to_string());
+    test_store::insert_entities(
+        subgraph_id,
+        vec![(user_type.clone(), alex), (user_type, steve)],
+    )
+    .unwrap();
 
     let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
         let id = module.asc_new(id);

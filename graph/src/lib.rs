@@ -102,9 +102,9 @@ pub mod prelude {
         BlockNumber, ChainStore, ChildMultiplicity, EntityCache, EntityChange,
         EntityChangeOperation, EntityCollection, EntityFilter, EntityKey, EntityLink,
         EntityModification, EntityOperation, EntityOrder, EntityQuery, EntityRange, EntityWindow,
-        EthereumCallCache, MetadataOperation, ParentLink, PoolWaitStats, QueryStore, Store,
-        StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox, SubgraphDeploymentStore,
-        TransactionAbortError, WindowAttribute, BLOCK_NUMBER_MAX, SUBSCRIPTION_THROTTLE_INTERVAL,
+        EthereumCallCache, MetadataOperation, ParentLink, PoolWaitStats, QueryStore,
+        QueryStoreManager, Store, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
+        WindowAttribute, BLOCK_NUMBER_MAX, SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
         BlockState, DataSourceLoader, DataSourceTemplateInfo, HostMetrics, RuntimeHost,
@@ -124,7 +124,7 @@ pub mod prelude {
     pub use crate::data::store::ethereum::*;
     pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
-        AssignmentEvent, Attribute, Entity, NodeId, SubgraphEntityPair, ToEntityId, ToEntityKey,
+        AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, ToEntityId, ToEntityKey,
         TryIntoEntity, Value, ValueType,
     };
     pub use crate::data::subgraph::schema::{SubgraphDeploymentEntity, TypedEntity};

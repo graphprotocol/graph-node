@@ -1,0 +1,15 @@
+# A simple store configuration: we use one database for everything
+# This is equivalent to the old way of configuring the store for tests
+# by just setting the environment variable THEGRAPH_STORE_POSTGRES_DIESEL_URL
+
+[store]
+[store.primary]
+connection = "<postgres URL>"
+
+[deployment]
+[[deployment.rule]]
+store = "primary"
+indexers = [ "default" ]
+
+[ingestor]
+node = "default"

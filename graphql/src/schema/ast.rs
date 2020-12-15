@@ -454,7 +454,7 @@ pub fn validate_entity(
     let object_type_definitions = get_object_type_definitions(schema);
     let object_type = object_type_definitions
         .iter()
-        .find(|object_type| object_type.name == key.entity_type)
+        .find(|object_type| key.entity_type.is_data(&object_type.name))
         .with_context(|| {
             format!(
                 "Entity {}[{}]: unknown entity type `{}`",
@@ -561,11 +561,11 @@ fn entity_validation() {
         let schema =
             graph::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
-        let key = EntityKey {
-            subgraph_id: SubgraphDeploymentId::new("doesntmatter").unwrap(),
-            entity_type: "Thing".to_owned(),
-            entity_id: id.to_owned(),
-        };
+        let key = EntityKey::data(
+            SubgraphDeploymentId::new("doesntmatter").unwrap(),
+            "Thing".to_owned(),
+            id.to_owned(),
+        );
 
         let err = validate_entity(&schema.document, &key, &thing);
         if errmsg == "" {

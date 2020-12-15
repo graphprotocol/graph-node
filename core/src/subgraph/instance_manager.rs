@@ -7,16 +7,17 @@ use std::time::Instant;
 
 use graph::components::store::ModificationsAndCache;
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
+use graph::components::{
+    ethereum::{triggers_in_block, EthereumNetworks},
+    store::EntityType,
+};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, SubgraphError, POI_OBJECT,
 };
+use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
-use graph::{
-    components::ethereum::{triggers_in_block, EthereumNetworks},
-    data::subgraph::SubgraphFeature,
-};
 
 use super::SubgraphInstance;
 
@@ -193,7 +194,7 @@ impl SubgraphInstanceManager {
         metrics_registry: Arc<M>,
     ) -> Self
     where
-        S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
+        S: Store + ChainStore + EthereumCallCache,
         B: BlockStreamBuilder,
         M: MetricsRegistry,
     {
@@ -230,7 +231,7 @@ impl SubgraphInstanceManager {
         block_stream_builder: B,
         metrics_registry: Arc<M>,
     ) where
-        S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
+        S: Store + ChainStore + EthereumCallCache,
         B: BlockStreamBuilder,
         M: MetricsRegistry,
     {
@@ -304,7 +305,7 @@ impl SubgraphInstanceManager {
     ) -> Result<(), Error>
     where
         B: BlockStreamBuilder,
-        S: Store + ChainStore + SubgraphDeploymentStore + EthereumCallCache,
+        S: Store + ChainStore + EthereumCallCache,
         M: MetricsRegistry,
     {
         let required_capabilities = manifest.required_ethereum_capabilities();
@@ -439,7 +440,7 @@ async fn run_subgraph<B, T, S>(mut ctx: IndexingContext<B, T, S>) -> Result<(), 
 where
     B: BlockStreamBuilder,
     T: RuntimeHostBuilder,
-    S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
+    S: ChainStore + Store + EthereumCallCache,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -625,7 +626,7 @@ async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S>(
     block: EthereumBlockWithTriggers,
 ) -> Result<(IndexingContext<B, T, S>, bool), BlockProcessingError>
 where
-    S: ChainStore + Store + EthereumCallCache + SubgraphDeploymentStore,
+    S: ChainStore + Store + EthereumCallCache,
 {
     let triggers = block.triggers;
     let block = block.ethereum_block;
@@ -656,6 +657,7 @@ where
     let proof_of_indexing = if ctx
         .inputs
         .store
+        .clone()
         .supports_proof_of_indexing(&ctx.inputs.deployment_id)
         .await?
     {
@@ -687,7 +689,7 @@ where
             // While the version is pending we fail the subgraph even if the error is deterministic.
             // This prevents a buggy pending version from replacing a current version.
             let store = &ctx.inputs.store;
-            let id = ctx.inputs.deployment_id.clone();
+            let id = &ctx.inputs.deployment_id;
             let fail_fast = || -> Result<bool, BlockProcessingError> {
                 Ok(!*DISABLE_FAIL_FAST
                     && !store
@@ -878,16 +880,9 @@ where
         stopwatch,
         block_state.deterministic_errors,
     ) {
-        Ok(should_migrate) => {
+        Ok(_) => {
             let elapsed = start.elapsed().as_secs_f64();
             metrics.block_ops_transaction_duration.observe(elapsed);
-            if should_migrate {
-                ctx.inputs.store.migrate_subgraph_deployment(
-                    &logger,
-                    &ctx.inputs.deployment_id,
-                    &block_ptr_after,
-                );
-            }
             Ok((ctx, needs_restart))
         }
         Err(e) => {
@@ -912,7 +907,7 @@ async fn update_proof_of_indexing(
         // Create the special POI entity key specific to this causality_region
         let entity_key = EntityKey {
             subgraph_id: deployment_id.clone(),
-            entity_type: POI_OBJECT.to_owned(),
+            entity_type: EntityType::data(POI_OBJECT.to_owned()),
             entity_id: causality_region,
         };
 
@@ -997,7 +992,7 @@ fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
 ) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), anyhow::Error>
 where
     B: BlockStreamBuilder,
-    S: ChainStore + Store + SubgraphDeploymentStore + EthereumCallCache,
+    S: ChainStore + Store + EthereumCallCache,
 {
     let mut data_sources = vec![];
     let mut runtime_hosts = vec![];
@@ -1068,7 +1063,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
             &block_ptr,
         ));
         let id = DynamicEthereumContractDataSourceEntity::make_id();
-        let operations = entity.write_entity_operations(id.as_ref());
+        let operations = entity.write_entity_operations(&ctx.inputs.deployment_id, id.as_ref());
         entity_cache.append(operations);
     }
 

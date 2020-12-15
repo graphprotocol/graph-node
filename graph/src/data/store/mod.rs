@@ -1,5 +1,8 @@
-use crate::data::subgraph::SubgraphDeploymentId;
-use crate::prelude::{format_err, CacheWeight, EntityKey, QueryExecutionError};
+use crate::{
+    components::store::EntityType,
+    prelude::{format_err, CacheWeight, EntityKey, QueryExecutionError},
+};
+use crate::{data::subgraph::SubgraphDeploymentId, prelude::EntityChange};
 use failure::Error;
 use graphql_parser::query;
 use graphql_parser::schema;
@@ -15,14 +18,35 @@ use std::str::FromStr;
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
+use super::subgraph::schema::MetadataType;
+
 /// Custom scalars in GraphQL.
 pub mod scalar;
 
 // Ethereum compatibility.
 pub mod ethereum;
 
-/// A pair of subgraph ID and entity type name.
-pub type SubgraphEntityPair = (SubgraphDeploymentId, String);
+/// Filter subscriptions
+pub enum SubscriptionFilter {
+    /// Receive updates about all entities from the given deployment of the
+    /// given type
+    Entities(SubgraphDeploymentId, EntityType),
+    /// Subscripe to changes in deployment assignments
+    Assignment,
+}
+
+impl SubscriptionFilter {
+    pub fn matches(&self, change: &EntityChange) -> bool {
+        match self {
+            Self::Entities(id, entity_type) => {
+                &change.subgraph_id == id && &change.entity_type == entity_type
+            }
+            Self::Assignment => {
+                &change.entity_type == &MetadataType::SubgraphDeploymentAssignment.into()
+            }
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);

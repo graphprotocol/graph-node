@@ -41,7 +41,8 @@ those.
   default), blocks will never be removed from the block cache. This setting
   should only be used during development to reduce the size of the
   database. In production environments, it will cause multiple downloads of
-  the same blocks and therefore slow the system down.
+  the same blocks and therefore slow the system down. This setting can not
+  be used if the store uses more than one shard.
 
 ## Running mapping handlers
 

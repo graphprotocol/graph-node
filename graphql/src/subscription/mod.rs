@@ -39,6 +39,7 @@ where
 
 pub fn execute_subscription<R>(
     subscription: Subscription,
+    schema: Arc<ApiSchema>,
     options: SubscriptionExecutionOptions<R>,
 ) -> Result<SubscriptionResult, SubscriptionError>
 where
@@ -46,6 +47,8 @@ where
 {
     let query = crate::execution::Query::new(
         &options.logger,
+        schema,
+        None,
         subscription.query,
         options.max_complexity,
         options.max_depth,

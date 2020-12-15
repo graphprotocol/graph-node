@@ -17,7 +17,7 @@ use wasmparser;
 use web3::types::{Address, H256};
 
 use crate::components::link_resolver::LinkResolver;
-use crate::components::store::{Store, StoreError, SubgraphDeploymentStore};
+use crate::components::store::{Store, StoreError};
 use crate::components::subgraph::DataSourceTemplateInfo;
 use crate::data::graphql::{TryFromValue, ValueMap};
 use crate::data::query::QueryExecutionError;
@@ -27,11 +27,11 @@ use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
     EthereumContractDataSourceTemplateEntity, EthereumContractDataSourceTemplateSourceEntity,
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
-    EthereumContractSourceEntity, SUBGRAPHS_ID,
+    EthereumContractSourceEntity,
 };
 use crate::prelude::{
     anyhow::{self, Context},
-    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize, BLOCK_NUMBER_MAX,
+    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize,
 };
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
@@ -100,6 +100,12 @@ impl SubgraphDeploymentId {
             return Err(s);
         }
 
+        // Allow only deployment id's for 'real' subgraphs, not the old
+        // metadata subgraph.
+        if s == "subgraphs" {
+            return Err(s);
+        }
+
         Ok(SubgraphDeploymentId(s))
     }
 
@@ -107,12 +113,6 @@ impl SubgraphDeploymentId {
         Link {
             link: format!("/ipfs/{}", self),
         }
-    }
-
-    /// Return true if this is the id of the special
-    /// "subgraph of subgraphs" that contains metadata about everything
-    pub fn is_meta(&self) -> bool {
-        self.0 == *SUBGRAPHS_ID.0
     }
 }
 
@@ -920,15 +920,12 @@ pub struct Graft {
 }
 
 impl Graft {
-    fn validate<S: Store + SubgraphDeploymentStore>(
-        &self,
-        store: Arc<S>,
-    ) -> Vec<SubgraphManifestValidationError> {
+    fn validate<S: Store>(&self, store: Arc<S>) -> Vec<SubgraphManifestValidationError> {
         fn gbi(msg: String) -> Vec<SubgraphManifestValidationError> {
             vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
         }
 
-        match store.block_ptr(self.base.clone()) {
+        match store.block_ptr(&self.base) {
             Err(e) => gbi(e.to_string()),
             Ok(None) => gbi(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
@@ -996,7 +993,7 @@ impl UnvalidatedSubgraphManifest {
         ))
     }
 
-    pub fn validate<S: Store + SubgraphDeploymentStore>(
+    pub fn validate<S: Store>(
         self,
         store: Arc<S>,
     ) -> Result<
@@ -1285,19 +1282,6 @@ pub struct DeploymentState {
     pub max_reorg_depth: u32,
     /// The number of the last block that the subgraph has processed
     pub latest_ethereum_block_number: BlockNumber,
-}
-
-impl DeploymentState {
-    /// Return a `DeploymentState` suitable for querying the metadata subgraph
-    pub fn meta() -> Self {
-        // The metadata subgraph is not subject to reverts
-        DeploymentState {
-            id: SUBGRAPHS_ID.clone(),
-            reorg_count: 0,
-            max_reorg_depth: 0,
-            latest_ethereum_block_number: BLOCK_NUMBER_MAX,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]

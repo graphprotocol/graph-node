@@ -11,44 +11,45 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
-/// Convenient graphql queries for the metadata.
-pub mod queries;
-
 use graphql_parser::query as q;
 use hex;
-use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
 use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{collections::BTreeMap, fmt, fmt::Display};
-use strum_macros::IntoStaticStr;
+use strum_macros::{EnumString, IntoStaticStr};
 use uuid::Uuid;
 use web3::types::*;
 
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
-use crate::components::store::{
-    EntityCollection, EntityKey, EntityOperation, EntityQuery, EntityRange, MetadataOperation,
-};
+use crate::components::store::{EntityOperation, MetadataKey, MetadataOperation};
 use crate::data::graphql::{TryFromValue, ValueMap};
-use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value};
-use crate::data::subgraph::{SubgraphManifest, SubgraphName};
+use crate::data::store::{Entity, Value};
+use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
-
-lazy_static! {
-    /// ID of the subgraph of subgraphs.
-    pub static ref SUBGRAPHS_ID: SubgraphDeploymentId =
-        SubgraphDeploymentId::new("subgraphs").unwrap();
-}
 
 pub const POI_TABLE: &str = "poi2$";
 pub const POI_OBJECT: &str = "Poi$";
 
-#[derive(Debug, Clone, IntoStaticStr)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    IntoStaticStr,
+    EnumString,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
 pub enum MetadataType {
-    Subgraph,
     SubgraphDeployment,
+    // This is the only metadata type that is stored in the primary. We only
+    // need this type so we can send store events for assignment changes
     SubgraphDeploymentAssignment,
     SubgraphManifest,
     EthereumContractDataSource,
@@ -69,6 +70,14 @@ impl MetadataType {
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
+
+    pub fn key(&self, subgraph_id: SubgraphDeploymentId, entity_id: String) -> MetadataKey {
+        MetadataKey {
+            subgraph_id,
+            entity_type: self.clone(),
+            entity_id,
+        }
+    }
 }
 
 impl Display for MetadataType {
@@ -87,139 +96,50 @@ impl From<MetadataType> for String {
 pub trait TypedEntity {
     const TYPENAME: MetadataType;
     type IdType: ToString;
-
-    fn query() -> EntityQuery {
-        let range = EntityRange {
-            first: None,
-            skip: 0,
-        };
-        EntityQuery::new(
-            SUBGRAPHS_ID.clone(),
-            BLOCK_NUMBER_MAX,
-            EntityCollection::All(vec![Self::TYPENAME.to_string()]),
-        )
-        .range(range)
-    }
-
-    fn subgraph_entity_pair() -> SubgraphEntityPair {
-        (SUBGRAPHS_ID.clone(), Self::TYPENAME.to_string())
-    }
-
-    fn key(entity_id: Self::IdType) -> EntityKey {
-        let (subgraph_id, entity_type) = Self::subgraph_entity_pair();
-        EntityKey {
-            subgraph_id,
-            entity_type,
-            entity_id: entity_id.to_string(),
-        }
-    }
 }
 
 // See also: ed42d219c6704a4aab57ce1ea66698e7.
 // Note: The types here need to be in sync with the metadata GraphQL schema.
 
-#[derive(Debug)]
-pub struct SubgraphEntity {
-    name: SubgraphName,
-    current_version_id: Option<String>,
-    pending_version_id: Option<String>,
-    created_at: u64,
-}
-
-impl TypedEntity for SubgraphEntity {
-    const TYPENAME: MetadataType = MetadataType::Subgraph;
-    type IdType = String;
-}
-
 trait OperationList {
     fn add(&mut self, entity: MetadataType, id: String, data: Entity);
 }
 
-struct MetadataOperationList(Vec<MetadataOperation>);
+struct MetadataOperationList(SubgraphDeploymentId, Vec<MetadataOperation>);
 
 impl OperationList for MetadataOperationList {
-    fn add(&mut self, entity: MetadataType, id: String, data: Entity) {
-        self.0.push(MetadataOperation::Set { entity, id, data })
+    fn add(&mut self, entity_type: MetadataType, id: String, data: Entity) {
+        let key = entity_type.key(self.0.clone(), id);
+        self.1.push(MetadataOperation::Set { key, data })
     }
 }
 
-struct EntityOperationList(Vec<EntityOperation>);
+struct EntityOperationList(SubgraphDeploymentId, Vec<EntityOperation>);
 
 impl OperationList for EntityOperationList {
-    fn add(&mut self, entity: MetadataType, id: String, data: Entity) {
-        self.0.push(EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: SUBGRAPHS_ID.clone(),
-                entity_type: entity.to_string(),
-                entity_id: id.to_owned(),
-            },
-            data,
-        })
+    fn add(&mut self, entity_type: MetadataType, id: String, data: Entity) {
+        let key = entity_type.key(self.0.clone(), id).into();
+        self.1.push(EntityOperation::Set { key, data })
     }
 }
 
 trait WriteOperations: Sized {
     fn generate(self, id: &str, ops: &mut dyn OperationList);
 
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let mut ops = MetadataOperationList(Vec::new());
+    fn write_operations(self, subgraph: &SubgraphDeploymentId, id: &str) -> Vec<MetadataOperation> {
+        let mut ops = MetadataOperationList(subgraph.clone(), Vec::new());
         self.generate(id, &mut ops);
-        ops.0
+        ops.1
     }
 
-    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
-        let mut ops = EntityOperationList(Vec::new());
+    fn write_entity_operations(
+        self,
+        subgraph: &SubgraphDeploymentId,
+        id: &str,
+    ) -> Vec<EntityOperation> {
+        let mut ops = EntityOperationList(subgraph.clone(), Vec::new());
         self.generate(id, &mut ops);
-        ops.0
-    }
-}
-
-impl SubgraphEntity {
-    pub fn new(
-        name: SubgraphName,
-        current_version_id: Option<String>,
-        pending_version_id: Option<String>,
-        created_at: u64,
-    ) -> SubgraphEntity {
-        SubgraphEntity {
-            name,
-            current_version_id,
-            pending_version_id,
-            created_at,
-        }
-    }
-
-    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id,
-            name: self.name.to_string(),
-            currentVersion: self.current_version_id,
-            pendingVersion: self.pending_version_id,
-            createdAt: self.created_at,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-
-    pub fn update_current_version_operations(
-        id: &str,
-        version_id_opt: Option<String>,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            currentVersion: version_id_opt,
-        };
-
-        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-
-    pub fn update_pending_version_operations(
-        id: &str,
-        version_id_opt: Option<String>,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            pendingVersion: version_id_opt,
-        };
-
-        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
+        ops.1
     }
 }
 
@@ -241,6 +161,14 @@ impl SubgraphHealth {
             SubgraphHealth::Healthy => "healthy",
             SubgraphHealth::Unhealthy => "unhealthy",
             SubgraphHealth::Failed => "failed",
+        }
+    }
+
+    pub fn is_failed(&self) -> bool {
+        match self {
+            SubgraphHealth::Healthy => false,
+            SubgraphHealth::Unhealthy => false,
+            SubgraphHealth::Failed => true,
         }
     }
 }
@@ -300,7 +228,7 @@ pub struct SubgraphDeploymentEntity {
     earliest_ethereum_block_number: Option<u64>,
     latest_ethereum_block_hash: Option<H256>,
     latest_ethereum_block_number: Option<u64>,
-    graft_base: Option<SubgraphDeploymentId>,
+    pub graft_base: Option<SubgraphDeploymentId>,
     graft_block_hash: Option<H256>,
     graft_block_number: Option<u64>,
     reorg_count: i32,
@@ -344,8 +272,10 @@ impl SubgraphDeploymentEntity {
             self.graft_base = Some(subgraph);
             self.graft_block_hash = Some(ptr.hash);
             self.graft_block_number = Some(ptr.number);
-            self.latest_ethereum_block_hash = Some(ptr.hash);
-            self.latest_ethereum_block_number = Some(ptr.number);
+            // When we graft, the block pointer is only set after copying
+            // from the base subgraph finished successfully
+            self.latest_ethereum_block_hash = None;
+            self.latest_ethereum_block_number = None;
         }
         self
     }
@@ -378,7 +308,7 @@ impl SubgraphDeploymentEntity {
         let non_fatal_errors = Vec::<Value>::new();
 
         let manifest_id = SubgraphManifestEntity::id(&id);
-        ops.extend(manifest.write_operations(&manifest_id));
+        ops.extend(manifest.write_operations(id, &manifest_id));
 
         let entity = entity! {
             id: id.to_string(),
@@ -398,38 +328,13 @@ impl SubgraphDeploymentEntity {
         };
 
         ops.push(set_metadata_operation(
+            id.clone(),
             Self::TYPENAME,
             id.to_string(),
             entity,
         ));
 
         ops
-    }
-}
-
-#[derive(Debug)]
-pub struct SubgraphDeploymentAssignmentEntity {
-    node_id: NodeId,
-    cost: u64,
-}
-
-impl TypedEntity for SubgraphDeploymentAssignmentEntity {
-    const TYPENAME: MetadataType = MetadataType::SubgraphDeploymentAssignment;
-    type IdType = SubgraphDeploymentId;
-}
-
-impl SubgraphDeploymentAssignmentEntity {
-    pub fn new(node_id: NodeId) -> Self {
-        Self { node_id, cost: 1 }
-    }
-
-    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id.to_string(),
-            nodeId: self.node_id.to_string(),
-            cost: self.cost,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id.as_str(), entity)]
     }
 }
 
@@ -454,7 +359,7 @@ impl SubgraphManifestEntity {
         format!("{}-manifest", subgraph_id)
     }
 
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+    fn write_operations(self, subgraph: &SubgraphDeploymentId, id: &str) -> Vec<MetadataOperation> {
         let SubgraphManifestEntity {
             spec_version,
             description,
@@ -470,7 +375,7 @@ impl SubgraphManifestEntity {
         let mut data_source_ids: Vec<Value> = vec![];
         for (i, data_source) in data_sources.into_iter().enumerate() {
             let data_source_id = format!("{}-data-source-{}", id, i);
-            ops.extend(data_source.write_operations(&data_source_id));
+            ops.extend(data_source.write_operations(subgraph, &data_source_id));
             data_source_ids.push(data_source_id.into());
         }
 
@@ -479,7 +384,7 @@ impl SubgraphManifestEntity {
             .enumerate()
             .map(|(i, template)| {
                 let template_id = format!("{}-templates-{}", id, i);
-                ops.extend(template.write_operations(&template_id));
+                ops.extend(template.write_operations(subgraph, &template_id));
                 template_id.into()
             })
             .collect();
@@ -495,7 +400,12 @@ impl SubgraphManifestEntity {
             templates: template_ids,
         };
 
-        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(
+            subgraph.clone(),
+            Self::TYPENAME,
+            id,
+            entity,
+        ));
 
         ops
     }
@@ -535,14 +445,18 @@ impl TypedEntity for EthereumContractDataSourceEntity {
 }
 
 impl EthereumContractDataSourceEntity {
-    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+    pub fn write_operations(
+        self,
+        subgraph: &SubgraphDeploymentId,
+        id: &str,
+    ) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let source_id = format!("{}-source", id);
-        ops.extend(self.source.write_operations(&source_id));
+        ops.extend(self.source.write_operations(subgraph, &source_id));
 
         let mapping_id = format!("{}-mapping", id);
-        ops.extend(self.mapping.write_operations(&mapping_id));
+        ops.extend(self.mapping.write_operations(subgraph, &mapping_id));
 
         let template_ids: Vec<Value> = self
             .templates
@@ -550,7 +464,7 @@ impl EthereumContractDataSourceEntity {
             .enumerate()
             .map(|(i, template)| {
                 let template_id = format!("{}-templates-{}", id, i);
-                ops.extend(template.write_operations(&template_id));
+                ops.extend(template.write_operations(subgraph, &template_id));
                 template_id.into()
             })
             .collect();
@@ -565,7 +479,12 @@ impl EthereumContractDataSourceEntity {
             templates: template_ids,
         };
 
-        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(
+            subgraph.clone(),
+            Self::TYPENAME,
+            id,
+            entity,
+        ));
 
         ops
     }
@@ -603,8 +522,12 @@ pub struct DynamicEthereumContractDataSourceEntity {
 }
 
 impl DynamicEthereumContractDataSourceEntity {
-    pub fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
-        WriteOperations::write_entity_operations(self, id)
+    pub fn write_entity_operations(
+        self,
+        subgraph: &SubgraphDeploymentId,
+        id: &str,
+    ) -> Vec<EntityOperation> {
+        WriteOperations::write_entity_operations(self, subgraph, id)
     }
 
     pub fn make_id() -> String {
@@ -1254,25 +1177,13 @@ impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
 }
 
 fn set_metadata_operation(
+    subgraph: SubgraphDeploymentId,
     entity: MetadataType,
     entity_id: impl Into<String>,
     data: impl Into<Entity>,
 ) -> MetadataOperation {
     MetadataOperation::Set {
-        entity,
-        id: entity_id.into(),
-        data: data.into(),
-    }
-}
-
-fn update_metadata_operation(
-    entity: MetadataType,
-    entity_id: impl Into<String>,
-    data: impl Into<Entity>,
-) -> MetadataOperation {
-    MetadataOperation::Update {
-        entity,
-        id: entity_id.into(),
+        key: entity.key(subgraph, entity_id.into()),
         data: data.into(),
     }
 }
@@ -1315,26 +1226,6 @@ impl StableHash for SubgraphError {
         block_ptr.stable_hash(sequence_number.next_child(), state);
         handler.stable_hash(sequence_number.next_child(), state);
         deterministic.stable_hash(sequence_number.next_child(), state);
-    }
-}
-
-impl TryFromValue for SubgraphError {
-    fn try_from_value(value: &q::Value) -> Result<SubgraphError, Error> {
-        let block_number = value.get_optional("blockNumber")?;
-        let block_hash = value.get_optional("blockHash")?;
-
-        let block_ptr = match (block_number, block_hash) {
-            (Some(number), Some(hash)) => Some(EthereumBlockPointer { number, hash }),
-            _ => None,
-        };
-
-        Ok(SubgraphError {
-            subgraph_id: value.get_required("subgraphId")?,
-            message: value.get_required("message")?,
-            block_ptr,
-            handler: value.get_optional("handler")?,
-            deterministic: value.get_optional("deterministic")?.unwrap_or(false),
-        })
     }
 }
 

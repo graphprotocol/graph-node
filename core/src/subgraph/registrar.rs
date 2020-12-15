@@ -6,9 +6,7 @@ use async_trait::async_trait;
 use lazy_static::lazy_static;
 
 use graph::components::ethereum::EthereumNetworks;
-use graph::data::subgraph::schema::{
-    SubgraphDeploymentAssignmentEntity, SubgraphDeploymentEntity, SubgraphEntity, TypedEntity,
-};
+use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
@@ -41,7 +39,7 @@ impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
     CS: ChainStore,
 {
     pub fn new(
@@ -151,17 +149,16 @@ where
         let logger = self.logger.clone();
 
         store
-            .subscribe(vec![
-                SubgraphDeploymentAssignmentEntity::subgraph_entity_pair(),
-            ])
+            .subscribe(vec![SubscriptionFilter::Assignment])
             .map_err(|()| format_err!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
                 // know that there is at least one, as that is what we subscribed to
+                let filter = SubscriptionFilter::Assignment;
                 let assignments = event
                     .changes
                     .iter()
-                    .filter(|change| change.entity_type == "SubgraphDeploymentAssignment")
+                    .filter(|change| filter.matches(change))
                     .map(|change| change.to_owned())
                     .collect::<Vec<_>>();
                 stream::iter_ok(assignments)
@@ -183,39 +180,31 @@ where
                     match entity_change.operation {
                         EntityChangeOperation::Set => {
                             store
-                                .get(SubgraphDeploymentAssignmentEntity::key(
-                                    subgraph_hash.clone(),
-                                ))
+                                .assigned_node(&subgraph_hash)
                                 .map_err(|e| {
                                     format_err!("Failed to get subgraph assignment entity: {}", e)
                                 })
-                                .map(
-                                    |entity_opt| -> Box<dyn Stream<Item = _, Error = _> + Send> {
-                                        if let Some(entity) = entity_opt {
-                                            if entity.get("nodeId")
-                                                == Some(&node_id.to_string().into())
-                                            {
-                                                // Start subgraph on this node
-                                                Box::new(stream::once(Ok(AssignmentEvent::Add {
-                                                    subgraph_id: subgraph_hash,
-                                                    node_id: node_id.clone(),
-                                                })))
-                                            } else {
-                                                // Ensure it is removed from this node
-                                                Box::new(stream::once(Ok(
-                                                    AssignmentEvent::Remove {
-                                                        subgraph_id: subgraph_hash,
-                                                        node_id: node_id.clone(),
-                                                    },
-                                                )))
-                                            }
+                                .map(|assigned| -> Box<dyn Stream<Item = _, Error = _> + Send> {
+                                    if let Some(assigned) = assigned {
+                                        if assigned == node_id {
+                                            // Start subgraph on this node
+                                            Box::new(stream::once(Ok(AssignmentEvent::Add {
+                                                subgraph_id: subgraph_hash,
+                                                node_id: node_id.clone(),
+                                            })))
                                         } else {
-                                            // Was added/updated, but is now gone.
-                                            // We will get a separate Removed event later.
-                                            Box::new(stream::empty())
+                                            // Ensure it is removed from this node
+                                            Box::new(stream::once(Ok(AssignmentEvent::Remove {
+                                                subgraph_id: subgraph_hash,
+                                                node_id: node_id.clone(),
+                                            })))
                                         }
-                                    },
-                                )
+                                    } else {
+                                        // Was added/updated, but is now gone.
+                                        // We will get a separate Removed event later.
+                                        Box::new(stream::empty())
+                                    }
+                                })
                         }
                         EntityChangeOperation::Removed => {
                             // Send remove event without checking node ID.
@@ -236,30 +225,14 @@ where
         let provider = self.provider.clone();
         let logger = self.logger.clone();
 
-        // Create a query to find all assignments with this node ID
-        let assignment_query = SubgraphDeploymentAssignmentEntity::query()
-            .filter(EntityFilter::new_equal("nodeId", self.node_id.to_string()));
-
-        future::result(self.store.find(assignment_query))
+        future::result(self.store.assignments(&self.node_id))
             .map_err(|e| format_err!("Error querying subgraph assignments: {}", e))
-            .and_then(move |assignment_entities| {
-                assignment_entities
-                    .into_iter()
-                    .map(|assignment_entity| {
-                        // Parse as subgraph hash
-                        assignment_entity.id().and_then(|id| {
-                            SubgraphDeploymentId::new(id).map_err(|s| {
-                                format_err!("Invalid subgraph hash `{}` in assignment entity", s)
-                            })
-                        })
-                    })
-                    .collect::<Result<HashSet<SubgraphDeploymentId>, _>>()
-            })
             .and_then(move |subgraph_ids| {
                 // This operation should finish only after all subgraphs are
                 // started. We wait for the spawned tasks to complete by giving
                 // each a `sender` and waiting for all of them to be dropped, so
                 // the receiver terminates without receiving anything.
+                let subgraph_ids = HashSet::<SubgraphDeploymentId>::from_iter(subgraph_ids);
                 let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
                 for id in subgraph_ids {
                     let sender = sender.clone();
@@ -284,7 +257,7 @@ impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
     CS: ChainStore,
 {
     async fn create_subgraph(
@@ -531,11 +504,9 @@ fn create_subgraph_version(
     let store = store.clone();
     let deployment_store = store.clone();
 
-    match store
-        .find_one(SubgraphEntity::query().filter(EntityFilter::new_equal("name", name.to_string())))
-    {
+    match store.subgraph_exists(&name) {
         Err(e) => return Box::new(future::err(e.into())),
-        Ok(None) => {
+        Ok(false) => {
             debug!(
                 logger,
                 "Subgraph not found, could not create_subgraph_version";
@@ -545,7 +516,7 @@ fn create_subgraph_version(
                 name.to_string(),
             )));
         }
-        _ => { /* everything is fine, continue */ }
+        Ok(true) => { /* everything is fine, continue */ }
     }
 
     Box::new(
@@ -572,13 +543,14 @@ fn create_subgraph_version(
 
                 // Apply the subgraph versioning and deployment operations,
                 // creating a new subgraph deployment if one doesn't exist.
-                    let deployment = SubgraphDeploymentEntity::new(
+                let network = manifest.network_name();
+                let deployment = SubgraphDeploymentEntity::new(
                         &manifest,
                         false,
                         start_block,
                     ).graft(base_block);
                     deployment_store
-                        .create_subgraph_deployment(name, &manifest.schema, deployment, node_id, version_switching_mode)
+                        .create_subgraph_deployment(name, &manifest.schema, deployment, node_id, network, version_switching_mode)
                         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
             })
     )

@@ -6,8 +6,12 @@ use crate::data::graphql::{object, IntoValue};
 use crate::prelude::{web3::types::H256, EthereumBlockPointer, Value};
 
 pub enum Filter {
+    /// Get all versions for the named subgraph
     SubgraphName(String),
+    /// Get the current (`true`) or pending (`false`) version of the named
+    /// subgraph
     SubgraphVersion(String, bool),
+    /// Get the status of all deployments whose ids are given
     Deployments(Vec<String>),
 }
 
@@ -23,6 +27,10 @@ impl EthereumBlock {
     pub fn to_ptr(self) -> EthereumBlockPointer {
         self.0
     }
+
+    pub fn number(&self) -> u64 {
+        self.0.number
+    }
 }
 
 impl IntoValue for EthereumBlock {
@@ -32,6 +40,12 @@ impl IntoValue for EthereumBlock {
             hash: self.0.hash_hex(),
             number: format!("{}", self.0.number),
         }
+    }
+}
+
+impl From<EthereumBlockPointer> for EthereumBlock {
+    fn from(ptr: EthereumBlockPointer) -> Self {
+        Self(ptr)
     }
 }
 

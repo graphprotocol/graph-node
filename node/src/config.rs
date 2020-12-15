@@ -1,7 +1,9 @@
 use graph::prelude::{
     anyhow::{anyhow, Result},
-    info, serde_json, Logger,
+    info, serde_json, Logger, NodeId,
 };
+use graph_chain_ethereum::CLEANUP_BLOCKS;
+use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -9,28 +11,60 @@ use std::collections::BTreeMap;
 use std::fs::read_to_string;
 use url::Url;
 
-const PRIMARY: &str = "primary";
 const ANY_NAME: &str = ".*";
 
-use crate::opt::Opt;
+pub struct Opt {
+    pub postgres_url: Option<String>,
+    pub config: Option<String>,
+    pub store_connection_pool_size: u32,
+    pub postgres_secondary_hosts: Vec<String>,
+    pub postgres_host_weights: Vec<usize>,
+    pub disable_block_ingestor: bool,
+    pub node_id: String,
+}
 
-#[derive(Debug, Deserialize, Serialize)]
+impl Default for Opt {
+    fn default() -> Self {
+        Opt {
+            postgres_url: None,
+            config: None,
+            store_connection_pool_size: 10,
+            postgres_secondary_hosts: vec![],
+            postgres_host_weights: vec![],
+            disable_block_ingestor: true,
+            node_id: "default".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
     #[serde(rename = "store")]
-    stores: BTreeMap<String, Shard>,
-    deployment: Deployment,
+    pub stores: BTreeMap<String, Shard>,
+    pub deployment: Deployment,
     ingestor: Ingestor,
 }
 
 fn validate_name(s: &str) -> Result<()> {
-    for c in s.chars() {
-        if !c.is_ascii_alphanumeric() || c == '-' {
-            return Err(anyhow!(
-                "names can only contain alphanumeric characters or '-', but `{}` contains `{}`",
-                s,
-                c
-            ));
-        }
+    if s.is_empty() {
+        return Err(anyhow!("names must not be empty"));
+    }
+    if s.len() > 30 {
+        return Err(anyhow!(
+            "names can be at most 30 characters, but `{}` has {} characters",
+            s,
+            s.len()
+        ));
+    }
+
+    if !s
+        .chars()
+        .all(|c| (c.is_ascii_alphanumeric() && c.is_lowercase()) || c == '-')
+    {
+        return Err(anyhow!(
+            "name `{}` is invalid: names can only contain lowercase alphanumeric characters or '-'",
+            s
+        ));
     }
     Ok(())
 }
@@ -39,14 +73,31 @@ impl Config {
     /// Check that the config is valid. Some defaults (like `pool_size`) will
     /// be filled in from `opt` at the same time.
     fn validate(&mut self, opt: &Opt) -> Result<()> {
-        if !self.stores.contains_key(PRIMARY) {
+        if !self.stores.contains_key(PRIMARY_SHARD.as_str()) {
             return Err(anyhow!("missing a primary store"));
         }
+        if self.stores.len() > 1 && *CLEANUP_BLOCKS {
+            // See 8b6ad0c64e244023ac20ced7897fe666
+            return Err(anyhow!(
+                "GRAPH_ETHEREUM_CLEANUP_BLOCKS can not be used with a sharded store"
+            ));
+        }
         for (key, shard) in self.stores.iter_mut() {
-            validate_name(key)?;
+            ShardName::new(key.clone()).map_err(|e| anyhow!(e))?;
             shard.validate(opt)?;
         }
         self.deployment.validate()?;
+
+        // Check that deployment rules only reference existing stores
+        for (i, rule) in self.deployment.rules.iter().enumerate() {
+            if !self.stores.contains_key(&rule.shard) {
+                return Err(anyhow!(
+                    "unknown shard {} in deployment rule {}",
+                    rule.shard,
+                    i
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -72,7 +123,7 @@ impl Config {
         let ingestor = Ingestor::from_opt(opt);
         let deployment = Deployment::from_opt(opt);
         let mut stores = BTreeMap::new();
-        stores.insert(PRIMARY.to_string(), Shard::from_opt(opt)?);
+        stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(opt)?);
         Ok(Config {
             stores,
             deployment,
@@ -92,18 +143,19 @@ impl Config {
 
     pub fn primary_store(&self) -> &Shard {
         self.stores
-            .get(PRIMARY)
+            .get(PRIMARY_SHARD.as_str())
             .expect("a validated config has a primary store")
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Shard {
     pub connection: String,
     #[serde(default = "one")]
     pub weight: usize,
     #[serde(default)]
     pub pool_size: u32,
+    #[serde(default)]
     pub replicas: BTreeMap<String, Replica>,
 }
 
@@ -158,7 +210,7 @@ impl Shard {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Replica {
     pub connection: String,
     #[serde(default = "one")]
@@ -179,8 +231,8 @@ impl Replica {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Deployment {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Deployment {
     #[serde(rename = "rule")]
     rules: Vec<Rule>,
 }
@@ -208,32 +260,42 @@ impl Deployment {
         Ok(())
     }
 
-    // This needs to be moved to some sort of trait
-    #[allow(dead_code)]
-    fn place(&self, name: &str, network: &str, default: &str) -> Option<(&str, Vec<String>)> {
-        if self.rules.is_empty() {
-            // This can only happen if we have only command line arguments and no
-            // configuration file
-            Some((PRIMARY, vec![default.to_string()]))
-        } else {
-            self.rules
-                .iter()
-                .find(|rule| rule.matches(name, network))
-                .map(|rule| (rule.store.as_str(), rule.indexers.clone()))
-        }
-    }
-
     fn from_opt(_: &Opt) -> Self {
         Self { rules: vec![] }
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+impl DeploymentPlacer for Deployment {
+    fn place(&self, name: &str, network: &str) -> Result<Option<(ShardName, Vec<NodeId>)>, String> {
+        // Errors here are really programming errors. We should have validated
+        // everything already so that the various conversions can't fail. We
+        // still return errors so that they bubble up to the deployment request
+        // rather than crashing the node and burying the crash in the logs
+        let placement = match self.rules.iter().find(|rule| rule.matches(name, network)) {
+            Some(rule) => {
+                let shard = ShardName::new(rule.shard.clone()).map_err(|e| e.to_string())?;
+                let indexers: Vec<_> = rule
+                    .indexers
+                    .iter()
+                    .map(|idx| {
+                        NodeId::new(idx.clone())
+                            .map_err(|()| format!("{} is not a valid node name", idx))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Some((shard, indexers))
+            }
+            None => None,
+        };
+        Ok(placement)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Rule {
     #[serde(rename = "match", default)]
     pred: Predicate,
     #[serde(default = "primary_store")]
-    store: String,
+    shard: String,
     indexers: Vec<String>,
 }
 
@@ -250,11 +312,16 @@ impl Rule {
         if self.indexers.is_empty() {
             return Err(anyhow!("useless rule without indexers"));
         }
+        for indexer in &self.indexers {
+            NodeId::new(indexer).map_err(|()| anyhow!("invalid node id {}", &indexer))?;
+        }
+        ShardName::new(self.shard.clone())
+            .map_err(|e| anyhow!("illegal name for store shard `{}`: {}", &self.shard, e))?;
         Ok(())
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Predicate {
     #[serde(with = "serde_regex", default = "any_name")]
     name: Regex,
@@ -289,7 +356,7 @@ impl Default for Predicate {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Ingestor {
     node: String,
 }
@@ -333,7 +400,7 @@ fn any_name() -> Regex {
 }
 
 fn primary_store() -> String {
-    PRIMARY.to_string()
+    PRIMARY_SHARD.to_string()
 }
 
 fn one() -> usize {

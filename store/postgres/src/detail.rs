@@ -1,10 +1,10 @@
 //! Queries to support the index node API
 use diesel::pg::PgConnection;
 use diesel::prelude::{
-    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
-    RunQueryDsl,
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
 use graph::{
+    constraint_violation,
     data::subgraph::schema::SubgraphError,
     prelude::{
         bigdecimal::ToPrimitive, BigDecimal, EthereumBlockPointer, StoreError, SubgraphDeploymentId,
@@ -16,8 +16,6 @@ use graph::{
 };
 use std::ops::Bound;
 use std::{convert::TryFrom, str::FromStr};
-
-use crate::metadata::{subgraph, subgraph_version};
 
 // This is not a real table, only a view. We can use diesel to read from it
 // but write attempts will fail
@@ -39,16 +37,13 @@ table! {
         graft_base -> Nullable<Text>,
         graft_block_hash -> Nullable<Binary>,
         graft_block_number -> Nullable<Numeric>,
-        ethereum_head_block_hash -> Nullable<Binary>,
-        ethereum_head_block_number -> Nullable<BigInt>,
         network -> Text,
-        node_id -> Nullable<Text>,
         // We don't map block_range
         // block_range -> Range<Integer>,
     }
 }
 
-use crate::metadata::subgraph_error;
+use crate::deployment::subgraph_error;
 
 allow_tables_to_appear_in_same_query!(subgraph_deployment_detail, subgraph_error);
 
@@ -76,10 +71,7 @@ struct Detail {
     graft_base: Option<String>,
     graft_block_hash: Option<Bytes>,
     graft_block_number: Option<BigDecimal>,
-    ethereum_head_block_hash: Option<Bytes>,
-    ethereum_head_block_number: Option<i64>,
     network: String,
-    node_id: Option<String>,
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -100,7 +92,7 @@ struct ErrorDetail {
 
 struct DetailAndError(Detail, Option<ErrorDetail>);
 
-fn block(
+pub(crate) fn block(
     id: &str,
     name: &str,
     hash: Option<Vec<u8>>,
@@ -110,20 +102,25 @@ fn block(
         (Some(hash), Some(number)) => {
             let hash = H256::from_slice(hash.as_slice());
             let number = number.to_u64().ok_or_else(|| {
-                StoreError::ConstraintViolation(format!(
+                constraint_violation!(
                     "the block number {} for {} in {} is not representable as a u64",
-                    number, name, id
-                ))
+                    number,
+                    name,
+                    id
+                )
             })?;
             Ok(Some(status::EthereumBlock::new(hash, number)))
         }
         (None, None) => Ok(None),
-        _ => Err(StoreError::ConstraintViolation(format!(
+        _ => Err(constraint_violation!(
             "the hash and number \
         of a block pointer must either both be null or both have a \
         value, but for `{}` the hash of {} is `{:?}` and the number is `{:?}`",
-            id, name, hash, number
-        ))),
+            id,
+            name,
+            hash,
+            number
+        )),
     }
 }
 
@@ -187,18 +184,12 @@ impl TryFrom<DetailAndError> for status::Info {
             graft_base: _,
             graft_block_hash: _,
             graft_block_number: _,
-            ethereum_head_block_hash,
-            ethereum_head_block_number,
             network,
-            node_id,
         } = detail;
 
-        let chain_head_block = block(
-            &id,
-            "ethereum_head_block",
-            ethereum_head_block_hash,
-            ethereum_head_block_number.map(|n| BigDecimal::from(n)),
-        )?;
+        // This needs to be filled in later since it lives in a
+        // different shard
+        let chain_head_block = None;
         let earliest_block = block(
             &id,
             "earliest_ethereum_block",
@@ -219,12 +210,10 @@ impl TryFrom<DetailAndError> for status::Info {
             latest_block,
         };
         let entity_count = entity_count.to_u64().ok_or_else(|| {
-            StoreError::ConstraintViolation(format!(
-                "the entityCount for {} is not representable as a u64",
-                id
-            ))
+            constraint_violation!("the entityCount for {} is not representable as a u64", id)
         })?;
         let fatal_error = error.map(|e| SubgraphError::try_from(e)).transpose()?;
+        // 'node' needs to be filled in later from a different shard
         Ok(status::Info {
             subgraph: id,
             synced,
@@ -233,24 +222,9 @@ impl TryFrom<DetailAndError> for status::Info {
             non_fatal_errors: vec![],
             chains: vec![chain],
             entity_count,
-            node: node_id,
+            node: None,
         })
     }
-}
-
-pub(crate) fn deployments_for_subgraph(
-    conn: &PgConnection,
-    name: String,
-) -> Result<Vec<String>, StoreError> {
-    use subgraph as s;
-    use subgraph_version as v;
-
-    Ok(v::table
-        .inner_join(s::table.on(v::subgraph.eq(s::id)))
-        .filter(s::name.eq(&name))
-        .order_by(v::created_at.asc())
-        .select(v::deployment)
-        .load(conn)?)
 }
 
 pub(crate) fn deployment_statuses(
@@ -277,28 +251,4 @@ pub(crate) fn deployment_statuses(
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
             .collect()
     }
-}
-
-pub fn subgraph_version(
-    conn: &PgConnection,
-    name: String,
-    use_current: bool,
-) -> Result<Option<String>, StoreError> {
-    use subgraph as s;
-    use subgraph_version as v;
-
-    let deployment = if use_current {
-        v::table
-            .select(v::deployment.nullable())
-            .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
-            .filter(s::name.eq(&name))
-            .first::<Option<String>>(conn)
-    } else {
-        v::table
-            .select(v::deployment.nullable())
-            .inner_join(s::table.on(s::pending_version.eq(v::id.nullable())))
-            .filter(s::name.eq(&name))
-            .first::<Option<String>>(conn)
-    };
-    Ok(deployment.optional()?.flatten())
 }

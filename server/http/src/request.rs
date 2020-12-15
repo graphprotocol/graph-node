@@ -8,18 +8,12 @@ use graph::prelude::*;
 /// Future for a query parsed from an HTTP request.
 pub struct GraphQLRequest {
     body: Bytes,
-    schema: Arc<ApiSchema>,
-    network: Option<String>,
 }
 
 impl GraphQLRequest {
     /// Creates a new GraphQLRequest future based on an HTTP request and a result sender.
-    pub fn new(body: Bytes, schema: Arc<ApiSchema>, network: Option<String>) -> Self {
-        GraphQLRequest {
-            body,
-            schema,
-            network,
-        }
+    pub fn new(body: Bytes) -> Self {
+        GraphQLRequest { body }
     }
 }
 
@@ -28,9 +22,6 @@ impl Future for GraphQLRequest {
     type Error = GraphQLServerError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // Fail if no schema is available
-        let schema = self.schema.clone();
-
         // Parse request body as JSON
         let json: serde_json::Value = serde_json::from_slice(&self.body)
             .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
@@ -70,12 +61,7 @@ impl Future for GraphQLRequest {
             )),
         }?;
 
-        Ok(Async::Ready(Query::new(
-            schema,
-            document,
-            variables,
-            self.network.clone(),
-        )))
+        Ok(Async::Ready(Query::new(document, variables)))
     }
 }
 
@@ -86,33 +72,24 @@ mod tests {
     use hyper;
     use std::collections::{BTreeMap, HashMap};
 
-    use graph::prelude::*;
+    use graph::{data::query::QueryTarget, prelude::*};
 
     use super::GraphQLRequest;
 
-    const EXAMPLE_SCHEMA: &'static str = "type Query @entity { users: [User!] }";
+    lazy_static! {
+        static ref TARGET: QueryTarget =
+            QueryTarget::Name(SubgraphName::new("test/request").unwrap());
+    }
 
     #[test]
     fn rejects_invalid_json() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from("!@#)%"),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        let request = GraphQLRequest::new(hyper::body::Bytes::from("!@#)%"));
         request.wait().expect_err("Should reject invalid JSON");
     }
 
     #[test]
     fn rejects_json_without_query_field() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from("{}"),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        let request = GraphQLRequest::new(hyper::body::Bytes::from("{}"));
         request
             .wait()
             .expect_err("Should reject JSON without query field");
@@ -120,13 +97,7 @@ mod tests {
 
     #[test]
     fn rejects_json_with_non_string_query_field() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from("{\"query\": 5}"),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        let request = GraphQLRequest::new(hyper::body::Bytes::from("{\"query\": 5}"));
         request
             .wait()
             .expect_err("Should reject JSON with a non-string query field");
@@ -134,25 +105,15 @@ mod tests {
 
     #[test]
     fn rejects_broken_queries() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from("{\"query\": \"foo\"}"),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        let request = GraphQLRequest::new(hyper::body::Bytes::from("{\"query\": \"foo\"}"));
         request.wait().expect_err("Should reject broken queries");
     }
 
     #[test]
     fn accepts_valid_queries() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from("{\"query\": \"{ user { name } }\"}"),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        let request = GraphQLRequest::new(hyper::body::Bytes::from(
+            "{\"query\": \"{ user { name } }\"}",
+        ));
         let query = request.wait().expect("Should accept valid queries");
         assert_eq!(
             query.document,
@@ -162,19 +123,13 @@ mod tests {
 
     #[test]
     fn accepts_null_variables() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from(
-                "\
+        let request = GraphQLRequest::new(hyper::body::Bytes::from(
+            "\
                  {\
                  \"query\": \"{ user { name } }\", \
                  \"variables\": null \
                  }",
-            ),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        ));
         let query = request.wait().expect("Should accept null variables");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();
@@ -184,39 +139,27 @@ mod tests {
 
     #[test]
     fn rejects_non_map_variables() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from(
-                "\
+        let request = GraphQLRequest::new(hyper::body::Bytes::from(
+            "\
                  {\
                  \"query\": \"{ user { name } }\", \
                  \"variables\": 5 \
                  }",
-            ),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        ));
         request.wait().expect_err("Should reject non-map variables");
     }
 
     #[test]
     fn parses_variables() {
-        let schema =
-            Schema::parse(EXAMPLE_SCHEMA, SubgraphDeploymentId::new("test").unwrap()).unwrap();
-        let request = GraphQLRequest::new(
-            hyper::body::Bytes::from(
-                "\
+        let request = GraphQLRequest::new(hyper::body::Bytes::from(
+            "\
                  {\
                  \"query\": \"{ user { name } }\", \
                  \"variables\": { \
                  \"string\": \"s\", \"map\": {\"k\": \"v\"}, \"int\": 5 \
                  } \
                  }",
-            ),
-            Arc::new(ApiSchema::from_api_schema(schema).unwrap()),
-            None,
-        );
+        ));
         let query = request.wait().expect("Should accept valid queries");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }").unwrap();

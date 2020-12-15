@@ -150,7 +150,7 @@ impl SubscriptionManager {
         );
     }
 
-    pub fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    pub fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         let id = Uuid::new_v4().to_string();
 
         // Prepare the new subscription by creating a channel and a subscription object

@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use graph::{
-    components::store::StoredDynamicDataSource,
+    components::{
+        server::index_node::VersionInfo,
+        store::{EntityType, QueryStoreManager, StoredDynamicDataSource},
+    },
     data::subgraph::schema::SubgraphError,
     data::subgraph::status,
     prelude::{
@@ -10,31 +13,24 @@ use graph::{
         BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
         EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock, NodeId,
         Schema, Store as StoreTrait, StoreError, Stream, SubgraphDeploymentEntity,
-        SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphName, SubgraphVersionSwitchingMode,
+        SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 
-use crate::chain_store::ChainStore;
-use crate::store::Store;
+use crate::{chain_store::ChainStore, query_store::QueryStore, ShardedStore};
 
 pub struct NetworkStore {
-    store: Arc<Store>,
-    chain_store: ChainStore,
+    store: Arc<ShardedStore>,
+    chain_store: Arc<ChainStore>,
 }
 
 impl NetworkStore {
-    pub fn new(store: Arc<Store>, chain_store: ChainStore) -> Self {
+    pub fn new(store: Arc<ShardedStore>, chain_store: Arc<ChainStore>) -> Self {
         Self { store, chain_store }
     }
 
-    pub fn store(&self) -> Arc<Store> {
+    pub fn store(&self) -> Arc<ShardedStore> {
         self.store.cheap_clone()
-    }
-
-    // Only needed for tests
-    #[cfg(debug_assertions)]
-    pub(crate) fn clear_storage_cache(&self) {
-        self.store.storage_cache.lock().unwrap().clear();
     }
 
     // Only for tests to simplify their handling of test fixtures, so that
@@ -46,10 +42,16 @@ impl NetworkStore {
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
+        network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         self.store
-            .create_deployment_replace(name, schema, deployment, node_id, mode)
+            .create_deployment_replace(name, schema, deployment, node_id, network_name, mode)
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
+        self.store.delete_all_entities_for_test_use_only()
     }
 }
 
@@ -57,25 +59,26 @@ impl NetworkStore {
 impl StoreTrait for NetworkStore {
     fn block_ptr(
         &self,
-        subgraph_id: graph::prelude::SubgraphDeploymentId,
+        subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, failure::Error> {
         self.store.block_ptr(subgraph_id)
     }
 
     fn supports_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         subgraph_id: &'a graph::prelude::SubgraphDeploymentId,
     ) -> graph::prelude::DynTryFuture<'a, bool> {
-        self.store.supports_proof_of_indexing(subgraph_id)
+        self.store.clone().supports_proof_of_indexing(subgraph_id)
     }
 
     fn get_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         subgraph_id: &'a graph::prelude::SubgraphDeploymentId,
         indexer: &'a Option<Address>,
         block_hash: H256,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
         self.store
+            .clone()
             .get_proof_of_indexing(subgraph_id, indexer, block_hash)
     }
 
@@ -89,9 +92,9 @@ impl StoreTrait for NetworkStore {
     fn get_many(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-        ids_for_type: std::collections::BTreeMap<&str, Vec<&str>>,
+        ids_for_type: std::collections::BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<
-        std::collections::BTreeMap<String, Vec<graph::prelude::Entity>>,
+        std::collections::BTreeMap<EntityType, Vec<graph::prelude::Entity>>,
         graph::prelude::StoreError,
     > {
         self.store.get_many(subgraph_id, ids_for_type)
@@ -125,7 +128,7 @@ impl StoreTrait for NetworkStore {
         mods: Vec<graph::prelude::EntityModification>,
         stopwatch: graph::prelude::StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, graph::prelude::StoreError> {
+    ) -> Result<(), graph::prelude::StoreError> {
         self.store.transact_block_operations(
             subgraph_id,
             block_ptr_to,
@@ -133,15 +136,6 @@ impl StoreTrait for NetworkStore {
             stopwatch,
             deterministic_errors,
         )
-    }
-
-    fn apply_metadata_operations(
-        &self,
-        target_deployment: &SubgraphDeploymentId,
-        operations: Vec<graph::prelude::MetadataOperation>,
-    ) -> Result<(), graph::prelude::StoreError> {
-        self.store
-            .apply_metadata_operations(target_deployment, operations)
     }
 
     fn revert_block_operations(
@@ -156,7 +150,7 @@ impl StoreTrait for NetworkStore {
 
     fn subscribe(
         &self,
-        entities: Vec<graph::prelude::SubgraphEntityPair>,
+        entities: Vec<graph::prelude::SubscriptionFilter>,
     ) -> graph::prelude::StoreEventStreamBox {
         self.store.subscribe(entities)
     }
@@ -189,10 +183,11 @@ impl StoreTrait for NetworkStore {
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         node_id: NodeId,
+        network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         self.store
-            .create_subgraph_deployment(name, schema, deployment, node_id, mode)
+            .create_subgraph_deployment(name, schema, deployment, node_id, network_name, mode)
     }
 
     fn start_subgraph_deployment(
@@ -203,29 +198,8 @@ impl StoreTrait for NetworkStore {
         self.store.start_subgraph_deployment(logger, subgraph_id)
     }
 
-    fn migrate_subgraph_deployment(
-        &self,
-        logger: &graph::prelude::Logger,
-        subgraph_id: &graph::prelude::SubgraphDeploymentId,
-        block_ptr: &EthereumBlockPointer,
-    ) {
-        self.store
-            .migrate_subgraph_deployment(logger, subgraph_id, block_ptr)
-    }
-
-    fn block_number(
-        &self,
-        subgraph_id: &graph::prelude::SubgraphDeploymentId,
-        block_hash: H256,
-    ) -> Result<Option<BlockNumber>, graph::prelude::StoreError> {
-        self.store.block_number(subgraph_id, block_hash)
-    }
-
-    fn query_store(
-        self: Arc<Self>,
-        for_subscription: bool,
-    ) -> Arc<dyn graph::prelude::QueryStore + Send + Sync> {
-        self.store.cheap_clone().query_store(for_subscription)
+    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+        self.store.is_deployment_synced(id)
     }
 
     fn deployment_synced(&self, id: &graph::prelude::SubgraphDeploymentId) -> Result<(), Error> {
@@ -258,28 +232,69 @@ impl StoreTrait for NetworkStore {
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.store.load_dynamic_data_sources(subgraph_id)
     }
-}
 
-impl SubgraphDeploymentStore for NetworkStore {
+    fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+        self.store.assigned_node(id)
+    }
+
+    fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+        self.store.assignments(node)
+    }
+
+    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
+        self.store.subgraph_exists(name)
+    }
+
     fn input_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Arc<graph::prelude::Schema>, failure::Error> {
+    ) -> Result<Arc<graph::prelude::Schema>, StoreError> {
         self.store.input_schema(subgraph_id)
     }
 
     fn api_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Arc<graph::prelude::ApiSchema>, failure::Error> {
+    ) -> Result<Arc<graph::prelude::ApiSchema>, StoreError> {
         self.store.api_schema(subgraph_id)
     }
 
     fn network_name(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Option<String>, failure::Error> {
+    ) -> Result<Option<String>, StoreError> {
         self.store.network_name(subgraph_id)
+    }
+
+    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
+        self.store.version_info(version_id)
+    }
+
+    fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        self.store.versions_for_subgraph_id(subgraph_id)
+    }
+}
+
+impl QueryStoreManager for NetworkStore {
+    fn query_store(
+        &self,
+        target: graph::data::query::QueryTarget,
+        for_subscription: bool,
+    ) -> Result<
+        Arc<dyn graph::prelude::QueryStore + Send + Sync>,
+        graph::prelude::QueryExecutionError,
+    > {
+        let (store, site, replica) = self.store.replica_for_query(target, for_subscription)?;
+        Ok(Arc::new(QueryStore::new(
+            store,
+            self.chain_store.clone(),
+            for_subscription,
+            site,
+            replica,
+        )))
     }
 }
 
@@ -363,5 +378,9 @@ impl ChainStoreTrait for NetworkStore {
 
     fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, failure::Error> {
         self.chain_store.confirm_block_hash(number, hash)
+    }
+
+    fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
+        self.chain_store.block_number(block_hash)
     }
 }

@@ -9,6 +9,7 @@ description = "Provides static store instance for tests."
 graph-graphql = { path = "../../graphql" }
 graphql-parser = "0.2.3"
 graph-mock = { path = "../../mock" }
+graph-node = { path = "../../node" }
 graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
 lazy_static = "1.1"

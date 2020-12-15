@@ -5,6 +5,7 @@ use diesel::prelude::{ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
 
 use graph::{
     components::store::StoredDynamicDataSource,
+    constraint_violation,
     data::subgraph::Source,
     prelude::{bigdecimal::ToPrimitive, web3::types::H160, BigDecimal, StoreError},
 };
@@ -57,22 +58,23 @@ fn to_source(
     ds_id: &str,
     (address, abi, start_block): (Option<Vec<u8>>, String, Option<BigDecimal>),
 ) -> Result<Source, StoreError> {
-    // Treat a missing address as an error. TODO: Is that correct?
+    // Treat a missing address as an error
     let address = match address {
         Some(address) => address,
         None => {
-            return Err(StoreError::ConstraintViolation(format!(
+            return Err(constraint_violation!(
                 "Dynamic data source {} for deployment {} is missing an address",
-                ds_id, deployment
-            )));
+                ds_id,
+                deployment
+            ));
         }
     };
     if address.len() != 20 {
-        return Err(StoreError::ConstraintViolation(format!(
+        return Err(constraint_violation!(
             "Data source address 0x`{:?}` for dynamic data source {} in deployment {} should have be 20 bytes long but is {} bytes long",
             address, ds_id, deployment,
             address.len()
-        )));
+        ));
     }
     let address = Some(H160::from_slice(address.as_slice()));
 
@@ -80,10 +82,12 @@ fn to_source(
     let start_block = start_block
         .map(|s| {
             s.to_u64().ok_or_else(|| {
-                StoreError::ConstraintViolation(format!(
+                constraint_violation!(
                     "Start block {:?} for dynamic data source {} in deployment {} is not a u64",
-                    s, ds_id, deployment
-                ))
+                    s,
+                    ds_id,
+                    deployment
+                )
             })
         })
         .transpose()?
@@ -96,7 +100,6 @@ fn to_source(
     })
 }
 
-#[allow(dead_code)]
 pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
     use ethereum_contract_source as ecs;

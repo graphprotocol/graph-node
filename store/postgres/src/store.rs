@@ -4,14 +4,12 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
-use graph::{
-    components::store::StoredDynamicDataSource,
-    prelude::{
-        CancelGuard, CancelHandle, CancelToken, CancelableError, NodeId, PoolWaitStats,
-        SubgraphVersionSwitchingMode,
-    },
+use graph::components::store::{EntityType, StoredDynamicDataSource};
+use graph::data::subgraph::status;
+use graph::prelude::{
+    error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
+    SubgraphDeploymentEntity, SubscriptionFilter,
 };
-use graph::{data::subgraph::status, prelude::TryFutureExt};
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -23,29 +21,27 @@ use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::Semaphore;
 
-use graph::components::store::{EntityCollection, QueryStore, Store as StoreTrait};
+use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
-use graph::data::subgraph::schema::{
-    SubgraphDeploymentEntity, SubgraphError, TypedEntity as _, POI_OBJECT, SUBGRAPHS_ID,
-};
+use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, warn, web3,
-    ApiSchema, BigInt, BlockNumber, CheapClone, CompatErr, DeploymentState, DynTryFuture, Entity,
+    anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, web3,
+    ApiSchema, BlockNumber, CheapClone, CompatErr, DeploymentState, DynTryFuture, Entity,
     EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
     EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
     QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox,
-    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphEntityPair, SubgraphName,
-    TransactionAbortError, Value, BLOCK_NUMBER_MAX,
+    SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
 use web3::types::{Address, H256};
 
-use crate::metadata;
-use crate::relational::Layout;
+use crate::primary::Site;
+use crate::relational::{Layout, METADATA_LAYOUT};
 use crate::relational_queries::FromEntityData;
 use crate::store_events::SubscriptionManager;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
+use crate::{deployment, primary::Namespace};
 
 lazy_static! {
     static ref CONNECTION_LIMITER: Semaphore = {
@@ -103,22 +99,27 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConne
     });
     info!(logger, "Migrations finished");
 
-    match result {
-        Ok(_) => info!(logger, "Completed pending Postgres schema migrations"),
-        Err(e) => panic!(
+    // If there was any migration output, log it now
+    let has_output = !output.is_empty();
+    if has_output {
+        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        if result.is_err() {
+            error!(logger, "Postgres migration output"; "output" => msg);
+        } else {
+            debug!(logger, "Postgres migration output"; "output" => msg);
+        }
+    }
+
+    if let Err(e) = result {
+        panic!(
             "Error setting up Postgres database: \
              You may need to drop and recreate your database to work with the \
              latest version of graph-node. Error information: {:?}",
             e
-        ),
+        )
     };
-    // If there was any migration output, log it now
-    if !output.is_empty() {
-        debug!(
-            logger, "Postgres migration output";
-            "output" => String::from_utf8(output)
-                .unwrap_or_else(|_| String::from("<unreadable>"))
-        );
+
+    if has_output {
         // We take getting output as a signal that a migration was actually
         // run, which is not easy to tell from the Diesel API, and reset the
         // query statistics since a schema change makes them not all that
@@ -147,16 +148,18 @@ pub enum ReplicaId {
 /// `Store.subgraph_cache`. Only immutable subgraph data can be cached this
 /// way as the cache lives for the lifetime of the `Store` object
 #[derive(Clone)]
-struct SubgraphInfo {
+pub(crate) struct SubgraphInfo {
     /// The schema as supplied by the user
-    input: Arc<Schema>,
+    pub(crate) input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
-    api: Arc<ApiSchema>,
+    pub(crate) api: Arc<ApiSchema>,
     /// The name of the network from which the subgraph is syncing
-    network: Option<String>,
+    pub(crate) network: Option<String>,
     /// The block number at which this subgraph was grafted onto
     /// another one. We do not allow reverting past this block
-    graft_block: Option<BlockNumber>,
+    pub(crate) graft_block: Option<BlockNumber>,
+    pub(crate) description: Option<String>,
+    pub(crate) repository: Option<String>,
 }
 
 pub struct StoreInner {
@@ -171,10 +174,10 @@ pub struct StoreInner {
     /// A cache of commonly needed data about a subgraph.
     subgraph_cache: Mutex<LruCache<SubgraphDeploymentId, SubgraphInfo>>,
 
-    /// A cache for the storage metadata for subgraphs. The Store just
+    /// A cache for the layout metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
-    pub(crate) storage_cache: e::StorageCache,
+    pub(crate) layout_cache: e::LayoutCache,
 
     registry: Arc<dyn MetricsRegistry>,
 }
@@ -237,7 +240,7 @@ impl Store {
             replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
-            storage_cache: e::make_storage_cache(),
+            layout_cache: e::make_layout_cache(),
             registry,
         };
         let store = Store(Arc::new(store));
@@ -246,23 +249,55 @@ impl Store {
         store
     }
 
+    pub(crate) fn create_deployment(
+        &self,
+        schema: &Schema,
+        deployment: SubgraphDeploymentEntity,
+        site: &Site,
+        graft_site: Option<Site>,
+        replace: bool,
+    ) -> Result<StoreEvent, StoreError> {
+        let conn = self.get_conn()?;
+        // This is a bit of a Frankenconnection: we don't have the actual
+        // layout yet; but for applying metadata, it's fine to use the metadata
+        // layout
+        let econn = e::Connection::new(
+            conn.into(),
+            METADATA_LAYOUT.clone(),
+            site.deployment.clone(),
+        );
+        econn.transaction(|| -> Result<_, StoreError> {
+            let exists = deployment::exists(&econn.conn, &site.deployment)?;
+
+            let event = if replace || !exists {
+                let ops = deployment.create_operations(&site.deployment);
+                self.apply_metadata_operations_with_conn(&econn, ops)?
+            } else {
+                StoreEvent::new(vec![])
+            };
+
+            if !exists {
+                econn.create_schema(site.namespace.clone(), schema, graft_site)?;
+            }
+            Ok(event)
+        })
+    }
+
     /// Gets an entity from Postgres.
     fn get_entity(
         &self,
         conn: &e::Connection,
-        op_subgraph: &SubgraphDeploymentId,
-        op_entity: &String,
-        op_id: &String,
+        key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         // We should really have callers pass in a block number; but until
         // that is fully plumbed in, we just use the biggest possible block
         // number so that we will always return the latest version,
         // i.e., the one with an infinite upper bound
-        conn.find(op_entity, op_id, BLOCK_NUMBER_MAX).map_err(|e| {
+        conn.find(key, BLOCK_NUMBER_MAX).map_err(|e| {
             QueryExecutionError::ResolveEntityError(
-                op_subgraph.clone(),
-                op_entity.clone(),
-                op_id.clone(),
+                key.subgraph_id.clone(),
+                key.entity_type.to_string(),
+                key.entity_id.clone(),
                 format!("Invalid entity {}", e),
             )
         })
@@ -301,17 +336,26 @@ impl Store {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.api_schema(&key.subgraph_id)?;
+        let schema = self
+            .subgraph_info_with_conn(&conn.conn, &key.subgraph_id)?
+            .api;
         let types_for_interface = schema.types_for_interface();
+        let entity_type = match &key.entity_type {
+            EntityType::Data(s) => s,
+            EntityType::Metadata(_) => {
+                // Metadata has no interfaces
+                return Ok(());
+            }
+        };
         let types_with_shared_interface = Vec::from_iter(
             schema
-                .interfaces_for_type(&key.entity_type)
+                .interfaces_for_type(entity_type)
                 .into_iter()
                 .flatten()
                 .map(|interface| &types_for_interface[&interface.name])
                 .flatten()
                 .map(|object_type| &object_type.name)
-                .filter(|type_name| **type_name != key.entity_type),
+                .filter(|type_name| *type_name != entity_type),
         );
 
         if !types_with_shared_interface.is_empty() {
@@ -319,7 +363,7 @@ impl Store {
                 conn.conflicting_entity(&key.entity_id, types_with_shared_interface)?
             {
                 return Err(StoreError::ConflictingId(
-                    key.entity_type.clone(),
+                    entity_type.clone(),
                     key.entity_id.clone(),
                     conflicting_entity,
                 ));
@@ -335,15 +379,11 @@ impl Store {
         operation: MetadataOperation,
     ) -> Result<i32, StoreError> {
         match operation {
-            MetadataOperation::Set { entity, id, data } => {
-                let key = MetadataOperation::entity_key(entity, id);
-
-                self.check_interface_entity_uniqueness(conn, &key)?;
+            MetadataOperation::Set { key, data } => {
+                let key = key.into();
 
                 // Load the entity if exists
-                let entity = self
-                    .get_entity(conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
-                    .map_err(Error::from)?;
+                let entity = self.get_entity(conn, &key)?;
 
                 // Identify whether this is an insert or an update operation and
                 // merge the changes into the entity.
@@ -372,46 +412,8 @@ impl Store {
                     .into()
                 })
             }
-            MetadataOperation::Update { entity, id, data } => {
-                let key = MetadataOperation::entity_key(entity, id);
-
-                self.check_interface_entity_uniqueness(conn, &key)?;
-
-                // Update the entity in Postgres
-                match conn.update_metadata(&key, &data)? {
-                    0 => Err(TransactionAbortError::AbortUnless {
-                        expected_entity_ids: vec![key.entity_id.clone()],
-                        actual_entity_ids: vec![],
-                        description: format!("update for entity {:?} with data {:?} did not change any rows", key, data),
-                    }
-                    .into()),
-                    1 => Ok(0),
-                    res => Err(TransactionAbortError::AbortUnless {
-                        expected_entity_ids: vec![key.entity_id.clone()],
-                        actual_entity_ids: vec![],
-                        description: format!(
-                            "update for entity {:?} with data {:?} changed {} rows instead of just one",
-                            key, data, res
-                        ),
-                    }
-                    .into()),
-                }
-            }
-            MetadataOperation::Remove { entity, id } => {
-                let key = MetadataOperation::entity_key(entity, id);
-                conn.delete(&key, None)
-                    // This conversion is ok since n will only be 0 or 1
-                    .map(|n| -(n as i32))
-                    .map_err(|e| {
-                        format_err!(
-                            "Failed to remove entity ({}, {}, {}): {}",
-                            key.subgraph_id,
-                            key.entity_type,
-                            key.entity_id,
-                            e
-                        )
-                        .into()
-                    })
+            MetadataOperation::Remove { .. } => {
+                unreachable!("metadata is never deleted")
             }
         }
     }
@@ -428,7 +430,7 @@ impl Store {
         for modification in mods {
             use EntityModification::*;
 
-            let do_count = !modification.entity_key().subgraph_id.is_meta();
+            let do_count = modification.entity_key().entity_type.is_data_type();
             let n = match modification {
                 Overwrite { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -469,7 +471,7 @@ impl Store {
         Ok(())
     }
 
-    fn apply_metadata_operations_with_conn(
+    pub(crate) fn apply_metadata_operations_with_conn(
         &self,
         econn: &e::Connection,
         operations: Vec<MetadataOperation>,
@@ -579,15 +581,13 @@ impl Store {
     /// This uses `with_conn` under the hood. Please see it's documentation for important details
     /// about usage.
     async fn with_entity_conn<T: Send + 'static>(
-        &self,
-        subgraph: &SubgraphDeploymentId,
+        self: Arc<Self>,
+        site: Arc<Site>,
         f: impl 'static
             + Send
             + FnOnce(&e::Connection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         let store = self.cheap_clone();
-        // Unfortunate clone in order to pass a 'static closure to with_conn.
-        let subgraph = subgraph.clone();
 
         // Duplicated logic: No need to make re-usable when the
         // other end will go away.
@@ -600,17 +600,15 @@ impl Store {
                 .global_deployment_counter(
                     "deployment_get_entity_conn_secs",
                     "total time spent getting an entity connection",
-                    subgraph.as_str(),
+                    site.deployment.as_str(),
                 )
                 .map_err(|e| CancelableError::Error(StoreError::Unknown(e.into())))?
                 .inc_by(start.elapsed().as_secs_f64());
 
             cancel_handle.check_cancel()?;
-            let storage = store.storage(&conn, &subgraph)?;
+            let layout = store.layout(&conn, &site.namespace, &site.deployment)?;
             cancel_handle.check_cancel()?;
-            let metadata = store.storage(&conn, &*SUBGRAPHS_ID)?;
-            cancel_handle.check_cancel()?;
-            let conn = e::Connection::new(conn.into(), storage, metadata);
+            let conn = e::Connection::new(conn.into(), layout, site.deployment.clone());
 
             f(&conn, cancel_handle)
         })
@@ -618,7 +616,9 @@ impl Store {
     }
 
     /// Deprecated. Use `with_conn` instead.
-    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    pub(crate) fn get_conn(
+        &self,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         self.conn.get().map_err(Error::from)
     }
 
@@ -635,9 +635,11 @@ impl Store {
     /// Deprecated. Use `with_entity_conn` instead
     pub(crate) fn get_entity_conn(
         &self,
-        subgraph: &SubgraphDeploymentId,
+        site: &Site,
         replica: ReplicaId,
     ) -> Result<e::Connection, Error> {
+        assert!(!site.namespace.is_metadata());
+
         let start = Instant::now();
         let conn = match replica {
             ReplicaId::Main => self.get_conn()?,
@@ -647,12 +649,15 @@ impl Store {
             .global_deployment_counter(
                 "deployment_get_entity_conn_secs",
                 "total time spent getting an entity connection",
-                subgraph.as_str(),
+                site.deployment.as_str(),
             )?
             .inc_by(start.elapsed().as_secs_f64());
-        let storage = self.storage(&conn, subgraph)?;
-        let metadata = self.storage(&conn, &*SUBGRAPHS_ID)?;
-        Ok(e::Connection::new(conn.into(), storage, metadata))
+        let data = self.layout(&conn, &site.namespace, &site.deployment)?;
+        Ok(e::Connection::new(
+            conn.into(),
+            data,
+            site.deployment.clone(),
+        ))
     }
 
     pub(crate) fn wait_stats(&self, replica: ReplicaId) -> &PoolWaitStats {
@@ -662,56 +667,58 @@ impl Store {
         }
     }
 
-    /// Return the storage for the subgraph. Since constructing a `Storage`
-    /// object takes a bit of computation, we cache storage objects that do
+    /// Return the layout for the subgraph. Since constructing a `Layout`
+    /// object takes a bit of computation, we cache layout objects that do
     /// not have a pending migration in the Store, i.e., for the lifetime of
-    /// the Store. Storage objects with a pending migration can not be
+    /// the Store. Layout objects with a pending migration can not be
     /// cached for longer than a transaction since they might change
     /// without us knowing
-    fn storage(
+    pub(crate) fn layout(
         &self,
         conn: &PgConnection,
+        namespace: &Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Arc<Layout>, StoreError> {
-        if let Some(storage) = self.storage_cache.lock().unwrap().get(subgraph) {
-            return Ok(storage.clone());
+        assert!(!namespace.is_metadata());
+
+        if let Some(layout) = self.layout_cache.lock().unwrap().get(subgraph) {
+            return Ok(layout.clone());
         }
 
-        let storage = Arc::new(e::Connection::layout(conn, subgraph)?);
-        if storage.is_cacheable() {
+        let layout = Arc::new(e::Connection::layout(conn, namespace.clone(), subgraph)?);
+        if layout.is_cacheable() {
             &self
-                .storage_cache
+                .layout_cache
                 .lock()
                 .unwrap()
-                .insert(subgraph.clone(), storage.clone());
+                .insert(subgraph.clone(), layout.clone());
         }
-        Ok(storage.clone())
+        Ok(layout.clone())
     }
 
-    fn subgraph_info(&self, subgraph_id: &SubgraphDeploymentId) -> Result<SubgraphInfo, Error> {
+    fn subgraph_info_with_conn(
+        &self,
+        conn: &PgConnection,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }
 
-        let conn = self.get_conn()?;
-        let input_schema = metadata::subgraph_schema(&conn, subgraph_id.to_owned())?;
-        let network = if subgraph_id.is_meta() {
-            // The subgraph of subgraphs schema is built-in. Use an impossible
-            // network name so that we will never find blocks for this subgraph
-            Some(subgraph_id.as_str().to_owned())
-        } else {
-            metadata::subgraph_network(&conn, &subgraph_id)?
-        };
+        let (input_schema, description, repository) =
+            deployment::manifest_info(&conn, subgraph_id.to_owned())?;
+        let network = deployment::network(&conn, &subgraph_id)?;
 
         let graft_block =
-            metadata::deployment_graft(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
+            deployment::graft_point(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
 
-        let features = metadata::subgraph_features(&conn, subgraph_id)?;
+        let features = deployment::features(&conn, subgraph_id)?;
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
-        schema.document = api_schema(&schema.document, &features)?;
+        schema.document =
+            api_schema(&schema.document, &features).map_err(|e| StoreError::Unknown(e.into()))?;
         schema.add_subgraph_id_directives(subgraph_id.clone());
 
         let info = SubgraphInfo {
@@ -722,6 +729,8 @@ impl Store {
             ),
             network,
             graft_block,
+            description,
+            repository,
         };
 
         // Insert the schema into the cache.
@@ -731,164 +740,78 @@ impl Store {
         Ok(cache.get(&subgraph_id).unwrap().clone())
     }
 
+    pub(crate) fn subgraph_info(
+        &self,
+        subgraph_id: &SubgraphDeploymentId,
+    ) -> Result<SubgraphInfo, StoreError> {
+        if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
+            return Ok(info.clone());
+        }
+
+        let conn = self.get_conn()?;
+        self.subgraph_info_with_conn(&conn, subgraph_id)
+    }
+
     fn block_ptr_with_conn(
         subgraph_id: &SubgraphDeploymentId,
         conn: &e::Connection,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
-        let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
-        let subgraph_entity = conn
-            .find_metadata(&key.entity_type, &key.entity_id)
-            .map_err(|e| format_err!("error reading subgraph entity: {}", e))?
-            .ok_or_else(|| {
-                format_err!(
-                    "could not read block ptr for non-existent subgraph {}",
-                    subgraph_id
-                )
-            })?;
-
-        let hash: Option<H256> = match subgraph_entity.get("latestEthereumBlockHash") {
-            None => None,
-            Some(value) => value.clone().try_into()?,
-        };
-
-        let number: Option<BigInt> = match subgraph_entity.get("latestEthereumBlockNumber") {
-            None => None,
-            Some(value) => value.clone().try_into()?,
-        };
-
-        match (hash, number) {
-            (Some(hash), Some(number)) => Ok(Some(EthereumBlockPointer {
-                hash,
-                number: number.to_u64(),
-            })),
-            (None, None) => Ok(None),
-            _ => Err(format_err!(
-                "Ethereum block pointer has invalid `latestEthereumBlockHash` \
-                 or `latestEthereumBlockNumber`"
-            )),
-        }
+        Ok(deployment::block_ptr(&conn.conn, subgraph_id)?)
     }
 
-    fn create_deployment_internal(
+    pub(crate) fn deployment_statuses(
         &self,
-        name: SubgraphName,
-        schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
-        node_id: NodeId,
-        mode: SubgraphVersionSwitchingMode,
-        // replace == true is only used in tests; for non-test code, it must
-        // be 'false'
-        replace: bool,
-    ) -> Result<(), StoreError> {
-        #[cfg(not(debug_assertions))]
-        assert!(!replace);
-
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<(), StoreError> {
-            let exists = metadata::deployment_exists(&econn.conn, &schema.id)?;
-            let mut event = if replace || !exists {
-                let ops = deployment.create_operations(&schema.id);
-                self.apply_metadata_operations_with_conn(&econn, ops)?
-            } else {
-                StoreEvent::new(vec![])
-            };
-
-            if !exists {
-                econn.create_schema(schema)?;
-            }
-
-            // Create subgraph, subgraph version, and assignment
-            let changes =
-                metadata::create_subgraph_version(&econn.conn, name, &schema.id, node_id, mode)?;
-            event.changes.extend(changes);
-
-            econn.send_store_event(&event)
-        })
-    }
-
-    // Only for tests to simplify their handling of test fixtures, so that
-    // tests can reset the block pointer of a subgraph by recreating it
-    #[cfg(debug_assertions)]
-    pub fn create_deployment_replace(
-        &self,
-        name: SubgraphName,
-        schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
-        node_id: NodeId,
-        mode: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, mode, true)
-    }
-
-    pub(crate) fn status_internal(
-        &self,
-        filter: status::Filter,
+        ids: Vec<String>,
     ) -> Result<Vec<status::Info>, StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
-            match filter {
-                status::Filter::SubgraphName(name) => {
-                    let deployments = detail::deployments_for_subgraph(&conn, name)?;
-                    if deployments.is_empty() {
-                        Ok(Vec::new())
-                    } else {
-                        detail::deployment_statuses(&conn, deployments)
-                    }
-                }
-                status::Filter::SubgraphVersion(name, use_current) => {
-                    match detail::subgraph_version(&conn, name, use_current)? {
-                        Some(deployment) => detail::deployment_statuses(&conn, vec![deployment]),
-                        None => Ok(vec![]),
-                    }
-                }
-                status::Filter::Deployments(deployments) => {
-                    detail::deployment_statuses(&conn, deployments)
-                }
-            }
+            detail::deployment_statuses(&conn, ids)
         })
     }
 }
 
-#[async_trait::async_trait]
-impl StoreTrait for Store {
-    fn block_ptr(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error> {
+/// Methods that back the trait `graph::components::Store`, but have small
+/// variations in their signatures
+impl Store {
+    pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<EthereumBlockPointer>, Error> {
         Self::block_ptr_with_conn(
-            &subgraph_id,
+            &site.deployment,
             &self
-                .get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)
+                .get_entity_conn(site, ReplicaId::Main)
                 .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
         )
     }
 
-    fn supports_proof_of_indexing<'a>(
-        &'a self,
-        subgraph_id: &'a SubgraphDeploymentId,
+    pub(crate) fn supports_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        site: Arc<Site>,
     ) -> DynTryFuture<'a, bool> {
-        self.with_entity_conn(subgraph_id, |conn, cancel| {
-            cancel.check_cancel()?;
-            Ok(conn.supports_proof_of_indexing())
-        })
-        .map_err(|e| e.into())
+        async move {
+            self.with_entity_conn(site, |conn, cancel| {
+                cancel.check_cancel()?;
+                Ok(conn.supports_proof_of_indexing())
+            })
+            .await
+            .map_err(|e| e.into())
+        }
         .boxed()
     }
 
-    fn get_proof_of_indexing<'a>(
-        &'a self,
-        subgraph_id: &'a SubgraphDeploymentId,
+    pub(crate) fn get_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        site: Arc<Site>,
         indexer: &'a Option<Address>,
         block_hash: H256,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         let logger = self.logger.cheap_clone();
-        let subgraph_id_inner = subgraph_id.clone();
         let indexer = indexer.clone();
         let self_inner = self.cheap_clone();
+        let site2 = site.clone();
+        let site3 = site.clone();
 
         async move {
             let entities_blocknumber = self
-                .with_entity_conn(subgraph_id, move |conn, cancel| {
+                .with_entity_conn(site2, move |conn, cancel| {
                     cancel.check_cancel()?;
 
                     if !conn.supports_proof_of_indexing() {
@@ -897,9 +820,7 @@ impl StoreTrait for Store {
 
                     conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
                         let latest_block_ptr =
-                            match Self::block_ptr_with_conn(&subgraph_id_inner, conn)
-                                .compat_err()?
-                            {
+                            match Self::block_ptr_with_conn(&site.deployment, conn).compat_err()? {
                                 Some(inner) => inner,
                                 None => return Ok(None),
                             };
@@ -916,7 +837,7 @@ impl StoreTrait for Store {
                         // indeterminism to miss an opportunity to claim a reward, but it's very
                         // similar to most determinism bugs in that money is on the line.
                         let block_number = self_inner
-                            .block_number(&subgraph_id_inner, block_hash)
+                            .block_number(&site.deployment, block_hash)
                             .map_err(|e| CancelableError::from(e))?;
                         let block_number = match block_number {
                             Some(n) => n.try_into().unwrap(),
@@ -982,7 +903,7 @@ impl StoreTrait for Store {
                 number: block_number,
                 hash: block_hash,
             };
-            let mut finisher = ProofOfIndexingFinisher::new(&block, &subgraph_id, &indexer);
+            let mut finisher = ProofOfIndexingFinisher::new(&block, &site3.deployment, &indexer);
             for (name, region) in by_causality_region.drain() {
                 finisher.add_causality_region(&name, &region);
             }
@@ -992,39 +913,51 @@ impl StoreTrait for Store {
         .boxed()
     }
 
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+    pub(crate) fn get(
+        &self,
+        site: &Site,
+        key: EntityKey,
+    ) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self
-            .get_entity_conn(&key.subgraph_id, ReplicaId::Main)
+            .get_entity_conn(site, ReplicaId::Main)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.get_entity(&conn, &key.subgraph_id, &key.entity_type, &key.entity_id)
+        self.get_entity(&conn, &key)
     }
 
-    fn get_many(
+    pub(crate) fn get_many(
         &self,
-        subgraph_id: &SubgraphDeploymentId,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        site: &Site,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
         let conn = self
-            .get_entity_conn(subgraph_id, ReplicaId::Main)
+            .get_entity_conn(site, ReplicaId::Main)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         conn.find_many(ids_for_type, BLOCK_NUMBER_MAX)
     }
 
-    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+    pub(crate) fn find(
+        &self,
+        site: &Site,
+        query: EntityQuery,
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self
-            .get_entity_conn(&query.subgraph_id, ReplicaId::Main)
+            .get_entity_conn(site, ReplicaId::Main)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         self.execute_query(&conn, query)
     }
 
-    fn find_one(&self, mut query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
+    pub(crate) fn find_one(
+        &self,
+        site: &Site,
+        mut query: EntityQuery,
+    ) -> Result<Option<Entity>, QueryExecutionError> {
         query.range = EntityRange::first(1);
 
         let conn = self
-            .get_entity_conn(&query.subgraph_id, ReplicaId::Main)
+            .get_entity_conn(site, ReplicaId::Main)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
 
         let mut results = self.execute_query(&conn, query)?;
@@ -1034,7 +967,7 @@ impl StoreTrait for Store {
         }
     }
 
-    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
+    pub(crate) fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
         use crate::db_schema::ens_names as dsl;
 
         let conn = self
@@ -1053,20 +986,19 @@ impl StoreTrait for Store {
             })
     }
 
-    fn transact_block_operations(
+    pub(crate) fn transact_block_operations(
         &self,
-        subgraph_id: SubgraphDeploymentId,
+        site: &Site,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, StoreError> {
-        // All operations should apply only to entities in this subgraph or
-        // the subgraph of subgraphs
+    ) -> Result<StoreEvent, StoreError> {
+        // All operations should apply only to data or metadata for this subgraph
         if mods
             .iter()
             .map(|modification| modification.entity_key())
-            .any(|key| key.subgraph_id != subgraph_id && key.subgraph_id != *SUBGRAPHS_ID)
+            .any(|key| key.subgraph_id != site.deployment)
         {
             panic!(
                 "transact_block_operations must affect only entities \
@@ -1074,89 +1006,66 @@ impl StoreTrait for Store {
             );
         }
 
-        let econn = self.get_entity_conn(&subgraph_id, ReplicaId::Main)?;
+        let econn = self.get_entity_conn(site, ReplicaId::Main)?;
 
-        let (event, metadata_event, should_migrate) =
-            econn.transaction(|| -> Result<_, StoreError> {
-                let block_ptr_from = Self::block_ptr_with_conn(&subgraph_id, &econn)?;
-                if let Some(ref block_ptr_from) = block_ptr_from {
-                    if block_ptr_from.number >= block_ptr_to.number {
-                        return Err(StoreError::DuplicateBlockProcessing(
-                            subgraph_id,
-                            block_ptr_to.number,
-                        ));
-                    }
+        let event = econn.transaction(|| -> Result<_, StoreError> {
+            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &econn)?;
+            if let Some(ref block_ptr_from) = block_ptr_from {
+                if block_ptr_from.number >= block_ptr_to.number {
+                    return Err(StoreError::DuplicateBlockProcessing(
+                        site.deployment.clone(),
+                        block_ptr_to.number,
+                    ));
                 }
+            }
 
-                let should_migrate = econn.should_migrate(&subgraph_id, &block_ptr_to)?;
+            // Emit a store event for the changes we are about to make. We
+            // wait with sending it until we have done all our other work
+            // so that we do not hold a lock on the notification queue
+            // for longer than we have to
+            let event: StoreEvent = mods.iter().collect();
 
-                // Emit a store event for the changes we are about to make. We
-                // wait with sending it until we have done all our other work
-                // so that we do not hold a lock on the notification queue
-                // for longer than we have to
-                let event: StoreEvent = mods.iter().collect();
+            // Make the changes
+            let section = stopwatch.start_section("apply_entity_modifications");
+            self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
+            section.end();
 
-                // Make the changes
-                let section = stopwatch.start_section("apply_entity_modifications");
-                self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
-                section.end();
+            if !deterministic_errors.is_empty() {
+                deployment::insert_subgraph_errors(
+                    &econn.conn,
+                    &site.deployment,
+                    deterministic_errors,
+                )?;
+            }
 
-                if !deterministic_errors.is_empty() {
-                    metadata::insert_subgraph_errors(
-                        &econn.conn,
-                        &subgraph_id,
-                        deterministic_errors,
-                    )?;
-                }
-
-                let metadata_event =
-                    metadata::forward_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
-                Ok((event, metadata_event, should_migrate))
-            })?;
-
-        // Send the events separately, because NOTIFY uses a global DB lock.
-        econn.transaction(|| {
-            econn.send_store_event(&metadata_event)?;
-            econn.send_store_event(&event)
+            let metadata_event =
+                deployment::forward_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
+            Ok(event.extend(metadata_event))
         })?;
 
-        Ok(should_migrate)
+        Ok(event)
     }
 
-    /// Apply a series of entity operations. Return `true` if the subgraph
-    /// mentioned in `history_event` should have its schema migrated
-    fn apply_metadata_operations(
+    pub(crate) fn revert_block_operations(
         &self,
-        _: &SubgraphDeploymentId,
-        operations: Vec<MetadataOperation>,
-    ) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        let event =
-            econn.transaction(|| self.apply_metadata_operations_with_conn(&econn, operations))?;
-
-        // Send the event separately, because NOTIFY uses a global DB lock.
-        econn.transaction(|| econn.send_store_event(&event))
-    }
-
-    fn revert_block_operations(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
+        site: &Site,
         block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         // Sanity check on block numbers
         if block_ptr_from.number != block_ptr_to.number + 1 {
             panic!("revert_block_operations must revert a single block only");
         }
         // Don't revert past a graft point
-        let info = self.subgraph_info(&subgraph_id)?;
+        let econn = self.get_entity_conn(site, ReplicaId::Main)?;
+        let info = self.subgraph_info_with_conn(&econn.conn, &site.deployment)?;
         if let Some(graft_block) = info.graft_block {
             if graft_block as u64 > block_ptr_to.number {
                 return Err(format_err!(
                     "Can not revert subgraph `{}` to block {} as it was \
                     grafted at block {} and reverting past a graft point \
                     is not possible",
-                    subgraph_id,
+                    site.deployment.clone(),
                     block_ptr_to.number,
                     graft_block
                 )
@@ -1164,143 +1073,48 @@ impl StoreTrait for Store {
             }
         }
 
-        let econn = self.get_entity_conn(&subgraph_id, ReplicaId::Main)?;
-        let (event, metadata_event) = econn.transaction(|| -> Result<_, StoreError> {
+        let event = econn.transaction(|| -> Result<_, StoreError> {
             assert_eq!(
                 Some(block_ptr_from),
-                Self::block_ptr_with_conn(&subgraph_id, &econn)?
+                Self::block_ptr_with_conn(&site.deployment, &econn)?
             );
             let metadata_event =
-                metadata::revert_block_ptr(&econn.conn, &subgraph_id, block_ptr_to)?;
+                deployment::revert_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
 
             let (event, count) = econn.revert_block(&block_ptr_from)?;
             econn.update_entity_count(count)?;
-            Ok((event, metadata_event))
+            Ok(event.extend(metadata_event))
         })?;
 
-        // Send the events separately, because NOTIFY uses a global DB lock.
-        econn.transaction(|| {
-            econn.send_store_event(&metadata_event)?;
-            econn.send_store_event(&event)
-        })
+        Ok(event)
     }
 
-    fn subscribe(&self, entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    pub(crate) fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         self.subscriptions.subscribe(entities)
     }
 
-    fn deployment_state_from_name(
-        &self,
-        name: SubgraphName,
-    ) -> Result<DeploymentState, StoreError> {
-        let conn = self.get_conn()?;
-        metadata::deployment_state_from_name(&conn, name)
-    }
-
-    fn deployment_state_from_id(
+    pub(crate) fn deployment_state_from_id(
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {
-        if id.is_meta() {
-            Ok(DeploymentState::meta())
-        } else {
-            let conn = self.get_conn()?;
-            metadata::deployment_state_from_id(&conn, id)
-        }
+        let conn = self.get_conn()?;
+        deployment::state(&conn, id)
     }
 
-    async fn fail_subgraph(
+    pub(crate) async fn fail_subgraph(
         &self,
         id: SubgraphDeploymentId,
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| metadata::fail_subgraph(&conn, &id, error))
+            conn.transaction(|| deployment::fail(&conn, &id, error))
                 .map_err(|e| e.into())
         })
         .await?;
         Ok(())
     }
 
-    fn create_subgraph_deployment(
-        &self,
-        name: SubgraphName,
-        schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
-        node_id: NodeId,
-        mode: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, mode, false)
-    }
-
-    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| metadata::create_subgraph(&econn.conn, &name))
-    }
-
-    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<(), StoreError> {
-            let changes = metadata::remove_subgraph(&econn.conn, name)?;
-            let event = StoreEvent::new(changes);
-            econn.send_store_event(&event)
-        })
-    }
-
-    fn reassign_subgraph(
-        &self,
-        id: &SubgraphDeploymentId,
-        node: &NodeId,
-    ) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| -> Result<(), StoreError> {
-            let changes = metadata::reassign_subgraph(&econn.conn, id, node)?;
-            let event = StoreEvent::new(changes);
-            econn.send_store_event(&event)
-        })
-    }
-
-    fn start_subgraph_deployment(
-        &self,
-        logger: &Logger,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn(subgraph_id, ReplicaId::Main)?;
-
-        econn.transaction(|| {
-            metadata::unfail_deployment(&econn.conn, subgraph_id)?;
-            econn.start_subgraph(logger)
-        })
-    }
-
-    fn migrate_subgraph_deployment(
-        &self,
-        logger: &Logger,
-        subgraph_id: &SubgraphDeploymentId,
-        block_ptr: &EthereumBlockPointer,
-    ) {
-        let econn = match self.get_entity_conn(subgraph_id, ReplicaId::Main) {
-            Ok(econn) => econn,
-            Err(e) => {
-                warn!(logger, "failed to get connection to start migrating";
-                                "subgraph" => subgraph_id.to_string(),
-                                "error" => e.to_string(),
-                );
-                return;
-            }
-        };
-
-        if let Err(e) = econn.migrate(logger, block_ptr) {
-            // An error in a migration should not lead to the
-            // subgraph being marked as failed
-            warn!(logger, "aborted migrating";
-                            "subgraph" => subgraph_id.to_string(),
-                            "error" => e.to_string(),
-            );
-        }
-    }
-
-    fn block_number(
+    pub(crate) fn block_number(
         &self,
         subgraph_id: &SubgraphDeploymentId,
         hash: H256,
@@ -1318,7 +1132,7 @@ impl StoreTrait for Store {
             .filter(dsl::hash.eq(format!("{:x}", hash)))
             .first(&*self.get_conn()?)
             .optional()?;
-        let subgraph_network = self.network_name(subgraph_id)?;
+        let subgraph_network = self.subgraph_info(subgraph_id)?.network;
         block
             .map(|(number, network_name)| {
                 if subgraph_network.is_none() || Some(&network_name) == subgraph_network.as_ref() {
@@ -1337,10 +1151,10 @@ impl StoreTrait for Store {
             .transpose()
     }
 
-    fn query_store(
-        self: Arc<Self>,
+    pub(crate) fn replica_for_query(
+        &self,
         for_subscription: bool,
-    ) -> Arc<(dyn QueryStore + Send + Sync + 'static)> {
+    ) -> Result<ReplicaId, StoreError> {
         use std::sync::atomic::Ordering;
 
         let replica_id = match for_subscription {
@@ -1356,46 +1170,20 @@ impl StoreTrait for Store {
             true => ReplicaId::Main,
         };
 
-        Arc::new(crate::query_store::QueryStore::new(
-            self,
-            for_subscription,
-            replica_id,
-        ))
+        Ok(replica_id)
     }
 
-    fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| {
-            let changes = metadata::deployment_synced(&econn.conn, id)?;
-            econn.send_store_event(&StoreEvent::new(changes))?;
-            Ok(())
-        })
-    }
-
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        self.status_internal(filter)
-    }
-
-    fn load_dynamic_data_sources(
+    pub(crate) fn load_dynamic_data_sources(
         &self,
         id: &SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        let econn = self.get_entity_conn(&*SUBGRAPHS_ID, ReplicaId::Main)?;
-        econn.transaction(|| crate::dynds::load(&econn.conn, id.as_str()))
-    }
-}
-
-impl SubgraphDeploymentStore for Store {
-    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.input)
+        let conn = self.get_conn()?;
+        conn.transaction(|| crate::dynds::load(&conn, id.as_str()))
     }
 
-    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.api)
-    }
-
-    fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error> {
-        Ok(self.subgraph_info(subgraph_id)?.network)
+    pub(crate) fn exists_and_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, StoreError> {
+        let conn = self.get_conn()?;
+        conn.transaction(|| deployment::exists_and_synced(&conn, id))
     }
 }
 
@@ -1526,9 +1314,3 @@ fn contract_call_id(
     hash.update(block.hash.as_ref());
     *hash.finalize().as_bytes()
 }
-
-/// Delete all entities. This function exists solely for integration tests
-/// and should never be called from any other code. Unfortunately, Rust makes
-/// it very hard to export items just for testing
-#[cfg(debug_assertions)]
-pub use crate::entities::delete_all_entities_for_test_use_only;

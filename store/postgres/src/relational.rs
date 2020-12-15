@@ -22,16 +22,23 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{
-    self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery,
-    DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
-    FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
+use crate::{
+    primary::{Namespace, METADATA_NAMESPACE},
+    relational_queries::{
+        self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery,
+        DeleteDynamicDataSourcesQuery, DeleteQuery, EntityData, FilterCollection, FilterQuery,
+        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery, UpdateQuery,
+    },
 };
-use graph::data::graphql::ext::{DocumentExt, ObjectTypeExt};
+use graph::components::store::EntityType;
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{
     DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
+};
+use graph::data::{
+    graphql::ext::{DocumentExt, ObjectTypeExt},
+    subgraph::schema::MetadataType,
 };
 use graph::prelude::{
     format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
@@ -58,6 +65,18 @@ lazy_static! {
             .ok()
             .map(|v| v.split(",").map(|s| s.to_owned()).collect())
             .unwrap_or(HashSet::new())
+    };
+
+    pub static ref METADATA_LAYOUT: Arc<Layout> = {
+        const SUBGRAPHS_SCHEMA: &str = include_str!("subgraphs.graphql");
+        // This is pretty awful: we need to have some deployment id so
+        // we can parse the GraphQL schema. The deployment id won't stick
+        // around since it gets dropped once the layout is constructed
+        let id = SubgraphDeploymentId::new("Qmsubgraphs").unwrap();
+        let schema = Schema::parse(SUBGRAPHS_SCHEMA, id).expect("the metadata schema is valid GraphQL");
+        let catalog = Catalog::make_empty(METADATA_NAMESPACE.clone()).expect("we can successfully construct a catalog for metadata");
+        let layout = Layout::new(&schema, catalog, false).expect("we can successfully construct a layout for metadata");
+        Arc::new(layout)
     };
 }
 
@@ -122,8 +141,8 @@ impl SqlName {
         SqlName(s)
     }
 
-    pub fn qualified_name(schema: &str, name: &SqlName) -> Self {
-        SqlName(format!("\"{}\".\"{}\"", schema, name.as_str()))
+    pub fn qualified_name(namespace: &Namespace, name: &SqlName) -> Self {
+        SqlName(format!("\"{}\".\"{}\"", namespace, name.as_str()))
     }
 }
 
@@ -190,8 +209,6 @@ type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 pub struct Layout {
     /// Maps the GraphQL name of a type to the relational table
     pub tables: HashMap<String, Arc<Table>>,
-    /// The subgraph id
-    pub subgraph: SubgraphDeploymentId,
     /// The database schema for this subgraph
     pub catalog: Catalog,
     /// Enums defined in the schema and their possible values. The names
@@ -298,7 +315,7 @@ impl Layout {
             .map(|table| {
                 format!(
                     "select count(*) from \"{}\".\"{}\" where upper_inf(block_range)",
-                    &catalog.schema, table.name
+                    &catalog.namespace, table.name
                 )
             })
             .collect::<Vec<_>>()
@@ -313,7 +330,6 @@ impl Layout {
             });
 
         Ok(Layout {
-            subgraph: schema.id.clone(),
             catalog,
             tables,
             enums,
@@ -325,7 +341,7 @@ impl Layout {
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
             object: POI_OBJECT.to_owned(),
-            qualified_name: SqlName::qualified_name(&catalog.schema, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
             name: table_name,
             columns: vec![
                 Column {
@@ -360,9 +376,9 @@ impl Layout {
     pub fn create_relational_schema(
         conn: &PgConnection,
         schema: &Schema,
-        schema_name: String,
+        namespace: Namespace,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(conn, schema_name)?;
+        let catalog = Catalog::new(conn, namespace.clone())?;
         let layout = Self::new(schema, catalog, true)?;
         let sql = layout
             .as_ddl()
@@ -375,17 +391,20 @@ impl Layout {
         &self,
         logger: &Logger,
         conn: &PgConnection,
-        base: &Layout,
+        dest_subgraph: &SubgraphDeploymentId,
+        base_layout: &Layout,
+        base_subgraph: &SubgraphDeploymentId,
         block: EthereumBlockPointer,
-        metadata: &Layout,
     ) -> Result<(), StoreError> {
         // This can not be used to copy data to or from the metadata subgraph
-        assert!(!self.subgraph.is_meta());
-        assert!(!base.subgraph.is_meta());
+        assert!(!self.catalog.namespace.is_metadata());
+        assert!(!base_layout.catalog.namespace.is_metadata());
 
         info!(
             logger,
-            "Initializing graft by copying data from {} to {}", base.subgraph, self.subgraph
+            "Initializing graft by copying data from {} to {}",
+            base_layout.catalog.namespace,
+            self.catalog.namespace
         );
 
         // 1. Copy subgraph data
@@ -396,7 +415,7 @@ impl Layout {
         for (dst, src) in self
             .tables
             .values()
-            .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
+            .filter_map(|dst| base_layout.table(&dst.name).map(|src| (dst, src)))
         {
             let start = Instant::now();
             let count = rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
@@ -405,20 +424,20 @@ impl Layout {
         }
 
         // 2. Copy dynamic data sources and adjust their ID
-        use crate::metadata::dynamic_ethereum_contract_data_source as decds;
+        use crate::deployment::dynamic_ethereum_contract_data_source as decds;
         // Find existing dynamic data sources
         let start = Instant::now();
         let dds = decds::table
             .select(decds::id)
-            .filter(decds::deployment.eq(base.subgraph.as_str()))
+            .filter(decds::deployment.eq(base_subgraph.as_str()))
             .load::<String>(conn)?;
         // Create an equal number of brand new ids
         let new_dds = (0..dds.len())
             .map(|_| DynamicEthereumContractDataSourceEntity::make_id())
             .collect::<Vec<_>>();
         // Copy the data sources and all their subordinate entities, translating
-        // ids into new ids in the process and attaching them to `self.subgraph`
-        rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, self.subgraph.as_str())
+        // ids into new ids in the process and attaching them to `dest_subgraph`
+        rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, dest_subgraph.as_str())
             .execute(conn)?;
         info!(logger, "Copied {} dynamic data sources", dds.len();
               "time_ms" => start.elapsed().as_millis());
@@ -430,8 +449,8 @@ impl Layout {
         let block_to_revert: BlockNumber = (block.number + 1)
             .try_into()
             .expect("block numbers fit into an i32");
-        self.revert_block(conn, block_to_revert)?;
-        metadata.revert_metadata(conn, &self.subgraph, block_to_revert)?;
+        self.revert_block(conn, dest_subgraph, block_to_revert)?;
+        METADATA_LAYOUT.revert_metadata(conn, dest_subgraph, block_to_revert)?;
         info!(logger, "Rewound subgraph to block {}", block.number;
               "time_ms" => start.elapsed().as_millis());
         Ok(())
@@ -469,7 +488,7 @@ impl Layout {
             write!(
                 out,
                 "create type {}.{}\n    as enum (",
-                self.catalog.schema,
+                self.catalog.namespace,
                 name.quoted()
             )?;
             for value in values.iter() {
@@ -520,18 +539,22 @@ impl Layout {
             .transpose()
     }
 
-    pub fn find_many(
+    pub fn find_many<'a>(
         &self,
         conn: &PgConnection,
-        ids_for_type: BTreeMap<&str, Vec<&str>>,
+        ids_for_type: BTreeMap<&str, &Vec<&str>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        if ids_for_type.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+
         let mut tables = Vec::new();
         for entity_type in ids_for_type.keys() {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            schema: &self.catalog.schema,
+            namespace: &self.catalog.namespace,
             ids_for_type,
             tables,
             block,
@@ -553,7 +576,7 @@ impl Layout {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(key.entity_type.as_str())?;
         let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
         Ok(())
@@ -565,7 +588,7 @@ impl Layout {
         key: &EntityKey,
         entity: Entity,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(key.entity_type.expect_metadata())?;
         let query = InsertQuery::new(table, key, entity, BLOCK_UNVERSIONED)?;
         query.execute(conn)?;
         Ok(())
@@ -662,7 +685,7 @@ impl Layout {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_data())?;
         ClampRangeQuery::new(table, key, block).execute(conn)?;
         let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
@@ -675,7 +698,7 @@ impl Layout {
         key: &EntityKey,
         entity: &Entity,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
         let query = UpdateQuery::new(table, key, entity)?;
         Ok(query.execute(conn)?)
     }
@@ -686,7 +709,7 @@ impl Layout {
         key: &EntityKey,
         mut entity: Entity,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
         // Set any attributes not mentioned in the entity to
         // their default (NULL)
         for column in table.columns.iter() {
@@ -704,7 +727,7 @@ impl Layout {
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_data())?;
         Ok(ClampRangeQuery::new(table, key, block).execute(conn)?)
     }
 
@@ -713,13 +736,14 @@ impl Layout {
         conn: &PgConnection,
         key: &EntityKey,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
         Ok(DeleteQuery::new(table, key).execute(conn)?)
     }
 
     pub fn revert_block(
         &self,
         conn: &PgConnection,
+        subgraph_id: &SubgraphDeploymentId,
         block: BlockNumber,
     ) -> Result<(StoreEvent, i32), StoreError> {
         let mut changes: Vec<EntityChange> = Vec::new();
@@ -754,16 +778,16 @@ impl Layout {
                 .into_iter()
                 .filter(|id| !unclamped.contains(id))
                 .map(|id| EntityChange {
-                    subgraph_id: self.subgraph.clone(),
-                    entity_type: table.object.clone(),
+                    subgraph_id: subgraph_id.clone(),
+                    entity_type: EntityType::data(table.object.clone()),
                     entity_id: id,
                     operation: EntityChangeOperation::Removed,
                 });
             changes.extend(deleted);
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|id| EntityChange {
-                subgraph_id: self.subgraph.clone(),
-                entity_type: table.object.clone(),
+                subgraph_id: subgraph_id.clone(),
+                entity_type: EntityType::Data(table.object.clone()),
                 entity_id: id,
                 operation: EntityChangeOperation::Set,
             });
@@ -783,9 +807,9 @@ impl Layout {
         conn: &PgConnection,
         subgraph: &SubgraphDeploymentId,
         block: BlockNumber,
-    ) -> Result<StoreEvent, StoreError> {
-        assert!(self.subgraph.is_meta());
-        const DDS: &str = "DynamicEthereumContractDataSource";
+    ) -> Result<(), StoreError> {
+        assert!(self.catalog.namespace.is_metadata());
+        const DDS: MetadataType = MetadataType::DynamicEthereumContractDataSource;
 
         // Delete dynamic data sources for this subgraph at the given block
         // and get their id's
@@ -799,16 +823,6 @@ impl Layout {
         let prefix_len = dds.iter().map(|id| id.len()).min();
         assert_eq!(prefix_len, dds.iter().map(|id| id.len()).max());
         let prefix_len = prefix_len.unwrap_or(0) as i32;
-
-        let mut changes: Vec<EntityChange> = dds
-            .iter()
-            .map(|id| EntityChange {
-                subgraph_id: self.subgraph.clone(),
-                entity_type: DDS.to_owned(),
-                entity_id: id.to_owned(),
-                operation: EntityChangeOperation::Removed,
-            })
-            .collect();
 
         if !dds.is_empty() {
             // Remove subordinate entities for the dynamic data sources from
@@ -824,27 +838,16 @@ impl Layout {
             // assumptions, most importantly, that the id of any entity that
             // belongs to a dynmaic data source starts with the id of that data
             // source
-            for table in self
-                .tables
-                .values()
-                .filter(|table| table.object != DDS && !table.object.starts_with("Subgraph"))
-            {
-                let deleted = DeleteByPrefixQuery::new(table, &dds, prefix_len)
-                    .get_results(conn)?
-                    .into_iter()
-                    .map(|data| EntityChange {
-                        subgraph_id: self.subgraph.clone(),
-                        entity_type: table.object.clone(),
-                        entity_id: data.id,
-                        operation: EntityChangeOperation::Removed,
-                    });
-                changes.extend(deleted);
+            for table in self.tables.values().filter(|table| {
+                table.object != DDS.as_str() && !table.object.starts_with("Subgraph")
+            }) {
+                DeleteByPrefixQuery::new(table, &dds, prefix_len).get_results(conn)?;
             }
         }
 
-        crate::metadata::revert_subgraph_errors(conn, &self.subgraph, block)?;
+        crate::deployment::revert_subgraph_errors(conn, &subgraph, block)?;
 
-        Ok(StoreEvent::new(changes))
+        Ok(())
     }
 
     pub fn is_cacheable(&self) -> bool {
@@ -924,7 +927,7 @@ impl ColumnType {
         if let Some(values) = enums.get(&*name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
-            let name = SqlName::qualified_name(&catalog.schema, &SqlName::from(name));
+            let name = SqlName::qualified_name(&catalog.namespace, &SqlName::from(name));
             if is_existing_text_column {
                 // We used to have a bug where columns that should have really
                 // been of an enum type were created as text columns. To make
@@ -1194,11 +1197,11 @@ impl Table {
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let is_account_like =
-            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.schema, table_name));
+            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.namespace, table_name));
         let table = Table {
             object: defn.name.clone(),
             name: table_name.clone(),
-            qualified_name: SqlName::qualified_name(&catalog.schema, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
             is_account_like,
             columns,
             position,
@@ -1263,7 +1266,7 @@ impl Table {
         writeln!(
             out,
             "create table {}.{} (",
-            layout.catalog.schema,
+            layout.catalog.namespace,
             self.name.quoted()
         )?;
         for column in self.columns.iter() {
@@ -1306,7 +1309,7 @@ impl Table {
                     on {schema_name}.{table_name}\n \
                        using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
             table_name = self.name,
-            schema_name = layout.catalog.schema,
+            schema_name = layout.catalog.namespace,
             block_max = BLOCK_NUMBER_MAX)?;
 
         // Add a BTree index that helps with the `RevertClampQuery` by making
@@ -1317,7 +1320,7 @@ impl Table {
                      on {schema_name}.{table_name}(coalesce(upper(block_range), {block_max}))\n \
                      where coalesce(upper(block_range), {block_max}) < {block_max};\n",
             table_name = self.name,
-            schema_name = layout.catalog.schema,
+            schema_name = layout.catalog.namespace,
             block_max = BLOCK_NUMBER_MAX
         )?;
 
@@ -1363,7 +1366,7 @@ impl Table {
                 table_name = self.name,
                 column_index = i,
                 column_name = column.name,
-                schema_name = layout.catalog.schema,
+                schema_name = layout.catalog.namespace,
                 method = method,
                 index_expr = index_expr,
             )?;
@@ -1404,7 +1407,8 @@ mod tests {
     fn test_layout(gql: &str) -> Layout {
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph).expect("Test schema invalid");
-        let catalog = Catalog::make_empty("rel".to_owned()).expect("Can not create catalog");
+        let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
+        let catalog = Catalog::make_empty(namespace).expect("Can not create catalog");
         Layout::new(&schema, catalog, false).expect("Failed to construct Layout")
     }
 
@@ -1553,11 +1557,11 @@ mod tests {
             color: Color,
         }";
 
-    const THING_DDL: &str = "create type rel.\"color\"
+    const THING_DDL: &str = "create type sgd0815.\"color\"
     as enum ('BLUE', 'red', 'yellow');
-create type rel.\"size\"
+create type sgd0815.\"size\"
     as enum (\'large\', \'medium\', \'small\');
-create table rel.\"thing\" (
+create table sgd0815.\"thing\" (
         \"id\"                 text not null,
         \"big_thing\"          text not null,
 
@@ -1566,17 +1570,17 @@ create table rel.\"thing\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_thing
-    on rel.thing
+    on sgd0815.thing
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index thing_block_range_closed
-    on rel.thing(coalesce(upper(block_range), 2147483647))
+    on sgd0815.thing(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_thing_id
-    on rel.\"thing\" using btree(\"id\");
+    on sgd0815.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_big_thing
-    on rel.\"thing\" using gist(\"big_thing\", block_range);
+    on sgd0815.\"thing\" using gist(\"big_thing\", block_range);
 
-create table rel.\"scalar\" (
+create table sgd0815.\"scalar\" (
         \"id\"                 text not null,
         \"bool\"               boolean,
         \"int\"                integer,
@@ -1584,34 +1588,34 @@ create table rel.\"scalar\" (
         \"string\"             text,
         \"bytes\"              bytea,
         \"big_int\"            numeric,
-        \"color\"              \"rel\".\"color\",
+        \"color\"              \"sgd0815\".\"color\",
 
         vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_scalar
-    on rel.scalar
+    on sgd0815.scalar
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index scalar_block_range_closed
-    on rel.scalar(coalesce(upper(block_range), 2147483647))
+    on sgd0815.scalar(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_scalar_id
-    on rel.\"scalar\" using btree(\"id\");
+    on sgd0815.\"scalar\" using btree(\"id\");
 create index attr_1_1_scalar_bool
-    on rel.\"scalar\" using btree(\"bool\");
+    on sgd0815.\"scalar\" using btree(\"bool\");
 create index attr_1_2_scalar_int
-    on rel.\"scalar\" using btree(\"int\");
+    on sgd0815.\"scalar\" using btree(\"int\");
 create index attr_1_3_scalar_big_decimal
-    on rel.\"scalar\" using btree(\"big_decimal\");
+    on sgd0815.\"scalar\" using btree(\"big_decimal\");
 create index attr_1_4_scalar_string
-    on rel.\"scalar\" using btree(left(\"string\", 256));
+    on sgd0815.\"scalar\" using btree(left(\"string\", 256));
 create index attr_1_5_scalar_bytes
-    on rel.\"scalar\" using btree(\"bytes\");
+    on sgd0815.\"scalar\" using btree(\"bytes\");
 create index attr_1_6_scalar_big_int
-    on rel.\"scalar\" using btree(\"big_int\");
+    on sgd0815.\"scalar\" using btree(\"big_int\");
 create index attr_1_7_scalar_color
-    on rel.\"scalar\" using btree(\"color\");
+    on sgd0815.\"scalar\" using btree(\"color\");
 
 ";
 
@@ -1642,7 +1646,7 @@ type SongStat @entity {
     song: Song @derivedFrom(field: \"id\")
     played: Int!
 }";
-    const MUSIC_DDL: &str = "create table rel.\"musician\" (
+    const MUSIC_DDL: &str = "create table sgd0815.\"musician\" (
         \"id\"                 text not null,
         \"name\"               text not null,
         \"main_band\"          text,
@@ -1653,21 +1657,21 @@ type SongStat @entity {
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_musician
-    on rel.musician
+    on sgd0815.musician
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index musician_block_range_closed
-    on rel.musician(coalesce(upper(block_range), 2147483647))
+    on sgd0815.musician(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_musician_id
-    on rel.\"musician\" using btree(\"id\");
+    on sgd0815.\"musician\" using btree(\"id\");
 create index attr_0_1_musician_name
-    on rel.\"musician\" using btree(left(\"name\", 256));
+    on sgd0815.\"musician\" using btree(left(\"name\", 256));
 create index attr_0_2_musician_main_band
-    on rel.\"musician\" using gist(\"main_band\", block_range);
+    on sgd0815.\"musician\" using gist(\"main_band\", block_range);
 create index attr_0_3_musician_bands
-    on rel.\"musician\" using gin(\"bands\");
+    on sgd0815.\"musician\" using gin(\"bands\");
 
-create table rel.\"band\" (
+create table sgd0815.\"band\" (
         \"id\"                 text not null,
         \"name\"               text not null,
         \"original_songs\"     text[] not null,
@@ -1677,19 +1681,19 @@ create table rel.\"band\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_band
-    on rel.band
+    on sgd0815.band
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index band_block_range_closed
-    on rel.band(coalesce(upper(block_range), 2147483647))
+    on sgd0815.band(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_band_id
-    on rel.\"band\" using btree(\"id\");
+    on sgd0815.\"band\" using btree(\"id\");
 create index attr_1_1_band_name
-    on rel.\"band\" using btree(left(\"name\", 256));
+    on sgd0815.\"band\" using btree(left(\"name\", 256));
 create index attr_1_2_band_original_songs
-    on rel.\"band\" using gin(\"original_songs\");
+    on sgd0815.\"band\" using gin(\"original_songs\");
 
-create table rel.\"song\" (
+create table sgd0815.\"song\" (
         \"id\"                 text not null,
         \"title\"              text not null,
         \"written_by\"         text not null,
@@ -1699,19 +1703,19 @@ create table rel.\"song\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_song
-    on rel.song
+    on sgd0815.song
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index song_block_range_closed
-    on rel.song(coalesce(upper(block_range), 2147483647))
+    on sgd0815.song(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_song_id
-    on rel.\"song\" using btree(\"id\");
+    on sgd0815.\"song\" using btree(\"id\");
 create index attr_2_1_song_title
-    on rel.\"song\" using btree(left(\"title\", 256));
+    on sgd0815.\"song\" using btree(left(\"title\", 256));
 create index attr_2_2_song_written_by
-    on rel.\"song\" using gist(\"written_by\", block_range);
+    on sgd0815.\"song\" using gist(\"written_by\", block_range);
 
-create table rel.\"song_stat\" (
+create table sgd0815.\"song_stat\" (
         \"id\"                 text not null,
         \"played\"             integer not null,
 
@@ -1720,15 +1724,15 @@ create table rel.\"song_stat\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_song_stat
-    on rel.song_stat
+    on sgd0815.song_stat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index song_stat_block_range_closed
-    on rel.song_stat(coalesce(upper(block_range), 2147483647))
+    on sgd0815.song_stat(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_3_0_song_stat_id
-    on rel.\"song_stat\" using btree(\"id\");
+    on sgd0815.\"song_stat\" using btree(\"id\");
 create index attr_3_1_song_stat_played
-    on rel.\"song_stat\" using btree(\"played\");
+    on sgd0815.\"song_stat\" using btree(\"played\");
 
 ";
 
@@ -1753,7 +1757,7 @@ type Habitat @entity {
     dwellers: [ForestDweller!]!
 }";
 
-    const FOREST_DDL: &str = "create table rel.\"animal\" (
+    const FOREST_DDL: &str = "create table sgd0815.\"animal\" (
         \"id\"                 text not null,
         \"forest\"             text,
 
@@ -1762,17 +1766,17 @@ type Habitat @entity {
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_animal
-    on rel.animal
+    on sgd0815.animal
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index animal_block_range_closed
-    on rel.animal(coalesce(upper(block_range), 2147483647))
+    on sgd0815.animal(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_animal_id
-    on rel.\"animal\" using btree(\"id\");
+    on sgd0815.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_forest
-    on rel.\"animal\" using gist(\"forest\", block_range);
+    on sgd0815.\"animal\" using gist(\"forest\", block_range);
 
-create table rel.\"forest\" (
+create table sgd0815.\"forest\" (
         \"id\"                 text not null,
 
         vid                  bigserial primary key,
@@ -1780,15 +1784,15 @@ create table rel.\"forest\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_forest
-    on rel.forest
+    on sgd0815.forest
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index forest_block_range_closed
-    on rel.forest(coalesce(upper(block_range), 2147483647))
+    on sgd0815.forest(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_forest_id
-    on rel.\"forest\" using btree(\"id\");
+    on sgd0815.\"forest\" using btree(\"id\");
 
-create table rel.\"habitat\" (
+create table sgd0815.\"habitat\" (
         \"id\"                 text not null,
         \"most_common\"        text not null,
         \"dwellers\"           text[] not null,
@@ -1798,17 +1802,17 @@ create table rel.\"habitat\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_habitat
-    on rel.habitat
+    on sgd0815.habitat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index habitat_block_range_closed
-    on rel.habitat(coalesce(upper(block_range), 2147483647))
+    on sgd0815.habitat(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_habitat_id
-    on rel.\"habitat\" using btree(\"id\");
+    on sgd0815.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
-    on rel.\"habitat\" using gist(\"most_common\", block_range);
+    on sgd0815.\"habitat\" using gist(\"most_common\", block_range);
 create index attr_2_2_habitat_dwellers
-    on rel.\"habitat\" using gin(\"dwellers\");
+    on sgd0815.\"habitat\" using gin(\"dwellers\");
 
 ";
     const FULLTEXT_GQL: &str = "
@@ -1842,7 +1846,7 @@ type Habitat @entity {
     dwellers: [Animal!]!
 }";
 
-    const FULLTEXT_DDL: &str = "create table rel.\"animal\" (
+    const FULLTEXT_DDL: &str = "create table sgd0815.\"animal\" (
         \"id\"                 text not null,
         \"name\"               text not null,
         \"species\"            text not null,
@@ -1854,23 +1858,23 @@ type Habitat @entity {
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_animal
-    on rel.animal
+    on sgd0815.animal
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index animal_block_range_closed
-    on rel.animal(coalesce(upper(block_range), 2147483647))
+    on sgd0815.animal(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_animal_id
-    on rel.\"animal\" using btree(\"id\");
+    on sgd0815.\"animal\" using btree(\"id\");
 create index attr_0_1_animal_name
-    on rel.\"animal\" using btree(left(\"name\", 256));
+    on sgd0815.\"animal\" using btree(left(\"name\", 256));
 create index attr_0_2_animal_species
-    on rel.\"animal\" using btree(left(\"species\", 256));
+    on sgd0815.\"animal\" using btree(left(\"species\", 256));
 create index attr_0_3_animal_forest
-    on rel.\"animal\" using gist(\"forest\", block_range);
+    on sgd0815.\"animal\" using gist(\"forest\", block_range);
 create index attr_0_4_animal_search
-    on rel.\"animal\" using gin(\"search\");
+    on sgd0815.\"animal\" using gin(\"search\");
 
-create table rel.\"forest\" (
+create table sgd0815.\"forest\" (
         \"id\"                 text not null,
 
         vid                  bigserial primary key,
@@ -1878,15 +1882,15 @@ create table rel.\"forest\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_forest
-    on rel.forest
+    on sgd0815.forest
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index forest_block_range_closed
-    on rel.forest(coalesce(upper(block_range), 2147483647))
+    on sgd0815.forest(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_forest_id
-    on rel.\"forest\" using btree(\"id\");
+    on sgd0815.\"forest\" using btree(\"id\");
 
-create table rel.\"habitat\" (
+create table sgd0815.\"habitat\" (
         \"id\"                 text not null,
         \"most_common\"        text not null,
         \"dwellers\"           text[] not null,
@@ -1896,17 +1900,17 @@ create table rel.\"habitat\" (
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_habitat
-    on rel.habitat
+    on sgd0815.habitat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index habitat_block_range_closed
-    on rel.habitat(coalesce(upper(block_range), 2147483647))
+    on sgd0815.habitat(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_habitat_id
-    on rel.\"habitat\" using btree(\"id\");
+    on sgd0815.\"habitat\" using btree(\"id\");
 create index attr_2_1_habitat_most_common
-    on rel.\"habitat\" using gist(\"most_common\", block_range);
+    on sgd0815.\"habitat\" using gist(\"most_common\", block_range);
 create index attr_2_2_habitat_dwellers
-    on rel.\"habitat\" using gin(\"dwellers\");
+    on sgd0815.\"habitat\" using gin(\"dwellers\");
 
 ";
 
@@ -1921,26 +1925,26 @@ enum Orientation {
 }
 ";
 
-    const FORWARD_ENUM_SQL: &str = "create type rel.\"orientation\"
+    const FORWARD_ENUM_SQL: &str = "create type sgd0815.\"orientation\"
     as enum (\'DOWN\', \'UP\');
-create table rel.\"thing\" (
+create table sgd0815.\"thing\" (
         \"id\"                 text not null,
-        \"orientation\"        \"rel\".\"orientation\" not null,
+        \"orientation\"        \"sgd0815\".\"orientation\" not null,
 
         vid                  bigserial primary key,
         block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_thing
-    on rel.thing
+    on sgd0815.thing
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index thing_block_range_closed
-    on rel.thing(coalesce(upper(block_range), 2147483647))
+    on sgd0815.thing(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_thing_id
-    on rel.\"thing\" using btree(\"id\");
+    on sgd0815.\"thing\" using btree(\"id\");
 create index attr_0_1_thing_orientation
-    on rel.\"thing\" using btree(\"orientation\");
+    on sgd0815.\"thing\" using btree(\"orientation\");
 
 ";
 }

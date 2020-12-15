@@ -72,7 +72,7 @@ where
 
 impl<S> RuntimeHostBuilder<S>
 where
-    S: Store + SubgraphDeploymentStore + EthereumCallCache,
+    S: Store + EthereumCallCache,
 {
     pub fn new(
         ethereum_networks: EthereumNetworks,
@@ -93,7 +93,7 @@ where
 
 impl<S> RuntimeHostBuilderTrait for RuntimeHostBuilder<S>
 where
-    S: Send + Sync + 'static + Store + SubgraphDeploymentStore + EthereumCallCache,
+    S: Send + Sync + 'static + Store + EthereumCallCache,
 {
     type Host = RuntimeHost;
     type Req = MappingRequest;

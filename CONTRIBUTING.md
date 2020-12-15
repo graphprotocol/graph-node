@@ -40,6 +40,12 @@ This will watch your source directory and continuously do the following on chang
 2.  Generate docs for all packages in the workspace in `target/doc/`.
 3.  Automatically format all your source files.
 
+### Testing with a sharded store
+
+The tests can (and should) be run against a sharded store. The tests will
+read their [configuration](docs/multiple-databases.md) from the file that the
+environment variable `GRAPH_NODE_TEST_CONFIG` points to.
+
 ## Commit messages
 
 We use the following format for commit messages:

@@ -1,5 +1,3 @@
-use diesel::pg::PgConnection;
-use diesel::*;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::str::FromStr;
@@ -141,6 +139,7 @@ fn insert_test_data(store: Arc<DieselStore>) {
             &TEST_SUBGRAPH_SCHEMA,
             deployment,
             node_id,
+            "fake_network".to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
         .unwrap();
@@ -243,21 +242,20 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: entity_type.to_owned(),
-            entity_id: id.to_owned(),
-        },
+        key: EntityKey::data(
+            TEST_SUBGRAPH_ID.clone(),
+            entity_type.to_owned(),
+            id.to_owned(),
+        ),
         data: test_entity,
     }
 }
 
 /// Removes test data from the database behind the store.
 fn remove_test_data(store: Arc<DieselStore>) {
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
-        .expect("Failed to remove entity test data");
+    store
+        .delete_all_entities_for_test_use_only()
+        .expect("deleting test entities succeeds");
 }
 
 #[test]
@@ -271,7 +269,7 @@ fn graft() {
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1],
         );
-
+        dbg!(&res);
         assert!(res.is_ok());
 
         let query = EntityQuery::new(
@@ -303,11 +301,7 @@ fn graft() {
         // Make our own entries for block 2
         shaq.set("email", "shaq@gmail.com");
         let op = EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: USER.to_owned(),
-                entity_id: "3".to_owned(),
-            },
+            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "3".to_owned()),
             data: shaq,
         };
         transact_entity_operations(&store, subgraph_id.clone(), BLOCKS[2], vec![op]).unwrap();

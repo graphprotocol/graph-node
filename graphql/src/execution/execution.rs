@@ -495,6 +495,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
 
             // Unwrap: In practice should never fail, but if it does we will catch the panic.
             execute_ctx.resolver.post_process(&mut query_res).unwrap();
+            query_res.deployment = Some(execute_ctx.query.schema.id().clone());
             Arc::new(query_res)
         })
         .await

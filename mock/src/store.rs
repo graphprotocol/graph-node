@@ -1,24 +1,22 @@
 use mockall::predicate::*;
 use mockall::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use graph::data::subgraph::status;
+use graph::components::{server::index_node::VersionInfo, store::StoredDynamicDataSource};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
-use graph::{components::store::StoredDynamicDataSource, data::subgraph::schema::SubgraphError};
-use graph_graphql::prelude::api_schema;
+use graph::{components::store::EntityType, data::subgraph::status};
 use web3::types::{Address, H256};
 
 mock! {
     pub Store {
         fn get_mock(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
-    }
 
-    trait SubgraphDeploymentStore: Send + Sync + 'static {
-        fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, Error>;
+        fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError>;
 
-        fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, Error>;
+        fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
 
-        fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, Error>;
+        fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, StoreError>;
     }
 
     trait ChainStore: Send + Sync + 'static {
@@ -51,6 +49,8 @@ mock! {
         fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
 
         fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error>;
+
+        fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
     }
 }
 
@@ -58,7 +58,7 @@ mock! {
 impl Store for MockStore {
     fn block_ptr(
         &self,
-        _subgraph_id: SubgraphDeploymentId,
+        _subgraph_id: &SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
         unimplemented!()
     }
@@ -70,20 +70,20 @@ impl Store for MockStore {
     fn get_many(
         &self,
         _subgraph_id: &SubgraphDeploymentId,
-        _ids_for_type: BTreeMap<&str, Vec<&str>>,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         unimplemented!()
     }
 
     fn supports_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
         unimplemented!()
     }
 
     fn get_proof_of_indexing<'a>(
-        &'a self,
+        self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
         _indexer: &'a Option<Address>,
         _block_hash: H256,
@@ -110,14 +110,6 @@ impl Store for MockStore {
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
         _deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<bool, StoreError> {
-        unimplemented!()
-    }
-
-    fn apply_metadata_operations(
-        &self,
-        _target_deployment: &SubgraphDeploymentId,
-        _operations: Vec<MetadataOperation>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -131,7 +123,7 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn subscribe(&self, _entities: Vec<SubgraphEntityPair>) -> StoreEventStreamBox {
+    fn subscribe(&self, _entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         unimplemented!()
     }
 
@@ -165,6 +157,7 @@ impl Store for MockStore {
         _: &Schema,
         _: SubgraphDeploymentEntity,
         _: NodeId,
+        _: String,
         _: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
         unimplemented!()
@@ -190,24 +183,7 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn migrate_subgraph_deployment(
-        &self,
-        _logger: &Logger,
-        _subgraph_id: &SubgraphDeploymentId,
-        _block_ptr: &EthereumBlockPointer,
-    ) {
-        unimplemented!()
-    }
-
-    fn block_number(
-        &self,
-        _subgraph_id: &SubgraphDeploymentId,
-        _block_hash: H256,
-    ) -> Result<Option<BlockNumber>, StoreError> {
-        unimplemented!()
-    }
-
-    fn query_store(self: Arc<Self>, _: bool) -> Arc<dyn QueryStore + Send + Sync> {
+    fn is_deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
         unimplemented!()
     }
 
@@ -225,51 +201,39 @@ impl Store for MockStore {
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         unimplemented!()
     }
-}
 
-pub fn mock_store_with_users_subgraph() -> (Arc<MockStore>, SubgraphDeploymentId) {
-    let mut store = MockStore::new();
+    fn assigned_node(&self, _: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+        unimplemented!()
+    }
 
-    let subgraph_id = SubgraphDeploymentId::new("users").unwrap();
-    let subgraph_id_for_deployment_entity = subgraph_id.clone();
-    let subgraph_id_for_api_schema_match = subgraph_id.clone();
-    let subgraph_id_for_api_schema = subgraph_id.clone();
+    fn assignments(&self, _: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+        unimplemented!()
+    }
 
-    // Simulate that the "users" subgraph is deployed
-    store
-        .expect_get_mock()
-        .withf(move |key| {
-            key == &SubgraphDeploymentEntity::key(subgraph_id_for_deployment_entity.clone())
-        })
-        .returning(|_| Ok(Some(Entity::from(vec![]))));
+    fn subgraph_exists(&self, _: &SubgraphName) -> Result<bool, StoreError> {
+        unimplemented!()
+    }
 
-    // Simulate an API schema for the "users" subgraph
-    store
-        .expect_api_schema()
-        .withf(move |key| key == &subgraph_id_for_api_schema_match)
-        .returning(move |_| {
-            const USERS_SCHEMA: &str = "
-                type User @entity {
-                    id: ID!,
-                    name: String,
-                }
+    fn input_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
+        unimplemented!()
+    }
 
-                # Needed by ipfs_map in runtime/wasm/src/test.rs
-                type Thing @entity {
-                    id: ID!,
-                    value: String,
-                    extra: String
-                }
-            ";
+    fn api_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
+        unimplemented!()
+    }
 
-            let mut schema = Schema::parse(USERS_SCHEMA, subgraph_id_for_api_schema.clone())
-                .expect("failed to parse users schema");
-            schema.document = api_schema(&schema.document, &BTreeSet::new())
-                .expect("failed to generate users API schema");
-            Ok(Arc::new(ApiSchema::from_api_schema(schema).unwrap()))
-        });
+    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
+        unimplemented!()
+    }
 
-    store.expect_network_name().returning(|_| Ok(None));
+    fn version_info(&self, _: &str) -> Result<VersionInfo, StoreError> {
+        unimplemented!()
+    }
 
-    (Arc::new(store), subgraph_id)
+    fn versions_for_subgraph_id(
+        &self,
+        _: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        unimplemented!()
+    }
 }

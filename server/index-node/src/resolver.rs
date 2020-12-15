@@ -18,7 +18,7 @@ pub struct IndexNodeResolver<R, S> {
 impl<R, S> IndexNodeResolver<R, S>
 where
     R: GraphQlRunner,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<R>, store: Arc<S>) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
@@ -95,9 +95,10 @@ where
             .get_optional::<Address>("indexer")
             .expect("Invalid indexer");
 
-        let poi_fut = self
-            .store
-            .get_proof_of_indexing(&deployment_id, &indexer, block_hash);
+        let poi_fut =
+            self.store
+                .clone()
+                .get_proof_of_indexing(&deployment_id, &indexer, block_hash);
         let poi = match futures::executor::block_on(poi_fut) {
             Ok(Some(poi)) => q::Value::String(format!("0x{}", hex::encode(&poi))),
             Ok(None) => q::Value::Null,
@@ -148,7 +149,7 @@ where
 impl<R, S> Clone for IndexNodeResolver<R, S>
 where
     R: GraphQlRunner,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
 {
     fn clone(&self) -> Self {
         Self {
@@ -162,7 +163,7 @@ where
 impl<R, S> Resolver for IndexNodeResolver<R, S>
 where
     R: GraphQlRunner,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
 {
     const CACHEABLE: bool = false;
 

@@ -2,7 +2,6 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 
 use graph::prelude::*;
-use graph::util::security::SafeDisplay;
 
 use std::fmt;
 use std::sync::Arc;
@@ -110,6 +109,7 @@ impl std::ops::Deref for ConnectionPool {
 
 impl ConnectionPool {
     pub fn create(
+        shard_name: &str,
         pool_name: &str,
         postgres_url: String,
         pool_size: u32,
@@ -121,6 +121,7 @@ impl ConnectionPool {
         let const_labels = {
             let mut map = HashMap::new();
             map.insert("pool".to_owned(), pool_name.to_owned());
+            map.insert("shard".to_string(), shard_name.to_owned());
             map
         };
         let error_counter = registry
@@ -161,12 +162,7 @@ impl ConnectionPool {
             .max_size(pool_size)
             .build(conn_manager)
             .unwrap();
-        info!(
-            logger_store,
-            "Connected to Postgres";
-            "pool_name" => pool_name,
-            "url" => SafeDisplay(postgres_url.as_str())
-        );
+        info!(logger_store, "Pool successfully connected to Postgres");
         ConnectionPool { pool, wait_stats }
     }
 }

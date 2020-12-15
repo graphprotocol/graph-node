@@ -1,20 +1,22 @@
 use futures::prelude::*;
 
-use crate::data::query::{CacheStatus, Query};
-use crate::data::subgraph::DeploymentState;
+use crate::data::query::{CacheStatus, Query, QueryTarget};
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 use crate::data::{graphql::effort::LoadManager, query::QueryResults};
+use crate::prelude::SubgraphDeploymentId;
 
 use async_trait::async_trait;
-use failure::format_err;
-use failure::Error;
-use graphql_parser::query as q;
 use std::sync::Arc;
 use std::time::Duration;
 
 /// Future for subscription results.
 pub type SubscriptionResultFuture =
     Box<dyn Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
+
+pub enum GraphQlTarget {
+    SubgraphName(String),
+    Deployment(SubgraphDeploymentId),
+}
 
 /// A component that can run GraphqL queries against a [Store](../store/trait.Store.html).
 #[async_trait]
@@ -23,7 +25,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     async fn run_query(
         self: Arc<Self>,
         query: Query,
-        state: DeploymentState,
+        target: QueryTarget,
         nested_resolver: bool,
     ) -> QueryResults;
 
@@ -31,7 +33,7 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     async fn run_query_with_complexity(
         self: Arc<Self>,
         query: Query,
-        state: DeploymentState,
+        target: QueryTarget,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
@@ -43,24 +45,8 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     async fn run_subscription(
         self: Arc<Self>,
         subscription: Subscription,
+        target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError>;
-
-    async fn query_metadata(self: Arc<Self>, query: Query) -> Result<Arc<q::Value>, Error> {
-        let state = DeploymentState::meta();
-        let result = self
-            .run_query_with_complexity(query, state, None, None, None, None, false)
-            .await;
-
-        // Metadata queries are not cached.
-        result
-            .unwrap_first()
-            .to_result()
-            .map_err(|errors| format_err!("Failed to query metadata: {:?}", errors))
-            .and_then(|data| {
-                data.map(|data| Ok(Arc::new(data)))
-                    .unwrap_or_else(|| Err(format_err!("No metadata found")))
-            })
-    }
 
     fn load_manager(&self) -> Arc<LoadManager>;
 }
