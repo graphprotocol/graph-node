@@ -102,28 +102,6 @@ fn mock_data_source(path: &str) -> DataSource {
             },
             runtime: Arc::new(runtime.clone()),
         },
-        templates: vec![DataSourceTemplate {
-            kind: String::from("ethereum/contract"),
-            name: String::from("example template"),
-            network: Some(String::from("mainnet")),
-            source: TemplateSource {
-                abi: String::from("foo"),
-            },
-            mapping: Mapping {
-                kind: String::from("ethereum/events"),
-                api_version: String::from("0.1.0"),
-                language: String::from("wasm/assemblyscript"),
-                entities: vec![],
-                abis: vec![],
-                event_handlers: vec![],
-                call_handlers: vec![],
-                block_handlers: vec![],
-                link: Link {
-                    link: "link".to_owned(),
-                },
-                runtime: Arc::new(runtime),
-            },
-        }],
         context: None,
     }
 }
@@ -137,6 +115,29 @@ fn mock_host_exports(
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
 
+    let templates = vec![DataSourceTemplate {
+        kind: String::from("ethereum/contract"),
+        name: String::from("example template"),
+        network: Some(String::from("mainnet")),
+        source: TemplateSource {
+            abi: String::from("foo"),
+        },
+        mapping: Mapping {
+            kind: String::from("ethereum/events"),
+            api_version: String::from("0.1.0"),
+            language: String::from("wasm/assemblyscript"),
+            entities: vec![],
+            abis: vec![],
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
+            link: Link {
+                link: "link".to_owned(),
+            },
+            runtime: Arc::new(vec![]),
+        },
+    }];
+
     HostExports::new(
         subgraph_id,
         Version::parse(&data_source.mapping.api_version).unwrap(),
@@ -144,7 +145,7 @@ fn mock_host_exports(
         data_source.source.address,
         data_source.network.unwrap(),
         data_source.context,
-        Arc::new(data_source.templates),
+        Arc::new(templates),
         data_source.mapping.abis,
         mock_ethereum_adapter,
         Arc::new(graph_core::LinkResolver::from(

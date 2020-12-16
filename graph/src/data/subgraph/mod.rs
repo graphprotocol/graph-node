@@ -6,6 +6,7 @@ use futures03::{
     TryStreamExt as _,
 };
 use lazy_static::lazy_static;
+use semver::Version;
 use serde::de;
 use serde::ser;
 use serde_yaml;
@@ -45,6 +46,14 @@ lazy_static! {
         .ok()
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    static ref MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
+
+    // Before this check was introduced, there were already subgraphs in
+    // the wild with spec version 0.0.3, due to confusion with the api
+    // version. To avoid breaking those, we accept 0.0.3 though it
+    // doesn't exist. In the future we should not use 0.0.3 as version
+    // and skip to 0.0.4 to avoid ambiguity.
+    static ref MAX_SPEC_VERSION: Version = Version::new(0, 0, 3);
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
@@ -725,20 +734,17 @@ impl From<EthereumContractMappingEntity> for UnresolvedMapping {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSource<M, T> {
+pub struct BaseDataSource<M> {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
     pub source: Source,
     pub mapping: M,
     pub context: Option<DataSourceContext>,
-
-    #[serde(default)]
-    pub templates: Vec<T>, // Deprecated in manifest spec version 0.0.2
 }
 
-pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping, UnresolvedDataSourceTemplate>;
-pub type DataSource = BaseDataSource<Mapping, DataSourceTemplate>;
+pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping>;
+pub type DataSource = BaseDataSource<Mapping>;
 
 impl UnresolvedDataSource {
     pub async fn resolve(
@@ -752,21 +758,12 @@ impl UnresolvedDataSource {
             name,
             source,
             mapping,
-            templates,
             context,
         } = self;
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
 
-        let (mapping, templates) = try_join(
-            mapping.resolve(&*resolver, logger),
-            templates
-                .into_iter()
-                .map(|template| template.resolve(resolver, logger))
-                .collect::<FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>(),
-        )
-        .await?;
+        let mapping = mapping.resolve(&*resolver, logger).await?;
 
         Ok(DataSource {
             kind,
@@ -774,7 +771,6 @@ impl UnresolvedDataSource {
             name,
             source,
             mapping,
-            templates,
             context,
         })
     }
@@ -820,8 +816,6 @@ impl TryFrom<DataSourceTemplateInfo> for DataSource {
             },
             mapping: template.mapping,
             context,
-
-            templates: Vec::new(),
         })
     }
 }
@@ -838,8 +832,6 @@ impl TryFromValue for UnresolvedDataSource {
 
         let source_entity: EthereumContractSourceEntity = map.get_required("source")?;
         let mapping_entity: EthereumContractMappingEntity = map.get_required("mapping")?;
-        let templates: Vec<EthereumContractDataSourceTemplateEntity> =
-            map.get_optional("templates")?.unwrap_or_default();
 
         Ok(Self {
             kind: map.get_required("kind")?,
@@ -847,7 +839,6 @@ impl TryFromValue for UnresolvedDataSource {
             network: map.get_optional("network")?,
             source: source_entity.into(),
             mapping: mapping_entity.into(),
-            templates: templates.into_iter().map(Into::into).collect(),
             context: map.get_optional("context")?,
         })
     }
@@ -1209,16 +1200,13 @@ impl UnresolvedSubgraphManifest {
         } = self;
 
         match semver::Version::parse(&spec_version) {
-            // Before this check was introduced, there were already subgraphs in
-            // the wild with spec version 0.0.3, due to confusion with the api
-            // version. To avoid breaking those, we accept 0.0.3 though it
-            // doesn't exist. In the future we should not use 0.0.3 as version
-            // and skip to 0.0.4 to avoid ambiguity.
-            Ok(ref ver) if *ver <= semver::Version::new(0, 0, 3) => {}
+            Ok(ver) if (*MIN_SPEC_VERSION <= ver && ver <= *MAX_SPEC_VERSION) => {}
             _ => {
                 return Err(anyhow!(
-                    "This Graph Node only supports manifest spec versions <= 0.0.2,
+                    "This Graph Node only supports manifest spec versions between {} and {},
                     but subgraph `{}` uses `{}`",
+                    *MIN_SPEC_VERSION,
+                    *MAX_SPEC_VERSION,
                     id,
                     spec_version
                 ));

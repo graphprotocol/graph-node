@@ -21,8 +21,8 @@ with xlat as (
       from subgraphs.ethereum_contract_abi e, xlat x
      where left(e.id, 40) = x.id),
  md4 as (
-    insert into subgraphs.ethereum_contract_data_source(id, kind, name, network, source, mapping, templates, block_range)
-    select (x.new_id || right(e.id, -40)) as id, kind, name, network, (x.new_id || right(e.source, -40)) as source, (x.new_id || right(e.mapping, -40)) as mapping, (select array_agg(x.new_id || right(a.elt, -40)) from unnest(e.templates) a(elt)) as templates, block_range
+    insert into subgraphs.ethereum_contract_data_source(id, kind, name, network, source, mapping, block_range)
+    select (x.new_id || right(e.id, -40)) as id, kind, name, network, (x.new_id || right(e.source, -40)) as source, (x.new_id || right(e.mapping, -40)) as mapping, block_range
       from subgraphs.ethereum_contract_data_source e, xlat x
      where left(e.id, 40) = x.id),
  md5 as (
@@ -51,9 +51,9 @@ with xlat as (
       from subgraphs.ethereum_contract_source e, xlat x
      where left(e.id, 40) = x.id)
 insert into subgraphs.dynamic_ethereum_contract_data_source(id, kind, name,
-              network, source, mapping, templates, ethereum_block_hash,
+              network, source, mapping, ethereum_block_hash,
               ethereum_block_number, deployment, block_range)
-select x.new_id, e.kind, e.name, e.network, (x.new_id || right(e.source, -40)) as source, (x.new_id || right(e.mapping, -40)) as mapping, (select array_agg(x.new_id || right(a.elt, -40)) from unnest(e.templates) a(elt)) as templates,
+select x.new_id, e.kind, e.name, e.network, (x.new_id || right(e.source, -40)) as source, (x.new_id || right(e.mapping, -40)) as mapping,
        e.ethereum_block_hash, e.ethereum_block_number, $3 as deployment,
        e.block_range
   from xlat x, subgraphs.dynamic_ethereum_contract_data_source e

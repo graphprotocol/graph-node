@@ -47,7 +47,7 @@ struct IndexingInputs<B, S> {
     eth_adapter: Arc<dyn EthereumAdapter>,
     stream_builder: B,
     include_calls_in_blocks: bool,
-    top_level_templates: Arc<Vec<DataSourceTemplate>>,
+    templates: Arc<Vec<DataSourceTemplate>>,
 }
 
 struct IndexingState<T: RuntimeHostBuilder> {
@@ -323,13 +323,6 @@ impl SubgraphInstanceManager {
 
         store.start_subgraph_deployment(&logger, &manifest.id)?;
 
-        let mut templates: Vec<DataSourceTemplate> = vec![];
-        for data_source in manifest.data_sources.iter() {
-            for template in data_source.templates.iter() {
-                templates.push(template.clone());
-            }
-        }
-
         // Clone the deployment ID for later
         let deployment_id = manifest.id.clone();
         let network_name = manifest.network_name();
@@ -345,7 +338,7 @@ impl SubgraphInstanceManager {
         // include calls in all blocks
         let include_calls_in_blocks = manifest.requires_traces();
 
-        let top_level_templates = Arc::new(manifest.templates.clone());
+        let templates = Arc::new(manifest.templates.clone());
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
@@ -383,7 +376,7 @@ impl SubgraphInstanceManager {
                 eth_adapter,
                 stream_builder,
                 include_calls_in_blocks,
-                top_level_templates,
+                templates,
             },
             state: IndexingState {
                 logger,
@@ -994,7 +987,7 @@ where
         let host = ctx.state.instance.add_dynamic_data_source(
             &logger,
             data_source.clone(),
-            ctx.inputs.top_level_templates.clone(),
+            ctx.inputs.templates.clone(),
             host_metrics.clone(),
         )?;
 

@@ -114,7 +114,6 @@ type EthereumContractDataSource @entity {
     network: String
     source: EthereumContractSource!
     mapping: EthereumContractMapping!
-    templates: [EthereumContractDataSourceTemplate!]
 }
 
 type DynamicEthereumContractDataSource @entity {
@@ -124,7 +123,6 @@ type DynamicEthereumContractDataSource @entity {
     network: String
     source: EthereumContractSource!
     mapping: EthereumContractMapping!
-    templates: [EthereumContractDataSourceTemplate!]
     ethereumBlockHash: Bytes!
     ethereumBlockNumber: BigInt!
     deployment: SubgraphDeployment!

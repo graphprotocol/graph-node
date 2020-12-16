@@ -181,16 +181,15 @@ fn print_copy_dds(layout: &Layout) {
     println!(
         r#"
 insert into subgraphs.dynamic_ethereum_contract_data_source(id, kind, name,
-              network, source, mapping, templates, ethereum_block_hash,
+              network, source, mapping, ethereum_block_hash,
               ethereum_block_number, deployment, block_range)
-select x.new_id, e.kind, e.name, e.network, {source}, {mapping}, {templates},
+select x.new_id, e.kind, e.name, e.network, {source}, {mapping},
        e.ethereum_block_hash, e.ethereum_block_number, $3 as deployment,
        e.block_range
   from xlat x, subgraphs.dynamic_ethereum_contract_data_source e
  where x.id = e.id"#,
         source = xlat("source", false),
         mapping = xlat("mapping", false),
-        templates = xlat("templates", true),
     );
 }
 
@@ -313,7 +312,7 @@ pub fn main() {
     .get_matches();
 
     let schema = args.value_of("schema").unwrap();
-    let namespace = args.value_of("db_schema").unwrap_or("rel");
+    let namespace = args.value_of("db_schema").unwrap_or("subgraphs");
     let kind = args.value_of("generate").unwrap_or("ddl");
 
     let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
