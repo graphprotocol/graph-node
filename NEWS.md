@@ -1,16 +1,75 @@
 # NEWS
 
-## Unreleased
+## 0.20
 
 **NOTE: JSONB storage is no longer supported. Do not upgrade to this
 release if you still have subgraphs that were deployed with a version
 before 0.16. They need to be redeployed before updating to this version.**
 
-You can check if you have JSONB subgraphs by running the query `select
-count(*) from deployment_schemas where version='split'` in `psql`. If that
+You can check if you have JSONB subgraphs by running the query `select count(*) from deployment_schemas where version='split'` in `psql`. If that
 query returns `0`, you do not have JSONB subgraphs and it is safe to upgrde
 to this version.
 
+### Feature: `_meta` field
+
+Subgraphs sometimes fall behind, be it due to failing or the Graph Node may be having issues. The
+`_meta` field can now be added to any query so that it is possible to determine against which block
+the query was effectively executed. Applications can use this to warn users if the data becomes
+stale. It is as simple as adding this to your query:
+
+```graphql
+_meta {
+  block {
+    number
+    hash
+  }
+}
+```
+
+### Feature: Non-fatal errors
+
+Indexing errors on already synced subgraphs no longer need to cause the entire subgraph to grind to
+a halt. Subgraphs can now be configured to continue syncing in the presence of errors, by simply
+skipping the problematic handler. This gives subgraph authors time to correct their subgraphs while the nodes can continue to serve up-to-date the data. This requires setting a flag on the subgraph manifest:
+
+```yaml
+features:
+  - nonFatalErrors
+```
+
+And the query must also opt-in to querying data with potential inconsistencies:
+
+```graphql
+foos(first: 100, subgraphError: allow) {
+  id
+}
+```
+
+If the subgraph encounters and error the query will return both the data and a graphql error with
+the message `indexing_error`.
+
+Note that some errors are still fatal, to be non-fatal the error must be known to be deterministic. The `_meta` field can be used to check if the subgraph has skipped over errors:
+
+```graphql
+_meta {
+  hasIndexingErrors
+}
+```
+
+The `features` section of the manifest requires depending on the graph-cli master branch until the next version (after `0.19.0`) is released.
+
+### Ethereum
+
+- Support for `tuple[]` (#1973).
+- Support multiple Ethereum endpoints per network with different capabilities (#1810).
+
+### Performance
+
+- Avoid cloning results assembled from partial results (#1907).
+
+### Security
+
+- Add `cargo-audit` to the build process, update dependencies (#1998).
 
 ## 0.19.2
 
