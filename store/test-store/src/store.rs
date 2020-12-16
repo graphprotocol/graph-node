@@ -382,7 +382,7 @@ fn build_store() -> (Arc<NetworkStore>, ConnectionPool, Config) {
         let url = url.into_string().unwrap();
         opt.postgres_url = Some(url);
     } else {
-        panic!("You can not set both THEGRAPH_STORE_POSTGRES_DIESEL_URL and GRAPH_NODE_TEST_CONFIG (see CONTRIBUTING.md)");
+        panic!("You must set either THEGRAPH_STORE_POSTGRES_DIESEL_URL or GRAPH_NODE_TEST_CONFIG (see CONTRIBUTING.md).");
     }
     opt.store_connection_pool_size = CONN_POOL_SIZE;
 
