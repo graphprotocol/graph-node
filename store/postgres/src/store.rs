@@ -28,12 +28,11 @@ use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, ethabi, format_err, futures03, info, o, tiny_keccak, tokio, trace, web3,
-    ApiSchema, BlockNumber, CheapClone, CompatErr, DeploymentState, DynTryFuture, Entity,
-    EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange, Error,
-    EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation, MetricsRegistry,
-    QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, StoreEventStreamBox,
-    SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    anyhow, debug, ethabi, futures03, info, o, tiny_keccak, tokio, trace, web3, ApiSchema,
+    BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
+    EntityOrder, EntityQuery, EntityRange, Error, EthereumBlockPointer, EthereumCallCache, Logger,
+    MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+    StoreEvent, StoreEventStreamBox, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -405,7 +404,7 @@ impl Store {
                 };
 
                 result.map_err(|e| {
-                    format_err!(
+                    anyhow!(
                         "Failed to set entity ({}, {}, {}): {}",
                         key.subgraph_id,
                         key.entity_type,
@@ -456,7 +455,7 @@ impl Store {
                     // This conversion is ok since n will only be 0 or 1
                     .map(|n| -(n as i32))
                     .map_err(|e| {
-                        format_err!(
+                        anyhow!(
                             "Failed to remove entity ({}, {}, {}): {}",
                             key.subgraph_id,
                             key.entity_type,
@@ -733,10 +732,7 @@ impl Store {
 
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
-            api: Arc::new(
-                ApiSchema::from_api_schema(schema)
-                    .map_err(|e| Error::from_boxed_compat(Box::from(e)))?,
-            ),
+            api: Arc::new(ApiSchema::from_api_schema(schema)?),
             network,
             graft_block,
             description,
@@ -830,7 +826,7 @@ impl Store {
 
                     conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
                         let latest_block_ptr =
-                            match Self::block_ptr_with_conn(&site.deployment, conn).compat_err()? {
+                            match Self::block_ptr_with_conn(&site.deployment, conn)? {
                                 Some(inner) => inner,
                                 None => return Ok(None),
                             };
@@ -896,7 +892,7 @@ impl Store {
             let mut by_causality_region = entities
                 .into_iter()
                 .map(|e| {
-                    let causality_region = e.id().compat_err()?;
+                    let causality_region = e.id()?;
                     let digest = match e.get("digest") {
                         Some(Value::Bytes(b)) => Ok(b.to_owned()),
                         other => Err(anyhow::anyhow!(
@@ -991,7 +987,7 @@ impl Store {
             .optional()
             .map_err(|e| {
                 QueryExecutionError::StoreError(
-                    format_err!("error looking up ens_name for hash {}: {}", hash, e).into(),
+                    anyhow!("error looking up ens_name for hash {}: {}", hash, e).into(),
                 )
             })
     }
@@ -1071,7 +1067,7 @@ impl Store {
         let info = self.subgraph_info_with_conn(&econn.conn, &site.deployment)?;
         if let Some(graft_block) = info.graft_block {
             if graft_block as u64 > block_ptr_to.number {
-                return Err(format_err!(
+                return Err(anyhow!(
                     "Can not revert subgraph `{}` to block {} as it was \
                     grafted at block {} and reverting past a graft point \
                     is not possible",

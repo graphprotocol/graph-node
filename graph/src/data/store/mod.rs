@@ -1,9 +1,9 @@
 use crate::{
     components::store::EntityType,
-    prelude::{format_err, q, s, CacheWeight, EntityKey, QueryExecutionError},
+    prelude::{q, s, CacheWeight, EntityKey, QueryExecutionError},
 };
 use crate::{data::subgraph::SubgraphDeploymentId, prelude::EntityChange};
-use failure::Error;
+use anyhow::{anyhow, Error};
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
@@ -142,7 +142,7 @@ impl FromStr for ValueType {
             "Int" => Ok(ValueType::Int),
             "String" | "ID" => Ok(ValueType::String),
             "List" => Ok(ValueType::List),
-            s => Err(format_err!("Type not available in this context: {}", s)),
+            s => Err(anyhow!("Type not available in this context: {}", s)),
         }
     }
 }
@@ -451,7 +451,7 @@ impl TryFrom<Value> for Option<scalar::BigInt> {
         match value {
             Value::BigInt(n) => Ok(Some(n.clone())),
             Value::Null => Ok(None),
-            _ => Err(format_err!("Value is not an BigInt")),
+            _ => Err(anyhow!("Value is not an BigInt")),
         }
     }
 }
@@ -516,9 +516,9 @@ impl Entity {
     /// Try to get this entity's ID
     pub fn id(&self) -> Result<String, Error> {
         match self.get("id") {
-            None => Err(format_err!("Entity is missing an `id` attribute")),
+            None => Err(anyhow!("Entity is missing an `id` attribute")),
             Some(Value::String(s)) => Ok(s.to_owned()),
-            _ => Err(format_err!("Entity has non-string `id` attribute")),
+            _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
 

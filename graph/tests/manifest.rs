@@ -9,7 +9,7 @@ use graph::components::{
     store::EntityType,
 };
 use graph::prelude::{
-    Entity, Link, SubgraphDeploymentId, SubgraphManifest, SubgraphManifestValidationError,
+    anyhow, Entity, Link, SubgraphDeploymentId, SubgraphManifest, SubgraphManifestValidationError,
     UnvalidatedSubgraphManifest,
 };
 
@@ -36,10 +36,10 @@ impl LinkResolverTrait for TextResolver {
         self
     }
 
-    async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, failure::Error> {
+    async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
         self.texts
             .get(&link.link)
-            .ok_or(failure::format_err!("No text for {}", &link.link))
+            .ok_or(anyhow!("No text for {}", &link.link))
             .map(|text| text.to_owned().into_bytes())
     }
 
@@ -47,7 +47,7 @@ impl LinkResolverTrait for TextResolver {
         &self,
         _logger: &Logger,
         _link: &Link,
-    ) -> Result<JsonValueStream, failure::Error> {
+    ) -> Result<JsonValueStream, anyhow::Error> {
         unimplemented!()
     }
 }

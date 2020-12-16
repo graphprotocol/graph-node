@@ -11,6 +11,7 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
+use anyhow::{anyhow, Error};
 use hex;
 use rand::rngs::OsRng;
 use rand::Rng;
@@ -180,7 +181,7 @@ impl FromStr for SubgraphHealth {
             "healthy" => Ok(SubgraphHealth::Healthy),
             "unhealthy" => Ok(SubgraphHealth::Unhealthy),
             "failed" => Ok(SubgraphHealth::Failed),
-            _ => Err(format_err!("failed to parse `{}` as SubgraphHealth", s)),
+            _ => Err(anyhow!("failed to parse `{}` as SubgraphHealth", s)),
         }
     }
 }
@@ -207,7 +208,7 @@ impl TryFromValue for SubgraphHealth {
     fn try_from_value(value: &q::Value) -> Result<SubgraphHealth, Error> {
         match value {
             q::Value::Enum(health) => SubgraphHealth::from_str(health),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "cannot parse value as SubgraphHealth: `{:?}`",
                 value
             )),
@@ -670,7 +671,7 @@ impl TryFromValue for EthereumContractSourceEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a contract source entity: {:?}",
                 value
             )),
@@ -803,7 +804,7 @@ impl TryFromValue for EthereumContractMappingEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a mapping entity: {:?}",
                 value
             )),
@@ -857,10 +858,7 @@ impl TryFromValue for EthereumContractAbiEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
-                "Cannot parse value into ABI entity: {:?}",
-                value
-            )),
+            _ => Err(anyhow!("Cannot parse value into ABI entity: {:?}", value)),
         }?;
 
         Ok(Self {
@@ -921,7 +919,7 @@ impl TryFromValue for EthereumBlockHandlerEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into block handler entity: {:?}",
                 value
             )),
@@ -959,7 +957,7 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
         let map = match value {
             q::Value::Object(map) => Ok(map),
             q::Value::Null => Ok(&empty_map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into block handler filter entity: {:?}",
                 value,
             )),
@@ -1005,7 +1003,7 @@ impl TryFromValue for EthereumCallHandlerEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into call handler entity: {:?}",
                 value
             )),
@@ -1055,7 +1053,7 @@ impl TryFromValue for EthereumContractEventHandlerEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into event handler entity: {:?}",
                 value
             )),
@@ -1118,7 +1116,7 @@ impl TryFromValue for EthereumContractDataSourceTemplateEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a data source template entity: {:?}",
                 value
             )),
@@ -1163,7 +1161,7 @@ impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a template source entity: {:?}",
                 value
             )),

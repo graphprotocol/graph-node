@@ -21,7 +21,7 @@ use std::str::FromStr;
 
 use graph::data::{schema::FulltextAlgorithm, store::scalar};
 use graph::prelude::{
-    format_err, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
+    anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value,
 };
@@ -269,9 +269,9 @@ pub trait FromColumnValue: Sized {
             (j::Bool(b), _) => Ok(Self::from_bool(b)),
             (j::Number(number), ColumnType::Int) => match number.as_i64() {
                 Some(i) => i32::try_from(i).map(Self::from_i32).map_err(|e| {
-                    StoreError::Unknown(format_err!("failed to convert {} to Int: {}", number, e))
+                    StoreError::Unknown(anyhow!("failed to convert {} to Int: {}", number, e))
                 }),
-                None => Err(StoreError::Unknown(format_err!(
+                None => Err(StoreError::Unknown(anyhow!(
                     "failed to convert {} to Int",
                     number
                 ))),
@@ -281,7 +281,7 @@ pub trait FromColumnValue: Sized {
                 scalar::BigDecimal::from_str(s.as_str())
                     .map(Self::from_big_decimal)
                     .map_err(|e| {
-                        StoreError::Unknown(format_err!(
+                        StoreError::Unknown(anyhow!(
                             "failed to convert {} to BigDecimal: {}",
                             number,
                             e
@@ -289,7 +289,7 @@ pub trait FromColumnValue: Sized {
                     })
             }
             (j::Number(number), ColumnType::BigInt) => Self::from_big_int(number),
-            (j::Number(number), column_type) => Err(StoreError::Unknown(format_err!(
+            (j::Number(number), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert number {} to {:?}",
                 number,
                 column_type
@@ -299,7 +299,7 @@ pub trait FromColumnValue: Sized {
             }
             (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
             (j::String(s), ColumnType::BytesId) => Ok(Self::from_string(bytes_as_str(&s))),
-            (j::String(s), column_type) => Err(StoreError::Unknown(format_err!(
+            (j::String(s), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert string {} to {:?}",
                 s,
                 column_type
@@ -383,17 +383,13 @@ impl FromColumnValue for graph::prelude::Value {
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
         scalar::BigInt::from_str(&i.to_string())
             .map(graph::prelude::Value::BigInt)
-            .map_err(|e| {
-                StoreError::Unknown(format_err!("failed to convert {} to BigInt: {}", i, e))
-            })
+            .map_err(|e| StoreError::Unknown(anyhow!("failed to convert {} to BigInt: {}", i, e)))
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
         scalar::Bytes::from_str(b)
             .map(graph::prelude::Value::Bytes)
-            .map_err(|e| {
-                StoreError::Unknown(format_err!("failed to convert {} to Bytes: {}", b, e))
-            })
+            .map_err(|e| StoreError::Unknown(anyhow!("failed to convert {} to Bytes: {}", b, e)))
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
@@ -2782,12 +2778,12 @@ impl<'a> CopyEntityDataQuery<'a> {
         for dcol in &dst.columns {
             if let Some(scol) = src.column(&dcol.name) {
                 if let Some(msg) = dcol.is_assignable_from(scol, &src.object) {
-                    return Err(format_err!("{}", msg).into());
+                    return Err(anyhow!("{}", msg).into());
                 } else {
                     columns.push(dcol);
                 }
             } else if !dcol.is_nullable() {
-                return Err(format_err!(
+                return Err(anyhow!(
                     "The attribute {}.{} is non-nullable, \
                      but there is no such attribute in the source",
                     dst.object,

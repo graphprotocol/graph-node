@@ -80,5 +80,5 @@ pub fn ensure_subgraph_exists(
                 )
             }
         })
-        .map_err(move |e| format_err!("Failed to ensure Ethereum network subgraph exists: {}", e))
+        .map_err(move |e| anyhow!("Failed to ensure Ethereum network subgraph exists: {}", e))
 }

@@ -1,11 +1,11 @@
 use crate::ext::futures::FutureExtension;
-use failure::Fail;
 use futures::prelude::*;
 use slog::{debug, trace, warn, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
@@ -228,11 +228,11 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum TimeoutError<T: Debug + Send + Sync + 'static> {
-    #[fail(display = "{:?}", _0)]
+    #[error("{0:?}")]
     Inner(T),
-    #[fail(display = "Timeout elapsed")]
+    #[error("Timeout elapsed")]
     Elapsed,
 }
 

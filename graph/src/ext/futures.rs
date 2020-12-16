@@ -1,5 +1,4 @@
 use crate::prelude::StoreError;
-use crate::util::error::CompatErr;
 use futures::future::Fuse;
 use futures::prelude::{Future, Poll, Stream};
 use futures::sync::oneshot;
@@ -269,7 +268,7 @@ pub enum CancelableError<E: Display + Debug> {
 
 impl From<StoreError> for CancelableError<anyhow::Error> {
     fn from(e: StoreError) -> Self {
-        Self::Error(failure::Error::from(e).compat_err())
+        Self::Error(anyhow::Error::from(e))
     }
 }
 

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
@@ -153,9 +154,7 @@ pub fn get_field_value_type(field_type: &Type) -> Result<ValueType, Error> {
     match field_type {
         Type::NamedType(ref name) => ValueType::from_str(&name),
         Type::NonNullType(inner) => get_field_value_type(&inner),
-        Type::ListType(_) => Err(format_err!(
-            "Only scalar values are supported in this context"
-        )),
+        Type::ListType(_) => Err(anyhow!("Only scalar values are supported in this context")),
     }
 }
 

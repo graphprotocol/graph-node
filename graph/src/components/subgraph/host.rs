@@ -2,8 +2,8 @@ use std::cmp::PartialEq;
 use std::fmt;
 use std::sync::Arc;
 
+use anyhow::Error;
 use async_trait::async_trait;
-use failure::Error;
 use futures::sync::mpsc;
 
 use crate::components::metrics::HistogramVec;

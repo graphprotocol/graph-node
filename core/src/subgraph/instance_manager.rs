@@ -311,13 +311,12 @@ impl SubgraphInstanceManager {
         let required_capabilities = manifest.required_ethereum_capabilities();
         let network = manifest.network_name();
 
-        let store = store.ok_or_else(|| {
-            format_err!("expected store that matches subgraph network: {}", &network)
-        })?;
+        let store = store
+            .ok_or_else(|| anyhow!("expected store that matches subgraph network: {}", &network))?;
 
         let eth_adapter = eth_networks
             .adapter_with_capabilities(network.clone(), &required_capabilities).map_err(|e|
-                format_err!(
+                anyhow!(
                 "expected eth adapter that matches subgraph network {} with required capabilities: {}: {}",
                 &network,
                 &required_capabilities, e))?.clone();
@@ -584,7 +583,7 @@ where
 #[derive(thiserror::Error, Debug)]
 enum BlockProcessingError {
     #[error("{0:#}")]
-    Unknown(anyhow::Error),
+    Unknown(Error),
 
     // The error had a determinstic cause but, for a possibly non-deterministic reason, we chose to
     // halt processing due to the error.
@@ -604,14 +603,8 @@ impl BlockProcessingError {
     }
 }
 
-impl From<failure::Error> for BlockProcessingError {
-    fn from(e: failure::Error) -> Self {
-        BlockProcessingError::Unknown(e.compat_err())
-    }
-}
-
-impl From<anyhow::Error> for BlockProcessingError {
-    fn from(e: anyhow::Error) -> Self {
+impl From<Error> for BlockProcessingError {
+    fn from(e: Error) -> Self {
         BlockProcessingError::Unknown(e)
     }
 }
@@ -694,7 +687,6 @@ where
                 Ok(!*DISABLE_FAIL_FAST
                     && !store
                         .is_deployment_synced(id)
-                        .compat_err()
                         .map_err(BlockProcessingError::Unknown)?)
             };
 
@@ -756,8 +748,7 @@ where
             &mut ctx,
             host_metrics.clone(),
             block_state.drain_created_data_sources(),
-        )
-        .compat_err()?;
+        )?;
 
         // Reprocess the triggers from this block that match the new data sources
         let block_with_triggers = triggers_in_block(
@@ -811,7 +802,7 @@ where
             .await
             .map_err(|e| {
                 // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                // This can cause an unecessary subgraph failure, to fix it we need to figure out a
+                // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
                 // way to revert the effect of `create_dynamic_data_sources` so we may return a
                 // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
                 match e {
@@ -885,9 +876,7 @@ where
             metrics.block_ops_transaction_duration.observe(elapsed);
             Ok((ctx, needs_restart))
         }
-        Err(e) => {
-            Err(format_err!("Error while processing block stream for a subgraph: {}", e).into())
-        }
+        Err(e) => Err(anyhow!("Error while processing block stream for a subgraph: {}", e).into()),
     }
 }
 
@@ -989,7 +978,7 @@ fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S>(
     ctx: &mut IndexingContext<B, T, S>,
     host_metrics: Arc<HostMetrics>,
     created_data_sources: Vec<DataSourceTemplateInfo>,
-) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), anyhow::Error>
+) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
     B: BlockStreamBuilder,
     S: ChainStore + Store + EthereumCallCache,

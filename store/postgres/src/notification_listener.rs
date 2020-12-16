@@ -237,12 +237,12 @@ impl JsonNotification {
         match value {
             serde_json::Value::Number(n) => {
                 let payload_id: i64 = n.as_i64().ok_or_else(|| {
-                    format_err!("Invalid notification ID, not compatible with i64: {}", n)
+                    anyhow!("Invalid notification ID, not compatible with i64: {}", n)
                 })?;
 
                 if payload_id < (i32::min_value() as i64) || payload_id > (i32::max_value() as i64)
                 {
-                    Err(format_err!(
+                    Err(anyhow!(
                         "Invalid notification ID, value exceeds i32: {}",
                         payload_id
                     ))?;
@@ -254,7 +254,7 @@ impl JsonNotification {
                         &[&(payload_id as i32)],
                     )
                     .map_err(|e| {
-                        format_err!(
+                        anyhow!(
                             "Error retrieving payload for notification {}: {}",
                             payload_id,
                             e
@@ -262,10 +262,7 @@ impl JsonNotification {
                     })?;
 
                 if payload_rows.is_empty() || payload_rows.get(0).is_empty() {
-                    return Err(format_err!(
-                        "No payload found for notification {}",
-                        payload_id
-                    ))?;
+                    return Err(anyhow!("No payload found for notification {}", payload_id))?;
                 }
                 let payload: String = payload_rows.get(0).get(0);
 
@@ -280,7 +277,7 @@ impl JsonNotification {
                 channel: notification.channel.clone(),
                 payload: value,
             }),
-            _ => Err(format_err!("JSON notifications must be numbers or objects"))?,
+            _ => Err(anyhow!("JSON notifications must be numbers or objects"))?,
         }
     }
 

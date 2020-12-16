@@ -1,4 +1,4 @@
-use failure::Error;
+use anyhow::Error;
 use futures::Stream;
 
 use crate::prelude::*;

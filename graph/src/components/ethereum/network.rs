@@ -1,4 +1,4 @@
-use failure::{format_err, Error};
+use anyhow::anyhow;
 use rand::seq::IteratorRandom;
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::HashMap;
@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use crate::components::ethereum::EthereumAdapter;
 pub use crate::impl_slog_value;
+use crate::prelude::Error;
 use std::str::FromStr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,7 +42,7 @@ impl PartialOrd for NodeCapabilities {
 }
 
 impl FromStr for NodeCapabilities {
-    type Err = anyhow::Error;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let capabilities: Vec<&str> = s.split(",").collect();
@@ -102,7 +103,7 @@ impl EthereumNetworkAdapters {
             .filter(|adapter| &adapter.capabilities >= required_capabilities)
             .collect();
         if sufficient_adapters.is_empty() {
-            return Err(format_err!(
+            return Err(anyhow!(
                 "A matching Ethereum network with {:?} was not found.",
                 required_capabilities
             ));
@@ -188,7 +189,7 @@ impl EthereumNetworks {
     ) -> Result<&Arc<dyn EthereumAdapter>, Error> {
         self.networks
             .get(&network_name)
-            .ok_or(format_err!("network not supported: {}", &network_name))
+            .ok_or(anyhow!("network not supported: {}", &network_name))
             .and_then(|adapters| adapters.cheapest_with(requirements))
     }
 }

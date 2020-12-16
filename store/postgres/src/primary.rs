@@ -17,15 +17,15 @@ use diesel::{
     },
     Connection as _,
 };
-use failure::format_err;
 use graph::{
     constraint_violation,
     data::subgraph::schema::MetadataType,
     data::subgraph::status,
     prelude::EthereumBlockPointer,
     prelude::{
-        entity, lazy_static, serde_json, EntityChange, EntityChangeOperation, MetadataOperation,
-        NodeId, StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
+        anyhow, entity, lazy_static, serde_json, EntityChange, EntityChangeOperation,
+        MetadataOperation, NodeId, StoreError, SubgraphDeploymentId, SubgraphName,
+        SubgraphVersionSwitchingMode,
     },
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
@@ -571,7 +571,7 @@ impl Connection {
         let namespace = schemas
             .first()
             .cloned()
-            .ok_or_else(|| format_err!("failed to read schema name for {} back", subgraph))?;
+            .ok_or_else(|| anyhow!("failed to read schema name for {} back", subgraph))?;
         let namespace = Namespace::new(namespace).map_err(|name| {
             constraint_violation!("Generated database schema name {} is invalid", name)
         })?;

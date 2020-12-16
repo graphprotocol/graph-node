@@ -150,7 +150,7 @@ where
 
         store
             .subscribe(vec![SubscriptionFilter::Assignment])
-            .map_err(|()| format_err!("Entity change stream failed"))
+            .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
                 // know that there is at least one, as that is what we subscribed to
@@ -170,7 +170,7 @@ where
                                    "entity_change" => format!("{:?}", entity_change));
                     let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
                         .map_err(|s| {
-                            format_err!(
+                            anyhow!(
                                 "Invalid subgraph hash `{}` in assignment entity: {:#?}",
                                 s,
                                 entity_change.clone(),
@@ -182,7 +182,7 @@ where
                             store
                                 .assigned_node(&subgraph_hash)
                                 .map_err(|e| {
-                                    format_err!("Failed to get subgraph assignment entity: {}", e)
+                                    anyhow!("Failed to get subgraph assignment entity: {}", e)
                                 })
                                 .map(|assigned| -> Box<dyn Stream<Item = _, Error = _> + Send> {
                                     if let Some(assigned) = assigned {
@@ -226,7 +226,7 @@ where
         let logger = self.logger.clone();
 
         future::result(self.store.assignments(&self.node_id))
-            .map_err(|e| format_err!("Error querying subgraph assignments: {}", e))
+            .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))
             .and_then(move |subgraph_ids| {
                 // This operation should finish only after all subgraphs are
                 // started. We wait for the spawned tasks to complete by giving

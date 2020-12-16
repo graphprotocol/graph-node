@@ -45,9 +45,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.34"
+version = "1.0.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf8dcb5b4bbaa28653b647d8c77bd4ed40183b48882e130c1f1ffb73de069fd7"
+checksum = "2c0df63cb2955042487fad3aefd2c6e3ae7389ac5dc1beb28921de0b69f779d4"
 
 [[package]]
 name = "arc-swap"
@@ -1507,7 +1507,6 @@ dependencies = [
  "diesel",
  "diesel_derives",
  "ethabi 12.0.0-graph",
- "failure",
  "futures 0.1.30",
  "futures 0.3.8",
  "graphql-parser",
@@ -1553,6 +1552,7 @@ dependencies = [
 name = "graph-chain-arweave"
 version = "0.19.2"
 dependencies = [
+ "anyhow",
  "graph",
 ]
 
@@ -1560,11 +1560,11 @@ dependencies = [
 name = "graph-chain-ethereum"
 version = "0.19.2"
 dependencies = [
+ "anyhow",
  "chrono",
  "config",
  "diesel",
  "dirs 3.0.1",
- "failure",
  "futures 0.1.30",
  "graph",
  "graph-core",
@@ -1583,6 +1583,7 @@ dependencies = [
 name = "graph-core"
 version = "0.19.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "atomic_refcell",
  "bytes 0.5.6",
@@ -1611,6 +1612,7 @@ name = "graph-graphql"
 version = "0.19.2"
 dependencies = [
  "Inflector",
+ "anyhow",
  "crossbeam",
  "defer",
  "futures 0.1.30",
@@ -1630,7 +1632,6 @@ dependencies = [
 name = "graph-mock"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.1.30",
  "graph",
  "graph-graphql",
@@ -1687,6 +1688,7 @@ dependencies = [
 name = "graph-runtime-wasm"
 version = "0.19.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "atomic_refcell",
  "bs58 0.4.0",
@@ -1716,7 +1718,6 @@ dependencies = [
 name = "graph-server-http"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.1.30",
  "graph",
  "graph-graphql",
@@ -1731,7 +1732,6 @@ dependencies = [
 name = "graph-server-index-node"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.3.8",
  "graph",
  "graph-graphql",
@@ -1755,7 +1755,6 @@ dependencies = [
 name = "graph-server-metrics"
 version = "0.19.2"
 dependencies = [
- "failure",
  "futures 0.1.30",
  "graph",
  "http 0.2.1",
@@ -1769,6 +1768,7 @@ dependencies = [
 name = "graph-server-websocket"
 version = "0.19.2"
 dependencies = [
+ "anyhow",
  "futures 0.1.30",
  "graph",
  "graphql-parser",
@@ -1794,7 +1794,6 @@ dependencies = [
  "diesel-derive-enum",
  "diesel-dynamic-schema",
  "diesel_migrations",
- "failure",
  "fallible-iterator 0.1.6",
  "futures 0.1.30",
  "graph",

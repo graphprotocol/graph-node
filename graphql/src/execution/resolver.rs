@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::execution::ExecutionContext;
-use graph::prelude::{anyhow, q, s, QueryExecutionError, StoreEventStreamBox};
+use graph::prelude::{q, s, Error, QueryExecutionError, StoreEventStreamBox};
 use graph::{
     data::graphql::{ext::DocumentExt, ObjectOrInterface},
     prelude::QueryResult,
@@ -117,7 +117,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         )))
     }
 
-    fn post_process(&self, _result: &mut QueryResult) -> Result<(), anyhow::Error> {
+    fn post_process(&self, _result: &mut QueryResult) -> Result<(), Error> {
         Ok(())
     }
 }

@@ -71,10 +71,7 @@ where
                 .map(|e| e.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-            return Err(format_err!(
-                "Errors loading data sources: {}",
-                joined_errors
-            ));
+            return Err(anyhow!("Errors loading data sources: {}", joined_errors));
         }
 
         this.hosts = hosts
@@ -92,7 +89,7 @@ where
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
-    ) -> Result<T::Host, anyhow::Error> {
+    ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
             let module_bytes = data_source.mapping.runtime.as_ref();
             let module_hash = tiny_keccak::keccak256(module_bytes);
@@ -109,16 +106,14 @@ where
                 sender
             }
         };
-        self.host_builder
-            .build(
-                self.network.clone(),
-                self.subgraph_id.clone(),
-                data_source,
-                top_level_templates,
-                mapping_request_sender,
-                host_metrics,
-            )
-            .compat_err()
+        self.host_builder.build(
+            self.network.clone(),
+            self.subgraph_id.clone(),
+            data_source,
+            top_level_templates,
+            mapping_request_sender,
+            host_metrics,
+        )
     }
 }
 
@@ -272,7 +267,7 @@ where
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Option<Arc<T::Host>>, anyhow::Error> {
+    ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = *MAX_DATA_SOURCES {
             if self.hosts.len() >= max_data_sources {

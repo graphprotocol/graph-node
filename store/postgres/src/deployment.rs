@@ -12,7 +12,7 @@ use graph::data::subgraph::{
     SubgraphFeature,
 };
 use graph::prelude::{
-    anyhow, bigdecimal::ToPrimitive, format_err, hex, web3::types::H256, BigDecimal, BlockNumber,
+    anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
     DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError,
     StoreEvent, SubgraphDeploymentId,
 };
@@ -156,7 +156,7 @@ fn graft(
             let hash = H256::from_slice(hash.as_slice());
             let block = block.to_u64().expect("block numbers fit into a u64");
             let subgraph = SubgraphDeploymentId::new(subgraph.clone()).map_err(|_| {
-                StoreError::Unknown(format_err!(
+                StoreError::Unknown(anyhow!(
                     "the base subgraph for a graft must be a valid subgraph id but is `{}`",
                     subgraph
                 ))

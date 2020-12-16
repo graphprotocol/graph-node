@@ -4,7 +4,6 @@ version = "0.19.2"
 edition = "2018"
 
 [dependencies]
-failure = "0.1.7"
 futures = "0.1.21"
 graph = { path = "../../graph" }
 http = "0.2"

@@ -40,7 +40,7 @@ use graph::data::{
     subgraph::schema::MetadataType,
 };
 use graph::prelude::{
-    format_err, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
+    anyhow, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger,
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, Value, ValueType,
     BLOCK_NUMBER_MAX,
@@ -191,7 +191,7 @@ impl TryFrom<&s::Type> for IdType {
         match ValueType::from_str(name)? {
             ValueType::String => Ok(IdType::String),
             ValueType::Bytes => Ok(IdType::Bytes),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
                 &name
             )
@@ -265,7 +265,7 @@ impl Layout {
                 .collect::<Result<HashSet<_>, _>>()
                 .and_then(move |types| {
                     if types.len() > 1 {
-                        Err(format_err!(
+                        Err(anyhow!(
                             "The implementations of interface \
                             `{}` use different types for the `id` field",
                             interface
@@ -382,7 +382,7 @@ impl Layout {
         let layout = Self::new(schema, catalog, true)?;
         let sql = layout
             .as_ddl()
-            .map_err(|_| StoreError::Unknown(format_err!("failed to generate DDL for layout")))?;
+            .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql)?;
         Ok(layout)
     }
@@ -951,7 +951,7 @@ impl ColumnType {
             ValueType::Bytes => Ok(ColumnType::Bytes),
             ValueType::Int => Ok(ColumnType::Int),
             ValueType::String => Ok(ColumnType::String),
-            ValueType::List => Err(StoreError::Unknown(format_err!(
+            ValueType::List => Err(StoreError::Unknown(anyhow!(
                 "can not convert ValueType::List to ColumnType"
             ))),
         }

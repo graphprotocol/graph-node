@@ -1,6 +1,7 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
+use anyhow::{anyhow, Error};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -132,15 +133,11 @@ impl ValueExt for q::Value {
 }
 
 impl Node {
-    fn id(&self) -> Result<String, graph::prelude::failure::Error> {
+    fn id(&self) -> Result<String, Error> {
         match self.get("id") {
-            None => Err(graph::prelude::failure::format_err!(
-                "Entity is missing an `id` attribute"
-            )),
+            None => Err(anyhow!("Entity is missing an `id` attribute")),
             Some(q::Value::String(s)) => Ok(s.to_owned()),
-            _ => Err(graph::prelude::failure::format_err!(
-                "Entity has non-string `id` attribute"
-            )),
+            _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
 

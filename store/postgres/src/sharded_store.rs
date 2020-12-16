@@ -340,10 +340,7 @@ impl ShardedStore {
 
 #[async_trait::async_trait]
 impl StoreTrait for ShardedStore {
-    fn block_ptr(
-        &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, failure::Error> {
+    fn block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
         let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())
     }
@@ -709,7 +706,7 @@ impl EthereumCallCache for ShardedStore {
         contract_address: Address,
         encoded_call: &[u8],
         block: EthereumBlockPointer,
-    ) -> Result<Option<Vec<u8>>, failure::Error> {
+    ) -> Result<Option<Vec<u8>>, Error> {
         self.primary.get_call(contract_address, encoded_call, block)
     }
 
@@ -719,7 +716,7 @@ impl EthereumCallCache for ShardedStore {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
         return_value: &[u8],
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), Error> {
         self.primary
             .set_call(contract_address, encoded_call, block, return_value)
     }

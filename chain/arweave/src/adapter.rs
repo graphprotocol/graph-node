@@ -32,7 +32,10 @@ impl ArweaveAdapterTrait for ArweaveAdapter {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
         {
-            return Err(format_err!("Invalid Arweave transaction id: `{}`", tx_id));
+            return Err(anyhow::anyhow!(
+                "Invalid Arweave transaction id: `{}`",
+                tx_id
+            ));
         }
 
         self.http_client

@@ -1,5 +1,5 @@
+use anyhow::{anyhow, Error};
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
-use failure::SyncFailure;
 use futures::Future;
 use futures03::future::TryFutureExt;
 use mockall::predicate::*;
@@ -9,6 +9,7 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::marker::Unpin;
+use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::*;
 
@@ -50,41 +51,38 @@ pub struct EthereumContractCall {
     pub args: Vec<Token>,
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum EthereumContractCallError {
-    #[fail(display = "ABI error: {}", _0)]
-    ABIError(SyncFailure<ABIError>),
+    #[error("ABI error: {0}")]
+    ABIError(ABIError),
     /// `Token` is not of expected `ParamType`
-    #[fail(display = "type mismatch, token {:?} is not of kind {:?}", _0, _1)]
+    #[error("type mismatch, token {0:?} is not of kind {0:?}")]
     TypeError(Token, ParamType),
-    #[fail(display = "error encoding input call data: {}", _0)]
+    #[error("error encoding input call data: {0}")]
     EncodingError(ethabi::Error),
-    #[fail(display = "call error: {}", _0)]
+    #[error("call error: {0}")]
     Web3Error(web3::Error),
-    #[fail(display = "call reverted: {}", _0)]
+    #[error("call reverted: {0}")]
     Revert(String),
-    #[fail(display = "ethereum node took too long to perform call")]
+    #[error("ethereum node took too long to perform call")]
     Timeout,
 }
 
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
-        EthereumContractCallError::ABIError(SyncFailure::new(e))
+        EthereumContractCallError::ABIError(e)
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum EthereumAdapterError {
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
-    #[fail(
-        display = "Block data unavailable, block was likely uncled (block hash = {:?})",
-        _0
-    )]
+    #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
     BlockUnavailable(H256),
 
     /// An unexpected error occurred.
-    #[fail(display = "Ethereum adapter error: {}", _0)]
+    #[error("Ethereum adapter error: {0}")]
     Unknown(Error),
 }
 
@@ -954,7 +952,7 @@ pub async fn blocks_with_triggers(
                                 "Ethereum endpoint is behind";
                                 "url" => eth_clone.url_hostname()
                         );
-                        format_err!("Block {} not found in the chain", to)
+                        anyhow!("Block {} not found in the chain", to)
                     }),
                     Err(e) => Err(e),
                 }),
@@ -984,7 +982,7 @@ pub async fn blocks_with_triggers(
                     triggers,
                     BlockFinality::Final(block),
                 )),
-                None => Err(format_err!(
+                None => Err(anyhow!(
                     "block {:?} not found in `triggers_by_block`",
                     block
                 )),
@@ -1001,14 +999,14 @@ pub async fn blocks_with_triggers(
     let first = blocks.first().unwrap().ethereum_block.number();
     let last = blocks.last().unwrap().ethereum_block.number();
     if first < from {
-        return Err(format_err!(
+        return Err(anyhow!(
             "block {} returned by the Ethereum node is before {}, the first block of the requested range",
             first,
             from,
         ));
     }
     if last > to {
-        return Err(format_err!(
+        return Err(anyhow!(
             "block {} returned by the Ethereum node is after {}, the last block of the requested range",
             last,
             to,

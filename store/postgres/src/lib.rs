@@ -7,7 +7,6 @@ extern crate diesel_dynamic_schema;
 extern crate diesel_migrations;
 #[macro_use]
 extern crate diesel_derive_enum;
-extern crate failure;
 extern crate fallible_iterator;
 extern crate futures;
 extern crate graph;

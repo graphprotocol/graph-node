@@ -1,4 +1,3 @@
-use failure::Error;
 use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
 use lazy_static::lazy_static;
@@ -13,6 +12,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+use thiserror::Error;
 use web3::types::{Address, H256};
 
 use crate::data::subgraph::status;
@@ -849,45 +849,40 @@ impl MetadataOperation {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum StoreError {
-    #[fail(display = "store error: {}", _0)]
+    #[error("store error: {0}")]
     Unknown(Error),
-    #[fail(
-        display = "tried to set entity of type `{}` with ID \"{}\" but an entity of type `{}`, \
-                   which has an interface in common with `{}`, exists with the same ID",
-        _0, _1, _2, _0
+    #[error(
+        "tried to set entity of type `{0}` with ID \"{1}\" but an entity of type `{2}`, \
+         which has an interface in common with `{0}`, exists with the same ID"
     )]
     ConflictingId(String, String, String), // (entity, id, conflicting_entity)
-    #[fail(display = "unknown field '{}'", _0)]
+    #[error("unknown field '{0}'")]
     UnknownField(String),
-    #[fail(display = "unknown table '{}'", _0)]
+    #[error("unknown table '{0}'")]
     UnknownTable(String),
-    #[fail(display = "malformed directive '{}'", _0)]
+    #[error("malformed directive '{0}'")]
     MalformedDirective(String),
-    #[fail(display = "query execution failed: {}", _0)]
+    #[error("query execution failed: {0}")]
     QueryExecutionError(String),
-    #[fail(display = "invalid identifier: {}", _0)]
+    #[error("invalid identifier: {0}")]
     InvalidIdentifier(String),
-    #[fail(
-        display = "subgraph `{}` has already processed block `{}`; \
-                   there are most likely two (or more) nodes indexing this subgraph",
-        _0, _1
+    #[error(
+        "subgraph `{0}` has already processed block `{1}`; \
+         there are most likely two (or more) nodes indexing this subgraph"
     )]
     DuplicateBlockProcessing(SubgraphDeploymentId, u64),
     /// An internal error where we expected the application logic to enforce
     /// some constraint, e.g., that subgraph names are unique, but found that
     /// constraint to not hold
-    #[fail(display = "internal constraint violated: {}", _0)]
+    #[error("internal constraint violated: {0}")]
     ConstraintViolation(String),
-    #[fail(display = "deployment not found: {}", _0)]
+    #[error("deployment not found: {0}")]
     DeploymentNotFound(String),
-    #[fail(
-        display = "shard not found: {} (this usually indicates a misconfiguration)",
-        _0
-    )]
+    #[error("shard not found: {0} (this usually indicates a misconfiguration)")]
     UnknownShard(String),
-    #[fail(display = "Fulltext search not yet deterministic")]
+    #[error("Fulltext search not yet deterministic")]
     FulltextSearchNonDeterministic,
 }
 
@@ -911,18 +906,6 @@ impl From<::diesel::result::Error> for StoreError {
 impl From<Error> for StoreError {
     fn from(e: Error) -> Self {
         StoreError::Unknown(e)
-    }
-}
-
-impl From<anyhow::Error> for StoreError {
-    fn from(e: anyhow::Error) -> Self {
-        StoreError::Unknown(e.compat_err())
-    }
-}
-
-impl From<StoreError> for anyhow::Error {
-    fn from(e: StoreError) -> Self {
-        failure::Error::from(e).compat_err()
     }
 }
 
