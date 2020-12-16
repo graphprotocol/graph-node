@@ -198,15 +198,15 @@ impl ShardedStore {
 
         let (shard, node_id) = self.place(&name, &network_name, node_id)?;
 
-        let pconn = self.primary_conn()?;
-
         // TODO: Check this for behavior on failure
-        let site = pconn.allocate_site(shard.clone(), &schema.id)?;
+        let site = self
+            .primary_conn()?
+            .allocate_site(shard.clone(), &schema.id)?;
 
         let graft_site = deployment
             .graft_base
             .as_ref()
-            .map(|base| pconn.find_existing_site(&base))
+            .map(|base| self.primary_conn()?.find_existing_site(&base))
             .transpose()?;
         if let Some(ref graft_site) = graft_site {
             if &graft_site.shard != &shard {
@@ -229,6 +229,9 @@ impl ShardedStore {
             deployment::exists_and_synced(&conn, id.as_str())
         };
 
+        // FIXME: This simoultaneously holds a `primary_conn` and a shard connection, which can
+        // potentially deadlock.
+        let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
             let changes = pconn.create_subgraph_version(
@@ -457,10 +460,11 @@ impl StoreTrait for ShardedStore {
         let (store, site) = self.store(id)?;
 
         let econn = store.get_entity_conn(&site, ReplicaId::Main)?;
-        let pconn = self.primary_conn()?;
         let graft_base = match deployment::graft_pending(&econn.conn, id)? {
             Some((base_id, base_ptr)) => {
-                let site = pconn.find_existing_site(&base_id)?;
+                // FIXME: This simoultaneously holds a `primary_conn` and an entity connection,
+                // which can potentially deadlock.
+                let site = self.primary_conn()?.find_existing_site(&base_id)?;
                 Some((site, base_ptr))
             }
             None => None,
@@ -477,15 +481,18 @@ impl StoreTrait for ShardedStore {
     }
 
     fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
-        let pconn = self.primary_conn()?;
+        let event = {
+            let pconn = self.primary_conn()?;
+            pconn.transaction(|| -> Result<_, Error> {
+                let changes = pconn.promote_deployment(id)?;
+                Ok(StoreEvent::new(changes))
+            })?
+        };
+
         let (dstore, _) = self.store(id)?;
         let dconn = dstore.get_conn()?;
-        let event = pconn.transaction(|| -> Result<_, Error> {
-            let changes = pconn.promote_deployment(id)?;
-            Ok(StoreEvent::new(changes))
-        })?;
         dconn.transaction(|| deployment::set_synced(&dconn, id))?;
-        Ok(pconn.send_store_event(&event)?)
+        Ok(self.primary_conn()?.send_store_event(&event)?)
     }
 
     // FIXME: This method should not get a node_id
@@ -535,17 +542,16 @@ impl StoreTrait for ShardedStore {
     }
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        let primary = self.primary_conn()?;
         let deployments = match filter {
             status::Filter::SubgraphName(name) => {
-                let deployments = primary.deployments_for_subgraph(name)?;
+                let deployments = self.primary_conn()?.deployments_for_subgraph(name)?;
                 if deployments.is_empty() {
                     return Ok(Vec::new());
                 }
                 deployments
             }
             status::Filter::SubgraphVersion(name, use_current) => {
-                let deployment = primary.subgraph_version(name, use_current)?;
+                let deployment = self.primary_conn()?.subgraph_version(name, use_current)?;
                 match deployment {
                     Some(deployment) => vec![deployment],
                     None => {
@@ -557,7 +563,7 @@ impl StoreTrait for ShardedStore {
         };
 
         let sites: Vec<_> = if deployments.is_empty() {
-            primary
+            self.primary_conn()?
                 .sites()?
                 .into_iter()
                 .map(|site| Arc::new(site))
@@ -598,8 +604,8 @@ impl StoreTrait for ShardedStore {
                 .collect();
             infos.extend(store.deployment_statuses(ids)?);
         }
-        let infos = primary.fill_assignments(infos)?;
-        let infos = primary.fill_chain_head_pointers(infos)?;
+        let infos = self.primary_conn()?.fill_assignments(infos)?;
+        let infos = self.primary_conn()?.fill_chain_head_pointers(infos)?;
         Ok(infos)
     }
 
@@ -654,8 +660,7 @@ impl StoreTrait for ShardedStore {
     }
 
     fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
-        let primary = self.primary_conn()?;
-        if let Some((deployment_id, created_at)) = primary.version_info(version)? {
+        if let Some((deployment_id, created_at)) = self.primary_conn()?.version_info(version)? {
             let id = SubgraphDeploymentId::new(deployment_id.clone())
                 .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
             let (store, _) = self.store(&id)?;
@@ -673,7 +678,7 @@ impl StoreTrait for ShardedStore {
             let total_ethereum_blocks_count = subgraph_info
                 .network
                 .as_ref()
-                .map(|network| primary.chain_head_block(network))
+                .map(|network| self.primary_conn()?.chain_head_block(network))
                 .transpose()?
                 .flatten();
 
