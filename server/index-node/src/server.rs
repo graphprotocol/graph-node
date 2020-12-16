@@ -6,11 +6,12 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use graph::prelude::{IndexNodeServer as IndexNodeServerTrait, *};
 
 use crate::service::IndexNodeService;
+use thiserror::Error;
 
 /// Errors that may occur when starting the server.
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum IndexNodeServeError {
-    #[fail(display = "Bind error: {}", _0)]
+    #[error("Bind error: {0}")]
     BindError(hyper::Error),
 }
 

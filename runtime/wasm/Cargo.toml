@@ -19,6 +19,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.19.2"
 strum_macros = "0.20.1"
 bytes = "0.5"
+anyhow = "1.0"
 
 wasmtime = "0.21.0"
 

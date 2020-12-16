@@ -206,10 +206,8 @@ fn create_mock_ethereum_adapter(
         Box::new(future::result(
             chains
                 .current_chain()
-                .ok_or_else(|| {
-                    format_err!("exhausted chain versions used in this test; this is ok")
-                })
-                .and_then(|chain| chain.last().ok_or_else(|| format_err!("empty block chain")))
+                .ok_or_else(|| anyhow!("exhausted chain versions used in this test; this is ok"))
+                .and_then(|chain| chain.last().ok_or_else(|| anyhow!("empty block chain")))
                 .map_err(Into::into)
                 .map(|block| block.block.block.clone()),
         ))
@@ -223,7 +221,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map(|chain| {
                         chain
                             .iter()
@@ -241,7 +239,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map(|chain| {
                         chain
                             .iter()
@@ -259,7 +257,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map_err(Into::into)
                     .map(|chain| {
                         chain
@@ -288,7 +286,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map_err(Into::into)
                     .map(|chain| {
                         chain

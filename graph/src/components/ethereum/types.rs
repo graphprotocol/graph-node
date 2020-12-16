@@ -1,5 +1,5 @@
+use anyhow::anyhow;
 use ethabi::LogParam;
-use failure::format_err;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
@@ -517,12 +517,12 @@ impl From<(H256, i64)> for EthereumBlockPointer {
 }
 
 impl TryFrom<(&str, i64)> for EthereumBlockPointer {
-    type Error = failure::Error;
+    type Error = anyhow::Error;
 
     fn try_from((hash, number): (&str, i64)) -> Result<Self, Self::Error> {
         let hash = hash.trim_start_matches("0x");
         let hash = H256::from_str(hash)
-            .map_err(|e| format_err!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+            .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
 
         Ok(EthereumBlockPointer::from((hash, number)))
     }

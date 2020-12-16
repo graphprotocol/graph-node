@@ -26,7 +26,6 @@ hex = "0.4.2"
 http = "0.2"
 futures = "0.1.21"
 graphql-parser = "0.3"
-failure = "0.1.7"
 lazy_static = "1.4.0"
 mockall = "0.8"
 num-bigint = { version = "^0.2.6", features = ["serde"] }

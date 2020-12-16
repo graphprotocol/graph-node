@@ -6,11 +6,12 @@ use hyper::Server;
 
 use crate::service::{GraphQLService, GraphQLServiceMetrics};
 use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
+use thiserror::Error;
 
 /// Errors that may occur when starting the server.
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum GraphQLServeError {
-    #[fail(display = "Bind error: {}", _0)]
+    #[error("Bind error: {0}")]
     BindError(hyper::Error),
 }
 

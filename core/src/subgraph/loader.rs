@@ -53,7 +53,7 @@ where
             } = stored;
 
             let template = template_map.get(name.as_str()).ok_or_else(|| {
-                format_err!(
+                anyhow!(
                     "deployment `{}` does not have a template called `{}`",
                     deployment_id.as_str(),
                     name

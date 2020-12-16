@@ -13,14 +13,15 @@ use graph::data::{
 };
 use graph::prelude::s::{Value, *};
 use graph::prelude::*;
+use thiserror::Error;
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum APISchemaError {
-    #[fail(display = "type {} already exists in the input schema", _0)]
+    #[error("type {0} already exists in the input schema")]
     TypeExists(String),
-    #[fail(display = "Type {} not found", _0)]
+    #[error("Type {0} not found")]
     TypeNotFound(String),
-    #[fail(display = "Fulltext search is not yet deterministic")]
+    #[error("Fulltext search is not yet deterministic")]
     FulltextSearchNonDeterministic,
 }
 

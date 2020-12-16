@@ -5,14 +5,13 @@ use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
 use crate::prelude::{
     q::Value,
     s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
-    Fail,
 };
 
-use anyhow::Context;
-use failure::Error;
+use anyhow::{Context, Error};
 use graphql_parser::{self, Pos};
 use inflector::Inflector;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -37,79 +36,68 @@ impl fmt::Display for Strings {
     }
 }
 
-#[derive(Debug, Fail, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum SchemaValidationError {
-    #[fail(display = "Interface `{}` not defined", _0)]
+    #[error("Interface `{0}` not defined")]
     InterfaceUndefined(String),
 
-    #[fail(display = "@entity directive missing on the following types: `{}`", _0)]
+    #[error("@entity directive missing on the following types: `{0}`")]
     EntityDirectivesMissing(Strings),
 
-    #[fail(
-        display = "Entity type `{}` does not satisfy interface `{}` because it is missing \
-                   the following fields: {}",
-        _0, _1, _2
+    #[error(
+        "Entity type `{0}` does not satisfy interface `{1}` because it is missing \
+         the following fields: {2}"
     )]
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
-    #[fail(
-        display = "Field `{}` in type `{}` has invalid @derivedFrom: {}",
-        _1, _0, _2
-    )]
+    #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
-    #[fail(display = "_Schema_ type is only for @imports and must not have any fields")]
+    #[error("_Schema_ type is only for @imports and must not have any fields")]
     SchemaTypeWithFields,
-    #[fail(display = "Imported subgraph name `{}` is invalid", _0)]
+    #[error("Imported subgraph name `{0}` is invalid")]
     ImportedSubgraphNameInvalid(String),
-    #[fail(display = "Imported subgraph id `{}` is invalid", _0)]
+    #[error("Imported subgraph id `{0}` is invalid")]
     ImportedSubgraphIdInvalid(String),
-    #[fail(display = "The _Schema_ type only allows @import directives")]
+    #[error("The _Schema_ type only allows @import directives")]
     InvalidSchemaTypeDirectives,
-    #[fail(display = r#"@import directives must have the form \
+    #[error(
+        r#"@import directives must have the form \
 @import(types: ["A", {{ name: "B", as: "C"}}], from: {{ name: "org/subgraph"}}) or \
-@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#)]
+@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#
+    )]
     ImportDirectiveInvalid,
-    #[fail(
-        display = "Type `{}`, field `{}`: type `{}` is neither defined nor imported",
-        _0, _1, _2
-    )]
+    #[error("Type `{0}`, field `{1}`: type `{2}` is neither defined nor imported")]
     FieldTypeUnknown(String, String, String), // (type_name, field_name, field_type)
-    #[fail(
-        display = "Imported type `{}` does not exist in the `{}` schema",
-        _0, _1
-    )]
+    #[error("Imported type `{0}` does not exist in the `{1}` schema")]
     ImportedTypeUndefined(String, String), // (type_name, schema)
-    #[fail(display = "Fulltext directive name undefined")]
+    #[error("Fulltext directive name undefined")]
     FulltextNameUndefined,
-    #[fail(display = "Fulltext directive name overlaps with type: {}", _0)]
+    #[error("Fulltext directive name overlaps with type: {0}")]
     FulltextNameConflict(String),
-    #[fail(
-        display = "Fulltext directive name overlaps with an existing entity field or a top-level query field: {}",
-        _0
-    )]
+    #[error("Fulltext directive name overlaps with an existing entity field or a top-level query field: {0}")]
     FulltextNameCollision(String),
-    #[fail(display = "Fulltext language is undefined")]
+    #[error("Fulltext language is undefined")]
     FulltextLanguageUndefined,
-    #[fail(display = "Fulltext language is invalid: {}", _0)]
+    #[error("Fulltext language is invalid: {0}")]
     FulltextLanguageInvalid(String),
-    #[fail(display = "Fulltext algorithm is undefined")]
+    #[error("Fulltext algorithm is undefined")]
     FulltextAlgorithmUndefined,
-    #[fail(display = "Fulltext algorithm is invalid: {}", _0)]
+    #[error("Fulltext algorithm is invalid: {0}")]
     FulltextAlgorithmInvalid(String),
-    #[fail(display = "Fulltext include is invalid")]
+    #[error("Fulltext include is invalid")]
     FulltextIncludeInvalid,
-    #[fail(display = "Fulltext directive requires an 'include' list")]
+    #[error("Fulltext directive requires an 'include' list")]
     FulltextIncludeUndefined,
-    #[fail(display = "Fulltext 'include' list must contain an object")]
+    #[error("Fulltext 'include' list must contain an object")]
     FulltextIncludeObjectMissing,
-    #[fail(
-        display = "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
+    #[error(
+        "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
     )]
     FulltextIncludeEntityMissingOrIncorrectAttributes,
-    #[fail(display = "Fulltext directive includes an entity not found on the subgraph schema")]
+    #[error("Fulltext directive includes an entity not found on the subgraph schema")]
     FulltextIncludedEntityNotFound,
-    #[fail(display = "Fulltext include field must have a 'name' attribute")]
+    #[error("Fulltext include field must have a 'name' attribute")]
     FulltextIncludedFieldMissingRequiredProperty,
-    #[fail(display = "Fulltext entity field, {}, not found or not a string", _0)]
+    #[error("Fulltext entity field, {0}, not found or not a string")]
     FulltextIncludedFieldInvalid(String),
 }
 
@@ -264,11 +252,11 @@ impl From<&s::Directive> for FulltextDefinition {
         }
     }
 }
-#[derive(Debug, Fail, PartialEq, Eq, Clone)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum SchemaImportError {
-    #[fail(display = "Schema for imported subgraph `{}` was not found", _0)]
+    #[error("Schema for imported subgraph `{0}` was not found")]
     ImportedSchemaNotFound(SchemaReference),
-    #[fail(display = "Subgraph for imported schema `{}` is not deployed", _0)]
+    #[error("Subgraph for imported schema `{0}` is not deployed")]
     ImportedSubgraphNotFound(SchemaReference),
 }
 

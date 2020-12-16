@@ -5,9 +5,10 @@ use graphql_parser::Pos;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 
+use anyhow::anyhow;
 use graph::data::graphql::TryFromValue;
 use graph::data::query::QueryExecutionError;
-use graph::prelude::{failure, q, web3::types::H256, BlockNumber};
+use graph::prelude::{q, web3::types::H256, BlockNumber, Error};
 
 pub trait ValueExt: Sized {
     fn as_object(&self) -> &BTreeMap<String, q::Value>;
@@ -69,11 +70,11 @@ impl Default for BlockConstraint {
 
 impl TryFromValue for BlockConstraint {
     /// `value` should be the output of input object coercion.
-    fn try_from_value(value: &q::Value) -> Result<Self, graph::prelude::failure::Error> {
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => map,
             q::Value::Null => return Ok(Self::default()),
-            _ => return Err(failure::err_msg("invalid `BlockConstraint`")),
+            _ => return Err(anyhow!("invalid `BlockConstraint`")),
         };
 
         if let Some(hash) = map.get("hash") {
@@ -82,7 +83,7 @@ impl TryFromValue for BlockConstraint {
             let number: u64 = TryFromValue::try_from_value(number_value)?;
             Ok(BlockConstraint::Number(TryFrom::try_from(number)?))
         } else {
-            Err(failure::err_msg("invalid `BlockConstraint`"))
+            Err(anyhow!("invalid `BlockConstraint`"))
         }
     }
 }

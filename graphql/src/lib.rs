@@ -1,7 +1,5 @@
 pub extern crate graphql_parser;
 
-use graph::prelude::failure;
-
 /// Utilities for working with GraphQL schemas.
 pub mod schema;
 

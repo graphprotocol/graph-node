@@ -10,7 +10,7 @@ use std::time::Instant;
 use ethabi::ParamType;
 use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::{
-    debug, err_msg, error, ethabi, format_err,
+    anyhow, debug, error, ethabi,
     futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
     hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, CheapClone, DynTryFuture,
     Error, EthereumCallCache, Logger, TimeoutError,
@@ -197,7 +197,7 @@ where
             })
             .map_err(move |e| {
                 e.into_inner().unwrap_or_else(move || {
-                    format_err!(
+                    anyhow::anyhow!(
                         "Ethereum node took too long to respond to trace_filter \
                          (from block {}, to block {})",
                         from,
@@ -387,7 +387,7 @@ where
                             Ok(Some((vec![], (start, new_step))))
                         } else {
                             warn!(logger, "Unexpected RPC error"; "error" => &string_err);
-                            Err(err_msg(string_err))
+                            Err(anyhow!("{}", string_err))
                         }
                     }
                     Ok(logs) => Ok(Some((logs, (end + 1, step)))),
@@ -561,10 +561,9 @@ where
                     web3.eth()
                         .block_with_txs(BlockId::Hash(hash))
                         .from_err::<Error>()
-                        .map_err(|e| e.compat())
                         .and_then(move |block| {
                             block.ok_or_else(|| {
-                                format_err!("Ethereum node did not find block {:?}", hash).compat()
+                                anyhow::anyhow!("Ethereum node did not find block {:?}", hash)
                             })
                         })
                 })
@@ -592,11 +591,9 @@ where
                     web3.eth()
                         .block(BlockId::Number(BlockNumber::Number(block_num.into())))
                         .from_err::<Error>()
-                        .map_err(|e| e.compat())
                         .and_then(move |block| {
                             block.ok_or_else(|| {
-                                format_err!("Ethereum node did not find block {:?}", block_num)
-                                    .compat()
+                                anyhow!("Ethereum node did not find block {:?}", block_num)
                             })
                         })
                 })
@@ -642,7 +639,7 @@ where
                             gen_block_opt
                                 .and_then(|gen_block| gen_block.hash)
                                 .ok_or_else(|| {
-                                    format_err!("Ethereum node could not find genesis block")
+                                    anyhow!("Ethereum node could not find genesis block")
                                 }),
                         )
                     })
@@ -659,7 +656,7 @@ where
                 )
                 .map_err(|e| {
                     e.into_inner().unwrap_or_else(|| {
-                        format_err!("Ethereum node took too long to read network identifiers")
+                        anyhow!("Ethereum node took too long to read network identifiers")
                     })
                 }),
         )
@@ -678,17 +675,17 @@ where
                 .run(move || {
                     web3.eth()
                         .block(BlockNumber::Latest.into())
-                        .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
+                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))
                         .from_err()
                         .and_then(|block_opt| {
                             block_opt.ok_or_else(|| {
-                                format_err!("no latest block returned from Ethereum").into()
+                                anyhow!("no latest block returned from Ethereum").into()
                             })
                         })
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
-                        format_err!("Ethereum node took too long to return latest block").into()
+                        anyhow!("Ethereum node took too long to return latest block").into()
                     })
                 }),
         )
@@ -708,17 +705,17 @@ where
                 .run(move || {
                     web3.eth()
                         .block_with_txs(BlockNumber::Latest.into())
-                        .map_err(|e| format_err!("could not get latest block from Ethereum: {}", e))
+                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))
                         .from_err()
                         .and_then(|block_opt| {
                             block_opt.ok_or_else(|| {
-                                format_err!("no latest block returned from Ethereum").into()
+                                anyhow!("no latest block returned from Ethereum").into()
                             })
                         })
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
-                        format_err!("Ethereum node took too long to return latest block").into()
+                        anyhow!("Ethereum node took too long to return latest block").into()
                     })
                 }),
         )
@@ -733,7 +730,7 @@ where
             self.block_by_hash(&logger, block_hash)
                 .and_then(move |block_opt| {
                     block_opt.ok_or_else(move || {
-                        format_err!(
+                        anyhow!(
                             "Ethereum node could not find block with hash {}",
                             block_hash
                         )
@@ -761,7 +758,7 @@ where
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
-                        format_err!("Ethereum node took too long to return block {}", block_hash)
+                        anyhow!("Ethereum node took too long to return block {}", block_hash)
                     })
                 }),
         )
@@ -786,7 +783,7 @@ where
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
-                        format_err!(
+                        anyhow!(
                             "Ethereum node took too long to return block {}",
                             block_number
                         )
@@ -905,7 +902,7 @@ where
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
-                        format_err!(
+                        anyhow!(
                             "Ethereum node took too long to return receipts for block {}",
                             block_hash
                         )
@@ -928,7 +925,7 @@ where
             self.block_hash_by_block_number(logger, chain_store.clone(), block_number, false)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt.ok_or_else(|| {
-                        format_err!(
+                        anyhow!(
                             "Ethereum node could not find start block hash by block number {}",
                             &block_number
                         )
@@ -1002,7 +999,7 @@ where
                     .inspect(confirm_block_hash)
                     .map_err(move |e| {
                         e.into_inner().unwrap_or_else(move || {
-                            format_err!(
+                            anyhow!(
                                 "Ethereum node took too long to return data for block #{}",
                                 block_number
                             )
@@ -1020,7 +1017,7 @@ where
         let block_hash = match block.hash {
             Some(hash) => hash,
             None => {
-                return Box::new(future::result(Err(format_err!(
+                return Box::new(future::result(Err(anyhow!(
                     "could not get uncle for block '{}' because block has null hash",
                     block
                         .number
@@ -1042,7 +1039,7 @@ where
                         web3.eth()
                             .uncle(block_hash.clone().into(), index.into())
                             .map_err(move |e| {
-                                format_err!(
+                                anyhow!(
                                     "could not get uncle {} for block {:?} ({} uncles): {}",
                                     index,
                                     block_hash,
@@ -1053,7 +1050,7 @@ where
                     })
                     .map_err(move |e| {
                         e.into_inner().unwrap_or_else(move || {
-                            format_err!("Ethereum node took too long to return uncle")
+                            anyhow!("Ethereum node took too long to return uncle")
                         })
                     })
             }))
@@ -1073,7 +1070,7 @@ where
                 .and_then(move |block_hash_opt| {
                     block_hash_opt
                         .ok_or_else(|| {
-                            format_err!("Ethereum node is missing block #{}", block_ptr.number)
+                            anyhow!("Ethereum node is missing block #{}", block_ptr.number)
                         })
                         .map(|block_hash| block_hash == block_ptr.hash)
                 }),
@@ -1103,7 +1100,7 @@ where
                 // includes a trace for the block reward which every block should have.
                 // If there are no traces something has gone wrong.
                 if traces.is_empty() {
-                    return future::err(format_err!(
+                    return future::err(anyhow!(
                         "Trace stream returned no traces for block: number = `{}`, hash = `{}`",
                         block_number,
                         block_hash,
@@ -1114,7 +1111,7 @@ where
                 // block hash for the traces is equal to the desired block hash.
                 // Assume all traces are for the same block.
                 if traces.iter().nth(0).unwrap().block_hash != block_hash {
-                    return future::err(format_err!(
+                    return future::err(anyhow!(
                         "Trace stream returned traces for an unexpected block: \
                          number = `{}`, hash = `{}`",
                         block_number,

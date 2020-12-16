@@ -1,4 +1,3 @@
-use failure;
 use graphql_parser::Pos;
 use hex::FromHexError;
 use num_bigint;
@@ -15,16 +14,16 @@ use crate::prelude::q;
 use crate::{components::store::StoreError, prelude::CacheWeight};
 
 #[derive(Debug)]
-pub struct CloneableFailureError(Arc<failure::Error>);
+pub struct CloneableAnyhowError(Arc<anyhow::Error>);
 
-impl Clone for CloneableFailureError {
+impl Clone for CloneableAnyhowError {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl From<failure::Error> for CloneableFailureError {
-    fn from(f: failure::Error) -> Self {
+impl From<anyhow::Error> for CloneableAnyhowError {
+    fn from(f: anyhow::Error) -> Self {
         Self(Arc::new(f))
     }
 }
@@ -61,7 +60,7 @@ pub enum QueryExecutionError {
     ValueParseError(String, String),
     AttributeTypeError(String, String),
     EntityParseError(String),
-    StoreError(CloneableFailureError),
+    StoreError(CloneableAnyhowError),
     Timeout,
     EmptySelectionSet(String),
     AmbiguousDerivedFromResult(Pos, String, String, String),
@@ -249,7 +248,7 @@ impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
 
 impl From<StoreError> for QueryExecutionError {
     fn from(e: StoreError) -> Self {
-        QueryExecutionError::StoreError(CloneableFailureError(Arc::new(e.into())))
+        QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into())))
     }
 }
 

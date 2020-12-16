@@ -34,7 +34,7 @@ use std::time::Instant;
 
 use graph::data::subgraph::schema::{MetadataType, POI_OBJECT, POI_TABLE};
 use graph::prelude::{
-    format_err, info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
+    anyhow, info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
     EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId,
 };
@@ -369,7 +369,7 @@ impl Connection<'_> {
             )?;
             let errors = layout.can_copy_from(&base);
             if !errors.is_empty() {
-                return Err(StoreError::Unknown(format_err!(
+                return Err(StoreError::Unknown(anyhow!(
                     "The subgraph `{}` cannot be used as the graft base \
                                         for `{}` because the schemas are incompatible:\n    - {}",
                     &base.catalog.namespace,

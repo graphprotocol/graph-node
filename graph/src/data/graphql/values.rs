@@ -1,8 +1,8 @@
-use failure::Error;
+use anyhow::{anyhow, Error};
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
-use crate::prelude::{format_err, q, BigInt, Entity};
+use crate::prelude::{q, BigInt, Entity};
 use web3::types::{H160, H256};
 
 pub trait TryFromValue: Sized {
@@ -19,10 +19,7 @@ impl TryFromValue for bool {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         match value {
             q::Value::Boolean(b) => Ok(*b),
-            _ => Err(format_err!(
-                "Cannot parse value into a boolean: {:?}",
-                value
-            )),
+            _ => Err(anyhow!("Cannot parse value into a boolean: {:?}", value)),
         }
     }
 }
@@ -32,7 +29,7 @@ impl TryFromValue for String {
         match value {
             q::Value::String(s) => Ok(s.clone()),
             q::Value::Enum(s) => Ok(s.clone()),
-            _ => Err(format_err!("Cannot parse value into a string: {:?}", value)),
+            _ => Err(anyhow!("Cannot parse value into a string: {:?}", value)),
         }
     }
 }
@@ -43,11 +40,11 @@ impl TryFromValue for u64 {
             q::Value::Int(n) => n
                 .as_i64()
                 .map(|n| n as u64)
-                .ok_or_else(|| format_err!("Cannot parse value into an integer/u64: {:?}", n)),
+                .ok_or_else(|| anyhow!("Cannot parse value into an integer/u64: {:?}", n)),
 
             // `BigInt`s are represented as `String`s.
             q::Value::String(s) => u64::from_str(s).map_err(Into::into),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into an integer/u64: {:?}",
                 value
             )),
@@ -61,10 +58,10 @@ impl TryFromValue for H160 {
                 // `H160::from_str` takes a hex string with no leading `0x`.
                 let string = s.trim_start_matches("0x");
                 H160::from_str(string).map_err(|e| {
-                    format_err!("Cannot parse Address/H160 value from string `{}`: {}", s, e)
+                    anyhow!("Cannot parse Address/H160 value from string `{}`: {}", s, e)
                 })
             }
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into an Address/H160: {:?}",
                 value
             )),
@@ -79,9 +76,9 @@ impl TryFromValue for H256 {
                 // `H256::from_str` takes a hex string with no leading `0x`.
                 let string = s.trim_start_matches("0x");
                 H256::from_str(string)
-                    .map_err(|e| format_err!("Cannot parse H256 value from string `{}`: {}", s, e))
+                    .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", s, e))
             }
-            _ => Err(format_err!("Cannot parse value into an H256: {:?}", value)),
+            _ => Err(anyhow!("Cannot parse value into an H256: {:?}", value)),
         }
     }
 }
@@ -90,11 +87,8 @@ impl TryFromValue for BigInt {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         match value {
             q::Value::String(s) => BigInt::from_str(s)
-                .map_err(|e| format_err!("Cannot parse BigInt value from string `{}`: {}", s, e)),
-            _ => Err(format_err!(
-                "Cannot parse value into an BigInt: {:?}",
-                value
-            )),
+                .map_err(|e| anyhow!("Cannot parse BigInt value from string `{}`: {}", s, e)),
+            _ => Err(anyhow!("Cannot parse value into an BigInt: {:?}", value)),
         }
     }
 }
@@ -109,7 +103,7 @@ where
                 values.push(T::try_from_value(value)?);
                 Ok(values)
             }),
-            _ => Err(format_err!("Cannot parse value into a vector: {:?}", value)),
+            _ => Err(anyhow!("Cannot parse value into a vector: {:?}", value)),
         }
     }
 }
@@ -119,7 +113,7 @@ impl TryFromValue for Entity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         match value {
             q::Value::String(s) => serde_json::from_str(s).map_err(Into::into),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse entity, value is not a string: {:?}",
                 value
             )),
@@ -136,7 +130,7 @@ impl ValueMap for q::Value {
     fn get_required<T: TryFromValue>(&self, key: &str) -> Result<T, Error> {
         match self {
             q::Value::Object(map) => map.get_required(key),
-            _ => Err(format_err!("value is not a map: {:?}", self)),
+            _ => Err(anyhow!("value is not a map: {:?}", self)),
         }
     }
 
@@ -146,7 +140,7 @@ impl ValueMap for q::Value {
     {
         match self {
             q::Value::Object(map) => map.get_optional(key),
-            _ => Err(format_err!("value is not a map: {:?}", self)),
+            _ => Err(anyhow!("value is not a map: {:?}", self)),
         }
     }
 }
@@ -157,7 +151,7 @@ impl ValueMap for &BTreeMap<String, q::Value> {
         T: TryFromValue,
     {
         self.get(key)
-            .ok_or_else(|| format_err!("Required field `{}` not set", key))
+            .ok_or_else(|| anyhow!("Required field `{}` not set", key))
             .and_then(|value| T::try_from_value(value).map_err(|e| e.into()))
     }
 
@@ -180,7 +174,7 @@ impl ValueMap for &HashMap<&String, q::Value> {
         T: TryFromValue,
     {
         self.get(&String::from(key))
-            .ok_or_else(|| format_err!("Required field `{}` not set", key))
+            .ok_or_else(|| anyhow!("Required field `{}` not set", key))
             .and_then(|value| T::try_from_value(value).map_err(|e| e.into()))
     }
 
@@ -211,7 +205,7 @@ impl ValueList for q::Value {
     {
         match self {
             q::Value::List(values) => values.get_values(),
-            _ => Err(format_err!("value is not a list: {:?}", self)),
+            _ => Err(anyhow!("value is not a list: {:?}", self)),
         }
     }
 }

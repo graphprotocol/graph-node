@@ -16,6 +16,7 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 use web3::types::H160;
 
+use graph::ensure;
 use graph_graphql::prelude::validate_entity;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
@@ -41,9 +42,9 @@ pub enum HostExportError {
     Deterministic(anyhow::Error),
 }
 
-impl From<failure::Error> for HostExportError {
-    fn from(e: failure::Error) -> Self {
-        HostExportError::Unknown(e.compat_err())
+impl From<anyhow::Error> for HostExportError {
+    fn from(e: anyhow::Error) -> Self {
+        HostExportError::Unknown(e)
     }
 }
 
@@ -152,8 +153,6 @@ impl HostExports {
         entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
         if let Some(proof_of_indexing) = proof_of_indexing {
             let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
             proof_of_indexing.write(
@@ -187,7 +186,7 @@ impl HostExports {
             entity_id,
         };
         let entity = Entity::from(data);
-        let schema = self.store.input_schema(&self.subgraph_id).compat()?;
+        let schema = self.store.input_schema(&self.subgraph_id)?;
         let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
         state.entity_cache.set(key.clone(), entity);
 
@@ -196,8 +195,7 @@ impl HostExports {
         if !is_valid {
             let entity = state
                 .entity_cache
-                .get(&key)
-                .compat()?
+                .get(&key)?
                 .expect("we just stored this entity");
             validate_entity(&schema.document, &key, &entity)?;
         }
@@ -370,9 +368,7 @@ impl HostExports {
     }
 
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
-        Ok(block_on03(self.link_resolver.cat(logger, &Link { link })).compat()?)
+        Ok(block_on03(self.link_resolver.cat(logger, &Link { link }))?)
     }
 
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
@@ -390,10 +386,8 @@ impl HostExports {
         user_data: store::Value,
         flags: Vec<String>,
     ) -> Result<Vec<BlockState>, anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
         const JSON_FLAG: &str = "json";
-        anyhow::ensure!(
+        ensure!(
             flags.contains(&JSON_FLAG.to_string()),
             "Flags must contain 'json'"
         );
@@ -414,10 +408,10 @@ impl HostExports {
 
         let result = {
             let mut stream: JsonValueStream =
-                block_on03(link_resolver.json_stream(&logger, &Link { link })).compat()?;
+                block_on03(link_resolver.json_stream(&logger, &Link { link }))?;
             let mut v = Vec::new();
             while let Some(sv) = block_on03(stream.next()) {
-                let sv = sv.compat()?;
+                let sv = sv?;
                 let module = WasmInstance::from_valid_module_with_ctx(
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
@@ -603,9 +597,7 @@ impl HostExports {
     }
 
     pub(crate) fn ens_name_by_hash(&self, hash: &str) -> Result<Option<String>, anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
-        Ok(self.store.find_ens_name(hash).compat()?)
+        Ok(self.store.find_ens_name(hash)?)
     }
 
     pub(crate) fn log_log(&self, logger: &Logger, level: slog::Level, msg: String) {

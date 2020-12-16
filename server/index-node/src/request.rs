@@ -46,9 +46,7 @@ impl Future for IndexNodeRequest {
 
         // Parse the "query" field of the JSON body
         let document = graphql_parser::parse_query(query_string)
-            .map_err(|e| {
-                GraphQLServerError::from(QueryError::ParseError(Arc::new(e.compat().into())))
-            })?
+            .map_err(|e| GraphQLServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
             .into_static();
 
         // Parse the "variables" field of the JSON body, if present

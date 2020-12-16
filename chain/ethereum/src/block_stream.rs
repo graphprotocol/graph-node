@@ -793,7 +793,9 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                         // Chain head update stream ended
                         Ok(Async::Ready(None)) => {
                             // Should not happen
-                            return Err(format_err!("chain head update stream ended unexpectedly"));
+                            return Err(anyhow::anyhow!(
+                                "chain head update stream ended unexpectedly"
+                            ));
                         }
 
                         Ok(Async::NotReady) => {
@@ -805,7 +807,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                         // mpsc channel failed
                         Err(()) => {
                             // Should not happen
-                            return Err(format_err!("chain head update Receiver failed"));
+                            return Err(anyhow::anyhow!("chain head update Receiver failed"));
                         }
                     }
                 }

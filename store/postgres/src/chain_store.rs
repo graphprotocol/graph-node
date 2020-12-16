@@ -4,6 +4,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, select, update};
+use graph::ensure;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -264,9 +265,10 @@ impl ChainStoreTrait for ChainStore {
         block_ptr: EthereumBlockPointer,
         offset: u64,
     ) -> Result<Option<EthereumBlock>, Error> {
-        if block_ptr.number < offset {
-            failure::bail!("block offset points to before genesis block");
-        }
+        ensure!(
+            block_ptr.number >= offset,
+            "block offset points to before genesis block"
+        );
 
         select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))
             .first::<Option<serde_json::Value>>(&*self.get_conn()?)
