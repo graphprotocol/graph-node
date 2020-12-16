@@ -70,7 +70,6 @@ where
                 source,
                 mapping: template.mapping.clone(),
                 context,
-                templates: Vec::new(),
             };
             data_sources.push(ds);
         }

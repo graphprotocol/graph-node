@@ -120,7 +120,7 @@ where
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
-        top_level_templates: Arc<Vec<DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
@@ -136,13 +136,6 @@ where
         let ethereum_adapter = self
             .ethereum_networks
             .adapter_with_capabilities(network_name.clone(), &required_capabilities)?;
-
-        // Detect whether the subgraph uses templates in data sources, which are
-        // deprecated, or the top-level templates field.
-        let templates = match top_level_templates.is_empty() {
-            false => top_level_templates,
-            true => Arc::new(data_source.templates),
-        };
 
         RuntimeHost::new(
             ethereum_adapter.clone(),

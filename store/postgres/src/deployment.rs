@@ -86,7 +86,6 @@ table! {
         network -> Nullable<Text>,
         source -> Text,
         mapping -> Text,
-        templates -> Nullable<Array<Text>>,
         ethereum_block_hash -> Binary,
         ethereum_block_number -> Numeric,
         deployment -> Text,
@@ -118,7 +117,6 @@ table! {
         network -> Nullable<Text>,
         source -> Text,
         mapping -> Text,
-        templates -> Nullable<Array<Text>>,
         block_range -> Range<Integer>,
     }
 }

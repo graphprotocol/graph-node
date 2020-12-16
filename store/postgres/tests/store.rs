@@ -1188,28 +1188,6 @@ fn mock_data_source() -> DataSource {
             },
             runtime: Arc::new(Vec::new()),
         },
-        templates: vec![DataSourceTemplate {
-            kind: String::from("ethereum/contract"),
-            name: String::from("example template"),
-            network: Some(String::from("mainnet")),
-            source: TemplateSource {
-                abi: String::from("foo"),
-            },
-            mapping: Mapping {
-                kind: String::from("ethereum/events"),
-                api_version: String::from("0.1.0"),
-                language: String::from("wasm/assemblyscript"),
-                entities: vec![],
-                abis: vec![],
-                event_handlers: vec![],
-                call_handlers: vec![],
-                block_handlers: vec![],
-                link: Link {
-                    link: "link".to_owned(),
-                },
-                runtime: Arc::new(Vec::new()),
-            },
-        }],
         context: None,
     }
 }

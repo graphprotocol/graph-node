@@ -91,7 +91,7 @@ dataSources: []
 schema:
   file:
     /: /ipfs/Qmschema
-specVersion: 0.0.1
+specVersion: 0.0.2
 ";
 
     let manifest = resolve_manifest(YAML).await;
@@ -110,7 +110,7 @@ schema:
 graft:
   base: Qmbase
   block: 12345
-specVersion: 0.0.1
+specVersion: 0.0.2
 ";
 
     let manifest = resolve_manifest(YAML).await;
@@ -131,7 +131,7 @@ schema:
 graft:
   base: Qmbase
   block: 1
-specVersion: 0.0.1
+specVersion: 0.0.2
 ";
 
     let store = test_store::STORE.clone();
@@ -214,7 +214,7 @@ dataSources:
 schema:
   file:
     /: /ipfs/Qmschema
-specVersion: 0.0.1
+specVersion: 0.0.2
 ";
 
     let manifest = resolve_manifest(YAML).await;
