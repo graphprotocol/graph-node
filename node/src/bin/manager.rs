@@ -61,6 +61,8 @@ pub enum Command {
         /// The deployment, an id, schema name or subgraph name
         name: String,
     },
+    /// Print how a specific subgraph would be placed
+    Place { name: String, network: String },
 }
 
 impl From<Opt> for config::Opt {
@@ -107,12 +109,17 @@ async fn main() {
         Ok(config) => config,
     };
 
-    let pool = make_main_pool(&logger, &config);
-
     use Command::*;
     let result = match opt.cmd {
-        TxnSpeed { delay } => commands::txn_speed::run(pool, delay),
-        Info { name } => commands::info::run(pool, name),
+        TxnSpeed { delay } => {
+            let pool = make_main_pool(&logger, &config);
+            commands::txn_speed::run(pool, delay)
+        }
+        Info { name } => {
+            let pool = make_main_pool(&logger, &config);
+            commands::info::run(pool, name)
+        }
+        Place { name, network } => commands::place::run(&config.deployment, &name, &network),
     };
     if let Err(e) = result {
         die!("error: {}", e)
