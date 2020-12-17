@@ -1,4 +1,5 @@
 use super::{class::EnumPayload, AscHeap, AscType, AscValue};
+use crate::host_exports::DeterministicHostError;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -40,22 +41,27 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Read from `self` into the Rust struct `C`.
-    pub(super) fn read_ptr<H: AscHeap>(self, heap: &H) -> C {
-        C::from_asc_bytes(&heap.get(self.0, C::asc_size(self, heap)))
+    pub(super) fn read_ptr<H: AscHeap>(self, heap: &H) -> Result<C, DeterministicHostError> {
+        let size = C::asc_size(self, heap)?;
+        let bytes = heap.get(self.0, size)?;
+        C::from_asc_bytes(&bytes)
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
-    pub(super) fn alloc_obj<H: AscHeap>(asc_obj: &C, heap: &mut H) -> AscPtr<C> {
-        AscPtr(heap.raw_new(&asc_obj.to_asc_bytes()), PhantomData)
+    pub(super) fn alloc_obj<H: AscHeap>(
+        asc_obj: &C,
+        heap: &mut H,
+    ) -> Result<AscPtr<C>, DeterministicHostError> {
+        Ok(AscPtr(heap.raw_new(&asc_obj.to_asc_bytes()?)?, PhantomData))
     }
 
     /// Helper used by arrays and strings to read their length.
-    pub(super) fn read_u32<H: AscHeap>(&self, heap: &H) -> u32 {
+    pub(super) fn read_u32<H: AscHeap>(&self, heap: &H) -> Result<u32, DeterministicHostError> {
         // Read the bytes pointed to by `self` as the bytes of a `u32`.
-        let raw_bytes = heap.get(self.0, size_of::<u32>() as u32);
+        let raw_bytes = heap.get(self.0, size_of::<u32>() as u32)?;
         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
         u32_bytes.copy_from_slice(&raw_bytes);
-        u32::from_le_bytes(u32_bytes)
+        Ok(u32::from_le_bytes(u32_bytes))
     }
 
     /// Conversion to `u64` for use with `AscEnum`.
@@ -93,12 +99,12 @@ impl<C> From<AscPtr<C>> for EnumPayload {
 }
 
 impl<T> AscType for AscPtr<T> {
-    fn to_asc_bytes(&self) -> Vec<u8> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        AscPtr(u32::from_asc_bytes(asc_obj), PhantomData)
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+        Ok(AscPtr(u32::from_asc_bytes(asc_obj)?, PhantomData))
     }
 }
 

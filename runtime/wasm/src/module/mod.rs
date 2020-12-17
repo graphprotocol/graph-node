@@ -16,7 +16,7 @@ use graph::components::subgraph::MappingError;
 use graph::data::store;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
-use host_exports::HostExportError;
+use host_exports::{DeterministicHostError, HostExportError, MarkDeterministic as _};
 use web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::asc_ptr::*;
@@ -36,6 +36,16 @@ use stopwatch::TimeoutStopwatch;
 mod test;
 
 const TRAP_TIMEOUT: &str = "trap: interrupt";
+
+pub enum DeterminismLevel {
+    Deterministic,
+    Unknown,
+}
+
+pub trait IntoTrap {
+    fn determinism_level(&self) -> DeterminismLevel;
+    fn into_trap(self) -> Trap;
+}
 
 macro_rules! try_host_export {
     ($this:ident, $e:expr) => {
@@ -71,12 +81,12 @@ impl Drop for WasmInstance {
 
 /// Proxies to the WasmInstanceContext.
 impl AscHeap for WasmInstance {
-    fn raw_new(&mut self, bytes: &[u8]) -> u32 {
+    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
         let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
         ctx.raw_new(bytes)
     }
 
-    fn get(&self, offset: u32, size: u32) -> Vec<u8> {
+    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
         self.instance_ctx().get(offset, size)
     }
 }
@@ -88,8 +98,8 @@ impl WasmInstance {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState, anyhow::Error> {
-        let value = self.asc_new(value);
-        let user_data = self.asc_new(user_data);
+        let value = self.asc_new(value)?;
+        let user_data = self.asc_new(user_data)?;
 
         // Invoke the callback
         let func = self
@@ -124,7 +134,7 @@ impl WasmInstance {
                 transaction_log_index: log.log_index.unwrap_or(U256::zero()),
                 log_type: log.log_type.clone(),
                 params,
-            })
+            })?
             .erase()
         } else {
             self.asc_new::<AscEthereumEvent<AscEthereumTransaction>, _>(&EthereumEventData {
@@ -135,7 +145,7 @@ impl WasmInstance {
                 transaction_log_index: log.log_index.unwrap_or(U256::zero()),
                 log_type: log.log_type.clone(),
                 params,
-            })
+            })?
             .erase()
         };
 
@@ -159,9 +169,9 @@ impl WasmInstance {
             outputs,
         };
         let arg = if self.instance_ctx().ctx.host_exports.api_version >= Version::new(0, 0, 3) {
-            self.asc_new::<AscEthereumCall_0_0_3, _>(&call).erase()
+            self.asc_new::<AscEthereumCall_0_0_3, _>(&call)?.erase()
         } else {
-            self.asc_new::<AscEthereumCall, _>(&call).erase()
+            self.asc_new::<AscEthereumCall, _>(&call)?.erase()
         };
 
         self.invoke_handler(handler_name, arg)
@@ -174,7 +184,7 @@ impl WasmInstance {
         let block = EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
-        let arg = self.asc_new(&block);
+        let arg = self.asc_new(&block)?;
 
         self.invoke_handler(handler_name, arg)
     }
@@ -303,7 +313,7 @@ pub(crate) struct WasmInstanceContext {
     // A trap ocurred due to a possible reorg detection.
     possible_reorg: bool,
 
-    // A host export trap ocurred for a determinstic reason.
+    // A host export trap ocurred for a deterministic reason.
     deterministic_host_trap: bool,
 
     pub(crate) allow_non_determinstic_ipfs: bool,
@@ -390,9 +400,22 @@ impl WasmInstance {
 
                             let instance = instance.as_mut().unwrap();
                             let _section = instance.host_metrics.stopwatch.start_section($section);
-                            instance.$rust_name(
+                            let result = instance.$rust_name(
                                 $($param.into()),*
-                            ).into_wasm_ret()
+                            ).into_wasm_ret();
+
+                            match result {
+                                Ok(result) => Ok(result.into_wasm_ret()),
+                                Err(e) => {
+                                    match IntoTrap::determinism_level(&e) {
+                                        DeterminismLevel::Deterministic => {
+                                            instance.deterministic_host_trap = true;
+                                        },
+                                        DeterminismLevel::Unknown => {}
+                                    }
+                                    Err(IntoTrap::into_trap(e))
+                                }
+                            }
                         }
                     )?;
                 }
@@ -446,9 +469,23 @@ impl WasmInstance {
                         instance.asc_get::<_, AscUnresolvedContractCall_0_0_4>(call_ptr.into())
                     } else {
                         instance.asc_get::<_, AscUnresolvedContractCall>(call_ptr.into())
-                    };
+                    }
+                    .map_err(|e| {
+                        instance.deterministic_host_trap = true;
+                        e.0
+                    })?;
 
-                    let ret = instance.ethereum_call(arg)?.wasm_ptr();
+                    let ret = instance
+                        .ethereum_call(arg)
+                        .map_err(|e| match e {
+                            HostExportError::Deterministic(e) => {
+                                instance.deterministic_host_trap = true;
+                                e
+                            }
+                            HostExportError::Unknown(e) => e,
+                        })?
+                        .wasm_ptr();
+
                     instance.host_metrics.observe_host_fn_execution_time(
                         start.elapsed().as_secs_f64(),
                         "ethereum_call",
@@ -558,7 +595,7 @@ impl WasmInstance {
 }
 
 impl AscHeap for WasmInstanceContext {
-    fn raw_new(&mut self, bytes: &[u8]) -> u32 {
+    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
         // We request large chunks from the AssemblyScript allocator to use as arenas that we
         // manage directly.
 
@@ -591,7 +628,7 @@ impl AscHeap for WasmInstanceContext {
         self.arena_start_ptr += size;
         self.arena_free_size -= size;
 
-        ptr as u32
+        Ok(ptr as u32)
     }
 
     fn get(&self, offset: u32, size: u32) -> Vec<u8> {

@@ -1,19 +1,23 @@
+use super::module::{DeterminismLevel, IntoTrap};
 use crate::UnresolvedContractCall;
 use bytes::Bytes;
 use ethabi::{Address, Token};
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
-use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
+use graph::components::subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::components::{arweave::ArweaveAdapter, store::EntityType};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
+use never::Never;
 use semver::Version;
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
+use wasmtime::Trap;
 use web3::types::H160;
 
 use graph::ensure;
@@ -42,9 +46,77 @@ pub enum HostExportError {
     Deterministic(anyhow::Error),
 }
 
-impl From<anyhow::Error> for HostExportError {
-    fn from(e: anyhow::Error) -> Self {
-        HostExportError::Unknown(e)
+impl IntoTrap for HostExportError {
+    fn determinism_level(&self) -> DeterminismLevel {
+        match self {
+            Self::Unknown(_) => DeterminismLevel::Unknown,
+            Self::Deterministic(_) => DeterminismLevel::Deterministic,
+        }
+    }
+    fn into_trap(self) -> Trap {
+        match self {
+            Self::Unknown(inner) | Self::Deterministic(inner) => inner.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DeterministicHostError(pub anyhow::Error);
+
+/// This trait lets us work with some anyhow methods like with_context for convenience
+/// but still get deterministic errors. The reason that anyhow does not impl IntoTrap
+/// or Into<DeterministicHostError> is to prevent accidentally coercing NonDeterministic
+/// errors into deterministic ones.
+pub trait MarkDeterministic<T> {
+    fn mark_deterministic(self) -> T;
+}
+
+impl MarkDeterministic<DeterministicHostError> for anyhow::Error {
+    fn mark_deterministic(self) -> DeterministicHostError {
+        DeterministicHostError(self)
+    }
+}
+
+impl MarkDeterministic<HostExportError> for anyhow::Error {
+    fn mark_deterministic(self) -> HostExportError {
+        HostExportError::Deterministic(self)
+    }
+}
+
+impl<T, EI, EO> MarkDeterministic<Result<T, EO>> for Result<T, EI>
+where
+    EI: MarkDeterministic<EO>,
+{
+    fn mark_deterministic(self) -> Result<T, EO> {
+        self.map_err(|e| e.mark_deterministic())
+    }
+}
+
+impl From<DeterministicHostError> for MappingError {
+    fn from(e: DeterministicHostError) -> Self {
+        Self::Deterministic(e.0)
+    }
+}
+
+impl fmt::Display for DeterministicHostError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+impl std::error::Error for DeterministicHostError {}
+
+impl IntoTrap for DeterministicHostError {
+    fn determinism_level(&self) -> DeterminismLevel {
+        DeterminismLevel::Deterministic
+    }
+    fn into_trap(self) -> Trap {
+        self.0.into()
+    }
+}
+
+impl From<DeterministicHostError> for HostExportError {
+    fn from(e: DeterministicHostError) -> Self {
+        Self::Deterministic(e.0)
     }
 }
 
@@ -121,7 +193,7 @@ impl HostExports {
         file_name: Option<String>,
         line_number: Option<u32>,
         column_number: Option<u32>,
-    ) -> Result<(), HostExportError> {
+    ) -> Result<Never, DeterministicHostError> {
         let message = message
             .map(|message| format!("message: {}", message))
             .unwrap_or_else(|| "no message".into());
@@ -137,7 +209,7 @@ impl HostExports {
             ),
             _ => unreachable!(),
         };
-        Err(HostExportError::Deterministic(anyhow::anyhow!(
+        Err(DeterministicHostError(anyhow::anyhow!(
             "Mapping aborted at {}, with {}",
             location,
             message
@@ -152,7 +224,7 @@ impl HostExports {
         entity_type: String,
         entity_id: String,
         mut data: HashMap<String, Value>,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), HostExportError> {
         if let Some(proof_of_indexing) = proof_of_indexing {
             let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
             proof_of_indexing.write(
@@ -169,13 +241,14 @@ impl HostExports {
         // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
             Some(ref v) if v != &Value::String(entity_id.clone()) => {
-                anyhow::bail!(
+                return Err(anyhow!(
                     "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
                      {} != {}",
                     entity_type,
                     v,
                     entity_id,
-                );
+                ))
+                .mark_deterministic();
             }
             _ => (),
         }
@@ -188,14 +261,18 @@ impl HostExports {
         let entity = Entity::from(data);
         let schema = self.store.input_schema(&self.subgraph_id)?;
         let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
-        state.entity_cache.set(key.clone(), entity);
+        state
+            .entity_cache
+            .set(key.clone(), entity)
+            .map_err(|e| HostExportError::Unknown(e.into()))?;
 
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
         if !is_valid {
             let entity = state
                 .entity_cache
-                .get(&key)?
+                .get(&key)
+                .map_err(|e| HostExportError::Unknown(e.into()))?
                 .expect("we just stored this entity");
             validate_entity(&schema.document, &key, &entity)?;
         }
@@ -438,88 +515,129 @@ impl HostExports {
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_i64(&self, json: String) -> Result<i64, HostExportError> {
+    pub(crate) fn json_to_i64(&self, json: String) -> Result<i64, DeterministicHostError> {
         i64::from_str(&json)
             .with_context(|| format!("JSON `{}` cannot be parsed as i64", json))
-            .map_err(HostExportError::Deterministic)
+            .mark_deterministic()
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_u64(&self, json: String) -> Result<u64, HostExportError> {
+    pub(crate) fn json_to_u64(&self, json: String) -> Result<u64, DeterministicHostError> {
         u64::from_str(&json)
             .with_context(|| format!("JSON `{}` cannot be parsed as u64", json))
-            .map_err(HostExportError::Deterministic)
+            .mark_deterministic()
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_f64(&self, json: String) -> Result<f64, HostExportError> {
+    pub(crate) fn json_to_f64(&self, json: String) -> Result<f64, DeterministicHostError> {
         f64::from_str(&json)
             .with_context(|| format!("JSON `{}` cannot be parsed as f64", json))
-            .map_err(HostExportError::Deterministic)
+            .mark_deterministic()
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_big_int(&self, json: String) -> Result<Vec<u8>, HostExportError> {
+    pub(crate) fn json_to_big_int(&self, json: String) -> Result<Vec<u8>, DeterministicHostError> {
         let big_int = BigInt::from_str(&json)
             .with_context(|| format!("JSON `{}` is not a decimal string", json))
-            .map_err(HostExportError::Deterministic)?;
+            .mark_deterministic()?;
         Ok(big_int.to_signed_bytes_le())
     }
 
-    pub(crate) fn crypto_keccak_256(&self, input: Vec<u8>) -> [u8; 32] {
-        tiny_keccak::keccak256(&input)
+    pub(crate) fn crypto_keccak_256(
+        &self,
+        input: Vec<u8>,
+    ) -> Result<[u8; 32], DeterministicHostError> {
+        Ok(tiny_keccak::keccak256(&input))
     }
 
-    pub(crate) fn big_int_plus(&self, x: BigInt, y: BigInt) -> BigInt {
-        x + y
+    pub(crate) fn big_int_plus(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigInt, DeterministicHostError> {
+        Ok(x + y)
     }
 
-    pub(crate) fn big_int_minus(&self, x: BigInt, y: BigInt) -> BigInt {
-        x - y
+    pub(crate) fn big_int_minus(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigInt, DeterministicHostError> {
+        Ok(x - y)
     }
 
-    pub(crate) fn big_int_times(&self, x: BigInt, y: BigInt) -> BigInt {
-        x * y
+    pub(crate) fn big_int_times(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigInt, DeterministicHostError> {
+        Ok(x * y)
     }
 
     pub(crate) fn big_int_divided_by(
         &self,
         x: BigInt,
         y: BigInt,
-    ) -> Result<BigInt, HostExportError> {
+    ) -> Result<BigInt, DeterministicHostError> {
         if y == 0.into() {
-            return Err(HostExportError::Deterministic(anyhow::anyhow!(
-                "attempted to divide BigInt `{}` by zero",
-                x
-            )));
+            return Err(
+                anyhow::anyhow!("attempted to divide BigInt `{}` by zero", x).mark_deterministic(),
+            );
         }
         Ok(x / y)
     }
 
-    pub(crate) fn big_int_mod(&self, x: BigInt, y: BigInt) -> BigInt {
-        x % y
+    pub(crate) fn big_int_mod(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigInt, DeterministicHostError> {
+        if y == 0.into() {
+            return Err(anyhow::anyhow!(
+                "attempted to calculate the remainder of `{}` with a divisor of zero",
+                x
+            )
+            .mark_deterministic());
+        }
+        Ok(x % y)
     }
 
     /// Limited to a small exponent to avoid creating huge BigInts.
-    pub(crate) fn big_int_pow(&self, x: BigInt, exponent: u8) -> BigInt {
-        x.pow(exponent)
+    pub(crate) fn big_int_pow(
+        &self,
+        x: BigInt,
+        exponent: u8,
+    ) -> Result<BigInt, DeterministicHostError> {
+        Ok(x.pow(exponent))
     }
 
     /// Useful for IPFS hashes stored as bytes
-    pub(crate) fn bytes_to_base58(&self, bytes: Vec<u8>) -> String {
-        ::bs58::encode(&bytes).into_string()
+    pub(crate) fn bytes_to_base58(&self, bytes: Vec<u8>) -> Result<String, DeterministicHostError> {
+        Ok(::bs58::encode(&bytes).into_string())
     }
 
-    pub(crate) fn big_decimal_plus(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
-        x + y
+    pub(crate) fn big_decimal_plus(
+        &self,
+        x: BigDecimal,
+        y: BigDecimal,
+    ) -> Result<BigDecimal, DeterministicHostError> {
+        Ok(x + y)
     }
 
-    pub(crate) fn big_decimal_minus(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
-        x - y
+    pub(crate) fn big_decimal_minus(
+        &self,
+        x: BigDecimal,
+        y: BigDecimal,
+    ) -> Result<BigDecimal, DeterministicHostError> {
+        Ok(x - y)
     }
 
-    pub(crate) fn big_decimal_times(&self, x: BigDecimal, y: BigDecimal) -> BigDecimal {
-        x * y
+    pub(crate) fn big_decimal_times(
+        &self,
+        x: BigDecimal,
+        y: BigDecimal,
+    ) -> Result<BigDecimal, DeterministicHostError> {
+        Ok(x * y)
     }
 
     /// Maximum precision of 100 decimal digits.
@@ -527,26 +645,38 @@ impl HostExports {
         &self,
         x: BigDecimal,
         y: BigDecimal,
-    ) -> Result<BigDecimal, HostExportError> {
+    ) -> Result<BigDecimal, DeterministicHostError> {
         if y == 0.into() {
-            return Err(HostExportError::Deterministic(anyhow::anyhow!(
-                "attempted to divide BigDecimal `{}` by zero",
-                x
-            )));
+            return Err(
+                anyhow::anyhow!("attempted to divide BigDecimal `{}` by zero", x)
+                    .mark_deterministic(),
+            );
         }
         Ok(x / y)
     }
 
-    pub(crate) fn big_decimal_equals(&self, x: BigDecimal, y: BigDecimal) -> bool {
-        x == y
+    pub(crate) fn big_decimal_equals(
+        &self,
+        x: BigDecimal,
+        y: BigDecimal,
+    ) -> Result<bool, DeterministicHostError> {
+        Ok(x == y)
     }
 
-    pub(crate) fn big_decimal_to_string(&self, x: BigDecimal) -> String {
-        x.to_string()
+    pub(crate) fn big_decimal_to_string(
+        &self,
+        x: BigDecimal,
+    ) -> Result<String, DeterministicHostError> {
+        Ok(x.to_string())
     }
 
-    pub(crate) fn big_decimal_from_string(&self, s: String) -> Result<BigDecimal, anyhow::Error> {
-        BigDecimal::from_str(&s).with_context(|| format!("string  is not a BigDecimal: '{}'", s))
+    pub(crate) fn big_decimal_from_string(
+        &self,
+        s: String,
+    ) -> Result<BigDecimal, DeterministicHostError> {
+        BigDecimal::from_str(&s)
+            .with_context(|| format!("string  is not a BigDecimal: '{}'", s))
+            .mark_deterministic()
     }
 
     pub(crate) fn data_source_create(
@@ -556,7 +686,7 @@ impl HostExports {
         name: String,
         params: Vec<String>,
         context: Option<DataSourceContext>,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), DeterministicHostError> {
         info!(
             logger,
             "Create data source";
@@ -582,7 +712,8 @@ impl HostExports {
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
-            })?
+            })
+            .mark_deterministic()?
             .clone();
 
         // Remember that we need to create this data source
@@ -600,7 +731,12 @@ impl HostExports {
         Ok(self.store.find_ens_name(hash)?)
     }
 
-    pub(crate) fn log_log(&self, logger: &Logger, level: slog::Level, msg: String) {
+    pub(crate) fn log_log(
+        &self,
+        logger: &Logger,
+        level: slog::Level,
+        msg: String,
+    ) -> Result<(), DeterministicHostError> {
         let rs = record_static!(level, self.data_source_name.as_str());
 
         logger.log(&slog::Record::new(
@@ -610,7 +746,11 @@ impl HostExports {
         ));
 
         if level == slog::Level::Critical {
-            panic!("Critical error logged in mapping");
+            Err(DeterministicHostError(anyhow::anyhow!(
+                "Critical error logged in mapping"
+            )))
+        } else {
+            Ok(())
         }
     }
 
@@ -638,19 +778,24 @@ impl HostExports {
     }
 }
 
-pub(crate) fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, HostExportError> {
-    serde_json::from_reader(bytes.as_slice()).map_err(|e| HostExportError::Deterministic(e.into()))
+pub(crate) fn json_from_bytes(
+    bytes: &Vec<u8>,
+) -> Result<serde_json::Value, DeterministicHostError> {
+    serde_json::from_reader(bytes.as_slice()).map_err(|e| DeterministicHostError(e.into()))
 }
 
-pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError> {
+pub(crate) fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {
     // `H160::from_str` takes a hex string with no leading `0x`.
     let s = string.trim_start_matches("0x");
     H160::from_str(s)
         .with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
-        .map_err(HostExportError::Deterministic)
+        .mark_deterministic()
 }
 
-pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
+pub(crate) fn bytes_to_string(
+    logger: &Logger,
+    bytes: Vec<u8>,
+) -> Result<String, DeterministicHostError> {
     let s = String::from_utf8_lossy(&bytes);
 
     // If the string was re-allocated, that means it was not UTF8.
@@ -666,7 +811,7 @@ pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
 
     // The string may have been encoded in a fixed length buffer and padded with null
     // characters, so trim trailing nulls.
-    s.trim_end_matches('\u{0000}').to_string()
+    Ok(s.trim_end_matches('\u{0000}').to_string())
 }
 
 #[test]
