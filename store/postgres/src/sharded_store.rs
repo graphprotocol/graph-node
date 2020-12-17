@@ -229,7 +229,7 @@ impl ShardedStore {
             deployment::exists_and_synced(&conn, id.as_str())
         };
 
-        // FIXME: This simoultaneously holds a `primary_conn` and a shard connection, which can
+        // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
@@ -480,8 +480,11 @@ impl StoreTrait for ShardedStore {
         };
 
         let (dstore, _) = self.store(id)?;
-        let dconn = dstore.get_conn()?;
-        dconn.transaction(|| deployment::set_synced(&dconn, id))?;
+        {
+            // Do not hold dconn and primary_conn() at the same time.
+            let dconn = dstore.get_conn()?;
+            dconn.transaction(|| deployment::set_synced(&dconn, id))?;
+        }
         Ok(self.primary_conn()?.send_store_event(&event)?)
     }
 
