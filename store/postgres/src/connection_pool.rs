@@ -92,7 +92,9 @@ impl HandleEvent for EventHandler {
     fn handle_timeout(&self, event: e::TimeoutEvent) {
         self.add_wait_time(event.timeout());
         error!(self.logger, "Connection checkout timed out";
-               "wait_ms" => event.timeout().as_millis())
+           "wait_ms" => event.timeout().as_millis(),
+           "backtrace" => format!("{:?}", backtrace::Backtrace::new()),
+        )
     }
     fn handle_checkin(&self, _: e::CheckinEvent) {
         self.count_gauge.dec();
