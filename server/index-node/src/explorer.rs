@@ -15,7 +15,7 @@ use graph::{
     components::server::{index_node::VersionInfo, query::GraphQLServerError},
     data::subgraph::status,
     object,
-    prelude::{lazy_static, q, serde_json, SerializableValue, Store},
+    prelude::{lazy_static, q, serde_json, warn, Logger, SerializableValue, Store},
 };
 
 lazy_static! {
@@ -29,6 +29,34 @@ lazy_static! {
             })
             .unwrap_or(10);
         Duration::from_secs(ttl)
+    };
+    static ref LOCK_THRESHOLD: Duration = {
+        let duration = env::var("GRAPH_EXPLORER_LOCK_THRESHOLD")
+            .ok()
+            .map(|s| {
+                u64::from_str(&s).unwrap_or_else(|_| {
+                    panic!(
+                        "GRAPH_EXPLORER_LOCK_THRESHOLD must be a number, but is `{}`",
+                        s
+                    )
+                })
+            })
+            .unwrap_or(100);
+        Duration::from_millis(duration)
+    };
+    static ref QUERY_THRESHOLD: Duration = {
+        let duration = env::var("GRAPH_EXPLORER_QUERY_THRESHOLD")
+            .ok()
+            .map(|s| {
+                u64::from_str(&s).unwrap_or_else(|_| {
+                    panic!(
+                        "GRAPH_EXPLORER_QUERY_THRESHOLD must be a number, but is `{}`",
+                        s
+                    )
+                })
+            })
+            .unwrap_or(500);
+        Duration::from_millis(duration)
     };
 }
 
@@ -58,12 +86,16 @@ where
         }
     }
 
-    pub fn handle(&self, req: &[&str]) -> Result<Response<Body>, GraphQLServerError> {
+    pub fn handle(
+        &self,
+        logger: &Logger,
+        req: &[&str],
+    ) -> Result<Response<Body>, GraphQLServerError> {
         match req {
             ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id),
             ["subgraph-version", version] => self.handle_subgraph_version(version),
             ["subgraph-repo", version] => self.handle_subgraph_repo(version),
-            ["entity-count", deployment] => self.handle_entity_count(deployment),
+            ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
             _ => {
                 return handle_not_found();
             }
@@ -121,14 +153,38 @@ where
         Ok(as_http_response(&value))
     }
 
-    fn handle_entity_count(&self, deployment: &str) -> Result<Response<Body>, GraphQLServerError> {
-        if let Some(value) = self.entity_counts.get(deployment) {
+    fn handle_entity_count(
+        &self,
+        logger: &Logger,
+        deployment: &str,
+    ) -> Result<Response<Body>, GraphQLServerError> {
+        let start = Instant::now();
+        let count = self.entity_counts.get(deployment);
+        if start.elapsed() > *LOCK_THRESHOLD {
+            let action = match count {
+                Some(_) => "cache_hit",
+                None => "cache_miss",
+            };
+            warn!(logger, "Getting entity_count takes too long";
+                       "action" => action,
+                       "deployment" => deployment,
+                       "time_ms" => start.elapsed().as_millis());
+        }
+
+        if let Some(value) = count {
             return Ok(as_http_response(value.as_ref()));
         }
 
+        let start = Instant::now();
         let infos = self
             .store
             .status(status::Filter::Deployments(vec![deployment.to_string()]))?;
+        if start.elapsed() > *QUERY_THRESHOLD {
+            warn!(logger, "Getting entity_count takes too long";
+            "action" => "query_status",
+            "deployment" => deployment,
+            "time_ms" => start.elapsed().as_millis());
+        }
         let info = match infos.first() {
             Some(info) => info,
             None => {
@@ -139,9 +195,23 @@ where
         let value = object! {
             entityCount: info.entity_count as i32
         };
+        let start = Instant::now();
         let resp = as_http_response(&value);
+        if start.elapsed() > *LOCK_THRESHOLD {
+            warn!(logger, "Getting entity_count takes too long";
+            "action" => "as_http_response",
+            "deployment" => deployment,
+            "time_ms" => start.elapsed().as_millis());
+        }
+        let start = Instant::now();
         self.entity_counts
             .set(deployment.to_string(), Arc::new(value));
+        if start.elapsed() > *LOCK_THRESHOLD {
+            warn!(logger, "Getting entity_count takes too long";
+                "action" => "cache_set",
+                "deployment" => deployment,
+                "time_ms" => start.elapsed().as_millis());
+        }
         Ok(resp)
     }
 

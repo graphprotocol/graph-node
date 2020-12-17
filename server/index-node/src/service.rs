@@ -189,7 +189,7 @@ where
             (Method::POST, ["graphql"]) => self.handle_graphql_query(req.into_body()).await,
             (Method::OPTIONS, ["graphql"]) => Ok(Self::handle_graphql_options(req)),
 
-            (Method::GET, ["explorer", rest @ ..]) => self.explorer.handle(rest),
+            (Method::GET, ["explorer", rest @ ..]) => self.explorer.handle(&self.logger, rest),
 
             _ => Ok(Self::handle_not_found()),
         }
