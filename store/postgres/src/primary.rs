@@ -616,6 +616,10 @@ impl Connection {
     }
 
     pub fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
+        // Performance: Don't bog down the db with many empty changelists.
+        if event.changes.is_empty() {
+            return Ok(());
+        }
         let v = serde_json::to_value(event)?;
         #[cfg(debug_assertions)]
         {
