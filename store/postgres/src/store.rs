@@ -1188,6 +1188,27 @@ impl Store {
         let conn = self.get_conn()?;
         conn.transaction(|| deployment::exists_and_synced(&conn, id))
     }
+
+    pub(crate) fn graft_pending(
+        &self,
+        id: &SubgraphDeploymentId,
+    ) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
+        let conn = self.get_conn()?;
+        deployment::graft_pending(&conn, id)
+    }
+
+    pub(crate) fn start_subgraph(
+        &self,
+        logger: &Logger,
+        site: Arc<Site>,
+        graft_base: Option<(Site, EthereumBlockPointer)>,
+    ) -> Result<(), StoreError> {
+        let econn = self.get_entity_conn(&site, ReplicaId::Main)?;
+        econn.transaction(|| {
+            deployment::unfail(&econn.conn, &site.deployment)?;
+            econn.start_subgraph(logger, graft_base)
+        })
+    }
 }
 
 impl EthereumCallCache for Store {

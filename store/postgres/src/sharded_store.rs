@@ -458,20 +458,14 @@ impl StoreTrait for ShardedStore {
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(id)?;
 
-        let econn = store.get_entity_conn(&site, ReplicaId::Main)?;
-        let graft_base = match deployment::graft_pending(&econn.conn, id)? {
+        let graft_base = match store.graft_pending(id)? {
             Some((base_id, base_ptr)) => {
-                // FIXME: This simoultaneously holds a `primary_conn` and an entity connection,
-                // which can potentially deadlock.
                 let site = self.primary_conn()?.find_existing_site(&base_id)?;
                 Some((site, base_ptr))
             }
             None => None,
         };
-        econn.transaction(|| {
-            deployment::unfail(&econn.conn, &site.deployment)?;
-            econn.start_subgraph(logger, graft_base)
-        })
+        store.start_subgraph(logger, site, graft_base)
     }
 
     fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
