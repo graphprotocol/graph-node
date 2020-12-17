@@ -13,12 +13,15 @@ use graph::prelude::{
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
-use std::collections::{BTreeMap, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::Instant;
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::Duration,
+};
 use tokio::sync::Semaphore;
 
 use graph::components::store::EntityCollection;
@@ -619,7 +622,14 @@ impl Store {
     pub(crate) fn get_conn(
         &self,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        self.conn.get().map_err(Error::from)
+        loop {
+            match self.conn.get_timeout(Duration::from_secs(60)) {
+                Ok(conn) => return Ok(conn),
+                Err(e) => error!(self.logger, "Error checking out connection, retrying";
+                   "error" => e.to_string(),
+                ),
+            }
+        }
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.

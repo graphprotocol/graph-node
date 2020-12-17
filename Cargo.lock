@@ -1786,6 +1786,7 @@ version = "0.19.2"
 dependencies = [
  "Inflector",
  "async-trait",
+ "backtrace",
  "blake3",
  "clap",
  "derive_more",
