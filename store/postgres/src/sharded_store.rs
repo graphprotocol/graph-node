@@ -439,8 +439,7 @@ impl StoreTrait for ShardedStore {
         &self,
         name: SubgraphName,
     ) -> Result<DeploymentState, StoreError> {
-        let conn = self.primary_conn()?;
-        let id = conn.transaction(|| conn.current_deployment_for_subgraph(name))?;
+        let id = self.primary_conn()?.current_deployment_for_subgraph(name)?;
         self.deployment_state_from_id(id)
     }
 
