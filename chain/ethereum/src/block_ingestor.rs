@@ -1,7 +1,7 @@
 use lazy_static;
 use std::time::Duration;
 
-use graph::prelude::*;
+use graph::{components::store::DbAccess, prelude::*};
 use web3::types::*;
 
 lazy_static! {
@@ -233,15 +233,20 @@ where
     >(
         &self,
         blocks: B,
-    ) -> Result<Vec<H256>, EthereumAdapterError> {
-        self.chain_store.upsert_blocks(blocks).compat().await?;
+        access: &mut DbAccess,
+    ) -> Result<(Vec<H256>, DbAccess), EthereumAdapterError> {
+        access = self
+            .chain_store
+            .upsert_blocks(blocks, access)
+            .compat()
+            .await?;
 
         self.chain_store
             .attempt_chain_head_update(self.ancestor_count)
             .map_err(|e| {
                 error!(self.logger, "failed to update chain head");
                 EthereumAdapterError::Unknown(e)
-            })
+            })?;
     }
 
     /// Requests the specified blocks via web3, returning them in a stream (potentially out of

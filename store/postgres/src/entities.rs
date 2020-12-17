@@ -32,11 +32,14 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use graph::data::subgraph::schema::{MetadataType, POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
     EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId,
+};
+use graph::{
+    components::store::Accessed,
+    data::subgraph::schema::{MetadataType, POI_OBJECT, POI_TABLE},
 };
 use graph::{components::store::EntityType, data::schema::Schema as SubgraphSchema};
 
@@ -73,8 +76,8 @@ pub(crate) fn make_layout_cache() -> LayoutCache {
 /// Instances of this struct must not be cached across transactions as it
 /// contains a database connection
 #[derive(Constructor)]
-pub struct Connection<'a> {
-    pub conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
+pub struct Connection<'a, 'b> {
+    pub conn: MaybeOwned<'a, Accessed<'b, PooledConnection<ConnectionManager<PgConnection>>>>,
     /// The layout of the actual subgraph data; entities
     /// go into this
     data: Arc<Layout>,
@@ -82,7 +85,7 @@ pub struct Connection<'a> {
     subgraph: SubgraphDeploymentId,
 }
 
-impl Connection<'_> {
+impl Connection<'_, '_> {
     /// Return the layout for `key`, which must refer either to the subgraph
     /// for this connection, or the metadata subgraph.
     ///

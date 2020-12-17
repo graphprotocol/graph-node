@@ -4,8 +4,9 @@ use std::mem;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use graph::components::ethereum::{
-    blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities,
+use graph::components::{
+    ethereum::{blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities},
+    store::DbAccess,
 };
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
@@ -202,7 +203,10 @@ where
     C: ChainStore,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
-    fn next_blocks(&self) -> Box<dyn Future<Item = NextBlocks, Error = Error> + Send> {
+    fn next_blocks<'a>(
+        &self,
+        access: &'a mut DbAccess,
+    ) -> Box<dyn 'a + Future<Item = NextBlocks, Error = Error> + Send> {
         let ctx = self.clone();
 
         Box::new(future::loop_fn((), move |()| {
@@ -547,9 +551,10 @@ where
     }
 
     /// Perform a reconciliation step.
-    fn do_step(
+    fn do_step<'a>(
         &self,
         step: ReconciliationStep,
+        access: DbAccess,
     ) -> Box<dyn Future<Item = ReconciliationStepOutcome, Error = Error> + Send> {
         let ctx = self.clone();
 
@@ -571,6 +576,7 @@ where
                             ctx.logger.clone(),
                             ctx.chain_store.clone(),
                             HashSet::from_iter(std::iter::once(subgraph_ptr.hash)),
+                            access,
                         )
                         .into_future()
                         .map_err(|(e, _)| e)

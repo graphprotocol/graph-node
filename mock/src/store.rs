@@ -2,7 +2,10 @@ use mockall::predicate::*;
 use mockall::*;
 use std::collections::BTreeMap;
 
-use graph::components::{server::index_node::VersionInfo, store::StoredDynamicDataSource};
+use graph::components::{
+    server::index_node::VersionInfo,
+    store::{DbAccess, StoredDynamicDataSource},
+};
 use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
 use graph::{components::store::EntityType, data::subgraph::status};
@@ -22,13 +25,13 @@ mock! {
     trait ChainStore: Send + Sync + 'static {
         fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
-        fn upsert_blocks<B, E>(&self, blocks: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
+        fn upsert_blocks<B, E>(&self, blocks: B, access: DbAccess) -> Box<dyn Future<Item = DbAccess, Error = E> + Send + 'static>
         where
             B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
             E: From<Error> + Send + 'static,
             Self: Sized;
 
-        fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
+        fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>, access: &mut DbAccess) -> Result<(), Error>;
 
         fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
 

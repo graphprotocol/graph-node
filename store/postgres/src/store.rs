@@ -4,7 +4,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, update};
 use futures03::FutureExt as _;
-use graph::components::store::{EntityType, StoredDynamicDataSource};
+use graph::components::store::{DbAccess, EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
     error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
@@ -258,8 +258,9 @@ impl Store {
         site: &Site,
         graft_site: Option<Site>,
         replace: bool,
+        access: &mut DbAccess,
     ) -> Result<StoreEvent, StoreError> {
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         // This is a bit of a Frankenconnection: we don't have the actual
         // layout yet; but for applying metadata, it's fine to use the metadata
         // layout
@@ -530,6 +531,7 @@ impl Store {
     ///     when the supplied cancel token is not cancelled.
     pub(crate) async fn with_conn<T: Send + 'static>(
         &self,
+        access: &mut DbAccess,
         f: impl 'static
             + Send
             + FnOnce(
@@ -548,10 +550,16 @@ impl Store {
             // threadpool and being executed. Time to check for cancel.
             cancel_handle.check_cancel()?;
 
+            // Deadlock safety: The outer function holds a mutable
+            // reference to DbAccess. with_conn must await this closure
+            // which it does.
+            // See also 718ac48d-26e3-4206-be8f-d3c0bc69cf2b
+            let mut access_clone = unsafe { DbAccess::new() };
+
             // A failure to establish a connection is propagated as though the
             // closure failed.
             let conn = store
-                .get_conn()
+                .get_conn(&mut access_clone)
                 .map_err(|e| CancelableError::Error(StoreError::Unknown(e)))?;
 
             // It is possible time has passed while establishing a connection.
@@ -560,6 +568,7 @@ impl Store {
 
             f(&conn, &cancel_handle)
         })
+        // See also 718ac48d-26e3-4206-be8f-d3c0bc69cf2b
         .await
         .unwrap(); // Propagate panics, though there shouldn't be any.
 
@@ -618,11 +627,12 @@ impl Store {
     }
 
     /// Deprecated. Use `with_conn` instead.
-    pub(crate) fn get_conn(
+    pub(crate) fn get_conn<'a>(
         &self,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+        access: &'a mut DbAccess,
+    ) -> Result<Accessed<'a, PooledConnection<ConnectionManager<PgConnection>>>, Error> {
         loop {
-            match self.conn.get_timeout(Duration::from_secs(60)) {
+            match self.conn.get_timeout(Duration::from_secs(60), access) {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(self.logger, "Error checking out connection, retrying";
                    "error" => e.to_string(),
@@ -642,16 +652,17 @@ impl Store {
     // Duplicated logic - this function may eventually go away.
     // See also 220c1ae9-3e8a-42d3-bcc5-b1244a69b8a9
     /// Deprecated. Use `with_entity_conn` instead
-    pub(crate) fn get_entity_conn(
+    pub(crate) fn get_entity_conn<'a>(
         &self,
         site: &Site,
         replica: ReplicaId,
-    ) -> Result<e::Connection, Error> {
+        access: &'a mut DbAccess,
+    ) -> Result<Accessed<'a, e::Connection>, Error> {
         assert!(!site.namespace.is_metadata());
 
         let start = Instant::now();
         let conn = match replica {
-            ReplicaId::Main => self.get_conn()?,
+            ReplicaId::Main => self.get_conn(access)?,
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
         };
         self.registry
@@ -749,12 +760,13 @@ impl Store {
     pub(crate) fn subgraph_info(
         &self,
         subgraph_id: &SubgraphDeploymentId,
+        access: &mut DbAccess,
     ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
             return Ok(info.clone());
         }
 
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         self.subgraph_info_with_conn(&conn, subgraph_id)
     }
 
@@ -768,8 +780,9 @@ impl Store {
     pub(crate) fn deployment_statuses(
         &self,
         ids: Vec<String>,
+        access: &mut DbAccess,
     ) -> Result<Vec<status::Info>, StoreError> {
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
             detail::deployment_statuses(&conn, ids)
         })
@@ -973,11 +986,15 @@ impl Store {
         }
     }
 
-    pub(crate) fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
+    pub(crate) fn find_ens_name(
+        &self,
+        hash: &str,
+        access: &mut DbAccess,
+    ) -> Result<Option<String>, QueryExecutionError> {
         use crate::db_schema::ens_names as dsl;
 
         let conn = self
-            .get_conn()
+            .get_conn(access)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
 
         dsl::table
@@ -1102,8 +1119,9 @@ impl Store {
     pub(crate) fn deployment_state_from_id(
         &self,
         id: SubgraphDeploymentId,
+        access: &mut DbAccess,
     ) -> Result<DeploymentState, StoreError> {
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         deployment::state(&conn, id)
     }
 
@@ -1124,6 +1142,7 @@ impl Store {
         &self,
         subgraph_id: &SubgraphDeploymentId,
         hash: H256,
+        access: &mut DbAccess,
     ) -> Result<Option<BlockNumber>, StoreError> {
         use crate::db_schema::ethereum_blocks::dsl;
 
@@ -1136,7 +1155,7 @@ impl Store {
         let block: Option<(i64, String)> = dsl::ethereum_blocks
             .select((dsl::number, dsl::network_name))
             .filter(dsl::hash.eq(format!("{:x}", hash)))
-            .first(&*self.get_conn()?)
+            .first(&*self.get_conn(access)?)
             .optional()?;
         let subgraph_network = self.subgraph_info(subgraph_id)?.network;
         block
@@ -1190,16 +1209,21 @@ impl Store {
         .await
     }
 
-    pub(crate) fn exists_and_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, StoreError> {
-        let conn = self.get_conn()?;
+    pub(crate) fn exists_and_synced(
+        &self,
+        id: &SubgraphDeploymentId,
+        access: &mut DbAccess,
+    ) -> Result<bool, StoreError> {
+        let conn = self.get_conn(access)?;
         conn.transaction(|| deployment::exists_and_synced(&conn, id))
     }
 
     pub(crate) fn graft_pending(
         &self,
         id: &SubgraphDeploymentId,
+        access: &mut DbAccess,
     ) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         deployment::graft_pending(&conn, id)
     }
 
@@ -1223,12 +1247,13 @@ impl EthereumCallCache for Store {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: EthereumBlockPointer,
+        access: &mut DbAccess,
     ) -> Result<Option<Vec<u8>>, Error> {
         use crate::db_schema::{eth_call_cache, eth_call_meta};
         use diesel::dsl::sql;
 
         let id = contract_call_id(&contract_address, encoded_call, &block);
-        let conn = &*self.get_conn()?;
+        let conn = &*self.get_conn(access)?;
         if let Some(call_output) = conn.transaction::<_, Error, _>(|| {
             if let Some((return_value, update_accessed_at)) = eth_call_cache::table
                 .find(id.as_ref())
@@ -1282,12 +1307,13 @@ impl EthereumCallCache for Store {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
         return_value: &[u8],
+        access: &mut DbAccess,
     ) -> Result<(), Error> {
         use crate::db_schema::{eth_call_cache, eth_call_meta};
         use diesel::dsl::sql;
 
         let id = contract_call_id(&contract_address, encoded_call, &block);
-        let conn = &*self.get_conn()?;
+        let conn = &*self.get_conn(access)?;
         conn.transaction(|| {
             insert_into(eth_call_cache::table)
                 .values((

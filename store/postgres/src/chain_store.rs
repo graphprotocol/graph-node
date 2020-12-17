@@ -1,4 +1,7 @@
-use graph::prelude::{ChainStore as ChainStoreTrait, StoreError};
+use graph::{
+    components::store::{Accessed, DbAccess},
+    prelude::{ChainStore as ChainStoreTrait, StoreError},
+};
 
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
@@ -47,13 +50,17 @@ impl ChainStore {
         store
     }
 
-    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        self.conn.get().map_err(Error::from)
+    fn get_conn(
+        &self,
+        access: &mut DbAccess,
+    ) -> Result<Acessed<PooledConnection<ConnectionManager<PgConnection>>>, Error> {
+        self.conn.get(access).map_err(Error::from)
     }
 
     fn add_network_if_missing(
         &self,
         new_net_identifiers: EthereumNetworkIdentifier,
+        access: &mut DbAccess,
     ) -> Result<(), Error> {
         use crate::db_schema::ethereum_networks::dsl::*;
 
@@ -63,7 +70,7 @@ impl ChainStore {
         let network_identifiers_opt = ethereum_networks
             .select((net_version, genesis_block_hash))
             .filter(name.eq(&self.network))
-            .first::<(Option<String>, Option<String>)>(&*self.get_conn()?)
+            .first::<(Option<String>, Option<String>)>(&*self.get_conn(access)?)
             .optional()?;
 
         match network_identifiers_opt {
@@ -80,7 +87,7 @@ impl ChainStore {
                     ))
                     .on_conflict(name)
                     .do_nothing()
-                    .execute(&*self.get_conn()?)?;
+                    .execute(&*self.get_conn(access)?)?;
             }
 
             // Network is in database and has identifiers
@@ -113,7 +120,7 @@ impl ChainStore {
                             .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
                     ))
                     .filter(name.eq(&self.network))
-                    .execute(&*self.get_conn()?)?;
+                    .execute(&*self.get_conn(access)?)?;
             }
         }
 
@@ -129,7 +136,8 @@ impl ChainStoreTrait for ChainStore {
     fn upsert_blocks<B, E>(
         &self,
         blocks: B,
-    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
+        access: DbAccess,
+    ) -> Box<dyn Future<Item = DbAccess, Error = E> + Send + 'static>
     where
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
         E: From<Error> + Send + 'static,
@@ -164,7 +172,11 @@ impl ChainStoreTrait for ChainStore {
         }))
     }
 
-    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
+    fn upsert_light_blocks(
+        &self,
+        blocks: Vec<LightEthereumBlock>,
+        access: &mut DbAccess,
+    ) -> Result<(), Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
@@ -187,22 +199,27 @@ impl ChainStoreTrait for ChainStore {
             );
 
             // Insert blocks. On conflict do nothing, we don't want to erase transaction receipts.
+            let conn = conn.get(access)?;
             insert_into(ethereum_blocks)
                 .values(values.clone())
                 .on_conflict(hash)
                 .do_nothing()
-                .execute(&*conn.get()?)?;
+                .execute(&*conn)?;
         }
         Ok(())
     }
 
-    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
+    fn attempt_chain_head_update(
+        &self,
+        ancestor_count: u64,
+        access: &mut DbAccess,
+    ) -> Result<Vec<H256>, Error> {
         // Call attempt_head_update SQL function
         select(attempt_chain_head_update(
             &self.network,
             ancestor_count as i64,
         ))
-        .load(&*self.get_conn()?)
+        .load(&*self.get_conn(access)?)
         .map_err(Error::from)
         // We got a single return value, but it's returned generically as a set of rows
         .map(|mut rows: Vec<_>| {
@@ -224,13 +241,13 @@ impl ChainStoreTrait for ChainStore {
             .subscribe(self.network.to_owned())
     }
 
-    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn chain_head_ptr(&self, access: &mut DbAccess) -> Result<Option<EthereumBlockPointer>, Error> {
         use crate::db_schema::ethereum_networks::dsl::*;
 
         ethereum_networks
             .select((head_block_hash, head_block_number))
             .filter(name.eq(&self.network))
-            .load::<(Option<String>, Option<i64>)>(&*self.get_conn()?)
+            .load::<(Option<String>, Option<i64>)>(&*self.get_conn(access)?)
             .map(|rows| {
                 rows.first()
                     .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
@@ -243,7 +260,11 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
+    fn blocks(
+        &self,
+        hashes: Vec<H256>,
+        access: &mut DbAccess,
+    ) -> Result<Vec<LightEthereumBlock>, Error> {
         use crate::db_schema::ethereum_blocks::dsl::*;
         use diesel::dsl::{any, sql};
         use diesel::sql_types::Jsonb;
@@ -254,7 +275,7 @@ impl ChainStoreTrait for ChainStore {
             .filter(hash.eq(any(Vec::from_iter(
                 hashes.into_iter().map(|h| format!("{:x}", h)),
             ))))
-            .load::<serde_json::Value>(&*self.get_conn()?)?
+            .load::<serde_json::Value>(&*self.get_conn(access)?)?
             .into_iter()
             .map(|block| serde_json::from_value(block).map_err(Into::into))
             .collect()
@@ -264,6 +285,7 @@ impl ChainStoreTrait for ChainStore {
         &self,
         block_ptr: EthereumBlockPointer,
         offset: u64,
+        access: &mut DbAccess,
     ) -> Result<Option<EthereumBlock>, Error> {
         ensure!(
             block_ptr.number >= offset,
@@ -271,7 +293,7 @@ impl ChainStoreTrait for ChainStore {
         );
 
         select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))
-            .first::<Option<serde_json::Value>>(&*self.get_conn()?)
+            .first::<Option<serde_json::Value>>(&*self.get_conn(access)?)
             .map(|val_opt| {
                 val_opt.map(|val| {
                     serde_json::from_value::<EthereumBlock>(val)
@@ -281,7 +303,11 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
+    fn cleanup_cached_blocks(
+        &self,
+        ancestor_count: u64,
+        access: &mut DbAccess,
+    ) -> Result<(BlockNumber, usize), Error> {
         use crate::db_schema::ethereum_blocks::dsl;
         use diesel::sql_types::{Integer, Text};
 
@@ -308,7 +334,7 @@ impl ChainStoreTrait for ChainStore {
         //
         // See 8b6ad0c64e244023ac20ced7897fe666
 
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         let query = "
             select coalesce(
                    least(a.block,
@@ -350,10 +376,14 @@ impl ChainStoreTrait for ChainStore {
             .map_err(|e| e.into())
     }
 
-    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error> {
+    fn block_hashes_by_block_number(
+        &self,
+        number: u64,
+        access: &mut DbAccess,
+    ) -> Result<Vec<H256>, Error> {
         use crate::db_schema::ethereum_blocks::dsl;
 
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         dsl::ethereum_blocks
             .select(dsl::hash)
             .filter(dsl::network_name.eq(&self.network))
@@ -365,10 +395,15 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error> {
+    fn confirm_block_hash(
+        &self,
+        number: u64,
+        hash: &H256,
+        access: &mut DbAccess,
+    ) -> Result<usize, Error> {
         use crate::db_schema::ethereum_blocks::dsl;
 
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         diesel::delete(dsl::ethereum_blocks)
             .filter(dsl::network_name.eq(&self.network))
             .filter(dsl::number.eq(number as i64))
@@ -377,10 +412,14 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn block_number(&self, hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
+    fn block_number(
+        &self,
+        hash: H256,
+        access: &mut DbAccess,
+    ) -> Result<Option<(String, BlockNumber)>, StoreError> {
         use crate::db_schema::ethereum_blocks::dsl;
 
-        let conn = self.get_conn()?;
+        let conn = self.get_conn(access)?;
         dsl::ethereum_blocks
             .select((dsl::network_name, dsl::number))
             .filter(dsl::hash.eq(format!("{:x}", hash)))

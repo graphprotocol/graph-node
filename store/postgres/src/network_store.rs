@@ -337,7 +337,11 @@ impl ChainStoreTrait for NetworkStore {
         self.chain_store.upsert_blocks(blocks)
     }
 
-    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
+    fn upsert_light_blocks(
+        &self,
+        blocks: Vec<LightEthereumBlock>,
+        access: DbAccess,
+    ) -> Result<(), Error> {
         self.chain_store.upsert_light_blocks(blocks)
     }
 

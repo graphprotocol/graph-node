@@ -1296,7 +1296,7 @@ where
             self.load_blocks_rpc(logger.clone(), missing_blocks.into_iter().collect())
                 .collect()
                 .map(move |new_blocks| {
-                    if let Err(e) = chain_store.upsert_light_blocks(new_blocks.clone()) {
+                    if let Err(e) = chain_store.upsert_light_blocks(new_blocks.clone(), access) {
                         error!(logger, "Error writing to block cache {}", e);
                     }
                     blocks.extend(new_blocks);

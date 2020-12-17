@@ -59,6 +59,8 @@ pub mod link_resolver;
 /// Components dealing with collecting metrics
 pub mod metrics;
 
+pub mod db_access;
+
 /// Plug the outputs of `output` of type `E` to the matching inputs in `input`.
 /// This is a lazy operation, nothing will be sent until you spawn the returned
 /// future. Returns `Some` in the first call and `None` on any further calls.

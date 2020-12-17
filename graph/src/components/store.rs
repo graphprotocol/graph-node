@@ -23,6 +23,9 @@ use crate::util::lfu_cache::LfuCache;
 
 use crate::components::server::index_node::VersionInfo;
 
+// DbAccess is in a separate mod to ensure the constructor private
+pub use super::db_access::{Accessed, DbAccess};
+
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
         env::var("SUBSCRIPTION_THROTTLE_INTERVAL")
@@ -1357,7 +1360,11 @@ pub trait ChainStore: Send + Sync + 'static {
         unimplemented!()
     }
 
-    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
+    fn upsert_light_blocks(
+        &self,
+        blocks: Vec<LightEthereumBlock>,
+        access: DbAccess,
+    ) -> Result<DbAccess, Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
