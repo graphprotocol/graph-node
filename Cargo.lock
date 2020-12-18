@@ -1519,6 +1519,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "num_cpus",
+ "parking_lot 0.11.1",
  "petgraph 0.5.1",
  "priority-queue",
  "prometheus",
