@@ -14,3 +14,5 @@ pub mod error;
 pub mod stats;
 
 pub mod cache_weight;
+
+pub mod timed_rw_lock;

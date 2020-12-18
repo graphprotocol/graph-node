@@ -3,6 +3,7 @@ use crossbeam::atomic::AtomicCell;
 use graph::{
     data::schema::META_FIELD_NAME,
     prelude::{s, CheapClone},
+    util::timed_rw_lock::TimedRwLock,
 };
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
@@ -11,7 +12,7 @@ use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::sync::{Mutex, RwLock};
+use std::sync::Mutex;
 use std::time::Instant;
 
 use graph::data::graphql::*;
@@ -201,7 +202,8 @@ lazy_static! {
 
     // Cache query results for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
-    static ref QUERY_BLOCK_CACHE: RwLock<QueryBlockCache> = RwLock::new(QueryBlockCache(vec![]));
+    static ref QUERY_BLOCK_CACHE: TimedRwLock<QueryBlockCache> =
+                                    TimedRwLock::new("query_block_cache", QueryBlockCache(vec![]));
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new();
     static ref QUERY_LFU_CACHE: Mutex<LfuCache<QueryHash, WeightedResult>> = Mutex::new(LfuCache::new());
 }
@@ -446,7 +448,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                 // and then in the LfuCache for historical queries
                 // The blocks are used to delimit how long locks need to be held
                 {
-                    let cache = QUERY_BLOCK_CACHE.read().unwrap();
+                    let cache = QUERY_BLOCK_CACHE.read(&ctx.logger);
                     if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return result;
@@ -544,7 +546,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
     {
         // Calculate the weight outside the lock.
         let weight = result.weight();
-        let mut cache = QUERY_BLOCK_CACHE.write().unwrap();
+        let mut cache = QUERY_BLOCK_CACHE.write(&ctx.logger);
 
         // Get or insert the cache for this network.
         if cache.insert(
