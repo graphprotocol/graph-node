@@ -3,7 +3,7 @@ use crossbeam::atomic::AtomicCell;
 use graph::{
     data::schema::META_FIELD_NAME,
     prelude::{s, CheapClone},
-    util::timed_rw_lock::TimedRwLock,
+    util::timed_rw_lock::{TimedMutex, TimedRwLock},
 };
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
@@ -12,7 +12,6 @@ use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::sync::Mutex;
 use std::time::Instant;
 
 use graph::data::graphql::*;
@@ -200,12 +199,13 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_CACHE_STALE_PERIOD environment variable")
     };
 
+
     // Cache query results for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: TimedRwLock<QueryBlockCache> =
-                                    TimedRwLock::new("query_block_cache", QueryBlockCache(vec![]));
-    static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new();
-    static ref QUERY_LFU_CACHE: Mutex<LfuCache<QueryHash, WeightedResult>> = Mutex::new(LfuCache::new());
+                                    TimedRwLock::new(QueryBlockCache(vec![]), "query_block_cache");
+    static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
+    static ref QUERY_LFU_CACHE: TimedMutex<LfuCache<QueryHash, WeightedResult>> = TimedMutex::new(LfuCache::new(), "query_lfu_cache");
 }
 
 struct HashableQuery<'a> {
@@ -455,7 +455,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                     }
                 }
                 {
-                    let mut cache = QUERY_LFU_CACHE.lock().unwrap();
+                    let mut cache = QUERY_LFU_CACHE.lock(&ctx.logger);
                     if let Some(weighted) = cache.get(&cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return weighted.result.cheap_clone();
@@ -527,7 +527,9 @@ pub async fn execute_root_selection_set<R: Resolver>(
     };
 
     let (result, herd_hit) = if let Some(key) = key {
-        QUERY_HERD_CACHE.cached_query(key, run_query).await
+        QUERY_HERD_CACHE
+            .cached_query(key, run_query, &ctx.logger)
+            .await
     } else {
         (run_query.await, false)
     };
@@ -559,7 +561,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
             ctx.cache_status.store(CacheStatus::Insert);
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
-            let mut cache = QUERY_LFU_CACHE.lock().unwrap();
+            let mut cache = QUERY_LFU_CACHE.lock(&ctx.logger);
             cache.evict_with_period(*QUERY_CACHE_MAX_MEM, *QUERY_CACHE_STALE_PERIOD);
             cache.insert(
                 key,

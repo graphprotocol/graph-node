@@ -1,13 +1,16 @@
 use futures03::future::FutureExt;
 use futures03::future::Shared;
-use graph::prelude::{futures03, CheapClone};
+use graph::{
+    prelude::{futures03, CheapClone, Logger},
+    util::timed_rw_lock::TimedMutex,
+};
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 type Hash = <SetHasher as StableHasher>::Out;
 
@@ -19,13 +22,13 @@ type PinFut<R> = Pin<Box<dyn Future<Output = R> + 'static + Send>>;
 /// This has a lot in common with AsyncCache in the network-services repo,
 /// but more specialized.
 pub struct QueryCache<R> {
-    cache: Arc<Mutex<HashMap<Hash, Shared<PinFut<R>>>>>,
+    cache: Arc<TimedMutex<HashMap<Hash, Shared<PinFut<R>>>>>,
 }
 
 impl<R: CheapClone> QueryCache<R> {
-    pub fn new() -> Self {
+    pub fn new(id: impl Into<String>) -> Self {
         Self {
-            cache: Arc::new(Mutex::new(HashMap::new())),
+            cache: Arc::new(TimedMutex::new(HashMap::new(), id)),
         }
     }
 
@@ -38,11 +41,12 @@ impl<R: CheapClone> QueryCache<R> {
         &self,
         hash: Hash,
         f: F,
+        logger: &Logger,
     ) -> (R, bool) {
         let f = f.boxed();
 
         let (work, cached) = {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock(logger);
 
             match cache.entry(hash) {
                 Entry::Occupied(entry) => {
@@ -62,7 +66,7 @@ impl<R: CheapClone> QueryCache<R> {
         let _remove_guard = if !cached {
             // Make sure to remove this from the in-flight list, even if `poll` panics.
             Some(defer::defer(|| {
-                self.cache.lock().unwrap().remove(&hash);
+                self.cache.lock(logger).remove(&hash);
             }))
         } else {
             None
