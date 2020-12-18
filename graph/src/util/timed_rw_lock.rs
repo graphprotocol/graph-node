@@ -1,8 +1,6 @@
+use parking_lot::{Mutex, RwLock};
 use slog::{warn, Logger};
-use std::{
-    sync::{Mutex, RwLock},
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 lazy_static::lazy_static! {
     /// If an instrumented lock is contended for longer than the specified duration, a warning will
@@ -33,9 +31,9 @@ impl<T> TimedRwLock<T> {
         }
     }
 
-    pub fn write(&self, logger: &Logger) -> std::sync::RwLockWriteGuard<T> {
+    pub fn write(&self, logger: &Logger) -> parking_lot::RwLockWriteGuard<T> {
         let start = Instant::now();
-        let guard = self.lock.write().unwrap();
+        let guard = self.lock.write();
         let elapsed = start.elapsed();
         if elapsed > self.log_threshold {
             warn!(logger, "Write lock took a long time to acquire";
@@ -46,9 +44,9 @@ impl<T> TimedRwLock<T> {
         guard
     }
 
-    pub fn read(&self, logger: &Logger) -> std::sync::RwLockReadGuard<T> {
+    pub fn read(&self, logger: &Logger) -> parking_lot::RwLockReadGuard<T> {
         let start = Instant::now();
-        let guard = self.lock.read().unwrap();
+        let guard = self.lock.read();
         let elapsed = start.elapsed();
         if elapsed > self.log_threshold {
             warn!(logger, "Read lock took a long time to acquire";
@@ -76,9 +74,9 @@ impl<T> TimedMutex<T> {
         }
     }
 
-    pub fn lock(&self, logger: &Logger) -> std::sync::MutexGuard<T> {
+    pub fn lock(&self, logger: &Logger) -> parking_lot::MutexGuard<T> {
         let start = Instant::now();
-        let guard = self.lock.lock().unwrap();
+        let guard = self.lock.lock();
         let elapsed = start.elapsed();
         if elapsed > self.log_threshold {
             warn!(logger, "Mutex lock took a long time to acquire";
