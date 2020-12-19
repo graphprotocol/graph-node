@@ -548,16 +548,16 @@ pub async fn execute_root_selection_set<R: Resolver>(
     {
         // Calculate the weight outside the lock.
         let weight = result.weight();
-        let mut cache = QUERY_BLOCK_CACHE.lock(&ctx.logger);
-
-        // Get or insert the cache for this network.
-        if cache.insert(
+        let inserted = QUERY_BLOCK_CACHE.lock(&ctx.logger).insert(
             network,
             block_ptr.clone(),
             key,
             result.cheap_clone(),
             weight,
-        ) {
+        );
+
+        // Get or insert the cache for this network.
+        if inserted {
             ctx.cache_status.store(CacheStatus::Insert);
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
