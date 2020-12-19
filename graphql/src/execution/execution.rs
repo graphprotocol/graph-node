@@ -3,7 +3,7 @@ use crossbeam::atomic::AtomicCell;
 use graph::{
     data::schema::META_FIELD_NAME,
     prelude::{s, CheapClone},
-    util::timed_rw_lock::{TimedMutex, TimedRwLock},
+    util::timed_rw_lock::TimedMutex,
 };
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
@@ -202,8 +202,8 @@ lazy_static! {
 
     // Cache query results for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
-    static ref QUERY_BLOCK_CACHE: TimedRwLock<QueryBlockCache> =
-                                    TimedRwLock::new(QueryBlockCache(vec![]), "query_block_cache");
+    static ref QUERY_BLOCK_CACHE: TimedMutex<QueryBlockCache> =
+                                    TimedMutex::new(QueryBlockCache(vec![]), "query_block_cache");
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: TimedMutex<LfuCache<QueryHash, WeightedResult>> = TimedMutex::new(LfuCache::new(), "query_lfu_cache");
 }
@@ -448,7 +448,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                 // and then in the LfuCache for historical queries
                 // The blocks are used to delimit how long locks need to be held
                 {
-                    let cache = QUERY_BLOCK_CACHE.read(&ctx.logger);
+                    let cache = QUERY_BLOCK_CACHE.lock(&ctx.logger);
                     if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return result;
@@ -548,7 +548,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
     {
         // Calculate the weight outside the lock.
         let weight = result.weight();
-        let mut cache = QUERY_BLOCK_CACHE.write(&ctx.logger);
+        let mut cache = QUERY_BLOCK_CACHE.lock(&ctx.logger);
 
         // Get or insert the cache for this network.
         if cache.insert(
