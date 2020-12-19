@@ -199,11 +199,20 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_CACHE_STALE_PERIOD environment variable")
     };
 
+    /// In how many shards (mutexes) the query block cache is split.
+    static ref QUERY_BLOCK_CACHE_SHARDS: usize = {
+        std::env::var("GRAPH_QUERY_BLOCK_CACHE_SHARDS")
+        .unwrap_or("10".to_string())
+        .parse::<usize>()
+        .expect("Invalid value for GRAPH_QUERY_BLOCK_CACHE_SHARDS environment variable")
+    };
+
 
     // Cache query results for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
-    static ref QUERY_BLOCK_CACHE: TimedMutex<QueryBlockCache> =
-                                    TimedMutex::new(QueryBlockCache(vec![]), "query_block_cache");
+    static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> =
+                                    std::iter::repeat_with(|| TimedMutex::new(QueryBlockCache(vec![]), "query_block_cache"))
+                                        .take(*QUERY_BLOCK_CACHE_SHARDS).collect();
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: TimedMutex<LfuCache<QueryHash, WeightedResult>> = TimedMutex::new(LfuCache::new(), "query_lfu_cache");
 }
@@ -448,7 +457,8 @@ pub async fn execute_root_selection_set<R: Resolver>(
                 // and then in the LfuCache for historical queries
                 // The blocks are used to delimit how long locks need to be held
                 {
-                    let cache = QUERY_BLOCK_CACHE.lock(&ctx.logger);
+                    let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
+                    let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
                     if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return result;
@@ -548,7 +558,8 @@ pub async fn execute_root_selection_set<R: Resolver>(
     {
         // Calculate the weight outside the lock.
         let weight = result.weight();
-        let inserted = QUERY_BLOCK_CACHE.lock(&ctx.logger).insert(
+        let shard = (key[0] as usize) % QUERY_BLOCK_CACHE.len();
+        let inserted = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger).insert(
             network,
             block_ptr.clone(),
             key,
