@@ -951,9 +951,6 @@ impl ColumnType {
             ValueType::Bytes => Ok(ColumnType::Bytes),
             ValueType::Int => Ok(ColumnType::Int),
             ValueType::String => Ok(ColumnType::String),
-            ValueType::List => Err(StoreError::Unknown(anyhow!(
-                "can not convert ValueType::List to ColumnType"
-            ))),
         }
     }
 

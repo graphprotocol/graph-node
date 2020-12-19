@@ -127,7 +127,6 @@ pub enum ValueType {
     BigDecimal,
     Int,
     String,
-    List,
 }
 
 impl FromStr for ValueType {
@@ -141,7 +140,6 @@ impl FromStr for ValueType {
             "BigDecimal" => Ok(ValueType::BigDecimal),
             "Int" => Ok(ValueType::Int),
             "String" | "ID" => Ok(ValueType::String),
-            "List" => Ok(ValueType::List),
             s => Err(anyhow!("Type not available in this context: {}", s)),
         }
     }
@@ -150,17 +148,7 @@ impl FromStr for ValueType {
 impl ValueType {
     /// Return `true` if `s` is the name of a builtin scalar type
     pub fn is_scalar(s: &str) -> bool {
-        Self::from_str(s)
-            .map(|vt| match vt {
-                ValueType::List => false,
-                ValueType::Boolean
-                | ValueType::BigDecimal
-                | ValueType::BigInt
-                | ValueType::Bytes
-                | ValueType::Int
-                | ValueType::String => true,
-            })
-            .unwrap_or(false)
+        Self::from_str(s).is_ok()
     }
 }
 

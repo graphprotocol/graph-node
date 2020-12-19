@@ -390,7 +390,6 @@ fn field_scalar_filter_input_values(
         "BigDecimal" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "ID" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "Int" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
-        "List" => vec!["", "not", "in", "not_in", "contains", "not_contains"],
         "String" => vec![
             "",
             "not",
