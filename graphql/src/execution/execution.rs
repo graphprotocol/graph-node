@@ -130,7 +130,8 @@ impl QueryBlockCache {
                 }
 
                 // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
-                let max_weight = *QUERY_CACHE_MAX_MEM / *QUERY_CACHE_BLOCKS;
+                let max_weight = *QUERY_CACHE_MAX_MEM
+                    / (*QUERY_CACHE_BLOCKS * *QUERY_BLOCK_CACHE_SHARDS as usize);
                 let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
                 cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
                 cache.push_front(cache_by_block);
@@ -183,7 +184,8 @@ lazy_static! {
     };
 
     /// Maximum total memory to be used by the cache. Each block has a max size of
-    /// `QUERY_CACHE_MAX_MEM` / `QUERY_CACHE_BLOCKS`. The env var is in MB.
+    /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` * `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
+    /// The env var is in MB.
     static ref QUERY_CACHE_MAX_MEM: usize = {
         1_000_000 *
         std::env::var("GRAPH_QUERY_CACHE_MAX_MEM")
@@ -200,11 +202,11 @@ lazy_static! {
     };
 
     /// In how many shards (mutexes) the query block cache is split.
-    static ref QUERY_BLOCK_CACHE_SHARDS: usize = {
+    static ref QUERY_BLOCK_CACHE_SHARDS: u8 = {
         std::env::var("GRAPH_QUERY_BLOCK_CACHE_SHARDS")
         .unwrap_or("10".to_string())
-        .parse::<usize>()
-        .expect("Invalid value for GRAPH_QUERY_BLOCK_CACHE_SHARDS environment variable")
+        .parse::<u8>()
+        .expect("Invalid value for GRAPH_QUERY_BLOCK_CACHE_SHARDS environment variable, max is 255")
     };
 
 
@@ -212,7 +214,7 @@ lazy_static! {
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> =
                                     std::iter::repeat_with(|| TimedMutex::new(QueryBlockCache(vec![]), "query_block_cache"))
-                                        .take(*QUERY_BLOCK_CACHE_SHARDS).collect();
+                                        .take(*QUERY_BLOCK_CACHE_SHARDS as usize).collect();
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: TimedMutex<LfuCache<QueryHash, WeightedResult>> = TimedMutex::new(LfuCache::new(), "query_lfu_cache");
 }
