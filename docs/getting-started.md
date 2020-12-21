@@ -342,7 +342,7 @@ Also, note that the Postgres database may not have a password at all. If that is
 
 #### 2.3.2 Local Geth or Parity Node
 
-This is the speediest way to get mainnet or testnet data. The problem is that if you do not already have a synced [geth](https://github.com/ethereum/go-ethereum/wiki/geth) or [parity](https://github.com/paritytech/parity-ethereum) node, you will have to sync one, which takes a very long time and takes up a lot of space. Additionally, note that geth `fast sync` works. So, if you are starting from scratch, this is the fastest way to get caught up, but expect at least 12 hours of syncing on a modern laptop with a good internet connection to sync geth. Normal mode geth or parity will take much longer. Use the following geth command to start syncing:
+This is the speediest way to get mainnet or testnet data. The problem is that if you do not already have a synced [geth](https://geth.ethereum.org/docs/getting-started) or [parity](https://github.com/paritytech/parity-ethereum) node, you will have to sync one, which takes a very long time and takes up a lot of space. Additionally, note that geth `fast sync` works. So, if you are starting from scratch, this is the fastest way to get caught up, but expect at least 12 hours of syncing on a modern laptop with a good internet connection to sync geth. Normal mode geth or parity will take much longer. Use the following geth command to start syncing:
 
 `geth --syncmode "fast" --rpc --ws --wsorigins="*" --rpcvhosts="*" --cache 1024`
 
