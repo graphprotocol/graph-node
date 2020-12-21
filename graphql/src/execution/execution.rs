@@ -202,19 +202,24 @@ lazy_static! {
     };
 
     /// In how many shards (mutexes) the query block cache is split.
+    /// Ideally this should divide 256 so that the distribution of queries to shards is even.
     static ref QUERY_BLOCK_CACHE_SHARDS: u8 = {
         std::env::var("GRAPH_QUERY_BLOCK_CACHE_SHARDS")
-        .unwrap_or("100".to_string())
+        .unwrap_or("128".to_string())
         .parse::<u8>()
         .expect("Invalid value for GRAPH_QUERY_BLOCK_CACHE_SHARDS environment variable, max is 255")
     };
 
 
-    // Cache query results for recent blocks by network.
+    // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
-    static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> =
-                                    std::iter::repeat_with(|| TimedMutex::new(QueryBlockCache(vec![]), "query_block_cache"))
-                                        .take(*QUERY_BLOCK_CACHE_SHARDS as usize).collect();
+    static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
+            let mut caches = Vec::new();
+            for i in 0..*QUERY_BLOCK_CACHE_SHARDS {
+                caches.push(TimedMutex::new(QueryBlockCache(vec![]), format!("query_block_cache_{}", i)))
+            }
+            caches
+        };
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: TimedMutex<LfuCache<QueryHash, WeightedResult>> = TimedMutex::new(LfuCache::new(), "query_lfu_cache");
 }
