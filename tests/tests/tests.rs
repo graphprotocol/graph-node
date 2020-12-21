@@ -77,7 +77,9 @@ fn data_source_context() {
     run_test("data-source-context")
 }
 
+// The arweave.net gateway is having issues, hopefully temporary.
 #[test]
+#[ignore]
 fn arweave_and_3box() {
     let _m = TEST_MUTEX.lock();
     run_test("arweave-and-3box")
