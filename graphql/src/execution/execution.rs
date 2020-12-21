@@ -204,7 +204,7 @@ lazy_static! {
     /// In how many shards (mutexes) the query block cache is split.
     static ref QUERY_BLOCK_CACHE_SHARDS: u8 = {
         std::env::var("GRAPH_QUERY_BLOCK_CACHE_SHARDS")
-        .unwrap_or("10".to_string())
+        .unwrap_or("100".to_string())
         .parse::<u8>()
         .expect("Invalid value for GRAPH_QUERY_BLOCK_CACHE_SHARDS environment variable, max is 255")
     };
