@@ -1495,7 +1495,7 @@ dependencies = [
 
 [[package]]
 name = "graph"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1551,7 +1551,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-arweave"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "graph",
@@ -1559,7 +1559,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-ethereum"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1582,7 +1582,7 @@ dependencies = [
 
 [[package]]
 name = "graph-core"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1610,7 +1610,7 @@ dependencies = [
 
 [[package]]
 name = "graph-graphql"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "graph-mock"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "futures 0.1.30",
  "graph",
@@ -1643,7 +1643,7 @@ dependencies = [
 
 [[package]]
 name = "graph-node"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "assert_cli",
  "clap",
@@ -1679,7 +1679,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-derive"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "quote 0.6.13",
  "syn 0.15.44",
@@ -1687,7 +1687,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-wasm"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1717,7 +1717,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-http"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "futures 0.1.30",
  "graph",
@@ -1731,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-index-node"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "futures 0.3.8",
  "graph",
@@ -1744,7 +1744,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-json-rpc"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "graph",
  "jsonrpc-http-server",
@@ -1754,7 +1754,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-metrics"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "futures 0.1.30",
  "graph",
@@ -1767,7 +1767,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-websocket"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "futures 0.1.30",
@@ -1783,7 +1783,7 @@ dependencies = [
 
 [[package]]
 name = "graph-store-postgres"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "Inflector",
  "async-trait",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "graph-tests"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "duct",
  "lazy_static",
@@ -4131,9 +4131,9 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.19.5"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b89a286a7e3b5720b9a477b23253bc50debac207c8d21505f8e70b36792f11b5"
+checksum = "7318c509b5ba57f18533982607f24070a55d353e90d4cae30c467cdb2ad5ac5c"
 
 [[package]]
 name = "strum_macros"
@@ -4240,7 +4240,7 @@ dependencies = [
 
 [[package]]
 name = "test-store"
-version = "0.19.2"
+version = "0.20.0"
 dependencies = [
  "diesel",
  "graph",
