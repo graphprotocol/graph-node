@@ -1,4 +1,4 @@
-use super::cache::QueryCache;
+use super::cache::{QueryBlockCache, QueryCache};
 use crossbeam::atomic::AtomicCell;
 use graph::{
     data::schema::META_FIELD_NAME,
@@ -10,9 +10,8 @@ use lazy_static::lazy_static;
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use graph::data::graphql::*;
@@ -20,6 +19,7 @@ use graph::data::query::CacheStatus;
 use graph::prelude::*;
 use graph::util::lfu_cache::LfuCache;
 
+use super::QueryHash;
 use crate::introspection::{
     is_introspection_field, INTROSPECTION_DOCUMENT, INTROSPECTION_QUERY_TYPE,
 };
@@ -27,183 +27,6 @@ use crate::prelude::*;
 use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
-
-type QueryHash = <SetHasher as StableHasher>::Out;
-
-#[derive(Debug)]
-struct CacheByBlock {
-    block: EthereumBlockPointer,
-    max_weight: usize,
-    weight: usize,
-
-    // The value is `(result, n_hits)`.
-    cache: HashMap<QueryHash, (Arc<QueryResult>, AtomicU64)>,
-}
-
-impl CacheByBlock {
-    fn new(block: EthereumBlockPointer, max_weight: usize) -> Self {
-        CacheByBlock {
-            block,
-            max_weight,
-            weight: 0,
-            cache: HashMap::new(),
-        }
-    }
-
-    fn get(&self, key: &QueryHash) -> Option<&Arc<QueryResult>> {
-        let (value, hit_count) = self.cache.get(key)?;
-        hit_count.fetch_add(1, Ordering::SeqCst);
-        Some(value)
-    }
-
-    /// Returns `true` if the insert was successful or `false` if the cache was full.
-    fn insert(&mut self, key: QueryHash, value: Arc<QueryResult>, weight: usize) -> bool {
-        // We never try to insert errors into this cache, and always resolve some value.
-        assert!(!value.has_errors());
-        let fits_in_cache = self.weight + weight <= self.max_weight;
-        if fits_in_cache {
-            self.weight += weight;
-            self.cache.insert(key, (value, AtomicU64::new(0)));
-        }
-        fits_in_cache
-    }
-}
-
-struct WeightedResult {
-    result: Arc<QueryResult>,
-    weight: usize,
-}
-
-impl CacheWeight for WeightedResult {
-    fn indirect_weight(&self) -> usize {
-        self.weight
-    }
-}
-
-impl Default for WeightedResult {
-    fn default() -> Self {
-        WeightedResult {
-            result: Arc::new(QueryResult::new(BTreeMap::default())),
-            weight: 0,
-        }
-    }
-}
-
-/// Organize block caches by network names. Since different networks
-/// will be at different block heights, we need to keep their `CacheByBlock`
-/// separate
-struct QueryBlockCache {
-    shard: u8,
-    cache_by_network: Vec<(String, VecDeque<CacheByBlock>)>,
-}
-
-impl QueryBlockCache {
-    fn new(shard: u8) -> Self {
-        QueryBlockCache {
-            shard,
-            cache_by_network: Vec::new(),
-        }
-    }
-
-    fn insert(
-        &mut self,
-        network: &str,
-        block_ptr: EthereumBlockPointer,
-        key: QueryHash,
-        result: Arc<QueryResult>,
-        weight: usize,
-        logger: Logger,
-    ) -> bool {
-        // Get or insert the cache for this network.
-        let cache = match self
-            .cache_by_network
-            .iter_mut()
-            .find(|(n, _)| n == network)
-            .map(|(_, c)| c)
-        {
-            Some(c) => c,
-            None => {
-                self.cache_by_network
-                    .push((network.to_owned(), VecDeque::new()));
-                &mut self.cache_by_network.last_mut().unwrap().1
-            }
-        };
-
-        // If there is already a cache by the block of this query, just add it there.
-        let mut cache_insert = false;
-        if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-            cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
-        } else if *QUERY_CACHE_BLOCKS > 0 {
-            // We're creating a new `CacheByBlock` if:
-            // - There are none yet, this is the first query being cached, or
-            // - `block_ptr` is of higher or equal number than the most recent block in the cache.
-            // Otherwise this is a historical query that does not belong in
-            // the block cache
-            let should_insert = match cache.iter().next() {
-                None => true,
-                Some(highest) => highest.block.number <= block_ptr.number,
-            };
-
-            if should_insert {
-                if cache.len() == *QUERY_CACHE_BLOCKS {
-                    // At capacity, so pop the oldest block.
-                    // Stats are reported in a task since we don't need the lock for it.
-                    let block = cache.pop_back().unwrap();
-                    let shard = self.shard;
-                    graph::spawn(async move {
-                        let mut dead_inserts = 0;
-                        let mut total_hits = 0;
-                        for (_, hits) in block.cache.values() {
-                            let hits = hits.load(Ordering::SeqCst);
-                            total_hits += hits;
-                            if hits == 0 {
-                                dead_inserts += 1;
-                            }
-                        }
-                        let n_entries = block.cache.len();
-                        debug!(logger, "Rotating query cache, stats for last block";
-                            "shard" => shard,
-                            "entries" => n_entries,
-                            "avg_hits" => format!("{0:.2}", (total_hits as f64) / (n_entries as f64)),
-                            "dead_inserts" => dead_inserts,
-                            "fill_ratio" => (block.weight as f64) / (block.max_weight as f64)
-                        )
-                    });
-                }
-
-                // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
-                let max_weight = *QUERY_CACHE_MAX_MEM
-                    / (*QUERY_CACHE_BLOCKS * *QUERY_BLOCK_CACHE_SHARDS as usize);
-                let mut cache_by_block = CacheByBlock::new(block_ptr, max_weight);
-                cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
-                cache.push_front(cache_by_block);
-            }
-        }
-        cache_insert
-    }
-
-    fn get(
-        &self,
-        network: &str,
-        block_ptr: &EthereumBlockPointer,
-        key: &QueryHash,
-    ) -> Option<Arc<QueryResult>> {
-        if let Some(cache) = self
-            .cache_by_network
-            .iter()
-            .find(|(n, _)| n == network)
-            .map(|(_, c)| c)
-        {
-            // Iterate from the most recent block looking for a block that matches.
-            if let Some(cache_by_block) = cache.iter().find(|c| &c.block == block_ptr) {
-                if let Some(response) = cache_by_block.get(key) {
-                    return Some(response.cheap_clone());
-                }
-            }
-        }
-        None
-    }
-}
 
 lazy_static! {
     // Comma separated subgraph ids to cache queries for.
@@ -261,14 +84,40 @@ lazy_static! {
     // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
+            let shards = *QUERY_BLOCK_CACHE_SHARDS;
+            let blocks = *QUERY_CACHE_BLOCKS;
+
+            // The memory budget is evenly divided among blocks and their shards.
+            let max_weight = *QUERY_CACHE_MAX_MEM / (blocks * shards as usize);
             let mut caches = Vec::new();
-            for i in 0..*QUERY_BLOCK_CACHE_SHARDS {
-                caches.push(TimedMutex::new(QueryBlockCache::new(i), format!("query_block_cache_{}", i)))
+            for i in 0..shards {
+                let id = format!("query_block_cache_{}", i);
+                caches.push(TimedMutex::new(QueryBlockCache::new(blocks, i, max_weight), id))
             }
             caches
-        };
+    };
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: TimedMutex<LfuCache<QueryHash, WeightedResult>> = TimedMutex::new(LfuCache::new(), "query_lfu_cache");
+}
+
+struct WeightedResult {
+    result: Arc<QueryResult>,
+    weight: usize,
+}
+
+impl CacheWeight for WeightedResult {
+    fn indirect_weight(&self) -> usize {
+        self.weight
+    }
+}
+
+impl Default for WeightedResult {
+    fn default() -> Self {
+        WeightedResult {
+            result: Arc::new(QueryResult::new(BTreeMap::default())),
+            weight: 0,
+        }
+    }
 }
 
 struct HashableQuery<'a> {
