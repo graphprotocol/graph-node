@@ -12,6 +12,7 @@ use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::iter;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use graph::data::graphql::*;
@@ -34,7 +35,9 @@ struct CacheByBlock {
     block: EthereumBlockPointer,
     max_weight: usize,
     weight: usize,
-    cache: HashMap<QueryHash, Arc<QueryResult>>,
+
+    // The value is `(result, n_hits)`.
+    cache: HashMap<QueryHash, (Arc<QueryResult>, AtomicU64)>,
 }
 
 impl CacheByBlock {
@@ -47,6 +50,12 @@ impl CacheByBlock {
         }
     }
 
+    fn get(&self, key: &QueryHash) -> Option<&Arc<QueryResult>> {
+        let (value, hit_count) = self.cache.get(key)?;
+        hit_count.fetch_add(1, Ordering::SeqCst);
+        Some(value)
+    }
+
     /// Returns `true` if the insert was successful or `false` if the cache was full.
     fn insert(&mut self, key: QueryHash, value: Arc<QueryResult>, weight: usize) -> bool {
         // We never try to insert errors into this cache, and always resolve some value.
@@ -54,7 +63,7 @@ impl CacheByBlock {
         let fits_in_cache = self.weight + weight <= self.max_weight;
         if fits_in_cache {
             self.weight += weight;
-            self.cache.insert(key, value);
+            self.cache.insert(key, (value, AtomicU64::new(0)));
         }
         fits_in_cache
     }
@@ -83,9 +92,19 @@ impl Default for WeightedResult {
 /// Organize block caches by network names. Since different networks
 /// will be at different block heights, we need to keep their `CacheByBlock`
 /// separate
-struct QueryBlockCache(Vec<(String, VecDeque<CacheByBlock>)>);
+struct QueryBlockCache {
+    shard: u8,
+    cache_by_network: Vec<(String, VecDeque<CacheByBlock>)>,
+}
 
 impl QueryBlockCache {
+    fn new(shard: u8) -> Self {
+        QueryBlockCache {
+            shard,
+            cache_by_network: Vec::new(),
+        }
+    }
+
     fn insert(
         &mut self,
         network: &str,
@@ -93,18 +112,20 @@ impl QueryBlockCache {
         key: QueryHash,
         result: Arc<QueryResult>,
         weight: usize,
+        logger: Logger,
     ) -> bool {
         // Get or insert the cache for this network.
         let cache = match self
-            .0
+            .cache_by_network
             .iter_mut()
             .find(|(n, _)| n == network)
             .map(|(_, c)| c)
         {
             Some(c) => c,
             None => {
-                self.0.push((network.to_owned(), VecDeque::new()));
-                &mut self.0.last_mut().unwrap().1
+                self.cache_by_network
+                    .push((network.to_owned(), VecDeque::new()));
+                &mut self.cache_by_network.last_mut().unwrap().1
             }
         };
 
@@ -126,7 +147,28 @@ impl QueryBlockCache {
             if should_insert {
                 if cache.len() == *QUERY_CACHE_BLOCKS {
                     // At capacity, so pop the oldest block.
-                    cache.pop_back();
+                    // Stats are reported in a task since we don't need the lock for it.
+                    let block = cache.pop_back().unwrap();
+                    let shard = self.shard;
+                    graph::spawn(async move {
+                        let mut dead_inserts = 0;
+                        let mut total_hits = 0;
+                        for (_, hits) in block.cache.values() {
+                            let hits = hits.load(Ordering::SeqCst);
+                            total_hits += hits;
+                            if hits == 0 {
+                                dead_inserts += 1;
+                            }
+                        }
+                        let n_entries = block.cache.len();
+                        debug!(logger, "Rotating query cache, stats for last block";
+                            "shard" => shard,
+                            "entries" => n_entries,
+                            "avg_hits" => format!("{0:.2}", (total_hits as f64) / (n_entries as f64)),
+                            "dead_inserts" => dead_inserts,
+                            "fill_ratio" => (block.weight as f64) / (block.max_weight as f64)
+                        )
+                    });
                 }
 
                 // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
@@ -146,10 +188,15 @@ impl QueryBlockCache {
         block_ptr: &EthereumBlockPointer,
         key: &QueryHash,
     ) -> Option<Arc<QueryResult>> {
-        if let Some(cache) = self.0.iter().find(|(n, _)| n == network).map(|(_, c)| c) {
+        if let Some(cache) = self
+            .cache_by_network
+            .iter()
+            .find(|(n, _)| n == network)
+            .map(|(_, c)| c)
+        {
             // Iterate from the most recent block looking for a block that matches.
             if let Some(cache_by_block) = cache.iter().find(|c| &c.block == block_ptr) {
-                if let Some(response) = cache_by_block.cache.get(key) {
+                if let Some(response) = cache_by_block.get(key) {
                     return Some(response.cheap_clone());
                 }
             }
@@ -175,10 +222,10 @@ lazy_static! {
     // How many blocks per network should be kept in the query cache. When the limit is reached,
     // older blocks are evicted. This should be kept small since a lookup to the cache is O(n) on
     // this value, and the cache memory usage also increases with larger number. Set to 0 to disable
-    // the cache. Defaults to 1.
+    // the cache. Defaults to 2.
     static ref QUERY_CACHE_BLOCKS: usize = {
         std::env::var("GRAPH_QUERY_CACHE_BLOCKS")
-        .unwrap_or("1".to_string())
+        .unwrap_or("2".to_string())
         .parse::<usize>()
         .expect("Invalid value for GRAPH_QUERY_CACHE_BLOCKS environment variable")
     };
@@ -216,7 +263,7 @@ lazy_static! {
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
             let mut caches = Vec::new();
             for i in 0..*QUERY_BLOCK_CACHE_SHARDS {
-                caches.push(TimedMutex::new(QueryBlockCache(vec![]), format!("query_block_cache_{}", i)))
+                caches.push(TimedMutex::new(QueryBlockCache::new(i), format!("query_block_cache_{}", i)))
             }
             caches
         };
@@ -572,6 +619,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
             key,
             result.cheap_clone(),
             weight,
+            ctx.logger.cheap_clone(),
         );
 
         // Get or insert the cache for this network.
