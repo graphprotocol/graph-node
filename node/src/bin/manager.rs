@@ -12,7 +12,7 @@ use graph::{
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
-use graph_store_postgres::{connection_pool::ConnectionPool, PRIMARY_SHARD};
+use graph_store_postgres::{connection_pool::ConnectionPool, ShardedStore, PRIMARY_SHARD};
 
 use crate::config::Config;
 use graph_node::manager::commands;
@@ -63,6 +63,23 @@ pub enum Command {
     },
     /// Print how a specific subgraph would be placed
     Place { name: String, network: String },
+    /// Manage unused deployments
+    ///
+    /// Record which deployments are unused with `record`, then remove them
+    /// with `remove`
+    Unused(UnusedCommand),
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub enum UnusedCommand {
+    /// List unused deployments
+    List {
+        /// Only list unused deployments that still exist
+        #[structopt(short, long)]
+        existing: bool,
+    },
+    /// Update and record currently unused deployments
+    Record,
 }
 
 impl From<Opt> for config::Opt {
@@ -74,14 +91,27 @@ impl From<Opt> for config::Opt {
     }
 }
 
-fn make_main_pool(logger: &Logger, config: &Config) -> ConnectionPool {
+fn make_registry(logger: &Logger) -> Arc<MetricsRegistry> {
     let prometheus_registry = Arc::new(Registry::new());
-    let metrics_registry = Arc::new(MetricsRegistry::new(
+    Arc::new(MetricsRegistry::new(
         logger.clone(),
         prometheus_registry.clone(),
-    ));
+    ))
+}
+
+fn make_main_pool(logger: &Logger, config: &Config) -> ConnectionPool {
     let primary = config.primary_store();
-    StoreBuilder::main_pool(&logger, PRIMARY_SHARD.as_str(), primary, metrics_registry)
+    StoreBuilder::main_pool(
+        &logger,
+        PRIMARY_SHARD.as_str(),
+        primary,
+        make_registry(logger),
+    )
+}
+
+#[allow(dead_code)]
+fn make_store(logger: &Logger, config: &Config) -> Arc<ShardedStore> {
+    StoreBuilder::new(logger, config, make_registry(logger)).store()
 }
 
 #[tokio::main]
@@ -120,6 +150,15 @@ async fn main() {
             commands::info::run(pool, name)
         }
         Place { name, network } => commands::place::run(&config.deployment, &name, &network),
+        Unused(cmd) => {
+            let store = make_store(&logger, &config);
+            use UnusedCommand::*;
+
+            match cmd {
+                List { existing } => commands::unused_deployments::list(store, existing),
+                Record => commands::unused_deployments::record(store),
+            }
+        }
     };
     if let Err(e) = result {
         die!("error: {}", e)

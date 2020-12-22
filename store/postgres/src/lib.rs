@@ -70,7 +70,9 @@ pub use self::store_events::SubscriptionManager;
 pub mod command_support {
     pub mod catalog {
         pub use crate::primary::Connection;
-        pub use crate::primary::{deployment_schemas, subgraph, subgraph_version};
+        pub use crate::primary::{
+            deployment_schemas, subgraph, subgraph_deployment_assignment, subgraph_version,
+        };
     }
     pub use crate::entities::Connection;
     pub use crate::primary::Namespace;
