@@ -6,12 +6,15 @@ use graph::{
 };
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
-use std::collections::HashMap;
-use std::collections::{hash_map::Entry, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{hash_map::Entry, VecDeque},
+    time::Instant,
+};
 
 use super::QueryHash;
 
@@ -126,6 +129,7 @@ pub struct QueryBlockCache {
     cache_by_network: Vec<(String, VecDeque<CacheByBlock>)>,
     max_weight: usize,
     max_blocks: usize,
+    total_insert_time: Duration,
 }
 
 impl QueryBlockCache {
@@ -135,6 +139,7 @@ impl QueryBlockCache {
             cache_by_network: Vec::new(),
             max_weight,
             max_blocks,
+            total_insert_time: Duration::default(),
         }
     }
 
@@ -169,7 +174,10 @@ impl QueryBlockCache {
 
         // If there is already a cache by the block of this query, just add it there.
         if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-            return cache_by_block.insert(key, result.cheap_clone(), weight);
+            let start = Instant::now();
+            let inserted = cache_by_block.insert(key, result.cheap_clone(), weight);
+            self.total_insert_time += start.elapsed();
+            return inserted;
         }
 
         // We're creating a new `CacheByBlock` if:
@@ -187,6 +195,7 @@ impl QueryBlockCache {
             // Stats are reported in a task since we don't need the lock for it.
             let block = cache.pop_back().unwrap();
             let shard = self.shard;
+            let insert_time_ms = self.total_insert_time.as_millis();
             graph::spawn(async move {
                 let mut dead_inserts = 0;
                 let mut total_hits = 0;
@@ -203,7 +212,8 @@ impl QueryBlockCache {
                     "entries" => n_entries,
                     "avg_hits" => format!("{0:.2}", (total_hits as f64) / (n_entries as f64)),
                     "dead_inserts" => dead_inserts,
-                    "fill_ratio" => format!("{0:.2}", (block.weight as f64) / (block.max_weight as f64))
+                    "fill_ratio" => format!("{0:.2}", (block.weight as f64) / (block.max_weight as f64)),
+                    "avg_insert_time_ms" => format!("{0:.2}", insert_time_ms as f64 / (n_entries as f64)),
                 )
             });
         }
