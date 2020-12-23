@@ -1,4 +1,6 @@
-# Support for Multiple Databases
+# Support for Multiple Databases (experimental)
+
+**This feature is considered experimental. In particular, the format of the configuration file might still change in backwards-incompatible ways**
 
 For most use cases, a single Postgres database is sufficient to support a
 `graph-node` instance. When a `graph-node` instance outgrows a single
@@ -13,8 +15,9 @@ switch. When using a configuration file, it is not possible to use the
 options `--postgres-url`, `--postgres-secondary-hosts`, and
 `--postgres-host-weights`.
 
-The TOML file consists of two sections:
+The TOML file consists of three sections:
 * `[store]` describes the available databases
+* `[ingestor]` sets the name of the node responsible for block ingestion
 * `[deployment]` describes how to place newly deployed subgraphs
 
 ## Configuring Multiple Databases
@@ -62,8 +65,8 @@ When `graph-node` receives a request to deploy a new subgraph deployment,
 it needs to decide in which shard to store the data for the deployment, and
 which of any number of nodes connected to the store should index the
 deployment. That decision is based on a number of rules defined in the
-`[deployment]` which can match on the subgraph name and the network that
-the deployment is indexing.
+`[deployment]` section. Deployment rules can match on the subgraph name and
+the network that the deployment is indexing.
 
 Rules are evaluated in order, and the first rule that matches determines
 where the deployment is placed. The `match` element of a rule can have a
@@ -117,3 +120,27 @@ connection="<.. postgres-url argument ..>"
 [[deployment.rule]]
 indexers = [ <.. list of all indexing nodes ..> ]
 ```
+
+## Validating configuration files
+
+A configuration file can be checked for validity by passing the `--check-config`
+flag to `graph-node`. The command
+```shell
+graph-node --config $CONFIG_FILE --check-config --ethereum-rpc 'something'
+```
+will read the configuration file and print information about syntax errors or, for
+valid files, a JSON representation of the configuration. (The fact that
+`--ethereum-rpc` needs to be specified will be addressed in a future release)
+
+## Simulating deployment placement
+
+Given a configuration file, placement of newly deployed subgraphs can be
+simulated with
+```shell
+graphman --config $CONFIG_FILE place some/subgraph mainnet
+```
+The command will not make any changes, but simply print where that subgraph
+would be placed. The output will indicate the database shard that will hold
+the subgraph's data, and a list of indexing nodes that could be used for
+indexing that subgraph. During deployment, `graph-node` chooses the indexing
+nodes with the fewest subgraphs currently assigned from that list.

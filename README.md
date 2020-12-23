@@ -112,7 +112,7 @@ The command line arguments generally are all that is needed to run a
 can further be configured through [environment
 variables](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md). Very
 large `graph-node` instances can also split the work of querying and
-indexing across [multiple databases](./docs/multiple-databases.md).
+indexing across [multiple databases](./docs/sharding.md).
 
 ## Project Layout
 
