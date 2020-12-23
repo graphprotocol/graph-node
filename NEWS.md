@@ -1,5 +1,19 @@
 # NEWS
 
+## next - unreleased
+
+### Feature: database sharding
+
+This release makes it possible to [shard subgraph
+storage](./docs/sharding.md) and spread subgraph deployments, and the load
+coming from indexing and querying them across multiple independent Postgres
+databases.
+
+**This feature is considered experimenatal. We encourage users to try this
+out in a test environment, but do not recommend it yet for production use**
+In particular, the details of how sharding is configured may change in
+backwards-incompatible ways in the future.
+
 ## 0.20
 
 **NOTE: JSONB storage is no longer supported. Do not upgrade to this
