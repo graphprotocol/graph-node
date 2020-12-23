@@ -62,19 +62,6 @@ pub(crate) fn execute_prepared_subscription<R>(
 where
     R: Resolver + CheapClone + 'static,
 {
-    // Create a fresh execution context
-    let ctx = ExecutionContext {
-        logger: options.logger,
-        resolver: options.resolver,
-        query: query.clone(),
-        deadline: None,
-        max_first: options.max_first,
-        max_skip: options.max_skip,
-        cache_status: Default::default(),
-        load_manager: options.load_manager,
-        nested_resolver: false,
-    };
-
     if !query.is_subscription() {
         return Err(SubscriptionError::from(QueryExecutionError::NotSupported(
             "Only subscriptions are supported".to_string(),
@@ -82,19 +69,35 @@ where
     }
 
     info!(
-        ctx.logger,
+        options.logger,
         "Execute subscription";
         "query" => &query.query_text,
     );
 
-    let source_stream = create_source_event_stream(&ctx)?;
-    let response_stream = map_source_to_response_stream(&ctx, source_stream, options.timeout);
+    let source_stream = create_source_event_stream(query.clone(), &options)?;
+    let response_stream = map_source_to_response_stream(query, options, source_stream);
     Ok(response_stream)
 }
 
-fn create_source_event_stream(
-    ctx: &ExecutionContext<impl Resolver>,
-) -> Result<StoreEventStreamBox, SubscriptionError> {
+fn create_source_event_stream<R>(
+    query: Arc<crate::execution::Query>,
+    options: &SubscriptionExecutionOptions<R>,
+) -> Result<StoreEventStreamBox, SubscriptionError>
+where
+    R: Resolver + CheapClone + 'static,
+{
+    let ctx = ExecutionContext {
+        logger: options.logger.cheap_clone(),
+        resolver: options.resolver.cheap_clone(),
+        query: query.clone(),
+        deadline: None,
+        max_first: options.max_first,
+        max_skip: options.max_skip,
+        cache_status: Default::default(),
+        load_manager: options.load_manager.cheap_clone(),
+        nested_resolver: false,
+    };
+
     let subscription_type = ctx
         .query
         .schema
@@ -103,7 +106,7 @@ fn create_source_event_stream(
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
     let grouped_field_set = collect_fields(
-        ctx,
+        &ctx,
         &subscription_type,
         iter::once(ctx.query.selection_set.as_ref()),
     );
@@ -120,7 +123,7 @@ fn create_source_event_stream(
     let field = fields.1[0];
     let argument_values = coerce_argument_values(&ctx.query, subscription_type.as_ref(), field)?;
 
-    resolve_field_stream(ctx, &subscription_type, field, argument_values)
+    resolve_field_stream(&ctx, &subscription_type, field, argument_values)
 }
 
 fn resolve_field_stream(
@@ -134,11 +137,26 @@ fn resolve_field_stream(
         .map_err(SubscriptionError::from)
 }
 
-fn map_source_to_response_stream(
-    ctx: &ExecutionContext<impl Resolver + CheapClone + 'static>,
+fn map_source_to_response_stream<R>(
+    query: Arc<crate::execution::Query>,
+    options: SubscriptionExecutionOptions<R>,
     source_stream: StoreEventStreamBox,
-    timeout: Option<Duration>,
-) -> QueryResultStream {
+) -> QueryResultStream
+where
+    R: Resolver + CheapClone + 'static,
+{
+    let ctx = ExecutionContext {
+        logger: options.logger,
+        resolver: options.resolver,
+        query,
+        deadline: None,
+        max_first: options.max_first,
+        max_skip: options.max_skip,
+        cache_status: Default::default(),
+        load_manager: options.load_manager,
+        nested_resolver: false,
+    };
+
     let logger = ctx.logger.cheap_clone();
     let resolver = ctx.resolver.cheap_clone();
     let query = ctx.query.cheap_clone();
@@ -156,6 +174,7 @@ fn map_source_to_response_stream(
         changes: Default::default(),
     }))]);
 
+    let timeout = options.timeout;
     Box::new(
         trigger_stream
             .chain(source_stream.compat())
