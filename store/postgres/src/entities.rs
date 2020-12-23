@@ -381,6 +381,15 @@ impl Connection<'_> {
         Ok(())
     }
 
+    /// Remove all data and metadata for a deployment. This is an associated
+    /// method so that deployment removal can work with deployments that are
+    /// incomplete or damaged, e.g., in a way where we can't get the schema
+    /// for hte subgraph
+    pub(crate) fn drop_deployment(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+        crate::deployment::drop_schema(conn, &site.namespace)?;
+        Layout::drop_metadata(conn, &site.deployment)
+    }
+
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {
         self.data.tables.contains_key(POI_OBJECT)
     }

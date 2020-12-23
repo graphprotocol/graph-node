@@ -30,7 +30,10 @@ use crate::entities::STRING_PREFIX_SIZE;
 use crate::relational::{Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
 use crate::{
-    block_range::{BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
+    block_range::{
+        BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
+        BLOCK_UNVERSIONED,
+    },
     primary::Namespace,
 };
 
@@ -2689,11 +2692,15 @@ impl<'a> QueryFragment<Pg> for DeleteDynamicDataSourcesQuery<'a> {
         //      and deployment = $subgraph
         //   returning id
         out.push_sql("delete from subgraphs.dynamic_ethereum_contract_data_source\n");
-        out.push_sql(" where lower(");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(") >= ");
-        out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(" and deployment = ");
+        out.push_sql(" where");
+        if self.block != BLOCK_UNVERSIONED {
+            out.push_sql(" lower(");
+            out.push_identifier(BLOCK_RANGE_COLUMN)?;
+            out.push_sql(") >= ");
+            out.push_bind_param::<Integer, _>(&self.block)?;
+            out.push_sql(" and");
+        }
+        out.push_sql(" deployment = ");
         out.push_bind_param::<Text, _>(&self.subgraph)?;
         out.push_sql("\nreturning ");
         out.push_identifier(PRIMARY_KEY_COLUMN)

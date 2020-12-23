@@ -598,11 +598,10 @@ pub(crate) fn revert_subgraph_errors(
     check_health(conn, id)
 }
 
-/// Drop the schema for `subgraph`. This deletes all data for the subgraph,
-/// and can not be reversed. It does not remove any of the metadata in
-/// `subgraphs.entities` associated with the subgraph
-#[cfg(debug_assertions)]
-pub fn drop_entities(
+/// Drop the schema `namespace`. This deletes all data for the subgraph,
+/// and can not be reversed. It does not remove any of the metadata
+/// in the `subgraphs` schema for the deployment
+pub fn drop_schema(
     conn: &diesel::pg::PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {

@@ -850,6 +850,45 @@ impl Layout {
         Ok(())
     }
 
+    pub fn drop_metadata(
+        conn: &PgConnection,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<(), StoreError> {
+        lazy_static! {
+            // Tables from which we should not delete entries for `subgraph`
+            // See also: ed42d219c6704a4aab57ce1ea66698e7
+            static ref OTHER_TABLES: Vec<String> = vec![
+                // Not deployment specific
+                "Subgraph",
+                // Not deployment specific
+                "SubgraphVersion",
+                // Not a table, but a view
+                "SubgraphDeploymentDetail",
+                // Not in the data shard
+                "SubgraphDeploymentAssignment",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        }
+
+        // Revert dynamic data sources to before the genesis block
+        METADATA_LAYOUT.revert_metadata(conn, subgraph, BLOCK_UNVERSIONED)?;
+
+        // Delete 'static' metadata
+        for table in METADATA_LAYOUT
+            .tables
+            .values()
+            .filter(|table| !OTHER_TABLES.contains(&table.object))
+        {
+            let id = subgraph.to_string();
+            let prefix_len = id.len() as i32;
+            DeleteByPrefixQuery::new(table, &vec![id], prefix_len).get_results(conn)?;
+        }
+
+        Ok(())
+    }
+
     pub fn is_cacheable(&self) -> bool {
         // This would be false if we still needed to migrate the Layout, but
         // since there are no migrations in the code right now, it is always

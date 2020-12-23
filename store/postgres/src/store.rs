@@ -286,6 +286,13 @@ impl Store {
         })
     }
 
+    // Remove the data and metadata for the deployment `site`. This operation
+    // is not reversible
+    pub(crate) fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        conn.transaction(|| e::Connection::drop_deployment(&conn, site))
+    }
+
     /// Gets an entity from Postgres.
     fn get_entity(
         &self,

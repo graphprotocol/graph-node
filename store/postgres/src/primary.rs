@@ -637,6 +637,23 @@ impl Connection {
         })
     }
 
+    /// Remove all subgraph versions and the entry in `deployment_schemas` for
+    /// subgraph `id` in a transaction
+    pub fn drop_site(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        use deployment_schemas as ds;
+        use subgraph_version as v;
+        use unused_deployments as u;
+
+        self.transaction(|| {
+            delete(v::table.filter(v::deployment.eq(id.as_str()))).execute(&self.0)?;
+            delete(ds::table.filter(ds::subgraph.eq(id.as_str()))).execute(&self.0)?;
+            update(u::table.filter(u::id.eq(id.as_str())))
+                .set(u::removed_at.eq(sql("now()")))
+                .execute(&self.0)?;
+            Ok(())
+        })
+    }
+
     pub fn find_site(&self, subgraph: &SubgraphDeploymentId) -> Result<Option<Site>, StoreError> {
         let schema = deployment_schemas::table
             .filter(deployment_schemas::subgraph.eq(subgraph.to_string()))
@@ -1033,5 +1050,25 @@ impl Connection {
                 .order_by(u::entity_count)
                 .load(&self.0)?),
         }
+    }
+
+    pub fn subgraphs_using_deployment(
+        &self,
+        id: &SubgraphDeploymentId,
+    ) -> Result<Vec<String>, StoreError> {
+        use subgraph as s;
+        use subgraph_version as v;
+
+        Ok(s::table
+            .inner_join(
+                v::table.on(v::subgraph
+                    .nullable()
+                    .eq(s::current_version)
+                    .or(v::subgraph.nullable().eq(s::pending_version))),
+            )
+            .filter(v::deployment.eq(id.as_str()))
+            .select(s::name)
+            .distinct()
+            .load(&self.0)?)
     }
 }

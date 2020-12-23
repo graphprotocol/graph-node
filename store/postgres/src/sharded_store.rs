@@ -328,7 +328,7 @@ impl ShardedStore {
         for schema in schemas {
             let (store, _) = self.store(&schema.deployment)?;
             let conn = store.get_conn()?;
-            deployment::drop_entities(&conn, &schema.namespace)?;
+            deployment::drop_schema(&conn, &schema.namespace)?;
         }
 
         // Delete metadata entities in each shard
@@ -434,6 +434,42 @@ impl ShardedStore {
         filter: unused::Filter,
     ) -> Result<Vec<UnusedDeployment>, StoreError> {
         self.primary_conn()?.list_unused_deployments(filter)
+    }
+
+    /// Remove a deployment, i.e., all its data and metadata. This is only permissible
+    /// if the deployment is unused in the sense that it is neither the current nor
+    /// pending version of any subgraph, and is not currently assigned to any node
+    pub fn remove_deployment(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        let (store, site) = self.store(id)?;
+
+        // Check that deployment is not assigned
+        match self.primary_conn()?.assigned_node(id)? {
+            Some(node) => {
+                return Err(constraint_violation!(
+                    "deployment {} can not be removed since it is assigned to node {}",
+                    id.as_str(),
+                    node.as_str()
+                ));
+            }
+            None => { /* ok */ }
+        }
+
+        // Check that it is not current/pending for any subgraph
+        let versions = self.primary_conn()?.subgraphs_using_deployment(id)?;
+        if versions.len() > 0 {
+            return Err(constraint_violation!(
+                "deployment {} can not be removed \
+                since it is the current or pending version for the subgraph(s) {}",
+                id.as_str(),
+                versions.join(", "),
+            ));
+        }
+
+        store.drop_deployment(&site)?;
+
+        self.primary_conn()?.drop_site(&site.deployment)?;
+
+        Ok(())
     }
 }
 
