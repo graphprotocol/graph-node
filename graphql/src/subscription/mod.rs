@@ -5,18 +5,15 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 
-use crate::execution::*;
+use crate::{execution::*, prelude::StoreResolver};
 
 /// Options available for subscription execution.
-pub struct SubscriptionExecutionOptions<R>
-where
-    R: Resolver,
-{
+pub struct SubscriptionExecutionOptions {
     /// The logger to use during subscription execution.
     pub logger: Logger,
 
     /// The resolver to use.
-    pub resolver: R,
+    pub resolver: StoreResolver,
 
     /// Individual timeout for each subscription query.
     pub timeout: Option<Duration>,
@@ -36,14 +33,11 @@ where
     pub load_manager: Arc<dyn QueryLoadManager>,
 }
 
-pub fn execute_subscription<R>(
+pub fn execute_subscription(
     subscription: Subscription,
     schema: Arc<ApiSchema>,
-    options: SubscriptionExecutionOptions<R>,
-) -> Result<SubscriptionResult, SubscriptionError>
-where
-    R: Resolver + CheapClone + 'static,
-{
+    options: SubscriptionExecutionOptions,
+) -> Result<SubscriptionResult, SubscriptionError> {
     let query = crate::execution::Query::new(
         &options.logger,
         schema,
@@ -55,13 +49,10 @@ where
     execute_prepared_subscription(query, options)
 }
 
-pub(crate) fn execute_prepared_subscription<R>(
+pub(crate) fn execute_prepared_subscription(
     query: Arc<crate::execution::Query>,
-    options: SubscriptionExecutionOptions<R>,
-) -> Result<SubscriptionResult, SubscriptionError>
-where
-    R: Resolver + CheapClone + 'static,
-{
+    options: SubscriptionExecutionOptions,
+) -> Result<SubscriptionResult, SubscriptionError> {
     if !query.is_subscription() {
         return Err(SubscriptionError::from(QueryExecutionError::NotSupported(
             "Only subscriptions are supported".to_string(),
@@ -79,13 +70,10 @@ where
     Ok(response_stream)
 }
 
-fn create_source_event_stream<R>(
+fn create_source_event_stream(
     query: Arc<crate::execution::Query>,
-    options: &SubscriptionExecutionOptions<R>,
-) -> Result<StoreEventStreamBox, SubscriptionError>
-where
-    R: Resolver + CheapClone + 'static,
-{
+    options: &SubscriptionExecutionOptions,
+) -> Result<StoreEventStreamBox, SubscriptionError> {
     let ctx = ExecutionContext {
         logger: options.logger.cheap_clone(),
         resolver: options.resolver.cheap_clone(),
@@ -137,14 +125,11 @@ fn resolve_field_stream(
         .map_err(SubscriptionError::from)
 }
 
-fn map_source_to_response_stream<R>(
+fn map_source_to_response_stream(
     query: Arc<crate::execution::Query>,
-    options: SubscriptionExecutionOptions<R>,
+    options: SubscriptionExecutionOptions,
     source_stream: StoreEventStreamBox,
-) -> QueryResultStream
-where
-    R: Resolver + CheapClone + 'static,
-{
+) -> QueryResultStream {
     let ctx = ExecutionContext {
         logger: options.logger,
         resolver: options.resolver,
