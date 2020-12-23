@@ -264,7 +264,6 @@ where
             *GRAPHQL_MAX_DEPTH,
         )?;
 
-        let deployment = query.schema.id().clone();
         if let Err(err) = self
             .load_manager
             .decide(
@@ -277,12 +276,11 @@ where
             return Err(SubscriptionError::GraphQLError(vec![err]));
         }
 
-        let resolver = StoreResolver::for_subscription(&self.logger, deployment, store);
         execute_prepared_subscription(
             query,
             SubscriptionExecutionOptions {
                 logger: self.logger.clone(),
-                resolver,
+                store,
                 timeout: GRAPHQL_QUERY_TIMEOUT.clone(),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,

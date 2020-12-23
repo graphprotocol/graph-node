@@ -5,15 +5,19 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::*;
 
-use crate::{execution::*, prelude::StoreResolver};
+use crate::{
+    execution::*,
+    prelude::{BlockConstraint, StoreResolver},
+    schema::api::ErrorPolicy,
+};
 
 /// Options available for subscription execution.
 pub struct SubscriptionExecutionOptions {
     /// The logger to use during subscription execution.
     pub logger: Logger,
 
-    /// The resolver to use.
-    pub resolver: StoreResolver,
+    /// The store to use.
+    pub store: Arc<dyn QueryStore>,
 
     /// Individual timeout for each subscription query.
     pub timeout: Option<Duration>,
@@ -74,9 +78,14 @@ fn create_source_event_stream(
     query: Arc<crate::execution::Query>,
     options: &SubscriptionExecutionOptions,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
+    let resolver = StoreResolver::for_subscription(
+        &options.logger,
+        query.schema.id().clone(),
+        options.store.clone(),
+    );
     let ctx = ExecutionContext {
         logger: options.logger.cheap_clone(),
-        resolver: options.resolver.cheap_clone(),
+        resolver,
         query: query.clone(),
         deadline: None,
         max_first: options.max_first,
@@ -130,25 +139,6 @@ fn map_source_to_response_stream(
     options: SubscriptionExecutionOptions,
     source_stream: StoreEventStreamBox,
 ) -> QueryResultStream {
-    let ctx = ExecutionContext {
-        logger: options.logger,
-        resolver: options.resolver,
-        query,
-        deadline: None,
-        max_first: options.max_first,
-        max_skip: options.max_skip,
-        cache_status: Default::default(),
-        load_manager: options.load_manager,
-        nested_resolver: false,
-    };
-
-    let logger = ctx.logger.cheap_clone();
-    let resolver = ctx.resolver.cheap_clone();
-    let query = ctx.query.cheap_clone();
-    let max_first = ctx.max_first;
-    let max_skip = ctx.max_skip;
-    let load_manager = ctx.load_manager.cheap_clone();
-
     // Create a stream with a single empty event. By chaining this in front
     // of the real events, we trick the subscription into executing its query
     // at least once. This satisfies the GraphQL over Websocket protocol
@@ -159,7 +149,17 @@ fn map_source_to_response_stream(
         changes: Default::default(),
     }))]);
 
-    let timeout = options.timeout;
+    let SubscriptionExecutionOptions {
+        logger,
+        store,
+        timeout,
+        max_complexity: _,
+        max_depth: _,
+        max_first,
+        max_skip,
+        load_manager,
+    } = options;
+
     Box::new(
         trigger_stream
             .chain(source_stream.compat())
@@ -170,7 +170,7 @@ fn map_source_to_response_stream(
                 }
                 Ok(event) => execute_subscription_event(
                     logger.clone(),
-                    resolver.cheap_clone(),
+                    store.clone(),
                     query.clone(),
                     event,
                     timeout,
@@ -185,7 +185,7 @@ fn map_source_to_response_stream(
 
 async fn execute_subscription_event(
     logger: Logger,
-    resolver: impl Resolver + 'static,
+    store: Arc<dyn QueryStore>,
     query: Arc<crate::execution::Query>,
     event: Arc<StoreEvent>,
     timeout: Option<Duration>,
@@ -194,6 +194,21 @@ async fn execute_subscription_event(
     load_manager: Arc<dyn QueryLoadManager>,
 ) -> Arc<QueryResult> {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
+
+    let resolver = match StoreResolver::at_block(
+        &logger,
+        store,
+        BlockConstraint::Latest,
+        ErrorPolicy::Deny,
+        query.schema.id().clone(),
+    )
+    .await
+    {
+        Ok(resolver) => resolver,
+        Err(e) => return Arc::new(e.into()),
+    };
+
+    let block_ptr = resolver.block_ptr.clone();
 
     // Create a fresh execution context with deadline.
     let ctx = Arc::new(ExecutionContext {
@@ -217,7 +232,7 @@ async fn execute_subscription_event(
         ctx.cheap_clone(),
         ctx.query.selection_set.cheap_clone(),
         subscription_type,
-        None,
+        block_ptr,
     )
     .await
 }

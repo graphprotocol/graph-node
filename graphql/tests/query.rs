@@ -837,7 +837,6 @@ fn query_complexity_subscriptions() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
-        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let query = Query::new(
             graphql_parser::parse_query(
@@ -860,7 +859,7 @@ fn query_complexity_subscriptions() {
         let max_complexity = Some(1_010_100);
         let options = SubscriptionExecutionOptions {
             logger: logger.clone(),
-            resolver: store_resolver,
+            store: store.clone(),
             timeout: None,
             max_complexity,
             max_depth: 100,
@@ -900,11 +899,10 @@ fn query_complexity_subscriptions() {
         );
 
         let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
-        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
 
         let options = SubscriptionExecutionOptions {
             logger,
-            resolver: store_resolver,
+            store,
             timeout: None,
             max_complexity,
             max_depth: 100,
@@ -1253,7 +1251,6 @@ fn subscription_gets_result_even_without_events() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
-        let store_resolver = StoreResolver::for_subscription(&logger, id.clone(), store);
         let schema = STORE.api_schema(&id).unwrap();
 
         let query = Query::new(
@@ -1271,7 +1268,7 @@ fn subscription_gets_result_even_without_events() {
 
         let options = SubscriptionExecutionOptions {
             logger: logger.clone(),
-            resolver: store_resolver,
+            store,
             timeout: None,
             max_complexity: None,
             max_depth: 100,
