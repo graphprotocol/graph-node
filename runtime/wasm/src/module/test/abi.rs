@@ -1,14 +1,14 @@
 use super::*;
-use std::env;
 
 #[tokio::test(threaded_scheduler)]
 async fn unbounded_loop() {
     // Set handler timeout to 3 seconds.
-    env::set_var(crate::host::TIMEOUT_ENV_VAR, "3");
-    let module = test_module(
+    let module = test_valid_module_and_store_with_timeout(
         "unboundedLoop",
         mock_data_source("wasm_test/non_terminating.wasm"),
-    );
+        Some(Duration::from_secs(3)),
+    )
+    .0;
     let func = module.get_func("loop").get0().unwrap();
     let res: Result<(), _> = func();
     assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));

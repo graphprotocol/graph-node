@@ -5,7 +5,9 @@ use graph::prelude::*;
 use web3::types::*;
 
 lazy_static! {
-    static ref CLEANUP_BLOCKS: bool = std::env::var("GRAPH_ETHEREUM_CLEANUP_BLOCKS")
+    // graph_node::config disallows setting this in a store with multiple
+    // shards. See 8b6ad0c64e244023ac20ced7897fe666 for the reason
+    pub static ref CLEANUP_BLOCKS: bool = std::env::var("GRAPH_ETHEREUM_CLEANUP_BLOCKS")
         .ok()
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false);

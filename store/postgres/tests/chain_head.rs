@@ -5,9 +5,9 @@ use futures::future::IntoFuture;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use graph::components::store::{ChainStore, Store as _};
 use graph::prelude::{Future01CompatExt, SubgraphDeploymentId};
-use graph_store_postgres::Store as DieselStore;
+use graph::{components::store::ChainStore, prelude::QueryStoreManager};
+use graph_store_postgres::NetworkStore as DieselStore;
 
 use test_store::block_store::{
     Chain, FakeBlock, BLOCK_FIVE, BLOCK_FOUR, BLOCK_ONE, BLOCK_ONE_NO_PARENT, BLOCK_ONE_SIBLING,
@@ -27,16 +27,9 @@ where
     R::Error: Send + Debug,
     R::Future: Send,
 {
-    let store = STORE.clone();
-
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
-    runtime
-        .block_on(async {
+    run_test_sequentially(
+        || (),
+        |store, ()| async move {
             // Reset state before starting
             block_store::remove();
 
@@ -44,9 +37,13 @@ where
             block_store::insert(chain, NETWORK_NAME);
 
             // Run test
-            test(store).into_future().compat().await
-        })
-        .unwrap_or_else(|e| panic!("Failed to run ChainHead test: {:?}", e));
+            test(store)
+                .into_future()
+                .compat()
+                .await
+                .expect("test finishes successfully");
+        },
+    );
 }
 
 /// Check that `attempt_chain_head_update` works as expected on the given
@@ -157,21 +154,22 @@ fn block_number() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     let subgraph = SubgraphDeploymentId::new("nonExistentSubgraph").unwrap();
 
-    create_test_subgraph(subgraph.as_str(), "type Dummy @entity { id: ID! }");
-
     run_test(chain, move |store| -> Result<(), ()> {
-        let block = store
-            .block_number(&subgraph, GENESIS_BLOCK.block_hash())
+        create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
+
+        let query_store = store.query_store(subgraph.into(), false).unwrap();
+        let block = query_store
+            .block_number(GENESIS_BLOCK.block_hash())
             .expect("Found genesis block");
         assert_eq!(Some(0), block);
 
-        let block = store
-            .block_number(&subgraph, BLOCK_ONE.block_hash())
+        let block = query_store
+            .block_number(BLOCK_ONE.block_hash())
             .expect("Found block 1");
         assert_eq!(Some(1), block);
 
-        let block = store
-            .block_number(&subgraph, BLOCK_THREE.block_hash())
+        let block = query_store
+            .block_number(BLOCK_THREE.block_hash())
             .expect("Looked for block 3");
         assert!(block.is_none());
 

@@ -2,11 +2,11 @@ use crate::UnresolvedContractCall;
 use bytes::Bytes;
 use ethabi::{Address, Token, encode, decode};
 use ethabi::param_type::{Reader, ParamType};
-use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
+use graph::components::{arweave::ArweaveAdapter, store::EntityType};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
@@ -17,6 +17,7 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 use web3::types::H160;
 
+use graph::ensure;
 use graph_graphql::prelude::validate_entity;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
@@ -33,8 +34,23 @@ impl From<anyhow::Error> for EthereumCallError {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum HostExportError {
+    #[error("{0:#}")]
+    Unknown(anyhow::Error),
+
+    #[error("{0:#}")]
+    Deterministic(anyhow::Error),
+}
+
+impl From<anyhow::Error> for HostExportError {
+    fn from(e: anyhow::Error) -> Self {
+        HostExportError::Unknown(e)
+    }
+}
+
 pub(crate) struct HostExports {
-    subgraph_id: SubgraphDeploymentId,
+    pub(crate) subgraph_id: SubgraphDeploymentId,
     pub(crate) api_version: Version,
     data_source_name: String,
     data_source_address: Option<Address>,
@@ -106,7 +122,7 @@ impl HostExports {
         file_name: Option<String>,
         line_number: Option<u32>,
         column_number: Option<u32>,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), HostExportError> {
         let message = message
             .map(|message| format!("message: {}", message))
             .unwrap_or_else(|| "no message".into());
@@ -122,11 +138,11 @@ impl HostExports {
             ),
             _ => unreachable!(),
         };
-        Err(anyhow::anyhow!(
+        Err(HostExportError::Deterministic(anyhow::anyhow!(
             "Mapping aborted at {}, with {}",
             location,
             message
-        ))
+        )))
     }
 
     pub(crate) fn store_set(
@@ -138,8 +154,6 @@ impl HostExports {
         entity_id: String,
         mut data: HashMap<String, Value>,
     ) -> Result<(), anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
         if let Some(proof_of_indexing) = proof_of_indexing {
             let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
             proof_of_indexing.write(
@@ -169,26 +183,20 @@ impl HostExports {
 
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type,
+            entity_type: EntityType::data(entity_type),
             entity_id,
         };
         let entity = Entity::from(data);
-        let schema = self.store.input_schema(&self.subgraph_id).compat()?;
+        let schema = self.store.input_schema(&self.subgraph_id)?;
         let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
-        state.entity_cache.set(key.clone(), entity).compat()?;
+        state.entity_cache.set(key.clone(), entity);
 
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
-        if !is_valid
-            && self
-                .store
-                .uses_relational_schema(&self.subgraph_id)
-                .compat()?
-        {
+        if !is_valid {
             let entity = state
                 .entity_cache
-                .get(&key)
-                .compat()?
+                .get(&key)?
                 .expect("we just stored this entity");
             validate_entity(&schema.document, &key, &entity)?;
         }
@@ -216,7 +224,7 @@ impl HostExports {
         }
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type,
+            entity_type: EntityType::data(entity_type),
             entity_id,
         };
         state.entity_cache.remove(key);
@@ -230,7 +238,7 @@ impl HostExports {
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type: entity_type.clone(),
+            entity_type: EntityType::data(entity_type.clone()),
             entity_id: entity_id.clone(),
         };
 
@@ -361,9 +369,7 @@ impl HostExports {
     }
 
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
-        Ok(block_on03(self.link_resolver.cat(logger, &Link { link })).compat()?)
+        Ok(block_on03(self.link_resolver.cat(logger, &Link { link }))?)
     }
 
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
@@ -381,10 +387,8 @@ impl HostExports {
         user_data: store::Value,
         flags: Vec<String>,
     ) -> Result<Vec<BlockState>, anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
         const JSON_FLAG: &str = "json";
-        anyhow::ensure!(
+        ensure!(
             flags.contains(&JSON_FLAG.to_string()),
             "Flags must contain 'json'"
         );
@@ -405,15 +409,16 @@ impl HostExports {
 
         let result = {
             let mut stream: JsonValueStream =
-                block_on03(link_resolver.json_stream(&logger, &Link { link })).compat()?;
+                block_on03(link_resolver.json_stream(&logger, &Link { link }))?;
             let mut v = Vec::new();
             while let Some(sv) = block_on03(stream.next()) {
-                let sv = sv.compat()?;
+                let sv = sv?;
                 let module = WasmInstance::from_valid_module_with_ctx(
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                     module.timeout,
+                    module.allow_non_determinstic_ipfs,
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s
@@ -434,24 +439,31 @@ impl HostExports {
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_i64(&self, json: String) -> Result<i64, anyhow::Error> {
-        i64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as i64", json))
+    pub(crate) fn json_to_i64(&self, json: String) -> Result<i64, HostExportError> {
+        i64::from_str(&json)
+            .with_context(|| format!("JSON `{}` cannot be parsed as i64", json))
+            .map_err(HostExportError::Deterministic)
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_u64(&self, json: String) -> Result<u64, anyhow::Error> {
-        u64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as u64", json))
+    pub(crate) fn json_to_u64(&self, json: String) -> Result<u64, HostExportError> {
+        u64::from_str(&json)
+            .with_context(|| format!("JSON `{}` cannot be parsed as u64", json))
+            .map_err(HostExportError::Deterministic)
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_f64(&self, json: String) -> Result<f64, anyhow::Error> {
-        f64::from_str(&json).with_context(|| format!("JSON `{}` cannot be parsed as f64", json))
+    pub(crate) fn json_to_f64(&self, json: String) -> Result<f64, HostExportError> {
+        f64::from_str(&json)
+            .with_context(|| format!("JSON `{}` cannot be parsed as f64", json))
+            .map_err(HostExportError::Deterministic)
     }
 
     /// Expects a decimal string.
-    pub(crate) fn json_to_big_int(&self, json: String) -> Result<Vec<u8>, anyhow::Error> {
+    pub(crate) fn json_to_big_int(&self, json: String) -> Result<Vec<u8>, HostExportError> {
         let big_int = BigInt::from_str(&json)
-            .with_context(|| format!("JSON `{}` is not a decimal string", json))?;
+            .with_context(|| format!("JSON `{}` is not a decimal string", json))
+            .map_err(HostExportError::Deterministic)?;
         Ok(big_int.to_signed_bytes_le())
     }
 
@@ -471,8 +483,17 @@ impl HostExports {
         x * y
     }
 
-    pub(crate) fn big_int_divided_by(&self, x: BigInt, y: BigInt) -> Result<BigInt, anyhow::Error> {
-        anyhow::ensure!(y != 0.into(), "attempted to divide BigInt `{}` by zero", x);
+    pub(crate) fn big_int_divided_by(
+        &self,
+        x: BigInt,
+        y: BigInt,
+    ) -> Result<BigInt, HostExportError> {
+        if y == 0.into() {
+            return Err(HostExportError::Deterministic(anyhow::anyhow!(
+                "attempted to divide BigInt `{}` by zero",
+                x
+            )));
+        }
         Ok(x / y)
     }
 
@@ -507,12 +528,13 @@ impl HostExports {
         &self,
         x: BigDecimal,
         y: BigDecimal,
-    ) -> Result<BigDecimal, anyhow::Error> {
-        anyhow::ensure!(
-            y != 0.into(),
-            format!("attempted to divide BigDecimal `{}` by zero", x)
-        );
-
+    ) -> Result<BigDecimal, HostExportError> {
+        if y == 0.into() {
+            return Err(HostExportError::Deterministic(anyhow::anyhow!(
+                "attempted to divide BigDecimal `{}` by zero",
+                x
+            )));
+        }
         Ok(x / y)
     }
 
@@ -565,7 +587,7 @@ impl HostExports {
             .clone();
 
         // Remember that we need to create this data source
-        state.created_data_sources.push(DataSourceTemplateInfo {
+        state.push_created_data_source(DataSourceTemplateInfo {
             data_source: self.data_source_name.clone(),
             template,
             params,
@@ -576,9 +598,7 @@ impl HostExports {
     }
 
     pub(crate) fn ens_name_by_hash(&self, hash: &str) -> Result<Option<String>, anyhow::Error> {
-        use graph::prelude::failure::ResultExt;
-
-        Ok(self.store.find_ens_name(hash).compat()?)
+        Ok(self.store.find_ens_name(hash)?)
     }
 
     pub(crate) fn log_log(&self, logger: &Logger, level: slog::Level, msg: String) {
@@ -619,14 +639,16 @@ impl HostExports {
     }
 }
 
-pub(crate) fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, serde_json::Error> {
-    serde_json::from_reader(bytes.as_slice())
+pub(crate) fn json_from_bytes(bytes: &Vec<u8>) -> Result<serde_json::Value, HostExportError> {
+    serde_json::from_reader(bytes.as_slice()).map_err(|e| HostExportError::Deterministic(e.into()))
 }
 
-pub(crate) fn string_to_h160(string: &str) -> Result<H160, anyhow::Error> {
+pub(crate) fn string_to_h160(string: &str) -> Result<H160, HostExportError> {
     // `H160::from_str` takes a hex string with no leading `0x`.
     let s = string.trim_start_matches("0x");
-    H160::from_str(s).with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
+    H160::from_str(s)
+        .with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
+        .map_err(HostExportError::Deterministic)
 }
 
 pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {

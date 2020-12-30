@@ -1,41 +1,34 @@
 [package]
 name = "graph-runtime-wasm"
-version = "0.18.0"
+version = "0.19.2"
 edition = "2018"
 
 [dependencies]
-async-trait = "0.1.36"
+async-trait = "0.1.41"
 atomic_refcell = "0.1.6"
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 futures = "0.1.21"
 hex = "0.4.2"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-bs58 = "0.3.1"
+bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
 semver = "0.10.0"
 lazy_static = "1.4"
 uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.19.2"
-strum_macros = "0.19.2"
+strum_macros = "0.20.1"
 bytes = "0.5"
+anyhow = "1.0"
 
-# We need patch in order to be able to call host exports when initializing globals.
-#
-# By this conversation, wasmtime does not want to upstream this, pointing out that there is an
-# incompatibility between the way AS does things and the direction wasmtime wants to take.
-# See:
-# https://bytecodealliance.zulipchat.com/#narrow/stream/206238-general/topic/Host.20functions.20in.20start
-# https://github.com/AssemblyScript/assemblyscript/issues/1333
-# See also 3a23f045-eb9d-4b12-8c7c-3a4c2e34bea1
-wasmtime = { git = "https://github.com/graphprotocol/wasmtime", branch = "master" }
+wasmtime = "0.21.0"
 
 defer = "0.1"
 
 [dev-dependencies]
-graphql-parser = "0.2.3"
+graphql-parser = "0.3"
 graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
 test-store = { path = "../../store/test-store" }
-ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
+ipfs-api = { version = "=0.7.1", features = ["hyper-tls"] }
 graph-chain-arweave = { path = "../../chain/arweave" }

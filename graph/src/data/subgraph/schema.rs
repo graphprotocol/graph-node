@@ -11,213 +11,135 @@
 //!
 //! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
-/// Convenient graphql queries for the metadata.
-pub mod queries;
-
-use graphql_parser::query as q;
-use graphql_parser::schema::{Definition, Document, Field, Name, Type, TypeDefinition};
+use anyhow::{anyhow, Error};
 use hex;
-use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
-use std::collections::BTreeMap;
+use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
+use std::{collections::BTreeMap, fmt, fmt::Display};
+use strum_macros::{EnumString, IntoStaticStr};
 use uuid::Uuid;
 use web3::types::*;
 
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
-use crate::components::store::{
-    AttributeIndexDefinition, EntityCollection, EntityFilter, EntityKey, EntityOperation,
-    EntityQuery, EntityRange, MetadataOperation,
-};
+use crate::components::store::{EntityOperation, MetadataKey, MetadataOperation};
 use crate::data::graphql::{TryFromValue, ValueMap};
-use crate::data::store::{Entity, NodeId, SubgraphEntityPair, Value, ValueType};
-use crate::data::subgraph::{SubgraphManifest, SubgraphName};
+use crate::data::store::{Entity, Value};
+use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
-
-lazy_static! {
-    /// ID of the subgraph of subgraphs.
-    pub static ref SUBGRAPHS_ID: SubgraphDeploymentId =
-        SubgraphDeploymentId::new("subgraphs").unwrap();
-}
 
 pub const POI_TABLE: &str = "poi2$";
 pub const POI_OBJECT: &str = "Poi$";
 
-/// Generic type for the entity types defined below.
-pub trait TypedEntity {
-    const TYPENAME: &'static str;
-    type IdType: ToString;
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    IntoStaticStr,
+    EnumString,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
+pub enum MetadataType {
+    SubgraphDeployment,
+    // This is the only metadata type that is stored in the primary. We only
+    // need this type so we can send store events for assignment changes
+    SubgraphDeploymentAssignment,
+    SubgraphManifest,
+    EthereumContractDataSource,
+    DynamicEthereumContractDataSource,
+    EthereumContractSource,
+    EthereumContractMapping,
+    EthereumContractAbi,
+    EthereumBlockHandlerEntity,
+    EthereumBlockHandlerFilterEntity,
+    EthereumCallHandlerEntity,
+    EthereumContractEventHandler,
+    EthereumContractDataSourceTemplate,
+    EthereumContractDataSourceTemplateSource,
+    SubgraphError,
+}
 
-    fn query() -> EntityQuery {
-        let range = EntityRange {
-            first: None,
-            skip: 0,
-        };
-        EntityQuery::new(
-            SUBGRAPHS_ID.clone(),
-            BLOCK_NUMBER_MAX,
-            EntityCollection::All(vec![Self::TYPENAME.to_owned()]),
-        )
-        .range(range)
+impl MetadataType {
+    pub fn as_str(&self) -> &'static str {
+        self.into()
     }
 
-    fn subgraph_entity_pair() -> SubgraphEntityPair {
-        (SUBGRAPHS_ID.clone(), Self::TYPENAME.to_owned())
-    }
-
-    fn key(entity_id: Self::IdType) -> EntityKey {
-        let (subgraph_id, entity_type) = Self::subgraph_entity_pair();
-        EntityKey {
+    pub fn key(&self, subgraph_id: SubgraphDeploymentId, entity_id: String) -> MetadataKey {
+        MetadataKey {
             subgraph_id,
-            entity_type,
-            entity_id: entity_id.to_string(),
+            entity_type: self.clone(),
+            entity_id,
         }
     }
+}
+
+impl Display for MetadataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<MetadataType> for String {
+    fn from(m: MetadataType) -> Self {
+        m.to_string()
+    }
+}
+
+/// Generic type for the entity types defined below.
+pub trait TypedEntity {
+    const TYPENAME: MetadataType;
+    type IdType: ToString;
 }
 
 // See also: ed42d219c6704a4aab57ce1ea66698e7.
 // Note: The types here need to be in sync with the metadata GraphQL schema.
 
-#[derive(Debug)]
-pub struct SubgraphEntity {
-    name: SubgraphName,
-    current_version_id: Option<String>,
-    pending_version_id: Option<String>,
-    created_at: u64,
-}
-
-impl TypedEntity for SubgraphEntity {
-    const TYPENAME: &'static str = "Subgraph";
-    type IdType = String;
-}
-
 trait OperationList {
-    fn add(&mut self, entity: &str, id: String, data: Entity);
+    fn add(&mut self, entity: MetadataType, id: String, data: Entity);
 }
 
-struct MetadataOperationList(Vec<MetadataOperation>);
+struct MetadataOperationList(SubgraphDeploymentId, Vec<MetadataOperation>);
 
 impl OperationList for MetadataOperationList {
-    fn add(&mut self, entity: &str, id: String, data: Entity) {
-        self.0.push(MetadataOperation::Set {
-            entity: entity.to_owned(),
-            id,
-            data,
-        })
+    fn add(&mut self, entity_type: MetadataType, id: String, data: Entity) {
+        let key = entity_type.key(self.0.clone(), id);
+        self.1.push(MetadataOperation::Set { key, data })
     }
 }
 
-struct EntityOperationList(Vec<EntityOperation>);
+struct EntityOperationList(SubgraphDeploymentId, Vec<EntityOperation>);
 
 impl OperationList for EntityOperationList {
-    fn add(&mut self, entity: &str, id: String, data: Entity) {
-        self.0.push(EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: SUBGRAPHS_ID.clone(),
-                entity_type: entity.to_owned(),
-                entity_id: id.to_owned(),
-            },
-            data,
-        })
+    fn add(&mut self, entity_type: MetadataType, id: String, data: Entity) {
+        let key = entity_type.key(self.0.clone(), id).into();
+        self.1.push(EntityOperation::Set { key, data })
     }
 }
 
 trait WriteOperations: Sized {
     fn generate(self, id: &str, ops: &mut dyn OperationList);
 
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let mut ops = MetadataOperationList(Vec::new());
+    fn write_operations(self, subgraph: &SubgraphDeploymentId, id: &str) -> Vec<MetadataOperation> {
+        let mut ops = MetadataOperationList(subgraph.clone(), Vec::new());
         self.generate(id, &mut ops);
-        ops.0
+        ops.1
     }
 
-    fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
-        let mut ops = EntityOperationList(Vec::new());
+    fn write_entity_operations(
+        self,
+        subgraph: &SubgraphDeploymentId,
+        id: &str,
+    ) -> Vec<EntityOperation> {
+        let mut ops = EntityOperationList(subgraph.clone(), Vec::new());
         self.generate(id, &mut ops);
-        ops.0
-    }
-}
-
-impl SubgraphEntity {
-    pub fn new(
-        name: SubgraphName,
-        current_version_id: Option<String>,
-        pending_version_id: Option<String>,
-        created_at: u64,
-    ) -> SubgraphEntity {
-        SubgraphEntity {
-            name,
-            current_version_id,
-            pending_version_id,
-            created_at,
-        }
-    }
-
-    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id,
-            name: self.name.to_string(),
-            currentVersion: self.current_version_id,
-            pendingVersion: self.pending_version_id,
-            createdAt: self.created_at,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-
-    pub fn update_current_version_operations(
-        id: &str,
-        version_id_opt: Option<String>,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            currentVersion: version_id_opt,
-        };
-
-        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-
-    pub fn update_pending_version_operations(
-        id: &str,
-        version_id_opt: Option<String>,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            pendingVersion: version_id_opt,
-        };
-
-        vec![update_metadata_operation(Self::TYPENAME, id, entity)]
-    }
-}
-
-#[derive(Debug)]
-pub struct SubgraphVersionEntity {
-    subgraph_id: String,
-    deployment_id: SubgraphDeploymentId,
-    created_at: u64,
-}
-
-impl TypedEntity for SubgraphVersionEntity {
-    const TYPENAME: &'static str = "SubgraphVersion";
-    type IdType = String;
-}
-
-impl SubgraphVersionEntity {
-    pub fn new(subgraph_id: String, deployment_id: SubgraphDeploymentId, created_at: u64) -> Self {
-        Self {
-            subgraph_id,
-            deployment_id,
-            created_at,
-        }
-    }
-
-    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id.to_owned(),
-            subgraph: self.subgraph_id,
-            deployment: self.deployment_id.to_string(),
-            createdAt: self.created_at,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id, entity)]
+        ops.1
     }
 }
 
@@ -233,6 +155,24 @@ pub enum SubgraphHealth {
     Failed,
 }
 
+impl SubgraphHealth {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SubgraphHealth::Healthy => "healthy",
+            SubgraphHealth::Unhealthy => "unhealthy",
+            SubgraphHealth::Failed => "failed",
+        }
+    }
+
+    pub fn is_failed(&self) -> bool {
+        match self {
+            SubgraphHealth::Healthy => false,
+            SubgraphHealth::Unhealthy => false,
+            SubgraphHealth::Failed => true,
+        }
+    }
+}
+
 impl FromStr for SubgraphHealth {
     type Err = Error;
 
@@ -241,18 +181,14 @@ impl FromStr for SubgraphHealth {
             "healthy" => Ok(SubgraphHealth::Healthy),
             "unhealthy" => Ok(SubgraphHealth::Unhealthy),
             "failed" => Ok(SubgraphHealth::Failed),
-            _ => Err(format_err!("failed to parse `{}` as SubgraphHealth", s)),
+            _ => Err(anyhow!("failed to parse `{}` as SubgraphHealth", s)),
         }
     }
 }
 
 impl From<SubgraphHealth> for String {
     fn from(health: SubgraphHealth) -> String {
-        match health {
-            SubgraphHealth::Healthy => "healthy".into(),
-            SubgraphHealth::Unhealthy => "unhealthy".into(),
-            SubgraphHealth::Failed => "failed".into(),
-        }
+        health.as_str().to_string()
     }
 }
 
@@ -272,7 +208,7 @@ impl TryFromValue for SubgraphHealth {
     fn try_from_value(value: &q::Value) -> Result<SubgraphHealth, Error> {
         match value {
             q::Value::Enum(health) => SubgraphHealth::from_str(health),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "cannot parse value as SubgraphHealth: `{:?}`",
                 value
             )),
@@ -292,13 +228,16 @@ pub struct SubgraphDeploymentEntity {
     earliest_ethereum_block_number: Option<u64>,
     latest_ethereum_block_hash: Option<H256>,
     latest_ethereum_block_number: Option<u64>,
-    graft_base: Option<SubgraphDeploymentId>,
+    pub graft_base: Option<SubgraphDeploymentId>,
     graft_block_hash: Option<H256>,
     graft_block_number: Option<u64>,
+    reorg_count: i32,
+    current_reorg_depth: i32,
+    max_reorg_depth: i32,
 }
 
 impl TypedEntity for SubgraphDeploymentEntity {
-    const TYPENAME: &'static str = "SubgraphDeployment";
+    const TYPENAME: MetadataType = MetadataType::SubgraphDeployment;
     type IdType = SubgraphDeploymentId;
 }
 
@@ -322,6 +261,9 @@ impl SubgraphDeploymentEntity {
             graft_base: None,
             graft_block_hash: None,
             graft_block_number: None,
+            reorg_count: 0,
+            current_reorg_depth: 0,
+            max_reorg_depth: 0,
         }
     }
 
@@ -330,33 +272,15 @@ impl SubgraphDeploymentEntity {
             self.graft_base = Some(subgraph);
             self.graft_block_hash = Some(ptr.hash);
             self.graft_block_number = Some(ptr.number);
-            self.latest_ethereum_block_hash = Some(ptr.hash);
-            self.latest_ethereum_block_number = Some(ptr.number);
+            // When we graft, the block pointer is only set after copying
+            // from the base subgraph finished successfully
+            self.latest_ethereum_block_hash = None;
+            self.latest_ethereum_block_number = None;
         }
         self
     }
 
-    // Overwrite entity if it exists. Only in debug builds so it's not used outside tests.
-    #[cfg(debug_assertions)]
-    pub fn create_operations_replace(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        self.private_create_operations(id)
-    }
-
     pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        let mut ops: Vec<MetadataOperation> = vec![];
-
-        // Abort unless no entity exists with this ID
-        ops.push(MetadataOperation::AbortUnless {
-            description: "Subgraph deployment entity must not exist yet to be created".to_owned(),
-            query: Self::query().filter(EntityFilter::new_equal("id", id.to_string())),
-            entity_ids: vec![],
-        });
-
-        ops.extend(self.private_create_operations(id));
-        ops
-    }
-
-    fn private_create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let SubgraphDeploymentEntity {
@@ -373,6 +297,9 @@ impl SubgraphDeploymentEntity {
             graft_base,
             graft_block_hash,
             graft_block_number,
+            reorg_count: _,
+            current_reorg_depth: _,
+            max_reorg_depth: _,
         } = self;
 
         // A fresh subgraph will not have any errors.
@@ -381,7 +308,7 @@ impl SubgraphDeploymentEntity {
         let non_fatal_errors = Vec::<Value>::new();
 
         let manifest_id = SubgraphManifestEntity::id(&id);
-        ops.extend(manifest.write_operations(&manifest_id));
+        ops.extend(manifest.write_operations(id, &manifest_id));
 
         let entity = entity! {
             id: id.to_string(),
@@ -401,104 +328,13 @@ impl SubgraphDeploymentEntity {
         };
 
         ops.push(set_metadata_operation(
+            id.clone(),
             Self::TYPENAME,
             id.to_string(),
             entity,
         ));
 
         ops
-    }
-
-    pub fn update_ethereum_block_pointer_operations(
-        id: &SubgraphDeploymentId,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            latestEthereumBlockHash: block_ptr_to.hash,
-            latestEthereumBlockNumber: block_ptr_to.number
-        };
-
-        vec![update_metadata_operation(
-            Self::TYPENAME,
-            id.to_string(),
-            entity,
-        )]
-    }
-
-    /// When starting the subgraph, we try to "unfail" it.
-    pub fn unfail_operations(
-        id: &SubgraphDeploymentId,
-        new_health: SubgraphHealth,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            failed: false,
-            health: new_health,
-            fatalError: Value::Null,
-        };
-
-        vec![update_metadata_operation(
-            Self::TYPENAME,
-            id.as_str(),
-            entity,
-        )]
-    }
-
-    pub fn fail_operations(
-        id: &SubgraphDeploymentId,
-        error: SubgraphError,
-    ) -> Vec<MetadataOperation> {
-        let error_id = uuid::Uuid::new_v4().to_string();
-
-        let mut entity = Entity::new();
-        entity.set("failed", true);
-        entity.set("health", SubgraphHealth::Failed);
-        entity.set("fatalError", error_id.clone());
-
-        vec![
-            error.create_operation(error_id),
-            update_metadata_operation(Self::TYPENAME, id.as_str(), entity),
-        ]
-    }
-
-    pub fn update_synced_operations(
-        id: &SubgraphDeploymentId,
-        synced: bool,
-    ) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            synced: synced,
-        };
-
-        vec![update_metadata_operation(
-            Self::TYPENAME,
-            id.as_str(),
-            entity,
-        )]
-    }
-}
-
-#[derive(Debug)]
-pub struct SubgraphDeploymentAssignmentEntity {
-    node_id: NodeId,
-    cost: u64,
-}
-
-impl TypedEntity for SubgraphDeploymentAssignmentEntity {
-    const TYPENAME: &'static str = "SubgraphDeploymentAssignment";
-    type IdType = SubgraphDeploymentId;
-}
-
-impl SubgraphDeploymentAssignmentEntity {
-    pub fn new(node_id: NodeId) -> Self {
-        Self { node_id, cost: 1 }
-    }
-
-    pub fn write_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        let entity = entity! {
-            id: id.to_string(),
-            nodeId: self.node_id.to_string(),
-            cost: self.cost,
-        };
-        vec![set_metadata_operation(Self::TYPENAME, id.as_str(), entity)]
     }
 }
 
@@ -507,13 +343,14 @@ pub struct SubgraphManifestEntity {
     spec_version: String,
     description: Option<String>,
     repository: Option<String>,
+    features: Vec<String>,
     schema: String,
     data_sources: Vec<EthereumContractDataSourceEntity>,
     templates: Vec<EthereumContractDataSourceTemplateEntity>,
 }
 
 impl TypedEntity for SubgraphManifestEntity {
-    const TYPENAME: &'static str = "SubgraphManifest";
+    const TYPENAME: MetadataType = MetadataType::SubgraphManifest;
     type IdType = String;
 }
 
@@ -522,38 +359,53 @@ impl SubgraphManifestEntity {
         format!("{}-manifest", subgraph_id)
     }
 
-    fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+    fn write_operations(self, subgraph: &SubgraphDeploymentId, id: &str) -> Vec<MetadataOperation> {
+        let SubgraphManifestEntity {
+            spec_version,
+            description,
+            repository,
+            features,
+            schema,
+            data_sources,
+            templates,
+        } = self;
+
         let mut ops = vec![];
 
         let mut data_source_ids: Vec<Value> = vec![];
-        for (i, data_source) in self.data_sources.into_iter().enumerate() {
+        for (i, data_source) in data_sources.into_iter().enumerate() {
             let data_source_id = format!("{}-data-source-{}", id, i);
-            ops.extend(data_source.write_operations(&data_source_id));
+            ops.extend(data_source.write_operations(subgraph, &data_source_id));
             data_source_ids.push(data_source_id.into());
         }
 
-        let template_ids: Vec<Value> = self
-            .templates
+        let template_ids: Vec<Value> = templates
             .into_iter()
             .enumerate()
             .map(|(i, template)| {
                 let template_id = format!("{}-templates-{}", id, i);
-                ops.extend(template.write_operations(&template_id));
+                ops.extend(template.write_operations(subgraph, &template_id));
                 template_id.into()
             })
             .collect();
 
         let entity = entity! {
             id: id,
-            specVersion: self.spec_version,
-            description: self.description,
-            repository: self.repository,
-            schema: self.schema,
+            specVersion: spec_version,
+            description: description,
+            repository: repository,
+            features: features,
+            schema: schema,
             dataSources: data_source_ids,
             templates: template_ids,
         };
 
-        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(
+            subgraph.clone(),
+            Self::TYPENAME,
+            id,
+            entity,
+        ));
 
         ops
     }
@@ -565,6 +417,7 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
             spec_version: manifest.spec_version.clone(),
             description: manifest.description.clone(),
             repository: manifest.repository.clone(),
+            features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
             data_sources: manifest.data_sources.iter().map(Into::into).collect(),
             templates: manifest
@@ -583,34 +436,26 @@ pub struct EthereumContractDataSourceEntity {
     pub name: String,
     pub source: EthereumContractSourceEntity,
     pub mapping: EthereumContractMappingEntity,
-    pub templates: Vec<EthereumContractDataSourceTemplateEntity>,
 }
 
 impl TypedEntity for EthereumContractDataSourceEntity {
-    const TYPENAME: &'static str = "EthereumContractDataSource";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSource;
     type IdType = String;
 }
 
 impl EthereumContractDataSourceEntity {
-    pub fn write_operations(self, id: &str) -> Vec<MetadataOperation> {
+    pub fn write_operations(
+        self,
+        subgraph: &SubgraphDeploymentId,
+        id: &str,
+    ) -> Vec<MetadataOperation> {
         let mut ops = vec![];
 
         let source_id = format!("{}-source", id);
-        ops.extend(self.source.write_operations(&source_id));
+        ops.extend(self.source.write_operations(subgraph, &source_id));
 
         let mapping_id = format!("{}-mapping", id);
-        ops.extend(self.mapping.write_operations(&mapping_id));
-
-        let template_ids: Vec<Value> = self
-            .templates
-            .into_iter()
-            .enumerate()
-            .map(|(i, template)| {
-                let template_id = format!("{}-templates-{}", id, i);
-                ops.extend(template.write_operations(&template_id));
-                template_id.into()
-            })
-            .collect();
+        ops.extend(self.mapping.write_operations(subgraph, &mapping_id));
 
         let entity = entity! {
             id: id,
@@ -619,10 +464,14 @@ impl EthereumContractDataSourceEntity {
             name: self.name,
             source: source_id,
             mapping: mapping_id,
-            templates: template_ids,
         };
 
-        ops.push(set_metadata_operation(Self::TYPENAME, id, entity));
+        ops.push(set_metadata_operation(
+            subgraph.clone(),
+            Self::TYPENAME,
+            id,
+            entity,
+        ));
 
         ops
     }
@@ -636,11 +485,6 @@ impl<'a> From<&'a super::DataSource> for EthereumContractDataSourceEntity {
             network: data_source.network.clone(),
             source: data_source.source.clone().into(),
             mapping: EthereumContractMappingEntity::from(&data_source.mapping),
-            templates: data_source
-                .templates
-                .iter()
-                .map(EthereumContractDataSourceTemplateEntity::from)
-                .collect(),
         }
     }
 }
@@ -655,13 +499,16 @@ pub struct DynamicEthereumContractDataSourceEntity {
     name: String,
     source: EthereumContractSourceEntity,
     mapping: EthereumContractMappingEntity,
-    templates: Vec<EthereumContractDataSourceTemplateEntity>,
     context: Option<DataSourceContext>,
 }
 
 impl DynamicEthereumContractDataSourceEntity {
-    pub fn write_entity_operations(self, id: &str) -> Vec<EntityOperation> {
-        WriteOperations::write_entity_operations(self, id)
+    pub fn write_entity_operations(
+        self,
+        subgraph: &SubgraphDeploymentId,
+        id: &str,
+    ) -> Vec<EntityOperation> {
+        WriteOperations::write_entity_operations(self, subgraph, id)
     }
 
     pub fn make_id() -> String {
@@ -670,7 +517,7 @@ impl DynamicEthereumContractDataSourceEntity {
 }
 
 impl TypedEntity for DynamicEthereumContractDataSourceEntity {
-    const TYPENAME: &'static str = "DynamicEthereumContractDataSource";
+    const TYPENAME: MetadataType = MetadataType::DynamicEthereumContractDataSource;
     type IdType = String;
 }
 
@@ -691,19 +538,8 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
             network,
             source: _,
             mapping: _,
-            templates,
             context,
         } = self;
-
-        let template_ids: Vec<Value> = templates
-            .into_iter()
-            .enumerate()
-            .map(|(i, template)| {
-                let template_id = format!("{}-templates-{}", id, i);
-                template.generate(&template_id, ops);
-                template_id.into()
-            })
-            .collect();
 
         let entity = entity! {
             id: id,
@@ -712,7 +548,6 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
             name: name,
             source: source_id,
             mapping: mapping_id,
-            templates: template_ids,
             deployment: deployment,
             ethereumBlockHash: ethereum_block_hash,
             ethereumBlockNumber: ethereum_block_number,
@@ -746,7 +581,6 @@ impl<'a, 'b, 'c>
             name,
             source,
             mapping,
-            templates,
             context,
         } = data_source;
 
@@ -759,10 +593,6 @@ impl<'a, 'b, 'c>
             network: network.clone(),
             source: source.clone().into(),
             mapping: EthereumContractMappingEntity::from(mapping),
-            templates: templates
-                .iter()
-                .map(EthereumContractDataSourceTemplateEntity::from)
-                .collect(),
             context: context.clone(),
         }
     }
@@ -776,7 +606,7 @@ pub struct EthereumContractSourceEntity {
 }
 
 impl TypedEntity for EthereumContractSourceEntity {
-    const TYPENAME: &'static str = "EthereumContractSource";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractSource;
     type IdType = String;
 }
 
@@ -805,7 +635,7 @@ impl TryFromValue for EthereumContractSourceEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a contract source entity: {:?}",
                 value
             )),
@@ -833,7 +663,7 @@ pub struct EthereumContractMappingEntity {
 }
 
 impl TypedEntity for EthereumContractMappingEntity {
-    const TYPENAME: &'static str = "EthereumContractMapping";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractMapping;
     type IdType = String;
 }
 
@@ -938,7 +768,7 @@ impl TryFromValue for EthereumContractMappingEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a mapping entity: {:?}",
                 value
             )),
@@ -965,7 +795,7 @@ pub struct EthereumContractAbiEntity {
 }
 
 impl TypedEntity for EthereumContractAbiEntity {
-    const TYPENAME: &'static str = "EthereumContractAbi";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractAbi;
     type IdType = String;
 }
 
@@ -992,10 +822,7 @@ impl TryFromValue for EthereumContractAbiEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
-                "Cannot parse value into ABI entity: {:?}",
-                value
-            )),
+            _ => Err(anyhow!("Cannot parse value into ABI entity: {:?}", value)),
         }?;
 
         Ok(Self {
@@ -1030,7 +857,7 @@ impl WriteOperations for EthereumBlockHandlerEntity {
 }
 
 impl TypedEntity for EthereumBlockHandlerEntity {
-    const TYPENAME: &'static str = "EthereumBlockHandlerEntity";
+    const TYPENAME: MetadataType = MetadataType::EthereumBlockHandlerEntity;
     type IdType = String;
 }
 
@@ -1056,7 +883,7 @@ impl TryFromValue for EthereumBlockHandlerEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into block handler entity: {:?}",
                 value
             )),
@@ -1075,7 +902,7 @@ pub struct EthereumBlockHandlerFilterEntity {
 }
 
 impl TypedEntity for EthereumBlockHandlerFilterEntity {
-    const TYPENAME: &'static str = "EthereumBlockHandlerFilterEntity";
+    const TYPENAME: MetadataType = MetadataType::EthereumBlockHandlerFilterEntity;
     type IdType = String;
 }
 
@@ -1094,7 +921,7 @@ impl TryFromValue for EthereumBlockHandlerFilterEntity {
         let map = match value {
             q::Value::Object(map) => Ok(map),
             q::Value::Null => Ok(&empty_map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into block handler filter entity: {:?}",
                 value,
             )),
@@ -1113,7 +940,7 @@ pub struct EthereumCallHandlerEntity {
 }
 
 impl TypedEntity for EthereumCallHandlerEntity {
-    const TYPENAME: &'static str = "EthereumCallHandlerEntity";
+    const TYPENAME: MetadataType = MetadataType::EthereumCallHandlerEntity;
     type IdType = String;
 }
 
@@ -1140,7 +967,7 @@ impl TryFromValue for EthereumCallHandlerEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into call handler entity: {:?}",
                 value
             )),
@@ -1161,7 +988,7 @@ pub struct EthereumContractEventHandlerEntity {
 }
 
 impl TypedEntity for EthereumContractEventHandlerEntity {
-    const TYPENAME: &'static str = "EthereumContractEventHandler";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractEventHandler;
     type IdType = String;
 }
 
@@ -1190,7 +1017,7 @@ impl TryFromValue for EthereumContractEventHandlerEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into event handler entity: {:?}",
                 value
             )),
@@ -1214,7 +1041,7 @@ pub struct EthereumContractDataSourceTemplateEntity {
 }
 
 impl TypedEntity for EthereumContractDataSourceTemplateEntity {
-    const TYPENAME: &'static str = "EthereumContractDataSourceTemplate";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSourceTemplate;
     type IdType = String;
 }
 
@@ -1253,7 +1080,7 @@ impl TryFromValue for EthereumContractDataSourceTemplateEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a data source template entity: {:?}",
                 value
             )),
@@ -1275,7 +1102,7 @@ pub struct EthereumContractDataSourceTemplateSourceEntity {
 }
 
 impl TypedEntity for EthereumContractDataSourceTemplateSourceEntity {
-    const TYPENAME: &'static str = "EthereumContractDataSourceTemplateSource";
+    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSourceTemplateSource;
     type IdType = String;
 }
 
@@ -1298,7 +1125,7 @@ impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         let map = match value {
             q::Value::Object(map) => Ok(map),
-            _ => Err(format_err!(
+            _ => Err(anyhow!(
                 "Cannot parse value into a template source entity: {:?}",
                 value
             )),
@@ -1311,25 +1138,13 @@ impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
 }
 
 fn set_metadata_operation(
-    entity_type_name: impl Into<String>,
+    subgraph: SubgraphDeploymentId,
+    entity: MetadataType,
     entity_id: impl Into<String>,
     data: impl Into<Entity>,
 ) -> MetadataOperation {
     MetadataOperation::Set {
-        entity: entity_type_name.into(),
-        id: entity_id.into(),
-        data: data.into(),
-    }
-}
-
-fn update_metadata_operation(
-    entity_type_name: impl Into<String>,
-    entity_id: impl Into<String>,
-    data: impl Into<Entity>,
-) -> MetadataOperation {
-    MetadataOperation::Update {
-        entity: entity_type_name.into(),
-        id: entity_id.into(),
+        key: entity.key(subgraph, entity_id.into()),
         data: data.into(),
     }
 }
@@ -1340,56 +1155,38 @@ pub struct SubgraphError {
     pub message: String,
     pub block_ptr: Option<EthereumBlockPointer>,
     pub handler: Option<String>,
+
+    // `true` if we are certain the error is determinsitic. If in doubt, this is `false`.
+    pub deterministic: bool,
 }
 
-impl TypedEntity for SubgraphError {
-    const TYPENAME: &'static str = "SubgraphError";
-    type IdType = String;
-}
-
-impl SubgraphError {
-    fn create_operation(self, id: String) -> MetadataOperation {
-        let mut entity = Entity::from(self);
-        entity.set("id", id.clone());
-        set_metadata_operation(Self::TYPENAME, id, entity)
+impl Display for SubgraphError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.message)?;
+        if let Some(handler) = &self.handler {
+            write!(f, " in handler `{}`", handler)?;
+        }
+        if let Some(block_ptr) = self.block_ptr {
+            write!(f, " at block {}", block_ptr)?;
+        }
+        Ok(())
     }
 }
 
-impl From<SubgraphError> for Entity {
-    fn from(subgraph_error: SubgraphError) -> Entity {
+impl StableHash for SubgraphError {
+    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         let SubgraphError {
             subgraph_id,
             message,
             block_ptr,
             handler,
-        } = subgraph_error;
-
-        let mut entity = Entity::new();
-        entity.set("subgraphId", subgraph_id.to_string());
-        entity.set("message", message);
-        entity.set("blockNumber", block_ptr.map(|x| x.number));
-        entity.set("blockHash", block_ptr.map(|x| x.hash));
-        entity.set("handler", handler);
-        entity
-    }
-}
-
-impl TryFromValue for SubgraphError {
-    fn try_from_value(value: &q::Value) -> Result<SubgraphError, Error> {
-        let block_number = value.get_optional("blockNumber")?;
-        let block_hash = value.get_optional("blockHash")?;
-
-        let block_ptr = match (block_number, block_hash) {
-            (Some(number), Some(hash)) => Some(EthereumBlockPointer { number, hash }),
-            _ => None,
-        };
-
-        Ok(SubgraphError {
-            subgraph_id: value.get_required("subgraphId")?,
-            message: value.get_required("message")?,
-            block_ptr,
-            handler: value.get_optional("handler")?,
-        })
+            deterministic,
+        } = self;
+        subgraph_id.stable_hash(sequence_number.next_child(), state);
+        message.stable_hash(sequence_number.next_child(), state);
+        block_ptr.stable_hash(sequence_number.next_child(), state);
+        handler.stable_hash(sequence_number.next_child(), state);
+        deterministic.stable_hash(sequence_number.next_child(), state);
     }
 }
 
@@ -1404,102 +1201,4 @@ pub fn generate_entity_id() -> String {
     // Comparable to uuidv4, but without the hyphens,
     // and without spending bits on a version identifier.
     hex::encode(id_bytes)
-}
-
-pub fn attribute_index_definitions(
-    subgraph_id: SubgraphDeploymentId,
-    document: Document,
-) -> Vec<AttributeIndexDefinition> {
-    let mut indexing_ops = vec![];
-    for (entity_number, schema_type) in document.definitions.clone().into_iter().enumerate() {
-        if let Definition::TypeDefinition(definition) = schema_type {
-            if let TypeDefinition::Object(schema_object) = definition {
-                for (attribute_number, entity_field) in schema_object
-                    .fields
-                    .into_iter()
-                    .filter(|f| f.name != "id")
-                    .enumerate()
-                {
-                    // Skip derived fields since they are not stored in objects
-                    // of this type. We can not put this check into the filter
-                    // above since that changes how indexes are numbered
-                    if is_derived_field(&entity_field) {
-                        continue;
-                    }
-                    indexing_ops.push(AttributeIndexDefinition {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_number,
-                        attribute_number,
-                        field_value_type: match inner_type_name(
-                            &entity_field.field_type,
-                            &document.definitions,
-                        ) {
-                            Ok(value_type) => value_type,
-                            Err(_) => continue,
-                        },
-                        attribute_name: entity_field.name,
-                        entity_name: schema_object.name.clone(),
-                    });
-                }
-            }
-        }
-    }
-    indexing_ops
-}
-
-fn is_derived_field(field: &Field) -> bool {
-    field
-        .directives
-        .iter()
-        .any(|dir| dir.name == Name::from("derivedFrom"))
-}
-
-// This largely duplicates graphql::schema::ast::is_entity_type_definition
-// We do not use that function here to avoid this crate depending on
-// graph_graphql
-fn is_entity(type_name: &str, definitions: &[Definition]) -> bool {
-    use self::TypeDefinition::*;
-
-    definitions.iter().any(|defn| {
-        if let Definition::TypeDefinition(type_def) = defn {
-            match type_def {
-                // Entity types are obvious
-                Object(object_type) => {
-                    object_type.name == type_name
-                        && object_type
-                            .directives
-                            .iter()
-                            .any(|directive| directive.name == "entity")
-                }
-
-                // We assume that only entities can implement interfaces;
-                // thus, any interface type definition is automatically
-                // an entity type
-                Interface(interface_type) => interface_type.name == type_name,
-
-                // Everything else (unions, scalars, enums) are not
-                // considered entity types
-                _ => false,
-            }
-        } else {
-            false
-        }
-    })
-}
-
-/// Returns the value type for a GraphQL field type.
-fn inner_type_name(field_type: &Type, definitions: &[Definition]) -> Result<ValueType, Error> {
-    match field_type {
-        Type::NamedType(ref name) => ValueType::from_str(&name).or_else(|e| {
-            if is_entity(name, definitions) {
-                // The field is a reference to another type and therefore
-                // of type `String`
-                Ok(ValueType::String)
-            } else {
-                Err(e)
-            }
-        }),
-        Type::NonNullType(inner) => inner_type_name(&inner, definitions),
-        Type::ListType(inner) => inner_type_name(inner, definitions).and(Ok(ValueType::List)),
-    }
 }

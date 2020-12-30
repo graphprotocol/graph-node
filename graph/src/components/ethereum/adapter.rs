@@ -1,5 +1,5 @@
+use anyhow::{anyhow, Error};
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
-use failure::SyncFailure;
 use futures::Future;
 use futures03::future::TryFutureExt;
 use mockall::predicate::*;
@@ -9,6 +9,7 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::marker::Unpin;
+use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::*;
 
@@ -50,41 +51,38 @@ pub struct EthereumContractCall {
     pub args: Vec<Token>,
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum EthereumContractCallError {
-    #[fail(display = "ABI error: {}", _0)]
-    ABIError(SyncFailure<ABIError>),
+    #[error("ABI error: {0}")]
+    ABIError(ABIError),
     /// `Token` is not of expected `ParamType`
-    #[fail(display = "type mismatch, token {:?} is not of kind {:?}", _0, _1)]
+    #[error("type mismatch, token {0:?} is not of kind {0:?}")]
     TypeError(Token, ParamType),
-    #[fail(display = "error encoding input call data: {}", _0)]
+    #[error("error encoding input call data: {0}")]
     EncodingError(ethabi::Error),
-    #[fail(display = "call error: {}", _0)]
+    #[error("call error: {0}")]
     Web3Error(web3::Error),
-    #[fail(display = "call reverted: {}", _0)]
+    #[error("call reverted: {0}")]
     Revert(String),
-    #[fail(display = "ethereum node took too long to perform call")]
+    #[error("ethereum node took too long to perform call")]
     Timeout,
 }
 
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
-        EthereumContractCallError::ABIError(SyncFailure::new(e))
+        EthereumContractCallError::ABIError(e)
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum EthereumAdapterError {
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
-    #[fail(
-        display = "Block data unavailable, block was likely uncled (block hash = {:?})",
-        _0
-    )]
+    #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
     BlockUnavailable(H256),
 
     /// An unexpected error occurred.
-    #[fail(display = "Ethereum adapter error: {}", _0)]
+    #[error("Ethereum adapter error: {0}")]
     Unknown(Error),
 }
 
@@ -843,7 +841,6 @@ pub async fn triggers_in_block(
                 call_filter,
                 block_filter,
             )
-            .compat()
             .await?;
             assert!(blocks.len() <= 1);
 
@@ -877,7 +874,7 @@ pub async fn triggers_in_block(
 /// reorgs.
 /// It is recommended that `to` be far behind the block number of latest block the Ethereum
 /// node is aware of.
-pub fn blocks_with_triggers(
+pub async fn blocks_with_triggers(
     adapter: Arc<dyn EthereumAdapter>,
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
@@ -887,7 +884,7 @@ pub fn blocks_with_triggers(
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
-) -> Box<dyn Future<Item = Vec<EthereumBlockWithTriggers>, Error = Error> + Send> {
+) -> Result<Vec<EthereumBlockWithTriggers>, Error> {
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
@@ -943,63 +940,80 @@ pub fn blocks_with_triggers(
     let logger1 = logger.cheap_clone();
     let logger2 = logger.cheap_clone();
     let eth_clone = eth.cheap_clone();
-    Box::new(
-        trigger_futs
-            .concat2()
-            .join(
-                adapter
-                    .clone()
-                    .block_hash_by_block_number(&logger, chain_store.clone(), to, true)
-                    .then(move |to_hash| match to_hash {
-                        Ok(n) => n.ok_or_else(|| {
-                            warn!(logger2,
-                                    "Ethereum endpoint is behind";
-                                    "url" => eth_clone.url_hostname()
-                            );
-                            format_err!("Block {} not found in the chain", to)
-                        }),
-                        Err(e) => Err(e),
+    let (triggers, to_hash) = trigger_futs
+        .concat2()
+        .join(
+            adapter
+                .clone()
+                .block_hash_by_block_number(&logger, chain_store.clone(), to, true)
+                .then(move |to_hash| match to_hash {
+                    Ok(n) => n.ok_or_else(|| {
+                        warn!(logger2,
+                                "Ethereum endpoint is behind";
+                                "url" => eth_clone.url_hostname()
+                        );
+                        anyhow!("Block {} not found in the chain", to)
                     }),
-            )
-            .map(move |(triggers, to_hash)| {
-                let mut block_hashes: HashSet<H256> =
-                    triggers.iter().map(EthereumTrigger::block_hash).collect();
-                let mut triggers_by_block: HashMap<u64, Vec<EthereumTrigger>> =
-                    triggers.into_iter().fold(HashMap::new(), |mut map, t| {
-                        map.entry(t.block_number()).or_default().push(t);
-                        map
-                    });
+                    Err(e) => Err(e),
+                }),
+        )
+        .compat()
+        .await?;
 
-                debug!(logger, "Found {} relevant block(s)", block_hashes.len());
+    let mut block_hashes: HashSet<H256> =
+        triggers.iter().map(EthereumTrigger::block_hash).collect();
+    let mut triggers_by_block: HashMap<u64, Vec<EthereumTrigger>> =
+        triggers.into_iter().fold(HashMap::new(), |mut map, t| {
+            map.entry(t.block_number()).or_default().push(t);
+            map
+        });
 
-                // Make sure `to` is included, even if empty.
-                block_hashes.insert(to_hash);
-                triggers_by_block.entry(to).or_insert(Vec::new());
+    debug!(logger, "Found {} relevant block(s)", block_hashes.len());
 
-                (block_hashes, triggers_by_block)
-            })
-            .and_then(move |(block_hashes, mut triggers_by_block)| {
-                adapter
-                    .load_blocks(logger1, chain_store, block_hashes)
-                    .and_then(
-                        move |block| match triggers_by_block.remove(&block.number()) {
-                            Some(triggers) => Ok(EthereumBlockWithTriggers::new(
-                                triggers,
-                                BlockFinality::Final(block),
-                            )),
-                            None => Err(format_err!(
-                                "block {:?} not found in `triggers_by_block`",
-                                block
-                            )),
-                        },
-                    )
-                    .collect()
-                    .map(|mut blocks| {
-                        blocks.sort_by_key(|block| block.ethereum_block.number());
-                        blocks
-                    })
-            }),
-    )
+    // Make sure `to` is included, even if empty.
+    block_hashes.insert(to_hash);
+    triggers_by_block.entry(to).or_insert(Vec::new());
+
+    let mut blocks = adapter
+        .load_blocks(logger1, chain_store, block_hashes)
+        .and_then(
+            move |block| match triggers_by_block.remove(&block.number()) {
+                Some(triggers) => Ok(EthereumBlockWithTriggers::new(
+                    triggers,
+                    BlockFinality::Final(block),
+                )),
+                None => Err(anyhow!(
+                    "block {:?} not found in `triggers_by_block`",
+                    block
+                )),
+            },
+        )
+        .collect()
+        .compat()
+        .await?;
+
+    blocks.sort_by_key(|block| block.ethereum_block.number());
+
+    // Sanity check that the returned blocks are in the correct range.
+    // Unwrap: `blocks` always includes at least `to`.
+    let first = blocks.first().unwrap().ethereum_block.number();
+    let last = blocks.last().unwrap().ethereum_block.number();
+    if first < from {
+        return Err(anyhow!(
+            "block {} returned by the Ethereum node is before {}, the first block of the requested range",
+            first,
+            from,
+        ));
+    }
+    if last > to {
+        return Err(anyhow!(
+            "block {} returned by the Ethereum node is after {}, the last block of the requested range",
+            last,
+            to,
+        ));
+    }
+
+    Ok(blocks)
 }
 
 #[cfg(test)]

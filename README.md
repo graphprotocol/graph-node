@@ -19,10 +19,7 @@ To build and run this project you need to have the following installed on your s
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 
-For Ethereum network data, you can either run a local node or use Infura.io:
-
-- Local node – [Installing and running Ethereum node](https://ethereum.gitbooks.io/frontier-guide/content/getting_a_client.html)
-- Infura infra – [Infura.io](https://infura.io/)
+For Ethereum network data, you can either run your own Ethereum node or use an Ethereum node provider of your choice.
 
 ### Running a Local Graph Node
 
@@ -46,13 +43,11 @@ Once you have all the dependencies set up, you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
-  --ethereum-rpc mainnet:https://mainnet.infura.io/v3/[PROJECT_ID] \
+  --ethereum-rpc [URL] \
   --ipfs 127.0.0.1:5001
 ```
 
 Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional. It depends on your setup.
-
-If you're using Infura you should [sign up](https://infura.io/register) to get a PROJECT_ID, it's free.
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
@@ -110,10 +105,14 @@ OPTIONS:
         --ws-port <PORT>                              Port for the GraphQL WebSocket server [default: 8001]
 ```
 
-### Environment Variables
+### Advanced Configuration
 
-See [here](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md) for a list of
-the environment variables that can be configured.
+The command line arguments generally are all that is needed to run a
+`graph-node` instance. For advanced uses, various aspects of `graph-node`
+can further be configured through [environment
+variables](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md). Very
+large `graph-node` instances can also split the work of querying and
+indexing across [multiple databases](./docs/multiple-databases.md).
 
 ## Project Layout
 

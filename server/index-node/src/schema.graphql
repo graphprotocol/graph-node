@@ -30,7 +30,8 @@ type SubgraphIndexingStatus {
   "Sorted from first to last, limited to first 1000"
   nonFatalErrors: [SubgraphError!]!
   chains: [ChainIndexingStatus!]!
-  node: String!
+  entityCount: BigInt!
+  node: String
 }
 
 interface ChainIndexingStatus {
@@ -60,6 +61,9 @@ type SubgraphError {
   # Context for the error.
   block: Block
   handler: String
+
+  # `true` means we have certainty that the error is deterministic.
+  deterministic: Boolean!
 }
 
 enum Health {

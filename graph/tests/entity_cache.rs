@@ -1,20 +1,16 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::mock::MockStore;
 use graph::prelude::{
     Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, Value,
 };
+use graph::{components::store::EntityType, mock::MockStore};
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
     let subgraph_id = SubgraphDeploymentId::new("entity_cache").unwrap();
 
     (
-        EntityKey {
-            subgraph_id: subgraph_id.clone(),
-            entity_type: "Band".into(),
-            entity_id: id.into(),
-        },
+        EntityKey::data(subgraph_id.clone(), "Band".to_string(), id.into()),
         Entity::from(data),
     )
 }
@@ -49,15 +45,13 @@ fn insert_modifications() {
         "mogwai",
         vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
+    cache.set(mogwai_key.clone(), mogwai_data.clone());
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
         vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
     );
-    cache
-        .set(sigurros_key.clone(), sigurros_data.clone())
-        .unwrap();
+    cache.set(sigurros_key.clone(), sigurros_data.clone());
 
     let result = cache.as_modifications(&*store);
     assert_eq!(
@@ -85,7 +79,7 @@ fn overwrite_modifications() {
         let mut map = BTreeMap::new();
 
         map.insert(
-            "Band".into(),
+            EntityType::data("Band".to_string()),
             vec![
                 make_band(
                     "mogwai",
@@ -114,7 +108,7 @@ fn overwrite_modifications() {
             ("founded", 1995.into()),
         ],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
+    cache.set(mogwai_key.clone(), mogwai_data.clone());
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
@@ -124,9 +118,7 @@ fn overwrite_modifications() {
             ("founded", 1994.into()),
         ],
     );
-    cache
-        .set(sigurros_key.clone(), sigurros_data.clone())
-        .unwrap();
+    cache.set(sigurros_key.clone(), sigurros_data.clone());
 
     let result = cache.as_modifications(&*store);
     assert_eq!(
@@ -154,7 +146,7 @@ fn consecutive_modifications() {
         let mut map = BTreeMap::new();
 
         map.insert(
-            "Band".into(),
+            EntityType::data("Band".to_string()),
             vec![
                 make_band(
                     "mogwai",
@@ -183,14 +175,14 @@ fn consecutive_modifications() {
             ("label", "Rock Action Records".into()),
         ],
     );
-    cache.set(update_key.clone(), update_data.clone()).unwrap();
+    cache.set(update_key.clone(), update_data.clone());
 
     // Then, just reset the "label".
     let (update_key, update_data) = make_band(
         "mogwai",
         vec![("id", "mogwai".into()), ("label", Value::Null)],
     );
-    cache.set(update_key.clone(), update_data.clone()).unwrap();
+    cache.set(update_key.clone(), update_data.clone());
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.

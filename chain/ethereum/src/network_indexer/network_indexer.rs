@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Error};
 use chrono::Utc;
 use futures::sync::mpsc::{channel, Receiver, Sender};
 use futures::try_ready;
@@ -84,6 +85,7 @@ fn ensure_subgraph(
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
+    network_name: String,
 ) -> EnsureSubgraphFuture {
     Box::new(subgraph::ensure_subgraph_exists(
         subgraph_name,
@@ -91,6 +93,7 @@ fn ensure_subgraph(
         logger,
         store,
         start_block,
+        network_name,
     ))
 }
 
@@ -99,7 +102,7 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
         context.metrics,
         load_local_head,
         load_local_head_problems,
-        future::result(context.store.clone().block_ptr(context.subgraph_id.clone()))
+        future::result(context.store.clone().block_ptr(&context.subgraph_id))
     ))
 }
 
@@ -149,7 +152,7 @@ fn fetch_ommers(
                         .collect::<Vec<_>>();
 
                     // Fail if we couldn't fetch all ommers
-                    future::err(format_err!(
+                    future::err(anyhow!(
                         "Ommers of block {} missing: {}",
                         block_ptr,
                         missing_hashes.join(", ")
@@ -290,7 +293,7 @@ fn load_parent_block_from_store(
                 .get(block_ptr.to_entity_key(context.subgraph_id.clone()))
                 .map_err(|e| e.into())
                 .and_then(|entity| {
-                    entity.ok_or_else(|| format_err!("block {} is missing in store", block_ptr))
+                    entity.ok_or_else(|| anyhow!("block {} is missing in store", block_ptr))
                 }),
         )
         // Get the parent hash from the block
@@ -299,7 +302,7 @@ fn load_parent_block_from_store(
                 block
                     .get("parent")
                     .ok_or_else(move || {
-                        format_err!("block {} has no parent", block_ptr_for_missing_parent,)
+                        anyhow!("block {} has no parent", block_ptr_for_missing_parent,)
                     })
                     .and_then(|value| {
                         let s = value
@@ -307,7 +310,7 @@ fn load_parent_block_from_store(
                             .as_string()
                             .expect("the `parent` field of `Block` is a reference/string");
                         H256::from_str(s.as_str()).map_err(|e| {
-                            format_err!(
+                            anyhow!(
                                 "block {} has an invalid parent `{}`: {}",
                                 block_ptr_for_invalid_parent,
                                 s,
@@ -418,7 +421,7 @@ fn send_event(
         event_sink
             .send(event)
             .map(|_| ())
-            .map_err(|e| format_err!("failed to emit events: {}", e)),
+            .map_err(|e| anyhow!("failed to emit events: {}", e)),
     )
 }
 
@@ -455,6 +458,7 @@ pub struct Context {
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
+    network_name: String,
 }
 
 /// Events emitted by the network tracer.
@@ -648,6 +652,7 @@ impl PollStateMachine for StateMachine {
                 context.subgraph_name.clone(),
                 context.subgraph_id.clone(),
                 context.start_block.clone(),
+                context.network_name.clone(),
             )
         })
     }
@@ -1117,6 +1122,7 @@ impl NetworkIndexer {
         metrics_registry: Arc<dyn MetricsRegistry>,
         subgraph_name: String,
         start_block: Option<EthereumBlockPointer>,
+        network_name: String,
     ) -> Self
     where
         S: Store + ChainStore,
@@ -1172,6 +1178,7 @@ impl NetworkIndexer {
             subgraph_name,
             subgraph_id,
             start_block,
+            network_name,
         });
 
         // Launch state machine.

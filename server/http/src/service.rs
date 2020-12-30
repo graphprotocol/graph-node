@@ -1,14 +1,12 @@
 use std::convert::TryFrom;
 use std::fmt;
-use std::ops::Deref;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Instant;
 
-use graph::components::server::query::GraphQLServerError;
-use graph::data::subgraph::schema::{SubgraphEntity, SUBGRAPHS_ID};
 use graph::prelude::*;
+use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -72,39 +70,35 @@ pub type GraphQLServiceResponse =
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct GraphQLService<Q, S> {
+pub struct GraphQLService<Q> {
     logger: Logger,
     metrics: Arc<GraphQLServiceMetrics>,
     graphql_runner: Arc<Q>,
-    store: Arc<S>,
     ws_port: u16,
     node_id: NodeId,
 }
 
-impl<Q, S> Clone for GraphQLService<Q, S> {
+impl<Q> Clone for GraphQLService<Q> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             metrics: self.metrics.clone(),
             graphql_runner: self.graphql_runner.clone(),
-            store: self.store.clone(),
             ws_port: self.ws_port,
             node_id: self.node_id.clone(),
         }
     }
 }
 
-impl<Q, S> GraphQLService<Q, S>
+impl<Q> GraphQLService<Q>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
 {
     /// Creates a new GraphQL service.
     pub fn new(
         logger: Logger,
         metrics: Arc<GraphQLServiceMetrics>,
         graphql_runner: Arc<Q>,
-        store: Arc<S>,
         ws_port: u16,
         node_id: NodeId,
     ) -> Self {
@@ -112,7 +106,6 @@ where
             logger,
             metrics,
             graphql_runner,
-            store,
             ws_port,
             node_id,
         }
@@ -124,37 +117,13 @@ where
     }
 
     async fn index(self) -> GraphQLServiceResult {
-        // Ask for two to find out if there is more than one
-        let entity_query = SubgraphEntity::query().first(2);
-
-        let mut subgraph_entities = self
-            .store
-            .find(entity_query)
-            .map_err(|e| GraphQLServerError::InternalError(e.to_string()))?;
-
-        // If there is only one subgraph, redirect to it
-        match subgraph_entities.len() {
-            0 => Ok(Response::builder()
-                .status(200)
-                .body(Body::from(String::from("No subgraphs deployed yet")))
-                .unwrap()),
-            1 => {
-                let subgraph_entity = subgraph_entities.pop().unwrap();
-                let subgraph_name = subgraph_entity
-                    .get("name")
-                    .expect("subgraph entity without name");
-                let name = format!("/subgraphs/name/{}", subgraph_name);
-                self.handle_temp_redirect(name).await
-            }
-            _ => Ok(Response::builder()
-                .status(200)
-                .body(Body::from(String::from(
-                    "Multiple subgraphs deployed. \
-                     Try /subgraphs/id/<ID> or \
-                     /subgraphs/name/<NAME>",
-                )))
-                .unwrap()),
-        }
+        Ok(Response::builder()
+            .status(200)
+            .body(Body::from(String::from(
+                "Access deployed subgraphs by deployment ID at \
+                /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>",
+            )))
+            .unwrap())
     }
 
     /// Serves a static file.
@@ -192,24 +161,7 @@ where
             GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
         })?;
 
-        let store = self.store.cheap_clone();
-        let subgraph_id =
-            tokio::task::spawn_blocking(move || store.resolve_subgraph_name_to_id(subgraph_name))
-                .await
-                .unwrap() // Propagate panics.
-                .map_err(|e| {
-                    GraphQLServerError::InternalError(format!(
-                        "Error resolving subgraph name: {}",
-                        e
-                    ))
-                })
-                .and_then(|subgraph_id_opt| {
-                    subgraph_id_opt.ok_or(GraphQLServerError::ClientError(
-                        "Subgraph name not found".to_owned(),
-                    ))
-                })?;
-
-        self.handle_graphql_query(subgraph_id, request.into_body())
+        self.handle_graphql_query(subgraph_name.into(), request.into_body())
             .await
     }
 
@@ -218,62 +170,40 @@ where
         id: String,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
-        match SubgraphDeploymentId::new(id) {
-            Err(()) => self.handle_not_found(),
-            Ok(id) => self.handle_graphql_query(id, request.into_body()).boxed(),
+        let res = SubgraphDeploymentId::new(id)
+            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)));
+        match res {
+            Err(_) => self.handle_not_found(),
+            Ok(id) => self
+                .handle_graphql_query(id.into(), request.into_body())
+                .boxed(),
         }
     }
 
     async fn handle_graphql_query(
         self,
-        id: SubgraphDeploymentId,
+        target: QueryTarget,
         request_body: Body,
     ) -> GraphQLServiceResult {
         let service = self.clone();
         let service_metrics = self.metrics.clone();
-        let sd_id = id.clone();
-
-        match self.store.is_deployed(&id) {
-            Err(e) => {
-                return Err(GraphQLServerError::InternalError(e.to_string()));
-            }
-            Ok(false) => {
-                return Err(GraphQLServerError::ClientError(format!(
-                    "No data found for subgraph {}",
-                    id
-                )));
-            }
-            Ok(true) => (),
-        }
-
-        let schema = match self.store.api_schema(&id) {
-            Ok(schema) => schema,
-            Err(e) => {
-                return Err(GraphQLServerError::InternalError(e.to_string()));
-            }
-        };
-
-        let network = match self.store.network_name(&id) {
-            Ok(network) => network,
-            Err(e) => {
-                return Err(GraphQLServerError::InternalError(e.to_string()));
-            }
-        };
 
         let start = Instant::now();
         let body = hyper::body::to_bytes(request_body)
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .await?;
-        let query = GraphQLRequest::new(body, schema, network).compat().await;
+        let query = GraphQLRequest::new(body).compat().await;
 
         let result = match query {
-            Ok(query) => service.graphql_runner.run_query(query).await,
-            Err(GraphQLServerError::QueryError(e)) => Arc::new(QueryResult::from(e)),
+            Ok(query) => service.graphql_runner.run_query(query, target, false).await,
+            Err(GraphQLServerError::QueryError(e)) => QueryResult::from(e).into(),
             Err(e) => return Err(e),
         };
 
-        service_metrics
-            .observe_query_execution_time(start.elapsed().as_secs_f64(), sd_id.deref().to_string());
+        if let Some(id) = result.first().and_then(|res| res.deployment.clone()) {
+            service_metrics
+                .observe_query_execution_time(start.elapsed().as_secs_f64(), id.to_string());
+        }
 
         Ok(result.as_http_response())
     }
@@ -378,21 +308,14 @@ where
             | (Method::OPTIONS, ["subgraphs", "name", _, _])
             | (Method::OPTIONS, ["subgraphs", "network", _, _]) => self.handle_graphql_options(req),
 
-            // `/subgraphs` acts as an alias to `/subgraphs/id/SUBGRAPHS_ID`
-            (Method::POST, &["subgraphs"]) => {
-                self.handle_graphql_query_by_id(SUBGRAPHS_ID.to_string(), req)
-            }
-            (Method::OPTIONS, ["subgraphs"]) => self.handle_graphql_options(req),
-
             _ => self.handle_not_found(),
         }
     }
 }
 
-impl<Q, S> Service<Request<Body>> for GraphQLService<Q, S>
+impl<Q> Service<Request<Body>> for GraphQLService<Q>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
 {
     type Response = Response<Body>;
     type Error = GraphQLServerError;
@@ -447,10 +370,12 @@ mod tests {
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
 
-    use graph::data::graphql::effort::LoadManager;
+    use graph::data::{
+        graphql::effort::LoadManager,
+        query::{QueryResults, QueryTarget},
+    };
     use graph::prelude::*;
-    use graph_mock::{mock_store_with_users_subgraph, MockMetricsRegistry};
-    use graphql_parser::query as q;
+    use graph_mock::MockMetricsRegistry;
 
     use crate::test_utils;
 
@@ -460,34 +385,44 @@ mod tests {
     /// A simple stupid query runner for testing.
     pub struct TestGraphQlRunner;
 
+    lazy_static! {
+        static ref USERS: SubgraphDeploymentId = SubgraphDeploymentId::new("users").unwrap();
+    }
+
     #[async_trait]
     impl GraphQlRunner for TestGraphQlRunner {
         async fn run_query_with_complexity(
             self: Arc<Self>,
             _query: Query,
+            _target: QueryTarget,
             _complexity: Option<u64>,
             _max_depth: Option<u8>,
             _max_first: Option<u32>,
             _max_skip: Option<u32>,
-        ) -> Arc<QueryResult> {
+            _nested_resolver: bool,
+        ) -> QueryResults {
             unimplemented!();
         }
 
-        async fn run_query(self: Arc<Self>, _query: Query) -> Arc<QueryResult> {
-            Arc::new(QueryResult::new(Some(q::Value::Object(
-                BTreeMap::from_iter(
-                    vec![(
-                        String::from("name"),
-                        q::Value::String(String::from("Jordi")),
-                    )]
-                    .into_iter(),
-                ),
-            ))))
+        async fn run_query(
+            self: Arc<Self>,
+            _query: Query,
+            _target: QueryTarget,
+            _: bool,
+        ) -> QueryResults {
+            QueryResults::from(BTreeMap::from_iter(
+                vec![(
+                    String::from("name"),
+                    q::Value::String(String::from("Jordi")),
+                )]
+                .into_iter(),
+            ))
         }
 
         async fn run_subscription(
             self: Arc<Self>,
             _subscription: Subscription,
+            _target: QueryTarget,
         ) -> Result<SubscriptionResult, SubscriptionError> {
             unreachable!();
         }
@@ -502,12 +437,11 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
         let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
-        let (store, subgraph_id) = mock_store_with_users_subgraph();
+        let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
         let node_id = NodeId::new("test").unwrap();
-        let mut service =
-            GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
+        let mut service = GraphQLService::new(logger, metrics, graphql_runner, 8001, node_id);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -535,12 +469,11 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
         let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
-        let (store, subgraph_id) = mock_store_with_users_subgraph();
+        let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
         let node_id = NodeId::new("test").unwrap();
-        let mut service =
-            GraphQLService::new(logger, metrics, graphql_runner, store, 8001, node_id);
+        let mut service = GraphQLService::new(logger, metrics, graphql_runner, 8001, node_id);
 
         let request = Request::builder()
             .method(Method::POST)

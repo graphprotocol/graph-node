@@ -27,3 +27,7 @@ pub mod effort;
 
 pub mod object_or_interface;
 pub use object_or_interface::ObjectOrInterface;
+
+pub mod object_macro;
+pub use crate::object;
+pub use object_macro::{object_value, IntoValue};

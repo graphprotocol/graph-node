@@ -1,20 +1,17 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use diesel::prelude::*;
-use futures::future::IntoFuture;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
-use std::fmt::Debug;
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
     web3::types::H256, ChildMultiplicity, Entity, EntityCollection, EntityKey, EntityLink,
-    EntityOrder, EntityRange, EntityWindow, Future01CompatExt, ParentLink, Schema,
-    SubgraphDeploymentId, Value, WindowAttribute, BLOCK_NUMBER_MAX,
+    EntityOrder, EntityRange, EntityWindow, ParentLink, Schema, SubgraphDeploymentId, Value,
+    WindowAttribute, BLOCK_NUMBER_MAX,
 };
-use graph_store_postgres::layout_for_tests::Layout;
+use graph_store_postgres::layout_for_tests::{Layout, Namespace};
 
 use test_store::*;
 
@@ -27,8 +24,6 @@ const THINGS_GQL: &str = "
         children: [Thing!]
     }
 ";
-
-const SCHEMA_NAME: &str = "layout";
 
 macro_rules! entity {
     ($($name:ident: $value:expr,)*) => {
@@ -65,21 +60,22 @@ lazy_static! {
         name: "Beef",
         __typename: "Thing"
     };
+    static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
 }
 
 /// Removes test data from the database behind the store.
 fn remove_test_data(conn: &PgConnection) {
-    let query = format!("drop schema if exists {} cascade", SCHEMA_NAME);
+    let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
 }
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey {
-        subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_owned(),
-        entity_id: entity.id().unwrap(),
-    };
+    let key = EntityKey::data(
+        THINGS_SUBGRAPH_ID.clone(),
+        entity_type.to_owned(),
+        entity.id().unwrap(),
+    );
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout.insert(&conn, &key, entity, 0).expect(&errmsg);
 }
@@ -99,10 +95,10 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
 fn create_schema(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
-    let query = format!("create schema {}", SCHEMA_NAME);
+    let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, SCHEMA_NAME.to_owned())
+    Layout::create_relational_schema(&conn, &schema, NAMESPACE.to_owned())
         .expect("Failed to create relational schema")
 }
 
@@ -146,44 +142,25 @@ macro_rules! assert_entity_eq {
     }};
 }
 
-/// Test harness for running database integration tests.
-fn run_test<R, F>(test: F)
+fn run_test<F>(test: F)
 where
-    F: FnOnce(&PgConnection, &Layout) -> R + Send + 'static,
-    R: IntoFuture<Item = ()> + Send + 'static,
-    R::Error: Send + Debug,
-    R::Future: Send,
+    F: FnOnce(&PgConnection, &Layout) -> (),
 {
-    // We don't need a full STORE, but we need to initialize it because
-    // we depend on stored procedures that schema initialization loads
-    let _store = STORE.clone();
+    run_test_with_conn(|conn| {
+        // Reset state before starting
+        remove_test_data(conn);
 
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
+        // Seed database with test data
+        let layout = create_schema(conn);
 
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
-    runtime
-        .block_on(async {
-            // Reset state before starting
-            remove_test_data(&conn);
-
-            // Seed database with test data
-            let layout = create_schema(&conn);
-
-            // Run test
-            test(&conn, &layout).into_future().compat().await
-        })
-        .expect("Failed to run ChainHead test");
+        // Run test
+        test(conn, &layout);
+    });
 }
 
 #[test]
 fn bad_id() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         // We test that we get errors for various strings that are not
         // valid 'Bytes' strings; we use `find` to force the conversion
         // from String -> Bytes internally
@@ -213,14 +190,12 @@ fn bad_id() {
             "store error: Invalid character \'n\' at position 0",
             res.err().unwrap().to_string()
         );
-
-        Ok(())
     });
 }
 
 #[test]
 fn find() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
         insert_thing(&conn, &layout, ID, NAME);
@@ -237,13 +212,12 @@ fn find() {
             .find(conn, "Thing", "badd", BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[badd]");
         assert!(entity.is_none());
-        Ok(())
     });
 }
 
 #[test]
 fn find_many() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
         const ID2: &str = "deadbeef02";
@@ -251,8 +225,9 @@ fn find_many() {
         insert_thing(&conn, &layout, ID, NAME);
         insert_thing(&conn, &layout, ID2, NAME2);
 
-        let mut id_map: BTreeMap<&str, Vec<&str>> = BTreeMap::default();
-        id_map.insert("Thing", vec![ID, ID2, "badd"]);
+        let mut id_map: BTreeMap<&str, &Vec<&str>> = BTreeMap::default();
+        let ids = vec![ID, ID2, "badd"];
+        id_map.insert("Thing", &ids);
 
         let entities = layout
             .find_many(conn, id_map, BLOCK_NUMBER_MAX)
@@ -269,23 +244,22 @@ fn find_many() {
         assert_eq!(2, ids.len());
         assert!(ids.contains(&ID.to_owned()), "Missing ID");
         assert!(ids.contains(&ID2.to_owned()), "Missing ID2");
-        Ok(())
     });
 }
 
 #[test]
 fn update() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo");
-        let key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Thing".to_owned(),
-            entity_id: entity.id().unwrap().clone(),
-        };
+        let key = EntityKey::data(
+            THINGS_SUBGRAPH_ID.clone(),
+            "Thing".to_owned(),
+            entity.id().unwrap().clone(),
+        );
         layout
             .update(&conn, &key, entity.clone(), 1)
             .expect("Failed to update");
@@ -295,13 +269,12 @@ fn update() {
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
-        Ok(())
     });
 }
 
 #[test]
 fn delete() {
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
         insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
@@ -310,11 +283,11 @@ fn delete() {
         insert_entity(&conn, &layout, "Thing", two);
 
         // Delete where nothing is getting deleted
-        let mut key = EntityKey {
-            subgraph_id: THINGS_SUBGRAPH_ID.clone(),
-            entity_type: "Thing".to_owned(),
-            entity_id: "ffff".to_owned(),
-        };
+        let mut key = EntityKey::data(
+            THINGS_SUBGRAPH_ID.clone(),
+            "Thing".to_owned(),
+            "ffff".to_owned(),
+        );
         let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(0, count);
 
@@ -322,7 +295,6 @@ fn delete() {
         key.entity_id = TWO_ID.to_owned();
         let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
         assert_eq!(1, count);
-        Ok(())
     });
 }
 
@@ -393,6 +365,7 @@ fn query() {
                 EntityOrder::Default,
                 EntityRange::first(10),
                 BLOCK_NUMBER_MAX,
+                None,
             )
             .expect("the query succeeds")
             .into_iter()
@@ -400,7 +373,7 @@ fn query() {
             .collect::<Vec<_>>()
     }
 
-    run_test(|conn, layout| -> Result<(), ()> {
+    run_test(|conn, layout| {
         // This test exercises the different types of queries we generate;
         // the type of query is based on knowledge of what the test data
         // looks like, not on just an inference from the GraphQL model.
@@ -493,7 +466,5 @@ fn query() {
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![ROOT, ROOT], things);
-
-        Ok(())
     });
 }

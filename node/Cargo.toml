@@ -1,25 +1,33 @@
 [package]
 name = "graph-node"
-version = "0.18.0"
+version = "0.19.2"
 edition = "2018"
+default-run = "graph-node"
+
+[[bin]]
+name = "graph-node"
+path = "src/main.rs"
+
+[[bin]]
+name = "graphman"
+path = "src/bin/manager.rs"
 
 [dependencies]
 clap = "2.33.3"
-env_logger = "0.7.1"
+env_logger = "0.8.2"
 git-testament = "0.1"
-graphql-parser = "0.2.3"
+graphql-parser = "0.3"
 prometheus = "0.7"
 futures = { version = "0.3.1", features = ["compat"] }
-ipfs-api = { version = "0.7.1", features = ["hyper-tls"] }
+ipfs-api = { version = "=0.7.1", features = ["hyper-tls"] }
 lazy_static = "1.2.0"
 url = "2.1.1"
-crossbeam-channel = "0.4.4"
+crossbeam-channel = "0.5.0"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-arweave = { path = "../chain/arweave" }
 graph-graphql = { path = "../graphql" }
-graph-mock = { path = "../mock" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
 graph-server-index-node = { path = "../server/index-node" }
@@ -27,6 +35,13 @@ graph-server-json-rpc = { path = "../server/json-rpc"}
 graph-server-websocket = { path = "../server/websocket" }
 graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
+regex = "1.4.2"
+serde = { version = "1.0.117", features = ["derive", "rc"] }
+serde_regex = "1.1.0"
+structopt = "0.3.20"
+toml = "0.5.7"
+shellexpand = "2.0.0"
+diesel = "1.4.5"
 
 [dev-dependencies]
 assert_cli = "0.6"

@@ -1,21 +1,63 @@
-use graphql_parser::schema::{Name, Value, *};
+use std::{collections::BTreeSet, str::FromStr};
+
 use graphql_parser::Pos;
 use inflector::Inflector;
+use lazy_static::lazy_static;
 
 use crate::schema::ast;
 
-use graph::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
+use graph::data::{
+    graphql::ext::{DirectiveExt, DocumentExt, ValueExt},
+    schema::{META_FIELD_NAME, META_FIELD_TYPE},
+    subgraph::SubgraphFeature,
+};
+use graph::prelude::s::{Value, *};
 use graph::prelude::*;
+use thiserror::Error;
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum APISchemaError {
-    #[fail(display = "type {} already exists in the input schema", _0)]
+    #[error("type {0} already exists in the input schema")]
     TypeExists(String),
-    #[fail(display = "Type {} not found", _0)]
+    #[error("Type {0} not found")]
     TypeNotFound(String),
+    #[error("Fulltext search is not yet deterministic")]
+    FulltextSearchNonDeterministic,
 }
 
 const BLOCK_HEIGHT: &str = "Block_height";
+
+const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum ErrorPolicy {
+    Allow,
+    Deny,
+}
+
+impl std::str::FromStr for ErrorPolicy {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<ErrorPolicy, anyhow::Error> {
+        match s {
+            "allow" => Ok(ErrorPolicy::Allow),
+            "deny" => Ok(ErrorPolicy::Deny),
+            _ => Err(anyhow::anyhow!("failed to parse `{}` as ErrorPolicy", s)),
+        }
+    }
+}
+
+impl TryFrom<&q::Value> for ErrorPolicy {
+    type Error = anyhow::Error;
+
+    /// `value` should be the output of input value coercion.
+    fn try_from(value: &q::Value) -> Result<Self, Self::Error> {
+        match value {
+            q::Value::Enum(s) => ErrorPolicy::from_str(s),
+            _ => Err(anyhow::anyhow!("invalid `ErrorPolicy`")),
+        }
+    }
+}
 
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
@@ -23,7 +65,10 @@ const BLOCK_HEIGHT: &str = "Block_height";
 /// and must not include a root Query type. This Query type is derived,
 /// with all its fields and their input arguments, based on the existing
 /// types.
-pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
+pub fn api_schema(
+    input_schema: &Document,
+    features: &BTreeSet<SubgraphFeature>,
+) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
     let object_types = ast::get_object_type_definitions(input_schema);
     let interface_types = ast::get_interface_type_definitions(input_schema);
@@ -34,11 +79,12 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_builtin_scalar_types(&mut schema)?;
     add_order_direction_enum(&mut schema);
     add_block_height_type(&mut schema);
+    add_meta_field_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema, &input_schema)?;
-    add_query_type(&mut schema, &object_types, &interface_types)?;
-    add_subscription_type(&mut schema, &object_types, &interface_types)?;
+    add_query_type(&mut schema, &object_types, &interface_types, features)?;
+    add_subscription_type(&mut schema, &object_types, &interface_types, features)?;
     Ok(schema)
 }
 
@@ -169,6 +215,21 @@ fn add_block_height_type(schema: &mut Document) {
     schema.definitions.push(def);
 }
 
+/// Adds a global `_Meta_` type to the schema. The `_meta` field
+/// accepts values of this type
+fn add_meta_field_type(schema: &mut Document) {
+    lazy_static! {
+        static ref META_FIELD_SCHEMA: Document = {
+            let schema = include_str!("meta.graphql");
+            parse_schema(schema).expect("the schema `meta.graphql` is invalid")
+        };
+    }
+
+    schema
+        .definitions
+        .extend(META_FIELD_SCHEMA.definitions.iter().cloned());
+}
+
 fn add_types_for_object_types(
     schema: &mut Document,
     object_types: &Vec<&ObjectType>,
@@ -195,7 +256,7 @@ fn add_types_for_interface_types(
 /// Adds a `<type_name>_orderBy` enum type for the given fields to the schema.
 fn add_order_by_type(
     schema: &mut Document,
-    type_name: &Name,
+    type_name: &String,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name).to_string();
@@ -229,7 +290,7 @@ fn add_order_by_type(
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
 fn add_filter_type(
     schema: &mut Document,
-    type_name: &Name,
+    type_name: &String,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name).to_string();
@@ -300,7 +361,7 @@ fn field_filter_input_values(
                         field_scalar_filter_input_values(
                             schema,
                             field,
-                            &ScalarType::new(Name::from("String")),
+                            &ScalarType::new(String::from("String")),
                         )
                     }
                 }
@@ -425,7 +486,7 @@ fn field_list_filter_input_values(
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
-fn input_value(name: &Name, suffix: &'static str, value_type: Type) -> InputValue {
+fn input_value(name: &String, suffix: &'static str, value_type: Type) -> InputValue {
     InputValue {
         position: Pos::default(),
         description: None,
@@ -445,6 +506,7 @@ fn add_query_type(
     schema: &mut Document,
     object_types: &[&ObjectType],
     interface_types: &[&InterfaceType],
+    features: &BTreeSet<SubgraphFeature>,
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
@@ -456,14 +518,16 @@ fn add_query_type(
         .iter()
         .map(|t| &t.name)
         .chain(interface_types.iter().map(|t| &t.name))
-        .flat_map(|name| query_fields_for_type(schema, name))
+        .flat_map(|name| query_fields_for_type(schema, name, features))
         .collect::<Vec<Field>>();
     let mut fulltext_fields = schema
         .get_fulltext_directives()
+        .map_err(|_| APISchemaError::FulltextSearchNonDeterministic)?
         .iter()
-        .filter_map(|fulltext| query_field_for_fulltext(fulltext))
+        .filter_map(|fulltext| query_field_for_fulltext(fulltext, features))
         .collect();
     fields.append(&mut fulltext_fields);
+    fields.push(meta_field());
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
@@ -478,7 +542,10 @@ fn add_query_type(
     Ok(())
 }
 
-fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
+fn query_field_for_fulltext(
+    fulltext: &Directive,
+    features: &BTreeSet<SubgraphFeature>,
+) -> Option<Field> {
     let name = fulltext
         .argument("name")
         .unwrap()
@@ -492,7 +559,7 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
     let included_entity = include.as_object().unwrap();
     let entity_name = included_entity.get("entity").unwrap().as_string().unwrap();
 
-    let arguments = vec![
+    let mut arguments = vec![
         // text: String
         InputValue {
             position: Pos::default(),
@@ -521,15 +588,13 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
             directives: vec![],
         },
         // block: BlockHeight
-        InputValue {
-            position: Pos::default(),
-            description: None,
-            name: String::from("block"),
-            value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
-            default_value: None,
-            directives: vec![],
-        },
+        block_argument(),
     ];
+
+    if features.contains(&SubgraphFeature::nonFatalErrors) {
+        arguments.push(subgraph_error_argument())
+    }
+
     Some(Field {
         position: Pos::default(),
         description: None,
@@ -547,6 +612,7 @@ fn add_subscription_type(
     schema: &mut Document,
     object_types: &[&ObjectType],
     interface_types: &[&InterfaceType],
+    features: &BTreeSet<SubgraphFeature>,
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
@@ -554,18 +620,21 @@ fn add_subscription_type(
         return Err(APISchemaError::TypeExists(type_name));
     }
 
+    let mut fields: Vec<Field> = object_types
+        .iter()
+        .map(|t| &t.name)
+        .chain(interface_types.iter().map(|t| &t.name))
+        .flat_map(|name| query_fields_for_type(schema, name, features))
+        .collect();
+    fields.push(meta_field());
+
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
         description: None,
         name: type_name,
         implements_interfaces: vec![],
         directives: vec![],
-        fields: object_types
-            .iter()
-            .map(|t| &t.name)
-            .chain(interface_types.iter().map(|t| &t.name))
-            .flat_map(|name| query_fields_for_type(schema, name))
-            .collect(),
+        fields,
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
@@ -589,28 +658,53 @@ fn block_argument() -> InputValue {
     }
 }
 
+fn subgraph_error_argument() -> InputValue {
+    InputValue {
+        position: Pos::default(),
+        description: Some(
+            "Set to `allow` to receive data even if the subgraph has skipped over errors while syncing."
+                .to_owned(),
+        ),
+        name: "subgraphError".to_string(),
+        value_type: Type::NonNullType(Box::new(Type::NamedType(ERROR_POLICY_TYPE.to_string()))),
+        default_value: Some(Value::Enum("deny".to_string())),
+        directives: vec![],
+    }
+}
+
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
+fn query_fields_for_type(
+    schema: &Document,
+    type_name: &String,
+    features: &BTreeSet<SubgraphFeature>,
+) -> Vec<Field> {
     let input_objects = ast::get_input_object_definitions(schema);
     let mut collection_arguments = collection_arguments_for_named_type(&input_objects, type_name);
     collection_arguments.push(block_argument());
+
+    let mut by_id_arguments = vec![
+        InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "id".to_string(),
+            value_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
+            default_value: None,
+            directives: vec![],
+        },
+        block_argument(),
+    ];
+
+    if features.contains(&SubgraphFeature::nonFatalErrors) {
+        collection_arguments.push(subgraph_error_argument());
+        by_id_arguments.push(subgraph_error_argument());
+    }
 
     vec![
         Field {
             position: Pos::default(),
             description: None,
             name: type_name.as_str().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
-            arguments: vec![
-                InputValue {
-                    position: Pos::default(),
-                    description: None,
-                    name: "id".to_string(),
-                    value_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
-                    default_value: None,
-                    directives: vec![],
-                },
-                block_argument(),
-            ],
+            arguments: by_id_arguments,
             field_type: Type::NamedType(type_name.to_owned()),
             directives: vec![],
         },
@@ -627,10 +721,34 @@ fn query_fields_for_type(schema: &Document, type_name: &Name) -> Vec<Field> {
     ]
 }
 
+fn meta_field() -> Field {
+    lazy_static! {
+        static ref META_FIELD: Field = Field {
+            position: Pos::default(),
+            description: Some("Access to subgraph metadata".to_string()),
+            name: META_FIELD_NAME.to_string(),
+            arguments: vec![
+                // block: BlockHeight
+                InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: String::from("block"),
+                    value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
+                    default_value: None,
+                    directives: vec![],
+                },
+            ],
+            field_type: Type::NamedType(META_FIELD_TYPE.to_string()),
+            directives: vec![],
+        };
+    }
+    META_FIELD.clone()
+}
+
 /// Generates arguments for collection queries of a named type (e.g. User).
 fn collection_arguments_for_named_type(
     input_objects: &[InputObjectType],
-    type_name: &Name,
+    type_name: &String,
 ) -> Vec<InputValue> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
@@ -750,6 +868,10 @@ fn add_field_arguments(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+    use std::iter::FromIterator;
+
+    use graph::data::subgraph::SubgraphFeature;
     use graphql_parser::schema::*;
 
     use super::api_schema;
@@ -759,7 +881,8 @@ mod tests {
     fn api_schema_contains_built_in_scalar_types() {
         let input_schema =
             parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema =
+            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
 
         ast::get_named_type(&schema, &"Boolean".to_string())
             .expect("Boolean type is missing in API schema");
@@ -776,7 +899,8 @@ mod tests {
     fn api_schema_contains_order_direction_enum() {
         let input_schema = parse_schema("type User { id: ID!, name: String! }")
             .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema =
+            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derived API schema");
 
         let order_direction = ast::get_named_type(&schema, &"OrderDirection".to_string())
             .expect("OrderDirection type is missing in derived API schema");
@@ -786,7 +910,7 @@ mod tests {
         }
         .expect("OrderDirection type is not an enum");
 
-        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"asc".to_string(), &"desc".to_string()]);
     }
 
@@ -794,7 +918,8 @@ mod tests {
     fn api_schema_contains_query_type() {
         let input_schema =
             parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema =
+            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
         ast::get_named_type(&schema, &"Query".to_string())
             .expect("Root Query type is missing in API schema");
     }
@@ -803,7 +928,11 @@ mod tests {
     fn api_schema_contains_field_order_by_enum() {
         let input_schema = parse_schema("type User { id: ID!, name: String! }")
             .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = api_schema(
+            &input_schema,
+            &BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
+        )
+        .expect("Failed to derived API schema");
 
         let user_order_by = ast::get_named_type(&schema, &"User_orderBy".to_string())
             .expect("User_orderBy type is missing in derived API schema");
@@ -814,7 +943,7 @@ mod tests {
         }
         .expect("User_orderBy type is not an enum");
 
-        let values: Vec<&Name> = enum_type.values.iter().map(|value| &value.name).collect();
+        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
         assert_eq!(values, [&"id".to_string(), &"name".to_string()]);
     }
 
@@ -841,7 +970,8 @@ mod tests {
             "#,
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema =
+            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derived API schema");
 
         let user_filter = ast::get_named_type(&schema, &"User_filter".to_string())
             .expect("User_filter type is missing in derived API schema");
@@ -916,7 +1046,8 @@ mod tests {
             "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema =
+            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
 
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
             .expect("Query type is missing in derived API schema");
@@ -1007,7 +1138,11 @@ mod tests {
             ",
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = api_schema(
+            &input_schema,
+            &BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
+        )
+        .expect("Failed to derived API schema");
 
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
             .expect("Query type is missing in derived API schema");
@@ -1029,7 +1164,11 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            vec!["id".to_string(), "block".to_string()],
+            vec![
+                "id".to_string(),
+                "block".to_string(),
+                "subgraphError".to_string()
+            ],
         );
 
         let plural_field = match query_type {
@@ -1057,7 +1196,8 @@ mod tests {
                 "orderBy",
                 "orderDirection",
                 "where",
-                "block"
+                "block",
+                "subgraphError"
             ]
             .iter()
             .map(|name| name.to_string())
@@ -1090,7 +1230,8 @@ type Gravatar @entity {
 }
 "#;
         let input_schema = parse_schema(SCHEMA).expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema =
+            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
 
         let query_type = ast::get_named_type(&schema, &"Query".to_string())
             .expect("Query type is missing in derived API schema");

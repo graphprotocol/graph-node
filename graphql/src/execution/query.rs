@@ -1,9 +1,9 @@
-use graphql_parser::{query as q, schema as s};
-use std::collections::hash_map::DefaultHasher;
+use graphql_parser::Pos;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
+use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
 use graph::data::graphql::{
     ext::{DocumentExt, TypeExt},
@@ -11,13 +11,17 @@ use graph::data::graphql::{
 };
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
-use graph::prelude::{info, o, CheapClone, Logger, QueryExecutionError};
+use graph::prelude::{
+    info, o, q, s, BlockNumber, CheapClone, Logger, QueryExecutionError, TryFromValue,
+};
 
-use crate::execution::{get_field, get_named_type, object_or_interface};
 use crate::introspection::introspection_schema;
-use crate::query::{ast as qast, ext::BlockConstraint, ext::FieldExt};
+use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast as sast;
+use crate::{
+    execution::{get_field, get_named_type, object_or_interface},
+    schema::api::ErrorPolicy,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ComplexityError {
@@ -74,7 +78,7 @@ pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,
     /// The variables for the query, coerced into proper values
-    pub variables: HashMap<q::Name, q::Value>,
+    pub variables: HashMap<String, q::Value>,
     /// The root selection set of the query
     pub selection_set: Arc<q::SelectionSet>,
     /// The ShapeHash of the original query
@@ -93,6 +97,7 @@ pub struct Query {
     /// have dummy values
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
+    pub query_id: String,
     pub(crate) complexity: u64,
 }
 
@@ -103,6 +108,8 @@ impl Query {
     /// or the query is too complex, errors are returned
     pub fn new(
         logger: &Logger,
+        schema: Arc<ApiSchema>,
+        network: Option<String>,
         query: GraphDataQuery,
         max_complexity: Option<u64>,
         max_depth: u8,
@@ -122,7 +129,7 @@ impl Query {
         }
         let operation = operation.ok_or(QueryExecutionError::OperationNameRequired)?;
 
-        let variables = coerce_variables(&query.schema, &operation, query.variables)?;
+        let variables = coerce_variables(schema.as_ref(), &operation, query.variables)?;
         let (kind, selection_set) = match operation {
             q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
                 (Kind::Query, selection_set)
@@ -142,26 +149,28 @@ impl Query {
         let query_hash = {
             let mut hasher = DefaultHasher::new();
             query.query_text.hash(&mut hasher);
+            query.variables_text.hash(&mut hasher);
             hasher.finish()
         };
         let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
         let logger = logger.new(o!(
-            "subgraph_id" => query.schema.id().clone(),
-            "query_id" => query_id
+            "subgraph_id" => schema.id().clone(),
+            "query_id" => query_id.clone()
         ));
 
         let mut query = Self {
-            schema: query.schema,
+            schema,
             variables,
             fragments,
             selection_set: Arc::new(selection_set),
             shape_hash: query.shape_hash,
             kind,
-            network: query.network,
+            network,
             logger,
             start: Instant::now(),
             query_text: query.query_text.cheap_clone(),
             variables_text: query.variables_text.cheap_clone(),
+            query_id,
             complexity: 0,
         };
 
@@ -171,29 +180,67 @@ impl Query {
         Ok(Arc::new(query))
     }
 
-    /// Return the block constraint for the toplevel query field(s), merging the
-    /// selection sets of fields that have the same block constraint.
+    /// Return the block constraint for the toplevel query field(s), merging the selection sets of
+    /// fields that have the same block constraint.
+    ///
+    /// Also returns the combined error policy for those fields, which is `Deny` if any field is
+    /// `Deny` and `Allow` otherwise.
     pub fn block_constraint(
         &self,
-    ) -> Result<HashMap<BlockConstraint, q::SelectionSet>, Vec<QueryExecutionError>> {
+    ) -> Result<HashMap<BlockConstraint, (q::SelectionSet, ErrorPolicy)>, Vec<QueryExecutionError>>
+    {
+        use graphql_parser::query::Selection::Field;
+
         let mut bcs = HashMap::new();
         let mut errors = Vec::new();
 
         for field in self.selection_set.items.iter().filter_map(|sel| match sel {
-            q::Selection::Field(f) => Some(f),
+            Field(f) => Some(f),
             _ => None,
         }) {
-            match field.block_constraint(&self.variables) {
-                Ok(bc) => {
-                    let selection_set = bcs.entry(bc).or_insert(q::SelectionSet {
+            let query_ty = self.schema.query_type.as_ref();
+            let args = match crate::execution::coerce_argument_values(self, query_ty, field) {
+                Ok(args) => args,
+                Err(errs) => {
+                    errors.extend(errs);
+                    continue;
+                }
+            };
+
+            let bc = match args.get(&"block".to_string()) {
+                Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
+                    vec![QueryExecutionError::InvalidArgumentError(
+                        Pos::default(),
+                        "block".to_string(),
+                        bc.clone(),
+                    )]
+                })?,
+                None => BlockConstraint::Latest,
+            };
+
+            let field_error_policy = match args.get(&"subgraphError".to_string()) {
+                Some(value) => ErrorPolicy::try_from(value).map_err(|_| {
+                    vec![QueryExecutionError::InvalidArgumentError(
+                        Pos::default(),
+                        "subgraphError".to_string(),
+                        value.clone(),
+                    )]
+                })?,
+                None => ErrorPolicy::Deny,
+            };
+
+            let (selection_set, error_policy) = bcs.entry(bc).or_insert_with(|| {
+                (
+                    q::SelectionSet {
                         span: self.selection_set.span.clone(),
                         items: vec![],
-                    });
-                    selection_set.items.push(q::Selection::Field(field.clone()));
-                }
-                Err(e) => {
-                    errors.push(e);
-                }
+                    },
+                    field_error_policy,
+                )
+            });
+            selection_set.items.push(Field(field.clone()));
+            if field_error_policy == ErrorPolicy::Deny {
+                *error_policy = ErrorPolicy::Deny;
             }
         }
         if !errors.is_empty() {
@@ -219,13 +266,14 @@ impl Query {
             start: self.start,
             query_text: self.query_text.clone(),
             variables_text: self.variables_text.clone(),
+            query_id: self.query_id.clone(),
             complexity: self.complexity,
         })
     }
 
     /// Should only be called for fragments that exist in the query, and therefore have been
     /// validated to exist. Panics otherwise.
-    pub fn get_fragment(&self, name: &q::Name) -> &q::FragmentDefinition {
+    pub fn get_fragment(&self, name: &String) -> &q::FragmentDefinition {
         self.fragments.get(name).unwrap()
     }
 
@@ -247,7 +295,7 @@ impl Query {
     }
 
     /// Log details about the overall execution of the query
-    pub fn log_execution(&self, block: u64) {
+    pub fn log_execution(&self, block: BlockNumber) {
         if *graph::log::LOG_GQL_TIMING {
             info!(
                 &self.logger,
@@ -331,16 +379,12 @@ impl Query {
     // Checks for invalid selections.
     fn validate_fields_inner(
         &self,
-        type_name: &q::Name,
+        type_name: &String,
         ty: ObjectOrInterface<'_>,
         selection_set: &q::SelectionSet,
     ) -> Vec<QueryExecutionError> {
         let schema = self.schema.document();
 
-        // The dynamic data sources query uses empty selection sets, though ideally it shouldn't.
-        if selection_set.items.is_empty() && *self.schema.id() != *SUBGRAPHS_ID {
-            return vec![QueryExecutionError::EmptySelectionSet(ty.name().to_owned())];
-        }
         selection_set
             .items
             .iter()
@@ -500,7 +544,7 @@ pub fn coerce_variables(
     schema: &ApiSchema,
     operation: &q::OperationDefinition,
     mut variables: Option<QueryVariables>,
-) -> Result<HashMap<q::Name, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<HashMap<String, q::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
@@ -557,7 +601,7 @@ fn coerce_variable(
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
-    let resolver = |name: &q::Name| sast::get_named_type(schema.document(), name);
+    let resolver = |name: &String| sast::get_named_type(schema.document(), name);
 
     coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(

@@ -1,19 +1,17 @@
-use crate::components::store::{Store, SubgraphDeploymentStore};
+use crate::components::store::Store;
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::store::ValueType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
-use crate::prelude::Fail;
-
-use anyhow::Context;
-use failure::Error;
-use graphql_parser;
-use graphql_parser::{
-    query::{Name, Value},
-    schema::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
-    Pos,
+use crate::prelude::{
+    q::Value,
+    s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
 };
+
+use anyhow::{Context, Error};
+use graphql_parser::{self, Pos};
 use inflector::Inflector;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -25,6 +23,9 @@ use std::sync::Arc;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
+pub const META_FIELD_TYPE: &str = "_Meta_";
+pub const META_FIELD_NAME: &str = "_meta";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Strings(Vec<String>);
 
@@ -35,79 +36,68 @@ impl fmt::Display for Strings {
     }
 }
 
-#[derive(Debug, Fail, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum SchemaValidationError {
-    #[fail(display = "Interface `{}` not defined", _0)]
+    #[error("Interface `{0}` not defined")]
     InterfaceUndefined(String),
 
-    #[fail(display = "@entity directive missing on the following types: `{}`", _0)]
+    #[error("@entity directive missing on the following types: `{0}`")]
     EntityDirectivesMissing(Strings),
 
-    #[fail(
-        display = "Entity type `{}` does not satisfy interface `{}` because it is missing \
-                   the following fields: {}",
-        _0, _1, _2
+    #[error(
+        "Entity type `{0}` does not satisfy interface `{1}` because it is missing \
+         the following fields: {2}"
     )]
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
-    #[fail(
-        display = "Field `{}` in type `{}` has invalid @derivedFrom: {}",
-        _1, _0, _2
-    )]
+    #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
-    #[fail(display = "_Schema_ type is only for @imports and must not have any fields")]
+    #[error("_Schema_ type is only for @imports and must not have any fields")]
     SchemaTypeWithFields,
-    #[fail(display = "Imported subgraph name `{}` is invalid", _0)]
+    #[error("Imported subgraph name `{0}` is invalid")]
     ImportedSubgraphNameInvalid(String),
-    #[fail(display = "Imported subgraph id `{}` is invalid", _0)]
+    #[error("Imported subgraph id `{0}` is invalid")]
     ImportedSubgraphIdInvalid(String),
-    #[fail(display = "The _Schema_ type only allows @import directives")]
+    #[error("The _Schema_ type only allows @import directives")]
     InvalidSchemaTypeDirectives,
-    #[fail(display = r#"@import directives must have the form \
+    #[error(
+        r#"@import directives must have the form \
 @import(types: ["A", {{ name: "B", as: "C"}}], from: {{ name: "org/subgraph"}}) or \
-@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#)]
+@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#
+    )]
     ImportDirectiveInvalid,
-    #[fail(
-        display = "Type `{}`, field `{}`: type `{}` is neither defined nor imported",
-        _0, _1, _2
-    )]
+    #[error("Type `{0}`, field `{1}`: type `{2}` is neither defined nor imported")]
     FieldTypeUnknown(String, String, String), // (type_name, field_name, field_type)
-    #[fail(
-        display = "Imported type `{}` does not exist in the `{}` schema",
-        _0, _1
-    )]
+    #[error("Imported type `{0}` does not exist in the `{1}` schema")]
     ImportedTypeUndefined(String, String), // (type_name, schema)
-    #[fail(display = "Fulltext directive name undefined")]
+    #[error("Fulltext directive name undefined")]
     FulltextNameUndefined,
-    #[fail(display = "Fulltext directive name overlaps with type: {}", _0)]
+    #[error("Fulltext directive name overlaps with type: {0}")]
     FulltextNameConflict(String),
-    #[fail(
-        display = "Fulltext directive name overlaps with an existing entity field or a top-level query field: {}",
-        _0
-    )]
+    #[error("Fulltext directive name overlaps with an existing entity field or a top-level query field: {0}")]
     FulltextNameCollision(String),
-    #[fail(display = "Fulltext language is undefined")]
+    #[error("Fulltext language is undefined")]
     FulltextLanguageUndefined,
-    #[fail(display = "Fulltext language is invalid: {}", _0)]
+    #[error("Fulltext language is invalid: {0}")]
     FulltextLanguageInvalid(String),
-    #[fail(display = "Fulltext algorithm is undefined")]
+    #[error("Fulltext algorithm is undefined")]
     FulltextAlgorithmUndefined,
-    #[fail(display = "Fulltext algorithm is invalid: {}", _0)]
+    #[error("Fulltext algorithm is invalid: {0}")]
     FulltextAlgorithmInvalid(String),
-    #[fail(display = "Fulltext include is invalid")]
+    #[error("Fulltext include is invalid")]
     FulltextIncludeInvalid,
-    #[fail(display = "Fulltext directive requires an 'include' list")]
+    #[error("Fulltext directive requires an 'include' list")]
     FulltextIncludeUndefined,
-    #[fail(display = "Fulltext 'include' list must contain an object")]
+    #[error("Fulltext 'include' list must contain an object")]
     FulltextIncludeObjectMissing,
-    #[fail(
-        display = "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
+    #[error(
+        "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
     )]
     FulltextIncludeEntityMissingOrIncorrectAttributes,
-    #[fail(display = "Fulltext directive includes an entity not found on the subgraph schema")]
+    #[error("Fulltext directive includes an entity not found on the subgraph schema")]
     FulltextIncludedEntityNotFound,
-    #[fail(display = "Fulltext include field must have a 'name' attribute")]
+    #[error("Fulltext include field must have a 'name' attribute")]
     FulltextIncludedFieldMissingRequiredProperty,
-    #[fail(display = "Fulltext entity field, {}, not found or not a string", _0)]
+    #[error("Fulltext entity field, {0}, not found or not a string")]
     FulltextIncludedFieldInvalid(String),
 }
 
@@ -214,7 +204,7 @@ pub struct FulltextDefinition {
     pub name: String,
 }
 
-impl From<&Directive> for FulltextDefinition {
+impl From<&s::Directive> for FulltextDefinition {
     // Assumes the input is a Fulltext Directive that has already been validated because it makes
     // liberal use of unwrap() where specific types are expected
     fn from(directive: &Directive) -> Self {
@@ -262,11 +252,11 @@ impl From<&Directive> for FulltextDefinition {
         }
     }
 }
-#[derive(Debug, Fail, PartialEq, Eq, Clone)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum SchemaImportError {
-    #[fail(display = "Schema for imported subgraph `{}` was not found", _0)]
+    #[error("Schema for imported subgraph `{0}` was not found")]
     ImportedSchemaNotFound(SchemaReference),
-    #[fail(display = "Subgraph for imported schema `{}` is not deployed", _0)]
+    #[error("Subgraph for imported schema `{0}` is not deployed")]
     ImportedSubgraphNotFound(SchemaReference),
 }
 
@@ -333,10 +323,7 @@ impl SchemaReference {
         SchemaReference { subgraph }
     }
 
-    pub fn resolve<S: Store + SubgraphDeploymentStore>(
-        &self,
-        store: Arc<S>,
-    ) -> Result<Arc<Schema>, SchemaImportError> {
+    pub fn resolve<S: Store>(&self, store: Arc<S>) -> Result<Arc<Schema>, SchemaImportError> {
         store
             .input_schema(&self.subgraph)
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
@@ -386,7 +373,7 @@ impl ApiSchema {
         })
     }
 
-    pub fn document(&self) -> &schema::Document {
+    pub fn document(&self) -> &s::Document {
         &self.schema.document
     }
 
@@ -398,12 +385,12 @@ impl ApiSchema {
         &self.schema
     }
 
-    pub fn types_for_interface(&self) -> &BTreeMap<Name, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
         &self.schema.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &Name) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &String) -> Option<&Vec<InterfaceType>> {
         self.schema.interfaces_for_type(type_name)
     }
 }
@@ -412,20 +399,20 @@ impl ApiSchema {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
     pub id: SubgraphDeploymentId,
-    pub document: schema::Document,
+    pub document: s::Document,
 
     // Maps type name to implemented interfaces.
-    pub interfaces_for_type: BTreeMap<Name, Vec<InterfaceType>>,
+    pub interfaces_for_type: BTreeMap<String, Vec<InterfaceType>>,
 
     // Maps an interface name to the list of entities that implement it.
-    pub types_for_interface: BTreeMap<Name, Vec<ObjectType>>,
+    pub types_for_interface: BTreeMap<String, Vec<ObjectType>>,
 }
 
 impl Schema {
     /// Create a new schema. The document must already have been
     /// validated. This function is only useful for creating an introspection
     /// schema, and should not be used otherwise
-    pub fn new(id: SubgraphDeploymentId, document: schema::Document) -> Self {
+    pub fn new(id: SubgraphDeploymentId, document: s::Document) -> Self {
         Schema {
             id,
             document,
@@ -434,7 +421,7 @@ impl Schema {
         }
     }
 
-    pub fn resolve_schema_references<S: Store + SubgraphDeploymentStore>(
+    pub fn resolve_schema_references<S: Store>(
         &self,
         store: Arc<S>,
     ) -> (
@@ -447,7 +434,7 @@ impl Schema {
         (schemas, import_errors)
     }
 
-    fn resolve_import_graph<S: Store + SubgraphDeploymentStore>(
+    fn resolve_import_graph<S: Store>(
         &self,
         store: Arc<S>,
         schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
@@ -479,11 +466,11 @@ impl Schema {
     }
 
     pub fn collect_interfaces(
-        document: &schema::Document,
+        document: &s::Document,
     ) -> Result<
         (
-            BTreeMap<Name, Vec<InterfaceType>>,
-            BTreeMap<Name, Vec<ObjectType>>,
+            BTreeMap<String, Vec<InterfaceType>>,
+            BTreeMap<String, Vec<ObjectType>>,
         ),
         SchemaValidationError,
     > {
@@ -532,7 +519,7 @@ impl Schema {
     }
 
     pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
-        let document = graphql_parser::parse_schema(&raw)?;
+        let document = graphql_parser::parse_schema(&raw)?.into_static();
 
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
 
@@ -598,24 +585,21 @@ impl Schema {
     }
 
     /// Returned map has one an entry for each interface in the schema.
-    pub fn types_for_interface(&self) -> &BTreeMap<Name, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
         &self.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &Name) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &String) -> Option<&Vec<InterfaceType>> {
         self.interfaces_for_type.get(type_name)
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
     pub fn add_subgraph_id_directives(&mut self, id: SubgraphDeploymentId) {
         for definition in self.document.definitions.iter_mut() {
-            let subgraph_id_argument = (
-                schema::Name::from("id"),
-                schema::Value::String(id.to_string()),
-            );
+            let subgraph_id_argument = (String::from("id"), s::Value::String(id.to_string()));
 
-            let subgraph_id_directive = schema::Directive {
+            let subgraph_id_directive = s::Directive {
                 name: "subgraphId".to_string(),
                 position: Pos::default(),
                 arguments: vec![subgraph_id_argument],
@@ -1281,9 +1265,9 @@ impl Schema {
     pub fn entity_fulltext_definitions<'a>(
         entity: &str,
         document: &'a Document,
-    ) -> Vec<FulltextDefinition> {
-        document
-            .get_fulltext_directives()
+    ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
+        Ok(document
+            .get_fulltext_directives()?
             .into_iter()
             .filter(|directive| match directive.argument("include") {
                 Some(Value::List(includes)) if includes.len() > 0 => includes
@@ -1301,7 +1285,7 @@ impl Schema {
                 _ => false,
             })
             .map(|directive| FulltextDefinition::from(directive))
-            .collect()
+            .collect())
     }
 }
 
@@ -1358,7 +1342,9 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
     fn validate(field: &str, errmsg: &str) {
         let raw = format!("type A @entity {{ id: ID!\n {} }}\n{}", field, OTHER_TYPES);
 
-        let document = graphql_parser::parse_schema(&raw).expect("Failed to parse raw schema");
+        let document = graphql_parser::parse_schema(&raw)
+            .expect("Failed to parse raw schema")
+            .into_static();
         let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
         match schema.validate_derived_from() {
             Err(ref e) => match e {

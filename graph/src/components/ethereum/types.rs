@@ -1,9 +1,10 @@
+use anyhow::anyhow;
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
-use std::cmp::Ordering;
-use std::fmt;
+use std::{cmp::Ordering, convert::TryFrom};
+use std::{fmt, str::FromStr};
 use web3::types::*;
 
 use crate::prelude::{EntityKey, SubgraphDeploymentId, ToEntityKey};
@@ -16,6 +17,7 @@ pub trait LightEthereumBlockExt {
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
     fn format(&self) -> String;
+    fn block_ptr(&self) -> EthereumBlockPointer;
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
@@ -53,6 +55,13 @@ impl LightEthereumBlockExt for LightEthereumBlock {
             self.hash
                 .map_or(String::from("-"), |hash| format!("{:x}", hash))
         )
+    }
+
+    fn block_ptr(&self) -> EthereumBlockPointer {
+        EthereumBlockPointer {
+            hash: self.hash.unwrap(),
+            number: self.number.unwrap().as_u64(),
+        }
     }
 }
 
@@ -427,6 +436,19 @@ impl EthereumBlockPointer {
     pub fn hash_hex(&self) -> String {
         format!("{:x}", self.hash)
     }
+
+    /// Block number to be passed into the store. Panics if it does not fit in an i32.
+    pub fn block_number(&self) -> crate::components::store::BlockNumber {
+        if self.number <= std::i32::MAX as u64 {
+            self.number as i32
+        } else {
+            panic!(
+                "Block numbers bigger than {} are not supported, but received block number {}",
+                std::i32::MAX,
+                self.number
+            )
+        }
+    }
 }
 
 impl fmt::Display for EthereumBlockPointer {
@@ -494,6 +516,18 @@ impl From<(H256, i64)> for EthereumBlockPointer {
     }
 }
 
+impl TryFrom<(&str, i64)> for EthereumBlockPointer {
+    type Error = anyhow::Error;
+
+    fn try_from((hash, number): (&str, i64)) -> Result<Self, Self::Error> {
+        let hash = hash.trim_start_matches("0x");
+        let hash = H256::from_str(hash)
+            .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+
+        Ok(EthereumBlockPointer::from((hash, number)))
+    }
+}
+
 impl<'a> From<&'a EthereumCall> for EthereumBlockPointer {
     fn from(call: &'a EthereumCall) -> EthereumBlockPointer {
         EthereumBlockPointer {
@@ -526,11 +560,7 @@ impl From<EthereumBlockPointer> for u64 {
 
 impl ToEntityKey for EthereumBlockPointer {
     fn to_entity_key(&self, subgraph: SubgraphDeploymentId) -> EntityKey {
-        EntityKey {
-            subgraph_id: subgraph,
-            entity_type: "Block".into(),
-            entity_id: format!("{:x}", self.hash),
-        }
+        EntityKey::data(subgraph, "Block".into(), format!("{:x}", self.hash))
     }
 }
 

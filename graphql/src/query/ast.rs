@@ -1,4 +1,4 @@
-use graphql_parser::query::*;
+use graph::prelude::q::*;
 use std::collections::HashMap;
 
 use graph::prelude::QueryExecutionError;
@@ -37,7 +37,7 @@ pub fn get_operations(document: &Document) -> Vec<&OperationDefinition> {
 }
 
 /// Returns the name of the given operation (if it has one).
-pub fn get_operation_name(operation: &OperationDefinition) -> Option<&Name> {
+pub fn get_operation_name(operation: &OperationDefinition) -> Option<&String> {
     match operation {
         OperationDefinition::Mutation(m) => m.name.as_ref(),
         OperationDefinition::Query(q) => q.name.as_ref(),
@@ -47,7 +47,7 @@ pub fn get_operation_name(operation: &OperationDefinition) -> Option<&Name> {
 }
 
 /// Looks up a directive in a selection, if it is provided.
-pub fn get_directive(selection: &Selection, name: Name) -> Option<&Directive> {
+pub fn get_directive(selection: &Selection, name: String) -> Option<&Directive> {
     match selection {
         Selection::Field(field) => field
             .directives
@@ -58,12 +58,12 @@ pub fn get_directive(selection: &Selection, name: Name) -> Option<&Directive> {
 }
 
 /// Looks up the value of an argument in a vector of (name, value) tuples.
-pub fn get_argument_value<'a>(arguments: &'a [(Name, Value)], name: &str) -> Option<&'a Value> {
+pub fn get_argument_value<'a>(arguments: &'a [(String, Value)], name: &str) -> Option<&'a Value> {
     arguments.iter().find(|(n, _)| n == name).map(|(_, v)| v)
 }
 
 /// Returns true if a selection should be skipped (as per the `@skip` directive).
-pub fn skip_selection(selection: &Selection, variables: &HashMap<Name, Value>) -> bool {
+pub fn skip_selection(selection: &Selection, variables: &HashMap<String, Value>) -> bool {
     match get_directive(selection, "skip".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
@@ -85,7 +85,7 @@ pub fn skip_selection(selection: &Selection, variables: &HashMap<Name, Value>) -
 }
 
 /// Returns true if a selection should be included (as per the `@include` directive).
-pub fn include_selection(selection: &Selection, variables: &HashMap<Name, Value>) -> bool {
+pub fn include_selection(selection: &Selection, variables: &HashMap<String, Value>) -> bool {
     match get_directive(selection, "include".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
@@ -107,12 +107,12 @@ pub fn include_selection(selection: &Selection, variables: &HashMap<Name, Value>
 }
 
 /// Returns the response key of a field, which is either its name or its alias (if there is one).
-pub fn get_response_key(field: &Field) -> &Name {
+pub fn get_response_key(field: &Field) -> &String {
     field.alias.as_ref().unwrap_or(&field.name)
 }
 
 /// Returns up the fragment with the given name, if it exists.
-pub fn get_fragment<'a>(document: &'a Document, name: &Name) -> Option<&'a FragmentDefinition> {
+pub fn get_fragment<'a>(document: &'a Document, name: &String) -> Option<&'a FragmentDefinition> {
     document
         .definitions
         .iter()

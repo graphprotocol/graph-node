@@ -2,12 +2,12 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use failure::Error;
 use futures03::prelude::Stream;
 use serde_json::Value;
 use slog::Logger;
 
 use crate::data::subgraph::Link;
+use crate::prelude::Error;
 
 /// The values that `json_stream` returns. The struct contains the deserialized
 /// JSON value from the input stream, together with the line number from which

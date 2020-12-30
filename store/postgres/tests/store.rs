@@ -1,21 +1,18 @@
-use diesel::pg::PgConnection;
-use diesel::*;
 use graph_mock::MockMetricsRegistry;
-use graphql_parser::schema as s;
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::collections::HashSet;
 use std::str::FromStr;
 use std::time::Duration;
+use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
-use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery};
+use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
-use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::NetworkStore as DieselStore;
 use web3::types::{Address, H256};
 
 const USER_GQL: &str = "
@@ -120,20 +117,11 @@ lazy_static! {
 fn run_test<R, F>(test: F)
 where
     F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
-    R: IntoFuture<Item = ()> + Send + 'static,
-    R::Error: Send + Debug,
-    R::Future: Send,
+    R: std::future::Future<Output = ()> + Send + 'static,
 {
-    let store = STORE.clone();
-
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
-    runtime
-        .block_on(async {
+    run_test_sequentially(
+        || (),
+        |store, ()| async move {
             // Reset state before starting
             remove_test_data(store.clone());
 
@@ -141,20 +129,21 @@ where
             insert_test_data(store.clone());
 
             // Run test
-            test(store).into_future().compat().await
-        })
-        .unwrap_or_else(|e| panic!("Failed to run Store test: {:?}", e));
+            test(store).await
+        },
+    );
 }
 
 /// Inserts test data into the store.
 ///
-/// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
-/// use.
+/// Inserts data in test blocks `GENESIS_PTR`, `TEST_BLOCK_1_PTR`, and
+/// `TEST_BLOCK_2_PTR`
 fn insert_test_data(store: Arc<DieselStore>) {
     let manifest = SubgraphManifest {
         id: TEST_SUBGRAPH_ID.clone(),
         location: "/ipfs/test".to_owned(),
         spec_version: "1".to_owned(),
+        features: Default::default(),
         description: None,
         repository: None,
         schema: TEST_SUBGRAPH_SCHEMA.clone(),
@@ -164,10 +153,18 @@ fn insert_test_data(store: Arc<DieselStore>) {
     };
 
     // Create SubgraphDeploymentEntity
-    let ops =
-        SubgraphDeploymentEntity::new(&manifest, false, None).create_operations(&*TEST_SUBGRAPH_ID);
+    let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
+    let name = SubgraphName::new("test/store").unwrap();
+    let node_id = NodeId::new("test").unwrap();
     store
-        .create_subgraph_deployment(&TEST_SUBGRAPH_SCHEMA, ops)
+        .create_subgraph_deployment(
+            name,
+            &TEST_SUBGRAPH_SCHEMA,
+            deployment,
+            node_id,
+            NETWORK_NAME.to_string(),
+            SubgraphVersionSwitchingMode::Instant,
+        )
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -268,46 +265,34 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: entity_type.to_owned(),
-            entity_id: id.to_owned(),
-        },
+        key: EntityKey::data(
+            TEST_SUBGRAPH_ID.clone(),
+            entity_type.to_owned(),
+            id.to_owned(),
+        ),
         data: test_entity,
     }
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<graph_store_postgres::Store>) {
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
-        .expect("Failed to remove entity test data");
+fn remove_test_data(store: Arc<DieselStore>) {
+    store
+        .delete_all_entities_for_test_use_only()
+        .expect("deleting test entities succeeds");
 }
 
-fn get_entity_count(
-    store: Arc<graph_store_postgres::Store>,
-    subgraph_id: &SubgraphDeploymentId,
-) -> u64 {
-    let key = SubgraphDeploymentEntity::key(subgraph_id.clone());
-    let entity = store.get(key).unwrap().unwrap();
-    entity
-        .get("entityCount")
-        .unwrap()
-        .clone()
-        .as_bigint()
-        .unwrap()
-        .to_u64()
+fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId) -> u64 {
+    let info = store
+        .status(status::Filter::Deployments(vec![subgraph_id.to_string()]))
+        .unwrap();
+    let info = info.first().unwrap();
+    info.entity_count
 }
 
 #[test]
 fn delete_entity() {
-    run_test(|store| -> Result<(), ()> {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "3".to_owned(),
-        };
+    run_test(|store| async move {
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
 
         // Check that there is an entity to remove.
         store.get(entity_key.clone()).unwrap().unwrap();
@@ -329,20 +314,14 @@ fn delete_entity() {
 
         // Check that that the deleted entity id is not present
         assert!(store.get(entity_key).unwrap().is_none());
-
-        Ok(())
     })
 }
 
 /// Check that user 1 was inserted correctly
 #[test]
 fn get_entity_1() {
-    run_test(|store| -> Result<(), ()> {
-        let key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+    run_test(|store| async move {
+        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
@@ -366,20 +345,14 @@ fn get_entity_1() {
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
-
-        Ok(())
     })
 }
 
 /// Check that user 3 was updated correctly
 #[test]
 fn get_entity_3() {
-    run_test(|store| -> Result<(), ()> {
-        let key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "3".to_owned(),
-        };
+    run_test(|store| async move {
+        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
         let result = store.get(key).unwrap();
 
         let mut expected_entity = Entity::new();
@@ -403,19 +376,13 @@ fn get_entity_3() {
 
         // Check that the expected entity was returned
         assert_eq!(result, Some(expected_entity));
-
-        Ok(())
     })
 }
 
 #[test]
 fn insert_entity() {
-    run_test(|store| -> Result<(), ()> {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "7".to_owned(),
-        };
+    run_test(|store| async move {
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "7".to_owned());
         let test_entity = create_test_entity(
             "7",
             USER,
@@ -441,19 +408,13 @@ fn insert_entity() {
 
         // Check that new record is in the store
         store.get(entity_key).unwrap().unwrap();
-
-        Ok(())
     })
 }
 
 #[test]
 fn update_existing() {
-    run_test(|store| -> Result<(), ()> {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+    run_test(|store| async move {
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
 
         let op = create_test_entity(
             "1",
@@ -493,19 +454,13 @@ fn update_existing() {
         new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(store.get(entity_key).unwrap(), Some(new_data));
-
-        Ok(())
     })
 }
 
 #[test]
 fn partially_update_existing() {
-    run_test(|store| -> Result<(), ()> {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+    run_test(|store| async move {
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
 
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
@@ -543,17 +498,24 @@ fn partially_update_existing() {
         assert_eq!(updated_entity.get("age"), original_entity.get("age"));
         assert_eq!(updated_entity.get("weight"), original_entity.get("weight"));
         assert_eq!(updated_entity.get("coffee"), original_entity.get("coffee"));
-
-        Ok(())
     })
 }
 
-fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
-    let expected_entity_ids: Vec<String> =
-        expected_entity_ids.into_iter().map(str::to_owned).collect();
+struct QueryChecker {
+    store: Arc<DieselStore>,
+}
 
-    run_test(move |store| -> Result<(), ()> {
-        let entities = store
+impl QueryChecker {
+    fn new(store: Arc<DieselStore>) -> Self {
+        Self { store }
+    }
+
+    fn check(self, expected_entity_ids: Vec<&str>, query: EntityQuery) -> Self {
+        let expected_entity_ids: Vec<String> =
+            expected_entity_ids.into_iter().map(str::to_owned).collect();
+
+        let entities = self
+            .store
             .find(query)
             .expect("store.find failed to execute query");
 
@@ -567,9 +529,8 @@ fn test_find(expected_entity_ids: Vec<&str>, query: EntityQuery) {
             .collect();
 
         assert_eq!(entity_ids, expected_entity_ids);
-
-        Ok(())
-    })
+        self
+    }
 }
 
 fn user_query() -> EntityQuery {
@@ -598,495 +559,349 @@ impl EasyOrder for EntityQuery {
 }
 
 #[test]
-fn find_string_contains() {
-    test_find(
-        vec!["2"],
-        user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
-    )
-}
+fn find() {
+    run_test(|store| async move {
+        // Filter tests with string attributes
+        QueryChecker::new(store.clone())
+            .check(
+                vec!["2"],
+                user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
+            )
+            .check(
+                vec!["2"],
+                user_query().filter(EntityFilter::Equal("name".to_owned(), "Cindini".into())),
+            )
+            .check(
+                vec!["1", "3"],
+                user_query()
+                    .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
+                    .asc("name"),
+            )
+            .check(
+                vec!["3"],
+                user_query().filter(EntityFilter::GreaterThan("name".to_owned(), "Kundi".into())),
+            )
+            .check(
+                vec!["2", "1"],
+                user_query()
+                    .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
+                    .asc("name"),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::LessThan("name".to_owned(), "ZZZ".into()))
+                    .desc("name")
+                    .first(1)
+                    .skip(1),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::And(vec![
+                        EntityFilter::LessThan("name".to_owned(), "Cz".into()),
+                        EntityFilter::Equal("name".to_owned(), "Cindini".into()),
+                    ]))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
+                    .desc("name"),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::In("name".to_owned(), vec!["Johnton".into()]))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "name".to_owned(),
+                        vec!["Shaqueeena".into()],
+                    ))
+                    .desc("name"),
+            );
 
-#[test]
-fn find_string_equal() {
-    test_find(
-        vec!["2"],
-        user_query().filter(EntityFilter::Equal("name".to_owned(), "Cindini".into())),
-    )
-}
-
-#[test]
-fn find_string_not_equal() {
-    test_find(
-        vec!["1", "3"],
-        user_query()
-            .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_string_greater_than() {
-    test_find(
-        vec!["3"],
-        user_query().filter(EntityFilter::GreaterThan("name".to_owned(), "Kundi".into())),
-    )
-}
-
-#[test]
-fn find_string_less_than_order_by_asc() {
-    test_find(
-        vec!["2", "1"],
-        user_query()
-            .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_string_less_than_order_by_desc() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_less_than_range() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::LessThan("name".to_owned(), "ZZZ".into()))
-            .desc("name")
-            .first(1)
-            .skip(1),
-    )
-}
-
-#[test]
-fn find_string_multiple_and() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::And(vec![
-                EntityFilter::LessThan("name".to_owned(), "Cz".into()),
-                EntityFilter::Equal("name".to_owned(), "Cindini".into()),
-            ]))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_ends_with() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_not_ends_with() {
-    test_find(
-        vec!["3", "1"],
-        user_query()
-            .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_in() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::In("name".to_owned(), vec!["Johnton".into()]))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_string_not_in() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "name".to_owned(),
-                vec!["Shaqueeena".into()],
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_float_equal() {
-    test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::Equal(
-            "weight".to_owned(),
-            Value::BigDecimal(184.4.into()),
-        )),
-    )
-}
-
-#[test]
-fn find_float_not_equal() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::Not(
-                "weight".to_owned(),
-                Value::BigDecimal(184.4.into()),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_float_greater_than() {
-    test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::GreaterThan(
-            "weight".to_owned(),
-            Value::BigDecimal(160.0.into()),
-        )),
-    )
-}
-
-#[test]
-fn find_float_less_than() {
-    test_find(
-        vec!["2", "3"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "weight".to_owned(),
-                Value::BigDecimal(160.0.into()),
-            ))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_float_less_than_order_by_desc() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "weight".to_owned(),
-                Value::BigDecimal(160.0.into()),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_float_less_than_range() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "weight".to_owned(),
-                Value::BigDecimal(161.0.into()),
-            ))
-            .desc("name")
-            .first(1)
-            .skip(1),
-    )
-}
-
-#[test]
-fn find_float_in() {
-    test_find(
-        vec!["3", "1"],
-        user_query()
-            .filter(EntityFilter::In(
-                "weight".to_owned(),
-                vec![
+        // Filter tests with float attributes
+        QueryChecker::new(store.clone())
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::Equal(
+                    "weight".to_owned(),
                     Value::BigDecimal(184.4.into()),
-                    Value::BigDecimal(111.7.into()),
-                ],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_float_not_in() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "weight".to_owned(),
-                vec![
-                    Value::BigDecimal(184.4.into()),
-                    Value::BigDecimal(111.7.into()),
-                ],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_int_equal() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67 as i32)))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_int_not_equal() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::Not("age".to_owned(), Value::Int(67 as i32)))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_int_greater_than() {
-    test_find(
-        vec!["1"],
-        user_query().filter(EntityFilter::GreaterThan(
-            "age".to_owned(),
-            Value::Int(43 as i32),
-        )),
-    )
-}
-
-#[test]
-fn find_int_greater_or_equal() {
-    test_find(
-        vec!["2", "1"],
-        user_query()
-            .filter(EntityFilter::GreaterOrEqual(
-                "age".to_owned(),
-                Value::Int(43 as i32),
-            ))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_int_less_than() {
-    test_find(
-        vec!["2", "3"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "age".to_owned(),
-                Value::Int(50 as i32),
-            ))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_int_less_or_equal() {
-    test_find(
-        vec!["2", "3"],
-        user_query()
-            .filter(EntityFilter::LessOrEqual(
-                "age".to_owned(),
-                Value::Int(43 as i32),
-            ))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_int_less_than_order_by_desc() {
-    test_find(
-        vec!["3", "2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "age".to_owned(),
-                Value::Int(50 as i32),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_int_less_than_range() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::LessThan(
-                "age".to_owned(),
-                Value::Int(67 as i32),
-            ))
-            .desc("name")
-            .first(1)
-            .skip(1),
-    )
-}
-
-#[test]
-fn find_int_in() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::In(
-                "age".to_owned(),
-                vec![Value::Int(67 as i32), Value::Int(43 as i32)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_int_not_in() {
-    test_find(
-        vec!["3"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "age".to_owned(),
-                vec![Value::Int(67 as i32), Value::Int(43 as i32)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_bool_equal() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_bool_not_equal() {
-    test_find(
-        vec!["1", "3"],
-        user_query()
-            .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
-            .asc("name"),
-    )
-}
-
-#[test]
-fn find_bool_in() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::In(
-                "coffee".to_owned(),
-                vec![Value::Bool(true)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_bool_not_in() {
-    test_find(
-        vec!["3", "1"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "coffee".to_owned(),
-                vec![Value::Bool(true)],
-            ))
-            .desc("name")
-            .first(5),
-    )
-}
-
-#[test]
-fn find_bytes_equal() {
-    test_find(
-        vec!["1"],
-        user_query()
-            .filter(EntityFilter::Equal(
-                "bin_name".to_owned(),
-                Value::Bytes("Johnton".as_bytes().into()),
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_null_equal() {
-    test_find(
-        vec!["3", "1"],
-        user_query()
-            .filter(EntityFilter::Equal(
-                "favorite_color".to_owned(),
-                Value::Null,
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_null_not_equal() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_null_not_in() {
-    test_find(
-        vec!["2"],
-        user_query()
-            .filter(EntityFilter::NotIn(
-                "favorite_color".to_owned(),
-                vec![Value::Null],
-            ))
-            .desc("name"),
-    )
-}
-
-#[test]
-fn find_order_by_float() {
-    test_find(vec!["3", "2", "1"], user_query().asc("weight"));
-    test_find(vec!["1", "2", "3"], user_query().desc("weight"));
-}
-
-#[test]
-fn find_order_by_id() {
-    test_find(vec!["1", "2", "3"], user_query().asc("id"));
-    test_find(vec!["3", "2", "1"], user_query().desc("id"));
-}
-
-#[test]
-fn find_order_by_int() {
-    test_find(vec!["3", "2", "1"], user_query().asc("age"));
-    test_find(vec!["1", "2", "3"], user_query().desc("age"));
-}
-
-#[test]
-fn find_order_by_string() {
-    test_find(vec!["2", "1", "3"], user_query().asc("name"));
-    test_find(vec!["3", "1", "2"], user_query().desc("name"));
-}
-
-#[test]
-fn find_where_nested_and_or() {
-    test_find(
-        vec!["1", "2"],
-        user_query()
-            .filter(EntityFilter::And(vec![EntityFilter::Or(vec![
-                EntityFilter::Equal("id".to_owned(), Value::from("1")),
-                EntityFilter::Equal("id".to_owned(), Value::from("2")),
-            ])]))
-            .asc("id"),
-    )
+                )),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::Not(
+                        "weight".to_owned(),
+                        Value::BigDecimal(184.4.into()),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::GreaterThan(
+                    "weight".to_owned(),
+                    Value::BigDecimal(160.0.into()),
+                )),
+            )
+            .check(
+                vec!["2", "3"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "weight".to_owned(),
+                        Value::BigDecimal(160.0.into()),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "weight".to_owned(),
+                        Value::BigDecimal(160.0.into()),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "weight".to_owned(),
+                        Value::BigDecimal(161.0.into()),
+                    ))
+                    .desc("name")
+                    .first(1)
+                    .skip(1),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "weight".to_owned(),
+                        vec![
+                            Value::BigDecimal(184.4.into()),
+                            Value::BigDecimal(111.7.into()),
+                        ],
+                    ))
+                    .desc("name")
+                    .first(5),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "weight".to_owned(),
+                        vec![
+                            Value::BigDecimal(184.4.into()),
+                            Value::BigDecimal(111.7.into()),
+                        ],
+                    ))
+                    .desc("name")
+                    .first(5),
+            );
+        // Filter tests with int attributes
+        QueryChecker::new(store.clone())
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67 as i32)))
+                    .desc("name"),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::Not("age".to_owned(), Value::Int(67 as i32)))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::GreaterThan(
+                    "age".to_owned(),
+                    Value::Int(43 as i32),
+                )),
+            )
+            .check(
+                vec!["2", "1"],
+                user_query()
+                    .filter(EntityFilter::GreaterOrEqual(
+                        "age".to_owned(),
+                        Value::Int(43 as i32),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["2", "3"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "age".to_owned(),
+                        Value::Int(50 as i32),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["2", "3"],
+                user_query()
+                    .filter(EntityFilter::LessOrEqual(
+                        "age".to_owned(),
+                        Value::Int(43 as i32),
+                    ))
+                    .asc("name"),
+            )
+            .check(
+                vec!["3", "2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "age".to_owned(),
+                        Value::Int(50 as i32),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::LessThan(
+                        "age".to_owned(),
+                        Value::Int(67 as i32),
+                    ))
+                    .desc("name")
+                    .first(1)
+                    .skip(1),
+            )
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "age".to_owned(),
+                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            )
+            .check(
+                vec!["3"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "age".to_owned(),
+                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            );
+        // Filter tests with bool attributes
+        QueryChecker::new(store.clone())
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
+                    .desc("name"),
+            )
+            .check(
+                vec!["1", "3"],
+                user_query()
+                    .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
+                    .asc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::In(
+                        "coffee".to_owned(),
+                        vec![Value::Bool(true)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "coffee".to_owned(),
+                        vec![Value::Bool(true)],
+                    ))
+                    .desc("name")
+                    .first(5),
+            );
+        // Misc filter tests
+        QueryChecker::new(store)
+            .check(
+                vec!["1"],
+                user_query()
+                    .filter(EntityFilter::Equal(
+                        "bin_name".to_owned(),
+                        Value::Bytes("Johnton".as_bytes().into()),
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::Equal(
+                        "favorite_color".to_owned(),
+                        Value::Null,
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::Equal(
+                        "favorite_color".to_owned(),
+                        Value::Null,
+                    ))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::NotIn(
+                        "favorite_color".to_owned(),
+                        vec![Value::Null],
+                    ))
+                    .desc("name"),
+            )
+            .check(vec!["3", "2", "1"], user_query().asc("weight"))
+            .check(vec!["1", "2", "3"], user_query().desc("weight"))
+            .check(vec!["1", "2", "3"], user_query().asc("id"))
+            .check(vec!["3", "2", "1"], user_query().desc("id"))
+            .check(vec!["3", "2", "1"], user_query().asc("age"))
+            .check(vec!["1", "2", "3"], user_query().desc("age"))
+            .check(vec!["2", "1", "3"], user_query().asc("name"))
+            .check(vec!["3", "1", "2"], user_query().desc("name"))
+            .check(
+                vec!["1", "2"],
+                user_query()
+                    .filter(EntityFilter::And(vec![EntityFilter::Or(vec![
+                        EntityFilter::Equal("id".to_owned(), Value::from("1")),
+                        EntityFilter::Equal("id".to_owned(), Value::from("2")),
+                    ])]))
+                    .asc("id"),
+            );
+    });
 }
 
 fn make_entity_change(
@@ -1096,112 +911,76 @@ fn make_entity_change(
 ) -> EntityChange {
     EntityChange {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_owned(),
+        entity_type: EntityType::data(entity_type.to_owned()),
         entity_id: entity_id.to_owned(),
         operation: op,
     }
 }
 
-fn make_deployment_change(entity_id: &str, op: EntityChangeOperation) -> EntityChange {
-    EntityChange {
-        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-        entity_type: "SubgraphDeployment".to_owned(),
-        entity_id: entity_id.to_owned(),
-        operation: op,
-    }
-}
-
-// Get as many events as expected contains from stream and check that they
-// are equal to the expected events
-fn check_events(
+// Get as events until we've seen all the expected events or we time out waiting
+async fn check_events(
     stream: StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send>,
     expected: Vec<StoreEvent>,
-) -> impl Future<Item = (), Error = tokio::time::Elapsed> {
-    let expected: Vec<_> = expected.into_iter().map(|event| Arc::new(event)).collect();
+) {
+    fn as_set(events: Vec<Arc<StoreEvent>>) -> HashSet<EntityChange> {
+        events.into_iter().fold(HashSet::new(), |mut set, event| {
+            set.extend(event.changes.iter().map(|change| change.clone()));
+            set
+        })
+    }
+
+    let expected = Mutex::new(as_set(
+        expected.into_iter().map(|event| Arc::new(event)).collect(),
+    ));
+    // Capture extra changes here; this is only needed for debugging, really.
+    // It's permissible that we get more changes than we expected because of
+    // how store events group changes together
+    let extra: Mutex<HashSet<EntityChange>> = Mutex::new(HashSet::new());
+    // Get events from the store until we've either seen all the changes we
+    // expected or we timed out waiting for them
     stream
-        .take(expected.len() as u64)
+        .take_while(|event| {
+            let mut expected = expected.lock().unwrap();
+            for change in &event.changes {
+                if !expected.remove(&change) {
+                    extra.lock().unwrap().insert(change.clone());
+                }
+            }
+            future::ok(!expected.is_empty())
+        })
         .collect()
         .timeout(Duration::from_secs(3))
-        .map_ok(move |events| {
-            let events = events.unwrap();
-            assert_eq!(events.len(), expected.len());
-            assert_eq!(events, expected);
-        })
-        .compat()
+        .await
+        .expect(&format!(
+            "timed out waiting for events\n  still waiting for {:?}\n  got extra events {:?}",
+            expected.lock().unwrap().clone(),
+            extra.lock().unwrap().clone()
+        ))
+        .expect("something went wrong getting events");
+    // Check again that we really got everything
+    assert_eq!(HashSet::new(), expected.lock().unwrap().clone());
 }
 
-// Subscribe to store events from the store. This implementation works
-// very hard to make sure that only events that were generated after the
-// subscription started will actually be seen on the returned stream
-fn subscribe_and_consume(
+// Subscribe to store events
+fn subscribe(
     store: Arc<DieselStore>,
     subgraph: &SubgraphDeploymentId,
     entity_type: &str,
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
-    const MARKER: &str = "Subgraph";
-    const MARKER_ID: &str = "fake marker";
+    let subscription = store.subscribe(vec![SubscriptionFilter::Entities(
+        subgraph.clone(),
+        EntityType::data(entity_type.to_owned()),
+    )]);
 
-    let subscription = store.subscribe(vec![
-        (subgraph.clone(), entity_type.to_owned()),
-        (SUBGRAPHS_ID.clone(), MARKER.to_owned()),
-    ]);
-
-    // Generate fake activity on the stream by removing a nonexistent entity and
-    // skip anything on the stream before this faked event. That makes sure that
-    // users of the stream do not see any events that were generated before the
-    // subscription was started which can happen depending on how fast the event
-    // processing thread is compared to the thread that runs this code.
-    //
-    // There is still a small possibility that earlier events get through since
-    // the fake event is generated in its own transaction and Postgres is free to
-    // reorder delivery of events across transactions, like those generated by
-    // setup code in the tests.
-    let op = MetadataOperation::Remove {
-        entity: MARKER.to_owned(),
-        id: MARKER_ID.to_owned(),
-    };
-
-    store
-        .apply_metadata_operations(vec![op])
-        .expect("Failed to apply marker operation");
-
-    let source = subscription
-        .skip_while(move |event| {
-            // Skip events until we see the fake event we generated above
-            future::ok(
-                event
-                    .changes
-                    .iter()
-                    .all(|change| change.entity_id != MARKER_ID),
-            )
-        })
-        .skip(1)
-        .filter_map(move |event| {
-            // Remove anything about MARKER entities from the events
-            let changes = (*event)
-                .clone()
-                .changes
-                .into_iter()
-                .filter(|change| change.entity_type != MARKER)
-                .collect::<HashSet<_>>();
-            if changes.is_empty() {
-                None
-            } else {
-                Some(Arc::new(StoreEvent {
-                    tag: event.tag,
-                    changes,
-                }))
-            }
-        });
-    StoreEventStream::new(source)
+    StoreEventStream::new(subscription)
 }
 
-fn check_basic_revert(
-    store: Arc<graph_store_postgres::Store>,
+async fn check_basic_revert(
+    store: Arc<DieselStore>,
     expected: StoreEvent,
     subgraph_id: &SubgraphDeploymentId,
     entity_type: &str,
-) -> impl Future<Item = (), Error = tokio::time::Elapsed> {
+) {
     let this_query = user_query()
         .filter(EntityFilter::Equal(
             "name".to_owned(),
@@ -1209,7 +988,11 @@ fn check_basic_revert(
         ))
         .desc("name");
 
-    let subscription = subscribe_and_consume(store.clone(), subgraph_id, entity_type);
+    let subscription = subscribe(store.clone(), subgraph_id, entity_type);
+    let state = store
+        .deployment_state_from_id(subgraph_id.to_owned())
+        .expect("can get deployment state");
+    assert_eq!(subgraph_id, &state.id);
 
     // Revert block 3
     store
@@ -1233,12 +1016,17 @@ fn check_basic_revert(
     assert!(returned_name.is_some());
     assert_eq!(&test_value, returned_name.unwrap());
 
-    check_events(subscription, vec![expected])
+    let state = store
+        .deployment_state_from_id(subgraph_id.to_owned())
+        .expect("can get deployment state");
+    assert_eq!(subgraph_id, &state.id);
+
+    check_events(subscription, vec![expected]).await
 }
 
 #[test]
 fn revert_block_basic_user() {
-    run_test(|store| {
+    run_test(|store| async move {
         let expected = StoreEvent::new(vec![make_entity_change(
             USER,
             "3",
@@ -1246,29 +1034,14 @@ fn revert_block_basic_user() {
         )]);
 
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, USER).and_then(move |x| {
-            assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
-            Ok(x)
-        })
-    })
-}
-
-#[test]
-fn revert_block_basic_subgraphs() {
-    run_test(|store| {
-        let expected = StoreEvent::new(vec![make_deployment_change(
-            "testsubgraph",
-            EntityChangeOperation::Set,
-        )]);
-        let subgraphs = SubgraphDeploymentId::new("subgraphs").unwrap();
-
-        check_basic_revert(store.clone(), expected, &subgraphs, "SubgraphDeployment")
+        check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, USER).await;
+        assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
     })
 }
 
 #[test]
 fn revert_block_with_delete() {
-    run_test(|store| {
+    run_test(|store| async move {
         let this_query = user_query()
             .filter(EntityFilter::Equal(
                 "name".to_owned(),
@@ -1277,11 +1050,7 @@ fn revert_block_with_delete() {
             .desc("name");
 
         // Delete entity with id=2
-        let del_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "2".to_owned(),
-        };
+        let del_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "2".to_owned());
 
         // Process deletion
         transact_entity_operations(
@@ -1292,7 +1061,7 @@ fn revert_block_with_delete() {
         )
         .unwrap();
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
+        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
@@ -1330,18 +1099,14 @@ fn revert_block_with_delete() {
         )]);
 
         // The last event is the one for the reversion
-        check_events(subscription, vec![expected])
+        check_events(subscription, vec![expected]).await
     })
 }
 
 #[test]
 fn revert_block_with_partial_update() {
-    run_test(|store| {
-        let entity_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+    run_test(|store| async move {
+        let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
 
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
@@ -1366,7 +1131,7 @@ fn revert_block_with_partial_update() {
         )
         .unwrap();
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
+        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
@@ -1395,7 +1160,7 @@ fn revert_block_with_partial_update() {
             EntityChangeOperation::Set,
         )]);
 
-        check_events(subscription, vec![expected])
+        check_events(subscription, vec![expected]).await
     })
 }
 
@@ -1423,41 +1188,15 @@ fn mock_data_source() -> DataSource {
             },
             runtime: Arc::new(Vec::new()),
         },
-        templates: vec![DataSourceTemplate {
-            kind: String::from("ethereum/contract"),
-            name: String::from("example template"),
-            network: Some(String::from("mainnet")),
-            source: TemplateSource {
-                abi: String::from("foo"),
-            },
-            mapping: Mapping {
-                kind: String::from("ethereum/events"),
-                api_version: String::from("0.1.0"),
-                language: String::from("wasm/assemblyscript"),
-                entities: vec![],
-                abis: vec![],
-                event_handlers: vec![],
-                call_handlers: vec![],
-                block_handlers: vec![],
-                link: Link {
-                    link: "link".to_owned(),
-                },
-                runtime: Arc::new(Vec::new()),
-            },
-        }],
         context: None,
     }
 }
 
 #[test]
 fn revert_block_with_dynamic_data_source_operations() {
-    run_test(|store| {
+    run_test(|store| async move {
         // Create operations to add a user
-        let user_key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: "1".to_owned(),
-        };
+        let user_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
             ("name", Value::from("Johnny Boy")),
@@ -1482,7 +1221,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             key: user_key.clone(),
             data: partial_entity.clone(),
         }];
-        ops.extend(dynamic_ds.write_entity_operations("dynamic-data-source"));
+        ops.extend(dynamic_ds.write_entity_operations(&*TEST_SUBGRAPH_ID, "dynamic-data-source"));
 
         // Add user and dynamic data source to the store
         transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
@@ -1498,17 +1237,17 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source exists afterwards
-        let dynamic_ds_key = EntityKey {
-            subgraph_id: SUBGRAPHS_ID.clone(),
-            entity_type: String::from(DynamicEthereumContractDataSourceEntity::TYPENAME),
-            entity_id: String::from("dynamic-data-source"),
-        };
+        let dynamic_ds_key = EntityKey::metadata(
+            TEST_SUBGRAPH_ID.clone(),
+            MetadataType::DynamicEthereumContractDataSource,
+            String::from("dynamic-data-source"),
+        );
         store
             .get(dynamic_ds_key.clone())
             .unwrap()
             .expect("dynamic data source entity wasn't written to store");
 
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER);
+        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER);
 
         // Revert block that added the user and the dynamic data source
         store
@@ -1535,60 +1274,22 @@ fn revert_block_with_dynamic_data_source_operations() {
         let expected_events = vec![StoreEvent {
             tag: 3,
             changes: HashSet::from_iter(
-                vec![
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
-                        entity_type: USER.into(),
-                        entity_id: "1".into(),
-                        operation: EntityChangeOperation::Set,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "DynamicEthereumContractDataSource".into(),
-                        entity_id: "dynamic-data-source".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractSource".into(),
-                        entity_id: "dynamic-data-source-source".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractMapping".into(),
-                        entity_id: "dynamic-data-source-mapping".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractDataSourceTemplate".into(),
-                        entity_id: "dynamic-data-source-templates-0".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractDataSourceTemplateSource".into(),
-                        entity_id: "dynamic-data-source-templates-0-source".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                    EntityChange {
-                        subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                        entity_type: "EthereumContractMapping".into(),
-                        entity_id: "dynamic-data-source-templates-0-mapping".into(),
-                        operation: EntityChangeOperation::Removed,
-                    },
-                ]
+                vec![EntityChange {
+                    subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
+                    entity_type: EntityType::data(USER.into()),
+                    entity_id: "1".into(),
+                    operation: EntityChangeOperation::Set,
+                }]
                 .into_iter(),
             ),
         }];
-        check_events(subscription, expected_events)
+        check_events(subscription, expected_events).await
     })
 }
 
 #[test]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
-    run_test(|store| {
+    run_test(|store| async move {
         let subgraph_id = SubgraphDeploymentId::new("EntityChangeTestSubgraph").unwrap();
         let schema =
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
@@ -1596,6 +1297,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             id: subgraph_id.clone(),
             location: "/ipfs/test".to_owned(),
             spec_version: "1".to_owned(),
+            features: Default::default(),
             description: None,
             repository: None,
             schema: schema.clone(),
@@ -1605,14 +1307,21 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         };
 
         // Create SubgraphDeploymentEntity
-        let ops = SubgraphDeploymentEntity::new(&manifest, false, Some(*TEST_BLOCK_0_PTR))
-            .create_operations(&subgraph_id);
-        store.create_subgraph_deployment(&schema, ops).unwrap();
+        let deployment = SubgraphDeploymentEntity::new(&manifest, false, Some(*TEST_BLOCK_0_PTR));
+        let name = SubgraphName::new("test/entity-changes-are-fired").unwrap();
+        let node_id = NodeId::new("test").unwrap();
+        store
+            .create_subgraph_deployment(
+                name,
+                &schema,
+                deployment,
+                node_id,
+                NETWORK_NAME.to_string(),
+                SubgraphVersionSwitchingMode::Instant,
+            )
+            .unwrap();
 
-        // Create store subscriptions
-        let meta_subscription =
-            subscribe_and_consume(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment");
-        let subscription = subscribe_and_consume(store.clone(), &subgraph_id, USER);
+        let subscription = subscribe(store.clone(), &subgraph_id, USER);
 
         // Add two entities to the store
         let added_entities = vec![
@@ -1638,11 +1347,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: EntityKey {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_type: USER.to_owned(),
-                        entity_id: id.to_owned(),
-                    },
+                    key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), id.to_owned()),
                     data: data.to_owned(),
                 })
                 .collect(),
@@ -1655,21 +1360,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ("name", Value::from("Johnny")),
         ]);
         let update_op = EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: USER.to_owned(),
-                entity_id: "1".to_owned(),
-            },
+            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "1".to_owned()),
             data: updated_entity.clone(),
         };
 
         // Delete an entity in the store
         let delete_op = EntityOperation::Remove {
-            key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
-                entity_type: USER.to_owned(),
-                entity_id: "2".to_owned(),
-            },
+            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "2".to_owned()),
         };
 
         // Commit update & delete ops
@@ -1681,38 +1378,19 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         )
         .unwrap();
 
-        // We're expecting two meta data events to be written to the meta data subscription
-        let meta_expected = vec![
-            StoreEvent::new(vec![EntityChange {
-                subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                entity_type: "SubgraphDeployment".to_owned(),
-                entity_id: "EntityChangeTestSubgraph".to_owned(),
-                operation: EntityChangeOperation::Set,
-            }]),
-            StoreEvent::new(vec![EntityChange {
-                subgraph_id: SubgraphDeploymentId::new("subgraphs").unwrap(),
-                entity_type: "SubgraphDeployment".to_owned(),
-                entity_id: "EntityChangeTestSubgraph".to_owned(),
-                operation: EntityChangeOperation::Set,
-            }]),
-        ];
-
-        // FIXME: This does not await, meaning calling this doesn't
-        // do anything. But, waiting here causes the test to hang.
-        let _ignore_future = check_events(meta_subscription, meta_expected);
-
         // We're expecting two events to be written to the subscription stream
+        let user_type = EntityType::data(USER.to_owned());
         let expected = vec![
             StoreEvent::new(vec![
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: added_entities[0].clone().0,
                     operation: EntityChangeOperation::Set,
                 },
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: added_entities[1].clone().0,
                     operation: EntityChangeOperation::Set,
                 },
@@ -1720,39 +1398,33 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             StoreEvent::new(vec![
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: "1".to_owned(),
                     operation: EntityChangeOperation::Set,
                 },
                 EntityChange {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER.to_owned(),
+                    entity_type: user_type.clone(),
                     entity_id: added_entities[1].clone().0,
                     operation: EntityChangeOperation::Removed,
                 },
             ]),
         ];
 
-        check_events(subscription, expected)
+        check_events(subscription, expected).await
     })
 }
 
 #[test]
 fn throttle_subscription_delivers() {
-    run_test(|store| {
-        let meta_subscription =
-            subscribe_and_consume(store.clone(), &SUBGRAPHS_ID, "SubgraphDeployment")
-                .throttle_while_syncing(
-                    &*LOGGER,
-                    store.clone().query_store(true),
-                    SUBGRAPHS_ID.clone(),
-                    Duration::from_millis(500),
-                );
-
-        let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER)
+    run_test(|store| async move {
+        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER)
             .throttle_while_syncing(
                 &*LOGGER,
-                store.clone().query_store(true),
+                store
+                    .clone()
+                    .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                    .unwrap(),
                 TEST_SUBGRAPH_ID.clone(),
                 Duration::from_millis(500),
             );
@@ -1776,76 +1448,63 @@ fn throttle_subscription_delivers() {
         )
         .unwrap();
 
-        let meta_expected = StoreEvent::new(vec![make_deployment_change(
-            "testsubgraph",
-            EntityChangeOperation::Set,
-        )]);
-
-        // FIXME: This does not await, meaning calling this doesn't
-        // do anything. But, waiting here causes the test to hang.
-        let _ignore_future = check_events(meta_subscription, vec![meta_expected]);
-
         let expected = StoreEvent::new(vec![make_entity_change(
             USER,
             "4",
             EntityChangeOperation::Set,
         )]);
 
-        check_events(subscription, vec![expected])
+        check_events(subscription, vec![expected]).await
     })
 }
 
 #[test]
 fn throttle_subscription_throttles() {
-    run_test(
-        |store| -> Box<dyn Future<Item = (), Error = TimeoutError<()>> + Send> {
-            // Throttle for a very long time (30s)
-            let subscription = subscribe_and_consume(store.clone(), &TEST_SUBGRAPH_ID, USER)
-                .throttle_while_syncing(
-                    &*LOGGER,
-                    store.clone().query_store(true),
-                    TEST_SUBGRAPH_ID.clone(),
-                    Duration::from_secs(30),
-                );
-
-            let user4 = create_test_entity(
-                "4",
-                USER,
-                "Steve",
-                "nieve@email.com",
-                72 as i32,
-                120.7,
-                false,
-                None,
+    run_test(|store| async move {
+        // Throttle for a very long time (30s)
+        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER)
+            .throttle_while_syncing(
+                &*LOGGER,
+                store
+                    .clone()
+                    .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                    .unwrap(),
+                TEST_SUBGRAPH_ID.clone(),
+                Duration::from_secs(30),
             );
 
-            transact_entity_operations(
-                &store,
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                vec![user4],
-            )
-            .unwrap();
+        let user4 = create_test_entity(
+            "4",
+            USER,
+            "Steve",
+            "nieve@email.com",
+            72 as i32,
+            120.7,
+            false,
+            None,
+        );
 
-            // Make sure we time out waiting for the subscription
-            Box::new(
-                subscription
-                    .take(1)
-                    .collect()
-                    .timeout(Duration::from_millis(500))
-                    .compat()
-                    .then(|res| {
-                        assert!(res.is_err());
-                        future::ok(())
-                    }),
-            )
-        },
-    )
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            vec![user4],
+        )
+        .unwrap();
+
+        // Make sure we time out waiting for the subscription
+        let res = subscription
+            .take(1)
+            .collect()
+            .timeout(Duration::from_millis(500))
+            .await;
+        assert!(res.is_err());
+    })
 }
 
 #[test]
 fn subgraph_schema_types_have_subgraph_id_directive() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         let schema = store
             .api_schema(&TEST_SUBGRAPH_ID)
             .expect("test subgraph should have a schema");
@@ -1880,7 +1539,6 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
                 )]
             );
         }
-        Ok(())
     })
 }
 
@@ -1895,28 +1553,12 @@ fn handle_large_string_with_index() {
         data.set("id", id);
         data.set(NAME, name);
 
-        let key = EntityKey {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_type: USER.to_owned(),
-            entity_id: id.to_owned(),
-        };
+        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), id.to_owned());
 
         EntityModification::Insert { key, data }
     };
 
-    run_test(|store| -> Result<(), ()> {
-        let index = AttributeIndexDefinition {
-            subgraph_id: TEST_SUBGRAPH_ID.clone(),
-            entity_number: 0,
-            attribute_number: 0,
-            field_value_type: ValueType::String,
-            attribute_name: NAME.to_owned(),
-            entity_name: USER.to_owned(),
-        };
-        store
-            .build_entity_attribute_indexes(&*TEST_SUBGRAPH_ID, vec![index])
-            .unwrap();
-
+    run_test(|store| async move {
         // We have to produce a massive string (1_000_000 chars) because
         // the repeated text compresses so well. This leads to an error
         // 'index row requires 11488 bytes, maximum size is 8191' if
@@ -1942,6 +1584,7 @@ fn handle_large_string_with_index() {
                     make_insert_op(TWO, &other_text),
                 ],
                 stopwatch_metrics,
+                Vec::new(),
             )
             .expect("Failed to insert large text");
 
@@ -1981,8 +1624,6 @@ fn handle_large_string_with_index() {
 
         // Users with name 'Cindini' and 'Johnton'
         assert_eq!(vec!["2", "1"], ids);
-
-        Ok(())
     })
 }
 
@@ -2100,11 +1741,11 @@ fn window() {
         entity.set("age", age);
         entity.set("favorite_color", color);
         EntityOperation::Set {
-            key: EntityKey {
-                subgraph_id: TEST_SUBGRAPH_ID.clone(),
-                entity_type: entity_type.to_owned(),
-                entity_id: id.to_owned(),
-            },
+            key: EntityKey::data(
+                TEST_SUBGRAPH_ID.clone(),
+                entity_type.to_owned(),
+                id.to_owned(),
+            ),
             data: entity,
         }
     }
@@ -2130,7 +1771,7 @@ fn window() {
         make_person("p2", "red", 15),
     ];
 
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
             .expect("Failed to create test users");
 
@@ -2191,15 +1832,13 @@ fn window() {
                 vec!["10", "11", "2", "4", "5", "6", "7", "8", "9", "p2"],
                 "q9",
             );
-
-        Ok(())
     });
 }
 
 #[test]
 fn find_at_block() {
     fn shaqueeena_at_block(block: BlockNumber, email: &'static str) {
-        run_test(move |store| -> Result<(), ()> {
+        run_test(move |store| async move {
             let mut query = user_query()
                 .filter(EntityFilter::Equal("name".to_owned(), "Shaqueeena".into()))
                 .desc("name");
@@ -2212,28 +1851,140 @@ fn find_at_block() {
             assert_eq!(1, entities.len());
             let entity = entities.first().unwrap();
             assert_eq!(Some(&Value::from(email)), entity.get("email"));
-
-            Ok(())
         })
     }
 
-    // These tests only make sense with relational storage
-    if *USING_RELATIONAL_STORAGE {
-        shaqueeena_at_block(1, "queensha@email.com");
-        shaqueeena_at_block(2, "teeko@email.com");
-        shaqueeena_at_block(7000, "teeko@email.com");
-    }
+    shaqueeena_at_block(1, "queensha@email.com");
+    shaqueeena_at_block(2, "teeko@email.com");
+    shaqueeena_at_block(7000, "teeko@email.com");
 }
 
 #[test]
 fn cleanup_cached_blocks() {
-    run_test(|store| -> Result<(), ()> {
+    run_test(|store| async move {
         // This test is somewhat silly in that there is nothing to clean up.
         // The main purpose for this test is to ensure that the SQL query
         // we run in `cleanup_cached_blocks` to figure out the first block
         // that should be removed is syntactically correct
         let cleaned = store.cleanup_cached_blocks(10).expect("cleanup succeeds");
         assert_eq!((0, 0), cleaned);
-        Ok(())
+    })
+}
+
+#[test]
+fn reorg_tracking() {
+    fn update_john(store: &Arc<DieselStore>, age: i32, block: &EthereumBlockPointer) {
+        let test_entity_1 = create_test_entity(
+            "1",
+            USER,
+            "Johnton",
+            "tonofjohn@email.com",
+            age,
+            184.4,
+            false,
+            None,
+        );
+        transact_entity_operations(
+            store,
+            TEST_SUBGRAPH_ID.clone(),
+            block.clone(),
+            vec![test_entity_1],
+        )
+        .unwrap();
+    }
+
+    macro_rules! check_state {
+        ($store:expr,
+         $reorg_count: expr,
+         $max_reorg_depth:expr,
+         $latest_ethereum_block_number:expr) => {
+            let subgraph_id = TEST_SUBGRAPH_ID.to_owned();
+            let state = &$store
+                .deployment_state_from_id(subgraph_id.clone())
+                .expect("can get deployment state");
+            assert_eq!(&subgraph_id, &state.id, "subgraph_id");
+            assert_eq!($reorg_count, state.reorg_count, "reorg_count");
+            assert_eq!($max_reorg_depth, state.max_reorg_depth, "max_reorg_depth");
+            assert_eq!(
+                $latest_ethereum_block_number, state.latest_ethereum_block_number,
+                "latest_ethereum_block_number"
+            );
+        };
+    }
+
+    // Check that reorg_count, max_reorg_depth, and latest_ethereum_block_number
+    // are reported correctly in DeploymentState
+    run_test(|store| async move {
+        check_state!(store, 0, 0, 2);
+
+        // Jump to block 4
+        transact_entity_operations(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            TEST_BLOCK_4_PTR.clone(),
+            vec![],
+        )
+        .unwrap();
+        check_state!(store, 0, 0, 4);
+
+        // Back to block 3
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
+            )
+            .unwrap();
+        check_state!(store, 1, 1, 3);
+
+        // Back to block 2
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
+            )
+            .unwrap();
+        check_state!(store, 2, 2, 2);
+
+        // Forward to block 3
+        update_john(&store, 70, &TEST_BLOCK_3_PTR);
+        check_state!(store, 2, 2, 3);
+
+        // Forward to block 4
+        update_john(&store, 71, &TEST_BLOCK_4_PTR);
+        check_state!(store, 2, 2, 4);
+
+        // Forward to block 5
+        update_john(&store, 72, &TEST_BLOCK_5_PTR);
+        check_state!(store, 2, 2, 5);
+
+        // Revert all the way back to block 2
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_5_PTR,
+                *TEST_BLOCK_4_PTR,
+            )
+            .unwrap();
+        check_state!(store, 3, 2, 4);
+
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_4_PTR,
+                *TEST_BLOCK_3_PTR,
+            )
+            .unwrap();
+        check_state!(store, 4, 2, 3);
+
+        store
+            .revert_block_operations(
+                TEST_SUBGRAPH_ID.clone(),
+                *TEST_BLOCK_3_PTR,
+                *TEST_BLOCK_2_PTR,
+            )
+            .unwrap();
+        check_state!(store, 5, 3, 2);
     })
 }

@@ -1,0 +1,31 @@
+# The type names are purposely awkward to minimize the risk of them
+# colliding with user-supplied types
+"The type for the top-level _meta field"
+type _Meta_ {
+  """
+  Information about a specific subgraph block. The hash of the block
+  will be null if the _meta field has a block constraint that asks for
+  a block number. It will be filled if the _meta field has no block constraint
+  and therefore asks for the latest  block
+  """
+  block: _Block_!
+  "The deployment ID"
+  deployment: String!
+  "If `true`, the subgraph encountered indexing errors at some past block"
+  hasIndexingErrors: Boolean!
+}
+
+type _Block_ {
+  "The hash of the block"
+  hash: Bytes
+  "The block number"
+  number: Int!
+}
+
+enum _SubgraphErrorPolicy_ {
+  "Data will be returned even if the subgraph has indexing errors"
+  allow,
+
+  "If the subgraph has indexing errors, data will be omitted. The default."
+  deny
+}

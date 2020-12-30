@@ -1,4 +1,3 @@
-use graph::data::subgraph::schema::SUBGRAPHS_ID;
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
 use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -19,7 +18,7 @@ pub struct SubscriptionServer<Q, S> {
 impl<Q, S> SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
+    S: Store,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         SubscriptionServer {
@@ -33,6 +32,16 @@ where
         store: Arc<S>,
         path: &str,
     ) -> Result<Option<SubgraphDeploymentId>, Error> {
+        fn id_from_name<S: Store>(store: Arc<S>, name: String) -> Option<SubgraphDeploymentId> {
+            SubgraphName::new(name)
+                .ok()
+                .map(|subgraph_name| store.deployment_state_from_name(subgraph_name))
+                .transpose()
+                .map(|state| state.map(|state| state.id))
+                .ok()
+                .flatten()
+        }
+
         let path_segments = {
             let mut segments = path.split("/");
 
@@ -46,23 +55,12 @@ where
         };
 
         match path_segments.as_slice() {
-            &["subgraphs"] => Ok(Some(SUBGRAPHS_ID.clone())),
             &["subgraphs", "id", subgraph_id] => Ok(SubgraphDeploymentId::new(subgraph_id).ok()),
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
-                let subgraph_name = path_segments[2..].join("/");
-
-                match SubgraphName::new(subgraph_name) {
-                    Err(()) => Ok(None),
-                    Ok(subgraph_name) => store.resolve_subgraph_name_to_id(subgraph_name),
-                }
+                Ok(id_from_name(store, path_segments[2..].join("/")))
             }
             &["subgraphs", "network", _, _] => {
-                let subgraph_name = path_segments[1..].join("/");
-
-                match SubgraphName::new(subgraph_name) {
-                    Err(()) => Ok(None),
-                    Ok(subgraph_name) => store.resolve_subgraph_name_to_id(subgraph_name),
-                }
+                Ok(id_from_name(store, path_segments[1..].join("/")))
             }
             _ => Ok(None),
         }
@@ -73,7 +71,7 @@ where
 impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphDeploymentStore + Store,
+    S: Store,
 {
     async fn serve(self, port: u16) {
         info!(

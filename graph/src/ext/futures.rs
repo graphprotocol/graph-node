@@ -1,9 +1,9 @@
-use failure::Error;
+use crate::prelude::StoreError;
 use futures::future::Fuse;
 use futures::prelude::{Future, Poll, Stream};
 use futures::sync::oneshot;
 use futures03::compat::{Compat01As03, Future01CompatExt};
-use std::fmt;
+use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -257,38 +257,50 @@ impl<F: Future> FutureExtension for F {
     }
 }
 
-#[derive(Debug)]
-pub enum CancelableError<E = Error> {
+#[derive(thiserror::Error, Debug)]
+pub enum CancelableError<E: Display + Debug> {
+    #[error("operation canceled")]
     Cancel,
+
+    #[error("{0:}")]
     Error(E),
 }
 
-impl From<Error> for CancelableError<Error> {
-    fn from(e: Error) -> Self {
+impl From<StoreError> for CancelableError<anyhow::Error> {
+    fn from(e: StoreError) -> Self {
+        Self::Error(anyhow::Error::from(e))
+    }
+}
+
+impl From<CancelableError<anyhow::Error>> for CancelableError<StoreError> {
+    fn from(e: CancelableError<anyhow::Error>) -> Self {
+        match e {
+            CancelableError::Error(e) => CancelableError::Error(e.into()),
+            CancelableError::Cancel => CancelableError::Cancel,
+        }
+    }
+}
+
+impl From<StoreError> for CancelableError<StoreError> {
+    fn from(e: StoreError) -> Self {
         Self::Error(e)
     }
 }
 
-impl<E> From<Canceled> for CancelableError<E> {
+impl<E: Display + Debug> From<Canceled> for CancelableError<E> {
     fn from(_: Canceled) -> Self {
         Self::Cancel
     }
 }
 
-impl From<diesel::result::Error> for CancelableError<Error> {
+impl From<diesel::result::Error> for CancelableError<anyhow::Error> {
     fn from(e: diesel::result::Error) -> Self {
         Self::Error(e.into())
     }
 }
 
-impl<E> fmt::Display for CancelableError<E>
-where
-    E: fmt::Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CancelableError::Error(e) => e.fmt(f),
-            CancelableError::Cancel => write!(f, "operation canceled"),
-        }
+impl From<anyhow::Error> for CancelableError<anyhow::Error> {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Error(e)
     }
 }

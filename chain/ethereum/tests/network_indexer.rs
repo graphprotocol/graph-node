@@ -1,8 +1,6 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use diesel::connection::Connection;
-use diesel::pg::PgConnection;
 use std::convert::TryInto;
 use std::sync::Mutex;
 use std::thread;
@@ -14,7 +12,7 @@ use graph_chain_ethereum::network_indexer::{
     self as network_indexer, BlockWithOmmers, NetworkIndexerEvent,
 };
 use graph_core::MetricsRegistry;
-use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::NetworkStore as DieselStore;
 use web3::types::{H2048, H256, H64, U256};
 
 use test_store::*;
@@ -36,10 +34,9 @@ macro_rules! revert {
 
 // Helper to wipe the store clean.
 fn remove_test_data(store: Arc<DieselStore>) {
-    let url = postgres_test_url();
-    let conn = PgConnection::establish(url.as_str()).expect("Failed to connect to Postgres");
-    graph_store_postgres::store::delete_all_entities_for_test_use_only(&store, &conn)
-        .expect("Failed to remove entity test data");
+    store
+        .delete_all_entities_for_test_use_only()
+        .expect("removing test data succeeds");
 }
 
 // Helper to run network indexer against test chains.
@@ -71,6 +68,7 @@ fn run_network_indexer(
         metrics_registry,
         subgraph_name.to_string(),
         start_block,
+        "fake_network".to_string(),
     );
 
     let (event_sink, event_stream) = futures::sync::mpsc::channel(100);
@@ -208,10 +206,8 @@ fn create_mock_ethereum_adapter(
         Box::new(future::result(
             chains
                 .current_chain()
-                .ok_or_else(|| {
-                    format_err!("exhausted chain versions used in this test; this is ok")
-                })
-                .and_then(|chain| chain.last().ok_or_else(|| format_err!("empty block chain")))
+                .ok_or_else(|| anyhow!("exhausted chain versions used in this test; this is ok"))
+                .and_then(|chain| chain.last().ok_or_else(|| anyhow!("empty block chain")))
                 .map_err(Into::into)
                 .map(|block| block.block.block.clone()),
         ))
@@ -225,7 +221,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map(|chain| {
                         chain
                             .iter()
@@ -243,7 +239,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map(|chain| {
                         chain
                             .iter()
@@ -261,7 +257,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map_err(Into::into)
                     .map(|chain| {
                         chain
@@ -290,7 +286,7 @@ fn create_mock_ethereum_adapter(
             Box::new(future::result(
                 chains
                     .current_chain()
-                    .ok_or_else(|| format_err!("unknown chain {:?}", chains.index()))
+                    .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
                     .map_err(Into::into)
                     .map(|chain| {
                         chain

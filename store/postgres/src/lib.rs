@@ -7,7 +7,6 @@ extern crate diesel_dynamic_schema;
 extern crate diesel_migrations;
 #[macro_use]
 extern crate diesel_derive_enum;
-extern crate failure;
 extern crate fallible_iterator;
 extern crate futures;
 extern crate graph;
@@ -23,19 +22,22 @@ extern crate uuid;
 mod block_range;
 mod catalog;
 mod chain_head_listener;
+mod chain_store;
 pub mod connection_pool;
 mod db_schema;
+mod deployment;
+mod detail;
+mod dynds;
 mod entities;
-mod filter;
 mod functions;
-mod history_event;
 mod jsonb;
-mod jsonb_queries;
-mod metadata;
+mod network_store;
 mod notification_listener;
+mod primary;
 pub mod query_store;
-pub mod relational;
+mod relational;
 mod relational_queries;
+mod sharded_store;
 mod sql_value;
 pub mod store;
 mod store_events;
@@ -50,9 +52,25 @@ pub mod db_schema_for_tests {
 pub mod layout_for_tests {
     pub use crate::block_range::*;
     pub use crate::entities::STRING_PREFIX_SIZE;
+    pub use crate::primary::{Connection, Namespace, EVENT_TAP, EVENT_TAP_ENABLED};
     pub use crate::relational::*;
 }
 
 pub use self::chain_head_listener::ChainHeadUpdateListener;
+pub use self::chain_store::ChainStore;
+pub use self::network_store::NetworkStore;
+pub use self::sharded_store::{DeploymentPlacer, Shard, ShardedStore, PRIMARY_SHARD};
 pub use self::store::{Store, StoreConfig};
 pub use self::store_events::SubscriptionManager;
+
+/// This module is only meant to support command line tooling. It must not
+/// be used in 'normal' graph-node code
+pub mod command_support {
+    pub mod catalog {
+        pub use crate::primary::Connection;
+        pub use crate::primary::{deployment_schemas, subgraph, subgraph_version};
+    }
+    pub use crate::entities::Connection;
+    pub use crate::primary::Namespace;
+    pub use crate::relational::{Catalog, Column, ColumnType, Layout};
+}

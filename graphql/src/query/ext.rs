@@ -1,17 +1,17 @@
 //! Extension traits for graphql_parser::query structs
 
-use graphql_parser::{query as q, Pos};
+use graphql_parser::Pos;
 
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 
+use anyhow::anyhow;
 use graph::data::graphql::TryFromValue;
 use graph::data::query::QueryExecutionError;
-use graph::prelude::web3::types::H256;
-use graph::prelude::BlockNumber;
+use graph::prelude::{q, web3::types::H256, BlockNumber, Error};
 
 pub trait ValueExt: Sized {
-    fn as_object(&self) -> &BTreeMap<q::Name, q::Value>;
+    fn as_object(&self) -> &BTreeMap<String, q::Value>;
     fn as_string(&self) -> &str;
 
     /// If `self` is a variable reference, look it up in `vars` and return
@@ -21,13 +21,13 @@ pub trait ValueExt: Sized {
     /// an error
     fn lookup<'a>(
         &'a self,
-        vars: &'a HashMap<q::Name, Self>,
+        vars: &'a HashMap<String, Self>,
         pos: Pos,
     ) -> Result<&'a Self, QueryExecutionError>;
 }
 
 impl ValueExt for q::Value {
-    fn as_object(&self) -> &BTreeMap<q::Name, q::Value> {
+    fn as_object(&self) -> &BTreeMap<String, q::Value> {
         match self {
             q::Value::Object(object) => object,
             _ => panic!("expected a Value::Object"),
@@ -43,7 +43,7 @@ impl ValueExt for q::Value {
 
     fn lookup<'a>(
         &'a self,
-        vars: &'a HashMap<q::Name, q::Value>,
+        vars: &'a HashMap<String, q::Value>,
         pos: Pos,
     ) -> Result<&'a q::Value, QueryExecutionError> {
         match self {
@@ -68,64 +68,22 @@ impl Default for BlockConstraint {
     }
 }
 
-pub trait FieldExt {
-    fn block_constraint<'a>(
-        &self,
-        vars: &HashMap<q::Name, q::Value>,
-    ) -> Result<BlockConstraint, QueryExecutionError>;
-}
+impl TryFromValue for BlockConstraint {
+    /// `value` should be the output of input object coercion.
+    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+        let map = match value {
+            q::Value::Object(map) => map,
+            q::Value::Null => return Ok(Self::default()),
+            _ => return Err(anyhow!("invalid `BlockConstraint`")),
+        };
 
-impl FieldExt for q::Field {
-    fn block_constraint<'a>(
-        &self,
-        vars: &HashMap<q::Name, q::Value>,
-    ) -> Result<BlockConstraint, QueryExecutionError> {
-        fn invalid_argument(arg: &str, field: &q::Field, value: &q::Value) -> QueryExecutionError {
-            QueryExecutionError::InvalidArgumentError(
-                field.position.clone(),
-                arg.to_owned(),
-                value.clone(),
-            )
-        }
-
-        let value =
-            self.arguments.iter().find_map(
-                |(name, value)| {
-                    if name == "block" {
-                        Some(value)
-                    } else {
-                        None
-                    }
-                },
-            );
-        if let Some(value) = value {
-            let value = value.lookup(vars, self.position)?;
-            if let q::Value::Object(map) = value {
-                if map.len() != 1 {
-                    return Err(invalid_argument("block", self, value));
-                }
-                if let Some(hash) = map.get("hash") {
-                    let hash = hash.lookup(vars, self.position)?;
-                    TryFromValue::try_from_value(hash)
-                        .map_err(|_| invalid_argument("block.hash", self, value))
-                        .map(|hash| BlockConstraint::Hash(hash))
-                } else if let Some(number_value) = map.get("number") {
-                    let number_value = number_value.lookup(vars, self.position)?;
-                    TryFromValue::try_from_value(number_value)
-                        .map_err(|_| invalid_argument("block.number", self, number_value))
-                        .and_then(|number: u64| {
-                            TryFrom::try_from(number)
-                                .map_err(|_| invalid_argument("block.number", self, number_value))
-                        })
-                        .map(|number| BlockConstraint::Number(number))
-                } else {
-                    Err(invalid_argument("block", self, value))
-                }
-            } else {
-                Err(invalid_argument("block", self, value))
-            }
+        if let Some(hash) = map.get("hash") {
+            Ok(BlockConstraint::Hash(TryFromValue::try_from_value(hash)?))
+        } else if let Some(number_value) = map.get("number") {
+            let number: u64 = TryFromValue::try_from_value(number_value)?;
+            Ok(BlockConstraint::Number(TryFrom::try_from(number)?))
         } else {
-            Ok(BlockConstraint::Latest)
+            Err(anyhow!("invalid `BlockConstraint`"))
         }
     }
 }

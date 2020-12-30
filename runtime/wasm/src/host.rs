@@ -28,7 +28,14 @@ use web3::types::{Log, Transaction};
 use crate::host_exports::HostExports;
 use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
 
-pub(crate) const TIMEOUT_ENV_VAR: &str = "GRAPH_MAPPING_HANDLER_TIMEOUT";
+lazy_static! {
+    static ref TIMEOUT: Option<Duration> = std::env::var("GRAPH_MAPPING_HANDLER_TIMEOUT")
+        .ok()
+        .map(|s| u64::from_str(&s).expect("Invalid value for GRAPH_MAPPING_HANDLER_TIMEOUT"))
+        .map(Duration::from_secs);
+    static ref ALLOW_NON_DETERMINISTIC_IPFS: bool =
+        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_IPFS").is_ok();
+}
 
 struct RuntimeHostConfig {
     subgraph_id: SubgraphDeploymentId,
@@ -65,7 +72,7 @@ where
 
 impl<S> RuntimeHostBuilder<S>
 where
-    S: Store + SubgraphDeploymentStore + EthereumCallCache,
+    S: Store + EthereumCallCache,
 {
     pub fn new(
         ethereum_networks: EthereumNetworks,
@@ -86,7 +93,7 @@ where
 
 impl<S> RuntimeHostBuilderTrait for RuntimeHostBuilder<S>
 where
-    S: Send + Sync + 'static + Store + SubgraphDeploymentStore + EthereumCallCache,
+    S: Send + Sync + 'static + Store + EthereumCallCache,
 {
     type Host = RuntimeHost;
     type Req = MappingRequest;
@@ -96,19 +103,15 @@ where
         logger: Logger,
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Sender<Self::Req>, anyhow::Error> {
-        let timeout = std::env::var(TIMEOUT_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok())
-            .map(Duration::from_secs);
-
+    ) -> Result<Sender<Self::Req>, Error> {
         crate::mapping::spawn_module(
             raw_module,
             logger,
             subgraph_id,
             metrics,
             tokio::runtime::Handle::current(),
-            timeout,
+            *TIMEOUT,
+            *ALLOW_NON_DETERMINISTIC_IPFS,
         )
     }
 
@@ -117,12 +120,12 @@ where
         network_name: String,
         subgraph_id: SubgraphDeploymentId,
         data_source: DataSource,
-        top_level_templates: Arc<Vec<DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         let store = self.stores.get(&network_name).ok_or_else(|| {
-            format_err!(
+            anyhow!(
                 "No store found that matches subgraph network: \"{}\"",
                 &network_name
             )
@@ -133,13 +136,6 @@ where
         let ethereum_adapter = self
             .ethereum_networks
             .adapter_with_capabilities(network_name.clone(), &required_capabilities)?;
-
-        // Detect whether the subgraph uses templates in data sources, which are
-        // deprecated, or the top-level templates field.
-        let templates = match top_level_templates.is_empty() {
-            false => top_level_templates,
-            true => Arc::new(data_source.templates),
-        };
 
         RuntimeHost::new(
             ethereum_adapter.clone(),
@@ -190,7 +186,7 @@ impl RuntimeHost {
     ) -> Result<Self, Error> {
         let api_version = Version::parse(&config.mapping.api_version)?;
         if !VersionReq::parse("<= 0.0.4").unwrap().matches(&api_version) {
-            return Err(format_err!(
+            return Err(anyhow!(
                 "This Graph Node only supports mapping API versions <= 0.0.4, but subgraph `{}` uses `{}`",
                 config.subgraph_id,
                 api_version
@@ -203,7 +199,7 @@ impl RuntimeHost {
             .iter()
             .find(|abi| abi.name == config.contract.abi)
             .ok_or_else(|| {
-                format_err!(
+                anyhow!(
                     "No ABI entry found for the main contract of data source \"{}\": {}",
                     &config.data_source_name,
                     config.contract.abi,
@@ -316,7 +312,7 @@ impl RuntimeHost {
         Ok(handlers)
     }
 
-    fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, anyhow::Error> {
+    fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, Error> {
         // First four bytes of the input for the call are the first four
         // bytes of hash of the function signature
         ensure!(
@@ -335,7 +331,7 @@ impl RuntimeHost {
             })
             .cloned()
             .with_context(|| {
-                format_err!(
+                anyhow!(
                     "No call handler found for call in data source \"{}\"",
                     self.data_source_name,
                 )
@@ -353,7 +349,7 @@ impl RuntimeHost {
                 .find(move |handler| handler.filter == None)
                 .cloned()
                 .with_context(|| {
-                    format_err!(
+                    anyhow!(
                         "No block handler for `Every` block trigger \
                          type found in data source \"{}\"",
                         self.data_source_name,
@@ -368,7 +364,7 @@ impl RuntimeHost {
                 })
                 .cloned()
                 .with_context(|| {
-                    format_err!(
+                    anyhow!(
                         "No block handler for `WithCallTo` block trigger \
                          type found in data source \"{}\"",
                         self.data_source_name,
@@ -489,7 +485,7 @@ impl RuntimeHostTrait for RuntimeHost {
             call_handler.function.as_str(),
         )
         .with_context(|| {
-            format_err!(
+            anyhow!(
                 "Function with the signature \"{}\" not found in \
                     contract \"{}\" of data source \"{}\"",
                 call_handler.function,
@@ -632,7 +628,7 @@ impl RuntimeHostTrait for RuntimeHost {
                     event_handler.event.as_str(),
                 )
                 .with_context(|| {
-                    format_err!(
+                    anyhow!(
                         "Event with the signature \"{}\" not found in \
                                 contract \"{}\" of data source \"{}\"",
                         event_handler.event,

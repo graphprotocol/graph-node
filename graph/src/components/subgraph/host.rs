@@ -2,8 +2,8 @@ use std::cmp::PartialEq;
 use std::fmt;
 use std::sync::Arc;
 
+use anyhow::Error;
 use async_trait::async_trait;
-use failure::Error;
 use futures::sync::mpsc;
 
 use crate::components::metrics::HistogramVec;
@@ -21,15 +21,6 @@ pub enum MappingError {
 impl From<anyhow::Error> for MappingError {
     fn from(e: anyhow::Error) -> Self {
         MappingError::Unknown(e)
-    }
-}
-
-impl From<CancelableError<MappingError>> for MappingError {
-    fn from(cancelable: CancelableError<MappingError>) -> Self {
-        match cancelable {
-            CancelableError::Error(e) => e,
-            CancelableError::Cancel => MappingError::Unknown(anyhow::anyhow!("mapping canceled")),
-        }
     }
 }
 

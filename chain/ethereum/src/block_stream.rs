@@ -7,9 +7,6 @@ use std::time::Duration;
 use graph::components::ethereum::{
     blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities,
 };
-use graph::data::subgraph::schema::{
-    SubgraphDeploymentEntity, SubgraphEntity, SubgraphVersionEntity,
-};
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
@@ -111,14 +108,15 @@ struct BlockStreamContext<S, C> {
     metrics: Arc<BlockStreamMetrics>,
     previous_triggers_per_block: f64,
     previous_block_range_size: u64,
+    max_block_range_size: u64,
 }
 
 impl<S, C> Clone for BlockStreamContext<S, C> {
     fn clone(&self) -> Self {
         Self {
-            subgraph_store: self.subgraph_store.clone(),
-            chain_store: self.chain_store.clone(),
-            eth_adapter: self.eth_adapter.clone(),
+            subgraph_store: self.subgraph_store.cheap_clone(),
+            chain_store: self.chain_store.cheap_clone(),
+            eth_adapter: self.eth_adapter.cheap_clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
@@ -131,6 +129,7 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
             metrics: self.metrics.clone(),
             previous_triggers_per_block: self.previous_triggers_per_block,
             previous_block_range_size: self.previous_block_range_size,
+            max_block_range_size: self.max_block_range_size,
         }
     }
 }
@@ -191,6 +190,7 @@ where
                 // A high number here forces a slow start, with a range of 1.
                 previous_triggers_per_block: 1_000_000.0,
                 previous_block_range_size: 1,
+                max_block_range_size: *MAX_BLOCK_RANGE_SIZE,
             },
         }
     }
@@ -242,13 +242,11 @@ where
         let call_filter = self.call_filter.clone();
         let block_filter = self.block_filter.clone();
         let start_blocks = self.start_blocks.clone();
+        let max_block_range_size = self.max_block_range_size;
 
         // Get pointers from database for comparison
         let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
-        let subgraph_ptr = ctx
-            .subgraph_store
-            .block_ptr(ctx.subgraph_id.clone())
-            .unwrap();
+        let subgraph_ptr = ctx.subgraph_store.block_ptr(&ctx.subgraph_id).unwrap();
 
         // If chain head ptr is not set yet
         if head_ptr_opt.is_none() {
@@ -401,15 +399,15 @@ where
                             //   10000 triggers found, 2 per block, range_size = 1000 / 2 = 500
                             // - Scan 500 blocks:
                             //   1000 triggers found, 2 per block, range_size = 1000 / 2 = 500
-                            let max_range_size =
-                                MAX_BLOCK_RANGE_SIZE.min(ctx.previous_block_range_size * 10);
+                            let range_size_upper_limit =
+                                max_block_range_size.min(ctx.previous_block_range_size * 10);
                             let range_size = if ctx.previous_triggers_per_block == 0.0 {
-                                max_range_size
+                                range_size_upper_limit
                             } else {
                                 (*TARGET_TRIGGERS_PER_BLOCK_RANGE as f64
                                     / ctx.previous_triggers_per_block)
                                     .max(1.0)
-                                    .min(max_range_size as f64)
+                                    .min(range_size_upper_limit as f64)
                                     as u64
                             };
                             let to = cmp::min(from + range_size - 1, to_limit);
@@ -432,10 +430,12 @@ where
                                     call_filter.clone(),
                                     block_filter.clone(),
                                 )
-                                .map(move |blocks| {
+                                .map_ok(move |blocks| {
                                     section.end();
                                     ReconciliationStep::ProcessDescendantBlocks(blocks, range_size)
-                                }),
+                                })
+                                .boxed()
+                                .compat(),
                             )
                         },
                     ),
@@ -623,9 +623,9 @@ where
     /// caught up to the head block pointer.
     fn update_subgraph_synced_status(&self) -> Result<(), Error> {
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.subgraph_store.block_ptr(self.subgraph_id.clone())?;
+        let subgraph_ptr = self.subgraph_store.block_ptr(&self.subgraph_id)?;
 
-        if head_ptr_opt != subgraph_ptr {
+        if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
             // Not synced yet
             Ok(())
         } else {
@@ -634,139 +634,7 @@ where
             // Stop recording time-to-sync metrics.
             self.metrics.stopwatch.disable();
 
-            let mut ops = vec![];
-
-            // Set deployment synced flag
-            ops.extend(SubgraphDeploymentEntity::update_synced_operations(
-                &self.subgraph_id,
-                true,
-            ));
-
-            // Find versions pointing to this deployment
-            let versions = self
-                .subgraph_store
-                .find(SubgraphVersionEntity::query().filter(EntityFilter::Equal(
-                    "deployment".to_owned(),
-                    self.subgraph_id.to_string().into(),
-                )))?;
-            let version_ids = versions
-                .iter()
-                .map(|entity| entity.id().unwrap())
-                .collect::<Vec<_>>();
-            let version_id_values = version_ids.iter().map(Value::from).collect::<Vec<_>>();
-            ops.push(MetadataOperation::AbortUnless {
-                description: "The same subgraph version entities must point to this deployment"
-                    .to_owned(),
-                query: SubgraphVersionEntity::query().filter(EntityFilter::Equal(
-                    "deployment".to_owned(),
-                    self.subgraph_id.to_string().into(),
-                )),
-                entity_ids: version_ids.clone(),
-            });
-
-            // Find subgraphs with one of these versions as pending version
-            let subgraphs_to_update =
-                self.subgraph_store
-                    .find(SubgraphEntity::query().filter(EntityFilter::In(
-                        "pendingVersion".to_owned(),
-                        version_id_values.clone(),
-                    )))?;
-            let subgraph_ids_to_update = subgraphs_to_update
-                .iter()
-                .map(|entity| entity.id().unwrap())
-                .collect();
-            ops.push(MetadataOperation::AbortUnless {
-                description: "The same subgraph entities must have these versions pending"
-                    .to_owned(),
-                query: SubgraphEntity::query().filter(EntityFilter::In(
-                    "pendingVersion".to_owned(),
-                    version_id_values.clone(),
-                )),
-                entity_ids: subgraph_ids_to_update,
-            });
-
-            // The current versions of these subgraphs will no longer be current now that this
-            // deployment is synced (they will be replaced by the pending version)
-            let current_version_ids = subgraphs_to_update
-                .iter()
-                .filter_map(|subgraph| match subgraph.get("currentVersion") {
-                    Some(Value::String(id)) => Some(id.to_owned()),
-                    Some(Value::Null) => None,
-                    Some(_) => panic!("subgraph entity has invalid value type in currentVersion"),
-                    None => None,
-                })
-                .collect::<Vec<_>>();
-            let current_versions = self.subgraph_store.find(
-                SubgraphVersionEntity::query()
-                    .filter(EntityFilter::new_in("id", current_version_ids.clone())),
-            )?;
-
-            // These versions becoming non-current might mean that some assignments are no longer
-            // needed. Get a list of deployment IDs that are affected by marking these versions as
-            // non-current.
-            let subgraph_hashes_affected = current_versions
-                .iter()
-                .map(|version| {
-                    SubgraphDeploymentId::new(
-                        version
-                            .get("deployment")
-                            .unwrap()
-                            .to_owned()
-                            .as_string()
-                            .unwrap(),
-                    )
-                    .unwrap()
-                })
-                .collect::<HashSet<_>>();
-
-            // Read version summaries for these subgraph hashes
-            let (versions_before, read_summary_ops) = self
-                .subgraph_store
-                .read_subgraph_version_summaries(subgraph_hashes_affected.into_iter().collect())?;
-            ops.extend(read_summary_ops);
-
-            // Simulate demoting existing current versions to non-current
-            let versions_after = versions_before
-                .clone()
-                .into_iter()
-                .map(|mut version| {
-                    if current_version_ids.contains(&version.id) {
-                        version.current = false;
-                    }
-                    version
-                })
-                .collect::<Vec<_>>();
-
-            // Apply changes to assignments
-            ops.extend(
-                self.subgraph_store
-                    .reconcile_assignments(
-                        &self.logger,
-                        versions_before,
-                        versions_after,
-                        None, // no new assignments will be added
-                    )
-                    .into_iter()
-                    .map(|op| op.into()),
-            );
-
-            // Update subgraph entities to promote pending versions to current
-            for subgraph in subgraphs_to_update {
-                let data = entity! {
-                    id: subgraph.id().unwrap(),
-                    pendingVersion: Value::Null,
-                    currentVersion: subgraph.get("pendingVersion").unwrap().to_owned(),
-                };
-                ops.push(MetadataOperation::Set {
-                    entity: SubgraphEntity::TYPENAME.to_owned(),
-                    id: subgraph.id().unwrap(),
-                    data,
-                });
-            }
-
-            self.subgraph_store
-                .apply_metadata_operations(ops)
-                .map_err(|e| format_err!("Failed to set deployment synced flag: {}", e))
+            self.subgraph_store.deployment_synced(&self.subgraph_id)
         }
     }
 }
@@ -801,6 +669,19 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                     match next_blocks_future.poll() {
                         // Reconciliation found blocks to process
                         Ok(Async::Ready(NextBlocks::Blocks(next_blocks, block_range_size))) => {
+                            // We had only one error, so we infer that reducing the range size is
+                            // what fixed it. Reduce the max range size to prevent future errors.
+                            // See: 018c6df4-132f-4acc-8697-a2d64e83a9f0
+                            if self.consecutive_err_count == 1 {
+                                // Reduce the max range size by 10%, but to no less than 10.
+                                self.ctx.max_block_range_size =
+                                    (self.ctx.max_block_range_size * 9 / 10).max(10);
+                                info!(
+                                    self.ctx.logger,
+                                    "Maximum range size reduced to {}",
+                                    self.ctx.max_block_range_size
+                                );
+                            }
                             self.consecutive_err_count = 0;
 
                             let total_triggers =
@@ -843,6 +724,9 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                         }
 
                         Err(e) => {
+                            // Reset the block range size in an attempt to recover from the error.
+                            // See also: 018c6df4-132f-4acc-8697-a2d64e83a9f0
+                            self.ctx.previous_block_range_size = 1;
                             self.consecutive_err_count += 1;
 
                             // Pause before trying again
@@ -909,7 +793,9 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                         // Chain head update stream ended
                         Ok(Async::Ready(None)) => {
                             // Should not happen
-                            return Err(format_err!("chain head update stream ended unexpectedly"));
+                            return Err(anyhow::anyhow!(
+                                "chain head update stream ended unexpectedly"
+                            ));
                         }
 
                         Ok(Async::NotReady) => {
@@ -921,7 +807,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
                         // mpsc channel failed
                         Err(()) => {
                             // Should not happen
-                            return Err(format_err!("chain head update Receiver failed"));
+                            return Err(anyhow::anyhow!("chain head update Receiver failed"));
                         }
                     }
                 }

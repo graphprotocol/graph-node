@@ -1,3 +1,4 @@
+use anyhow::Error;
 use async_trait::async_trait;
 
 use crate::prelude::*;
@@ -8,5 +9,6 @@ pub trait DataSourceLoader {
         &self,
         id: SubgraphDeploymentId,
         logger: Logger,
+        manifest: SubgraphManifest,
     ) -> Result<Vec<DataSource>, Error>;
 }

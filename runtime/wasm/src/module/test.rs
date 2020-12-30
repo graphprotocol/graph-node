@@ -24,14 +24,20 @@ mod abi;
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
-) -> (
-    WasmInstance,
-    Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
-) {
+) -> (WasmInstance, Arc<impl Store + EthereumCallCache>) {
+    test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
+}
+
+fn test_valid_module_and_store_with_timeout(
+    subgraph_id: &str,
+    data_source: DataSource,
+    timeout: Option<Duration>,
+) -> (WasmInstance, Arc<impl Store + EthereumCallCache>) {
     let store = STORE.clone();
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
+    let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     test_store::create_test_subgraph(
-        subgraph_id,
+        &deployment_id,
         "type User @entity {
             id: ID!,
             name: String,
@@ -43,7 +49,6 @@ fn test_valid_module_and_store(
             extra: String
         }",
     );
-    let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment_id.clone(),
@@ -59,10 +64,8 @@ fn test_valid_module_and_store(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(deployment_id, data_source, store.clone()),
         host_metrics,
-        std::env::var(crate::host::TIMEOUT_ENV_VAR)
-            .ok()
-            .and_then(|s| u64::from_str(&s).ok())
-            .map(std::time::Duration::from_secs),
+        timeout,
+        true,
     )
     .unwrap();
 
@@ -99,28 +102,6 @@ fn mock_data_source(path: &str) -> DataSource {
             },
             runtime: Arc::new(runtime.clone()),
         },
-        templates: vec![DataSourceTemplate {
-            kind: String::from("ethereum/contract"),
-            name: String::from("example template"),
-            network: Some(String::from("mainnet")),
-            source: TemplateSource {
-                abi: String::from("foo"),
-            },
-            mapping: Mapping {
-                kind: String::from("ethereum/events"),
-                api_version: String::from("0.1.0"),
-                language: String::from("wasm/assemblyscript"),
-                entities: vec![],
-                abis: vec![],
-                event_handlers: vec![],
-                call_handlers: vec![],
-                block_handlers: vec![],
-                link: Link {
-                    link: "link".to_owned(),
-                },
-                runtime: Arc::new(runtime),
-            },
-        }],
         context: None,
     }
 }
@@ -128,11 +109,34 @@ fn mock_data_source(path: &str) -> DataSource {
 fn mock_host_exports(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
+    store: Arc<impl Store + EthereumCallCache>,
 ) -> HostExports {
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
+
+    let templates = vec![DataSourceTemplate {
+        kind: String::from("ethereum/contract"),
+        name: String::from("example template"),
+        network: Some(String::from("mainnet")),
+        source: TemplateSource {
+            abi: String::from("foo"),
+        },
+        mapping: Mapping {
+            kind: String::from("ethereum/events"),
+            api_version: String::from("0.1.0"),
+            language: String::from("wasm/assemblyscript"),
+            entities: vec![],
+            abis: vec![],
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
+            link: Link {
+                link: "link".to_owned(),
+            },
+            runtime: Arc::new(vec![]),
+        },
+    }];
 
     HostExports::new(
         subgraph_id,
@@ -141,7 +145,7 @@ fn mock_host_exports(
         data_source.source.address,
         data_source.network.unwrap(),
         data_source.context,
-        Arc::new(data_source.templates),
+        Arc::new(templates),
         data_source.mapping.abis,
         mock_ethereum_adapter,
         Arc::new(graph_core::LinkResolver::from(
@@ -157,7 +161,7 @@ fn mock_host_exports(
 fn mock_context(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store + SubgraphDeploymentStore + EthereumCallCache>,
+    store: Arc<impl Store + EthereumCallCache>,
 ) -> MappingContext {
     MappingContext {
         logger: test_store::LOGGER.clone(),
@@ -292,11 +296,11 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let key = EntityKey {
-        subgraph_id: SubgraphDeploymentId::new(subgraph_id).unwrap(),
-        entity_type: "Thing".to_string(),
-        entity_id: id.to_string(),
-    };
+    let key = EntityKey::data(
+        SubgraphDeploymentId::new(subgraph_id).unwrap(),
+        "Thing".to_string(),
+        id.to_string(),
+    );
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::Insert { key, data },
@@ -576,8 +580,10 @@ async fn data_source_create() {
 
         let name = module.asc_new(&name);
         let params = module.asc_new(&*params);
+        module.instance_ctx_mut().ctx.state.enter_handler();
         module.invoke_export2_void("dataSourceCreate", name, params)?;
-        Ok(module.take_ctx().ctx.state.created_data_sources)
+        module.instance_ctx_mut().ctx.state.exit_handler();
+        Ok(module.take_ctx().ctx.state.drain_created_data_sources())
     };
 
     // Test with a valid template
@@ -636,7 +642,12 @@ async fn entity_store() {
     steve.set("id", "steve");
     steve.set("name", "Steve");
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
-    test_store::insert_entities(subgraph_id, vec![("User", alex), ("User", steve)]).unwrap();
+    let user_type = EntityType::data("User".to_string());
+    test_store::insert_entities(
+        subgraph_id,
+        vec![(user_type.clone(), alex), (user_type, steve)],
+    )
+    .unwrap();
 
     let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
         let id = module.asc_new(id);

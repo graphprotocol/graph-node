@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 
-use graph::data::subgraph::schema::{attribute_index_definitions, SubgraphError};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::{
     DataSourceLoader as _, GraphQlRunner,
     SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *,
@@ -78,7 +78,7 @@ impl<L, Q, S> SubgraphAssignmentProviderTrait for SubgraphAssignmentProvider<L, 
 where
     L: LinkResolver + Clone,
     Q: GraphQlRunner,
-    S: Store + SubgraphDeploymentStore,
+    S: Store,
 {
     async fn start(
         &self,
@@ -88,11 +88,7 @@ where
         let store = self.store.clone();
         let subgraph_id = id.clone();
 
-        let loader = Arc::new(DataSourceLoader::new(
-            store.clone(),
-            self.resolver.clone(),
-            self.graphql_runner.clone(),
-        ));
+        let loader = Arc::new(DataSourceLoader::new(store.clone()));
 
         let link = format!("/ipfs/{}", id);
 
@@ -102,7 +98,7 @@ where
 
         info!(logger, "Resolve subgraph files using IPFS");
 
-        async move {
+        if let Err(e) = async move {
             let mut subgraph = SubgraphManifest::resolve(
                 Link { link },
                 self.resolver.deref(),
@@ -112,7 +108,7 @@ where
             .await?;
 
             let data_sources = loader
-                .load_dynamic_data_sources(id.clone(), logger.clone())
+                .load_dynamic_data_sources(id.clone(), logger.clone(), subgraph.clone())
                 .map_err(SubgraphAssignmentProviderError::DynamicDataSourcesError)
                 .await?;
 
@@ -133,22 +129,6 @@ where
                 return Err(SubgraphAssignmentProviderError::AlreadyRunning(subgraph.id));
             }
 
-            info!(logger, "Create attribute indexes for subgraph entities");
-
-            // Build indexes for each entity attribute in the Subgraph
-            let index_definitions =
-                attribute_index_definitions(subgraph.id.clone(), subgraph.schema.document.clone());
-            self_clone
-                .store
-                .build_entity_attribute_indexes(&subgraph.id, index_definitions)
-                .map(|_| {
-                    info!(
-                        logger,
-                        "Successfully created attribute indexes for subgraph entities"
-                    )
-                })
-                .ok();
-
             // Send events to trigger subgraph processing
             if let Err(e) = self_clone
                 .event_sink
@@ -161,7 +141,8 @@ where
             }
             Ok(())
         }
-        .map_err(move |e| {
+        .await
+        {
             error!(
                 logger_for_err,
                 "Failed to resolve subgraph files using IPFS";
@@ -173,14 +154,14 @@ where
                 message: e.to_string(),
                 block_ptr: None,
                 handler: None,
+                deterministic: false,
             };
 
-            let _ignore_error = store.apply_metadata_operations(
-                SubgraphDeploymentEntity::fail_operations(&subgraph_id, error),
-            );
-            e
-        })
-        .await
+            let _ignore_error = store.fail_subgraph(subgraph_id, error).await;
+            return Err(e);
+        }
+
+        Ok(())
     }
 
     async fn stop(&self, id: SubgraphDeploymentId) -> Result<(), SubgraphAssignmentProviderError> {

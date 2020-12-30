@@ -1,4 +1,3 @@
-extern crate failure;
 extern crate futures;
 extern crate graph;
 extern crate graph_graphql;
@@ -12,4 +11,4 @@ mod store;
 
 pub use self::block_stream::{MockBlockStream, MockBlockStreamBuilder};
 pub use self::metrics_registry::MockMetricsRegistry;
-pub use self::store::{mock_store_with_users_subgraph, MockStore};
+pub use self::store::MockStore;

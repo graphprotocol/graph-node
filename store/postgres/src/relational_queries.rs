@@ -15,23 +15,24 @@ use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
+use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
 use graph::data::{schema::FulltextAlgorithm, store::scalar};
 use graph::prelude::{
-    format_err, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
+    anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value,
 };
 
-use crate::block_range::{
-    BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
-};
 use crate::entities::STRING_PREFIX_SIZE;
-use crate::filter::UnsupportedFilter;
 use crate::relational::{Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
+use crate::{
+    block_range::{BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
+    primary::Namespace,
+};
 
 lazy_static! {
     /// Use a variant of the query for child_type_a when we are looking up
@@ -47,6 +48,30 @@ lazy_static! {
             })
             .unwrap_or(150)
     };
+}
+
+#[derive(Debug)]
+pub(crate) struct UnsupportedFilter {
+    pub filter: String,
+    pub value: Value,
+}
+
+impl Display for UnsupportedFilter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "unsupported filter `{}` for value `{}`",
+            self.filter, self.value
+        )
+    }
+}
+
+impl std::error::Error for UnsupportedFilter {}
+
+impl From<UnsupportedFilter> for diesel::result::Error {
+    fn from(error: UnsupportedFilter) -> Self {
+        diesel::result::Error::QueryBuilderError(Box::new(error))
+    }
 }
 
 fn str_as_bytes(id: &str) -> QueryResult<scalar::Bytes> {
@@ -203,8 +228,8 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<String, graphql_parser::query::Value> {
-    type Value = graphql_parser::query::Value;
+impl FromEntityData for BTreeMap<String, q::Value> {
+    type Value = q::Value;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -235,7 +260,6 @@ pub trait FromColumnValue: Sized {
         column_type: &ColumnType,
         json: serde_json::Value,
     ) -> Result<Self, StoreError> {
-        //use graphql_parser::query::Value as q;
         use serde_json::Value as j;
         // Many possible conversion errors are already caught by how
         // we define the schema; for example, we can only get a NULL for
@@ -245,9 +269,9 @@ pub trait FromColumnValue: Sized {
             (j::Bool(b), _) => Ok(Self::from_bool(b)),
             (j::Number(number), ColumnType::Int) => match number.as_i64() {
                 Some(i) => i32::try_from(i).map(Self::from_i32).map_err(|e| {
-                    StoreError::Unknown(format_err!("failed to convert {} to Int: {}", number, e))
+                    StoreError::Unknown(anyhow!("failed to convert {} to Int: {}", number, e))
                 }),
-                None => Err(StoreError::Unknown(format_err!(
+                None => Err(StoreError::Unknown(anyhow!(
                     "failed to convert {} to Int",
                     number
                 ))),
@@ -257,7 +281,7 @@ pub trait FromColumnValue: Sized {
                 scalar::BigDecimal::from_str(s.as_str())
                     .map(Self::from_big_decimal)
                     .map_err(|e| {
-                        StoreError::Unknown(format_err!(
+                        StoreError::Unknown(anyhow!(
                             "failed to convert {} to BigDecimal: {}",
                             number,
                             e
@@ -265,7 +289,7 @@ pub trait FromColumnValue: Sized {
                     })
             }
             (j::Number(number), ColumnType::BigInt) => Self::from_big_int(number),
-            (j::Number(number), column_type) => Err(StoreError::Unknown(format_err!(
+            (j::Number(number), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert number {} to {:?}",
                 number,
                 column_type
@@ -275,7 +299,7 @@ pub trait FromColumnValue: Sized {
             }
             (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
             (j::String(s), ColumnType::BytesId) => Ok(Self::from_string(bytes_as_str(&s))),
-            (j::String(s), column_type) => Err(StoreError::Unknown(format_err!(
+            (j::String(s), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert string {} to {:?}",
                 s,
                 column_type
@@ -293,9 +317,9 @@ pub trait FromColumnValue: Sized {
     }
 }
 
-impl FromColumnValue for graphql_parser::query::Value {
+impl FromColumnValue for q::Value {
     fn is_null(&self) -> bool {
-        self == &graphql_parser::query::Value::Null
+        self == &q::Value::Null
     }
 
     fn null() -> Self {
@@ -303,31 +327,31 @@ impl FromColumnValue for graphql_parser::query::Value {
     }
 
     fn from_string(s: String) -> Self {
-        graphql_parser::query::Value::String(s)
+        q::Value::String(s)
     }
 
     fn from_bool(b: bool) -> Self {
-        graphql_parser::query::Value::Boolean(b)
+        q::Value::Boolean(b)
     }
 
     fn from_i32(i: i32) -> Self {
-        graphql_parser::query::Value::Int(i.into())
+        q::Value::Int(i.into())
     }
 
     fn from_big_decimal(d: scalar::BigDecimal) -> Self {
-        graphql_parser::query::Value::String(d.to_string())
+        q::Value::String(d.to_string())
     }
 
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
-        Ok(graphql_parser::query::Value::String(i.to_string()))
+        Ok(q::Value::String(i.to_string()))
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
-        Ok(graphql_parser::query::Value::String(format!("0x{}", b)))
+        Ok(q::Value::String(format!("0x{}", b)))
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
-        graphql_parser::query::Value::List(v)
+        q::Value::List(v)
     }
 }
 
@@ -359,17 +383,13 @@ impl FromColumnValue for graph::prelude::Value {
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
         scalar::BigInt::from_str(&i.to_string())
             .map(graph::prelude::Value::BigInt)
-            .map_err(|e| {
-                StoreError::Unknown(format_err!("failed to convert {} to BigInt: {}", i, e))
-            })
+            .map_err(|e| StoreError::Unknown(anyhow!("failed to convert {} to BigInt: {}", i, e)))
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
         scalar::Bytes::from_str(b)
             .map(graph::prelude::Value::Bytes)
-            .map_err(|e| {
-                StoreError::Unknown(format_err!("failed to convert {} to Bytes: {}", b, e))
-            })
+            .map_err(|e| StoreError::Unknown(anyhow!("failed to convert {} to Bytes: {}", b, e)))
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
@@ -492,17 +512,24 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     }
                     // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
                     ColumnType::TSVector(config) => {
-                        out.push_sql("(");
-                        for (i, value) in sql_values.iter().enumerate() {
-                            if i > 0 {
-                                out.push_sql(") || ");
+                        if sql_values.is_empty() {
+                            out.push_sql("''::tsvector");
+                        } else {
+                            out.push_sql("(");
+                            for (i, value) in sql_values.iter().enumerate() {
+                                if i > 0 {
+                                    out.push_sql(") || ");
+                                }
+                                out.push_sql("to_tsvector(");
+                                out.push_bind_param::<Text, _>(
+                                    &config.language.as_str().to_string(),
+                                )?;
+                                out.push_sql("::regconfig, ");
+                                out.push_bind_param::<Text, _>(&value)?;
                             }
-                            out.push_sql("to_tsvector(");
-                            out.push_bind_param::<Text, _>(&config.language.as_str().to_string())?;
-                            out.push_sql("::regconfig, ");
-                            out.push_bind_param::<Text, _>(&value)?;
+                            out.push_sql("))");
                         }
-                        out.push_sql("))");
+
                         Ok(())
                     }
                     ColumnType::BytesId => out.push_bind_param::<Array<Binary>, _>(&sql_values),
@@ -1103,11 +1130,11 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
-    pub(crate) schema: &'a str,
+    pub(crate) namespace: &'a Namespace,
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: BTreeMap<&'a str, Vec<&'a str>>,
+    pub(crate) ids_for_type: BTreeMap<&'a str, &'a Vec<&'a str>>,
     pub(crate) block: BlockNumber,
 }
 
@@ -2136,6 +2163,7 @@ pub struct FilterQuery<'a> {
     sort_key: SortKey<'a>,
     range: FilterRange,
     block: BlockNumber,
+    query_id: Option<String>,
 }
 
 impl<'a> FilterQuery<'a> {
@@ -2145,6 +2173,7 @@ impl<'a> FilterQuery<'a> {
         order: EntityOrder,
         range: EntityRange,
         block: BlockNumber,
+        query_id: Option<String>,
     ) -> Result<Self, QueryExecutionError> {
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
@@ -2160,6 +2189,7 @@ impl<'a> FilterQuery<'a> {
             sort_key,
             range: FilterRange(range),
             block,
+            query_id,
         })
     }
 
@@ -2406,6 +2436,11 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             return Ok(());
         }
 
+        if let Some(qid) = &self.query_id {
+            out.push_sql("/* qid: ");
+            out.push_sql(qid);
+            out.push_sql(" */\n");
+        }
         // We generate four different kinds of queries, depending on whether
         // we need to window and whether we query just one or multiple entity
         // types/windows; the most complex situation is windowing with multiple
@@ -2743,12 +2778,12 @@ impl<'a> CopyEntityDataQuery<'a> {
         for dcol in &dst.columns {
             if let Some(scol) = src.column(&dcol.name) {
                 if let Some(msg) = dcol.is_assignable_from(scol, &src.object) {
-                    return Err(format_err!("{}", msg).into());
+                    return Err(anyhow!("{}", msg).into());
                 } else {
                     columns.push(dcol);
                 }
             } else if !dcol.is_nullable() {
-                return Err(format_err!(
+                return Err(anyhow!(
                     "The attribute {}.{} is non-nullable, \
                      but there is no such attribute in the source",
                     dst.object,

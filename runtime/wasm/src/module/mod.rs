@@ -10,11 +10,13 @@ use wasmtime::{Memory, Trap};
 
 use crate::host_exports;
 use crate::mapping::MappingContext;
+use anyhow::Error;
 use ethabi::LogParam;
-use graph::components::ethereum::*;
 use graph::components::subgraph::MappingError;
 use graph::data::store;
+use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
+use host_exports::HostExportError;
 use web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::asc_ptr::*;
@@ -34,6 +36,19 @@ use stopwatch::TimeoutStopwatch;
 mod test;
 
 const TRAP_TIMEOUT: &str = "trap: interrupt";
+
+macro_rules! try_host_export {
+    ($this:ident, $e:expr) => {
+        match $e {
+            Ok(x) => x,
+            Err(HostExportError::Deterministic(e)) => {
+                $this.deterministic_host_trap = true;
+                return Err(Trap::from(e));
+            }
+            Err(HostExportError::Unknown(e)) => return Err(Trap::from(e)),
+        }
+    };
+}
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
 pub(crate) struct WasmInstance {
@@ -124,11 +139,7 @@ impl WasmInstance {
             .erase()
         };
 
-        // Invoke the event handler
-        self.invoke_handler(handler_name, event)?;
-
-        // Return the output state
-        Ok(self.take_ctx().ctx.state)
+        self.invoke_handler(handler_name, event)
     }
 
     pub(crate) fn handle_ethereum_call(
@@ -153,9 +164,7 @@ impl WasmInstance {
             self.asc_new::<AscEthereumCall, _>(&call).erase()
         };
 
-        self.invoke_handler(handler_name, arg)?;
-
-        Ok(self.take_ctx().ctx.state)
+        self.invoke_handler(handler_name, arg)
     }
 
     pub(crate) fn handle_ethereum_block(
@@ -167,9 +176,7 @@ impl WasmInstance {
         // Prepare an EthereumBlock for the WASM runtime
         let arg = self.asc_new(&block);
 
-        self.invoke_handler(handler_name, arg)?;
-
-        Ok(self.take_ctx().ctx.state)
+        self.invoke_handler(handler_name, arg)
     }
 
     pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext {
@@ -180,7 +187,6 @@ impl WasmInstance {
         std::cell::Ref::map(self.instance_ctx.borrow(), |i| i.as_ref().unwrap())
     }
 
-    #[cfg(test)]
     pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext> {
         std::cell::RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap())
     }
@@ -190,30 +196,80 @@ impl WasmInstance {
         self.instance.get_func(func_name).unwrap()
     }
 
-    fn invoke_handler<C>(&mut self, handler: &str, arg: AscPtr<C>) -> Result<(), MappingError> {
+    fn invoke_handler<C>(
+        &mut self,
+        handler: &str,
+        arg: AscPtr<C>,
+    ) -> Result<BlockState, MappingError> {
         let func = self
             .instance
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
 
-        func.get1()?(arg.wasm_ptr()).map_err(|e| {
-            if self.instance_ctx().possible_reorg {
-                MappingError::PossibleReorg(e.into())
-            } else if e.to_string().contains(TRAP_TIMEOUT) {
-                anyhow::Error::context(
-                    e.into(),
-                    format!(
-                        "Handler '{}' hit the timeout of '{}' seconds",
-                        handler,
-                        self.instance_ctx().timeout.unwrap().as_secs()
-                    ),
-                )
-                .into()
-            } else {
-                anyhow::Error::context(e.into(), format!("Failed to invoke handler '{}'", handler))
-                    .into()
+        // Caution: Make sure all exit paths from this function call `exit_handler`.
+        self.instance_ctx_mut().ctx.state.enter_handler();
+
+        // This `match` will return early if there was a non-determinstic trap.
+        let deterministic_error: Option<Error> = match func.get1()?(arg.wasm_ptr()) {
+            Ok(()) => None,
+            Err(trap) if self.instance_ctx().possible_reorg => {
+                self.instance_ctx_mut().ctx.state.exit_handler();
+                return Err(MappingError::PossibleReorg(trap.into()));
             }
-        })
+            Err(trap) if trap.to_string().contains(TRAP_TIMEOUT) => {
+                self.instance_ctx_mut().ctx.state.exit_handler();
+                return Err(MappingError::Unknown(Error::from(trap).context(format!(
+                    "Handler '{}' hit the timeout of '{}' seconds",
+                    handler,
+                    self.instance_ctx().timeout.unwrap().as_secs()
+                ))));
+            }
+            Err(trap) => {
+                use wasmtime::TrapCode::*;
+                let trap_code = trap.trap_code();
+                let e = Error::from(trap);
+                match trap_code {
+                    Some(MemoryOutOfBounds)
+                    | Some(HeapMisaligned)
+                    | Some(TableOutOfBounds)
+                    | Some(IndirectCallToNull)
+                    | Some(BadSignature)
+                    | Some(IntegerOverflow)
+                    | Some(IntegerDivisionByZero)
+                    | Some(BadConversionToInteger)
+                    | Some(UnreachableCodeReached) => Some(e),
+                    _ if self.instance_ctx().deterministic_host_trap => Some(e),
+                    _ => {
+                        self.instance_ctx_mut().ctx.state.exit_handler();
+                        return Err(MappingError::Unknown(e));
+                    }
+                }
+            }
+        };
+
+        if let Some(deterministic_error) = deterministic_error {
+            // Log the error and restore the updates snapshot, effectively reverting the handler.
+            error!(&self.instance_ctx().ctx.logger,
+                "Handler skipped due to execution failure";
+                "handler" => handler,
+                "error" => format!("{:#}", deterministic_error)
+            );
+            let subgraph_error = SubgraphError {
+                subgraph_id: self.instance_ctx().ctx.host_exports.subgraph_id.clone(),
+                message: format!("{:#}", deterministic_error),
+                block_ptr: Some(self.instance_ctx().ctx.block.block_ptr()),
+                handler: Some(handler.to_string()),
+                deterministic: true,
+            };
+            self.instance_ctx_mut()
+                .ctx
+                .state
+                .exit_handler_and_discard_changes_due_to_error(subgraph_error);
+        } else {
+            self.instance_ctx_mut().ctx.state.exit_handler();
+        }
+
+        Ok(self.take_ctx().ctx.state)
     }
 }
 
@@ -246,6 +302,11 @@ pub(crate) struct WasmInstanceContext {
 
     // A trap ocurred due to a possible reorg detection.
     possible_reorg: bool,
+
+    // A host export trap ocurred for a determinstic reason.
+    deterministic_host_trap: bool,
+
+    pub(crate) allow_non_determinstic_ipfs: bool,
 }
 
 impl WasmInstance {
@@ -255,6 +316,7 @@ impl WasmInstance {
         ctx: MappingContext,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
+        allow_non_determinstic_ipfs: bool,
     ) -> Result<WasmInstance, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
 
@@ -322,6 +384,7 @@ impl WasmInstance {
                                     host_metrics.cheap_clone(),
                                     timeout,
                                     timeout_stopwatch.cheap_clone(),
+                                    allow_non_determinstic_ipfs
                                 ).unwrap())
                             }
 
@@ -366,6 +429,7 @@ impl WasmInstance {
                                 host_metrics.cheap_clone(),
                                 timeout,
                                 timeout_stopwatch.cheap_clone(),
+                                allow_non_determinstic_ipfs,
                             )
                             .unwrap(),
                         )
@@ -485,6 +549,7 @@ impl WasmInstance {
                 host_metrics,
                 timeout,
                 timeout_stopwatch,
+                allow_non_determinstic_ipfs,
             )?);
         }
 
@@ -551,6 +616,7 @@ impl WasmInstanceContext {
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
         timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
+        allow_non_determinstic_ipfs: bool,
     ) -> Result<Self, anyhow::Error> {
         // Provide access to the WASM runtime linear memory
         let memory = instance
@@ -573,6 +639,8 @@ impl WasmInstanceContext {
             arena_free_size: 0,
             arena_start_ptr: 0,
             possible_reorg: false,
+            deterministic_host_trap: false,
+            allow_non_determinstic_ipfs,
         })
     }
 
@@ -583,6 +651,7 @@ impl WasmInstanceContext {
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
         timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
+        allow_non_determinstic_ipfs: bool,
     ) -> Result<Self, anyhow::Error> {
         let memory = caller
             .get_export("memory")
@@ -608,6 +677,8 @@ impl WasmInstanceContext {
             arena_free_size: 0,
             arena_start_ptr: 0,
             possible_reorg: false,
+            deterministic_host_trap: false,
+            allow_non_determinstic_ipfs,
         })
     }
 }
@@ -617,7 +688,7 @@ impl WasmInstanceContext {
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
     fn abort(
-        &self,
+        &mut self,
         message_ptr: AscPtr<AscString>,
         file_name_ptr: AscPtr<AscString>,
         line_number: u32,
@@ -639,12 +710,19 @@ impl WasmInstanceContext {
             0 => None,
             _ => Some(column_number),
         };
-        Err(self
+
+        match self
             .ctx
             .host_exports
             .abort(message, file_name, line_number, column_number)
             .unwrap_err()
-            .into())
+        {
+            HostExportError::Deterministic(e) => {
+                self.deterministic_host_trap = true;
+                Err(e.into())
+            }
+            HostExportError::Unknown(_) => unreachable!(),
+        }
     }
 
     /// function store.set(entity: string, id: string, data: Entity): void
@@ -767,7 +845,7 @@ impl WasmInstanceContext {
     /// function typeConversion.stringToH160(s: String): H160
     fn string_to_h160(&mut self, str_ptr: AscPtr<AscString>) -> Result<AscPtr<AscH160>, Trap> {
         let s: String = self.asc_get(str_ptr);
-        let h160 = host_exports::string_to_h160(&s)?;
+        let h160 = try_host_export!(self, host_exports::string_to_h160(&s));
         let h160_obj: AscPtr<AscH160> = self.asc_new(&h160);
         Ok(h160_obj)
     }
@@ -808,6 +886,13 @@ impl WasmInstanceContext {
 
     /// function ipfs.cat(link: String): Bytes
     fn ipfs_cat(&mut self, link_ptr: AscPtr<AscString>) -> Result<AscPtr<Uint8Array>, Trap> {
+        if !self.allow_non_determinstic_ipfs {
+            return Err(anyhow::anyhow!(
+                "`ipfs.cat` is deprecated. Improved support for IPFS will be added in the future"
+            )
+            .into());
+        }
+
         let link = self.asc_get(link_ptr);
         let ipfs_res = self.ctx.host_exports.ipfs_cat(&self.ctx.logger, link);
         match ipfs_res {
@@ -834,6 +919,13 @@ impl WasmInstanceContext {
         user_data: AscPtr<AscEnum<StoreValueKind>>,
         flags: AscPtr<Array<AscPtr<AscString>>>,
     ) -> Result<(), Trap> {
+        if !self.allow_non_determinstic_ipfs {
+            return Err(anyhow::anyhow!(
+                "`ipfs.map` is deprecated. Improved support for IPFS will be added in the future"
+            )
+            .into());
+        }
+
         let link: String = self.asc_get(link_ptr);
         let callback: String = self.asc_get(callback);
         let user_data: store::Value = self.try_asc_get(user_data)?;
@@ -864,15 +956,7 @@ impl WasmInstanceContext {
             "time" => format!("{}ms", start_time.elapsed().as_millis())
         );
         for output_state in output_states {
-            self.ctx
-                .state
-                .entity_cache
-                .extend(output_state.entity_cache)
-                .map_err(anyhow::Error::from)?;
-            self.ctx
-                .state
-                .created_data_sources
-                .extend(output_state.created_data_sources);
+            self.ctx.state.extend(output_state);
         }
 
         Ok(())
@@ -881,29 +965,40 @@ impl WasmInstanceContext {
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
     fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<i64, Trap> {
-        let number = self.ctx.host_exports.json_to_i64(self.asc_get(json_ptr))?;
+        let number = try_host_export!(
+            self,
+            self.ctx.host_exports.json_to_i64(self.asc_get(json_ptr))
+        );
         Ok(number)
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
     fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<u64, Trap> {
-        Ok(self.ctx.host_exports.json_to_u64(self.asc_get(json_ptr))?)
+        Ok(try_host_export!(
+            self,
+            self.ctx.host_exports.json_to_u64(self.asc_get(json_ptr))
+        ))
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
     fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<f64, Trap> {
-        Ok(self.ctx.host_exports.json_to_f64(self.asc_get(json_ptr))?)
+        Ok(try_host_export!(
+            self,
+            self.ctx.host_exports.json_to_f64(self.asc_get(json_ptr))
+        ))
     }
 
     /// Expects a decimal string.
     /// function json.toBigInt(json: String): BigInt
     fn json_to_big_int(&mut self, json_ptr: AscPtr<AscString>) -> Result<AscPtr<AscBigInt>, Trap> {
-        let big_int = self
-            .ctx
-            .host_exports
-            .json_to_big_int(self.asc_get(json_ptr))?;
+        let big_int = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .json_to_big_int(self.asc_get(json_ptr))
+        );
         let big_int_ptr: AscPtr<AscBigInt> = self.asc_new(&*big_int);
         Ok(big_int_ptr)
     }
@@ -969,10 +1064,12 @@ impl WasmInstanceContext {
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))?;
+        let result = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .big_int_divided_by(self.asc_get(x_ptr), self.asc_get(y_ptr))
+        );
         let result_ptr: AscPtr<AscBigInt> = self.asc_new(&result);
         Ok(result_ptr)
     }
@@ -984,10 +1081,12 @@ impl WasmInstanceContext {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, Trap> {
         let x = BigDecimal::new(self.asc_get::<BigInt, _>(x_ptr), 0);
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_divided_by(x, self.try_asc_get(y_ptr)?)?;
+        let result = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .big_decimal_divided_by(x, self.try_asc_get(y_ptr)?)
+        );
         Ok(self.asc_new(&result))
     }
 
@@ -1099,10 +1198,12 @@ impl WasmInstanceContext {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, Trap> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_divided_by(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)?;
+        let result = try_host_export!(
+            self,
+            self.ctx
+                .host_exports
+                .big_decimal_divided_by(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)
+        );
         Ok(self.asc_new(&result))
     }
 

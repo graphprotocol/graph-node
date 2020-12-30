@@ -20,6 +20,7 @@ pub fn spawn_module(
     host_metrics: Arc<HostMetrics>,
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
+    allow_non_deterministic_ipfs: bool,
 ) -> Result<mpsc::Sender<MappingRequest>, anyhow::Error> {
     let valid_module = Arc::new(ValidModule::new(&raw_module)?);
 
@@ -54,6 +55,7 @@ pub fn spawn_module(
                         ctx,
                         host_metrics.clone(),
                         timeout,
+                        allow_non_deterministic_ipfs,
                     )?;
                     section.end();
 

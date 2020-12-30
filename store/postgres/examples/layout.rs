@@ -6,7 +6,7 @@ use std::fs;
 use std::process::exit;
 
 use graph::prelude::{Schema, SubgraphDeploymentId};
-use graph_store_postgres::relational::{Catalog, Column, ColumnType, Layout};
+use graph_store_postgres::command_support::{Catalog, Column, ColumnType, Layout, Namespace};
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);
@@ -92,7 +92,7 @@ fn print_views(layout: &Layout) {
             }
             print!(" as {}", column.name.as_str());
         }
-        println!("\n  from {}.entities", layout.catalog.schema);
+        println!("\n  from {}.entities", layout.catalog.namespace);
         println!(" where entity = '{}';", table.object);
     }
 }
@@ -181,16 +181,15 @@ fn print_copy_dds(layout: &Layout) {
     println!(
         r#"
 insert into subgraphs.dynamic_ethereum_contract_data_source(id, kind, name,
-              network, source, mapping, templates, ethereum_block_hash,
+              network, source, mapping, ethereum_block_hash,
               ethereum_block_number, deployment, block_range)
-select x.new_id, e.kind, e.name, e.network, {source}, {mapping}, {templates},
+select x.new_id, e.kind, e.name, e.network, {source}, {mapping},
        e.ethereum_block_hash, e.ethereum_block_number, $3 as deployment,
        e.block_range
   from xlat x, subgraphs.dynamic_ethereum_contract_data_source e
  where x.id = e.id"#,
         source = xlat("source", false),
         mapping = xlat("mapping", false),
-        templates = xlat("templates", true),
     );
 }
 
@@ -313,14 +312,18 @@ pub fn main() {
     .get_matches();
 
     let schema = args.value_of("schema").unwrap();
-    let db_schema = args.value_of("db_schema").unwrap_or("rel");
+    let namespace = args.value_of("db_schema").unwrap_or("subgraphs");
     let kind = args.value_of("generate").unwrap_or("ddl");
 
     let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
     let schema = ensure(Schema::parse(&schema, subgraph), "Failed to parse schema");
+    let namespace = ensure(
+        Namespace::new(namespace.to_string()),
+        "Invalid database schema",
+    );
     let catalog = ensure(
-        Catalog::make_empty(db_schema.to_owned()),
+        Catalog::make_empty(namespace),
         "Failed to construct catalog",
     );
     let layout = ensure(

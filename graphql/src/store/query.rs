@@ -1,9 +1,8 @@
-use graphql_parser::{query as q, query::Name, schema as s, schema::ObjectType};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
-use graph::data::graphql::ObjectOrInterface;
 use graph::prelude::*;
+use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::schema::ast as sast;
 
@@ -19,8 +18,8 @@ enum OrderDirection {
 pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
-    arguments: &HashMap<&q::Name, q::Value>,
-    types_for_interface: &BTreeMap<Name, Vec<ObjectType>>,
+    arguments: &HashMap<&String, q::Value>,
+    types_for_interface: &BTreeMap<String, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityQuery, QueryExecutionError> {
@@ -55,7 +54,7 @@ pub fn build_query<'a>(
 
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityRange, QueryExecutionError> {
@@ -63,12 +62,14 @@ fn build_range(
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("first is Int");
             if n > 0 && n <= (max_first as i64) {
-                Ok(n as u32)
+                n as u32
             } else {
-                Err("first")
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "first", max_first, n,
+                ));
             }
         }
-        Some(q::Value::Null) | None => Ok(100),
+        Some(q::Value::Null) | None => 100,
         _ => unreachable!("first is an Int with a default value"),
     };
 
@@ -76,35 +77,27 @@ fn build_range(
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("skip is Int");
             if n >= 0 && n <= (max_skip as i64) {
-                Ok(n as u32)
+                n as u32
             } else {
-                Err("skip")
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "skip", max_skip, n,
+                ));
             }
         }
-        Some(q::Value::Null) | None => Ok(0),
+        Some(q::Value::Null) | None => 0,
         _ => unreachable!("skip is an Int with a default value"),
     };
 
-    match (first, skip) {
-        (Ok(first), Ok(skip)) => Ok(EntityRange {
-            first: Some(first),
-            skip,
-        }),
-        _ => {
-            let errors: Vec<_> = vec![first, skip]
-                .into_iter()
-                .filter(|r| r.is_err())
-                .map(|e| e.unwrap_err())
-                .collect();
-            Err(QueryExecutionError::RangeArgumentsError(errors, max_first))
-        }
-    }
+    Ok(EntityRange {
+        first: Some(first),
+        skip,
+    })
 }
 
 /// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get(&"where".to_string()) {
         Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
@@ -119,7 +112,7 @@ fn build_filter(
 }
 
 fn build_fulltext_filter_from_object(
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     object.into_iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -139,7 +132,7 @@ fn build_fulltext_filter_from_object(
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: ObjectOrInterface,
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     Ok(Some(EntityFilter::And({
         object
@@ -211,7 +204,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     match arguments.get(&"orderBy".to_string()) {
         Some(q::Value::Enum(name)) => {
@@ -236,7 +229,7 @@ fn build_order_by(
 }
 
 fn build_fulltext_order_by_from_object(
-    object: &BTreeMap<q::Name, q::Value>,
+    object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     object.into_iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -252,7 +245,7 @@ fn build_fulltext_order_by_from_object(
 
 /// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
-    arguments: &HashMap<&q::Name, q::Value>,
+    arguments: &HashMap<&String, q::Value>,
 ) -> Result<OrderDirection, QueryExecutionError> {
     Ok(arguments
         .get(&"orderDirection".to_string())
@@ -281,12 +274,12 @@ pub fn parse_subgraph_id<'a>(
                 .find(|(name, _)| name == &"id".to_string())
         })
         .and_then(|(_, value)| match value {
-            s::Value::String(id) => Some(id.clone()),
+            s::Value::String(id) => Some(id),
             _ => None,
         })
         .ok_or(())
-        .and_then(|id| SubgraphDeploymentId::new(id))
-        .map_err(|()| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
+        .and_then(|id| SubgraphDeploymentId::new(id).map_err(|_| ()))
+        .map_err(|_| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
@@ -294,7 +287,7 @@ pub fn collect_entities_from_query_field(
     schema: &s::Document,
     object_type: &s::ObjectType,
     field: &q::Field,
-) -> Vec<(SubgraphDeploymentId, String)> {
+) -> Vec<SubscriptionFilter> {
     // Output entities
     let mut entities = HashSet::new();
 
@@ -334,16 +327,16 @@ pub fn collect_entities_from_query_field(
         }
     }
 
-    entities.into_iter().collect()
+    entities
+        .into_iter()
+        .map(|(id, entity_type)| SubscriptionFilter::Entities(id, EntityType::data(entity_type)))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser::{
-        query as q, schema as s,
-        schema::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
-        Pos,
-    };
+    use graph::prelude::s::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue};
+    use graphql_parser::Pos;
     use std::collections::{BTreeMap, HashMap};
 
     use graph::prelude::*;
@@ -352,7 +345,7 @@ mod tests {
 
     fn default_object() -> ObjectType {
         let subgraph_id_argument = (
-            s::Name::from("id"),
+            String::from("id"),
             s::Value::String("QmZ5dsusHwD1PEbx6L4dLCWkDsk1BLhrx9mPsGyPvTxPCM".to_string()),
         );
         let subgraph_id_directive = Directive {

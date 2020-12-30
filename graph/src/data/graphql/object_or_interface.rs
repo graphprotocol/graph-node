@@ -1,6 +1,8 @@
+use crate::prelude::s;
 use crate::prelude::Schema;
-use graphql_parser::schema as s;
 use std::collections::BTreeMap;
+
+use super::ObjectTypeExt;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -56,7 +58,7 @@ impl<'a> ObjectOrInterface<'a> {
         }
     }
 
-    pub fn field(&self, name: &s::Name) -> Option<&s::Field> {
+    pub fn field(&self, name: &String) -> Option<&s::Field> {
         self.fields().iter().find(|field| &field.name == name)
     }
 
@@ -75,13 +77,20 @@ impl<'a> ObjectOrInterface<'a> {
     pub fn matches(
         self,
         typename: &str,
-        types_for_interface: &BTreeMap<s::Name, Vec<s::ObjectType>>,
+        types_for_interface: &BTreeMap<String, Vec<s::ObjectType>>,
     ) -> bool {
         match self {
             ObjectOrInterface::Object(o) => o.name == typename,
             ObjectOrInterface::Interface(i) => types_for_interface[&i.name]
                 .iter()
                 .any(|o| o.name == typename),
+        }
+    }
+
+    pub fn is_meta(&self) -> bool {
+        match self {
+            ObjectOrInterface::Object(o) => o.is_meta(),
+            ObjectOrInterface::Interface(i) => i.is_meta(),
         }
     }
 }

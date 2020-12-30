@@ -2,12 +2,17 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 
 use graph::prelude::*;
-use graph::util::security::SafeDisplay;
 
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{collections::HashMap, sync::RwLock};
+
+#[derive(Clone)]
+pub struct ConnectionPool {
+    pool: Pool<ConnectionManager<PgConnection>>,
+    pub(crate) wait_stats: PoolWaitStats,
+}
 
 struct ErrorHandler(Logger, Counter);
 
@@ -87,70 +92,79 @@ impl HandleEvent for EventHandler {
     fn handle_timeout(&self, event: e::TimeoutEvent) {
         self.add_wait_time(event.timeout());
         error!(self.logger, "Connection checkout timed out";
-               "wait_ms" => event.timeout().as_millis())
+           "wait_ms" => event.timeout().as_millis(),
+           "backtrace" => format!("{:?}", backtrace::Backtrace::new()),
+        )
     }
     fn handle_checkin(&self, _: e::CheckinEvent) {
         self.count_gauge.dec();
     }
 }
 
-pub fn create_connection_pool(
-    pool_name: &str,
-    postgres_url: String,
-    pool_size: u32,
-    logger: &Logger,
-    registry: Arc<dyn MetricsRegistry>,
-    wait_time: PoolWaitStats,
-) -> Pool<ConnectionManager<PgConnection>> {
-    let logger_store = logger.new(o!("component" => "Store"));
-    let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
-    let const_labels = {
-        let mut map = HashMap::new();
-        map.insert("pool".to_owned(), pool_name.to_owned());
-        map
-    };
-    let error_counter = registry
-        .global_counter(
-            "store_connection_error_count",
-            "The number of Postgres connections errors",
-            HashMap::new(),
-        )
-        .expect("failed to create `store_connection_error_count` counter");
-    let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
-    let event_handler = Box::new(EventHandler::new(
-        logger_pool.clone(),
-        registry,
-        wait_time,
-        const_labels,
-    ));
+impl std::ops::Deref for ConnectionPool {
+    type Target = Pool<ConnectionManager<PgConnection>>;
 
-    // Connect to Postgres
-    let conn_manager = ConnectionManager::new(postgres_url.clone());
-    // Set the time we wait for a connection to 6h. The default is 30s
-    // which can be too little if database connections are highly
-    // contended; if we don't get a connection within the timeout,
-    // ultimately subgraphs get marked as failed. This effectively
-    // turns off this timeout and makes it possible that work needing
-    // a database connection blocks for a very long time
-    //
-    // When running tests however, use the default of 30 seconds.
-    // There should not be a lot of contention when running tests,
-    // and this can help debug the issue faster when a test appears
-    // to be hanging but really there is just no connection to postgres
-    // available.
-    let timeout_seconds = if cfg!(test) { 30 } else { 6 * 60 * 60 };
-    let pool = Pool::builder()
-        .error_handler(error_handler)
-        .event_handler(event_handler)
-        .connection_timeout(Duration::from_secs(timeout_seconds))
-        .max_size(pool_size)
-        .build(conn_manager)
-        .unwrap();
-    info!(
-        logger_store,
-        "Connected to Postgres";
-        "pool_name" => pool_name,
-        "url" => SafeDisplay(postgres_url.as_str())
-    );
-    pool
+    fn deref(&self) -> &Self::Target {
+        &self.pool
+    }
+}
+
+impl ConnectionPool {
+    pub fn create(
+        shard_name: &str,
+        pool_name: &str,
+        postgres_url: String,
+        pool_size: u32,
+        logger: &Logger,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> ConnectionPool {
+        let logger_store = logger.new(o!("component" => "Store"));
+        let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
+        let const_labels = {
+            let mut map = HashMap::new();
+            map.insert("pool".to_owned(), pool_name.to_owned());
+            map.insert("shard".to_string(), shard_name.to_owned());
+            map
+        };
+        let error_counter = registry
+            .global_counter(
+                "store_connection_error_count",
+                "The number of Postgres connections errors",
+                HashMap::new(),
+            )
+            .expect("failed to create `store_connection_error_count` counter");
+        let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
+        let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
+        let event_handler = Box::new(EventHandler::new(
+            logger_pool.clone(),
+            registry,
+            wait_stats.clone(),
+            const_labels,
+        ));
+
+        // Connect to Postgres
+        let conn_manager = ConnectionManager::new(postgres_url.clone());
+        // Set the time we wait for a connection to 6h. The default is 30s
+        // which can be too little if database connections are highly
+        // contended; if we don't get a connection within the timeout,
+        // ultimately subgraphs get marked as failed. This effectively
+        // turns off this timeout and makes it possible that work needing
+        // a database connection blocks for a very long time
+        //
+        // When running tests however, use the default of 30 seconds.
+        // There should not be a lot of contention when running tests,
+        // and this can help debug the issue faster when a test appears
+        // to be hanging but really there is just no connection to postgres
+        // available.
+        let timeout_seconds = if cfg!(test) { 30 } else { 6 * 60 * 60 };
+        let pool = Pool::builder()
+            .error_handler(error_handler)
+            .event_handler(event_handler)
+            .connection_timeout(Duration::from_secs(timeout_seconds))
+            .max_size(pool_size)
+            .build(conn_manager)
+            .unwrap();
+        info!(logger_store, "Pool successfully connected to Postgres");
+        ConnectionPool { pool, wait_stats }
+    }
 }

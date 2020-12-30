@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Error};
 use std::convert::TryFrom;
 use std::str::FromStr;
 
@@ -52,7 +53,7 @@ impl TryFrom<Value> for Option<H256> {
             }
             Value::String(s) => Ok(Some(H256::from_str(s.as_str())?)),
             Value::Null => Ok(None),
-            _ => Err(format_err!("Value is not an H256")),
+            _ => Err(anyhow!("Value is not an H256")),
         }
     }
 }

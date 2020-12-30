@@ -1,11 +1,12 @@
 use serde::ser::*;
 
-use crate::prelude::{Fail, QueryExecutionError};
+use crate::prelude::QueryExecutionError;
+use thiserror::Error;
 
 /// Error caused while processing a [Subscription](struct.Subscription.html) request.
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum SubscriptionError {
-    #[fail(display = "GraphQL error: {:?}", _0)]
+    #[error("GraphQL error: {0:?}")]
     GraphQLError(Vec<QueryExecutionError>),
 }
 

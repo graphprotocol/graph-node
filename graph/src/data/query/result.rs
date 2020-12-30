@@ -1,88 +1,164 @@
 use super::error::{QueryError, QueryExecutionError};
-use crate::data::graphql::SerializableValue;
-use graphql_parser::query as q;
+use crate::{
+    data::graphql::SerializableValue,
+    prelude::{q, CacheWeight, SubgraphDeploymentId},
+};
 use serde::ser::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::convert::TryFrom;
+use std::sync::Arc;
 
-fn serialize_data<S>(data: &Option<q::Value>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_data<S>(data: &Option<Data>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    SerializableValue(data.as_ref().unwrap_or(&q::Value::Null)).serialize(serializer)
+    let mut ser = serializer.serialize_map(None)?;
+
+    // Unwrap: data is only serialized if it is `Some`.
+    for (k, v) in data.as_ref().unwrap() {
+        ser.serialize_entry(k, &SerializableValue(v))?;
+    }
+    ser.end()
 }
 
-/// The result of running a query, if successful.
-#[derive(Debug, Clone, Serialize)]
-pub struct QueryResult {
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_data"
-    )]
-    pub data: Option<q::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<QueryError>>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_data"
-    )]
-    pub extensions: Option<q::Value>,
+fn serialize_value_map<'a, S>(
+    data: impl Iterator<Item = &'a Data>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut ser = serializer.serialize_map(None)?;
+    for map in data {
+        for (k, v) in map {
+            ser.serialize_entry(k, &SerializableValue(v))?;
+        }
+    }
+    ser.end()
 }
 
-impl QueryResult {
-    /// A result with an empty object as the data.
+pub type Data = BTreeMap<String, q::Value>;
+
+/// A collection of query results that is serialized as a single result.
+pub struct QueryResults {
+    results: Vec<Arc<QueryResult>>,
+}
+
+impl QueryResults {
     pub fn empty() -> Self {
-        QueryResult {
-            data: Some(q::Value::Object(BTreeMap::new())),
-            errors: None,
-            extensions: None,
+        QueryResults {
+            results: Vec::new(),
         }
     }
 
-    pub fn new(data: Option<q::Value>) -> Self {
-        QueryResult {
-            data,
-            errors: None,
-            extensions: None,
+    pub fn first(&self) -> Option<&Arc<QueryResult>> {
+        self.results.first()
+    }
+}
+
+impl Serialize for QueryResults {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut len = 0;
+        let has_data = self.results.iter().any(|r| r.has_data());
+        if has_data {
+            len += 1;
         }
-    }
-
-    pub fn with_extensions(mut self, extensions: BTreeMap<q::Name, q::Value>) -> Self {
-        self.extensions = Some(q::Value::Object(extensions));
-        self
-    }
-
-    pub fn has_errors(&self) -> bool {
-        return self.errors.is_some();
-    }
-
-    pub fn append(&mut self, mut other: QueryResult) {
-        // Currently we don't used extensions, the desired behaviour for merging them is tbd.
-        assert!(self.extensions.is_none());
-        assert!(other.extensions.is_none());
-
-        match (&mut self.data, &mut other.data) {
-            (Some(q::Value::Object(ours)), Some(q::Value::Object(other))) => ours.append(other),
-
-            // Subgraph queries always return objects.
-            (Some(_), Some(_)) => unreachable!(),
-
-            // Only one side has data, use that.
-            _ => self.data = self.data.take().or(other.data),
+        let has_errors = self.results.iter().any(|r| r.has_errors());
+        if has_errors {
+            len += 1;
         }
 
-        match (&mut self.errors, &mut other.errors) {
-            (Some(ours), Some(other)) => ours.append(other),
+        let mut state = serializer.serialize_struct("QueryResults", len)?;
 
-            // Only one side has errors, use that.
-            _ => self.errors = self.errors.take().or(other.errors),
+        // Serialize data.
+        if has_data {
+            struct SerData<'a>(&'a QueryResults);
+
+            impl Serialize for SerData<'_> {
+                fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                    serialize_value_map(
+                        self.0.results.iter().filter_map(|r| r.data.as_ref()),
+                        serializer,
+                    )
+                }
+            }
+
+            state.serialize_field("data", &SerData(self))?;
         }
+
+        // Serialize errors.
+        if has_errors {
+            struct SerError<'a>(&'a QueryResults);
+
+            impl Serialize for SerError<'_> {
+                fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                    let mut seq = serializer.serialize_seq(None)?;
+                    for err in self.0.results.iter().map(|r| &r.errors).flatten() {
+                        seq.serialize_element(err)?;
+                    }
+                    seq.end()
+                }
+            }
+
+            state.serialize_field("errors", &SerError(self))?;
+        }
+
+        state.end()
+    }
+}
+
+impl From<Data> for QueryResults {
+    fn from(x: Data) -> Self {
+        QueryResults {
+            results: vec![Arc::new(x.into())],
+        }
+    }
+}
+
+impl From<QueryResult> for QueryResults {
+    fn from(x: QueryResult) -> Self {
+        QueryResults {
+            results: vec![Arc::new(x)],
+        }
+    }
+}
+
+impl From<Arc<QueryResult>> for QueryResults {
+    fn from(x: Arc<QueryResult>) -> Self {
+        QueryResults { results: vec![x] }
+    }
+}
+
+impl From<QueryExecutionError> for QueryResults {
+    fn from(x: QueryExecutionError) -> Self {
+        QueryResults {
+            results: vec![Arc::new(x.into())],
+        }
+    }
+}
+
+impl From<Vec<QueryExecutionError>> for QueryResults {
+    fn from(x: Vec<QueryExecutionError>) -> Self {
+        QueryResults {
+            results: vec![Arc::new(x.into())],
+        }
+    }
+}
+
+impl QueryResults {
+    pub fn append(&mut self, other: Arc<QueryResult>) {
+        self.results.push(other);
+    }
+
+    pub fn unwrap_first(self) -> QueryResult {
+        Arc::try_unwrap(self.results.into_iter().next().unwrap()).unwrap()
     }
 
     pub fn as_http_response<T: From<String>>(&self) -> http::Response<T> {
         let status_code = http::StatusCode::OK;
         let json =
-            serde_json::to_string(&self).expect("Failed to serialize GraphQL response to JSON");
+            serde_json::to_string(self).expect("Failed to serialize GraphQL response to JSON");
         http::Response::builder()
             .status(status_code)
             .header("Access-Control-Allow-Origin", "*")
@@ -94,11 +170,65 @@ impl QueryResult {
     }
 }
 
+/// The result of running a query, if successful.
+#[derive(Debug, Serialize)]
+pub struct QueryResult {
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_data"
+    )]
+    data: Option<Data>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    errors: Vec<QueryError>,
+    #[serde(skip_serializing)]
+    pub deployment: Option<SubgraphDeploymentId>,
+}
+
+impl QueryResult {
+    pub fn new(data: Data) -> Self {
+        QueryResult {
+            data: Some(data),
+            errors: Vec::new(),
+            deployment: None,
+        }
+    }
+
+    pub fn has_errors(&self) -> bool {
+        return !self.errors.is_empty();
+    }
+
+    pub fn has_data(&self) -> bool {
+        self.data.is_some()
+    }
+
+    pub fn to_result(self) -> Result<Option<q::Value>, Vec<QueryError>> {
+        if self.has_errors() {
+            Err(self.errors)
+        } else {
+            Ok(self.data.map(|v| q::Value::Object(v)))
+        }
+    }
+
+    pub fn take_data(&mut self) -> Option<Data> {
+        self.data.take()
+    }
+
+    pub fn set_data(&mut self, data: Option<Data>) {
+        self.data = data
+    }
+
+    pub fn errors_mut(&mut self) -> &mut Vec<QueryError> {
+        &mut self.errors
+    }
+}
+
 impl From<QueryExecutionError> for QueryResult {
     fn from(e: QueryExecutionError) -> Self {
-        let mut result = Self::new(None);
-        result.errors = Some(vec![QueryError::from(e)]);
-        result
+        QueryResult {
+            data: None,
+            errors: vec![e.into()],
+            deployment: None,
+        }
     }
 }
 
@@ -106,8 +236,8 @@ impl From<QueryError> for QueryResult {
     fn from(e: QueryError) -> Self {
         QueryResult {
             data: None,
-            errors: Some(vec![e]),
-            extensions: None,
+            errors: vec![e],
+            deployment: None,
         }
     }
 }
@@ -116,15 +246,26 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
     fn from(e: Vec<QueryExecutionError>) -> Self {
         QueryResult {
             data: None,
-            errors: Some(e.into_iter().map(QueryError::from).collect()),
-            extensions: None,
+            errors: e.into_iter().map(QueryError::from).collect(),
+            deployment: None,
         }
     }
 }
 
-impl From<BTreeMap<String, q::Value>> for QueryResult {
-    fn from(val: BTreeMap<String, q::Value>) -> Self {
-        QueryResult::new(Some(q::Value::Object(val)))
+impl From<Data> for QueryResult {
+    fn from(val: Data) -> Self {
+        QueryResult::new(val)
+    }
+}
+
+impl TryFrom<q::Value> for QueryResult {
+    type Error = &'static str;
+
+    fn try_from(value: q::Value) -> Result<Self, Self::Error> {
+        match value {
+            q::Value::Object(map) => Ok(QueryResult::from(map)),
+            _ => Err("only objects can be turned into a QueryResult"),
+        }
     }
 }
 
@@ -135,4 +276,35 @@ impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryRes
             Err(e) => e.into(),
         }
     }
+}
+
+impl CacheWeight for QueryResult {
+    fn indirect_weight(&self) -> usize {
+        self.data.indirect_weight() + self.errors.indirect_weight()
+    }
+}
+
+// Check that when we serialize a `QueryResult` with multiple entries
+// in `data` it appears as if we serialized one big map
+#[test]
+fn multiple_data_items() {
+    use serde_json::json;
+
+    fn make_obj(key: &str, value: &str) -> Arc<QueryResult> {
+        let mut map = BTreeMap::new();
+        map.insert(key.to_owned(), q::Value::String(value.to_owned()));
+        Arc::new(map.into())
+    }
+
+    let obj1 = make_obj("key1", "value1");
+    let obj2 = make_obj("key2", "value2");
+
+    let mut res = QueryResults::empty();
+    res.append(obj1);
+    res.append(obj2);
+
+    let expected =
+        serde_json::to_string(&json!({"data":{"key1": "value1", "key2": "value2"}})).unwrap();
+    let actual = serde_json::to_string(&res).unwrap();
+    assert_eq!(expected, actual)
 }

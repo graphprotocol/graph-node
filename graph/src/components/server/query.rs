@@ -3,6 +3,8 @@ use futures::prelude::*;
 use std::error::Error;
 use std::fmt;
 
+use crate::components::store::StoreError;
+
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]
 pub enum GraphQLServerError {
@@ -14,6 +16,15 @@ pub enum GraphQLServerError {
 impl From<QueryError> for GraphQLServerError {
     fn from(e: QueryError) -> Self {
         GraphQLServerError::QueryError(e)
+    }
+}
+
+impl From<StoreError> for GraphQLServerError {
+    fn from(e: StoreError) -> Self {
+        match e {
+            StoreError::ConstraintViolation(s) => GraphQLServerError::InternalError(s),
+            _ => GraphQLServerError::ClientError(e.to_string()),
+        }
     }
 }
 

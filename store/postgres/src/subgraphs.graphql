@@ -38,11 +38,22 @@ type SubgraphDeployment @entity {
     earliestEthereumBlockNumber: BigInt
     latestEthereumBlockHash: Bytes
     latestEthereumBlockNumber: BigInt
+
+    # Null if still healthy.
+    lastHealthyEthereumBlockHash: Bytes
+    lastHealthyEthereumBlockNumber: BigInt
+
     entityCount: BigInt!
     dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
     graftBase: SubgraphDeployment
     graftBlockHash: Bytes
     graftBlockNumber: BigInt
+
+    # Tracking of reorgs so that we can spot that a reorg
+    # happened while a query was being processed
+    reorgCount: Int
+    currentReorgDepth: Int
+    maxReorgDepth: Int
 }
 
 # This is not a real entity type. It is a view that can be queried, but
@@ -90,6 +101,7 @@ type SubgraphManifest @entity {
     specVersion: String!
     description: String
     repository: String
+    features: [String!]!
     schema: String!
     dataSources: [EthereumContractDataSource!]!
     templates: [EthereumContractDataSourceTemplate!]
@@ -102,7 +114,6 @@ type EthereumContractDataSource @entity {
     network: String
     source: EthereumContractSource!
     mapping: EthereumContractMapping!
-    templates: [EthereumContractDataSourceTemplate!]
 }
 
 type DynamicEthereumContractDataSource @entity {
@@ -112,7 +123,6 @@ type DynamicEthereumContractDataSource @entity {
     network: String
     source: EthereumContractSource!
     mapping: EthereumContractMapping!
-    templates: [EthereumContractDataSourceTemplate!]
     ethereumBlockHash: Bytes!
     ethereumBlockNumber: BigInt!
     deployment: SubgraphDeployment!
@@ -195,6 +205,9 @@ type SubgraphError {
   blockNumber: BigInt
   blockHash: Bytes
   handler: String
+
+  # `true` means we have certainty that the error is deterministic.
+  deterministic: Boolean!
 }
 
 enum Health {

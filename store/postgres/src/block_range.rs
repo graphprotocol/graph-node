@@ -7,9 +7,8 @@ use diesel::sql_types::{Integer, Range};
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use graph::prelude::{BlockNumber, BLOCK_NUMBER_MAX};
+use graph::prelude::{BlockNumber, EthereumBlockPointer, BLOCK_NUMBER_MAX};
 
-use crate::history_event::HistoryEvent;
 use crate::relational::Table;
 
 /// The name of the column in which we store the block range
@@ -32,6 +31,9 @@ pub(crate) const BLOCK_RANGE_CURRENT: &str = "block_range @> 2147483647";
 /// for troubleshooting/debugging
 pub(crate) const BLOCK_UNVERSIONED: i32 = -1;
 
+pub(crate) const UNVERSIONED_RANGE: (Bound<i32>, Bound<i32>) =
+    (Bound::Included(BLOCK_UNVERSIONED), Bound::Unbounded);
+
 /// The range of blocks for which an entity is valid. We need this struct
 /// to bind ranges into Diesel queries.
 #[derive(Clone, Debug)]
@@ -47,12 +49,25 @@ fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
     }
 }
 
+pub(crate) fn first_block_in_range(
+    bound: &(Bound<BlockNumber>, Bound<BlockNumber>),
+) -> Option<BlockNumber> {
+    if bound == &UNVERSIONED_RANGE {
+        return None;
+    }
+
+    match bound.0 {
+        Bound::Included(nr) => Some(nr),
+        Bound::Excluded(nr) => Some(nr + 1),
+        Bound::Unbounded => None,
+    }
+}
+
 /// Return the block number contained in the history event. If it is
 /// `None` panic because that indicates that we want to perform an
 /// operation that does not record history, which should not happen
 /// with how we currently use relational schemas
-pub(crate) fn block_number(history_event: &HistoryEvent) -> BlockNumber {
-    let block_ptr = history_event.block_ptr;
+pub(crate) fn block_number(block_ptr: &EthereumBlockPointer) -> BlockNumber {
     if block_ptr.number < std::i32::MAX as u64 {
         block_ptr.number as i32
     } else {
