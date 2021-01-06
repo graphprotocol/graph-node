@@ -1,7 +1,6 @@
 use std::cmp;
 use std::collections::{HashMap, VecDeque};
 use std::mem;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use graph::components::ethereum::{
@@ -122,7 +121,7 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
 }
 
 pub struct BlockStream<S, C> {
-    state: Mutex<BlockStreamState>,
+    state: BlockStreamState,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
     ctx: BlockStreamContext<S, C>,
@@ -159,7 +158,7 @@ where
         metrics: Arc<BlockStreamMetrics>,
     ) -> Self {
         BlockStream {
-            state: Mutex::new(BlockStreamState::BeginReconciliation),
+            state: BlockStreamState::BeginReconciliation,
             consecutive_err_count: 0,
             chain_head_update_stream: chain_store.chain_head_updates(),
             ctx: BlockStreamContext {
@@ -563,11 +562,8 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        // Lock Mutex to perform a state transition
-        let mut state_lock = self.state.lock().unwrap();
-
         let mut state = BlockStreamState::Transition;
-        mem::swap(&mut *state_lock, &mut state);
+        mem::swap(&mut self.state, &mut state);
 
         let result = loop {
             match state {
@@ -717,7 +713,7 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
             }
         };
 
-        *state_lock = state;
+        self.state = state;
 
         result
     }
