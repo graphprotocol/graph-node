@@ -357,11 +357,7 @@ fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> Rev
                 future::result(
                     store
                         .clone()
-                        .revert_block_operations(
-                            subgraph_id.clone(),
-                            local_head.clone(),
-                            parent_block.clone(),
-                        )
+                        .revert_block_operations(subgraph_id.clone(), parent_block.clone())
                         .map_err(|e| e.into())
                         .map(|_| (local_head, parent_block)),
                 )

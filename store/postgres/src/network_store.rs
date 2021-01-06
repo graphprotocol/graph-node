@@ -141,11 +141,10 @@ impl StoreTrait for NetworkStore {
     fn revert_block_operations(
         &self,
         subgraph_id: graph::prelude::SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), graph::prelude::StoreError> {
         self.store
-            .revert_block_operations(subgraph_id, block_ptr_from, block_ptr_to)
+            .revert_block_operations(subgraph_id, block_ptr_to)
     }
 
     fn subscribe(
