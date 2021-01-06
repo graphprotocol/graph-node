@@ -535,8 +535,10 @@ where
                     // - Remove hosts for reverted dynamic data sources.
                     // - Clear the entity cache.
                     //
-                    // Note that we do not currently revert the filters,
-                    // which is not ideal, but also not incorrect.
+                    // Note that we do not currently revert the filters, which means the filters
+                    // will be broader than necessary. This is not ideal for performance, but is not
+                    // incorrect since we will discard triggers that match the filters but do not
+                    // match any data sources.
                     ctx.state.instance.revert_data_sources(subgraph_ptr.number);
                     ctx.state.entity_lfu_cache = LfuCache::new();
                     continue;
