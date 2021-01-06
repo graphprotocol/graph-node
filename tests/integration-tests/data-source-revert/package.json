@@ -1,0 +1,25 @@
+{
+  "name": "data-source-revert",
+  "version": "0.1.0",
+  "scripts": {
+    "build-contracts": "rm -rf abis bin && solcjs ../common/SimpleContract.sol --abi -o abis && mv abis/*Contract.abi abis/Contract.abi && solcjs ../common/SimpleContract.sol --bin -o bin && mv bin/*Contract.bin bin/Contract.bin",
+    "codegen": "graph codegen",
+    "test": "yarn build-contracts && truffle test --network test",
+    "create:test": "graph create test/data-source-revert --node http://localhost:18020/",
+    "deploy:test": "graph deploy test/data-source-revert --ipfs http://localhost:15001/ --node http://localhost:18020/"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
+    "solc": "^0.6.1"
+  },
+  "dependencies": {
+    "apollo-fetch": "^0.7.0",
+    "babel-polyfill": "^6.26.0",
+    "babel-register": "^6.26.0",
+    "gluegun": "^3.2.1",
+    "truffle": "^5.0.4",
+    "truffle-contract": "^4.0.5",
+    "truffle-hdwallet-provider": "^1.0.4"
+  }
+}

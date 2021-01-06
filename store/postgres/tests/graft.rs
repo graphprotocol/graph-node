@@ -269,7 +269,6 @@ fn graft() {
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1],
         );
-        dbg!(&res);
         assert!(res.is_ok());
 
         let query = EntityQuery::new(

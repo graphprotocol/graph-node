@@ -11,6 +11,8 @@ use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
 
+use fail::fail_point;
+
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
     static ref MAX_BLOCK_RANGE_SIZE: u64 = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
@@ -444,6 +446,11 @@ where
             let subgraph_ptr =
                 subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 
+            #[cfg(debug_assertions)]
+            if test_reorg(subgraph_ptr) {
+                return Box::new(future::ok(ReconciliationStep::Revert(subgraph_ptr)));
+            }
+
             // Precondition: subgraph_ptr.number < head_ptr.number
             // Walk back to one block short of subgraph_ptr.number
             let offset = head_ptr.number - subgraph_ptr.number - 1;
@@ -821,4 +828,26 @@ where
             metrics,
         )
     }
+}
+
+// This always returns `false` in a normal build. A test may configure reorg by enabling
+// "test_reorg" fail point with the number of the block that should be reorged.
+fn test_reorg(ptr: EthereumBlockPointer) -> bool {
+    fail_point!("test_reorg", |reorg_at| {
+        use std::str::FromStr;
+
+        static REORGED: std::sync::Once = std::sync::Once::new();
+
+        if REORGED.is_completed() {
+            return false;
+        }
+        let reorg_at = u64::from_str(&reorg_at.unwrap()).unwrap();
+        let should_reorg = ptr.number == reorg_at;
+        if should_reorg {
+            REORGED.call_once(|| {})
+        }
+        should_reorg
+    });
+
+    false
 }

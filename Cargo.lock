@@ -1137,6 +1137,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fail"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3be3c61c59fdc91f5dbc3ea31ee8623122ce80057058be560654c5d410d181a6"
+dependencies = [
+ "lazy_static",
+ "log 0.4.11",
+ "rand 0.7.3",
+]
+
+[[package]]
 name = "failure"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1566,6 +1577,7 @@ dependencies = [
  "config",
  "diesel",
  "dirs 3.0.1",
+ "fail",
  "futures 0.1.30",
  "graph",
  "graph-core",
@@ -1588,6 +1600,7 @@ dependencies = [
  "async-trait",
  "atomic_refcell",
  "bytes 0.5.6",
+ "fail",
  "futures 0.1.30",
  "futures 0.3.8",
  "graph",
@@ -1650,6 +1663,7 @@ dependencies = [
  "crossbeam-channel 0.5.0",
  "diesel",
  "env_logger 0.8.2",
+ "fail",
  "futures 0.3.8",
  "git-testament",
  "graph",
@@ -1819,7 +1833,9 @@ dependencies = [
 name = "graph-tests"
 version = "0.20.0"
 dependencies = [
+ "defer",
  "duct",
+ "fail",
  "lazy_static",
 ]
 
