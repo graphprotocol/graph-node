@@ -1,4 +1,5 @@
 use atomic_refcell::AtomicRefCell;
+use fail::fail_point;
 use futures01::sync::mpsc::{channel, Receiver, Sender};
 use lazy_static::lazy_static;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -1055,16 +1056,19 @@ where
                 data_sources.push(data_source);
                 runtime_hosts.push(host);
             }
-            None => warn!(
-                logger,
-                "no runtime hosted created, there is already a runtime host instantiated for \
-                 this data source";
-                "name" => &data_source.name,
-                "address" => &data_source.source.address
-                    .map(|address| address.to_string())
-                    .unwrap_or("none".to_string()),
-                "abi" => &data_source.source.abi
-            ),
+            None => {
+                fail_point!("error_on_duplicate_ds", |_| Err(anyhow!("duplicate ds")));
+                warn!(
+                    logger,
+                    "no runtime hosted created, there is already a runtime host instantiated for \
+                     this data source";
+                    "name" => &data_source.name,
+                    "address" => &data_source.source.address
+                        .map(|address| address.to_string())
+                        .unwrap_or("none".to_string()),
+                    "abi" => &data_source.source.abi
+                )
+            }
         }
     }
 
