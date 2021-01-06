@@ -63,7 +63,9 @@ enum BlockStreamState {
 /// A single next step to take in reconciling the state of the subgraph store with the state of the
 /// chain store.
 enum ReconciliationStep {
-    /// Revert the current block pointed at by the subgraph pointer.
+    /// Revert the current block pointed at by the subgraph pointer. The pointer is to the current
+    /// subgraph head, and a single block will be reverted so the new head will be the parent of the
+    /// current one.
     Revert(EthereumBlockPointer),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
@@ -126,9 +128,12 @@ pub struct BlockStream<S, C> {
     ctx: BlockStreamContext<S, C>,
 }
 
+// This is the same as `ReconciliationStep` but without retries.
 enum NextBlocks {
     /// Blocks and range size
     Blocks(VecDeque<EthereumBlockWithTriggers>, u64),
+
+    /// Revert the current block pointed at by the subgraph pointer.
     Revert(EthereumBlockPointer),
     Done,
 }

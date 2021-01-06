@@ -736,7 +736,7 @@ impl PartialEq for RuntimeHost {
             data_source_block_handlers,
             host_exports,
 
-            // Data sources created at different blocks can be considered duplicated.
+            // The creation block is ignored for detection duplicate data sources.
             data_source_creation_block: _,
             mapping_request_sender: _,
             metrics: _,
