@@ -415,11 +415,10 @@ impl StoreTrait for ShardedStore {
     fn revert_block_operations(
         &self,
         id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
-        let event = store.revert_block_operations(site.as_ref(), block_ptr_from, block_ptr_to)?;
+        let event = store.revert_block_operations(site.as_ref(), block_ptr_to)?;
         self.send_store_event(&event)
     }
 

@@ -1547,7 +1547,7 @@ fn query_detects_reorg() {
 
         // Revert one block
         STORE
-            .revert_block_operations(id.clone(), BLOCK_ONE.clone(), GENESIS_PTR.clone())
+            .revert_block_operations(id.clone(), GENESIS_PTR.clone())
             .unwrap();
         // A query is still fine since we implicitly query at block 0; we were
         // at block 1 when we got `state`, and reorged once by one block, which
@@ -1726,7 +1726,7 @@ fn non_fatal_errors() {
 
             // Test error reverts.
             STORE
-                .revert_block_operations(id.clone(), BLOCK_TWO.block_ptr(), *BLOCK_ONE)
+                .revert_block_operations(id.clone(), *BLOCK_ONE)
                 .unwrap();
             let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
             let query = graphql_parser::parse_query(query).unwrap().into_static();

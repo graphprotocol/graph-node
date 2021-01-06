@@ -996,11 +996,7 @@ async fn check_basic_revert(
 
     // Revert block 3
     store
-        .revert_block_operations(
-            TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_2_PTR,
-            *TEST_BLOCK_1_PTR,
-        )
+        .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_1_PTR)
         .unwrap();
 
     let returned_entities = store
@@ -1066,11 +1062,7 @@ fn revert_block_with_delete() {
         // Revert deletion
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_2_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
             .unwrap();
         assert_eq!(
             count + 1,
@@ -1136,11 +1128,7 @@ fn revert_block_with_partial_update() {
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_2_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
             .unwrap();
         assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
@@ -1252,11 +1240,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Revert block that added the user and the dynamic data source
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_2_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
             .expect("revert block operations failed unexpectedly");
 
         // Verify that the user is the original again
@@ -1930,21 +1914,13 @@ fn reorg_tracking() {
 
         // Back to block 3
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_4_PTR,
-                *TEST_BLOCK_3_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR)
             .unwrap();
         check_state!(store, 1, 1, 3);
 
         // Back to block 2
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_2_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
             .unwrap();
         check_state!(store, 2, 2, 2);
 
@@ -1962,29 +1938,17 @@ fn reorg_tracking() {
 
         // Revert all the way back to block 2
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_5_PTR,
-                *TEST_BLOCK_4_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_4_PTR)
             .unwrap();
         check_state!(store, 3, 2, 4);
 
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_4_PTR,
-                *TEST_BLOCK_3_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR)
             .unwrap();
         check_state!(store, 4, 2, 3);
 
         store
-            .revert_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
-                *TEST_BLOCK_2_PTR,
-            )
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
             .unwrap();
         check_state!(store, 5, 3, 2);
     })

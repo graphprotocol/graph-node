@@ -514,7 +514,6 @@ where
                                 .store
                                 .revert_block_operations(
                                     ctx.inputs.deployment_id.clone(),
-                                    subgraph_ptr,
                                     parent_ptr,
                                 )
                                 .map_err(Into::into)

@@ -117,7 +117,6 @@ impl Store for MockStore {
     fn revert_block_operations(
         &self,
         _subgraph_id: SubgraphDeploymentId,
-        _block_ptr_from: EthereumBlockPointer,
         _block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         unimplemented!()

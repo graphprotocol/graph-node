@@ -306,11 +306,11 @@ fn graft() {
         transact_entity_operations(&store, subgraph_id.clone(), BLOCKS[2], vec![op]).unwrap();
 
         store
-            .revert_block_operations(subgraph_id.clone(), BLOCKS[2], BLOCKS[1])
+            .revert_block_operations(subgraph_id.clone(), BLOCKS[1])
             .expect("We can revert a block we just created");
 
         let err = store
-            .revert_block_operations(subgraph_id.clone(), BLOCKS[1], BLOCKS[0])
+            .revert_block_operations(subgraph_id.clone(), BLOCKS[0])
             .expect_err("Reverting past graft point is not allowed");
 
         assert!(err.to_string().contains("Can not revert subgraph"));

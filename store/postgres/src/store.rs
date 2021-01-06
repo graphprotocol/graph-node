@@ -1030,35 +1030,35 @@ impl Store {
     pub(crate) fn revert_block_operations(
         &self,
         site: &Site,
-        block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<StoreEvent, StoreError> {
-        // Sanity check on block numbers
-        if block_ptr_from.number != block_ptr_to.number + 1 {
-            panic!("revert_block_operations must revert a single block only");
-        }
-        // Don't revert past a graft point
         let econn = self.get_entity_conn(site, ReplicaId::Main)?;
-        let info = self.subgraph_info_with_conn(&econn.conn, &site.deployment)?;
-        if let Some(graft_block) = info.graft_block {
-            if graft_block as u64 > block_ptr_to.number {
-                return Err(anyhow!(
-                    "Can not revert subgraph `{}` to block {} as it was \
-                    grafted at block {} and reverting past a graft point \
-                    is not possible",
-                    site.deployment.clone(),
-                    block_ptr_to.number,
-                    graft_block
-                )
-                .into());
-            }
-        }
 
         let event = econn.transaction(|| -> Result<_, StoreError> {
-            assert_eq!(
-                Some(block_ptr_from),
-                Self::block_ptr_with_conn(&site.deployment, &econn)?
-            );
+            // Unwrap: If we are reverting then the block ptr is not `None`.
+            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &econn)?.unwrap();
+
+            // Sanity check on block numbers
+            if block_ptr_from.number != block_ptr_to.number + 1 {
+                panic!("revert_block_operations must revert a single block only");
+            }
+
+            // Don't revert past a graft point
+            let info = self.subgraph_info_with_conn(&econn.conn, &site.deployment)?;
+            if let Some(graft_block) = info.graft_block {
+                if graft_block as u64 > block_ptr_to.number {
+                    return Err(anyhow!(
+                        "Can not revert subgraph `{}` to block {} as it was \
+                        grafted at block {} and reverting past a graft point \
+                        is not possible",
+                        site.deployment.clone(),
+                        block_ptr_to.number,
+                        graft_block
+                    )
+                    .into());
+                }
+            }
+
             let metadata_event =
                 deployment::revert_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
 

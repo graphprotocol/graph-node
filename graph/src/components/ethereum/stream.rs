@@ -5,8 +5,6 @@ use crate::prelude::*;
 
 pub enum BlockStreamEvent {
     Block(EthereumBlockWithTriggers),
-
-    /// Signals that a revert happened and was processed.
     Revert(EthereumBlockPointer),
 }
 

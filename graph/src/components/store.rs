@@ -987,14 +987,12 @@ pub trait Store: Send + Sync + 'static {
     ) -> Result<(), StoreError>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
-    /// subgraph block pointer from `block_ptr_from` to `block_ptr_to`.
+    /// subgraph block pointer to `block_ptr_to`.
     ///
-    /// `block_ptr_from` must match the current value of the subgraph block pointer.
-    /// `block_ptr_to` must point to the parent block of `block_ptr_from`.
+    /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
     fn revert_block_operations(
         &self,
         subgraph_id: SubgraphDeploymentId,
-        block_ptr_from: EthereumBlockPointer,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError>;
 
@@ -1221,7 +1219,6 @@ impl Store for MockStore {
     fn revert_block_operations(
         &self,
         _subgraph_id: SubgraphDeploymentId,
-        _block_ptr_from: EthereumBlockPointer,
         _block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         unimplemented!()
