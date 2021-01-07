@@ -16,13 +16,11 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
-        lazy_static,
-        web3::types::{Address, H256},
-        ApiSchema, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
-        EntityQuery, Error, EthereumBlockPointer, EthereumCallCache, Logger, MetadataOperation,
-        NodeId, QueryExecutionError, Schema, StopwatchMetrics, Store as StoreTrait, StoreError,
-        StoreEventStreamBox, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
-        SubscriptionFilter,
+        lazy_static, web3::types::Address, ApiSchema, DeploymentState, DynTryFuture, Entity,
+        EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, EthereumCallCache,
+        Logger, MetadataOperation, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
+        Store as StoreTrait, StoreError, StoreEventStreamBox, SubgraphDeploymentId, SubgraphName,
+        SubgraphVersionSwitchingMode, SubscriptionFilter,
     },
 };
 use store::StoredDynamicDataSource;
@@ -357,12 +355,10 @@ impl StoreTrait for ShardedStore {
         self: Arc<Self>,
         id: &'a SubgraphDeploymentId,
         indexer: &'a Option<Address>,
-        block_hash: H256,
+        block: EthereumBlockPointer,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         let (store, site) = self.store(&id).unwrap();
-        store
-            .clone()
-            .get_proof_of_indexing(site, indexer, block_hash)
+        store.clone().get_proof_of_indexing(site, indexer, block)
     }
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {

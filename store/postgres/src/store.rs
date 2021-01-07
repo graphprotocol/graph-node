@@ -414,9 +414,7 @@ impl Store {
                     .into()
                 })
             }
-            MetadataOperation::Remove { .. } => {
-                unreachable!("metadata is never deleted")
-            }
+            MetadataOperation::Remove { .. } => unreachable!("metadata is never deleted"),
         }
     }
 
@@ -807,16 +805,15 @@ impl Store {
         self: Arc<Self>,
         site: Arc<Site>,
         indexer: &'a Option<Address>,
-        block_hash: H256,
+        block: EthereumBlockPointer,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         let logger = self.logger.cheap_clone();
         let indexer = indexer.clone();
-        let self_inner = self.cheap_clone();
         let site2 = site.clone();
         let site3 = site.clone();
 
         async move {
-            let entities_blocknumber = self
+            let entities = self
                 .with_entity_conn(site2, move |conn, cancel| {
                     cancel.check_cancel()?;
 
@@ -834,30 +831,13 @@ impl Store {
                         cancel.check_cancel()?;
 
                         // FIXME: (Determinism)
-                        // There is no guarantee that we are able to look up the block number
-                        // even if we have indexed beyond it, because the cache is sparse and
-                        // only populated by blocks with triggers.
                         //
-                        // This is labeled as a determinism bug because the PoI needs to be
-                        // submitted to the network reliably. Strictly speaking, that's not
-                        // indeterminism to miss an opportunity to claim a reward, but it's very
-                        // similar to most determinism bugs in that money is on the line.
-                        let block_number = self_inner
-                            .block_number(&site.deployment, block_hash)
-                            .map_err(|e| CancelableError::from(e))?;
-                        let block_number = match block_number {
-                            Some(n) => n.try_into().unwrap(),
-                            None => return Ok(None),
-                        };
-                        cancel.check_cancel()?;
-
-                        // FIXME: (Determinism)
                         // It is vital to ensure that the block hash given in the query
                         // is a parent of the latest block indexed for the subgraph.
                         // Unfortunately the machinery needed to do this is not yet in place.
                         // The best we can do right now is just to make sure that the block number
                         // is high enough.
-                        if latest_block_ptr.number < block_number {
+                        if latest_block_ptr.number < block.number {
                             return Ok(None);
                         }
 
@@ -871,20 +851,19 @@ impl Store {
                                     first: None,
                                     skip: 0,
                                 },
-                                block_number.try_into().unwrap(),
+                                block.number.try_into().unwrap(),
                                 None,
                             )
                             .map_err(anyhow::Error::from)?;
 
-                        Ok(Some((entities, block_number)))
+                        Ok(Some(entities))
                     })
                     .map_err(|e| e.into())
                 })
                 .await?;
 
-            let (entities, block_number) = if let Some(entities_blocknumber) = entities_blocknumber
-            {
-                entities_blocknumber
+            let entities = if let Some(entities) = entities {
+                entities
             } else {
                 return Ok(None);
             };
@@ -905,10 +884,6 @@ impl Store {
                 })
                 .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
-            let block = EthereumBlockPointer {
-                number: block_number,
-                hash: block_hash,
-            };
             let mut finisher = ProofOfIndexingFinisher::new(&block, &site3.deployment, &indexer);
             for (name, region) in by_causality_region.drain() {
                 finisher.add_causality_region(&name, &region);
@@ -1120,6 +1095,7 @@ impl Store {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn block_number(
         &self,
         subgraph_id: &SubgraphDeploymentId,

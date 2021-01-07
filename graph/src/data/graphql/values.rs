@@ -51,6 +51,7 @@ impl TryFromValue for u64 {
         }
     }
 }
+
 impl TryFromValue for H160 {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         match value {

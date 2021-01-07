@@ -84,20 +84,28 @@ where
             .get_required::<SubgraphDeploymentId>("subgraph")
             .expect("Valid subgraphId required");
 
+        let block_number: u64 = argument_values
+            .get_required::<u64>("blockNumber")
+            .expect("Valid blockNumber required")
+            .try_into()
+            .unwrap();
+
         let block_hash = argument_values
             .get_required::<H256>("blockHash")
             .expect("Valid blockHash required")
             .try_into()
             .unwrap();
 
+        let block = EthereumBlockPointer::from((block_hash, block_number));
+
         let indexer = argument_values
             .get_optional::<Address>("indexer")
             .expect("Invalid indexer");
 
-        let poi_fut =
-            self.store
-                .clone()
-                .get_proof_of_indexing(&deployment_id, &indexer, block_hash);
+        let poi_fut = self
+            .store
+            .clone()
+            .get_proof_of_indexing(&deployment_id, &indexer, block);
         let poi = match futures::executor::block_on(poi_fut) {
             Ok(Some(poi)) => q::Value::String(format!("0x{}", hex::encode(&poi))),
             Ok(None) => q::Value::Null,
@@ -106,6 +114,7 @@ where
                     self.logger,
                     "Failed to query proof of indexing";
                     "subgraph" => deployment_id,
+                    "block" => format!("{}", block),
                     "error" => format!("{:?}", e)
                 );
                 q::Value::Null

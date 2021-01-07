@@ -91,9 +91,7 @@ impl EntityType {
     /// This method will panic if `self` is a `Data` type
     pub fn expect_metadata(&self) -> &str {
         match self {
-            Self::Data(_) => {
-                unreachable!("callers check that this is never called for data")
-            }
+            Self::Data(_) => unreachable!("callers check that this is never called for data"),
             Self::Metadata(typ) => typ.as_str(),
         }
     }
@@ -950,7 +948,7 @@ pub trait Store: Send + Sync + 'static {
         self: Arc<Self>,
         subgraph_id: &'a SubgraphDeploymentId,
         indexer: &'a Option<Address>,
-        block_hash: H256,
+        block: EthereumBlockPointer,
     ) -> DynTryFuture<'a, Option<[u8; 32]>>;
 
     /// Looks up an entity using the given store key at the latest block.
@@ -1179,7 +1177,7 @@ impl Store for MockStore {
         self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
         _indexer: &'a Option<Address>,
-        _block_hash: H256,
+        _block: EthereumBlockPointer,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         unimplemented!();
     }
