@@ -86,7 +86,7 @@ impl Store for MockStore {
         self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
         _indexer: &'a Option<Address>,
-        _block_hash: H256,
+        _block: EthereumBlockPointer,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         unimplemented!()
     }

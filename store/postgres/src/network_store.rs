@@ -75,11 +75,11 @@ impl StoreTrait for NetworkStore {
         self: Arc<Self>,
         subgraph_id: &'a graph::prelude::SubgraphDeploymentId,
         indexer: &'a Option<Address>,
-        block_hash: H256,
+        block: EthereumBlockPointer,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
         self.store
             .clone()
-            .get_proof_of_indexing(subgraph_id, indexer, block_hash)
+            .get_proof_of_indexing(subgraph_id, indexer, block)
     }
 
     fn get(
