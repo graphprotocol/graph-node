@@ -97,7 +97,10 @@ lazy_static! {
             caches
     };
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
-    static ref QUERY_LFU_CACHE: TimedMutex<LfuCache<QueryHash, WeightedResult>> = TimedMutex::new(LfuCache::new(), "query_lfu_cache");
+    static ref QUERY_LFU_CACHE: Vec<TimedMutex<LfuCache<QueryHash, WeightedResult>>> = {
+        std::iter::repeat_with(|| TimedMutex::new(LfuCache::new(), "query_lfu_cache"))
+                    .take(*QUERY_BLOCK_CACHE_SHARDS as usize).collect()
+    };
 }
 
 struct WeightedResult {
@@ -355,12 +358,12 @@ pub async fn execute_root_selection_set<R: Resolver>(
             if block_ptr.number != BLOCK_NUMBER_MAX as u64 {
                 // Calculate the hash outside of the lock
                 let cache_key = cache_key(&ctx, &selection_set, &block_ptr);
+                let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
 
                 // Check if the response is cached, first in the recent blocks cache,
                 // and then in the LfuCache for historical queries
                 // The blocks are used to delimit how long locks need to be held
                 {
-                    let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
                     let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
                     if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
@@ -368,7 +371,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                     }
                 }
                 {
-                    let mut cache = QUERY_LFU_CACHE.lock(&ctx.logger);
+                    let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
                     if let Some(weighted) = cache.get(&cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return weighted.result.cheap_clone();
@@ -476,7 +479,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
             ctx.cache_status.store(CacheStatus::Insert);
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
-            let mut cache = QUERY_LFU_CACHE.lock(&ctx.logger);
+            let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
             cache.evict_with_period(*QUERY_CACHE_MAX_MEM, *QUERY_CACHE_STALE_PERIOD);
             cache.insert(
                 key,
