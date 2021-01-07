@@ -25,8 +25,12 @@ use graph::{
 };
 use store::StoredDynamicDataSource;
 
-use crate::store::{ReplicaId, Store};
 use crate::{deployment, primary, primary::Site};
+use crate::{
+    detail::DeploymentDetail,
+    primary::UnusedDeployment,
+    store::{ReplicaId, Store},
+};
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -82,6 +86,16 @@ pub trait DeploymentPlacer {
     fn place(&self, name: &str, network: &str) -> Result<Option<(Shard, Vec<NodeId>)>, String>;
 }
 
+/// Tools for managing unused deployments
+pub mod unused {
+    pub enum Filter {
+        /// List all unused deployments
+        All,
+        /// List only deployments that are unused but have not been removed yet
+        New,
+    }
+}
+
 /// Multiplex store operations on subgraphs and deployments between a primary
 /// and any number of additional storage shards. See [this document](../../docs/sharded.md)
 /// for details on how storage is split up
@@ -133,6 +147,17 @@ impl ShardedStore {
 
         self.sites.write().unwrap().insert(id.clone(), site.clone());
         Ok(site)
+    }
+
+    /// Look up the sites for the given ids in bulk and cache them
+    fn cache_sites(&self, ids: &Vec<SubgraphDeploymentId>) -> Result<(), StoreError> {
+        let sites = self
+            .primary_conn()?
+            .find_sites(ids)?
+            .into_iter()
+            .map(|site| (site.deployment.clone(), Arc::new(site)));
+        self.sites.write().unwrap().extend(sites);
+        Ok(())
     }
 
     fn store(&self, id: &SubgraphDeploymentId) -> Result<(&Arc<Store>, Arc<Site>), StoreError> {
@@ -333,6 +358,82 @@ impl ShardedStore {
         }
         self.clear_caches();
         Ok(())
+    }
+
+    /// Partition the list of deployments by the shard they belong to. If
+    /// deployments is empty, return a partition of all deployments
+    fn deployments_by_shard(
+        &self,
+        deployments: Vec<String>,
+    ) -> Result<HashMap<Shard, Vec<Arc<Site>>>, StoreError> {
+        let sites: Vec<_> = if deployments.is_empty() {
+            self.primary_conn()?
+                .sites()?
+                .into_iter()
+                .map(|site| Arc::new(site))
+                .collect()
+        } else {
+            // Ignore invalid subgraph ids
+            let deployments: Vec<SubgraphDeploymentId> = deployments
+                .iter()
+                .filter_map(|d| SubgraphDeploymentId::new(d).ok())
+                .collect();
+
+            self.cache_sites(&deployments)?;
+
+            // For each deployment, find the shard it lives in, but ignore
+            // deployments that do not exist
+            deployments
+                .into_iter()
+                .map(|id| self.site(&id))
+                .filter(|res| !matches!(res, Err(StoreError::DeploymentNotFound(_))))
+                .collect::<Result<Vec<_>, StoreError>>()?
+        };
+
+        // Partition the list of deployments by shard
+        let by_shard: HashMap<Shard, Vec<Arc<Site>>> =
+            sites.into_iter().fold(HashMap::new(), |mut map, site| {
+                map.entry(site.shard.clone()).or_default().push(site);
+                map
+            });
+        Ok(by_shard)
+    }
+
+    /// Look for new unused deployments and add them to the `unused_deployments`
+    /// table
+    pub fn record_unused_deployments(&self) -> Result<Vec<DeploymentDetail>, StoreError> {
+        let deployments = self.primary_conn()?.detect_unused_deployments()?;
+
+        // deployments_by_shard takes an empty vec to mean 'give me everything',
+        // so we short-circuit that here
+        if deployments.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let by_shard = self.deployments_by_shard(deployments)?;
+        // Go shard-by-shard to look up deployment statuses
+        let mut details = Vec::new();
+        for (shard, ids) in by_shard.into_iter() {
+            let store = self
+                .stores
+                .get(&shard)
+                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
+            let ids = ids
+                .into_iter()
+                .map(|site| site.deployment.to_string())
+                .collect();
+            details.extend(store.deployment_details(ids)?);
+        }
+
+        self.primary_conn()?.update_unused_deployments(&details)?;
+        Ok(details)
+    }
+
+    pub fn list_unused_deployments(
+        &self,
+        filter: unused::Filter,
+    ) -> Result<Vec<UnusedDeployment>, StoreError> {
+        self.primary_conn()?.list_unused_deployments(filter)
     }
 }
 
@@ -550,38 +651,11 @@ impl StoreTrait for ShardedStore {
             status::Filter::Deployments(deployments) => deployments,
         };
 
-        let sites: Vec<_> = if deployments.is_empty() {
-            self.primary_conn()?
-                .sites()?
-                .into_iter()
-                .map(|site| Arc::new(site))
-                .collect()
-        } else {
-            // Ignore invalid subgraph ids
-            let deployments: Vec<SubgraphDeploymentId> = deployments
-                .iter()
-                .filter_map(|d| SubgraphDeploymentId::new(d).ok())
-                .collect();
-
-            // For each deployment, find the shard it lives in, but ignore
-            // deployments that do not exist
-            deployments
-                .into_iter()
-                .map(|id| self.site(&id))
-                .filter(|res| !matches!(res, Err(StoreError::DeploymentNotFound(_))))
-                .collect::<Result<Vec<_>, StoreError>>()?
-        };
-
-        // Partition the list of deployments by shard
-        let deployments_by_shard: HashMap<Shard, Vec<Arc<Site>>> =
-            sites.into_iter().fold(HashMap::new(), |mut map, site| {
-                map.entry(site.shard.clone()).or_default().push(site);
-                map
-            });
+        let by_shard: HashMap<Shard, Vec<Arc<Site>>> = self.deployments_by_shard(deployments)?;
 
         // Go shard-by-shard to look up deployment statuses
         let mut infos = Vec::new();
-        for (shard, ids) in deployments_by_shard.into_iter() {
+        for (shard, ids) in by_shard.into_iter() {
             let store = self
                 .stores
                 .get(&shard)

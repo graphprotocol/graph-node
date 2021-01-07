@@ -2,8 +2,9 @@
 //! shard. Anything in this module can only be used with a database connection
 //! for the primary shard.
 use diesel::{
-    dsl::{any, exists},
-    sql_types::Text,
+    data_types::PgTimestamp,
+    dsl::{any, exists, not},
+    sql_types::{Array, Text},
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -12,8 +13,8 @@ use diesel::{
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
 use diesel::{
     prelude::{
-        ExpressionMethods, GroupByDsl, JoinOnDsl, NullableExpressionMethods, OptionalExtension,
-        QueryDsl, RunQueryDsl,
+        BoolExpressionMethods, ExpressionMethods, GroupByDsl, JoinOnDsl, NullableExpressionMethods,
+        OptionalExtension, QueryDsl, RunQueryDsl,
     },
     Connection as _,
 };
@@ -23,9 +24,9 @@ use graph::{
     data::subgraph::status,
     prelude::EthereumBlockPointer,
     prelude::{
-        anyhow, entity, lazy_static, serde_json, EntityChange, EntityChangeOperation,
-        MetadataOperation, NodeId, StoreError, SubgraphDeploymentId, SubgraphName,
-        SubgraphVersionSwitchingMode,
+        anyhow, bigdecimal::ToPrimitive, entity, lazy_static, serde_json, EntityChange,
+        EntityChangeOperation, MetadataOperation, NodeId, StoreError, SubgraphDeploymentId,
+        SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
@@ -39,7 +40,10 @@ use std::{
 };
 
 use crate::{
-    block_range::UNVERSIONED_RANGE, notification_listener::JsonNotification, sharded_store::Shard,
+    block_range::UNVERSIONED_RANGE,
+    detail::DeploymentDetail,
+    notification_listener::JsonNotification,
+    sharded_store::{unused, Shard},
 };
 
 #[cfg(debug_assertions)]
@@ -112,7 +116,39 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(subgraph, subgraph_version, deployment_schemas);
+table! {
+    /// A table to track deployments that are no longer used. Once an unused
+    /// deployment has been removed, the entry in this table is the only
+    /// trace in the system that it ever existed
+    unused_deployments(id) {
+        // The deployment id
+        id -> Text,
+        // When we first detected that the deployment was unsued
+        unused_at -> Timestamptz,
+        // When we actually deleted the deployment
+        removed_at -> Nullable<Timestamptz>,
+
+        /// Data that we get from the primary
+        subgraphs -> Nullable<Array<Text>>,
+        namespace -> Text,
+        shard -> Text,
+
+        /// Data we fill in from the deployment's shard
+        entity_count -> Integer,
+        latest_ethereum_block_hash -> Nullable<Binary>,
+        latest_ethereum_block_number -> Nullable<Integer>,
+        failed -> Bool,
+        synced -> Bool,
+    }
+}
+
+allow_tables_to_appear_in_same_query!(
+    subgraph,
+    subgraph_version,
+    subgraph_deployment_assignment,
+    deployment_schemas,
+    unused_deployments,
+);
 
 /// Information about the database schema that stores the entities for a
 /// subgraph.
@@ -126,6 +162,24 @@ struct Schema {
     /// The version currently in use. Always `Relational`, attempts to load
     /// schemas from the database with `Split` produce an error
     version: DeploymentSchemaVersion,
+}
+
+#[derive(Clone, Queryable, QueryableByName, Debug)]
+#[table_name = "unused_deployments"]
+pub struct UnusedDeployment {
+    pub id: String,
+    pub unused_at: PgTimestamp,
+    pub removed_at: Option<PgTimestamp>,
+    pub subgraphs: Option<Vec<String>>,
+    pub namespace: String,
+    pub shard: String,
+
+    /// Data we fill in from the deployment's shard
+    pub entity_count: i32,
+    pub latest_ethereum_block_hash: Option<Vec<u8>>,
+    pub latest_ethereum_block_number: Option<i32>,
+    pub failed: bool,
+    pub synced: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -599,6 +653,29 @@ impl Connection {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
+    pub fn find_sites(&self, ids: &Vec<SubgraphDeploymentId>) -> Result<Vec<Site>, StoreError> {
+        let ids: Vec<_> = ids.iter().map(|id| id.to_string()).collect();
+        let schemas = deployment_schemas::table
+            .filter(deployment_schemas::subgraph.eq_any(ids))
+            .load::<Schema>(&self.0)?;
+        schemas
+            .into_iter()
+            .map(|schema| {
+                let Schema {
+                    version, subgraph, ..
+                } = &schema;
+                if matches!(version, DeploymentSchemaVersion::Split) {
+                    Err(constraint_violation!(
+                        "the subgraph {} uses JSONB layout which is not supported any longer",
+                        subgraph.as_str()
+                    ))
+                } else {
+                    schema.try_into()
+                }
+            })
+            .collect()
+    }
+
     pub fn find_existing_site(&self, subgraph: &SubgraphDeploymentId) -> Result<Site, StoreError> {
         self.find_site(subgraph)?
             .ok_or_else(|| StoreError::DeploymentNotFound(subgraph.to_string()))
@@ -860,5 +937,101 @@ impl Connection {
             .first::<(Option<String>, Option<String>)>(&self.0)
             .optional()?
             .unwrap_or((None, None)))
+    }
+
+    /// Find all deployments that are not in use and add them to the
+    /// `unused_deployments` table. Only values that are available in the
+    /// primary will be filled in `unused_deployments`
+    pub fn detect_unused_deployments(&self) -> Result<Vec<String>, StoreError> {
+        use deployment_schemas as ds;
+        use subgraph as s;
+        use subgraph_deployment_assignment as a;
+        use subgraph_version as v;
+        use unused_deployments as u;
+
+        // Deployment is assigned
+        let assigned = a::table.filter(a::id.eq(ds::subgraph));
+        // Deployment is current or pending version
+        let active = v::table
+            .inner_join(
+                s::table.on(v::id
+                    .nullable()
+                    .eq(s::current_version)
+                    .or(v::id.nullable().eq(s::pending_version))),
+            )
+            .filter(v::deployment.eq(ds::subgraph));
+        // Subgraphs that used a deployment
+        let used_by = s::table
+            .inner_join(v::table.on(s::id.eq(v::subgraph)))
+            .filter(v::deployment.eq(ds::subgraph))
+            .select(sql::<Array<Text>>("array_agg(name)"))
+            .single_value();
+
+        let unused = ds::table
+            .filter(not(exists(assigned)))
+            .filter(not(exists(active)))
+            .select((ds::subgraph, ds::name, ds::shard, used_by));
+
+        Ok(insert_into(u::table)
+            .values(unused)
+            .into_columns((u::id, u::namespace, u::shard, u::subgraphs))
+            .on_conflict(u::id)
+            .do_nothing()
+            .returning(u::id)
+            .get_results::<String>(&self.0)?)
+    }
+
+    /// Add details from the deployment shard to unuseddeployments
+    pub fn update_unused_deployments(
+        &self,
+        details: &Vec<DeploymentDetail>,
+    ) -> Result<(), StoreError> {
+        use crate::detail::block;
+        use unused_deployments as u;
+
+        for detail in details {
+            let (latest_hash, latest_number) = block(
+                &detail.id,
+                "latest_ethereum_block",
+                detail.latest_ethereum_block_hash.clone(),
+                detail.latest_ethereum_block_number.clone(),
+            )?
+            .map(|b| b.to_ptr())
+            .map(|ptr| {
+                (
+                    Some(Vec::from(ptr.hash.as_bytes())),
+                    Some(ptr.number as i32),
+                )
+            })
+            .unwrap_or((None, None));
+            let entity_count = detail.entity_count.to_u64().unwrap_or(0) as i32;
+
+            update(u::table.filter(u::id.eq(&detail.id)))
+                .set((
+                    u::entity_count.eq(entity_count),
+                    u::latest_ethereum_block_hash.eq(latest_hash),
+                    u::latest_ethereum_block_number.eq(latest_number),
+                    u::failed.eq(detail.failed),
+                    u::synced.eq(detail.synced),
+                ))
+                .execute(&self.0)?;
+        }
+        Ok(())
+    }
+
+    pub fn list_unused_deployments(
+        &self,
+        filter: unused::Filter,
+    ) -> Result<Vec<UnusedDeployment>, StoreError> {
+        use unused::Filter::*;
+        use unused_deployments as u;
+
+        match filter {
+            All => Ok(u::table.order_by(u::unused_at.desc()).load(&self.0)?),
+            New => Ok(u::table
+                .filter(u::removed_at.is_null())
+                .order_by(u::entity_count)
+                .load(&self.0)?),
+        }
     }
 }

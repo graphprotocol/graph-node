@@ -54,24 +54,24 @@ type Bytes = Vec<u8>;
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
-struct Detail {
-    vid: i64,
-    id: String,
-    manifest: String,
-    failed: bool,
-    health: String,
-    synced: bool,
-    fatal_error: Option<String>,
-    non_fatal_errors: Vec<String>,
-    earliest_ethereum_block_hash: Option<Bytes>,
-    earliest_ethereum_block_number: Option<BigDecimal>,
-    latest_ethereum_block_hash: Option<Bytes>,
-    latest_ethereum_block_number: Option<BigDecimal>,
-    entity_count: BigDecimal,
-    graft_base: Option<String>,
-    graft_block_hash: Option<Bytes>,
-    graft_block_number: Option<BigDecimal>,
-    network: String,
+pub struct DeploymentDetail {
+    pub vid: i64,
+    pub id: String,
+    pub manifest: String,
+    pub failed: bool,
+    pub health: String,
+    pub synced: bool,
+    pub fatal_error: Option<String>,
+    pub non_fatal_errors: Vec<String>,
+    pub earliest_ethereum_block_hash: Option<Bytes>,
+    pub earliest_ethereum_block_number: Option<BigDecimal>,
+    pub latest_ethereum_block_hash: Option<Bytes>,
+    pub latest_ethereum_block_number: Option<BigDecimal>,
+    pub entity_count: BigDecimal,
+    pub graft_base: Option<String>,
+    pub graft_block_hash: Option<Bytes>,
+    pub graft_block_number: Option<BigDecimal>,
+    pub network: String,
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -90,7 +90,7 @@ struct ErrorDetail {
     block_range: (Bound<i32>, Bound<i32>),
 }
 
-struct DetailAndError(Detail, Option<ErrorDetail>);
+struct DetailAndError(DeploymentDetail, Option<ErrorDetail>);
 
 pub(crate) fn block(
     id: &str,
@@ -167,7 +167,7 @@ impl TryFrom<DetailAndError> for status::Info {
     fn try_from(detail_and_error: DetailAndError) -> Result<Self, Self::Error> {
         let DetailAndError(detail, error) = detail_and_error;
 
-        let Detail {
+        let DeploymentDetail {
             vid: _,
             id,
             manifest: _,
@@ -227,6 +227,24 @@ impl TryFrom<DetailAndError> for status::Info {
     }
 }
 
+/// Return the details for `deployments`
+pub(crate) fn deployment_details(
+    conn: &PgConnection,
+    deployments: Vec<String>,
+) -> Result<Vec<DeploymentDetail>, StoreError> {
+    use subgraph_deployment_detail as d;
+
+    // Empty deployments means 'all of them'
+    let details = if deployments.is_empty() {
+        d::table.load::<DeploymentDetail>(conn)?
+    } else {
+        d::table
+            .filter(d::id.eq_any(&deployments))
+            .load::<DeploymentDetail>(conn)?
+    };
+    Ok(details)
+}
+
 pub(crate) fn deployment_statuses(
     conn: &PgConnection,
     deployments: Vec<String>,
@@ -238,7 +256,7 @@ pub(crate) fn deployment_statuses(
     if deployments.is_empty() {
         d::table
             .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .load::<(Detail, Option<ErrorDetail>)>(conn)?
+            .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
             .into_iter()
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
             .collect()
@@ -246,7 +264,7 @@ pub(crate) fn deployment_statuses(
         d::table
             .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
             .filter(d::id.eq_any(&deployments))
-            .load::<(Detail, Option<ErrorDetail>)>(conn)?
+            .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
             .into_iter()
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
             .collect()

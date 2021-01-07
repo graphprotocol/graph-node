@@ -1,3 +1,4 @@
+use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
@@ -761,6 +762,14 @@ impl Store {
         conn: &e::Connection,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
         Ok(deployment::block_ptr(&conn.conn, subgraph_id)?)
+    }
+
+    pub(crate) fn deployment_details(
+        &self,
+        ids: Vec<String>,
+    ) -> Result<Vec<DeploymentDetail>, StoreError> {
+        let conn = self.get_conn()?;
+        conn.transaction(|| -> Result<_, StoreError> { detail::deployment_details(&conn, ids) })
     }
 
     pub(crate) fn deployment_statuses(
