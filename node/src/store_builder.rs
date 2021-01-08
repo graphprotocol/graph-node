@@ -31,6 +31,30 @@ impl StoreBuilder {
             primary.connection.to_owned(),
         ));
 
+        let (store, primary_pool) =
+            Self::make_sharded_store_and_primary_pool(logger, config, registry.cheap_clone());
+
+        let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
+            &logger,
+            registry.cheap_clone(),
+            primary.connection.to_owned(),
+        ));
+
+        Self {
+            store,
+            primary_pool,
+            chain_head_update_listener,
+            subscription_manager,
+        }
+    }
+
+    /// Make a `ShardedStore` across all configured shards, and also return
+    /// the connection pool for the primary shard
+    fn make_sharded_store_and_primary_pool(
+        logger: &Logger,
+        config: &Config,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> (Arc<ShardedStore>, ConnectionPool) {
         let shards: Vec<_> = config
             .stores
             .iter()
@@ -52,18 +76,18 @@ impl StoreBuilder {
             Arc::new(config.deployment.clone()),
         ));
 
-        let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-            &logger,
-            registry.cheap_clone(),
-            primary.connection.to_owned(),
-        ));
+        (store, primary_pool)
+    }
 
-        Self {
-            store,
-            primary_pool,
-            chain_head_update_listener,
-            subscription_manager,
-        }
+    // Somehow, rustc gets this wrong; the function is used in
+    // `manager::make_store`
+    #[allow(dead_code)]
+    pub fn make_sharded_store(
+        logger: &Logger,
+        config: &Config,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Arc<ShardedStore> {
+        Self::make_sharded_store_and_primary_pool(logger, config, registry).0
     }
 
     fn make_shard(

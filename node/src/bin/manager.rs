@@ -109,9 +109,8 @@ fn make_main_pool(logger: &Logger, config: &Config) -> ConnectionPool {
     )
 }
 
-#[allow(dead_code)]
 fn make_store(logger: &Logger, config: &Config) -> Arc<ShardedStore> {
-    StoreBuilder::new(logger, config, make_registry(logger)).store()
+    StoreBuilder::make_sharded_store(logger, config, make_registry(logger))
 }
 
 #[tokio::main]
