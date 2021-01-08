@@ -1199,6 +1199,12 @@ impl Store {
             econn.start_subgraph(logger, graft_base)
         })
     }
+
+    #[cfg(debug_assertions)]
+    pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
+        let conn = self.get_conn()?;
+        deployment::error_count(&conn, id)
+    }
 }
 
 impl EthereumCallCache for Store {

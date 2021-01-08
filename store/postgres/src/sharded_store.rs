@@ -471,6 +471,12 @@ impl ShardedStore {
 
         Ok(())
     }
+
+    #[cfg(debug_assertions)]
+    pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
+        let (store, _) = self.store(id)?;
+        store.error_count(id)
+    }
 }
 
 #[async_trait::async_trait]

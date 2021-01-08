@@ -69,6 +69,23 @@ lazy_static! {
         1u64
     )
         .into();
+    pub static ref BLOCKS: [EthereumBlockPointer; 4] = {
+        let two: EthereumBlockPointer = (
+            H256::from(hex!(
+                "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1"
+            )),
+            2u64,
+        )
+            .into();
+        let three: EthereumBlockPointer = (
+            H256::from(hex!(
+                "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
+            )),
+            3u64,
+        )
+            .into();
+        [GENESIS_PTR.clone(), BLOCK_ONE.clone(), two, three]
+    };
 }
 
 /// Run the `test` after performing `setup`. The result of `setup` is passed
@@ -162,6 +179,16 @@ fn create_subgraph(
 
 pub fn create_test_subgraph(subgraph_id: &SubgraphDeploymentId, schema: &str) {
     create_subgraph(subgraph_id, schema, None).unwrap()
+}
+
+pub fn remove_subgraph(id: &SubgraphDeploymentId) {
+    let name = {
+        let mut name = id.to_string();
+        name.truncate(32);
+        SubgraphName::new(name).unwrap()
+    };
+    STORE.remove_subgraph(name).unwrap();
+    STORE.store().remove_deployment(id).unwrap();
 }
 
 pub fn create_grafted_subgraph(

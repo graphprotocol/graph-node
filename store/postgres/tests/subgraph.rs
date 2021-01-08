@@ -449,3 +449,57 @@ fn version_info() {
         assert_eq!(None, vi.network);
     })
 }
+
+#[test]
+fn subgraph_error() {
+    test_store::run_test_sequentially(
+        || (),
+        |store, _| async move {
+            let subgraph_id = SubgraphDeploymentId::new("testSubgraph").unwrap();
+            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
+
+            let count = || -> usize {
+                let store = store.store();
+                store.error_count(&subgraph_id).unwrap()
+            };
+
+            let error = SubgraphError {
+                subgraph_id: subgraph_id.clone(),
+                message: "test".to_string(),
+                block_ptr: None,
+                handler: None,
+                deterministic: false,
+            };
+
+            assert!(count() == 0);
+
+            transact_errors(&store, subgraph_id.clone(), BLOCKS[1].clone(), vec![error]).unwrap();
+            assert!(count() == 1);
+
+            let error = SubgraphError {
+                subgraph_id: subgraph_id.clone(),
+                message: "test".to_string(),
+                block_ptr: None,
+                handler: None,
+                deterministic: false,
+            };
+
+            // Inserting the same error is allowed but ignored.
+            transact_errors(&store, subgraph_id.clone(), BLOCKS[2].clone(), vec![error]).unwrap();
+            assert!(count() == 1);
+
+            let error2 = SubgraphError {
+                subgraph_id: subgraph_id.clone(),
+                message: "test2".to_string(),
+                block_ptr: None,
+                handler: None,
+                deterministic: false,
+            };
+
+            transact_errors(&store, subgraph_id.clone(), BLOCKS[3].clone(), vec![error2]).unwrap();
+            assert!(count() == 2);
+
+            test_store::remove_subgraph(&subgraph_id);
+        },
+    )
+}

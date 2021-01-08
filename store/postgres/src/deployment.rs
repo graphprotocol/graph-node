@@ -555,6 +555,19 @@ pub(crate) fn insert_subgraph_errors(
     check_health(conn, id)
 }
 
+#[cfg(debug_assertions)]
+pub(crate) fn error_count(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+) -> Result<usize, StoreError> {
+    use subgraph_error as e;
+
+    Ok(e::table
+        .filter(e::subgraph_id.eq(id.as_str()))
+        .count()
+        .get_result::<i64>(conn)? as usize)
+}
+
 /// Checks if the subgraph is healthy or unhealthy as of the latest block, based on the presence of
 /// deterministic errors. Has no effect on failed subgraphs.
 fn check_health(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
@@ -609,60 +622,4 @@ pub fn drop_schema(
 
     let query = format!("drop schema if exists {} cascade", namespace);
     Ok(conn.batch_execute(&*query)?)
-}
-
-#[test]
-fn subgraph_error() {
-    use subgraph_error as e;
-
-    test_store::run_test_with_conn(|conn| {
-        let subgraph_id = SubgraphDeploymentId::new("testSubgraph").unwrap();
-        test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
-
-        let error = SubgraphError {
-            subgraph_id: subgraph_id.clone(),
-            message: "test".to_string(),
-            block_ptr: None,
-            handler: None,
-            deterministic: false,
-        };
-
-        let count = || -> i64 {
-            e::table
-                .filter(e::subgraph_id.eq(subgraph_id.as_str()))
-                .count()
-                .get_result(conn)
-                .unwrap()
-        };
-
-        assert!(count() == 0);
-
-        crate::deployment::insert_subgraph_error(conn, error).unwrap();
-        assert!(count() == 1);
-
-        let error = SubgraphError {
-            subgraph_id: subgraph_id.clone(),
-            message: "test".to_string(),
-            block_ptr: None,
-            handler: None,
-            deterministic: false,
-        };
-
-        // Inserting the same error is allowed but ignored.
-        crate::deployment::insert_subgraph_error(conn, error).unwrap();
-        assert!(count() == 1);
-
-        let error2 = SubgraphError {
-            subgraph_id: subgraph_id.clone(),
-            message: "test2".to_string(),
-            block_ptr: None,
-            handler: None,
-            deterministic: false,
-        };
-
-        crate::deployment::insert_subgraph_error(conn, error2).unwrap();
-        assert!(count() == 2);
-
-        test_store::remove_subgraphs();
-    })
 }
