@@ -80,6 +80,18 @@ pub enum UnusedCommand {
     },
     /// Update and record currently unused deployments
     Record,
+    /// Remove deployments that were marked as unused with `record`.
+    ///
+    /// Deployments are removed in descending order of number of entities,
+    /// i.e., smaller deployments are removed before larger ones
+    Remove {
+        /// How many unused deployments to remove (default: all)
+        #[structopt(short, long)]
+        count: Option<usize>,
+        /// Remove a specific deployment
+        #[structopt(short, long, conflicts_with = "count")]
+        deployment: Option<String>,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -156,6 +168,10 @@ async fn main() {
             match cmd {
                 List { existing } => commands::unused_deployments::list(store, existing),
                 Record => commands::unused_deployments::record(store),
+                Remove { count, deployment } => {
+                    let count = count.unwrap_or(1_000_000);
+                    commands::unused_deployments::remove(store, count, deployment)
+                }
             }
         }
     };
