@@ -147,13 +147,6 @@ impl StoreTrait for NetworkStore {
             .revert_block_operations(subgraph_id, block_ptr_to)
     }
 
-    fn subscribe(
-        &self,
-        entities: Vec<graph::prelude::SubscriptionFilter>,
-    ) -> graph::prelude::StoreEventStreamBox {
-        self.store.subscribe(entities)
-    }
-
     fn deployment_state_from_name(
         &self,
         name: graph::prelude::SubgraphName,
@@ -290,7 +283,6 @@ impl QueryStoreManager for NetworkStore {
         Ok(Arc::new(QueryStore::new(
             store,
             self.chain_store.clone(),
-            for_subscription,
             site,
             replica,
         )))

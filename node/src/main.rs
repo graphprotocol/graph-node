@@ -259,6 +259,7 @@ async fn main() {
             let graphql_runner = Arc::new(GraphQlRunner::new(
                 &logger,
                 generic_network_store,
+                store_builder.subscription_manager(),
                 load_manager,
             ));
             let mut graphql_server = GraphQLQueryServer::new(
@@ -384,6 +385,7 @@ async fn main() {
                 link_resolver,
                 Arc::new(subgraph_provider),
                 store_builder.store(),
+                store_builder.subscription_manager(),
                 network_stores,
                 eth_networks.clone(),
                 node_id.clone(),

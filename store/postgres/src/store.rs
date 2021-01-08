@@ -9,7 +9,7 @@ use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
     error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
-    SubgraphDeploymentEntity, SubscriptionFilter,
+    SubgraphDeploymentEntity,
 };
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -33,7 +33,7 @@ use graph::prelude::{
     BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
     EntityOrder, EntityQuery, EntityRange, Error, EthereumBlockPointer, EthereumCallCache, Logger,
     MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-    StoreEvent, StoreEventStreamBox, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -42,7 +42,6 @@ use web3::types::{Address, H256};
 use crate::primary::Site;
 use crate::relational::{Layout, METADATA_LAYOUT};
 use crate::relational_queries::FromEntityData;
-use crate::store_events::SubscriptionManager;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
 use crate::{deployment, primary::Namespace};
 
@@ -167,7 +166,6 @@ pub(crate) struct SubgraphInfo {
 
 pub struct StoreInner {
     logger: Logger,
-    subscriptions: Arc<SubscriptionManager>,
 
     conn: ConnectionPool,
     read_only_pools: Vec<ConnectionPool>,
@@ -201,7 +199,6 @@ impl Deref for Store {
 impl Store {
     pub fn new(
         logger: &Logger,
-        subscriptions: Arc<SubscriptionManager>,
         pool: ConnectionPool,
         read_only_pools: Vec<ConnectionPool>,
         mut pool_weights: Vec<usize>,
@@ -237,7 +234,6 @@ impl Store {
         // Create the store
         let store = StoreInner {
             logger: logger.clone(),
-            subscriptions,
             conn: pool,
             read_only_pools,
             replica_order,
@@ -1084,10 +1080,6 @@ impl Store {
         })?;
 
         Ok(event)
-    }
-
-    pub(crate) fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
-        self.subscriptions.subscribe(entities)
     }
 
     pub(crate) fn deployment_state_from_id(

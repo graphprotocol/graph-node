@@ -3,7 +3,7 @@ use std::iter;
 use std::result::Result;
 use std::time::{Duration, Instant};
 
-use graph::prelude::*;
+use graph::{components::store::SubscriptionManager, prelude::*};
 
 use crate::{
     execution::*,
@@ -18,6 +18,8 @@ pub struct SubscriptionExecutionOptions {
 
     /// The store to use.
     pub store: Arc<dyn QueryStore>,
+
+    pub subscription_manager: Arc<dyn SubscriptionManager>,
 
     /// Individual timeout for each subscription query.
     pub timeout: Option<Duration>,
@@ -82,6 +84,7 @@ fn create_source_event_stream(
         &options.logger,
         query.schema.id().clone(),
         options.store.clone(),
+        options.subscription_manager.cheap_clone(),
     );
     let ctx = ExecutionContext {
         logger: options.logger.cheap_clone(),
@@ -152,6 +155,7 @@ fn map_source_to_response_stream(
     let SubscriptionExecutionOptions {
         logger,
         store,
+        subscription_manager,
         timeout,
         max_complexity: _,
         max_depth: _,
@@ -171,6 +175,7 @@ fn map_source_to_response_stream(
                 Ok(event) => execute_subscription_event(
                     logger.clone(),
                     store.clone(),
+                    subscription_manager.cheap_clone(),
                     query.clone(),
                     event,
                     timeout,
@@ -186,6 +191,7 @@ fn map_source_to_response_stream(
 async fn execute_subscription_event(
     logger: Logger,
     store: Arc<dyn QueryStore>,
+    subscription_manager: Arc<dyn SubscriptionManager>,
     query: Arc<crate::execution::Query>,
     event: Arc<StoreEvent>,
     timeout: Option<Duration>,
@@ -198,6 +204,7 @@ async fn execute_subscription_event(
     let resolver = match StoreResolver::at_block(
         &logger,
         store,
+        subscription_manager,
         BlockConstraint::Latest,
         ErrorPolicy::Deny,
         query.schema.id().clone(),

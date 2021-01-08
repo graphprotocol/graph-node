@@ -19,13 +19,14 @@ pub struct StoreBuilder {
     store: Arc<ShardedStore>,
     primary_pool: ConnectionPool,
     chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
+    subscription_manager: Arc<SubscriptionManager>,
 }
 
 impl StoreBuilder {
     pub fn new(logger: &Logger, config: &Config, registry: Arc<dyn MetricsRegistry>) -> Self {
         let primary = config.primary_store();
 
-        let subscriptions = Arc::new(SubscriptionManager::new(
+        let subscription_manager = Arc::new(SubscriptionManager::new(
             logger.cheap_clone(),
             primary.connection.to_owned(),
         ));
@@ -33,15 +34,7 @@ impl StoreBuilder {
         let shards: Vec<_> = config
             .stores
             .iter()
-            .map(|(name, shard)| {
-                Self::make_shard(
-                    logger,
-                    name,
-                    shard,
-                    subscriptions.cheap_clone(),
-                    registry.cheap_clone(),
-                )
-            })
+            .map(|(name, shard)| Self::make_shard(logger, name, shard, registry.cheap_clone()))
             .collect();
 
         let primary_pool = shards
@@ -69,6 +62,7 @@ impl StoreBuilder {
             store,
             primary_pool,
             chain_head_update_listener,
+            subscription_manager,
         }
     }
 
@@ -76,7 +70,6 @@ impl StoreBuilder {
         logger: &Logger,
         name: &str,
         shard: &Shard,
-        subscriptions: Arc<SubscriptionManager>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> (ShardName, Arc<DieselStore>, ConnectionPool) {
         let logger = logger.new(o!("shard" => name.to_string()));
@@ -87,7 +80,6 @@ impl StoreBuilder {
 
         let shard = Arc::new(DieselStore::new(
             &logger,
-            subscriptions.cheap_clone(),
             conn_pool.clone(),
             read_only_conn_pools.clone(),
             weights,
@@ -182,6 +174,10 @@ impl StoreBuilder {
     /// handle everything besides being a `ChainStore`
     pub fn store(&self) -> Arc<ShardedStore> {
         self.store.cheap_clone()
+    }
+
+    pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {
+        self.subscription_manager.cheap_clone()
     }
 
     // This is used in the test-store, but rustc keeps complaining that it

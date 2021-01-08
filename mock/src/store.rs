@@ -122,10 +122,6 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn subscribe(&self, _entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
-        unimplemented!()
-    }
-
     fn deployment_state_from_name(&self, _: SubgraphName) -> Result<DeploymentState, StoreError> {
         unimplemented!()
     }

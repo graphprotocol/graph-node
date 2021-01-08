@@ -6,9 +6,12 @@ use std::time::{Duration, Instant};
 use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
-use graph::prelude::{
-    async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
-    Query, QueryExecutionError, Subscription, SubscriptionError, SubscriptionResult,
+use graph::{
+    components::store::SubscriptionManager,
+    prelude::{
+        async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
+        Query, QueryExecutionError, Subscription, SubscriptionError, SubscriptionResult,
+    },
 };
 use graph::{data::graphql::effort::LoadManager, prelude::QueryStoreManager};
 use graph::{
@@ -19,9 +22,10 @@ use graph::{
 use lazy_static::lazy_static;
 
 /// GraphQL runner implementation for The Graph.
-pub struct GraphQlRunner<S> {
+pub struct GraphQlRunner<S, SM> {
     logger: Logger,
     store: Arc<S>,
+    subscription_manager: Arc<SM>,
     load_manager: Arc<LoadManager>,
 }
 
@@ -66,16 +70,23 @@ lazy_static! {
     pub static ref INITIAL_DEPLOYMENT_STATE_FOR_TESTS: std::sync::Mutex<Option<DeploymentState>> = std::sync::Mutex::new(None);
 }
 
-impl<S> GraphQlRunner<S>
+impl<S, SM> GraphQlRunner<S, SM>
 where
     S: QueryStoreManager,
+    SM: SubscriptionManager,
 {
     /// Creates a new query runner.
-    pub fn new(logger: &Logger, store: Arc<S>, load_manager: Arc<LoadManager>) -> Self {
+    pub fn new(
+        logger: &Logger,
+        store: Arc<S>,
+        subscription_manager: Arc<SM>,
+        load_manager: Arc<LoadManager>,
+    ) -> Self {
         let logger = logger.new(o!("component" => "GraphQlRunner"));
         GraphQlRunner {
             logger,
             store,
+            subscription_manager,
             load_manager,
         }
     }
@@ -170,6 +181,7 @@ where
             let resolver = StoreResolver::at_block(
                 &self.logger,
                 store.cheap_clone(),
+                self.subscription_manager.cheap_clone(),
                 bc,
                 error_policy,
                 query.schema.id().clone(),
@@ -201,9 +213,10 @@ where
 }
 
 #[async_trait]
-impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
+impl<S, SM> GraphQlRunnerTrait for GraphQlRunner<S, SM>
 where
     S: QueryStoreManager,
+    SM: SubscriptionManager,
 {
     async fn run_query(
         self: Arc<Self>,
@@ -281,6 +294,7 @@ where
             SubscriptionExecutionOptions {
                 logger: self.logger.clone(),
                 store,
+                subscription_manager: self.subscription_manager.cheap_clone(),
                 timeout: GRAPHQL_QUERY_TIMEOUT.clone(),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,

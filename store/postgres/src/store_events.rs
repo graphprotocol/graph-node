@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
+use graph::components::store::SubscriptionManager as SubscriptionManagerTrait;
 use graph::prelude::serde_json;
 use graph::prelude::*;
 
@@ -149,8 +150,10 @@ impl SubscriptionManager {
             }),
         );
     }
+}
 
-    pub fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
+impl SubscriptionManagerTrait for SubscriptionManager {
+    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
         let id = Uuid::new_v4().to_string();
 
         // Prepare the new subscription by creating a channel and a subscription object

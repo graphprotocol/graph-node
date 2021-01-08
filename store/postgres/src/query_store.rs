@@ -13,14 +13,12 @@ pub(crate) struct QueryStore {
     replica_id: ReplicaId,
     store: Arc<crate::Store>,
     chain_store: Arc<crate::ChainStore>,
-    for_subscription: bool,
 }
 
 impl QueryStore {
     pub(crate) fn new(
         store: Arc<crate::Store>,
         chain_store: Arc<crate::ChainStore>,
-        for_subscription: bool,
         site: Arc<Site>,
         replica_id: ReplicaId,
     ) -> Self {
@@ -29,7 +27,6 @@ impl QueryStore {
             replica_id,
             store,
             chain_store,
-            for_subscription,
         }
     }
 }
@@ -46,12 +43,6 @@ impl QueryStoreTrait for QueryStore {
             .get_entity_conn(self.site.as_ref(), self.replica_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         self.store.execute_query(&conn, query)
-    }
-
-    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
-        assert!(self.for_subscription);
-        assert_eq!(self.replica_id, ReplicaId::Main);
-        self.store.subscribe(entities)
     }
 
     /// Return true if the deployment with the given id is fully synced,

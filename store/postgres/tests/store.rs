@@ -6,7 +6,9 @@ use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
-use graph::components::store::{EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType};
+use graph::components::store::{
+    EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType, SubscriptionManager as _,
+};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
@@ -963,11 +965,10 @@ async fn check_events(
 
 // Subscribe to store events
 fn subscribe(
-    store: Arc<DieselStore>,
     subgraph: &SubgraphDeploymentId,
     entity_type: &str,
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
-    let subscription = store.subscribe(vec![SubscriptionFilter::Entities(
+    let subscription = SUBSCRIPTION_MANAGER.subscribe(vec![SubscriptionFilter::Entities(
         subgraph.clone(),
         EntityType::data(entity_type.to_owned()),
     )]);
@@ -988,7 +989,7 @@ async fn check_basic_revert(
         ))
         .desc("name");
 
-    let subscription = subscribe(store.clone(), subgraph_id, entity_type);
+    let subscription = subscribe(subgraph_id, entity_type);
     let state = store
         .deployment_state_from_id(subgraph_id.to_owned())
         .expect("can get deployment state");
@@ -1057,7 +1058,7 @@ fn revert_block_with_delete() {
         )
         .unwrap();
 
-        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER);
+        let subscription = subscribe(&TEST_SUBGRAPH_ID, USER);
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
@@ -1123,7 +1124,7 @@ fn revert_block_with_partial_update() {
         )
         .unwrap();
 
-        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER);
+        let subscription = subscribe(&TEST_SUBGRAPH_ID, USER);
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
@@ -1236,7 +1237,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             .unwrap()
             .expect("dynamic data source entity wasn't written to store");
 
-        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER);
+        let subscription = subscribe(&TEST_SUBGRAPH_ID, USER);
 
         // Revert block that added the user and the dynamic data source
         store
@@ -1306,7 +1307,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .unwrap();
 
-        let subscription = subscribe(store.clone(), &subgraph_id, USER);
+        let subscription = subscribe(&subgraph_id, USER);
 
         // Add two entities to the store
         let added_entities = vec![
@@ -1403,16 +1404,15 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 #[test]
 fn throttle_subscription_delivers() {
     run_test(|store| async move {
-        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER)
-            .throttle_while_syncing(
-                &*LOGGER,
-                store
-                    .clone()
-                    .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
-                    .unwrap(),
-                TEST_SUBGRAPH_ID.clone(),
-                Duration::from_millis(500),
-            );
+        let subscription = subscribe(&TEST_SUBGRAPH_ID, USER).throttle_while_syncing(
+            &*LOGGER,
+            store
+                .clone()
+                .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                .unwrap(),
+            TEST_SUBGRAPH_ID.clone(),
+            Duration::from_millis(500),
+        );
 
         let user4 = create_test_entity(
             "4",
@@ -1447,16 +1447,15 @@ fn throttle_subscription_delivers() {
 fn throttle_subscription_throttles() {
     run_test(|store| async move {
         // Throttle for a very long time (30s)
-        let subscription = subscribe(store.clone(), &TEST_SUBGRAPH_ID, USER)
-            .throttle_while_syncing(
-                &*LOGGER,
-                store
-                    .clone()
-                    .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
-                    .unwrap(),
-                TEST_SUBGRAPH_ID.clone(),
-                Duration::from_secs(30),
-            );
+        let subscription = subscribe(&TEST_SUBGRAPH_ID, USER).throttle_while_syncing(
+            &*LOGGER,
+            store
+                .clone()
+                .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                .unwrap(),
+            TEST_SUBGRAPH_ID.clone(),
+            Duration::from_secs(30),
+        );
 
         let user4 = create_test_entity(
             "4",

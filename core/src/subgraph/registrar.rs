@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use lazy_static::lazy_static;
 
 use graph::components::ethereum::EthereumNetworks;
+use graph::components::store::SubscriptionManager;
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
@@ -22,12 +23,13 @@ lazy_static! {
     );
 }
 
-pub struct SubgraphRegistrar<L, P, S, CS> {
+pub struct SubgraphRegistrar<L, P, S, CS, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
+    subscription_manager: Arc<SM>,
     chain_stores: HashMap<String, Arc<CS>>,
     ethereum_networks: EthereumNetworks,
     node_id: NodeId,
@@ -35,18 +37,20 @@ pub struct SubgraphRegistrar<L, P, S, CS> {
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, CS> SubgraphRegistrar<L, P, S, CS>
+impl<L, P, S, CS, SM> SubgraphRegistrar<L, P, S, CS, SM>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
+    SM: SubscriptionManager,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
         resolver: Arc<L>,
         provider: Arc<P>,
         store: Arc<S>,
+        subscription_manager: Arc<SM>,
         chain_stores: HashMap<String, Arc<CS>>,
         ethereum_networks: EthereumNetworks,
         node_id: NodeId,
@@ -67,6 +71,7 @@ where
             ),
             provider,
             store,
+            subscription_manager,
             chain_stores,
             ethereum_networks,
             node_id,
@@ -148,7 +153,7 @@ where
         let node_id = self.node_id.clone();
         let logger = self.logger.clone();
 
-        store
+        self.subscription_manager
             .subscribe(vec![SubscriptionFilter::Assignment])
             .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
@@ -253,12 +258,13 @@ where
 }
 
 #[async_trait]
-impl<L, P, S, CS> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS>
+impl<L, P, S, CS, SM> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS, SM>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
     CS: ChainStore,
+    SM: SubscriptionManager,
 {
     async fn create_subgraph(
         &self,

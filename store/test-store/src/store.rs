@@ -12,7 +12,7 @@ use graph_graphql::prelude::{
 use graph_mock::MockMetricsRegistry;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
-use graph_store_postgres::{connection_pool::ConnectionPool, Shard};
+use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{DeploymentPlacer, NetworkStore};
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -45,10 +45,16 @@ lazy_static! {
         Arc::new(MockMetricsRegistry::new()),
         CONN_POOL_SIZE as usize
     ));
-    static ref STORE_POOL_CONFIG: (Arc<NetworkStore>, ConnectionPool, Config) = build_store();
+    static ref STORE_POOL_CONFIG: (
+        Arc<NetworkStore>,
+        ConnectionPool,
+        Config,
+        Arc<SubscriptionManager>
+    ) = build_store();
     pub(crate) static ref PRIMARY_POOL: ConnectionPool = STORE_POOL_CONFIG.1.clone();
     pub static ref STORE: Arc<NetworkStore> = STORE_POOL_CONFIG.0.clone();
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
+    pub static ref SUBSCRIPTION_MANAGER: Arc<SubscriptionManager> = STORE_POOL_CONFIG.3.clone();
     pub static ref GENESIS_PTR: EthereumBlockPointer = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -347,6 +353,7 @@ fn execute_subgraph_query_internal(
         let resolver = return_err!(rt.block_on(StoreResolver::at_block(
             &logger,
             store.clone(),
+            SUBSCRIPTION_MANAGER.clone(),
             bc,
             error_policy,
             query.schema.id().clone()
@@ -368,7 +375,12 @@ fn execute_subgraph_query_internal(
     result
 }
 
-fn build_store() -> (Arc<NetworkStore>, ConnectionPool, Config) {
+fn build_store() -> (
+    Arc<NetworkStore>,
+    ConnectionPool,
+    Config,
+    Arc<SubscriptionManager>,
+) {
     let mut opt = Opt::default();
     let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| s.len() > 0);
     let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| s.len() > 0);
@@ -400,6 +412,7 @@ fn build_store() -> (Arc<NetworkStore>, ConnectionPool, Config) {
                 builder.network_store(NETWORK_NAME.to_string(), net_identifiers),
                 builder.primary_pool(),
                 config,
+                builder.subscription_manager(),
             )
         })
     })

@@ -17,6 +17,7 @@ use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
 pub struct StoreResolver {
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
+    subscription_manager: Arc<dyn SubscriptionManager>,
     pub(crate) block_ptr: Option<EthereumBlockPointer>,
     deployment: SubgraphDeploymentId,
     has_non_fatal_errors: bool,
@@ -34,10 +35,12 @@ impl StoreResolver {
         logger: &Logger,
         deployment: SubgraphDeploymentId,
         store: Arc<dyn QueryStore>,
+        subscription_manager: Arc<dyn SubscriptionManager>,
     ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
+            subscription_manager,
             block_ptr: None,
             deployment,
 
@@ -55,6 +58,7 @@ impl StoreResolver {
     pub async fn at_block(
         logger: &Logger,
         store: Arc<dyn QueryStore>,
+        subscription_manager: Arc<dyn SubscriptionManager>,
         bc: BlockConstraint,
         error_policy: ErrorPolicy,
         deployment: SubgraphDeploymentId,
@@ -75,6 +79,7 @@ impl StoreResolver {
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
+            subscription_manager,
             block_ptr: Some(block_ptr),
             deployment,
             has_non_fatal_errors,
@@ -273,12 +278,15 @@ impl Resolver for StoreResolver {
 
         // Subscribe to the store and return the entity change stream
         let deployment_id = parse_subgraph_id(object_type)?;
-        Ok(self.store.subscribe(entities).throttle_while_syncing(
-            &self.logger,
-            self.store.clone(),
-            deployment_id,
-            *SUBSCRIPTION_THROTTLE_INTERVAL,
-        ))
+        Ok(self
+            .subscription_manager
+            .subscribe(entities)
+            .throttle_while_syncing(
+                &self.logger,
+                self.store.clone(),
+                deployment_id,
+                *SUBSCRIPTION_THROTTLE_INTERVAL,
+            ))
     }
 
     fn post_process(&self, result: &mut QueryResult) -> Result<(), anyhow::Error> {

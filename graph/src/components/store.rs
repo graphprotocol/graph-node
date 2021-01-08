@@ -926,6 +926,13 @@ pub struct StoredDynamicDataSource {
     pub creation_block: Option<u64>,
 }
 
+pub trait SubscriptionManager: Send + Sync + 'static {
+    /// Subscribe to changes for specific subgraphs and entities.
+    ///
+    /// Returns a stream of store events that match the input arguments.
+    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
+}
+
 /// Common trait for store implementations.
 #[async_trait]
 pub trait Store: Send + Sync + 'static {
@@ -995,11 +1002,6 @@ pub trait Store: Send + Sync + 'static {
         subgraph_id: SubgraphDeploymentId,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError>;
-
-    /// Subscribe to changes for specific subgraphs and entities.
-    ///
-    /// Returns a stream of store events that match the input arguments.
-    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
 
     /// Find the deployment for the current version of subgraph `name` and
     /// return details about it needed for executing queries
@@ -1224,10 +1226,6 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn subscribe(&self, _entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
-        unimplemented!()
-    }
-
     fn deployment_state_from_name(&self, _: SubgraphName) -> Result<DeploymentState, StoreError> {
         unimplemented!()
     }
@@ -1441,8 +1439,6 @@ pub trait QueryStore: Send + Sync {
         &self,
         query: EntityQuery,
     ) -> Result<Vec<BTreeMap<String, q::Value>>, QueryExecutionError>;
-
-    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
 
     fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
 

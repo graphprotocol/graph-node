@@ -19,8 +19,8 @@ use graph::{
         lazy_static, web3::types::Address, ApiSchema, DeploymentState, DynTryFuture, Entity,
         EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, EthereumCallCache,
         Logger, MetadataOperation, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
-        Store as StoreTrait, StoreError, StoreEventStreamBox, SubgraphDeploymentId, SubgraphName,
-        SubgraphVersionSwitchingMode, SubscriptionFilter,
+        Store as StoreTrait, StoreError, SubgraphDeploymentId, SubgraphName,
+        SubgraphVersionSwitchingMode,
     },
 };
 use store::StoredDynamicDataSource;
@@ -557,11 +557,6 @@ impl StoreTrait for ShardedStore {
         let (store, site) = self.store(&id)?;
         let event = store.revert_block_operations(site.as_ref(), block_ptr_to)?;
         self.send_store_event(&event)
-    }
-
-    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
-        // Subscriptions always go through the primary
-        self.primary.subscribe(entities)
     }
 
     fn deployment_state_from_name(
