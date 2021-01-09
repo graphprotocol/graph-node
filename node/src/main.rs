@@ -361,7 +361,6 @@ async fn main() {
                 &logger_factory,
                 link_resolver.clone(),
                 store_builder.store(),
-                graphql_runner.clone(),
             );
 
             // Forward subgraph events from the subgraph provider to the subgraph instance manager
