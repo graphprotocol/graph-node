@@ -2,7 +2,9 @@
 
 ## next - unreleased
 
-### Feature: database sharding
+## 0.21.0
+
+### Feature: Database sharding
 
 This release makes it possible to [shard subgraph
 storage](./docs/sharding.md) and spread subgraph deployments, and the load
@@ -14,7 +16,54 @@ out in a test environment, but do not recommend it yet for production use**
 In particular, the details of how sharding is configured may change in
 backwards-incompatible ways in the future.
 
-## 0.20
+### Breaking change: Require a block number in `proofOfIndexing` queries
+
+This changes the `proofOfIndexing` GraphQL API from
+
+```graphql
+type Query {
+  proofOfIndexing(subgraph: String!, blockHash: Bytes!, indexer: Bytes): Bytes
+}
+```
+
+to
+
+```graphql
+type Query {
+  proofOfIndexing(
+    subgraph: String!
+    blockNumber: Int!
+    blockHash: Bytes!
+    indexer: Bytes
+  ): Bytes
+}
+```
+
+This allows the indexer agent to provide a block number and hash to be able
+to obtain a POI even if this block is not cached in the Ethereum blocks
+cache. Prior to this, the POI would be `null` if this wasn't the case, even
+if the subgraph deployment in question was up to date, leading to the indexer
+missing out on indexing rewards.
+
+### Misc
+
+- Fix non-determinism caused by not (always) correctly reverting dynamic
+  sources when handling reorgs.
+- Integrate the query cache into subscriptions to improve their performance.
+- Add `graphman` crate for managing Graph Node infrastructure.
+- Improve query cache logging.
+- Expose indexing status port (`8030`) from Docker image.
+- Remove support for unnecessary data sources `templates` inside subgraph
+  data sources. They are only supported at the top level.
+- Avoid sending empty store events through the database.
+- Fix database connection deadlocks.
+- Rework the codebase to use `anyhow` instead of `failure`.
+- Log stack trace in case of database connection timeouts, to help with root-causing.
+- Fix stack overflows in GraphQL parsing.
+- Disable fulltext search by default (it is nondeterministic and therefore
+  not currently supported in the network).
+
+## 0.20.0
 
 **NOTE: JSONB storage is no longer supported. Do not upgrade to this
 release if you still have subgraphs that were deployed with a version
@@ -308,13 +357,13 @@ that are associated with a particular trading pair, which is included in the
 created data source, like so:
 
 ```ts
-import { DataSourceContext } from "@graphprotocol/graph-ts";
-import { Exchange } from "../generated/templates";
+import { DataSourceContext } from '@graphprotocol/graph-ts'
+import { Exchange } from '../generated/templates'
 
 export function handleNewExchange(event: NewExchange): void {
-  let context = new DataSourceContext();
-  context.setString("tradingPair", event.params.tradingPair);
-  Exchange.createWithContext(event.params.exchange, context);
+  let context = new DataSourceContext()
+  context.setString('tradingPair', event.params.tradingPair)
+  Exchange.createWithContext(event.params.exchange, context)
 }
 ```
 
