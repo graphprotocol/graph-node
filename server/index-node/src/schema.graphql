@@ -2,6 +2,7 @@ scalar BigInt
 scalar Boolean
 scalar Bytes
 scalar ID
+scalar Int
 scalar String
 
 type Query {
