@@ -2,6 +2,13 @@
 
 ## next - unreleased
 
+## 0.21.1
+
+- Fix subgraphs failing with a `fatalError` when deployed while already running
+  (#2104).
+- Fix missing `scalar Int` declaration in index node GraphQL API, causing
+  indexer-service queries to fail (#2104).
+
 ## 0.21.0
 
 ### Feature: Database sharding
@@ -357,13 +364,13 @@ that are associated with a particular trading pair, which is included in the
 created data source, like so:
 
 ```ts
-import { DataSourceContext } from '@graphprotocol/graph-ts'
-import { Exchange } from '../generated/templates'
+import { DataSourceContext } from "@graphprotocol/graph-ts";
+import { Exchange } from "../generated/templates";
 
 export function handleNewExchange(event: NewExchange): void {
-  let context = new DataSourceContext()
-  context.setString('tradingPair', event.params.tradingPair)
-  Exchange.createWithContext(event.params.exchange, context)
+  let context = new DataSourceContext();
+  context.setString("tradingPair", event.params.tradingPair);
+  Exchange.createWithContext(event.params.exchange, context);
 }
 ```
 
