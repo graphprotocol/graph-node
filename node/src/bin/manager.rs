@@ -60,6 +60,15 @@ pub enum Command {
     Info {
         /// The deployment, an id, schema name or subgraph name
         name: String,
+        /// List only current version
+        #[structopt(long, short)]
+        current: bool,
+        /// List only pending versions
+        #[structopt(long, short)]
+        pending: bool,
+        /// List only used (current and pending) versions
+        #[structopt(long, short)]
+        used: bool,
     },
     /// Print how a specific subgraph would be placed
     Place { name: String, network: String },
@@ -156,9 +165,14 @@ async fn main() {
             let pool = make_main_pool(&logger, &config);
             commands::txn_speed::run(pool, delay)
         }
-        Info { name } => {
+        Info {
+            name,
+            current,
+            pending,
+            used,
+        } => {
             let pool = make_main_pool(&logger, &config);
-            commands::info::run(pool, name)
+            commands::info::run(pool, name, current, pending, used)
         }
         Place { name, network } => commands::place::run(&config.deployment, &name, &network),
         Unused(cmd) => {
