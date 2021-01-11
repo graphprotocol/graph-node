@@ -7,6 +7,10 @@ pub fn run(pool: ConnectionPool, name: String) -> Result<(), anyhow::Error> {
     let conn = pool.get()?;
 
     let deployments = Deployment::lookup(&conn, name)?;
-    Deployment::print_table(deployments);
+    if deployments.is_empty() {
+        println!("No matches");
+    } else {
+        Deployment::print_table(deployments);
+    }
     Ok(())
 }
