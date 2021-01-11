@@ -1,6 +1,6 @@
 [package]
 name = "graph-chain-arweave"
-version = "0.21.0"
+version = "0.21.1"
 edition = "2018"
 
 [dependencies]
