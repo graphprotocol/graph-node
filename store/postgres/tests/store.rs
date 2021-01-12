@@ -7,7 +7,8 @@ use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
 use graph::components::store::{
-    EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType, SubscriptionManager as _,
+    BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType,
+    SubscriptionManager as _,
 };
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
@@ -1850,7 +1851,13 @@ fn cleanup_cached_blocks() {
         // The main purpose for this test is to ensure that the SQL query
         // we run in `cleanup_cached_blocks` to figure out the first block
         // that should be removed is syntactically correct
-        let cleaned = store.cleanup_cached_blocks(10).expect("cleanup succeeds");
+        let chain_store = store
+            .block_store()
+            .chain_store(NETWORK_NAME)
+            .expect("fake chain store");
+        let cleaned = chain_store
+            .cleanup_cached_blocks(10)
+            .expect("cleanup succeeds");
         assert_eq!((0, 0), cleaned);
     })
 }

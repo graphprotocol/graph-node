@@ -1,12 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::env;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
-use graph::components::ethereum::EthereumNetworks;
 use graph::components::store::SubscriptionManager;
+use graph::components::{ethereum::EthereumNetworks, store::BlockStore};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
@@ -23,26 +23,26 @@ lazy_static! {
     );
 }
 
-pub struct SubgraphRegistrar<L, P, S, CS, SM> {
+pub struct SubgraphRegistrar<L, P, S, BS, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
-    chain_stores: HashMap<String, Arc<CS>>,
+    block_store: Arc<BS>,
     ethereum_networks: EthereumNetworks,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, CS, SM> SubgraphRegistrar<L, P, S, CS, SM>
+impl<L, P, S, BS, SM> SubgraphRegistrar<L, P, S, BS, SM>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
-    CS: ChainStore,
+    BS: BlockStore,
     SM: SubscriptionManager,
 {
     pub fn new(
@@ -51,7 +51,7 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         subscription_manager: Arc<SM>,
-        chain_stores: HashMap<String, Arc<CS>>,
+        block_store: Arc<BS>,
         ethereum_networks: EthereumNetworks,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
@@ -72,7 +72,7 @@ where
             provider,
             store,
             subscription_manager,
-            chain_stores,
+            block_store,
             ethereum_networks,
             node_id,
             version_switching_mode,
@@ -258,12 +258,12 @@ where
 }
 
 #[async_trait]
-impl<L, P, S, CS, SM> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, CS, SM>
+impl<L, P, S, BS, SM> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, BS, SM>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: Store,
-    CS: ChainStore,
+    BS: BlockStore,
     SM: SubscriptionManager,
 {
     async fn create_subgraph(
@@ -299,7 +299,7 @@ where
 
         let network_name = manifest.network_name();
 
-        let chain_store = self.chain_stores.get(&network_name).ok_or(
+        let chain_store = self.block_store.chain_store(&network_name).ok_or(
             SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
         )?;
 

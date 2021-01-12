@@ -3,34 +3,38 @@ use std::sync::Arc;
 use graph::{
     components::{
         server::index_node::VersionInfo,
-        store::{EntityType, QueryStoreManager, StoredDynamicDataSource},
+        store::{
+            BlockStore as BlockStoreTrait, EntityType, QueryStoreManager, StoredDynamicDataSource,
+        },
     },
+    constraint_violation,
     data::subgraph::schema::SubgraphError,
     data::subgraph::status,
     prelude::{
-        ethabi,
-        web3::types::{Address, H256},
-        BlockNumber, ChainHeadUpdateStream, ChainStore as ChainStoreTrait, CheapClone, Error,
-        EthereumBlock, EthereumBlockPointer, EthereumCallCache, Future, LightEthereumBlock, NodeId,
-        Schema, Store as StoreTrait, StoreError, Stream, SubgraphDeploymentEntity,
-        SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
+        web3::types::Address, CheapClone, Error, EthereumBlockPointer, NodeId, QueryExecutionError,
+        QueryStore as QueryStoreTrait, Schema, Store as StoreTrait, StoreError,
+        SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 
-use crate::{chain_store::ChainStore, query_store::QueryStore, SubgraphStore};
+use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
 
 pub struct NetworkStore {
     store: Arc<SubgraphStore>,
-    chain_store: Arc<ChainStore>,
+    block_store: Arc<BlockStore>,
 }
 
 impl NetworkStore {
-    pub fn new(store: Arc<SubgraphStore>, chain_store: Arc<ChainStore>) -> Self {
-        Self { store, chain_store }
+    pub fn new(store: Arc<SubgraphStore>, block_store: Arc<BlockStore>) -> Self {
+        Self { store, block_store }
     }
 
     pub fn store(&self) -> Arc<SubgraphStore> {
         self.store.cheap_clone()
+    }
+
+    pub fn block_store(&self) -> Arc<BlockStore> {
+        self.block_store.cheap_clone()
     }
 
     // Only for tests to simplify their handling of test fixtures, so that
@@ -85,7 +89,7 @@ impl StoreTrait for NetworkStore {
     fn get(
         &self,
         key: graph::prelude::EntityKey,
-    ) -> Result<Option<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
+    ) -> Result<Option<graph::prelude::Entity>, QueryExecutionError> {
         self.store.get(key)
     }
 
@@ -103,21 +107,18 @@ impl StoreTrait for NetworkStore {
     fn find(
         &self,
         query: graph::prelude::EntityQuery,
-    ) -> Result<Vec<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
+    ) -> Result<Vec<graph::prelude::Entity>, QueryExecutionError> {
         self.store.find(query)
     }
 
     fn find_one(
         &self,
         query: graph::prelude::EntityQuery,
-    ) -> Result<Option<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
+    ) -> Result<Option<graph::prelude::Entity>, QueryExecutionError> {
         self.store.find_one(query)
     }
 
-    fn find_ens_name(
-        &self,
-        hash: &str,
-    ) -> Result<Option<String>, graph::prelude::QueryExecutionError> {
+    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
         self.store.find_ens_name(hash)
     }
 
@@ -279,101 +280,15 @@ impl QueryStoreManager for NetworkStore {
         &self,
         target: graph::data::query::QueryTarget,
         for_subscription: bool,
-    ) -> Result<
-        Arc<dyn graph::prelude::QueryStore + Send + Sync>,
-        graph::prelude::QueryExecutionError,
-    > {
+    ) -> Result<Arc<dyn QueryStoreTrait + Send + Sync>, QueryExecutionError> {
         let (store, site, replica) = self.store.replica_for_query(target, for_subscription)?;
-        Ok(Arc::new(QueryStore::new(
-            store,
-            self.chain_store.clone(),
-            site,
-            replica,
-        )))
-    }
-}
-
-impl EthereumCallCache for NetworkStore {
-    fn get_call(
-        &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
-        block: EthereumBlockPointer,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        self.chain_store
-            .get_call(contract_address, encoded_call, block)
-    }
-
-    fn set_call(
-        &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
-        block: EthereumBlockPointer,
-        return_value: &[u8],
-    ) -> Result<(), Error> {
-        self.chain_store
-            .set_call(contract_address, encoded_call, block, return_value)
-    }
-}
-
-impl ChainStoreTrait for NetworkStore {
-    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
-        self.chain_store.genesis_block_ptr()
-    }
-
-    fn upsert_blocks<B, E>(
-        &self,
-        blocks: B,
-    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
-    where
-        B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
-        E: From<Error> + Send + 'static,
-        Self: Sized,
-    {
-        self.chain_store.upsert_blocks(blocks)
-    }
-
-    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
-        self.chain_store.upsert_light_blocks(blocks)
-    }
-
-    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
-        self.chain_store.attempt_chain_head_update(ancestor_count)
-    }
-
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
-        self.chain_store.chain_head_updates()
-    }
-
-    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
-        self.chain_store.chain_head_ptr()
-    }
-
-    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
-        self.chain_store.blocks(hashes)
-    }
-
-    fn ancestor_block(
-        &self,
-        block_ptr: EthereumBlockPointer,
-        offset: u64,
-    ) -> Result<Option<EthereumBlock>, Error> {
-        self.chain_store.ancestor_block(block_ptr, offset)
-    }
-
-    fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
-        self.chain_store.cleanup_cached_blocks(ancestor_count)
-    }
-
-    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error> {
-        self.chain_store.block_hashes_by_block_number(number)
-    }
-
-    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error> {
-        self.chain_store.confirm_block_hash(number, hash)
-    }
-
-    fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
-        self.chain_store.block_number(block_hash)
+        let chain_store = self.block_store.chain_store(&site.network).ok_or_else(|| {
+            constraint_violation!(
+                "Subgraphs index a known network, but {} indexes `{}` which we do not know about. This is most likely a configuration error.",
+                site.deployment,
+                site.network
+            )
+        })?;
+        Ok(Arc::new(QueryStore::new(store, chain_store, site, replica)))
     }
 }

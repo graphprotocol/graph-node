@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use graph::components::store::ModificationsAndCache;
+use graph::components::store::{BlockStore, ModificationsAndCache};
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
 use graph::components::{
     ethereum::{triggers_in_block, EthereumNetworks},
@@ -187,10 +187,10 @@ impl SubgraphInstanceMetrics {
 
 impl SubgraphInstanceManager {
     /// Creates a new runtime manager.
-    pub fn new<B, S, C, M>(
+    pub fn new<B, S, BS, M>(
         logger_factory: &LoggerFactory,
         store: Arc<S>,
-        chain_stores: HashMap<String, Arc<C>>,
+        block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
@@ -198,7 +198,7 @@ impl SubgraphInstanceManager {
     ) -> Self
     where
         S: Store,
-        C: ChainStore,
+        BS: BlockStore,
         B: BlockStreamBuilder,
         M: MetricsRegistry,
     {
@@ -213,7 +213,7 @@ impl SubgraphInstanceManager {
             logger_factory,
             subgraph_receiver,
             store,
-            chain_stores,
+            block_store,
             eth_networks,
             host_builder,
             block_stream_builder,
@@ -227,18 +227,18 @@ impl SubgraphInstanceManager {
     }
 
     /// Handle incoming events from subgraph providers.
-    fn handle_subgraph_events<B, S, C, M>(
+    fn handle_subgraph_events<B, S, BS, M>(
         logger_factory: LoggerFactory,
         receiver: Receiver<SubgraphAssignmentProviderEvent>,
         store: Arc<S>,
-        chain_stores: HashMap<String, Arc<C>>,
+        block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
         host_builder: impl RuntimeHostBuilder,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
     ) where
         S: Store,
-        C: ChainStore,
+        BS: BlockStore,
         B: BlockStreamBuilder,
         M: MetricsRegistry,
     {
@@ -273,7 +273,7 @@ impl SubgraphInstanceManager {
                             host_builder.clone(),
                             block_stream_builder.clone(),
                             store.clone(),
-                            chain_stores.get(&network).cloned(),
+                            block_store.chain_store(&network),
                             &eth_networks,
                             manifest,
                             metrics_registry_for_subgraph.clone(),

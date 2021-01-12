@@ -20,6 +20,7 @@ extern crate serde;
 extern crate uuid;
 
 mod block_range;
+mod block_store;
 mod catalog;
 mod chain_head_listener;
 mod chain_store;
@@ -56,6 +57,7 @@ pub mod layout_for_tests {
     pub use crate::relational::*;
 }
 
+pub use self::block_store::BlockStore;
 pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::chain_store::ChainStore;
 pub use self::detail::DeploymentDetail;
