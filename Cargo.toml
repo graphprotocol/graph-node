@@ -21,4 +21,4 @@ members = [
 
 [patch.crates-io]
 # Include protection against stack overflow when parsing from this PR: https://github.com/graphql-rust/graphql-parser/commit/45167b53e9533c331298683577ba8df7e43480ac
-graphql-parser = {git="https://github.com/graphql-rust/graphql-parser", commit="45167b53e9533c331298683577ba8df7e43480ac"} 
+graphql-parser = {git="https://github.com/graphql-rust/graphql-parser", commit="45167b53e9533c331298683577ba8df7e43480ac"}

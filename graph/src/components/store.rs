@@ -1335,6 +1335,18 @@ impl Store for MockStore {
     }
 }
 
+pub trait BlockStore: Send + Sync + 'static {
+    type ChainStore: ChainStore;
+
+    fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
+}
+
+pub trait CallCache: Send + Sync + 'static {
+    type EthereumCallCache: EthereumCallCache;
+
+    fn ethereum_call_cache(&self, network: &str) -> Option<Arc<Self::EthereumCallCache>>;
+}
+
 /// Common trait for blockchain store implementations.
 #[automock]
 pub trait ChainStore: Send + Sync + 'static {

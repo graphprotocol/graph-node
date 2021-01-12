@@ -8,43 +8,41 @@ use graph::{
 };
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
-    ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
-    NetworkStore as DieselNetworkStore, Shard as ShardName, Store as DieselStore, SubgraphStore,
-    SubscriptionManager, PRIMARY_SHARD,
+    BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
+    ChainStore as DieselChainStore, NetworkStore as DieselNetworkStore, Shard as ShardName,
+    Store as DieselStore, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
 };
 
 use crate::config::{Config, Shard};
 
 pub struct StoreBuilder {
-    store: Arc<SubgraphStore>,
+    logger: Logger,
+    subgraph_store: Arc<SubgraphStore>,
     primary_pool: ConnectionPool,
-    chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
+    primary_shard: Shard,
     subscription_manager: Arc<SubscriptionManager>,
+    registry: Arc<dyn MetricsRegistry>,
 }
 
 impl StoreBuilder {
     pub fn new(logger: &Logger, config: &Config, registry: Arc<dyn MetricsRegistry>) -> Self {
-        let primary = config.primary_store();
+        let primary_shard = config.primary_store().clone();
 
         let subscription_manager = Arc::new(SubscriptionManager::new(
             logger.cheap_clone(),
-            primary.connection.to_owned(),
+            primary_shard.connection.to_owned(),
         ));
 
         let (store, primary_pool) =
             Self::make_sharded_store_and_primary_pool(logger, config, registry.cheap_clone());
 
-        let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-            &logger,
-            registry.cheap_clone(),
-            primary.connection.to_owned(),
-        ));
-
         Self {
-            store,
+            logger: logger.cheap_clone(),
+            subgraph_store: store,
             primary_pool,
-            chain_head_update_listener,
             subscription_manager,
+            primary_shard,
+            registry,
         }
     }
 
@@ -176,28 +174,46 @@ impl StoreBuilder {
         )
     }
 
-    /// Return a store that includes a `ChainStore` for the given network
+    /// Return a store that combines both a `Store` for subgraph data
+    /// and a `BlockStore` for all chain related data
     pub fn network_store(
-        &self,
-        network_name: String,
-        network_identifier: EthereumNetworkIdentifier,
+        self,
+        networks: Vec<(String, EthereumNetworkIdentifier)>,
     ) -> Arc<DieselNetworkStore> {
-        let chain_store = DieselChainStore::new(
-            network_name,
-            network_identifier,
-            self.chain_head_update_listener.cheap_clone(),
-            self.primary_pool.clone(),
-        );
-        Arc::new(DieselNetworkStore::new(
-            self.store.cheap_clone(),
-            Arc::new(chain_store),
-        ))
-    }
+        fn make_block_store(
+            pool: ConnectionPool,
+            chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
+            networks: Vec<(String, EthereumNetworkIdentifier)>,
+        ) -> Arc<DieselBlockStore> {
+            let chain_stores =
+                HashMap::from_iter(networks.into_iter().map(|(name, identifier)| {
+                    let chain_store = DieselChainStore::new(
+                        name.clone(),
+                        identifier,
+                        chain_head_update_listener.cheap_clone(),
+                        pool.clone(),
+                    );
+                    (name, Arc::new(chain_store))
+                }));
+            Arc::new(DieselBlockStore::new(chain_stores))
+        }
 
-    /// Return the store for subgraph and other storage; this store can
-    /// handle everything besides being a `ChainStore`
-    pub fn store(&self) -> Arc<SubgraphStore> {
-        self.store.cheap_clone()
+        let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
+            &self.logger,
+            self.registry.cheap_clone(),
+            self.primary_shard.connection.to_owned(),
+        ));
+
+        let block_store = make_block_store(
+            self.primary_pool.clone(),
+            chain_head_update_listener.cheap_clone(),
+            networks,
+        );
+
+        Arc::new(DieselNetworkStore::new(
+            self.subgraph_store.cheap_clone(),
+            block_store,
+        ))
     }
 
     pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {

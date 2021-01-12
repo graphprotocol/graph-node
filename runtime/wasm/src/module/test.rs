@@ -13,7 +13,7 @@ use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
 use graph_mock::MockMetricsRegistry;
-use test_store::STORE;
+use test_store::{NETWORK_NAME, STORE};
 
 use web3::types::{Address, H160};
 
@@ -24,7 +24,7 @@ mod abi;
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
-) -> (WasmInstance, Arc<impl Store + EthereumCallCache>) {
+) -> (WasmInstance, Arc<impl Store>) {
     test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
 }
 
@@ -32,8 +32,12 @@ fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
     timeout: Option<Duration>,
-) -> (WasmInstance, Arc<impl Store + EthereumCallCache>) {
+) -> (WasmInstance, Arc<impl Store>) {
     let store = STORE.clone();
+    let call_cache = store
+        .block_store()
+        .ethereum_call_cache(NETWORK_NAME)
+        .expect("call cache for test network");
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
     test_store::create_test_subgraph(
@@ -68,7 +72,7 @@ fn test_valid_module_and_store_with_timeout(
 
     let module = WasmInstance::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
-        mock_context(deployment_id, data_source, store.clone()),
+        mock_context(deployment_id, data_source, store.clone(), call_cache),
         host_metrics,
         timeout,
         experimental_features,
@@ -116,7 +120,8 @@ fn mock_data_source(path: &str) -> DataSource {
 fn mock_host_exports(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store + EthereumCallCache>,
+    store: Arc<impl Store>,
+    call_cache: Arc<impl EthereumCallCache>,
 ) -> HostExports {
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
@@ -158,8 +163,8 @@ fn mock_host_exports(
         Arc::new(graph_core::LinkResolver::from(
             ipfs_api::IpfsClient::default(),
         )),
-        store.clone(),
         store,
+        call_cache,
         arweave_adapter,
         three_box_adapter,
     )
@@ -168,7 +173,8 @@ fn mock_host_exports(
 fn mock_context(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store + EthereumCallCache>,
+    store: Arc<impl Store>,
+    call_cache: Arc<impl EthereumCallCache>,
 ) -> MappingContext {
     let mut block = LightEthereumBlock::default();
     block.hash = Some(Default::default());
@@ -176,7 +182,12 @@ fn mock_context(
     MappingContext {
         logger: test_store::LOGGER.clone(),
         block: Arc::new(block),
-        host_exports: Arc::new(mock_host_exports(subgraph_id, data_source, store.clone())),
+        host_exports: Arc::new(mock_host_exports(
+            subgraph_id,
+            data_source,
+            store.clone(),
+            call_cache,
+        )),
         state: BlockState::new(store, Default::default()),
         proof_of_indexing: None,
     }

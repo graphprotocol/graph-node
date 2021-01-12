@@ -1,5 +1,4 @@
 use std::cmp::PartialEq;
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -7,7 +6,7 @@ use async_trait::async_trait;
 use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
-use graph::ensure;
+use graph::{components::store::CallCache, ensure};
 use semver::{Version, VersionReq};
 use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
@@ -52,53 +51,60 @@ struct RuntimeHostConfig {
     templates: Arc<Vec<DataSourceTemplate>>,
 }
 
-pub struct RuntimeHostBuilder<S> {
+pub struct RuntimeHostBuilder<S, CC> {
     ethereum_networks: EthereumNetworks,
     link_resolver: Arc<dyn LinkResolver>,
-    stores: HashMap<String, Arc<S>>,
+    store: Arc<S>,
+    caches: Arc<CC>,
     arweave_adapter: Arc<dyn ArweaveAdapter>,
     three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
-impl<S> Clone for RuntimeHostBuilder<S>
+impl<S, CC> Clone for RuntimeHostBuilder<S, CC>
 where
     S: Store,
+    CC: CallCache,
 {
     fn clone(&self) -> Self {
         RuntimeHostBuilder {
             ethereum_networks: self.ethereum_networks.clone(),
             link_resolver: self.link_resolver.clone(),
-            stores: self.stores.clone(),
+            store: self.store.clone(),
+            caches: self.caches.clone(),
             arweave_adapter: self.arweave_adapter.cheap_clone(),
             three_box_adapter: self.three_box_adapter.cheap_clone(),
         }
     }
 }
 
-impl<S> RuntimeHostBuilder<S>
+impl<S, CC> RuntimeHostBuilder<S, CC>
 where
-    S: Store + EthereumCallCache,
+    S: Store,
+    CC: CallCache,
 {
     pub fn new(
         ethereum_networks: EthereumNetworks,
         link_resolver: Arc<dyn LinkResolver>,
-        stores: HashMap<String, Arc<S>>,
+        store: Arc<S>,
+        caches: Arc<CC>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         RuntimeHostBuilder {
             ethereum_networks,
             link_resolver,
-            stores,
+            store,
+            caches,
             arweave_adapter,
             three_box_adapter,
         }
     }
 }
 
-impl<S> RuntimeHostBuilderTrait for RuntimeHostBuilder<S>
+impl<S, CC> RuntimeHostBuilderTrait for RuntimeHostBuilder<S, CC>
 where
-    S: Send + Sync + 'static + Store + EthereumCallCache,
+    S: Store,
+    CC: CallCache,
 {
     type Host = RuntimeHost;
     type Req = MappingRequest;
@@ -134,12 +140,15 @@ where
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
-        let store = self.stores.get(&network_name).ok_or_else(|| {
-            anyhow!(
-                "No store found that matches subgraph network: \"{}\"",
-                &network_name
-            )
-        })?;
+        let cache = self
+            .caches
+            .ethereum_call_cache(&network_name)
+            .ok_or_else(|| {
+                anyhow!(
+                    "No store found that matches subgraph network: \"{}\"",
+                    &network_name
+                )
+            })?;
 
         let required_capabilities = data_source.mapping.required_capabilities();
 
@@ -150,8 +159,8 @@ where
         RuntimeHost::new(
             ethereum_adapter.clone(),
             self.link_resolver.clone(),
-            store.clone(),
-            store.clone(),
+            self.store.clone(),
+            cache,
             RuntimeHostConfig {
                 subgraph_id,
                 mapping: data_source.mapping,

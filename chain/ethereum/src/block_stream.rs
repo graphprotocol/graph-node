@@ -1,10 +1,11 @@
 use std::cmp;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::mem;
 use std::time::Duration;
 
-use graph::components::ethereum::{
-    blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities,
+use graph::components::{
+    ethereum::{blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities},
+    store::BlockStore,
 };
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
@@ -720,20 +721,20 @@ impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
     }
 }
 
-pub struct BlockStreamBuilder<S, C, M> {
+pub struct BlockStreamBuilder<S, B, M> {
     subgraph_store: Arc<S>,
-    chain_stores: HashMap<String, Arc<C>>,
+    block_store: Arc<B>,
     eth_networks: EthereumNetworks,
     node_id: NodeId,
     reorg_threshold: u64,
     metrics_registry: Arc<M>,
 }
 
-impl<S, C, M> Clone for BlockStreamBuilder<S, C, M> {
+impl<S, B, M> Clone for BlockStreamBuilder<S, B, M> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
-            chain_stores: self.chain_stores.clone(),
+            block_store: self.block_store.clone(),
             eth_networks: self.eth_networks.clone(),
             node_id: self.node_id.clone(),
             reorg_threshold: self.reorg_threshold,
@@ -742,15 +743,15 @@ impl<S, C, M> Clone for BlockStreamBuilder<S, C, M> {
     }
 }
 
-impl<S, C, M> BlockStreamBuilder<S, C, M>
+impl<S, B, M> BlockStreamBuilder<S, B, M>
 where
     S: Store,
-    C: ChainStore,
+    B: BlockStore,
     M: MetricsRegistry,
 {
     pub fn new(
         subgraph_store: Arc<S>,
-        chain_stores: HashMap<String, Arc<C>>,
+        block_store: Arc<B>,
         eth_networks: EthereumNetworks,
         node_id: NodeId,
         reorg_threshold: u64,
@@ -758,7 +759,7 @@ where
     ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
-            chain_stores,
+            block_store,
             eth_networks,
             node_id,
             reorg_threshold,
@@ -767,13 +768,13 @@ where
     }
 }
 
-impl<S, C, M> BlockStreamBuilderTrait for BlockStreamBuilder<S, C, M>
+impl<S, B, M> BlockStreamBuilderTrait for BlockStreamBuilder<S, B, M>
 where
     S: Store,
-    C: ChainStore,
+    B: BlockStore,
     M: MetricsRegistry,
 {
-    type Stream = BlockStream<S, C>;
+    type Stream = BlockStream<S, B::ChainStore>;
 
     fn build(
         &self,
@@ -792,8 +793,8 @@ where
         ));
 
         let chain_store = self
-            .chain_stores
-            .get(&network_name)
+            .block_store
+            .chain_store(&network_name)
             .expect(&format!(
                 "no store that supports network: {}",
                 &network_name

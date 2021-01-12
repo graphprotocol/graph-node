@@ -430,16 +430,19 @@ fn build_store() -> (
     std::thread::spawn(move || {
         STORE_RUNTIME.lock().unwrap().block_on(async {
             let builder = StoreBuilder::new(&*LOGGER, &config, registry);
+            let subscription_manager = builder.subscription_manager();
+            let primary_pool = builder.primary_pool();
+
             let net_identifiers = EthereumNetworkIdentifier {
                 net_version: NETWORK_VERSION.to_owned(),
                 genesis_block_hash: GENESIS_PTR.hash,
             };
 
             (
-                builder.network_store(NETWORK_NAME.to_string(), net_identifiers),
-                builder.primary_pool(),
+                builder.network_store(vec![(NETWORK_NAME.to_string(), net_identifiers)]),
+                primary_pool,
                 config,
-                builder.subscription_manager(),
+                subscription_manager,
             )
         })
     })

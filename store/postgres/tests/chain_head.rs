@@ -5,8 +5,12 @@ use futures::future::IntoFuture;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use graph::prelude::{Future01CompatExt, SubgraphDeploymentId};
-use graph::{components::store::ChainStore, prelude::QueryStoreManager};
+use graph::{
+    components::store::BlockStore as _,
+    prelude::{Future01CompatExt, SubgraphDeploymentId},
+};
+use graph::{components::store::ChainStore as _, prelude::QueryStoreManager};
+use graph_store_postgres::ChainStore as DieselChainStore;
 use graph_store_postgres::NetworkStore as DieselStore;
 
 use test_store::block_store::{
@@ -22,7 +26,7 @@ const ANCESTOR_COUNT: u64 = 3;
 /// Test harness for running database integration tests.
 fn run_test<R, F>(chain: Chain, test: F)
 where
-    F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
+    F: FnOnce(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + 'static,
     R: IntoFuture<Item = ()> + Send + 'static,
     R::Error: Send + Debug,
     R::Future: Send,
@@ -36,8 +40,13 @@ where
             // Seed database with test data
             block_store::insert(chain, NETWORK_NAME);
 
+            let chain_store = store
+                .block_store()
+                .chain_store(NETWORK_NAME)
+                .expect("chain store");
+
             // Run test
-            test(store)
+            test(chain_store, store)
                 .into_future()
                 .compat()
                 .await
@@ -56,7 +65,7 @@ fn check_chain_head_update(
     head_exp: Option<&'static FakeBlock>,
     missing: Option<&'static str>,
 ) {
-    run_test(chain, move |store| -> Result<(), ()> {
+    run_test(chain, move |store, _| -> Result<(), ()> {
         let missing_act: Vec<_> = store
             .attempt_chain_head_update(ANCESTOR_COUNT)
             .expect("attempt_chain_head_update failed")
@@ -154,10 +163,10 @@ fn block_number() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     let subgraph = SubgraphDeploymentId::new("nonExistentSubgraph").unwrap();
 
-    run_test(chain, move |store| -> Result<(), ()> {
+    run_test(chain, move |_, subgraph_store| -> Result<(), ()> {
         create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
 
-        let query_store = store.query_store(subgraph.into(), false).unwrap();
+        let query_store = subgraph_store.query_store(subgraph.into(), false).unwrap();
         let block = query_store
             .block_number(GENESIS_BLOCK.block_hash())
             .expect("Found genesis block");
@@ -185,7 +194,7 @@ fn block_hashes_by_number() {
         &*BLOCK_TWO,
         &*BLOCK_TWO_NO_PARENT,
     ];
-    run_test(chain, move |store| -> Result<(), ()> {
+    run_test(chain, move |store, _| -> Result<(), ()> {
         let hashes = store.block_hashes_by_block_number(1).unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
