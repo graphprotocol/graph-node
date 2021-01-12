@@ -9,14 +9,14 @@ use graph::{
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     ChainHeadUpdateListener as PostgresChainHeadUpdateListener, ChainStore as DieselChainStore,
-    NetworkStore as DieselNetworkStore, Shard as ShardName, ShardedStore, Store as DieselStore,
+    NetworkStore as DieselNetworkStore, Shard as ShardName, Store as DieselStore, SubgraphStore,
     SubscriptionManager, PRIMARY_SHARD,
 };
 
 use crate::config::{Config, Shard};
 
 pub struct StoreBuilder {
-    store: Arc<ShardedStore>,
+    store: Arc<SubgraphStore>,
     primary_pool: ConnectionPool,
     chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
     subscription_manager: Arc<SubscriptionManager>,
@@ -54,7 +54,7 @@ impl StoreBuilder {
         logger: &Logger,
         config: &Config,
         registry: Arc<dyn MetricsRegistry>,
-    ) -> (Arc<ShardedStore>, ConnectionPool) {
+    ) -> (Arc<SubgraphStore>, ConnectionPool) {
         let shards: Vec<_> = config
             .stores
             .iter()
@@ -71,7 +71,7 @@ impl StoreBuilder {
         let shard_map =
             HashMap::from_iter(shards.into_iter().map(|(name, shard, _)| (name, shard)));
 
-        let store = Arc::new(ShardedStore::new(
+        let store = Arc::new(SubgraphStore::new(
             shard_map,
             Arc::new(config.deployment.clone()),
         ));
@@ -86,7 +86,7 @@ impl StoreBuilder {
         logger: &Logger,
         config: &Config,
         registry: Arc<dyn MetricsRegistry>,
-    ) -> Arc<ShardedStore> {
+    ) -> Arc<SubgraphStore> {
         Self::make_sharded_store_and_primary_pool(logger, config, registry).0
     }
 
@@ -196,7 +196,7 @@ impl StoreBuilder {
 
     /// Return the store for subgraph and other storage; this store can
     /// handle everything besides being a `ChainStore`
-    pub fn store(&self) -> Arc<ShardedStore> {
+    pub fn store(&self) -> Arc<SubgraphStore> {
         self.store.cheap_clone()
     }
 

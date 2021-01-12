@@ -17,19 +17,19 @@ use graph::{
     },
 };
 
-use crate::{chain_store::ChainStore, query_store::QueryStore, ShardedStore};
+use crate::{chain_store::ChainStore, query_store::QueryStore, SubgraphStore};
 
 pub struct NetworkStore {
-    store: Arc<ShardedStore>,
+    store: Arc<SubgraphStore>,
     chain_store: Arc<ChainStore>,
 }
 
 impl NetworkStore {
-    pub fn new(store: Arc<ShardedStore>, chain_store: Arc<ChainStore>) -> Self {
+    pub fn new(store: Arc<SubgraphStore>, chain_store: Arc<ChainStore>) -> Self {
         Self { store, chain_store }
     }
 
-    pub fn store(&self) -> Arc<ShardedStore> {
+    pub fn store(&self) -> Arc<SubgraphStore> {
         self.store.cheap_clone()
     }
 

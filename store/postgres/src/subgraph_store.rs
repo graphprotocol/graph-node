@@ -99,7 +99,7 @@ pub mod unused {
 /// Multiplex store operations on subgraphs and deployments between a primary
 /// and any number of additional storage shards. See [this document](../../docs/sharded.md)
 /// for details on how storage is split up
-pub struct ShardedStore {
+pub struct SubgraphStore {
     primary: Arc<Store>,
     stores: HashMap<Shard, Arc<Store>>,
     /// Cache for the mapping from deployment id to shard/namespace/id
@@ -107,7 +107,7 @@ pub struct ShardedStore {
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
 }
 
-impl ShardedStore {
+impl SubgraphStore {
     pub fn new(
         stores: HashMap<Shard, Arc<Store>>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
@@ -480,7 +480,7 @@ impl ShardedStore {
 }
 
 #[async_trait::async_trait]
-impl StoreTrait for ShardedStore {
+impl StoreTrait for SubgraphStore {
     fn block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
         let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())
@@ -808,7 +808,7 @@ impl StoreTrait for ShardedStore {
     }
 }
 
-impl EthereumCallCache for ShardedStore {
+impl EthereumCallCache for SubgraphStore {
     fn get_call(
         &self,
         contract_address: Address,

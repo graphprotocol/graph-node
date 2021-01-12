@@ -37,10 +37,10 @@ mod primary;
 pub mod query_store;
 mod relational;
 mod relational_queries;
-mod sharded_store;
 mod sql_value;
 pub mod store;
 mod store_events;
+mod subgraph_store;
 
 #[cfg(debug_assertions)]
 pub mod db_schema_for_tests {
@@ -61,9 +61,9 @@ pub use self::chain_store::ChainStore;
 pub use self::detail::DeploymentDetail;
 pub use self::network_store::NetworkStore;
 pub use self::primary::UnusedDeployment;
-pub use self::sharded_store::{unused, DeploymentPlacer, Shard, ShardedStore, PRIMARY_SHARD};
 pub use self::store::{Store, StoreConfig};
 pub use self::store_events::SubscriptionManager;
+pub use self::subgraph_store::{unused, DeploymentPlacer, Shard, SubgraphStore, PRIMARY_SHARD};
 
 /// This module is only meant to support command line tooling. It must not
 /// be used in 'normal' graph-node code

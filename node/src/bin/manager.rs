@@ -12,7 +12,7 @@ use graph::{
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
-use graph_store_postgres::{connection_pool::ConnectionPool, ShardedStore, PRIMARY_SHARD};
+use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore, PRIMARY_SHARD};
 
 use crate::config::Config;
 use graph_node::manager::commands;
@@ -130,7 +130,7 @@ fn make_main_pool(logger: &Logger, config: &Config) -> ConnectionPool {
     )
 }
 
-fn make_store(logger: &Logger, config: &Config) -> Arc<ShardedStore> {
+fn make_store(logger: &Logger, config: &Config) -> Arc<SubgraphStore> {
     StoreBuilder::make_sharded_store(logger, config, make_registry(logger))
 }
 
