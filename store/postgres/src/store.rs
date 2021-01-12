@@ -130,12 +130,6 @@ fn initiate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConne
     }
 }
 
-/// Configuration for the Diesel/Postgres store.
-pub struct StoreConfig {
-    pub postgres_url: String,
-    pub network_name: String,
-}
-
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ReplicaId {
