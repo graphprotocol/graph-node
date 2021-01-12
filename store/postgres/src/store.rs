@@ -3,7 +3,6 @@ use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::{insert_into, update};
 use futures03::FutureExt as _;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
@@ -29,11 +28,11 @@ use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, ethabi, futures03, info, o, tiny_keccak, tokio, trace, web3, ApiSchema,
-    BlockNumber, CheapClone, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
-    EntityOrder, EntityQuery, EntityRange, Error, EthereumBlockPointer, EthereumCallCache, Logger,
-    MetadataOperation, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-    StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    anyhow, debug, futures03, info, o, tokio, web3, ApiSchema, BlockNumber, CheapClone,
+    DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification, EntityOrder, EntityQuery,
+    EntityRange, Error, EthereumBlockPointer, Logger, MetadataOperation, MetricsRegistry,
+    QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, SubgraphDeploymentId,
+    Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -1157,132 +1156,4 @@ impl Store {
         let conn = self.get_conn()?;
         deployment::error_count(&conn, id)
     }
-}
-
-impl EthereumCallCache for Store {
-    fn get_call(
-        &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
-        block: EthereumBlockPointer,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        use crate::db_schema::{eth_call_cache, eth_call_meta};
-        use diesel::dsl::sql;
-
-        let id = contract_call_id(&contract_address, encoded_call, &block);
-        let conn = &*self.get_conn()?;
-        if let Some(call_output) = conn.transaction::<_, Error, _>(|| {
-            if let Some((return_value, update_accessed_at)) = eth_call_cache::table
-                .find(id.as_ref())
-                .inner_join(eth_call_meta::table)
-                .select((
-                    eth_call_cache::return_value,
-                    sql("CURRENT_DATE > eth_call_meta.accessed_at"),
-                ))
-                .get_result(conn)
-                .optional()?
-            {
-                if update_accessed_at {
-                    update(eth_call_meta::table.find(contract_address.as_ref()))
-                        .set(eth_call_meta::accessed_at.eq(sql("CURRENT_DATE")))
-                        .execute(conn)?;
-                }
-                Ok(Some(return_value))
-            } else {
-                Ok(None)
-            }
-        })? {
-            Ok(Some(call_output))
-        } else {
-            // No entry with the new id format, try the old one.
-            let old_id = old_contract_call_id(&contract_address, &encoded_call, &block);
-            if let Some(return_value) = eth_call_cache::table
-                .find(old_id.as_ref())
-                .select(eth_call_cache::return_value)
-                .get_result::<Vec<u8>>(conn)
-                .optional()?
-            {
-                use crate::db_schema::eth_call_cache::dsl;
-
-                // Once we stop getting these logs, this code can be removed.
-                trace!(self.logger, "Updating eth call cache entry");
-
-                // Migrate to the new format by re-inserting the call and deleting the old entry.
-                self.set_call(contract_address, encoded_call, block, &return_value)?;
-                diesel::delete(eth_call_cache::table.filter(dsl::id.eq(old_id.as_ref())))
-                    .execute(conn)?;
-                Ok(Some(return_value))
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    fn set_call(
-        &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
-        block: EthereumBlockPointer,
-        return_value: &[u8],
-    ) -> Result<(), Error> {
-        use crate::db_schema::{eth_call_cache, eth_call_meta};
-        use diesel::dsl::sql;
-
-        let id = contract_call_id(&contract_address, encoded_call, &block);
-        let conn = &*self.get_conn()?;
-        conn.transaction(|| {
-            insert_into(eth_call_cache::table)
-                .values((
-                    eth_call_cache::id.eq(id.as_ref()),
-                    eth_call_cache::contract_address.eq(contract_address.as_ref()),
-                    eth_call_cache::block_number.eq(block.number as i32),
-                    eth_call_cache::return_value.eq(return_value),
-                ))
-                .on_conflict_do_nothing()
-                .execute(conn)?;
-
-            let accessed_at = eth_call_meta::accessed_at.eq(sql("CURRENT_DATE"));
-            insert_into(eth_call_meta::table)
-                .values((
-                    eth_call_meta::contract_address.eq(contract_address.as_ref()),
-                    accessed_at.clone(),
-                ))
-                .on_conflict(eth_call_meta::contract_address)
-                .do_update()
-                .set(accessed_at)
-                .execute(conn)
-                .map(|_| ())
-                .map_err(Error::from)
-        })
-    }
-}
-
-/// Deprecated format for the contract call id.
-fn old_contract_call_id(
-    contract_address: &ethabi::Address,
-    encoded_call: &[u8],
-    block: &EthereumBlockPointer,
-) -> [u8; 16] {
-    let mut id = [0; 16];
-    let mut hash = tiny_keccak::Keccak::new_shake128();
-    hash.update(contract_address.as_ref());
-    hash.update(encoded_call);
-    hash.update(block.hash.as_ref());
-    hash.finalize(&mut id);
-    id
-}
-
-/// The id is the hashed encoded_call + contract_address + block hash to uniquely identify the call.
-/// 256 bits of output, and therefore 128 bits of security against collisions, are needed since this
-/// could be targeted by a birthday attack.
-fn contract_call_id(
-    contract_address: &ethabi::Address,
-    encoded_call: &[u8],
-    block: &EthereumBlockPointer,
-) -> [u8; 32] {
-    let mut hash = blake3::Hasher::new();
-    hash.update(encoded_call);
-    hash.update(contract_address.as_ref());
-    hash.update(block.hash.as_ref());
-    *hash.finalize().as_bytes()
 }

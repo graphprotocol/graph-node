@@ -300,7 +300,8 @@ impl EthereumCallCache for NetworkStore {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
     ) -> Result<Option<Vec<u8>>, Error> {
-        self.store.get_call(contract_address, encoded_call, block)
+        self.chain_store
+            .get_call(contract_address, encoded_call, block)
     }
 
     fn set_call(
@@ -310,7 +311,7 @@ impl EthereumCallCache for NetworkStore {
         block: EthereumBlockPointer,
         return_value: &[u8],
     ) -> Result<(), Error> {
-        self.store
+        self.chain_store
             .set_call(contract_address, encoded_call, block, return_value)
     }
 }

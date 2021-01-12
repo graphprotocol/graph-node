@@ -17,8 +17,8 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         lazy_static, web3::types::Address, ApiSchema, DeploymentState, DynTryFuture, Entity,
-        EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, EthereumCallCache,
-        Logger, MetadataOperation, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
+        EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
+        MetadataOperation, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
         Store as StoreTrait, StoreError, SubgraphDeploymentId, SubgraphName,
         SubgraphVersionSwitchingMode,
     },
@@ -805,28 +805,6 @@ impl StoreTrait for SubgraphStore {
         let primary = self.primary_conn()?;
 
         primary.versions_for_subgraph_id(subgraph_id)
-    }
-}
-
-impl EthereumCallCache for SubgraphStore {
-    fn get_call(
-        &self,
-        contract_address: Address,
-        encoded_call: &[u8],
-        block: EthereumBlockPointer,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        self.primary.get_call(contract_address, encoded_call, block)
-    }
-
-    fn set_call(
-        &self,
-        contract_address: Address,
-        encoded_call: &[u8],
-        block: EthereumBlockPointer,
-        return_value: &[u8],
-    ) -> Result<(), Error> {
-        self.primary
-            .set_call(contract_address, encoded_call, block, return_value)
     }
 }
 
