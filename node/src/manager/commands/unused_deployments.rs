@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use graph::prelude::{anyhow::anyhow, anyhow::Error, SubgraphDeploymentId};
-use graph_store_postgres::{unused, ShardedStore, UnusedDeployment};
+use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
 
 use crate::manager::display::List;
 
@@ -29,7 +29,7 @@ fn add_row(list: &mut List, deployment: UnusedDeployment) {
     ])
 }
 
-pub fn list(store: Arc<ShardedStore>, existing: bool) -> Result<(), Error> {
+pub fn list(store: Arc<SubgraphStore>, existing: bool) -> Result<(), Error> {
     let mut list = make_list();
 
     let filter = if existing {
@@ -51,7 +51,7 @@ pub fn list(store: Arc<ShardedStore>, existing: bool) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn record(store: Arc<ShardedStore>) -> Result<(), Error> {
+pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
     let mut list = make_list();
 
     println!("Recording unused deployments. This might take a while.");
@@ -70,7 +70,7 @@ pub fn record(store: Arc<ShardedStore>) -> Result<(), Error> {
 }
 
 pub fn remove(
-    store: Arc<ShardedStore>,
+    store: Arc<SubgraphStore>,
     count: usize,
     deployment: Option<String>,
 ) -> Result<(), Error> {

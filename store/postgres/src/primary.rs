@@ -43,7 +43,7 @@ use crate::{
     block_range::UNVERSIONED_RANGE,
     detail::DeploymentDetail,
     notification_listener::JsonNotification,
-    sharded_store::{unused, Shard},
+    subgraph_store::{unused, Shard},
 };
 
 #[cfg(debug_assertions)]
