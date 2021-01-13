@@ -3,14 +3,14 @@ use futures::future::FutureResult;
 use std::collections::BTreeSet;
 
 fn check_subgraph_exists(
-    store: Arc<dyn NetworkStore>,
+    store: Arc<dyn Store>,
     subgraph_id: SubgraphDeploymentId,
 ) -> impl Future<Item = bool, Error = Error> {
     future::result(store.is_deployed(&subgraph_id))
 }
 
 fn create_subgraph(
-    store: Arc<dyn NetworkStore>,
+    store: Arc<dyn Store>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
@@ -50,7 +50,7 @@ pub fn ensure_subgraph_exists(
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
-    store: Arc<dyn NetworkStore>,
+    store: Arc<dyn Store>,
     start_block: Option<EthereumBlockPointer>,
     network_name: String,
 ) -> impl Future<Item = (), Error = Error> {
