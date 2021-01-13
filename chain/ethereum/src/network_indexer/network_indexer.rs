@@ -81,7 +81,7 @@ macro_rules! track_future {
 
 fn ensure_subgraph(
     logger: Logger,
-    store: Arc<dyn NetworkStore>,
+    store: Arc<dyn Store>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
     start_block: Option<EthereumBlockPointer>,
@@ -447,7 +447,7 @@ fn update_chain_and_local_head_metrics(
 pub struct Context {
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
-    store: Arc<dyn NetworkStore>,
+    store: Arc<dyn Store>,
     metrics: Arc<NetworkIndexerMetrics>,
     block_writer: Arc<BlockWriter>,
     event_sink: Sender<NetworkIndexerEvent>,
@@ -1121,7 +1121,7 @@ impl NetworkIndexer {
         network_name: String,
     ) -> Self
     where
-        S: Store + ChainStore,
+        S: Store,
     {
         // Create a subgraph name and ID
         let id_str = format!(
