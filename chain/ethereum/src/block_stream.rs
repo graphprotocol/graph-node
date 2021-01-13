@@ -10,6 +10,7 @@ use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
 };
 
+#[cfg(debug_assertions)]
 use fail::fail_point;
 
 lazy_static! {
@@ -833,6 +834,7 @@ where
 
 // This always returns `false` in a normal build. A test may configure reorg by enabling
 // "test_reorg" fail point with the number of the block that should be reorged.
+#[cfg(debug_assertions)]
 fn test_reorg(ptr: EthereumBlockPointer) -> bool {
     fail_point!("test_reorg", |reorg_at| {
         use std::str::FromStr;
