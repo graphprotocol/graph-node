@@ -67,29 +67,34 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 
     TokenStream::from(quote! {
         impl#impl_generics AscType for #struct_name#ty_generics #where_clause {
-            fn to_asc_bytes(&self) -> Vec<u8> {
+            fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                let mut bytes = Vec::new();
-                #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes());)*
+                #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes()?);)*
 
                 // Assert that the struct has no padding.
                 assert_eq!(bytes.len(), size_of::<Self>());
-                bytes
+                Ok(bytes)
             }
 
             #[allow(unused_variables)]
-            fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-                assert_eq!(asc_obj.len(), size_of::<Self>());
+            fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+                if asc_obj.len() != size_of::<Self>() {
+                    return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
+                }
                 let mut offset = 0;
 
                 #(
                 let field_size = std::mem::size_of::<#field_types>();
-                let #field_names2 = AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)]);
+                let field_data = asc_obj.get(offset..(offset + field_size)).ok_or_else(|| {
+                    DeterministicHostError(anyhow!("Attempted to read past end of array"))
+                })?;
+                let #field_names2 = AscType::from_asc_bytes(&field_data)?;
                 offset += field_size;
                 )*
 
-                Self {
+                Ok(Self {
                     #(#field_names3,)*
-                }
+                })
             }
         }
     })
@@ -109,7 +114,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //
 // Example output:
 // impl AscType for JsonValueKind {
-//     fn to_asc_bytes(&self) -> Vec<u8> {
+//     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
 //         let discriminant: u32 = match *self {
 //             JsonValueKind::Null => 0u32,
 //             JsonValueKind::Bool => 1u32,
@@ -118,11 +123,14 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //             JsonValueKind::Array => 4u32,
 //             JsonValueKind::Object => 5u32,
 //         };
-//         discriminant.to_asc_bytes()
+//         Ok(discriminant.to_asc_bytes())
 //     }
 //
-//     fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+//     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
 //         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
+//         if std::mem::size_of_val(&u32_bytes) != std::mem::size_of_val(&as_obj) {
+//             return Err(DeterministicHostError(anyhow::anyhow!("Invalid asc bytes size")));
+//         }
 //         u32_bytes.copy_from_slice(&asc_obj);
 //         let discr = u32::from_le_bytes(u32_bytes);
 //         match discr {
@@ -132,7 +140,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //             3u32 => JsonValueKind::String,
 //             4u32 => JsonValueKind::Array,
 //             5u32 => JsonValueKind::Object,
-//             _ => panic!("value {} is out of range for {}", discr, "JsonValueKind"),
+//             _ => Err(DeterministicHostError(anyhow::anyhow!("value {} is out of range for {}", discr, "JsonValueKind")),
 //         }
 //     }
 // }
@@ -155,20 +163,20 @@ fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
 
     TokenStream::from(quote! {
         impl#impl_generics AscType for #enum_name#ty_generics #where_clause {
-            fn to_asc_bytes(&self) -> Vec<u8> {
+            fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                 let discriminant: u32 = match *self {
                     #(#enum_name_iter::#variant_paths => #variant_discriminant,)*
                 };
                 discriminant.to_asc_bytes()
             }
 
-            fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-                let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
-                u32_bytes.copy_from_slice(&asc_obj);
+            fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+                let u32_bytes = ::std::convert::TryFrom::try_from(asc_obj)
+                    .map_err(|_| DeterministicHostError(anyhow::anyhow!("Invalid asc bytes size")))?;
                 let discr = u32::from_le_bytes(u32_bytes);
                 match discr {
-                    #(#variant_discriminant2 => #enum_name_iter2::#variant_paths2,)*
-                    _ => panic!("value {} is out of range for {}", discr, stringify!(#enum_name))
+                    #(#variant_discriminant2 => Ok(#enum_name_iter2::#variant_paths2),)*
+                    _ => Err(DeterministicHostError(anyhow::anyhow!("value {} is out of range for {}", discr, stringify!(#enum_name))))
                 }
             }
         }

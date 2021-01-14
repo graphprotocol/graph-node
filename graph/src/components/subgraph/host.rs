@@ -1,6 +1,7 @@
 use std::cmp::PartialEq;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -129,14 +130,40 @@ impl HostMetrics {
 
     pub fn observe_handler_execution_time(&self, duration: f64, handler: &str) {
         self.handler_execution_time
-            .with_label_values(vec![handler].as_slice())
+            .with_label_values(&[handler][..])
             .observe(duration);
     }
 
     pub fn observe_host_fn_execution_time(&self, duration: f64, fn_name: &str) {
         self.host_fn_execution_time
-            .with_label_values(vec![fn_name].as_slice())
+            .with_label_values(&[fn_name][..])
             .observe(duration);
+    }
+
+    pub fn time_host_fn_execution_region(
+        self: Arc<HostMetrics>,
+        fn_name: &'static str,
+    ) -> HostFnExecutionTimer {
+        HostFnExecutionTimer {
+            start: Instant::now(),
+            metrics: self,
+            fn_name,
+        }
+    }
+}
+
+#[must_use]
+pub struct HostFnExecutionTimer {
+    start: Instant,
+    metrics: Arc<HostMetrics>,
+    fn_name: &'static str,
+}
+
+impl Drop for HostFnExecutionTimer {
+    fn drop(&mut self) {
+        let elapsed = (Instant::now() - self.start).as_secs_f64();
+        self.metrics
+            .observe_host_fn_execution_time(elapsed, self.fn_name)
     }
 }
 

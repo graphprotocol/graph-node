@@ -1,4 +1,4 @@
-use crate::module::WasmInstance;
+use crate::module::{ExperimentalFeatures, WasmInstance};
 use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
@@ -20,7 +20,7 @@ pub fn spawn_module(
     host_metrics: Arc<HostMetrics>,
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
-    allow_non_deterministic_ipfs: bool,
+    experimental_features: ExperimentalFeatures,
 ) -> Result<mpsc::Sender<MappingRequest>, anyhow::Error> {
     let valid_module = Arc::new(ValidModule::new(&raw_module)?);
 
@@ -51,11 +51,11 @@ pub fn spawn_module(
                     // Start the WASM module runtime.
                     let section = host_metrics.stopwatch.start_section("module_init");
                     let module = WasmInstance::from_valid_module_with_ctx(
-                        valid_module.clone(),
+                        valid_module.cheap_clone(),
                         ctx,
-                        host_metrics.clone(),
+                        host_metrics.cheap_clone(),
                         timeout,
-                        allow_non_deterministic_ipfs,
+                        experimental_features.clone(),
                     )?;
                     section.end();
 

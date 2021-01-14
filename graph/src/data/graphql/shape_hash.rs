@@ -1,5 +1,5 @@
 //! Calculate a hash for a GraphQL query that reflects the shape of
-//! the query. The shape hash will be the same for two instancs of a query
+//! the query. The shape hash will be the same for two instances of a query
 //! that are deemed identical except for unimportant details. Those details
 //! are any values used with filters, and any differences in the query
 //! name or response keys

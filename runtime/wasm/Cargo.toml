@@ -20,10 +20,9 @@ strum = "0.20.0"
 strum_macros = "0.20.1"
 bytes = "0.5"
 anyhow = "1.0"
-
 wasmtime = "0.21.0"
-
 defer = "0.1"
+never = "0.1"
 
 [dev-dependencies]
 graphql-parser = "0.3"

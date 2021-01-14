@@ -25,8 +25,8 @@ use graph::prelude::{
 use graph::util;
 use web3::types::{Log, Transaction};
 
-use crate::host_exports::HostExports;
 use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
+use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 
 lazy_static! {
     static ref TIMEOUT: Option<Duration> = std::env::var("GRAPH_MAPPING_HANDLER_TIMEOUT")
@@ -35,6 +35,10 @@ lazy_static! {
         .map(Duration::from_secs);
     static ref ALLOW_NON_DETERMINISTIC_IPFS: bool =
         std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_IPFS").is_ok();
+    static ref ALLOW_NON_DETERMINISTIC_3BOX: bool =
+        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_3BOX").is_ok();
+    static ref ALLOW_NON_DETERMINISTIC_ARWEAVE: bool =
+        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_ARWEAVE").is_ok();
 }
 
 struct RuntimeHostConfig {
@@ -105,6 +109,11 @@ where
         subgraph_id: SubgraphDeploymentId,
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
+        let experimental_features = ExperimentalFeatures {
+            allow_non_deterministic_arweave: *ALLOW_NON_DETERMINISTIC_ARWEAVE,
+            allow_non_deterministic_3box: *ALLOW_NON_DETERMINISTIC_3BOX,
+            allow_non_deterministic_ipfs: *ALLOW_NON_DETERMINISTIC_IPFS,
+        };
         crate::mapping::spawn_module(
             raw_module,
             logger,
@@ -112,7 +121,7 @@ where
             metrics,
             tokio::runtime::Handle::current(),
             *TIMEOUT,
-            *ALLOW_NON_DETERMINISTIC_IPFS,
+            experimental_features,
         )
     }
 
