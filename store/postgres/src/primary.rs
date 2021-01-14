@@ -113,7 +113,7 @@ table! {
         shard -> Text,
         /// The subgraph layout scheme used for this subgraph
         version -> crate::primary::DeploymentSchemaVersionMapping,
-        network -> Nullable<Text>,
+        network -> Text,
     }
 }
 
@@ -163,7 +163,7 @@ struct Schema {
     /// The version currently in use. Always `Relational`, attempts to load
     /// schemas from the database with `Split` produce an error
     version: DeploymentSchemaVersion,
-    pub network: Option<String>,
+    pub network: String,
 }
 
 #[derive(Clone, Queryable, QueryableByName, Debug)]
