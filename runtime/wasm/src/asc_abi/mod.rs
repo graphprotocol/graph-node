@@ -6,7 +6,9 @@
 //! Implementations of `To`/`FromAscObj` live in the `to_from` module.
 
 pub use self::asc_ptr::AscPtr;
+use crate::error::DeterministicHostError;
 use graph::prelude::anyhow;
+use std::convert::TryInto;
 use std::mem::size_of;
 
 pub mod asc_ptr;
@@ -23,61 +25,64 @@ compile_error!("big-endian targets are currently unsupported");
 /// The implementor must provide the direct Asc interface with `raw_new` and `get`.
 pub trait AscHeap: Sized {
     /// Allocate new space and write `bytes`, return the allocated address.
-    fn raw_new(&mut self, bytes: &[u8]) -> u32;
+    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError>;
 
-    fn get(&self, offset: u32, size: u32) -> Vec<u8>;
+    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError>;
 
-    /// Instatiate `rust_obj` as an Asc object of class `C`.
+    /// Instantiate `rust_obj` as an Asc object of class `C`.
     /// Returns a pointer to the Asc heap.
     ///
     /// This operation is expensive as it requires a call to `raw_new` for every
     /// nested object.
-    fn asc_new<C, T: ?Sized>(&mut self, rust_obj: &T) -> AscPtr<C>
+    fn asc_new<C, T: ?Sized>(&mut self, rust_obj: &T) -> Result<AscPtr<C>, DeterministicHostError>
     where
         C: AscType,
         T: ToAscObj<C>,
     {
-        AscPtr::alloc_obj(&rust_obj.to_asc_obj(self), self)
+        let obj = rust_obj.to_asc_obj(self)?;
+        AscPtr::alloc_obj(&obj, self)
     }
 
     ///  Read the rust representation of an Asc object of class `C`.
     ///
     ///  This operation is expensive as it requires a call to `get` for every
     ///  nested object.
-    fn asc_get<T, C>(&self, asc_ptr: AscPtr<C>) -> T
+    fn asc_get<T, C>(&self, asc_ptr: AscPtr<C>) -> Result<T, DeterministicHostError>
     where
         C: AscType,
         T: FromAscObj<C>,
     {
-        T::from_asc_obj(asc_ptr.read_ptr(self), self)
+        T::from_asc_obj(asc_ptr.read_ptr(self)?, self)
     }
 
-    fn try_asc_get<T, C>(&self, asc_ptr: AscPtr<C>) -> Result<T, anyhow::Error>
+    fn try_asc_get<T, C>(&self, asc_ptr: AscPtr<C>) -> Result<T, DeterministicHostError>
     where
         C: AscType,
         T: TryFromAscObj<C>,
     {
-        T::try_from_asc_obj(asc_ptr.read_ptr(self), self)
+        T::try_from_asc_obj(asc_ptr.read_ptr(self)?, self)
     }
 }
 
 /// Type that can be converted to an Asc object of class `C`.
 pub trait ToAscObj<C: AscType> {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> C;
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Result<C, DeterministicHostError>;
 }
 
 /// Type that can be converted from an Asc object of class `C`.
 pub trait FromAscObj<C: AscType> {
-    fn from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Self;
+    fn from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Result<Self, DeterministicHostError>
+    where
+        Self: Sized;
 }
 
 pub trait TryFromAscObj<C: AscType>: Sized {
-    fn try_from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Result<Self, anyhow::Error>;
+    fn try_from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Result<Self, DeterministicHostError>;
 }
 
 // `AscType` is not really public, implementors should live inside the `class` module.
 
-/// A type that has a direct corespondence to an Asc type.
+/// A type that has a direct correspondence to an Asc type.
 ///
 /// This can be derived for structs that are `#[repr(C)]`, contain no padding
 /// and whose fields are all `AscValue`. Enums can derive if they are `#[repr(u32)]`.
@@ -88,14 +93,14 @@ pub trait TryFromAscObj<C: AscType>: Sized {
 pub trait AscType: Sized {
     /// Transform the Rust representation of this instance into an sequence of
     /// bytes that is precisely the memory layout of a corresponding Asc instance.
-    fn to_asc_bytes(&self) -> Vec<u8>;
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError>;
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self;
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError>;
 
     /// Size of the corresponding Asc instance in bytes.
-    fn asc_size<H: AscHeap>(_ptr: AscPtr<Self>, _heap: &H) -> u32 {
-        size_of::<Self>() as u32
+    fn asc_size<H: AscHeap>(_ptr: AscPtr<Self>, _heap: &H) -> Result<u32, DeterministicHostError> {
+        Ok(size_of::<Self>() as u32)
     }
 }
 
@@ -107,138 +112,49 @@ pub trait AscType: Sized {
 pub trait AscValue: AscType + Copy + Default {}
 
 impl AscType for bool {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        vec![*self as u8]
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        Ok(vec![*self as u8])
     }
 
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        asc_obj[0] != 0
-    }
-}
-
-impl AscType for i8 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        vec![*self as u8]
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        asc_obj[0] as i8
-    }
-}
-
-impl AscType for i16 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        Self::from_le_bytes([asc_obj[0], asc_obj[1]])
-    }
-}
-
-impl AscType for i32 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        Self::from_le_bytes([asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3]])
-    }
-}
-
-impl AscType for i64 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        Self::from_le_bytes([
-            asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3], asc_obj[4], asc_obj[5], asc_obj[6],
-            asc_obj[7],
-        ])
-    }
-}
-
-impl AscType for u8 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        vec![*self]
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        asc_obj[0]
-    }
-}
-
-impl AscType for u16 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        Self::from_le_bytes([asc_obj[0], asc_obj[1]])
-    }
-}
-
-impl AscType for u32 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        Self::from_le_bytes([asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3]])
-    }
-}
-
-impl AscType for u64 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        assert_eq!(asc_obj.len(), size_of::<Self>());
-        Self::from_le_bytes([
-            asc_obj[0], asc_obj[1], asc_obj[2], asc_obj[3], asc_obj[4], asc_obj[5], asc_obj[6],
-            asc_obj[7],
-        ])
-    }
-}
-
-impl AscType for f32 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_bits().to_asc_bytes()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        Self::from_bits(u32::from_asc_bytes(asc_obj))
-    }
-}
-
-impl AscType for f64 {
-    fn to_asc_bytes(&self) -> Vec<u8> {
-        self.to_bits().to_asc_bytes()
-    }
-
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        Self::from_bits(u64::from_asc_bytes(asc_obj))
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+        if asc_obj.len() != 1 {
+            Err(DeterministicHostError(anyhow::anyhow!(
+                "Incorrect size for bool. Expected 1, got {},",
+                asc_obj.len()
+            )))
+        } else {
+            Ok(asc_obj[0] != 0)
+        }
     }
 }
 
 impl AscValue for bool {}
-impl AscValue for i8 {}
-impl AscValue for i16 {}
-impl AscValue for i32 {}
-impl AscValue for i64 {}
-impl AscValue for u8 {}
-impl AscValue for u16 {}
-impl AscValue for u32 {}
-impl AscValue for u64 {}
-impl AscValue for f32 {}
-impl AscValue for f64 {}
+
+macro_rules! impl_asc_type {
+    ($($T:ty),*) => {
+        $(
+            impl AscType for $T {
+                fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+                    Ok(self.to_le_bytes().to_vec())
+                }
+
+                fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+                    let bytes = asc_obj.try_into().map_err(|_| {
+                        DeterministicHostError(anyhow::anyhow!(
+                            "Incorrect size for {}. Expected {}, got {},",
+                            stringify!($T),
+                            size_of::<Self>(),
+                            asc_obj.len()
+                        ))
+                    })?;
+
+                    Ok(Self::from_le_bytes(bytes))
+                }
+            }
+
+            impl AscValue for $T {}
+        )*
+    };
+}
+
+impl_asc_type!(u8, u16, u32, u64, i8, i32, i64, f32, f64);

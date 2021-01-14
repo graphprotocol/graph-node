@@ -1,9 +1,12 @@
 use super::{AscHeap, AscPtr, AscType, AscValue};
+use crate::error::DeterministicHostError;
+use anyhow::anyhow;
 use ethabi;
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::slog;
 use graph_runtime_derive::AscType;
+use std::convert::TryInto as _;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 
@@ -25,48 +28,47 @@ pub(crate) struct ArrayBuffer<T> {
 }
 
 impl<T: AscValue> ArrayBuffer<T> {
-    fn new(values: &[T]) -> Self {
-        let content = values
-            .iter()
-            .map(AscType::to_asc_bytes)
+    fn new(values: &[T]) -> Result<Self, DeterministicHostError> {
+        let mut content = Vec::new();
+        for value in values {
+            let asc_bytes = value.to_asc_bytes()?;
             // An `AscValue` has size equal to alignment, no padding required.
-            .fold(vec![], |mut bytes, value| {
-                bytes.extend(value);
-                bytes
-            });
+            content.extend(&asc_bytes);
+        }
 
-        assert!(
-            content.len() <= u32::max_value() as usize,
-            "slice cannot fit in WASM memory"
-        );
-        let byte_length = content.len() as u32;
-
-        ArrayBuffer {
-            byte_length,
+        if content.len() > u32::max_value() as usize {
+            return Err(DeterministicHostError(anyhow::anyhow!(
+                "slice cannot fit in WASM memory"
+            )));
+        }
+        Ok(ArrayBuffer {
+            byte_length: content.len() as u32,
             padding: [0; 4],
             content: content.into(),
             ty: PhantomData,
-        }
+        })
     }
 
     /// Read `length` elements of type `T` starting at `byte_offset`.
     ///
     /// Panics if that tries to read beyond the length of `self.content`.
-    fn get(&self, byte_offset: u32, length: u32) -> Vec<T> {
+    fn get(&self, byte_offset: u32, length: u32) -> Result<Vec<T>, DeterministicHostError> {
         let length = length as usize;
         let byte_offset = byte_offset as usize;
-        self.content[byte_offset..]
-            .chunks(size_of::<T>())
-            .take(length)
-            .fold(vec![], |mut values, bytes| {
-                values.push(T::from_asc_bytes(bytes));
-                values
-            })
+        let range = byte_offset..byte_offset + length * size_of::<T>();
+        self.content
+            .get(range)
+            .ok_or_else(|| {
+                DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
+            })?
+            .chunks_exact(size_of::<T>())
+            .map(|bytes| T::from_asc_bytes(bytes))
+            .collect()
     }
 }
 
 impl<T> AscType for ArrayBuffer<T> {
-    fn to_asc_bytes(&self) -> Vec<u8> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
@@ -79,29 +81,35 @@ impl<T> AscType for ArrayBuffer<T> {
         let total_size = self.byte_length as usize + header_size;
         let total_capacity = total_size.next_power_of_two();
         let extra_capacity = total_capacity - total_size;
-        asc_layout.extend(vec![0; extra_capacity]);
+        asc_layout.extend(std::iter::repeat(0).take(extra_capacity));
         assert_eq!(asc_layout.len(), total_capacity);
 
-        asc_layout
+        Ok(asc_layout)
     }
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
         // Skip `byte_length` and the padding.
         let content_offset = size_of::<u32>() + 4;
-        ArrayBuffer {
-            byte_length: u32::from_asc_bytes(&asc_obj[..size_of::<u32>()]),
+        let byte_length = asc_obj.get(..size_of::<u32>()).ok_or_else(|| {
+            DeterministicHostError(anyhow!("Attempted to read past end of array"))
+        })?;
+        let content = asc_obj.get(content_offset..).ok_or_else(|| {
+            DeterministicHostError(anyhow!("Attempted to read past end of array"))
+        })?;
+        Ok(ArrayBuffer {
+            byte_length: u32::from_asc_bytes(&byte_length)?,
             padding: [0; 4],
-            content: asc_obj[content_offset..].to_vec().into(),
+            content: content.to_vec().into(),
             ty: PhantomData,
-        }
+        })
     }
 
-    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> u32 {
-        let byte_length = ptr.read_u32(heap);
+    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
+        let byte_length = ptr.read_u32(heap)?;
         let byte_length_size = size_of::<u32>() as u32;
         let padding_size = size_of::<u32>() as u32;
-        byte_length_size + padding_size + byte_length
+        Ok(byte_length_size + padding_size + byte_length)
     }
 }
 
@@ -119,18 +127,21 @@ pub(crate) struct TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub(crate) fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Self {
-        let buffer = ArrayBuffer::new(content);
-        TypedArray {
-            buffer: AscPtr::alloc_obj(&buffer, heap),
+    pub(crate) fn new<H: AscHeap>(
+        content: &[T],
+        heap: &mut H,
+    ) -> Result<Self, DeterministicHostError> {
+        let buffer = ArrayBuffer::new(content)?;
+        Ok(TypedArray {
+            buffer: AscPtr::alloc_obj(&buffer, heap)?,
             byte_offset: 0,
             byte_length: buffer.byte_length,
-        }
+        })
     }
 
-    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Vec<T> {
+    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Result<Vec<T>, DeterministicHostError> {
         self.buffer
-            .read_ptr(heap)
+            .read_ptr(heap)?
             .get(self.byte_offset, self.byte_length / size_of::<T>() as u32)
     }
 }
@@ -148,21 +159,22 @@ pub(crate) struct AscString {
 }
 
 impl AscString {
-    pub fn new(content: &[u16]) -> Self {
-        assert!(
-            size_of_val(content) <= u32::max_value() as usize,
-            "string cannot fit in WASM memory"
-        );
+    pub fn new(content: &[u16]) -> Result<Self, DeterministicHostError> {
+        if size_of_val(content) > u32::max_value() as usize {
+            return Err(DeterministicHostError(anyhow!(
+                "string cannot fit in WASM memory"
+            )));
+        }
 
-        AscString {
+        Ok(AscString {
             length: content.len() as u32,
             content: content.into(),
-        }
+        })
     }
 }
 
 impl AscType for AscString {
-    fn to_asc_bytes(&self) -> Vec<u8> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let length: [u8; 4] = self.length.to_le_bytes();
@@ -176,20 +188,50 @@ impl AscType for AscString {
             asc_layout.push(high_byte);
         }
 
-        asc_layout
+        Ok(asc_layout)
     }
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
         // Pointer for our current position within `asc_obj`,
         // initially at the start of the content skipping `length`.
-        let mut offset = size_of::<u32>();
+        let mut offset = size_of::<i32>();
+
+        let length = asc_obj
+            .get(..offset)
+            .ok_or(DeterministicHostError(anyhow::anyhow!(
+                "String bytes not long enough to contain length"
+            )))?;
+
+        // Does not panic - already validated slice length == size_of::<i32>.
+        let length = i32::from_le_bytes(length.try_into().unwrap());
+        if length.checked_mul(2).and_then(|l| l.checked_add(4)) != asc_obj.len().try_into().ok() {
+            return Err(DeterministicHostError(anyhow::anyhow!(
+                "String length header does not equal byte length"
+            )));
+        }
+
+        // Prevents panic when accessing offset + 1 in the loop
+        if asc_obj.len() % 2 != 0 {
+            return Err(DeterministicHostError(anyhow::anyhow!(
+                "Invalid string length"
+            )));
+        }
+
+        // UTF-16 (used in assemblyscript) always uses one
+        // pair of bytes per code unit.
+        // https://mathiasbynens.be/notes/javascript-encoding
+        // UTF-16 (16-bit Unicode Transformation Format) is an
+        // extension of UCS-2 that allows representing code points
+        // outside the BMP. It produces a variable-length result
+        // of either one or two 16-bit code units per code point.
+        // This way, it can encode code points in the range from 0
+        // to 0x10FFFF.
 
         // Read the content.
         let mut content = Vec::new();
         while offset < asc_obj.len() {
             let code_point_bytes = [asc_obj[offset], asc_obj[offset + 1]];
-
             let code_point = u16::from_le_bytes(code_point_bytes);
             content.push(code_point);
             offset += size_of::<u16>();
@@ -197,11 +239,15 @@ impl AscType for AscString {
         AscString::new(&content)
     }
 
-    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> u32 {
-        let length = ptr.read_u32(heap);
+    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
+        let length = ptr.read_u32(heap)?;
         let length_size = size_of::<u32>() as u32;
         let code_point_size = size_of::<u16>() as u32;
-        length_size + code_point_size * length
+        let data_size = code_point_size.checked_mul(length);
+        let total_size = data_size.and_then(|d| d.checked_add(length_size));
+        total_size.ok_or_else(|| {
+            DeterministicHostError(anyhow::anyhow!("Overflowed when getting size of string"))
+        })
     }
 }
 
@@ -215,16 +261,16 @@ pub(crate) struct Array<T> {
 }
 
 impl<T: AscValue> Array<T> {
-    pub fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Self {
-        Array {
-            buffer: AscPtr::alloc_obj(&ArrayBuffer::new(content), heap),
+    pub fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Result<Self, DeterministicHostError> {
+        Ok(Array {
+            buffer: AscPtr::alloc_obj(&ArrayBuffer::new(content)?, heap)?,
             // If this cast would overflow, the above line has already panicked.
             length: content.len() as u32,
-        }
+        })
     }
 
-    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Vec<T> {
-        self.buffer.read_ptr(heap).get(0, self.length)
+    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Result<Vec<T>, DeterministicHostError> {
+        self.buffer.read_ptr(heap)?.get(0, self.length)
     }
 }
 
@@ -234,12 +280,12 @@ impl<T: AscValue> Array<T> {
 pub(crate) struct EnumPayload(pub u64);
 
 impl AscType for EnumPayload {
-    fn to_asc_bytes(&self) -> Vec<u8> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8]) -> Self {
-        EnumPayload(u64::from_asc_bytes(asc_obj))
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+        Ok(EnumPayload(u64::from_asc_bytes(asc_obj)?))
     }
 }
 

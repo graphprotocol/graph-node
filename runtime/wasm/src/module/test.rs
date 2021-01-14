@@ -60,12 +60,18 @@ fn test_valid_module_and_store_with_timeout(
         stopwatch_metrics,
     ));
 
+    let experimental_features = ExperimentalFeatures {
+        allow_non_deterministic_ipfs: true,
+        allow_non_deterministic_arweave: true,
+        allow_non_deterministic_3box: true,
+    };
+
     let module = WasmInstance::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(deployment_id, data_source, store.clone()),
         host_metrics,
         timeout,
-        true,
+        experimental_features,
     )
     .unwrap();
 
@@ -220,27 +226,27 @@ async fn json_conversions() {
 
     // test u64 conversion
     let number = 9223372036850770800;
-    let number_ptr = module.asc_new(&number.to_string());
+    let number_ptr = module.asc_new(&number.to_string()).unwrap();
     let converted: i64 = module.takes_ptr_returns_val("testToU64", number_ptr);
     assert_eq!(number, u64::from_le_bytes(converted.to_le_bytes()));
 
     // test i64 conversion
     let number = -9223372036850770800;
-    let number_ptr = module.asc_new(&number.to_string());
+    let number_ptr = module.asc_new(&number.to_string()).unwrap();
     let converted: i64 = module.takes_ptr_returns_val("testToI64", number_ptr);
     assert_eq!(number, converted);
 
     // test f64 conversion
     let number = -9223372036850770.92345034;
-    let number_ptr = module.asc_new(&number.to_string());
+    let number_ptr = module.asc_new(&number.to_string()).unwrap();
     let converted: f64 = module.takes_ptr_returns_val("testToF64", number_ptr);
     assert_eq!(number, converted);
 
     // test BigInt conversion
     let number = "-922337203685077092345034";
-    let number_ptr = module.asc_new(number);
+    let number_ptr = module.asc_new(number).unwrap();
     let big_int_obj: AscPtr<AscBigInt> = module.invoke_export("testToBigInt", number_ptr);
-    let bytes: Vec<u8> = module.asc_get(big_int_obj);
+    let bytes: Vec<u8> = module.asc_get(big_int_obj).unwrap();
     assert_eq!(
         scalar::BigInt::from_str(number).unwrap(),
         scalar::BigInt::from_signed_bytes_le(&bytes)
@@ -257,17 +263,17 @@ async fn json_parsing() {
     // Parse invalid JSON and handle the error gracefully
     let s = "foo"; // Invalid because there are no quotes around `foo`
     let bytes: &[u8] = s.as_ref();
-    let bytes_ptr = module.asc_new(bytes);
+    let bytes_ptr = module.asc_new(bytes).unwrap();
     let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
-    let output: String = module.asc_get(return_value);
+    let output: String = module.asc_get(return_value).unwrap();
     assert_eq!(output, "ERROR: true");
 
     // Parse valid JSON and get it back
     let s = "\"foo\""; // Valid because there are quotes around `foo`
     let bytes: &[u8] = s.as_ref();
-    let bytes_ptr = module.asc_new(bytes);
+    let bytes_ptr = module.asc_new(bytes).unwrap();
     let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
-    let output: String = module.asc_get(return_value);
+    let output: String = module.asc_get(return_value).unwrap();
     assert_eq!(output, "OK: foo");
 }
 
@@ -282,9 +288,9 @@ async fn ipfs_cat() {
     std::thread::spawn(move || {
         runtime.enter(|| {
             let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
-            let arg = module.asc_new(&hash);
+            let arg = module.asc_new(&hash).unwrap();
             let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-            let data: String = module.instance_ctx().asc_get(converted);
+            let data: String = module.instance_ctx().asc_get(converted).unwrap();
             assert_eq!(data, "42");
         })
     })
@@ -338,8 +344,8 @@ async fn ipfs_map() {
                     subgraph_id,
                     mock_data_source("wasm_test/ipfs_map.wasm"),
                 );
-                let value = module.asc_new(&hash);
-                let user_data = module.asc_new(USER_DATA);
+                let value = module.asc_new(&hash).unwrap();
+                let user_data = module.asc_new(USER_DATA).unwrap();
 
                 // Invoke the callback
                 let func = module.get_func("ipfsMap").get2().unwrap();
@@ -429,7 +435,7 @@ async fn ipfs_fail() {
         runtime.enter(|| {
             let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
-            let hash = module.asc_new("invalid hash");
+            let hash = module.asc_new("invalid hash").unwrap();
             assert!(module
                 .invoke_export::<_, AscString>("ipfsCat", hash,)
                 .is_null());
@@ -443,10 +449,10 @@ async fn ipfs_fail() {
 async fn crypto_keccak256() {
     let mut module = test_module("cryptoKeccak256", mock_data_source("wasm_test/crypto.wasm"));
     let input: &[u8] = "eth".as_ref();
-    let input: AscPtr<Uint8Array> = module.asc_new(input);
+    let input: AscPtr<Uint8Array> = module.asc_new(input).unwrap();
 
     let hash: AscPtr<Uint8Array> = module.invoke_export("hash", input);
-    let hash: Vec<u8> = module.asc_get(hash);
+    let hash: Vec<u8> = module.asc_get(hash).unwrap();
     assert_eq!(
         hex::encode(hash),
         "4f5b812789fc606be1b3b16908db13fc7a9adf7ca72641f84d75b47069d3d7f0"
@@ -462,23 +468,23 @@ async fn big_int_to_hex() {
 
     // Convert zero to hex
     let zero = BigInt::from_unsigned_u256(&U256::zero());
-    let zero: AscPtr<AscBigInt> = module.asc_new(&zero);
+    let zero: AscPtr<AscBigInt> = module.asc_new(&zero).unwrap();
     let zero_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", zero);
-    let zero_hex_str: String = module.asc_get(zero_hex_ptr);
+    let zero_hex_str: String = module.asc_get(zero_hex_ptr).unwrap();
     assert_eq!(zero_hex_str, "0x0");
 
     // Convert 1 to hex
     let one = BigInt::from_unsigned_u256(&U256::one());
-    let one: AscPtr<AscBigInt> = module.asc_new(&one);
+    let one: AscPtr<AscBigInt> = module.asc_new(&one).unwrap();
     let one_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", one);
-    let one_hex_str: String = module.asc_get(one_hex_ptr);
+    let one_hex_str: String = module.asc_get(one_hex_ptr).unwrap();
     assert_eq!(one_hex_str, "0x1");
 
     // Convert U256::max_value() to hex
     let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
-    let u256_max: AscPtr<AscBigInt> = module.asc_new(&u256_max);
+    let u256_max: AscPtr<AscBigInt> = module.asc_new(&u256_max).unwrap();
     let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", u256_max);
-    let u256_max_hex_str: String = module.asc_get(u256_max_hex_ptr);
+    let u256_max_hex_str: String = module.asc_get(u256_max_hex_ptr).unwrap();
     assert_eq!(
         u256_max_hex_str,
         "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
@@ -494,56 +500,56 @@ async fn big_int_arithmetic() {
 
     // 0 + 1 = 1
     let zero = BigInt::from(0);
-    let zero: AscPtr<AscBigInt> = module.asc_new(&zero);
+    let zero: AscPtr<AscBigInt> = module.asc_new(&zero).unwrap();
     let one = BigInt::from(1);
-    let one: AscPtr<AscBigInt> = module.asc_new(&one);
+    let one: AscPtr<AscBigInt> = module.asc_new(&one).unwrap();
     let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
-    let result: BigInt = module.asc_get(result_ptr);
+    let result: BigInt = module.asc_get(result_ptr).unwrap();
     assert_eq!(result, BigInt::from(1));
 
     // 127 + 1 = 128
     let zero = BigInt::from(127);
-    let zero: AscPtr<AscBigInt> = module.asc_new(&zero);
+    let zero: AscPtr<AscBigInt> = module.asc_new(&zero).unwrap();
     let one = BigInt::from(1);
-    let one: AscPtr<AscBigInt> = module.asc_new(&one);
+    let one: AscPtr<AscBigInt> = module.asc_new(&one).unwrap();
     let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
-    let result: BigInt = module.asc_get(result_ptr);
+    let result: BigInt = module.asc_get(result_ptr).unwrap();
     assert_eq!(result, BigInt::from(128));
 
     // 5 - 10 = -5
     let five = BigInt::from(5);
-    let five: AscPtr<AscBigInt> = module.asc_new(&five);
+    let five: AscPtr<AscBigInt> = module.asc_new(&five).unwrap();
     let ten = BigInt::from(10);
-    let ten: AscPtr<AscBigInt> = module.asc_new(&ten);
+    let ten: AscPtr<AscBigInt> = module.asc_new(&ten).unwrap();
     let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("minus", five, ten);
-    let result: BigInt = module.asc_get(result_ptr);
+    let result: BigInt = module.asc_get(result_ptr).unwrap();
     assert_eq!(result, BigInt::from(-5));
 
     // -20 * 5 = -100
     let minus_twenty = BigInt::from(-20);
-    let minus_twenty: AscPtr<AscBigInt> = module.asc_new(&minus_twenty);
+    let minus_twenty: AscPtr<AscBigInt> = module.asc_new(&minus_twenty).unwrap();
     let five = BigInt::from(5);
-    let five: AscPtr<AscBigInt> = module.asc_new(&five);
+    let five: AscPtr<AscBigInt> = module.asc_new(&five).unwrap();
     let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("times", minus_twenty, five);
-    let result: BigInt = module.asc_get(result_ptr);
+    let result: BigInt = module.asc_get(result_ptr).unwrap();
     assert_eq!(result, BigInt::from(-100));
 
     // 5 / 2 = 2
     let five = BigInt::from(5);
-    let five: AscPtr<AscBigInt> = module.asc_new(&five);
+    let five: AscPtr<AscBigInt> = module.asc_new(&five).unwrap();
     let two = BigInt::from(2);
-    let two: AscPtr<AscBigInt> = module.asc_new(&two);
+    let two: AscPtr<AscBigInt> = module.asc_new(&two).unwrap();
     let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("dividedBy", five, two);
-    let result: BigInt = module.asc_get(result_ptr);
+    let result: BigInt = module.asc_get(result_ptr).unwrap();
     assert_eq!(result, BigInt::from(2));
 
     // 5 % 2 = 1
     let five = BigInt::from(5);
-    let five: AscPtr<AscBigInt> = module.asc_new(&five);
+    let five: AscPtr<AscBigInt> = module.asc_new(&five).unwrap();
     let two = BigInt::from(2);
-    let two: AscPtr<AscBigInt> = module.asc_new(&two);
+    let two: AscPtr<AscBigInt> = module.asc_new(&two).unwrap();
     let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("mod", five, two);
-    let result: BigInt = module.asc_get(result_ptr);
+    let result: BigInt = module.asc_get(result_ptr).unwrap();
     assert_eq!(result, BigInt::from(1));
 }
 
@@ -566,9 +572,9 @@ async fn bytes_to_base58() {
     );
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
-    let bytes_ptr = module.asc_new(bytes.as_slice());
+    let bytes_ptr = module.asc_new(bytes.as_slice()).unwrap();
     let result_ptr: AscPtr<AscString> = module.invoke_export("bytes_to_base58", bytes_ptr);
-    let base58: String = module.asc_get(result_ptr);
+    let base58: String = module.asc_get(result_ptr).unwrap();
     assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
 }
 
@@ -582,8 +588,8 @@ async fn data_source_create() {
             mock_data_source("wasm_test/data_source_create.wasm"),
         );
 
-        let name = module.asc_new(&name);
-        let params = module.asc_new(&*params);
+        let name = module.asc_new(&name).unwrap();
+        let params = module.asc_new(&*params).unwrap();
         module.instance_ctx_mut().ctx.state.enter_handler();
         module.invoke_export2_void("dataSourceCreate", name, params)?;
         module.instance_ctx_mut().ctx.state.exit_handler();
@@ -623,12 +629,12 @@ async fn ens_name_by_hash() {
     let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
     let name = "dealdrafts";
     test_store::insert_ens_name(hash, name);
-    let val = module.asc_new(hash);
+    let val = module.asc_new(hash).unwrap();
     let converted: AscPtr<AscString> = module.invoke_export("nameByHash", val);
-    let data: String = module.asc_get(converted);
+    let data: String = module.asc_get(converted).unwrap();
     assert_eq!(data, name);
 
-    let hash = module.asc_new("impossible keccak hash");
+    let hash = module.asc_new("impossible keccak hash").unwrap();
     assert!(module
         .invoke_export::<_, AscString>("nameByHash", hash)
         .is_null());
@@ -654,7 +660,7 @@ async fn entity_store() {
     .unwrap();
 
     let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
-        let id = module.asc_new(id);
+        let id = module.asc_new(id).unwrap();
         let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
         if entity_ptr.is_null() {
             None
@@ -668,8 +674,8 @@ async fn entity_store() {
     };
 
     let load_and_set_user_name = |module: &mut WasmInstance, id: &str, name: &str| {
-        let id_ptr = module.asc_new(id);
-        let name_ptr = module.asc_new(name);
+        let id_ptr = module.asc_new(id).unwrap();
+        let name_ptr = module.asc_new(name).unwrap();
         module
             .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
             .unwrap();
