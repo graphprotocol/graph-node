@@ -237,6 +237,8 @@ pub struct Site {
     pub shard: Shard,
     /// The database namespace (schema) that holds the data for the deployment
     pub namespace: Namespace,
+    /// The name of the network to which this deployment belongs
+    pub network: String,
 }
 
 impl TryFrom<Schema> for Site {
@@ -257,6 +259,7 @@ impl TryFrom<Schema> for Site {
             deployment,
             namespace,
             shard,
+            network: schema.network,
         })
     }
 }
@@ -630,7 +633,7 @@ impl Connection {
         &self,
         shard: Shard,
         subgraph: &SubgraphDeploymentId,
-        network_name: &str,
+        network: String,
     ) -> Result<Site, StoreError> {
         use deployment_schemas as ds;
         use DeploymentSchemaVersion as v;
@@ -647,7 +650,7 @@ impl Connection {
                 ds::subgraph.eq(subgraph.as_str()),
                 ds::shard.eq(shard.as_str()),
                 ds::version.eq(v::Relational),
-                ds::network.eq(network_name),
+                ds::network.eq(network.as_str()),
             ))
             .returning(ds::name)
             .get_results(conn)?;
@@ -663,6 +666,7 @@ impl Connection {
             deployment: subgraph.clone(),
             namespace,
             shard,
+            network,
         })
     }
 

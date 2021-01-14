@@ -224,7 +224,7 @@ impl ShardedStore {
         // TODO: Check this for behavior on failure
         let site = self
             .primary_conn()?
-            .allocate_site(shard.clone(), &schema.id, &network_name)?;
+            .allocate_site(shard.clone(), &schema.id, network_name)?;
 
         let graft_site = deployment
             .graft_base
