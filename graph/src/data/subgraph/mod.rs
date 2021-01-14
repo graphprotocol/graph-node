@@ -17,7 +17,8 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
 
-use crate::components::store::{Store, StoreError};
+use crate::components::link_resolver::LinkResolver;
+use crate::components::store::{StoreError, SubgraphStore};
 use crate::components::subgraph::DataSourceTemplateInfo;
 use crate::data::graphql::TryFromValue;
 use crate::data::query::QueryExecutionError;
@@ -29,7 +30,7 @@ use crate::data::subgraph::schema::{
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity,
 };
-use crate::{components::link_resolver::LinkResolver, prelude::CheapClone};
+use crate::prelude::CheapClone;
 
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
 use crate::util::ethereum::string_to_h256;
@@ -887,7 +888,7 @@ pub struct Graft {
 }
 
 impl Graft {
-    fn validate<S: Store>(&self, store: Arc<S>) -> Vec<SubgraphManifestValidationError> {
+    fn validate<S: SubgraphStore>(&self, store: Arc<S>) -> Vec<SubgraphManifestValidationError> {
         fn gbi(msg: String) -> Vec<SubgraphManifestValidationError> {
             vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
         }
@@ -960,7 +961,7 @@ impl UnvalidatedSubgraphManifest {
         ))
     }
 
-    pub fn validate<S: Store>(
+    pub fn validate<S: SubgraphStore>(
         self,
         store: Arc<S>,
     ) -> Result<

@@ -11,7 +11,7 @@ use graph::{
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
-    prelude::{CheapClone, NodeId, Store as _, SubgraphDeploymentId},
+    prelude::{CheapClone, NodeId, SubgraphDeploymentId, SubgraphStore as _},
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::NetworkStore;

@@ -51,7 +51,7 @@ impl<Q, S> IndexNodeServer<Q, S> {
 impl<Q, S> IndexNodeServerTrait for IndexNodeServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: Store,
+    S: SubgraphStore,
 {
     type ServeError = IndexNodeServeError;
 

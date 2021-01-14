@@ -83,6 +83,6 @@ impl fmt::Display for BlockWithOmmers {
     }
 }
 
-pub trait NetworkStore: Store + ChainStore {}
+pub trait NetworkStore: SubgraphStore + ChainStore {}
 
-impl<S: Store + ChainStore> NetworkStore for S {}
+impl<S: SubgraphStore + ChainStore> NetworkStore for S {}

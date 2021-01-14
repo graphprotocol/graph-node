@@ -18,7 +18,7 @@ pub struct SubscriptionServer<Q, S> {
 impl<Q, S> SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: Store,
+    S: SubgraphStore,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         SubscriptionServer {
@@ -32,7 +32,10 @@ where
         store: Arc<S>,
         path: &str,
     ) -> Result<Option<SubgraphDeploymentId>, Error> {
-        fn id_from_name<S: Store>(store: Arc<S>, name: String) -> Option<SubgraphDeploymentId> {
+        fn id_from_name<S: SubgraphStore>(
+            store: Arc<S>,
+            name: String,
+        ) -> Option<SubgraphDeploymentId> {
             SubgraphName::new(name)
                 .ok()
                 .map(|subgraph_name| store.deployment_state_from_name(subgraph_name))
@@ -71,7 +74,7 @@ where
 impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: Store,
+    S: SubgraphStore,
 {
     async fn serve(self, port: u16) {
         info!(

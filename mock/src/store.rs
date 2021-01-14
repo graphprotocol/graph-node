@@ -55,7 +55,7 @@ mock! {
 }
 
 #[async_trait]
-impl Store for MockStore {
+impl SubgraphStore for MockStore {
     fn block_ptr(
         &self,
         _subgraph_id: &SubgraphDeploymentId,

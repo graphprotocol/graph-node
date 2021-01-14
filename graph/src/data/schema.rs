@@ -1,4 +1,4 @@
-use crate::components::store::Store;
+use crate::components::store::SubgraphStore;
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::store::ValueType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
@@ -325,7 +325,10 @@ impl SchemaReference {
         SchemaReference { subgraph }
     }
 
-    pub fn resolve<S: Store>(&self, store: Arc<S>) -> Result<Arc<Schema>, SchemaImportError> {
+    pub fn resolve<S: SubgraphStore>(
+        &self,
+        store: Arc<S>,
+    ) -> Result<Arc<Schema>, SchemaImportError> {
         store
             .input_schema(&self.subgraph)
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
@@ -423,7 +426,7 @@ impl Schema {
         }
     }
 
-    pub fn resolve_schema_references<S: Store>(
+    pub fn resolve_schema_references<S: SubgraphStore>(
         &self,
         store: Arc<S>,
     ) -> (
@@ -436,7 +439,7 @@ impl Schema {
         (schemas, import_errors)
     }
 
-    fn resolve_import_graph<S: Store>(
+    fn resolve_import_graph<S: SubgraphStore>(
         &self,
         store: Arc<S>,
         schemas: &mut HashMap<SchemaReference, Arc<Schema>>,

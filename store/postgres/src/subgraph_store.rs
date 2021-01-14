@@ -18,8 +18,8 @@ use graph::{
     prelude::{
         lazy_static, web3::types::Address, ApiSchema, DeploymentState, DynTryFuture, Entity,
         EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
-        MetadataOperation, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
-        Store as StoreTrait, StoreError, SubgraphDeploymentId, SubgraphName,
+        MetadataOperation, NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+        SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
         SubgraphVersionSwitchingMode,
     },
 };
@@ -480,7 +480,7 @@ impl SubgraphStore {
 }
 
 #[async_trait::async_trait]
-impl StoreTrait for SubgraphStore {
+impl SubgraphStoreTrait for SubgraphStore {
     fn block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
         let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())

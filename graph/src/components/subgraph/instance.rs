@@ -31,7 +31,10 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    pub fn new(store: Arc<dyn Store>, lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
+    pub fn new(
+        store: Arc<dyn SubgraphStore>,
+        lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    ) -> Self {
         BlockState {
             entity_cache: EntityCache::with_current(store, lfu_cache),
             deterministic_errors: Vec::new(),

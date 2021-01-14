@@ -41,7 +41,7 @@ impl<Q, S> CheapClone for IndexNodeService<Q, S> {}
 impl<Q, S> IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
-    S: Store,
+    S: SubgraphStore,
 {
     /// Creates a new GraphQL service.
     pub fn new(logger: Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
@@ -199,7 +199,7 @@ where
 impl<Q, S> Service<Request<Body>> for IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
-    S: Store,
+    S: SubgraphStore,
 {
     type Response = Response<Body>;
     type Error = GraphQLServerError;
