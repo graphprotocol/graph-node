@@ -113,6 +113,7 @@ table! {
         shard -> Text,
         /// The subgraph layout scheme used for this subgraph
         version -> crate::primary::DeploymentSchemaVersionMapping,
+        network -> Nullable<Text>,
     }
 }
 
@@ -162,6 +163,7 @@ struct Schema {
     /// The version currently in use. Always `Relational`, attempts to load
     /// schemas from the database with `Split` produce an error
     version: DeploymentSchemaVersion,
+    pub network: Option<String>,
 }
 
 #[derive(Clone, Queryable, QueryableByName, Debug)]
@@ -603,6 +605,7 @@ impl Connection {
         &self,
         shard: Shard,
         subgraph: &SubgraphDeploymentId,
+        network_name: &str,
     ) -> Result<Site, StoreError> {
         use deployment_schemas as ds;
         use DeploymentSchemaVersion as v;
@@ -619,6 +622,7 @@ impl Connection {
                 ds::subgraph.eq(subgraph.as_str()),
                 ds::shard.eq(shard.as_str()),
                 ds::version.eq(v::Relational),
+                ds::network.eq(network_name),
             ))
             .returning(ds::name)
             .get_results(conn)?;

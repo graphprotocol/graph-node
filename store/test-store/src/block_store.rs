@@ -101,6 +101,8 @@ pub fn remove() {
     use db_schema::ethereum_blocks as b;
     use db_schema::ethereum_networks as n;
 
+    crate::store::remove_subgraphs();
+
     let conn = super::PRIMARY_POOL
         .get()
         .expect("Failed to connect to Postgres");
