@@ -258,7 +258,7 @@ async fn main() {
             let generic_network_store = network_stores.values().next().unwrap().clone();
             let graphql_runner = Arc::new(GraphQlRunner::new(
                 &logger,
-                generic_network_store,
+                generic_network_store.clone(),
                 store_builder.subscription_manager(),
                 load_manager,
             ));
@@ -350,6 +350,7 @@ async fn main() {
 
             let subgraph_instance_manager = SubgraphInstanceManager::new(
                 &logger_factory,
+                generic_network_store,
                 network_stores.clone(),
                 eth_networks.clone(),
                 runtime_host_builder,
