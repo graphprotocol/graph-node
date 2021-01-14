@@ -14,7 +14,7 @@ use graph::prelude::{
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
@@ -37,7 +37,7 @@ use graph::prelude::{
 };
 
 use graph_graphql::prelude::api_schema;
-use web3::types::{Address, H256};
+use web3::types::Address;
 
 use crate::primary::Site;
 use crate::relational::{Layout, METADATA_LAYOUT};
@@ -1101,44 +1101,6 @@ impl Store {
         })
         .await?;
         Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn block_number(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-        hash: H256,
-    ) -> Result<Option<BlockNumber>, StoreError> {
-        use crate::db_schema::ethereum_blocks::dsl;
-
-        // We should also really check that the block with the given hash is
-        // on the chain starting at the subgraph's current head. That check is
-        // very expensive though with the data structures we have currently
-        // available. Ideally, we'd have the last REORG_THRESHOLD blocks in
-        // memory so that we can check against them, and then mark in the
-        // database the blocks on the main chain that we consider final
-        let block: Option<(i64, String)> = dsl::ethereum_blocks
-            .select((dsl::number, dsl::network_name))
-            .filter(dsl::hash.eq(format!("{:x}", hash)))
-            .first(&*self.get_conn()?)
-            .optional()?;
-        let subgraph_network = self.subgraph_info(subgraph_id)?.network;
-        block
-            .map(|(number, network_name)| {
-                if subgraph_network.is_none() || Some(&network_name) == subgraph_network.as_ref() {
-                    BlockNumber::try_from(number)
-                        .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
-                } else {
-                    Err(StoreError::QueryExecutionError(format!(
-                        "subgraph {} belongs to network {} but block {:x} belongs to network {}",
-                        subgraph_id,
-                        subgraph_network.unwrap_or("(none)".to_owned()),
-                        hash,
-                        network_name
-                    )))
-                }
-            })
-            .transpose()
     }
 
     pub(crate) fn replica_for_query(
