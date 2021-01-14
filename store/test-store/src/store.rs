@@ -4,7 +4,7 @@ use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
-use graph::prelude::{QueryStoreManager as _, Store as _, *};
+use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::{components::store::EntityType, prelude::NodeId};
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,

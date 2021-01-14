@@ -43,7 +43,7 @@ pub struct BlockWriter {
     logger: Logger,
 
     /// Store that manages the network subgraph.
-    store: Arc<dyn Store>,
+    store: Arc<dyn SubgraphStore>,
 
     /// Metrics for analyzing the block writer performance.
     metrics: Arc<BlockWriterMetrics>,
@@ -54,7 +54,7 @@ impl BlockWriter {
     pub fn new(
         subgraph_id: SubgraphDeploymentId,
         logger: &Logger,
-        store: Arc<dyn Store>,
+        store: Arc<dyn SubgraphStore>,
         stopwatch: StopwatchMetrics,
         metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
@@ -97,7 +97,7 @@ impl BlockWriter {
 struct WriteContext {
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
-    store: Arc<dyn Store>,
+    store: Arc<dyn SubgraphStore>,
     cache: EntityCache,
     metrics: Arc<BlockWriterMetrics>,
 }

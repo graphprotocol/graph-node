@@ -14,7 +14,7 @@ use tiny_keccak::keccak256;
 
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
-use graph::components::store::Store;
+use graph::components::store::SubgraphStore;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::subgraph::{Mapping, Source};
@@ -62,7 +62,7 @@ pub struct RuntimeHostBuilder<S, CC> {
 
 impl<S, CC> Clone for RuntimeHostBuilder<S, CC>
 where
-    S: Store,
+    S: SubgraphStore,
     CC: CallCache,
 {
     fn clone(&self) -> Self {
@@ -79,7 +79,7 @@ where
 
 impl<S, CC> RuntimeHostBuilder<S, CC>
 where
-    S: Store,
+    S: SubgraphStore,
     CC: CallCache,
 {
     pub fn new(
@@ -103,7 +103,7 @@ where
 
 impl<S, CC> RuntimeHostBuilderTrait for RuntimeHostBuilder<S, CC>
 where
-    S: Store,
+    S: SubgraphStore,
     CC: CallCache,
 {
     type Host = RuntimeHost;

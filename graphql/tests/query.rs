@@ -20,8 +20,8 @@ use graph::{
         o, q, serde_json, slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
         FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
         QueryExecutionError, QueryLoadManager, QueryResult, QueryStoreManager, QueryVariables,
-        Schema, Store, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest,
-        SubgraphName, SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
+        Schema, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphName,
+        SubgraphStore, SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
     },
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
@@ -102,7 +102,7 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
     .expect("Test schema invalid")
 }
 
-fn insert_test_entities(store: &impl Store, manifest: SubgraphManifest) {
+fn insert_test_entities(store: &impl SubgraphStore, manifest: SubgraphManifest) {
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
     let name = SubgraphName::new("test/query").unwrap();
     let node_id = NodeId::new("test").unwrap();

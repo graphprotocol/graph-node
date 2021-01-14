@@ -5,6 +5,7 @@ use graph::{
         server::index_node::VersionInfo,
         store::{
             BlockStore as BlockStoreTrait, EntityType, QueryStoreManager, StoredDynamicDataSource,
+            SubgraphStore as SubgraphStoreTrait,
         },
     },
     constraint_violation,
@@ -12,8 +13,8 @@ use graph::{
     data::subgraph::status,
     prelude::{
         web3::types::Address, CheapClone, Error, EthereumBlockPointer, NodeId, QueryExecutionError,
-        QueryStore as QueryStoreTrait, Schema, Store as StoreTrait, StoreError,
-        SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
+        QueryStore as QueryStoreTrait, Schema, StoreError, SubgraphDeploymentEntity,
+        SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 
@@ -60,7 +61,7 @@ impl NetworkStore {
 }
 
 #[async_trait::async_trait]
-impl StoreTrait for NetworkStore {
+impl SubgraphStoreTrait for NetworkStore {
     fn block_ptr(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,

@@ -41,7 +41,7 @@ impl<L, P, S, BS, SM> SubgraphRegistrar<L, P, S, BS, SM>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
-    S: Store,
+    S: SubgraphStore,
     BS: BlockStore,
     SM: SubscriptionManager,
 {
@@ -262,7 +262,7 @@ impl<L, P, S, BS, SM> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, BS, 
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
-    S: Store,
+    S: SubgraphStore,
     BS: BlockStore,
     SM: SubscriptionManager,
 {
@@ -497,7 +497,7 @@ fn resolve_subgraph_chain_blocks(
 
 fn create_subgraph_version(
     logger: &Logger,
-    store: Arc<impl Store>,
+    store: Arc<impl SubgraphStore>,
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
     name: SubgraphName,

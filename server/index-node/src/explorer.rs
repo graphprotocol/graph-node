@@ -15,7 +15,7 @@ use graph::{
     components::server::{index_node::VersionInfo, query::GraphQLServerError},
     data::subgraph::status,
     object,
-    prelude::{lazy_static, q, serde_json, warn, Logger, SerializableValue, Store},
+    prelude::{lazy_static, q, serde_json, warn, Logger, SerializableValue, SubgraphStore},
 };
 
 lazy_static! {
@@ -75,7 +75,7 @@ pub struct Explorer<S> {
 
 impl<S> Explorer<S>
 where
-    S: Store,
+    S: SubgraphStore,
 {
     pub fn new(store: Arc<S>) -> Self {
         Self {

@@ -197,7 +197,7 @@ impl SubgraphInstanceManager {
         metrics_registry: Arc<M>,
     ) -> Self
     where
-        S: Store,
+        S: SubgraphStore,
         BS: BlockStore,
         B: BlockStreamBuilder,
         M: MetricsRegistry,
@@ -237,7 +237,7 @@ impl SubgraphInstanceManager {
         block_stream_builder: B,
         metrics_registry: Arc<M>,
     ) where
-        S: Store,
+        S: SubgraphStore,
         BS: BlockStore,
         B: BlockStreamBuilder,
         M: MetricsRegistry,
@@ -314,7 +314,7 @@ impl SubgraphInstanceManager {
     ) -> Result<(), Error>
     where
         B: BlockStreamBuilder,
-        S: Store,
+        S: SubgraphStore,
         C: ChainStore,
         M: MetricsRegistry,
     {
@@ -447,7 +447,7 @@ async fn run_subgraph<B, T, S, C>(mut ctx: IndexingContext<B, T, S, C>) -> Resul
 where
     B: BlockStreamBuilder,
     T: RuntimeHostBuilder,
-    S: Store,
+    S: SubgraphStore,
     C: ChainStore,
 {
     // Clone a few things for different parts of the async processing
@@ -688,7 +688,7 @@ async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, S, C>(
     block: EthereumBlockWithTriggers,
 ) -> Result<(IndexingContext<B, T, S, C>, bool), BlockProcessingError>
 where
-    S: Store,
+    S: SubgraphStore,
     C: ChainStore,
 {
     let triggers = block.triggers;
@@ -1063,7 +1063,7 @@ fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, S, C>(
 ) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
     B: BlockStreamBuilder,
-    S: Store,
+    S: SubgraphStore,
     C: ChainStore,
 {
     let mut data_sources = vec![];
@@ -1113,7 +1113,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S, C>(
     block_ptr: EthereumBlockPointer,
 ) where
     B: BlockStreamBuilder,
-    S: Store,
+    S: SubgraphStore,
     C: ChainStore,
 {
     if !data_sources.is_empty() {

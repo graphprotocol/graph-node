@@ -24,7 +24,7 @@ pub struct SubgraphAssignmentProvider<L, S> {
 impl<L, S> SubgraphAssignmentProvider<L, S>
 where
     L: LinkResolver + Clone,
-    S: Store,
+    S: SubgraphStore,
 {
     pub fn new(logger_factory: &LoggerFactory, resolver: Arc<L>, store: Arc<S>) -> Self {
         let (event_sink, event_stream) = channel(100);
@@ -54,7 +54,7 @@ where
 impl<L, S> SubgraphAssignmentProviderTrait for SubgraphAssignmentProvider<L, S>
 where
     L: LinkResolver + Clone,
-    S: Store,
+    S: SubgraphStore,
 {
     async fn start(
         &self,

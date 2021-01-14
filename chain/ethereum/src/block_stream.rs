@@ -141,7 +141,7 @@ enum NextBlocks {
 
 impl<S, C> BlockStream<S, C>
 where
-    S: Store,
+    S: SubgraphStore,
     C: ChainStore,
 {
     pub fn new(
@@ -189,7 +189,7 @@ where
 
 impl<S, C> BlockStreamContext<S, C>
 where
-    S: Store,
+    S: SubgraphStore,
     C: ChainStore,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
@@ -557,9 +557,9 @@ where
     }
 }
 
-impl<S: Store, C: ChainStore> BlockStreamTrait for BlockStream<S, C> {}
+impl<S: SubgraphStore, C: ChainStore> BlockStreamTrait for BlockStream<S, C> {}
 
-impl<S: Store, C: ChainStore> Stream for BlockStream<S, C> {
+impl<S: SubgraphStore, C: ChainStore> Stream for BlockStream<S, C> {
     type Item = BlockStreamEvent;
     type Error = Error;
 
@@ -745,7 +745,7 @@ impl<S, B, M> Clone for BlockStreamBuilder<S, B, M> {
 
 impl<S, B, M> BlockStreamBuilder<S, B, M>
 where
-    S: Store,
+    S: SubgraphStore,
     B: BlockStore,
     M: MetricsRegistry,
 {
@@ -770,7 +770,7 @@ where
 
 impl<S, B, M> BlockStreamBuilderTrait for BlockStreamBuilder<S, B, M>
 where
-    S: Store,
+    S: SubgraphStore,
     B: BlockStore,
     M: MetricsRegistry,
 {

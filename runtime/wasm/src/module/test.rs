@@ -24,7 +24,7 @@ mod abi;
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
-) -> (WasmInstance, Arc<impl Store>) {
+) -> (WasmInstance, Arc<impl SubgraphStore>) {
     test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
 }
 
@@ -32,7 +32,7 @@ fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
     timeout: Option<Duration>,
-) -> (WasmInstance, Arc<impl Store>) {
+) -> (WasmInstance, Arc<impl SubgraphStore>) {
     let store = STORE.clone();
     let call_cache = store
         .block_store()
@@ -120,7 +120,7 @@ fn mock_data_source(path: &str) -> DataSource {
 fn mock_host_exports(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store>,
+    store: Arc<impl SubgraphStore>,
     call_cache: Arc<impl EthereumCallCache>,
 ) -> HostExports {
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
@@ -173,7 +173,7 @@ fn mock_host_exports(
 fn mock_context(
     subgraph_id: SubgraphDeploymentId,
     data_source: DataSource,
-    store: Arc<impl Store>,
+    store: Arc<impl SubgraphStore>,
     call_cache: Arc<impl EthereumCallCache>,
 ) -> MappingContext {
     let mut block = LightEthereumBlock::default();

@@ -935,7 +935,7 @@ pub trait SubscriptionManager: Send + Sync + 'static {
 
 /// Common trait for store implementations.
 #[async_trait]
-pub trait Store: Send + Sync + 'static {
+pub trait SubgraphStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(
         &self,
@@ -1158,7 +1158,7 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
-impl Store for MockStore {
+impl SubgraphStore for MockStore {
     fn block_ptr(
         &self,
         _subgraph_id: &SubgraphDeploymentId,
@@ -1574,7 +1574,7 @@ pub struct EntityCache {
     in_handler: bool,
 
     /// The store is only used to read entities.
-    pub store: Arc<dyn Store>,
+    pub store: Arc<dyn SubgraphStore>,
 }
 
 impl Debug for EntityCache {
@@ -1592,7 +1592,7 @@ pub struct ModificationsAndCache {
 }
 
 impl EntityCache {
-    pub fn new(store: Arc<dyn Store>) -> Self {
+    pub fn new(store: Arc<dyn SubgraphStore>) -> Self {
         Self {
             current: LfuCache::new(),
             updates: HashMap::new(),
@@ -1603,7 +1603,7 @@ impl EntityCache {
     }
 
     pub fn with_current(
-        store: Arc<dyn Store>,
+        store: Arc<dyn SubgraphStore>,
         current: LfuCache<EntityKey, Option<Entity>>,
     ) -> EntityCache {
         EntityCache {
@@ -1704,7 +1704,7 @@ impl EntityCache {
     /// Also returns the updated `LfuCache`.
     pub fn as_modifications(
         mut self,
-        store: &(impl Store + ?Sized),
+        store: &(impl SubgraphStore + ?Sized),
     ) -> Result<ModificationsAndCache, QueryExecutionError> {
         assert!(!self.in_handler);
 
@@ -1795,7 +1795,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
     // Helper for cached lookup of an entity.
     fn get_entity(
         &mut self,
-        store: &(impl Store + ?Sized),
+        store: &(impl SubgraphStore + ?Sized),
         key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         match self.get(&key) {
