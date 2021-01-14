@@ -1110,10 +1110,7 @@ pub trait Store: Send + Sync + 'static {
 
     /// Return the name of the network that the subgraph is indexing from. The
     /// names returned are things like `mainnet` or `ropsten`
-    fn network_name(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<Option<String>, StoreError>;
+    fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<String, StoreError>;
 
     /// Support for the explorer-specific API
     fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
@@ -1322,7 +1319,7 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
+    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<String, StoreError> {
         unimplemented!()
     }
 
@@ -1470,7 +1467,7 @@ pub trait QueryStore: Send + Sync {
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
-    fn network_name(&self) -> Result<Option<String>, QueryExecutionError>;
+    fn network_name(&self) -> &str;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to

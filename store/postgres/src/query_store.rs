@@ -67,20 +67,17 @@ impl QueryStoreTrait for QueryStore {
         // available. Ideally, we'd have the last REORG_THRESHOLD blocks in
         // memory so that we can check against them, and then mark in the
         // database the blocks on the main chain that we consider final
-        let subgraph_network = self.network_name()?;
+        let subgraph_network = self.network_name();
         self.chain_store
             .block_number(block_hash)?
             .map(|(network_name, number)| {
-                if subgraph_network.is_none() || Some(&network_name) == subgraph_network.as_ref() {
+                if &network_name == subgraph_network {
                     BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
                 } else {
                     Err(StoreError::QueryExecutionError(format!(
                         "subgraph {} belongs to network {} but block {:x} belongs to network {}",
-                        &self.site.deployment,
-                        subgraph_network.unwrap_or("(none)".to_owned()),
-                        block_hash,
-                        network_name
+                        &self.site.deployment, subgraph_network, block_hash, network_name
                     )))
                 }
             })
@@ -114,8 +111,7 @@ impl QueryStoreTrait for QueryStore {
         Ok(info.api)
     }
 
-    fn network_name(&self) -> Result<Option<String>, QueryExecutionError> {
-        let info = self.store.subgraph_info(&self.site.deployment)?;
-        Ok(info.network)
+    fn network_name(&self) -> &str {
+        &self.site.network
     }
 }

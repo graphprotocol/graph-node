@@ -40,6 +40,7 @@ where
 
 pub type Data = BTreeMap<String, q::Value>;
 
+#[derive(Debug)]
 /// A collection of query results that is serialized as a single result.
 pub struct QueryResults {
     results: Vec<Arc<QueryResult>>,
@@ -151,10 +152,6 @@ impl QueryResults {
         self.results.push(other);
     }
 
-    pub fn unwrap_first(self) -> QueryResult {
-        Arc::try_unwrap(self.results.into_iter().next().unwrap()).unwrap()
-    }
-
     pub fn as_http_response<T: From<String>>(&self) -> http::Response<T> {
         let status_code = http::StatusCode::OK;
         let json =
@@ -190,6 +187,18 @@ impl QueryResult {
             data: Some(data),
             errors: Vec::new(),
             deployment: None,
+        }
+    }
+
+    /// This is really `clone`, but we do not want to implement `Clone`;
+    /// this is only meant for test purposes and should not be used in production
+    /// code since cloning query results can be very expensive
+    #[cfg(debug_assertions)]
+    pub fn duplicate(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            errors: self.errors.clone(),
+            deployment: self.deployment.clone(),
         }
     }
 

@@ -137,7 +137,7 @@ where
             description: vi.description.as_ref().map(|s| s.as_str()),
             repository: vi.repository.as_ref().map(|s| s.as_str()),
             schema: vi.schema.document.to_string(),
-            network: vi.network.as_ref().map(|s| s.as_str())
+            network: vi.network.as_str()
         };
         Ok(as_http_response(&value))
     }

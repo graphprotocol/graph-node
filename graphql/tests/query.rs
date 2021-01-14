@@ -10,7 +10,11 @@ use std::time::{Duration, Instant};
 use graph::{
     data::graphql::{object, object_value},
     data::subgraph::schema::SubgraphError,
-    data::{query::CacheStatus, query::QueryTarget, subgraph::SubgraphFeature},
+    data::{
+        query::CacheStatus,
+        query::{QueryResults, QueryTarget},
+        subgraph::SubgraphFeature,
+    },
     prelude::{
         async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
         o, q, serde_json, slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
@@ -253,7 +257,21 @@ async fn execute_query_document_with_variables(
     runner
         .run_query_with_complexity(query, target, None, None, None, None, false)
         .await
-        .unwrap_first()
+        .first()
+        .unwrap()
+        .duplicate()
+}
+
+async fn first_result<F>(f: F) -> QueryResult
+where
+    F: FnOnce() -> QueryResults + Sync + Send + 'static,
+{
+    graph::spawn_blocking_allow_panic(f)
+        .await
+        .unwrap()
+        .first()
+        .unwrap()
+        .duplicate()
 }
 
 struct MockQueryLoadManager(Arc<tokio::sync::Semaphore>);
@@ -788,12 +806,10 @@ fn query_complexity() {
 
         // This query is exactly at the maximum complexity.
         let id2 = id.clone();
-        let result = graph::spawn_blocking_allow_panic(move || {
+        let result = first_result(move || {
             execute_subgraph_query_with_complexity(query, id2.into(), max_complexity)
         })
-        .await
-        .unwrap()
-        .unwrap_first();
+        .await;
         assert!(!result.has_errors());
 
         let query = Query::new(
@@ -821,12 +837,11 @@ fn query_complexity() {
         );
 
         // The extra introspection causes the complexity to go over.
-        let result = graph::spawn_blocking_allow_panic(move || {
+        let result = first_result(move || {
             execute_subgraph_query_with_complexity(query, id.into(), max_complexity)
         })
-        .await
-        .unwrap();
-        match result.unwrap_first().to_result().unwrap_err()[0] {
+        .await;
+        match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
             _ => panic!("did not catch complexity"),
         };
@@ -936,12 +951,10 @@ fn instant_timeout() {
             None,
         );
 
-        match graph::spawn_blocking_allow_panic(move || {
+        match first_result(move || {
             execute_subgraph_query_with_deadline(query, id.into(), Some(Instant::now()))
         })
         .await
-        .unwrap()
-        .unwrap_first()
         .to_result()
         .unwrap_err()[0]
         {

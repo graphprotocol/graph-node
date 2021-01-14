@@ -258,7 +258,7 @@ impl StoreTrait for NetworkStore {
     fn network_name(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
-    ) -> Result<Option<String>, StoreError> {
+    ) -> Result<String, StoreError> {
         self.store.network_name(subgraph_id)
     }
 

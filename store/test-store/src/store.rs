@@ -363,7 +363,7 @@ fn execute_subgraph_query_internal(
         _ => unreachable!("tests do not use this"),
     };
     let schema = STORE.api_schema(&id).unwrap();
-    let network = STORE.network_name(&id).unwrap();
+    let network = Some(STORE.network_name(&id).unwrap());
     let query = return_err!(PreparedQuery::new(
         &logger,
         schema,

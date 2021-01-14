@@ -155,8 +155,6 @@ pub(crate) struct SubgraphInfo {
     pub(crate) input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
     pub(crate) api: Arc<ApiSchema>,
-    /// The name of the network from which the subgraph is syncing
-    pub(crate) network: Option<String>,
     /// The block number at which this subgraph was grafted onto
     /// another one. We do not allow reverting past this block
     pub(crate) graft_block: Option<BlockNumber>,
@@ -718,7 +716,6 @@ impl Store {
 
         let (input_schema, description, repository) =
             deployment::manifest_info(&conn, subgraph_id.to_owned())?;
-        let network = deployment::network(&conn, &subgraph_id)?;
 
         let graft_block =
             deployment::graft_point(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
@@ -735,7 +732,6 @@ impl Store {
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
             api: Arc::new(ApiSchema::from_api_schema(schema)?),
-            network,
             graft_block,
             description,
             repository,

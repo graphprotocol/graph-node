@@ -444,10 +444,9 @@ fn version_info() {
         );
         assert_eq!(&*NAME, vi.schema.id.as_str());
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
-        // We don't have a data source on the manifest of the test subgraph
-        // and can therefore not find the network or the head block
+        assert_eq!(&*NETWORK_NAME, vi.network.as_str());
+        // We set the head for the network to null in the test framework
         assert_eq!(None, vi.total_ethereum_blocks_count);
-        assert_eq!(None, vi.network);
     })
 }
 

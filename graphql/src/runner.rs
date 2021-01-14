@@ -145,7 +145,7 @@ where
             .query_store(target, false)
             .map_err(|e| QueryExecutionError::from(e))?;
         let state = store.deployment_state()?;
-        let network = store.network_name()?;
+        let network = Some(store.network_name().to_string());
         let schema = store.api_schema()?;
 
         // Test only, see c435c25decbc4ad7bbbadf8e0ced0ff2
@@ -266,12 +266,12 @@ where
     ) -> Result<SubscriptionResult, SubscriptionError> {
         let store = self.store.query_store(target, true)?;
         let schema = store.api_schema()?;
-        let network = store.network_name()?;
+        let network = store.network_name().to_string();
 
         let query = crate::execution::Query::new(
             &self.logger,
             schema,
-            network,
+            Some(network.clone()),
             subscription.query,
             *GRAPHQL_MAX_COMPLEXITY,
             *GRAPHQL_MAX_DEPTH,

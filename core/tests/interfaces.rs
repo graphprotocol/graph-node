@@ -38,7 +38,10 @@ fn insert_and_query(
     let document = graphql_parser::parse_query(query).unwrap().into_static();
     let target = QueryTarget::Deployment(subgraph_id);
     let query = Query::new(document, None);
-    Ok(execute_subgraph_query(query, target).unwrap_first())
+    Ok(execute_subgraph_query(query, target)
+        .first()
+        .unwrap()
+        .duplicate())
 }
 
 /// Extract the data from a `QueryResult`, and panic if it has errors

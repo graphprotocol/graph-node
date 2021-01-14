@@ -213,30 +213,6 @@ pub fn manifest_info(
         .map(|schema| (schema, description, repository))
 }
 
-pub fn network(
-    conn: &PgConnection,
-    id: &SubgraphDeploymentId,
-) -> Result<Option<String>, StoreError> {
-    use ethereum_contract_data_source as ds;
-    use subgraph_manifest as sm;
-
-    let manifest_id = SubgraphManifestEntity::id(&id);
-    let data_sources: Vec<String> = sm::table
-        .select(sm::data_sources)
-        .filter(sm::id.eq(manifest_id.as_str()))
-        .first::<Vec<String>>(conn)?;
-    // The NetworkIndexer creates a manifest with an empty
-    // array of data sources and we therefore accept 'None'
-    // here
-    match data_sources.first() {
-        Some(ds_id) => Ok(ds::table
-            .select(ds::network)
-            .filter(ds::id.eq(&ds_id))
-            .first::<Option<String>>(conn)?),
-        None => Ok(None),
-    }
-}
-
 pub fn features(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,

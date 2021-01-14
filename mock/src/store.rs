@@ -221,7 +221,7 @@ impl Store for MockStore {
         unimplemented!()
     }
 
-    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
+    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<String, StoreError> {
         unimplemented!()
     }
 

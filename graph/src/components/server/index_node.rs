@@ -16,7 +16,7 @@ pub struct VersionInfo {
     pub description: Option<String>,
     pub repository: Option<String>,
     pub schema: Arc<Schema>,
-    pub network: Option<String>,
+    pub network: String,
 }
 
 /// Common trait for index node server implementations.

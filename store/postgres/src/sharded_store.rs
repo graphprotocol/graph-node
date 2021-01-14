@@ -760,10 +760,9 @@ impl StoreTrait for ShardedStore {
         Ok(info.api)
     }
 
-    fn network_name(&self, id: &SubgraphDeploymentId) -> Result<Option<String>, StoreError> {
-        let (store, _) = self.store(&id)?;
-        let info = store.subgraph_info(id)?;
-        Ok(info.network)
+    fn network_name(&self, id: &SubgraphDeploymentId) -> Result<String, StoreError> {
+        let (_, site) = self.store(&id)?;
+        Ok(site.network.to_string())
     }
 
     fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
@@ -782,12 +781,8 @@ impl StoreTrait for ShardedStore {
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|ref block| block.number());
             let subgraph_info = store.subgraph_info(&id)?;
-            let total_ethereum_blocks_count = subgraph_info
-                .network
-                .as_ref()
-                .map(|network| self.primary_conn()?.chain_head_block(network))
-                .transpose()?
-                .flatten();
+            let network = self.network_name(&id)?;
+            let total_ethereum_blocks_count = self.primary_conn()?.chain_head_block(&network)?;
 
             let info = VersionInfo {
                 created_at,
@@ -799,7 +794,7 @@ impl StoreTrait for ShardedStore {
                 description: subgraph_info.description,
                 repository: subgraph_info.repository,
                 schema: subgraph_info.input,
-                network: subgraph_info.network,
+                network: network.to_string(),
             };
             Ok(info)
         } else {
