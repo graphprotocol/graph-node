@@ -17,7 +17,6 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
 
-use crate::components::link_resolver::LinkResolver;
 use crate::components::store::{Store, StoreError};
 use crate::components::subgraph::DataSourceTemplateInfo;
 use crate::data::graphql::TryFromValue;
@@ -30,6 +29,7 @@ use crate::data::subgraph::schema::{
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity,
 };
+use crate::{components::link_resolver::LinkResolver, prelude::CheapClone};
 
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
 use crate::util::ethereum::string_to_h256;
@@ -88,6 +88,9 @@ impl StableHash for SubgraphDeploymentId {
 }
 
 impl_slog_value!(SubgraphDeploymentId);
+
+/// `SubgraphDeploymentId` is fixed-length so cheap to clone.
+impl CheapClone for SubgraphDeploymentId {}
 
 impl SubgraphDeploymentId {
     /// Check that `s` is a valid `SubgraphDeploymentId` and create a new one.
