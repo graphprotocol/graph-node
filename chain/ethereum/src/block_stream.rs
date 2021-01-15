@@ -835,6 +835,7 @@ where
 // This always returns `false` in a normal build. A test may configure reorg by enabling
 // "test_reorg" fail point with the number of the block that should be reorged.
 #[cfg(debug_assertions)]
+#[allow(unused_variables)]
 fn test_reorg(ptr: EthereumBlockPointer) -> bool {
     fail_point!("test_reorg", |reorg_at| {
         use std::str::FromStr;
