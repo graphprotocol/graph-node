@@ -700,16 +700,12 @@ impl StoreTrait for ShardedStore {
 
         // Go shard-by-shard to look up deployment statuses
         let mut infos = Vec::new();
-        for (shard, ids) in by_shard.into_iter() {
+        for (shard, sites) in by_shard.into_iter() {
             let store = self
                 .stores
                 .get(&shard)
                 .ok_or(StoreError::UnknownShard(shard.to_string()))?;
-            let ids = ids
-                .into_iter()
-                .map(|site| site.deployment.to_string())
-                .collect();
-            infos.extend(store.deployment_statuses(ids)?);
+            infos.extend(store.deployment_statuses(&sites)?);
         }
         let infos = self.primary_conn()?.fill_assignments(infos)?;
         let infos = self.primary_conn()?.fill_chain_head_pointers(infos)?;
@@ -769,8 +765,8 @@ impl StoreTrait for ShardedStore {
         if let Some((deployment_id, created_at)) = self.primary_conn()?.version_info(version)? {
             let id = SubgraphDeploymentId::new(deployment_id.clone())
                 .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
-            let (store, _) = self.store(&id)?;
-            let statuses = store.deployment_statuses(vec![deployment_id.clone()])?;
+            let (store, site) = self.store(&id)?;
+            let statuses = store.deployment_statuses(&vec![site])?;
             let status = statuses
                 .first()
                 .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;

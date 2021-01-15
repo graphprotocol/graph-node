@@ -37,6 +37,19 @@ pub enum SubgraphHealth {
     Unhealthy,
 }
 
+impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
+    fn from(health: SubgraphHealth) -> Self {
+        use graph::data::subgraph::schema::SubgraphHealth as H;
+        use SubgraphHealth as Db;
+
+        match health {
+            Db::Failed => H::Failed,
+            Db::Healthy => H::Healthy,
+            Db::Unhealthy => H::Unhealthy,
+        }
+    }
+}
+
 table! {
     subgraphs.subgraph_deployment (vid) {
         vid -> BigInt,
@@ -120,6 +133,8 @@ table! {
         block_range -> Range<Integer>,
     }
 }
+
+allow_tables_to_appear_in_same_query!(subgraph_deployment, subgraph_error);
 
 /// Look up the graft point for the given subgraph in the database and
 /// return it. If `pending_only` is `true`, only return `Some(_)` if the

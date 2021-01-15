@@ -10,68 +10,43 @@ use graph::{
         bigdecimal::ToPrimitive, BigDecimal, EthereumBlockPointer, StoreError, SubgraphDeploymentId,
     },
 };
-use graph::{
-    data::subgraph::{schema::SubgraphHealth, status},
-    prelude::web3::types::H256,
-};
-use std::ops::Bound;
-use std::{convert::TryFrom, str::FromStr};
+use graph::{data::subgraph::status, prelude::web3::types::H256};
+use std::convert::TryFrom;
+use std::{ops::Bound, sync::Arc};
 
-// This is not a real table, only a view. We can use diesel to read from it
-// but write attempts will fail
-table! {
-    subgraphs.subgraph_deployment_detail (vid) {
-        vid -> BigInt,
-        id -> Text,
-        manifest -> Text,
-        failed -> Bool,
-        health -> Text,
-        synced -> Bool,
-        fatal_error -> Nullable<Text>,
-        non_fatal_errors -> Array<Text>,
-        earliest_ethereum_block_hash -> Nullable<Binary>,
-        earliest_ethereum_block_number -> Nullable<Numeric>,
-        latest_ethereum_block_hash -> Nullable<Binary>,
-        latest_ethereum_block_number -> Nullable<Numeric>,
-        entity_count -> Numeric,
-        graft_base -> Nullable<Text>,
-        graft_block_hash -> Nullable<Binary>,
-        graft_block_number -> Nullable<Numeric>,
-        network -> Text,
-        // We don't map block_range
-        // block_range -> Range<Integer>,
-    }
-}
-
-use crate::deployment::subgraph_error;
-
-allow_tables_to_appear_in_same_query!(subgraph_deployment_detail, subgraph_error);
+use crate::deployment::{subgraph_deployment, subgraph_error, SubgraphHealth as HealthType};
+use crate::primary::Site;
 
 type Bytes = Vec<u8>;
 
 #[derive(Queryable, QueryableByName)]
-#[table_name = "subgraph_deployment_detail"]
+#[table_name = "subgraph_deployment"]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
 pub struct DeploymentDetail {
-    pub vid: i64,
+    vid: i64,
     pub id: String,
-    pub manifest: String,
+    manifest: String,
     pub failed: bool,
-    pub health: String,
+    health: HealthType,
     pub synced: bool,
-    pub fatal_error: Option<String>,
-    pub non_fatal_errors: Vec<String>,
-    pub earliest_ethereum_block_hash: Option<Bytes>,
-    pub earliest_ethereum_block_number: Option<BigDecimal>,
+    fatal_error: Option<String>,
+    non_fatal_errors: Vec<String>,
+    earliest_ethereum_block_hash: Option<Bytes>,
+    earliest_ethereum_block_number: Option<BigDecimal>,
     pub latest_ethereum_block_hash: Option<Bytes>,
     pub latest_ethereum_block_number: Option<BigDecimal>,
+    last_healthy_ethereum_block_hash: Option<Bytes>,
+    last_healthy_ethereum_block_number: Option<BigDecimal>,
     pub entity_count: BigDecimal,
-    pub graft_base: Option<String>,
-    pub graft_block_hash: Option<Bytes>,
-    pub graft_block_number: Option<BigDecimal>,
-    pub network: String,
+    graft_base: Option<String>,
+    graft_block_hash: Option<Bytes>,
+    graft_block_number: Option<BigDecimal>,
+    reorg_count: i32,
+    current_reorg_depth: i32,
+    max_reorg_depth: i32,
+    block_range: (Bound<i32>, Bound<i32>),
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -90,7 +65,7 @@ struct ErrorDetail {
     block_range: (Bound<i32>, Bound<i32>),
 }
 
-struct DetailAndError(DeploymentDetail, Option<ErrorDetail>);
+struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a Vec<Arc<Site>>);
 
 pub(crate) fn block(
     id: &str,
@@ -161,11 +136,11 @@ impl TryFrom<ErrorDetail> for SubgraphError {
     }
 }
 
-impl TryFrom<DetailAndError> for status::Info {
+impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
     type Error = StoreError;
 
     fn try_from(detail_and_error: DetailAndError) -> Result<Self, Self::Error> {
-        let DetailAndError(detail, error) = detail_and_error;
+        let DetailAndError(detail, error, sites) = detail_and_error;
 
         let DeploymentDetail {
             vid: _,
@@ -184,8 +159,13 @@ impl TryFrom<DetailAndError> for status::Info {
             graft_base: _,
             graft_block_hash: _,
             graft_block_number: _,
-            network,
+            ..
         } = detail;
+
+        let site = sites
+            .iter()
+            .find(|site| site.deployment.as_str() == &id)
+            .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", id))?;
 
         // This needs to be filled in later since it lives in a
         // different shard
@@ -202,9 +182,9 @@ impl TryFrom<DetailAndError> for status::Info {
             latest_ethereum_block_hash,
             latest_ethereum_block_number,
         )?;
-        let health = SubgraphHealth::from_str(&health)?;
+        let health = health.into();
         let chain = status::ChainInfo {
-            network,
+            network: site.network.clone(),
             chain_head_block,
             earliest_block,
             latest_block,
@@ -232,7 +212,7 @@ pub(crate) fn deployment_details(
     conn: &PgConnection,
     deployments: Vec<String>,
 ) -> Result<Vec<DeploymentDetail>, StoreError> {
-    use subgraph_deployment_detail as d;
+    use subgraph_deployment as d;
 
     // Empty deployments means 'all of them'
     let details = if deployments.is_empty() {
@@ -247,26 +227,31 @@ pub(crate) fn deployment_details(
 
 pub(crate) fn deployment_statuses(
     conn: &PgConnection,
-    deployments: Vec<String>,
+    sites: &Vec<Arc<Site>>,
 ) -> Result<Vec<status::Info>, StoreError> {
-    use subgraph_deployment_detail as d;
+    use subgraph_deployment as d;
     use subgraph_error as e;
 
     // Empty deployments means 'all of them'
-    if deployments.is_empty() {
+    if sites.is_empty() {
         d::table
             .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
             .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
             .into_iter()
-            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
+            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
             .collect()
     } else {
+        let ids: Vec<_> = sites
+            .into_iter()
+            .map(|site| site.deployment.to_string())
+            .collect();
+
         d::table
             .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .filter(d::id.eq_any(&deployments))
+            .filter(d::id.eq_any(&ids))
             .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
             .into_iter()
-            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error)))
+            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
             .collect()
     }
 }

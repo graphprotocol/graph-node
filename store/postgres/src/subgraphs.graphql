@@ -17,7 +17,7 @@ type SubgraphVersion @entity {
     # We store the id of a SubgraphDeployment, but since when we read
     # through GraphQL, we pull back a SubgraphDeploymentDetail which
     # contains a superset of the attributes of a SubgraphDeployment
-    deployment: SubgraphDeploymentDetail!
+    deployment: SubgraphDeployment!
     createdAt: BigInt!
 }
 
@@ -54,40 +54,6 @@ type SubgraphDeployment @entity {
     reorgCount: Int
     currentReorgDepth: Int
     maxReorgDepth: Int
-}
-
-# This is not a real entity type. It is a view that can be queried, but
-# not modified
-type SubgraphDeploymentDetail @entity {
-    id: ID! # Subgraph IPFS hash
-    manifest: SubgraphManifest!
-    failed: Boolean! @deprecated(reason: "Use `health`.")
-    health: Health!
-    synced: Boolean!
-
-    "If the subgraph has failed, this is the error caused it"
-    fatalError: SubgraphError
-
-    "Sorted by block number, limited to 1000"
-    nonFatalErrors: [SubgraphError!]!
-
-    earliestEthereumBlockHash: Bytes
-    earliestEthereumBlockNumber: BigInt
-    latestEthereumBlockHash: Bytes
-    latestEthereumBlockNumber: BigInt
-    entityCount: BigInt!
-    dynamicDataSources: [DynamicEthereumContractDataSource!] @derivedFrom(field: "deployment")
-    graftBase: SubgraphDeployment
-    graftBlockHash: Bytes
-    graftBlockNumber: BigInt
-    # From ethereum_networks
-    ethereumHeadBlockNumber: BigInt
-    ethereumHeadBlockHash: Bytes
-    # From the first EthereumContractDataSource
-    network: String
-    # From SubgraphDeploymentAssignment, it is nullable here
-    # as not every deployment is assigned
-    nodeId: String
 }
 
 type SubgraphDeploymentAssignment @entity {
