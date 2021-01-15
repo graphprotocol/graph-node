@@ -773,11 +773,11 @@ impl Store {
 
     pub(crate) fn deployment_statuses(
         &self,
-        ids: Vec<String>,
+        sites: &Vec<Arc<Site>>,
     ) -> Result<Vec<status::Info>, StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
-            detail::deployment_statuses(&conn, ids)
+            detail::deployment_statuses(&conn, sites)
         })
     }
 }
