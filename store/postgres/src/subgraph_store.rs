@@ -1,5 +1,6 @@
 use diesel::Connection;
 use std::fmt;
+use std::iter::FromIterator;
 use std::sync::RwLock;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 
@@ -16,16 +17,16 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
-        lazy_static, web3::types::Address, ApiSchema, DeploymentState, DynTryFuture, Entity,
-        EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
-        MetadataOperation, NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-        SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        lazy_static, o, web3::types::Address, ApiSchema, CheapClone, DeploymentState, DynTryFuture,
+        Entity, EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
+        MetadataOperation, MetricsRegistry, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
+        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
         SubgraphVersionSwitchingMode,
     },
 };
 use store::StoredDynamicDataSource;
 
-use crate::{deployment, primary, primary::Site};
+use crate::{connection_pool::ConnectionPool, deployment, primary, primary::Site};
 use crate::{
     detail::DeploymentDetail,
     primary::UnusedDeployment,
@@ -108,10 +109,42 @@ pub struct SubgraphStore {
 }
 
 impl SubgraphStore {
+    /// Create a new store for subgraphs that distributes deployments across
+    /// multiple databases
+    ///
+    /// `stores` is a list of the shards. The tuple contains the shard name, the main
+    /// connection pool for the database, a list of read-only connections
+    /// for the same database, and a list of weights determining how often
+    /// to use the main pool and the read replicas for queries. The list
+    /// of weights must be one longer than the list of read replicas, and
+    /// `weights[0]` is used for the main pool.
+    ///
+    /// All write operations for a shard are performed against the main
+    /// pool. One of the shards must be named `primary`
+    ///
+    /// The `placer` determines where `create_subgraph_deployment` puts a new deployment
     pub fn new(
-        stores: HashMap<Shard, Arc<Store>>,
+        logger: &Logger,
+        stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
+        let stores = HashMap::from_iter(stores.into_iter().map(
+            |(name, main_pool, read_only_pools, weights)| {
+                let logger = logger.new(o!("shard" => name.to_string()));
+
+                (
+                    name,
+                    Arc::new(Store::new(
+                        &logger,
+                        main_pool,
+                        read_only_pools,
+                        weights,
+                        registry.cheap_clone(),
+                    )),
+                )
+            },
+        ));
         let primary = stores
             .get(&PRIMARY_SHARD)
             .expect("we always have a primary store")
