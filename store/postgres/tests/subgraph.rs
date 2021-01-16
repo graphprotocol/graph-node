@@ -14,7 +14,7 @@ use graph::{
     prelude::{CheapClone, NodeId, SubgraphDeploymentId, SubgraphStore as _},
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
-use graph_store_postgres::NetworkStore;
+use graph_store_postgres::Store;
 
 use std::collections::HashSet;
 use test_store::*;
@@ -53,7 +53,7 @@ fn reassign_subgraph() {
         id
     }
 
-    fn find_assignment(store: &NetworkStore, id: &SubgraphDeploymentId) -> Option<String> {
+    fn find_assignment(store: &Store, id: &SubgraphDeploymentId) -> Option<String> {
         store
             .assigned_node(id)
             .unwrap()
@@ -111,7 +111,7 @@ fn create_subgraph() {
     }
 
     fn deploy(
-        store: &NetworkStore,
+        store: &Store,
         id: &str,
         mode: SubgraphVersionSwitchingMode,
     ) -> HashSet<EntityChange> {

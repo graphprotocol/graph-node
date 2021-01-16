@@ -8,7 +8,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
-use graph_store_postgres::NetworkStore as DieselStore;
+use graph_store_postgres::Store as DieselStore;
 use web3::types::H256;
 
 const USER_GQL: &str = "

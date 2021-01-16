@@ -12,7 +12,7 @@ use graph_chain_ethereum::network_indexer::{
     self as network_indexer, BlockWithOmmers, NetworkIndexerEvent,
 };
 use graph_core::MetricsRegistry;
-use graph_store_postgres::NetworkStore as DieselStore;
+use graph_store_postgres::Store as DieselStore;
 use web3::types::{H2048, H256, H64, U256};
 
 use test_store::*;
