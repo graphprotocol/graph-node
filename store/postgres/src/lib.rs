@@ -27,6 +27,7 @@ mod chain_store;
 pub mod connection_pool;
 mod db_schema;
 mod deployment;
+mod deployment_store;
 mod detail;
 mod dynds;
 mod entities;
@@ -39,7 +40,6 @@ pub mod query_store;
 mod relational;
 mod relational_queries;
 mod sql_value;
-mod store;
 mod store_events;
 mod subgraph_store;
 

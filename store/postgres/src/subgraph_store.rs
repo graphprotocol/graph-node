@@ -28,9 +28,9 @@ use store::StoredDynamicDataSource;
 
 use crate::{connection_pool::ConnectionPool, deployment, primary, primary::Site};
 use crate::{
+    deployment_store::{DeploymentStore, ReplicaId},
     detail::DeploymentDetail,
     primary::UnusedDeployment,
-    store::{ReplicaId, Store},
 };
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
@@ -101,8 +101,8 @@ pub mod unused {
 /// and any number of additional storage shards. See [this document](../../docs/sharded.md)
 /// for details on how storage is split up
 pub struct SubgraphStore {
-    primary: Arc<Store>,
-    stores: HashMap<Shard, Arc<Store>>,
+    primary: Arc<DeploymentStore>,
+    stores: HashMap<Shard, Arc<DeploymentStore>>,
     /// Cache for the mapping from deployment id to shard/namespace/id
     sites: RwLock<HashMap<SubgraphDeploymentId, Arc<Site>>>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
@@ -135,7 +135,7 @@ impl SubgraphStore {
 
                 (
                     name,
-                    Arc::new(Store::new(
+                    Arc::new(DeploymentStore::new(
                         &logger,
                         main_pool,
                         read_only_pools,
@@ -193,7 +193,10 @@ impl SubgraphStore {
         Ok(())
     }
 
-    fn store(&self, id: &SubgraphDeploymentId) -> Result<(&Arc<Store>, Arc<Site>), StoreError> {
+    fn store(
+        &self,
+        id: &SubgraphDeploymentId,
+    ) -> Result<(&Arc<DeploymentStore>, Arc<Site>), StoreError> {
         let site = self.site(id)?;
         let store = self
             .stores
@@ -332,7 +335,7 @@ impl SubgraphStore {
         &self,
         target: QueryTarget,
         for_subscription: bool,
-    ) -> Result<(Arc<Store>, Arc<Site>, ReplicaId), StoreError> {
+    ) -> Result<(Arc<DeploymentStore>, Arc<Site>, ReplicaId), StoreError> {
         let id = match target {
             QueryTarget::Name(name) => {
                 let conn = self.primary_conn()?;
