@@ -39,7 +39,7 @@ pub mod query_store;
 mod relational;
 mod relational_queries;
 mod sql_value;
-pub mod store;
+mod store;
 mod store_events;
 mod subgraph_store;
 
@@ -63,7 +63,6 @@ pub use self::chain_store::ChainStore;
 pub use self::detail::DeploymentDetail;
 pub use self::network_store::NetworkStore;
 pub use self::primary::UnusedDeployment;
-pub use self::store::Store;
 pub use self::store_events::SubscriptionManager;
 pub use self::subgraph_store::{unused, DeploymentPlacer, Shard, SubgraphStore, PRIMARY_SHARD};
 

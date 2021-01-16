@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use web3::types::H256;
 
-use crate::store::ReplicaId;
+use crate::store::{ReplicaId, Store};
 use graph::components::store::QueryStore as QueryStoreTrait;
 use graph::prelude::*;
 
@@ -11,13 +11,13 @@ use crate::primary::Site;
 pub(crate) struct QueryStore {
     site: Arc<Site>,
     replica_id: ReplicaId,
-    store: Arc<crate::Store>,
+    store: Arc<Store>,
     chain_store: Arc<crate::ChainStore>,
 }
 
 impl QueryStore {
     pub(crate) fn new(
-        store: Arc<crate::Store>,
+        store: Arc<Store>,
         chain_store: Arc<crate::ChainStore>,
         site: Arc<Site>,
         replica_id: ReplicaId,
