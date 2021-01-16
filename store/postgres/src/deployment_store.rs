@@ -174,20 +174,21 @@ pub struct StoreInner {
     registry: Arc<dyn MetricsRegistry>,
 }
 
-/// A Store based on Diesel and Postgres.
+/// Storage of the data for individual deployments. Each `DeploymentStore`
+/// corresponds to one of the database shards that `SubgraphStore` manages.
 #[derive(Clone)]
-pub struct Store(Arc<StoreInner>);
+pub struct DeploymentStore(Arc<StoreInner>);
 
-impl CheapClone for Store {}
+impl CheapClone for DeploymentStore {}
 
-impl Deref for Store {
+impl Deref for DeploymentStore {
     type Target = StoreInner;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Store {
+impl DeploymentStore {
     pub fn new(
         logger: &Logger,
         pool: ConnectionPool,
@@ -233,7 +234,7 @@ impl Store {
             layout_cache: e::make_layout_cache(),
             registry,
         };
-        let store = Store(Arc::new(store));
+        let store = DeploymentStore(Arc::new(store));
 
         // Return the store
         store
@@ -777,7 +778,7 @@ impl Store {
 
 /// Methods that back the trait `graph::components::Store`, but have small
 /// variations in their signatures
-impl Store {
+impl DeploymentStore {
     pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<EthereumBlockPointer>, Error> {
         Self::block_ptr_with_conn(
             &site.deployment,
