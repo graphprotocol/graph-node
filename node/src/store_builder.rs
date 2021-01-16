@@ -9,8 +9,8 @@ use graph::{
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    ChainStore as DieselChainStore, NetworkStore as DieselNetworkStore, Shard as ShardName,
-    SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
+    ChainStore as DieselChainStore, Shard as ShardName, Store as DieselStore, SubgraphStore,
+    SubscriptionManager, PRIMARY_SHARD,
 };
 
 use crate::config::{Config, Shard};
@@ -165,7 +165,7 @@ impl StoreBuilder {
     pub fn network_store(
         self,
         networks: Vec<(String, EthereumNetworkIdentifier)>,
-    ) -> Arc<DieselNetworkStore> {
+    ) -> Arc<DieselStore> {
         fn make_block_store(
             pool: ConnectionPool,
             chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
@@ -196,7 +196,7 @@ impl StoreBuilder {
             networks,
         );
 
-        Arc::new(DieselNetworkStore::new(
+        Arc::new(DieselStore::new(
             self.subgraph_store.cheap_clone(),
             block_store,
         ))

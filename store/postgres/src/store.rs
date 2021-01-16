@@ -20,12 +20,14 @@ use graph::{
 
 use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
 
-pub struct NetworkStore {
+/// The overall store of the system, consisting of a `SubgraphStore` and a
+/// `BlockStore`, each of which multiplex across multiple database shards
+pub struct Store {
     store: Arc<SubgraphStore>,
     block_store: Arc<BlockStore>,
 }
 
-impl NetworkStore {
+impl Store {
     pub fn new(store: Arc<SubgraphStore>, block_store: Arc<BlockStore>) -> Self {
         Self { store, block_store }
     }
@@ -61,7 +63,7 @@ impl NetworkStore {
 }
 
 #[async_trait::async_trait]
-impl SubgraphStoreTrait for NetworkStore {
+impl SubgraphStoreTrait for Store {
     fn block_ptr(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
@@ -276,7 +278,7 @@ impl SubgraphStoreTrait for NetworkStore {
     }
 }
 
-impl QueryStoreManager for NetworkStore {
+impl QueryStoreManager for Store {
     fn query_store(
         &self,
         target: graph::data::query::QueryTarget,

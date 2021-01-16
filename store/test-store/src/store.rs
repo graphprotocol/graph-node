@@ -13,7 +13,7 @@ use graph_mock::MockMetricsRegistry;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
-use graph_store_postgres::{DeploymentPlacer, NetworkStore};
+use graph_store_postgres::{DeploymentPlacer, Store};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
@@ -45,14 +45,10 @@ lazy_static! {
         Arc::new(MockMetricsRegistry::new()),
         CONN_POOL_SIZE as usize
     ));
-    static ref STORE_POOL_CONFIG: (
-        Arc<NetworkStore>,
-        ConnectionPool,
-        Config,
-        Arc<SubscriptionManager>
-    ) = build_store();
+    static ref STORE_POOL_CONFIG: (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) =
+        build_store();
     pub(crate) static ref PRIMARY_POOL: ConnectionPool = STORE_POOL_CONFIG.1.clone();
-    pub static ref STORE: Arc<NetworkStore> = STORE_POOL_CONFIG.0.clone();
+    pub static ref STORE: Arc<Store> = STORE_POOL_CONFIG.0.clone();
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
     pub static ref SUBSCRIPTION_MANAGER: Arc<SubscriptionManager> = STORE_POOL_CONFIG.3.clone();
     pub static ref GENESIS_PTR: EthereumBlockPointer = (
@@ -95,7 +91,7 @@ lazy_static! {
 pub fn run_test_sequentially<R, S, F, G>(setup: G, test: F)
 where
     G: FnOnce() -> S + Send + 'static,
-    F: FnOnce(Arc<NetworkStore>, S) -> R + Send + 'static,
+    F: FnOnce(Arc<Store>, S) -> R + Send + 'static,
     R: std::future::Future<Output = ()> + Send + 'static,
 {
     let store = STORE.clone();
@@ -202,7 +198,7 @@ pub fn create_grafted_subgraph(
 }
 
 pub fn transact_errors(
-    store: &Arc<NetworkStore>,
+    store: &Arc<Store>,
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     errs: Vec<SubgraphError>,
@@ -224,7 +220,7 @@ pub fn transact_errors(
 
 /// Convenience to transact EntityOperation instead of EntityModification
 pub fn transact_entity_operations(
-    store: &Arc<NetworkStore>,
+    store: &Arc<Store>,
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
@@ -402,12 +398,7 @@ fn execute_subgraph_query_internal(
     result
 }
 
-fn build_store() -> (
-    Arc<NetworkStore>,
-    ConnectionPool,
-    Config,
-    Arc<SubscriptionManager>,
-) {
+fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) {
     let mut opt = Opt::default();
     let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| s.len() > 0);
     let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| s.len() > 0);

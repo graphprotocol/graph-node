@@ -11,7 +11,7 @@ use graph::{
 };
 use graph::{components::store::ChainStore as _, prelude::QueryStoreManager};
 use graph_store_postgres::ChainStore as DieselChainStore;
-use graph_store_postgres::NetworkStore as DieselStore;
+use graph_store_postgres::Store as DieselStore;
 
 use test_store::block_store::{
     Chain, FakeBlock, BLOCK_FIVE, BLOCK_FOUR, BLOCK_ONE, BLOCK_ONE_NO_PARENT, BLOCK_ONE_SIBLING,
