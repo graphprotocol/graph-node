@@ -26,6 +26,8 @@ pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 pub const META_FIELD_TYPE: &str = "_Meta_";
 pub const META_FIELD_NAME: &str = "_meta";
 
+pub const BLOCK_FIELD_TYPE: &str = "_Block_";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Strings(Vec<String>);
 

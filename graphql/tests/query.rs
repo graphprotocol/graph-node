@@ -1585,7 +1585,7 @@ fn query_detects_reorg() {
 fn can_query_meta() {
     run_test_sequentially(setup, |_, id| async move {
         // metadata for the latest block (block 1)
-        let query = "query { _meta { deployment block { hash number } } }";
+        let query = "query { _meta { deployment block { hash number __typename } __typename } }";
         let query = graphql_parser::parse_query(query)
             .expect("invalid test query")
             .into_static();
@@ -1595,9 +1595,11 @@ fn can_query_meta() {
             _meta: object! {
                 block: object! {
                     hash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
-                    number: 1
+                    number: 1,
+                    __typename: "_Block_"
                 },
-                deployment: "graphqlTestsQuery"
+                deployment: "graphqlTestsQuery",
+                __typename: "_Meta_"
             },
         };
         assert_eq!(extract_data!(result), Some(exp));

@@ -2,9 +2,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::result;
 use std::sync::Arc;
 
-use graph::components::store::*;
-use graph::data::graphql::{object, ObjectOrInterface};
+use graph::data::{
+    graphql::{object, ObjectOrInterface},
+    schema::META_FIELD_TYPE,
+};
 use graph::prelude::*;
+use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
 
 use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
@@ -183,6 +186,7 @@ impl StoreResolver {
             let block = object! {
                 hash: hash,
                 number: number,
+                __typename: BLOCK_FIELD_TYPE
             };
             map.insert("prefetch:block".to_string(), q::Value::List(vec![block]));
             map.insert(
@@ -192,6 +196,10 @@ impl StoreResolver {
             map.insert(
                 "hasIndexingErrors".to_string(),
                 q::Value::Boolean(self.has_non_fatal_errors),
+            );
+            map.insert(
+                "__typename".to_string(),
+                q::Value::String(META_FIELD_TYPE.to_string()),
             );
             return Ok((None, Some(q::Value::Object(map))));
         }
