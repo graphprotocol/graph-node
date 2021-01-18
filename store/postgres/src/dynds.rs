@@ -107,9 +107,9 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
     use dynamic_ethereum_contract_data_source as decds;
     use ethereum_contract_source as ecs;
 
-    // Query to load the data sources. Ordering by `vid` makes sure they are in insertion order
-    // which is important for the correctness of reverts and the execution order of triggers.
-    // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+    // Query to load the data sources. Ordering by the creation block and `vid` makes sure they are
+    // in insertion order which is important for the correctness of reverts and the execution order
+    // of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     let dds: Vec<_> = decds::table
         .inner_join(ecs::table.on(decds::source.eq(ecs::id)))
         .filter(decds::deployment.eq(id))
@@ -120,7 +120,7 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
             (ecs::address, ecs::abi, ecs::start_block),
             decds::block_range,
         ))
-        .order_by(decds::vid)
+        .order_by((decds::ethereum_block_number, decds::vid))
         .load::<(
             String,
             String,
@@ -129,7 +129,7 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
             (Bound<i32>, Bound<i32>),
         )>(conn)?;
 
-    let mut data_sources = Vec::new();
+    let mut data_sources: Vec<StoredDynamicDataSource> = Vec::new();
     for (ds_id, name, context, source, range) in dds.into_iter() {
         let source = to_source(id, &ds_id, source)?;
         let creation_block = first_block_in_range(&range);
@@ -139,6 +139,13 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
             context,
             creation_block: creation_block.map(|n| n as u64),
         };
+
+        if !(data_sources.last().and_then(|d| d.creation_block) <= data_source.creation_block) {
+            return Err(StoreError::ConstraintViolation(
+                "data sources not ordered by creation block".to_string(),
+            ));
+        }
+
         data_sources.push(data_source);
     }
     Ok(data_sources)
