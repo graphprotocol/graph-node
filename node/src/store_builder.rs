@@ -1,4 +1,3 @@
-use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
 use graph::prelude::{o, MetricsRegistry};
@@ -9,8 +8,7 @@ use graph::{
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    ChainStore as DieselChainStore, Shard as ShardName, Store as DieselStore, SubgraphStore,
-    SubscriptionManager, PRIMARY_SHARD,
+    Shard as ShardName, Store as DieselStore, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
 };
 
 use crate::config::{Config, Shard};
@@ -171,17 +169,16 @@ impl StoreBuilder {
             chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
             networks: Vec<(String, EthereumNetworkIdentifier)>,
         ) -> Arc<DieselBlockStore> {
-            let chain_stores =
-                HashMap::from_iter(networks.into_iter().map(|(name, identifier)| {
-                    let chain_store = DieselChainStore::new(
-                        name.clone(),
-                        identifier,
-                        chain_head_update_listener.cheap_clone(),
-                        pool.clone(),
-                    );
-                    (name, Arc::new(chain_store))
-                }));
-            Arc::new(DieselBlockStore::new(chain_stores))
+            let networks: Vec<_> = networks
+                .into_iter()
+                .map(|(name, ident)| (name, ident, PRIMARY_SHARD.clone()))
+                .collect();
+            let mut pools = HashMap::new();
+            pools.insert(PRIMARY_SHARD.clone(), pool);
+
+            let store = DieselBlockStore::new(networks, pools, chain_head_update_listener)
+                .expect("Creating the BlockStore works");
+            Arc::new(store)
         }
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
