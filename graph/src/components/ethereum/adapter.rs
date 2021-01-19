@@ -19,6 +19,7 @@ use crate::prelude::*;
 
 pub type EventSignature = H256;
 
+#[derive(Clone)]
 /// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
 pub struct EthereumNetworkIdentifier {
     pub net_version: String,

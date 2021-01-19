@@ -901,6 +901,12 @@ impl From<::diesel::result::Error> for StoreError {
     }
 }
 
+impl From<::diesel::r2d2::PoolError> for StoreError {
+    fn from(e: ::diesel::r2d2::PoolError) -> Self {
+        StoreError::Unknown(e.into())
+    }
+}
+
 impl From<Error> for StoreError {
     fn from(e: Error) -> Self {
         StoreError::Unknown(e)
