@@ -1,8 +1,14 @@
-use diesel::Connection;
-use std::fmt;
+use diesel::{
+    pg::Pg,
+    serialize::Output,
+    sql_types::Text,
+    types::{FromSql, ToSql},
+    Connection,
+};
 use std::iter::FromIterator;
 use std::sync::RwLock;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
+use std::{fmt, io::Write};
 
 use graph::{
     components::{
@@ -34,7 +40,7 @@ use crate::{
 };
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
 pub struct Shard(String);
 
 lazy_static! {
@@ -75,6 +81,19 @@ impl Shard {
 impl fmt::Display for Shard {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl FromSql<Text, Pg> for Shard {
+    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        Shard::new(s).map_err(Into::into)
+    }
+}
+
+impl ToSql<Text, Pg> for Shard {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
 
