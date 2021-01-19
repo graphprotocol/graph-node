@@ -4,13 +4,14 @@ use graph::{
     data::subgraph::schema::SubgraphHealth,
     prelude::EntityChange,
     prelude::EntityChangeOperation,
+    prelude::QueryStoreManager,
     prelude::Schema,
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
-    prelude::{NodeId, Store as _, SubgraphDeploymentId},
+    prelude::{CheapClone, NodeId, Store as _, SubgraphDeploymentId},
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::NetworkStore;
@@ -502,4 +503,45 @@ fn subgraph_error() {
             test_store::remove_subgraph(&subgraph_id);
         },
     )
+}
+
+#[test]
+fn fatal_vs_non_fatal() {
+    fn setup() -> SubgraphDeploymentId {
+        let id = SubgraphDeploymentId::new("failUnfail").unwrap();
+        remove_subgraphs();
+        create_test_subgraph(&id, SUBGRAPH_GQL);
+        id
+    }
+
+    run_test_sequentially(setup, |store, id| async move {
+        let query_store = store
+            .query_store(
+                SubgraphDeploymentId::new("failUnfail").unwrap().into(),
+                false,
+            )
+            .unwrap();
+
+        let error = || SubgraphError {
+            subgraph_id: id.clone(),
+            message: "test".to_string(),
+            block_ptr: Some(BLOCKS[1]),
+            handler: None,
+            deterministic: true,
+        };
+
+        store.fail_subgraph(id.clone(), error()).await.unwrap();
+
+        assert!(!query_store
+            .has_non_fatal_errors(id.cheap_clone(), None)
+            .await
+            .unwrap());
+
+        transact_errors(&store, id.clone(), BLOCKS[1].clone(), vec![error()]).unwrap();
+
+        assert!(query_store
+            .has_non_fatal_errors(id.cheap_clone(), None)
+            .await
+            .unwrap());
+    })
 }

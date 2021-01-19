@@ -7,6 +7,7 @@ use diesel::{
     dsl::{delete, insert_into, select, sql, update},
     sql_types::Integer,
 };
+use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
     schema::{MetadataType, SubgraphManifestEntity},
     SubgraphFeature,
@@ -16,7 +17,6 @@ use graph::prelude::{
     DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError,
     StoreEvent, SubgraphDeploymentId,
 };
-use graph::{data::subgraph::schema::SubgraphError, prelude::BLOCK_NUMBER_MAX};
 use stable_hash::crypto::SetHasher;
 use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
@@ -502,14 +502,26 @@ pub(crate) fn has_non_fatal_errors(
     id: &SubgraphDeploymentId,
     block: Option<BlockNumber>,
 ) -> Result<bool, StoreError> {
+    use subgraph_deployment as d;
     use subgraph_error as e;
 
-    let block = block.unwrap_or(BLOCK_NUMBER_MAX);
+    let block = match block {
+        Some(block) => d::table.select(sql(&block.to_string())).into_boxed(),
+        None => d::table
+            .filter(d::id.eq(id.as_str()))
+            .select(d::latest_ethereum_block_number)
+            .into_boxed(),
+    };
+
     select(diesel::dsl::exists(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
             .filter(e::deterministic)
-            .filter(sql("block_range @> ").bind::<Integer, _>(block)),
+            .filter(
+                sql("block_range @> ")
+                    .bind(block.single_value())
+                    .sql("::int"),
+            ),
     ))
     .get_result(conn)
     .map_err(|e| e.into())
