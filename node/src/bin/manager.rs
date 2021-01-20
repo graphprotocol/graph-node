@@ -8,7 +8,7 @@ use structopt::StructOpt;
 
 use graph::{
     log::logger,
-    prelude::{info, o, slog, tokio, Logger},
+    prelude::{anyhow, info, o, slog, tokio, Logger},
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
@@ -77,6 +77,8 @@ pub enum Command {
     /// Record which deployments are unused with `record`, then remove them
     /// with `remove`
     Unused(UnusedCommand),
+    /// Check the configuration file
+    Check,
 }
 
 #[derive(Clone, Debug, StructOpt)]
@@ -188,6 +190,14 @@ async fn main() {
                 }
             }
         }
+        Check => match config.to_json() {
+            Ok(txt) => {
+                println!("{}", txt);
+                eprintln!("Successfully validated configuration");
+                Ok(())
+            }
+            Err(e) => Err(anyhow!("error serializing config: {}", e)),
+        },
     };
     if let Err(e) = result {
         die!("error: {}", e)
