@@ -1,5 +1,5 @@
 use graph::prelude::{
-    anyhow::{anyhow, Result},
+    anyhow::{anyhow, Context, Result},
     info, serde_json, Logger, NodeId,
 };
 use graph_chain_ethereum::CLEANUP_BLOCKS;
@@ -41,11 +41,12 @@ impl Default for Opt {
 pub struct Config {
     #[serde(rename = "store")]
     pub stores: BTreeMap<String, Shard>,
+    pub chains: ChainSection,
     pub deployment: Deployment,
     ingestor: Ingestor,
 }
 
-fn validate_replica_name(s: &str) -> Result<()> {
+fn validate_name(s: &str) -> Result<()> {
     if s.is_empty() {
         return Err(anyhow!("names must not be empty"));
     }
@@ -98,6 +99,16 @@ impl Config {
                 ));
             }
         }
+
+        // Check that chains only reference existing stores
+        for (name, chain) in &self.chains.chains {
+            if !self.stores.contains_key(&chain.shard) {
+                return Err(anyhow!("unknown shard {} in chain {}", chain.shard, name));
+            }
+        }
+
+        self.chains.validate()?;
+
         Ok(())
     }
 
@@ -123,9 +134,11 @@ impl Config {
         let ingestor = Ingestor::from_opt(opt);
         let deployment = Deployment::from_opt(opt);
         let mut stores = BTreeMap::new();
+        let chains = ChainSection::from_opt(opt);
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(opt)?);
         Ok(Config {
             stores,
+            chains,
             deployment,
             ingestor,
         })
@@ -180,7 +193,7 @@ impl Shard {
 
         check_pool_size(self.pool_size, &self.connection)?;
         for (name, replica) in self.replicas.iter_mut() {
-            validate_replica_name(name)?;
+            validate_name(name).context("illegal replica name")?;
             replica.validate(opt)?;
         }
         Ok(())
@@ -228,6 +241,110 @@ impl Replica {
 
         check_pool_size(self.pool_size, &self.connection)?;
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ChainSection {
+    ingestor: String,
+    #[serde(flatten)]
+    chains: BTreeMap<String, Chain>,
+}
+
+impl ChainSection {
+    fn validate(&self) -> Result<()> {
+        NodeId::new(&self.ingestor)
+            .map_err(|()| anyhow!("invalid node id for ingestor {}", &self.ingestor))?;
+        for (_, chain) in &self.chains {
+            chain.validate()?
+        }
+        Ok(())
+    }
+
+    fn from_opt(opt: &Opt) -> Self {
+        // If we are not the block ingestor, set the node name
+        // to something that is definitely not our node_id
+        let ingestor = if opt.disable_block_ingestor {
+            format!("{} is not ingesting", opt.node_id)
+        } else {
+            opt.node_id.clone()
+        };
+        Self {
+            ingestor,
+            chains: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Chain {
+    shard: String,
+    #[serde(rename = "provider")]
+    providers: Vec<Provider>,
+}
+
+impl Chain {
+    fn validate(&self) -> Result<()> {
+        // `Config` validates that `self.shard` references a configured shard
+
+        for provider in &self.providers {
+            provider.validate()?
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Provider {
+    label: String,
+    #[serde(default)]
+    transport: Transport,
+    url: String,
+    features: Vec<String>,
+}
+
+const PROVIDER_FEATURES: [&str; 2] = ["traces", "archive "];
+
+impl Provider {
+    fn validate(&self) -> Result<()> {
+        validate_name(&self.label).context("illegal provider name")?;
+
+        for feature in &self.features {
+            if !PROVIDER_FEATURES.contains(&feature.as_str()) {
+                return Err(anyhow!(
+                    "illegal feature `{}` for provider {}. Features must be one of {}",
+                    feature,
+                    self.label,
+                    PROVIDER_FEATURES.join(", ")
+                ));
+            }
+        }
+
+        Url::parse(&self.url).map_err(|e| {
+            anyhow!(
+                "the url `{}` for provider {} is not a legal URL: {}",
+                self.url,
+                self.label,
+                e
+            )
+        })?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum Transport {
+    #[serde(rename = "rpc")]
+    Rpc,
+    #[serde(rename = "ws")]
+    Ws,
+    #[serde(rename = "ipc")]
+    Ipc,
+}
+
+impl Default for Transport {
+    fn default() -> Self {
+        Self::Rpc
     }
 }
 

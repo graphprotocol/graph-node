@@ -59,6 +59,42 @@ string](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTR
 passing the connection string to Postgres, environment variables embedded
 in the string are expanded.
 
+## Configuring Ethereum Providers
+
+The `[chains]` section controls the ethereum providers that `graph-node`
+connects to, and where blocks and other metadata for each chain are
+stored. The section consists of the name of the node doing block ingestion
+(currently not used), and a list of chains. The configuration for a chain
+`name` is specified in the section `[chains.<name>]`, and consists of the
+`shard` where chain data is stored and a list of providers for that
+chain. For each provider, the following information must be given:
+
+* `label`: a label that is used when logging information about that
+  provider (not implemented yet)
+* `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`
+* `url`: the URL for the provider
+* `features`: an array of features that the provider supports, either empty
+  or any combination of `traces` and `archive`
+
+The following example configures two chains, `mainnet` and `kovan`, where
+blocks for `mainnet` are stored in the `vip` shard and blocks for `kovan`
+are stored in the primary shard. The `mainnet` chain can use two different
+providers, whereas `kovan` only has one provider.
+
+```toml
+[chains]
+ingestor = "block_ingestor_node"
+[chains.mainnet]
+shard = "vip"
+provider = [
+  { label = "mainnet1", url = "http://..", features = [] },
+  { label = "mainnet2", url = "http://..", features = [ "archive", "traces" ] }
+]
+[chains.kovan]
+shard = "primary"
+provider = [ { label = "kovan", url = "http://..", features = [] } ]
+```
+
 ## Controlling Deployment
 
 When `graph-node` receives a request to deploy a new subgraph deployment,
