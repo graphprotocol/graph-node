@@ -43,7 +43,6 @@ pub struct Config {
     pub stores: BTreeMap<String, Shard>,
     pub chains: ChainSection,
     pub deployment: Deployment,
-    ingestor: Ingestor,
 }
 
 fn validate_name(s: &str) -> Result<()> {
@@ -131,7 +130,6 @@ impl Config {
     }
 
     fn from_opt(opt: &Opt) -> Result<Config> {
-        let ingestor = Ingestor::from_opt(opt);
         let deployment = Deployment::from_opt(opt);
         let mut stores = BTreeMap::new();
         let chains = ChainSection::from_opt(opt);
@@ -140,7 +138,6 @@ impl Config {
             stores,
             chains,
             deployment,
-            ingestor,
         })
     }
 
@@ -469,27 +466,6 @@ impl Default for Predicate {
         Predicate {
             name: any_name(),
             network: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct Ingestor {
-    node: String,
-}
-
-impl Ingestor {
-    fn from_opt(opt: &Opt) -> Self {
-        // If we are not the block ingestor, set the node name
-        // to something that is definitely not our node_id
-        if opt.disable_block_ingestor {
-            Ingestor {
-                node: format!("{} is not ingesting", opt.node_id),
-            }
-        } else {
-            Ingestor {
-                node: opt.node_id.clone(),
-            }
         }
     }
 }
