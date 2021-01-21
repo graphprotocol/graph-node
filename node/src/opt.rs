@@ -69,24 +69,24 @@ pub struct Opt {
     #[structopt(
         long,
         min_values=0,
-        required_unless_one = &["ethereum-ws", "ethereum-ipc"],
-        conflicts_with_all = &["ethereum-ws", "ethereum-ipc"],
+        required_unless_one = &["ethereum-ws", "ethereum-ipc", "config"],
+        conflicts_with_all = &["ethereum-ws", "ethereum-ipc", "config"],
         value_name="NETWORK_NAME:URL",
         env="ETHEREUM_RPC",
         help= "Ethereum network name (e.g. 'mainnet') and Ethereum RPC URL, separated by a ':'",
     )]
     pub ethereum_rpc: Vec<String>,
     #[structopt(long, min_values=0,
-        required_unless_one = &["ethereum-rpc", "ethereum-ipc"],
-        conflicts_with_all = &["ethereum-rpc", "ethereum-ipc"],
+        required_unless_one = &["ethereum-rpc", "ethereum-ipc", "config"],
+        conflicts_with_all = &["ethereum-rpc", "ethereum-ipc", "config"],
         value_name="NETWORK_NAME:URL",
         env="ETHEREUM_WS",
         help= "Ethereum network name (e.g. 'mainnet') and Ethereum WebSocket URL, separated by a ':'",
     )]
     pub ethereum_ws: Vec<String>,
     #[structopt(long, min_values=0,
-        required_unless_one = &["ethereum-rpc", "ethereum-ws"],
-        conflicts_with_all = &["ethereum-rpc", "ethereum-ws"],
+        required_unless_one = &["ethereum-rpc", "ethereum-ws", "config"],
+        conflicts_with_all = &["ethereum-rpc", "ethereum-ws", "config"],
         value_name="NETWORK_NAME:FILE",
         env="ETHEREUM_IPC",
         help= "Ethereum network name (e.g. 'mainnet') and Ethereum IPC pipe, separated by a ':'",
@@ -225,6 +225,9 @@ impl From<Opt> for config::Opt {
             postgres_secondary_hosts,
             disable_block_ingestor,
             node_id,
+            ethereum_rpc,
+            ethereum_ws,
+            ethereum_ipc,
             ..
         } = opt;
         config::Opt {
@@ -235,6 +238,9 @@ impl From<Opt> for config::Opt {
             postgres_secondary_hosts,
             disable_block_ingestor,
             node_id,
+            ethereum_rpc,
+            ethereum_ws,
+            ethereum_ipc,
         }
     }
 }

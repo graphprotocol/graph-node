@@ -60,13 +60,6 @@ lazy_static! {
 
 git_testament!(TESTAMENT);
 
-#[derive(Debug, Clone)]
-enum ConnectionType {
-    IPC,
-    RPC,
-    WS,
-}
-
 fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
     // A file with a list of expensive queries, one query per line
     // Attempts to run these queries will return a
@@ -192,14 +185,9 @@ async fn main() {
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     // Ethereum clients
-    let eth_networks = create_ethereum_networks(
-        &logger,
-        metrics_registry.clone(),
-        &opt.ethereum_rpc,
-        &opt.ethereum_ipc,
-        &opt.ethereum_ws,
-    )
-    .await;
+    let eth_networks = create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
+        .await
+        .expect("Failed to parse Ethereum networks");
 
     let graphql_metrics_registry = metrics_registry.clone();
 
@@ -497,80 +485,31 @@ async fn main() {
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
-async fn parse_ethereum_networks(
+async fn create_ethereum_networks(
     logger: Logger,
-    networks: Vec<String>,
-    connection_type: ConnectionType,
     registry: Arc<MetricsRegistry>,
+    config: &Config,
 ) -> Result<EthereumNetworks, anyhow::Error> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let mut parsed_networks = EthereumNetworks::new();
-    for network_arg in networks {
-        if network_arg.starts_with("wss://")
-            || network_arg.starts_with("http://")
-            || network_arg.starts_with("https://")
-        {
-            return Err(anyhow::anyhow!(
-                "Is your Ethereum node string missing a network name? \
-                     Try 'mainnet:' + the Ethereum node URL."
-            ));
-        } else {
-            // Parse string (format is "NETWORK_NAME:NETWORK_CAPABILITIES:URL" OR
-            // "NETWORK_NAME::URL" which will default to NETWORK_CAPABILITIES="archive,traces")
-            let split_at = network_arg.find(':').ok_or_else(|| {
-                return anyhow::anyhow!(
-                    "A network name must be provided alongside the \
-                         Ethereum node location. Try e.g. 'mainnet:URL'."
-                );
-            })?;
-
-            let (name, rest_with_delim) = network_arg.split_at(split_at);
-            let rest = &rest_with_delim[1..];
-            if name.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "Ethereum network name cannot be an empty string"
-                ));
-            }
-
-            let url_split_at = rest.find(":").ok_or_else(|| {
-                return anyhow::anyhow!(
-                    "A network name must be provided alongside the \
-                         Ethereum node location. Try e.g. 'mainnet:URL'."
-                );
-            })?;
-
-            let (capabilities_str, url_str) = rest.split_at(url_split_at);
-            let (url, capabilities) =
-                if vec!["http", "https", "ws", "wss"].contains(&capabilities_str) {
-                    (
-                        rest,
-                        NodeCapabilities {
-                            archive: true,
-                            traces: true,
-                        },
-                    )
-                } else {
-                    (&url_str[1..], capabilities_str.parse()?)
-                };
-
-            if rest.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "Ethereum node URL cannot be an empty string"
-                ));
-            }
+    for (name, chain) in &config.chains.chains {
+        for provider in &chain.providers {
+            let capabilities = provider.node_capabilities();
 
             info!(
                 logger,
                 "Creating transport";
                 "network" => &name,
-                "url" => &url,
+                "url" => &provider.url,
                 "capabilities" => capabilities
             );
 
-            let (transport_event_loop, transport) = match connection_type {
-                ConnectionType::RPC => Transport::new_rpc(url),
-                ConnectionType::IPC => Transport::new_ipc(url),
-                ConnectionType::WS => Transport::new_ws(url),
+            use crate::config::Transport::*;
+
+            let (transport_event_loop, transport) = match provider.transport {
+                Rpc => Transport::new_rpc(&provider.url),
+                Ipc => Transport::new_ipc(&provider.url),
+                Ws => Transport::new_ws(&provider.url),
             };
 
             // If we drop the event loop the transport will stop working.
@@ -582,7 +521,7 @@ async fn parse_ethereum_networks(
                 capabilities,
                 Arc::new(
                     graph_chain_ethereum::EthereumAdapter::new(
-                        url,
+                        &provider.url,
                         transport,
                         eth_rpc_metrics.clone(),
                     )
@@ -661,39 +600,6 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
         .collect()
 }
 
-async fn create_ethereum_networks(
-    logger: &Logger,
-    metrics_registry: Arc<MetricsRegistry>,
-    rpc: &Vec<String>,
-    ipc: &Vec<String>,
-    ws: &Vec<String>,
-) -> EthereumNetworks {
-    let mut eth_networks = EthereumNetworks::new();
-
-    for (connection_type, values) in [
-        (ConnectionType::RPC, rpc),
-        (ConnectionType::IPC, ipc),
-        (ConnectionType::WS, ws),
-    ]
-    .iter()
-    .cloned()
-    .filter(|(_, values)| values.len() > 0)
-    {
-        let networks = parse_ethereum_networks(
-            logger.clone(),
-            values.clone(),
-            connection_type,
-            metrics_registry.clone(),
-        )
-        .await
-        .expect("Failed to parse Ethereum networks");
-
-        eth_networks.extend(networks);
-    }
-    eth_networks.sort();
-    eth_networks
-}
-
 fn start_block_ingestor(
     logger: &Logger,
     block_polling_interval: Duration,
@@ -739,8 +645,8 @@ fn start_block_ingestor(
 
 #[cfg(test)]
 mod test {
-    use super::parse_ethereum_networks;
-    use crate::ConnectionType;
+    use super::create_ethereum_networks;
+    use crate::config::{Config, Opt};
     use graph::components::ethereum::NodeCapabilities;
     use graph::log::logger;
     use graph::prelude::tokio;
@@ -757,16 +663,29 @@ mod test {
             "goerli:archive:http://localhost:8546/".to_string(),
         ];
 
+        let opt = Opt {
+            postgres_url: Some("not needed".to_string()),
+            config: None,
+            store_connection_pool_size: 5,
+            postgres_secondary_hosts: vec![],
+            postgres_host_weights: vec![],
+            disable_block_ingestor: true,
+            node_id: "default".to_string(),
+            ethereum_rpc: network_args,
+            ethereum_ws: vec![],
+            ethereum_ipc: vec![],
+        };
+
+        let config = Config::load(&logger, &opt).expect("can create config");
         let prometheus_registry = Arc::new(Registry::new());
         let metrics_registry = Arc::new(MetricsRegistry::new(
             logger.clone(),
             prometheus_registry.clone(),
         ));
 
-        let ethereum_networks =
-            parse_ethereum_networks(logger, network_args, ConnectionType::RPC, metrics_registry)
-                .await
-                .expect("Correctly parse Ethereum network args");
+        let ethereum_networks = create_ethereum_networks(logger, metrics_registry, &config)
+            .await
+            .expect("Correctly parse Ethereum network args");
         let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();
         network_names.sort();
 
