@@ -1,6 +1,9 @@
-use graph::prelude::{
-    anyhow::{anyhow, Context, Result},
-    info, serde_json, Logger, NodeId,
+use graph::{
+    components::ethereum::NodeCapabilities,
+    prelude::{
+        anyhow::{anyhow, Context, Result},
+        info, serde_json, Logger, NodeId,
+    },
 };
 use graph_chain_ethereum::CLEANUP_BLOCKS;
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
@@ -21,6 +24,9 @@ pub struct Opt {
     pub postgres_host_weights: Vec<usize>,
     pub disable_block_ingestor: bool,
     pub node_id: String,
+    pub ethereum_rpc: Vec<String>,
+    pub ethereum_ws: Vec<String>,
+    pub ethereum_ipc: Vec<String>,
 }
 
 impl Default for Opt {
@@ -33,6 +39,9 @@ impl Default for Opt {
             postgres_host_weights: vec![],
             disable_block_ingestor: true,
             node_id: "default".to_string(),
+            ethereum_rpc: vec![],
+            ethereum_ws: vec![],
+            ethereum_ipc: vec![],
         }
     }
 }
@@ -132,7 +141,7 @@ impl Config {
     fn from_opt(opt: &Opt) -> Result<Config> {
         let deployment = Deployment::from_opt(opt);
         let mut stores = BTreeMap::new();
-        let chains = ChainSection::from_opt(opt);
+        let chains = ChainSection::from_opt(opt)?;
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(opt)?);
         Ok(Config {
             stores,
@@ -243,9 +252,9 @@ impl Replica {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChainSection {
-    ingestor: String,
+    pub ingestor: String,
     #[serde(flatten)]
-    chains: BTreeMap<String, Chain>,
+    pub chains: BTreeMap<String, Chain>,
 }
 
 impl ChainSection {
@@ -258,7 +267,7 @@ impl ChainSection {
         Ok(())
     }
 
-    fn from_opt(opt: &Opt) -> Self {
+    fn from_opt(opt: &Opt) -> Result<Self> {
         // If we are not the block ingestor, set the node name
         // to something that is definitely not our node_id
         let ingestor = if opt.disable_block_ingestor {
@@ -266,18 +275,82 @@ impl ChainSection {
         } else {
             opt.node_id.clone()
         };
-        Self {
-            ingestor,
-            chains: BTreeMap::new(),
+        let mut chains = BTreeMap::new();
+        Self::parse_networks(&mut chains, Transport::Rpc, &opt.ethereum_rpc)?;
+        Self::parse_networks(&mut chains, Transport::Ws, &opt.ethereum_ws)?;
+        Self::parse_networks(&mut chains, Transport::Ipc, &opt.ethereum_ipc)?;
+        Ok(Self { ingestor, chains })
+    }
+
+    fn parse_networks(
+        chains: &mut BTreeMap<String, Chain>,
+        transport: Transport,
+        args: &Vec<String>,
+    ) -> Result<()> {
+        for (nr, arg) in args.iter().enumerate() {
+            if arg.starts_with("wss://")
+                || arg.starts_with("http://")
+                || arg.starts_with("https://")
+            {
+                return Err(anyhow!(
+                    "Is your Ethereum node string missing a network name? \
+                     Try 'mainnet:' + the Ethereum node URL."
+                ));
+            } else {
+                // Parse string (format is "NETWORK_NAME:NETWORK_CAPABILITIES:URL" OR
+                // "NETWORK_NAME::URL" which will default to NETWORK_CAPABILITIES="archive,traces")
+                let colon = arg.find(':').ok_or_else(|| {
+                    return anyhow!(
+                        "A network name must be provided alongside the \
+                         Ethereum node location. Try e.g. 'mainnet:URL'."
+                    );
+                })?;
+
+                let (name, rest_with_delim) = arg.split_at(colon);
+                let rest = &rest_with_delim[1..];
+                if name.is_empty() {
+                    return Err(anyhow!("Ethereum network name cannot be an empty string"));
+                }
+                if rest.is_empty() {
+                    return Err(anyhow!("Ethereum node URL cannot be an empty string"));
+                }
+
+                let colon = rest.find(":").ok_or_else(|| {
+                    return anyhow!(
+                        "A network name must be provided alongside the \
+                         Ethereum node location. Try e.g. 'mainnet:URL'."
+                    );
+                })?;
+
+                let (features, url_str) = rest.split_at(colon);
+                let (url, features) = if vec!["http", "https", "ws", "wss"].contains(&features) {
+                    (rest, PROVIDER_FEATURES.to_vec())
+                } else {
+                    (&url_str[1..], features.split(',').collect())
+                };
+                let features = features.into_iter().map(|s| s.to_string()).collect();
+                let provider = Provider {
+                    label: format!("{}-{}-{}", name, transport, nr),
+                    transport,
+                    url: url.to_string(),
+                    features,
+                };
+                let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
+                    shard: PRIMARY_SHARD.to_string(),
+                    providers: vec![],
+                });
+                entry.providers.push(provider);
+            }
         }
+        Ok(())
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Chain {
-    shard: String,
+    pub shard: String,
     #[serde(rename = "provider")]
-    providers: Vec<Provider>,
+    pub providers: Vec<Provider>,
 }
 
 impl Chain {
@@ -293,11 +366,11 @@ impl Chain {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Provider {
-    label: String,
+    pub label: String,
     #[serde(default)]
-    transport: Transport,
-    url: String,
-    features: Vec<String>,
+    pub transport: Transport,
+    pub url: String,
+    pub features: Vec<String>,
 }
 
 const PROVIDER_FEATURES: [&str; 2] = ["traces", "archive "];
@@ -327,9 +400,16 @@ impl Provider {
         })?;
         Ok(())
     }
+
+    pub fn node_capabilities(&self) -> NodeCapabilities {
+        NodeCapabilities {
+            archive: self.features.iter().any(|f| f == "archive"),
+            traces: self.features.iter().any(|f| f == "traces"),
+        }
+    }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub enum Transport {
     #[serde(rename = "rpc")]
     Rpc,
@@ -342,6 +422,18 @@ pub enum Transport {
 impl Default for Transport {
     fn default() -> Self {
         Self::Rpc
+    }
+}
+
+impl std::fmt::Display for Transport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Transport::*;
+
+        match self {
+            Rpc => write!(f, "rpc"),
+            Ws => write!(f, "ws"),
+            Ipc => write!(f, "ipc"),
+        }
     }
 }
 
