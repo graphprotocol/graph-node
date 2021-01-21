@@ -12,6 +12,11 @@ use std::time::Instant;
 use strum_macros::AsStaticStr;
 use web3::types::{Log, Transaction};
 
+lazy_static! {
+    /// Verbose logging of mapping inputs
+    pub static ref LOG_TRIGGER_DATA: bool = std::env::var("GRAPH_LOG_TRIGGER_DATA").is_ok();
+}
+
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module(
     raw_module: Vec<u8>,
@@ -47,6 +52,7 @@ pub fn spawn_module(
                         trigger,
                         result_sender,
                     } = request;
+                    let logger = ctx.logger.cheap_clone();
 
                     // Start the WASM module runtime.
                     let section = host_metrics.stopwatch.start_section("module_init");
@@ -60,6 +66,9 @@ pub fn spawn_module(
                     section.end();
 
                     let section = host_metrics.stopwatch.start_section("run_handler");
+                    if *LOG_TRIGGER_DATA {
+                        debug!(logger, "trigger data: {:?}", trigger);
+                    }
                     let result = match trigger {
                         MappingTrigger::Log {
                             transaction,
