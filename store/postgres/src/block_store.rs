@@ -74,7 +74,7 @@ impl BlockStore {
         // (network, ident, shard)
         networks: Vec<(String, EthereumNetworkIdentifier, Shard)>,
         // shard -> pool
-        pools: HashMap<Shard, ConnectionPool>,
+        pools: &HashMap<Shard, ConnectionPool>,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     ) -> Result<Self, StoreError> {
         let primary = pools
