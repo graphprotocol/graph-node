@@ -474,7 +474,6 @@ pub async fn execute_root_selection_set<R: Resolver>(
             ctx.logger.cheap_clone(),
         );
 
-        // Get or insert the cache for this network.
         if inserted {
             ctx.cache_status.store(CacheStatus::Insert);
         } else {
