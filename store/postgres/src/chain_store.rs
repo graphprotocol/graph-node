@@ -521,3 +521,100 @@ fn contract_call_id(
     hash.update(block.hash.as_ref());
     *hash.finalize().as_bytes()
 }
+
+/// Support for tests
+#[cfg(debug_assertions)]
+pub mod test_support {
+    use std::str::FromStr;
+
+    use graph::prelude::{web3::types::H256, EthereumBlockPointer};
+
+    // Hash indicating 'no parent'
+    pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+    /// The parts of an Ethereum block that are interesting for these tests:
+    /// the block number, hash, and the hash of the parent block
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct FakeBlock {
+        pub number: u64,
+        pub hash: String,
+        pub parent_hash: String,
+    }
+
+    impl FakeBlock {
+        pub fn make_child(&self, hash: &str) -> Self {
+            FakeBlock {
+                number: self.number + 1,
+                hash: hash.to_owned(),
+                parent_hash: self.hash.clone(),
+            }
+        }
+
+        pub fn make_no_parent(number: u64, hash: &str) -> Self {
+            FakeBlock {
+                number,
+                hash: hash.to_owned(),
+                parent_hash: NO_PARENT.to_string(),
+            }
+        }
+
+        pub fn block_hash(&self) -> H256 {
+            H256::from_str(self.hash.as_str()).expect("invalid block hash")
+        }
+
+        pub fn block_ptr(&self) -> EthereumBlockPointer {
+            EthereumBlockPointer {
+                number: self.number,
+                hash: self.block_hash(),
+            }
+        }
+    }
+
+    pub type Chain = Vec<&'static FakeBlock>;
+
+    /// Store the given chain as the blocks for the `network` set the
+    /// network's genesis block to `genesis_hash`, and head block to
+    /// `null`
+    pub trait SettableChainStore {
+        fn set_chain(&self, genesis_hash: &str, chain: Chain);
+    }
+}
+
+#[cfg(debug_assertions)]
+impl test_support::SettableChainStore for ChainStore {
+    fn set_chain(&self, genesis_hash: &str, chain: test_support::Chain) {
+        use crate::db_schema::ethereum_blocks as b;
+        use crate::db_schema::ethereum_networks as n;
+
+        let conn = self.conn.get().expect("can get a database connection");
+
+        diesel::delete(b::table.filter(b::network_name.eq(&self.network)))
+            .execute(&conn)
+            .expect("Failed to delete ethereum_blocks");
+
+        for block in &chain {
+            let number = block.number as i64;
+
+            let values = (
+                b::hash.eq(&block.hash),
+                b::number.eq(number),
+                b::parent_hash.eq(&block.parent_hash),
+                b::network_name.eq(&self.network),
+                b::data.eq(serde_json::Value::Null),
+            );
+
+            insert_into(b::table)
+                .values(values.clone())
+                .execute(&conn)
+                .unwrap();
+        }
+
+        update(n::table.filter(n::name.eq(&self.network)))
+            .set((
+                n::genesis_block_hash.eq(genesis_hash),
+                n::head_block_hash.eq::<Option<&str>>(None),
+                n::head_block_number.eq::<Option<i64>>(None),
+            ))
+            .execute(&conn)
+            .unwrap();
+    }
+}
