@@ -34,11 +34,7 @@ where
     run_test_sequentially(
         || (),
         |store, ()| async move {
-            // Reset state before starting
-            block_store::remove();
-
-            // Seed database with test data
-            block_store::insert(chain, NETWORK_NAME);
+            block_store::set_chain(chain, NETWORK_NAME);
 
             let chain_store = store
                 .block_store()

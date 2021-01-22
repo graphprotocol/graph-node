@@ -43,8 +43,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Subgrap
     let id = SubgraphDeploymentId::new(id).unwrap();
 
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
-    block_store::remove();
-    block_store::insert(chain, NETWORK_NAME);
+    block_store::set_chain(chain, NETWORK_NAME);
     test_store::remove_subgraphs();
 
     let schema = test_schema(id.clone());
