@@ -665,7 +665,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        self.primary.find_ens_name(hash)
+        Ok(self.primary_conn()?.find_ens_name(hash)?)
     }
 
     fn transact_block_operations(

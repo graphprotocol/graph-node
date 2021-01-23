@@ -66,7 +66,8 @@ pub mod command_support {
     pub mod catalog {
         pub use crate::primary::Connection;
         pub use crate::primary::{
-            deployment_schemas, subgraph, subgraph_deployment_assignment, subgraph_version,
+            deployment_schemas, ens_names, subgraph, subgraph_deployment_assignment,
+            subgraph_version,
         };
     }
     pub use crate::entities::Connection;
