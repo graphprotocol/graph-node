@@ -1088,8 +1088,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError>;
 
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
-
     /// Load the dynamic data sources for the given deployment
     async fn load_dynamic_data_sources(
         &self,
@@ -1117,18 +1115,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Return the name of the network that the subgraph is indexing from. The
     /// names returned are things like `mainnet` or `ropsten`
     fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<String, StoreError>;
-
-    /// Support for the explorer-specific API
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
-
-    /// Support for the explorer-specific API; note that `subgraph_id` must be
-    /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.
-    /// The return values are the ids of the `subgraphs.subgraph_version` for
-    /// the current and pending versions of the subgraph
-    fn versions_for_subgraph_id(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError>;
 }
 
 pub trait QueryStoreManager: Send + Sync + 'static {
@@ -1294,10 +1280,6 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn status(&self, _: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        unimplemented!()
-    }
-
     async fn load_dynamic_data_sources(
         &self,
         _subgraph_id: SubgraphDeploymentId,
@@ -1326,17 +1308,6 @@ impl SubgraphStore for MockStore {
     }
 
     fn network_name(&self, _: &SubgraphDeploymentId) -> Result<String, StoreError> {
-        unimplemented!()
-    }
-
-    fn version_info(&self, _: &str) -> Result<VersionInfo, StoreError> {
-        unimplemented!()
-    }
-
-    fn versions_for_subgraph_id(
-        &self,
-        _: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
         unimplemented!()
     }
 }
@@ -1486,6 +1457,41 @@ pub trait QueryStore: Send + Sync {
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
     fn network_name(&self) -> &str;
+}
+
+/// A view of the store that can provide information about the indexing status
+/// of any subgraph and any deployment
+pub trait StatusStore: Send + Sync + 'static {
+    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
+
+    /// Support for the explorer-specific API
+    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
+
+    /// Support for the explorer-specific API; note that `subgraph_id` must be
+    /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.
+    /// The return values are the ids of the `subgraphs.subgraph_version` for
+    /// the current and pending versions of the subgraph
+    fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError>;
+
+    fn supports_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        subgraph_id: &'a SubgraphDeploymentId,
+    ) -> DynTryFuture<'a, bool>;
+
+    /// A value of None indicates that the table is not available. Re-deploying
+    /// the subgraph fixes this. It is undesirable to force everything to
+    /// re-sync from scratch, so existing deployments will continue without a
+    /// Proof of Indexing. Once all subgraphs have been re-deployed the Option
+    /// can be removed.
+    fn get_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        subgraph_id: &'a SubgraphDeploymentId,
+        indexer: &'a Option<Address>,
+        block: EthereumBlockPointer,
+    ) -> DynTryFuture<'a, Option<[u8; 32]>>;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to

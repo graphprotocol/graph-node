@@ -4,8 +4,8 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            BlockStore as BlockStoreTrait, EntityType, QueryStoreManager, StoredDynamicDataSource,
-            SubgraphStore as SubgraphStoreTrait,
+            BlockStore as BlockStoreTrait, EntityType, QueryStoreManager, StatusStore,
+            StoredDynamicDataSource, SubgraphStore as SubgraphStoreTrait,
         },
     },
     constraint_violation,
@@ -222,10 +222,6 @@ impl SubgraphStoreTrait for Store {
         self.store.create_subgraph(name)
     }
 
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        self.store.status(filter)
-    }
-
     async fn load_dynamic_data_sources(
         &self,
         subgraph_id: SubgraphDeploymentId,
@@ -265,17 +261,6 @@ impl SubgraphStoreTrait for Store {
     ) -> Result<String, StoreError> {
         self.store.network_name(subgraph_id)
     }
-
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
-        self.store.version_info(version_id)
-    }
-
-    fn versions_for_subgraph_id(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.store.versions_for_subgraph_id(subgraph_id)
-    }
 }
 
 impl QueryStoreManager for Store {
@@ -293,5 +278,40 @@ impl QueryStoreManager for Store {
             )
         })?;
         Ok(Arc::new(QueryStore::new(store, chain_store, site, replica)))
+    }
+}
+
+impl StatusStore for Store {
+    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+        self.store.status(filter)
+    }
+
+    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
+        self.store.version_info(version_id)
+    }
+
+    fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        self.store.versions_for_subgraph_id(subgraph_id)
+    }
+
+    fn supports_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        subgraph_id: &'a SubgraphDeploymentId,
+    ) -> graph::prelude::DynTryFuture<'a, bool> {
+        self.store.clone().supports_proof_of_indexing(subgraph_id)
+    }
+
+    fn get_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        subgraph_id: &'a SubgraphDeploymentId,
+        indexer: &'a Option<Address>,
+        block: EthereumBlockPointer,
+    ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
+        self.store
+            .clone()
+            .get_proof_of_indexing(subgraph_id, indexer, block)
     }
 }

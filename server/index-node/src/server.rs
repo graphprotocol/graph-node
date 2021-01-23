@@ -3,7 +3,10 @@ use hyper::service::make_service_fn;
 use hyper::Server;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use graph::prelude::{IndexNodeServer as IndexNodeServerTrait, *};
+use graph::{
+    components::store::StatusStore,
+    prelude::{IndexNodeServer as IndexNodeServerTrait, *},
+};
 
 use crate::service::IndexNodeService;
 use thiserror::Error;
@@ -51,7 +54,7 @@ impl<Q, S> IndexNodeServer<Q, S> {
 impl<Q, S> IndexNodeServerTrait for IndexNodeServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphStore,
+    S: StatusStore,
 {
     type ServeError = IndexNodeServeError;
 
