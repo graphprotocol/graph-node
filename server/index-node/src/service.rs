@@ -4,8 +4,8 @@ use hyper::{Body, Method, Request, Response, StatusCode};
 use std::task::Context;
 use std::task::Poll;
 
-use graph::prelude::*;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryResults};
+use graph::{components::store::StatusStore, prelude::*};
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
 
 use crate::explorer::Explorer;
@@ -41,7 +41,7 @@ impl<Q, S> CheapClone for IndexNodeService<Q, S> {}
 impl<Q, S> IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphStore,
+    S: StatusStore,
 {
     /// Creates a new GraphQL service.
     pub fn new(logger: Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
@@ -199,7 +199,7 @@ where
 impl<Q, S> Service<Request<Body>> for IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphStore,
+    S: StatusStore,
 {
     type Response = Response<Body>;
     type Error = GraphQLServerError;

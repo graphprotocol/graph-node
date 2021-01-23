@@ -260,7 +260,7 @@ async fn main() {
             let mut index_node_server = IndexNodeServer::new(
                 &logger_factory,
                 graphql_runner.clone(),
-                network_store.store(),
+                network_store.clone(),
             );
 
             // Spawn Ethereum network indexers for all networks that are to be indexed

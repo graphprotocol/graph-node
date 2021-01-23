@@ -2,10 +2,10 @@ use mockall::predicate::*;
 use mockall::*;
 use std::collections::BTreeMap;
 
-use graph::components::{server::index_node::VersionInfo, store::StoredDynamicDataSource};
+use graph::components::store::EntityType;
+use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
-use graph::{components::store::EntityType, data::subgraph::status};
 use web3::types::{Address, H256};
 
 mock! {
@@ -190,10 +190,6 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn status(&self, _: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        unimplemented!()
-    }
-
     async fn load_dynamic_data_sources(
         &self,
         _: SubgraphDeploymentId,
@@ -222,17 +218,6 @@ impl SubgraphStore for MockStore {
     }
 
     fn network_name(&self, _: &SubgraphDeploymentId) -> Result<String, StoreError> {
-        unimplemented!()
-    }
-
-    fn version_info(&self, _: &str) -> Result<VersionInfo, StoreError> {
-        unimplemented!()
-    }
-
-    fn versions_for_subgraph_id(
-        &self,
-        _: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
         unimplemented!()
     }
 }

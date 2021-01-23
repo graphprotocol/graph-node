@@ -7,7 +7,7 @@ use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
 use graph::components::store::{
-    BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType,
+    BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType, StatusStore,
     SubscriptionManager as _,
 };
 use graph::data::store::scalar;

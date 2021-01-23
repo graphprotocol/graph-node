@@ -1,4 +1,5 @@
 use graph::{
+    components::store::StatusStore,
     data::subgraph::schema::MetadataType,
     data::subgraph::schema::SubgraphError,
     data::subgraph::schema::SubgraphHealth,

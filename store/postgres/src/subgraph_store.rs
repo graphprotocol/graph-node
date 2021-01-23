@@ -527,6 +527,89 @@ impl SubgraphStore {
         Ok(())
     }
 
+    pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+        let deployments = match filter {
+            status::Filter::SubgraphName(name) => {
+                let deployments = self.primary_conn()?.deployments_for_subgraph(name)?;
+                if deployments.is_empty() {
+                    return Ok(Vec::new());
+                }
+                deployments
+            }
+            status::Filter::SubgraphVersion(name, use_current) => {
+                let deployment = self.primary_conn()?.subgraph_version(name, use_current)?;
+                match deployment {
+                    Some(deployment) => vec![deployment],
+                    None => {
+                        return Ok(Vec::new());
+                    }
+                }
+            }
+            status::Filter::Deployments(deployments) => deployments,
+        };
+
+        let by_shard: HashMap<Shard, Vec<Arc<Site>>> = self.deployments_by_shard(deployments)?;
+
+        // Go shard-by-shard to look up deployment statuses
+        let mut infos = Vec::new();
+        for (shard, sites) in by_shard.into_iter() {
+            let store = self
+                .stores
+                .get(&shard)
+                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
+            infos.extend(store.deployment_statuses(&sites)?);
+        }
+        let infos = self.primary_conn()?.fill_assignments(infos)?;
+        let infos = self.primary_conn()?.fill_chain_head_pointers(infos)?;
+        Ok(infos)
+    }
+
+    pub(crate) fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
+        if let Some((deployment_id, created_at)) = self.primary_conn()?.version_info(version)? {
+            let id = SubgraphDeploymentId::new(deployment_id.clone())
+                .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
+            let (store, site) = self.store(&id)?;
+            let statuses = store.deployment_statuses(&vec![site])?;
+            let status = statuses
+                .first()
+                .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;
+            let chain = status
+                .chains
+                .first()
+                .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
+            let latest_ethereum_block_number =
+                chain.latest_block.as_ref().map(|ref block| block.number());
+            let subgraph_info = store.subgraph_info(&id)?;
+            let network = self.network_name(&id)?;
+            let total_ethereum_blocks_count = self.primary_conn()?.chain_head_block(&network)?;
+
+            let info = VersionInfo {
+                created_at,
+                deployment_id,
+                latest_ethereum_block_number,
+                total_ethereum_blocks_count,
+                synced: status.synced,
+                failed: status.health.is_failed(),
+                description: subgraph_info.description,
+                repository: subgraph_info.repository,
+                schema: subgraph_info.input,
+                network: network.to_string(),
+            };
+            Ok(info)
+        } else {
+            Err(StoreError::DeploymentNotFound(version.to_string()))
+        }
+    }
+
+    pub(crate) fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        let primary = self.primary_conn()?;
+
+        primary.versions_for_subgraph_id(subgraph_id)
+    }
+
     #[cfg(debug_assertions)]
     pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
         let (store, _) = self.store(id)?;
@@ -730,43 +813,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        let deployments = match filter {
-            status::Filter::SubgraphName(name) => {
-                let deployments = self.primary_conn()?.deployments_for_subgraph(name)?;
-                if deployments.is_empty() {
-                    return Ok(Vec::new());
-                }
-                deployments
-            }
-            status::Filter::SubgraphVersion(name, use_current) => {
-                let deployment = self.primary_conn()?.subgraph_version(name, use_current)?;
-                match deployment {
-                    Some(deployment) => vec![deployment],
-                    None => {
-                        return Ok(Vec::new());
-                    }
-                }
-            }
-            status::Filter::Deployments(deployments) => deployments,
-        };
-
-        let by_shard: HashMap<Shard, Vec<Arc<Site>>> = self.deployments_by_shard(deployments)?;
-
-        // Go shard-by-shard to look up deployment statuses
-        let mut infos = Vec::new();
-        for (shard, sites) in by_shard.into_iter() {
-            let store = self
-                .stores
-                .get(&shard)
-                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
-            infos.extend(store.deployment_statuses(&sites)?);
-        }
-        let infos = self.primary_conn()?.fill_assignments(infos)?;
-        let infos = self.primary_conn()?.fill_chain_head_pointers(infos)?;
-        Ok(infos)
-    }
-
     async fn load_dynamic_data_sources(
         &self,
         id: SubgraphDeploymentId,
@@ -814,52 +860,6 @@ impl SubgraphStoreTrait for SubgraphStore {
     fn network_name(&self, id: &SubgraphDeploymentId) -> Result<String, StoreError> {
         let (_, site) = self.store(&id)?;
         Ok(site.network.to_string())
-    }
-
-    fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
-        if let Some((deployment_id, created_at)) = self.primary_conn()?.version_info(version)? {
-            let id = SubgraphDeploymentId::new(deployment_id.clone())
-                .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
-            let (store, site) = self.store(&id)?;
-            let statuses = store.deployment_statuses(&vec![site])?;
-            let status = statuses
-                .first()
-                .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;
-            let chain = status
-                .chains
-                .first()
-                .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
-            let latest_ethereum_block_number =
-                chain.latest_block.as_ref().map(|ref block| block.number());
-            let subgraph_info = store.subgraph_info(&id)?;
-            let network = self.network_name(&id)?;
-            let total_ethereum_blocks_count = self.primary_conn()?.chain_head_block(&network)?;
-
-            let info = VersionInfo {
-                created_at,
-                deployment_id,
-                latest_ethereum_block_number,
-                total_ethereum_blocks_count,
-                synced: status.synced,
-                failed: status.health.is_failed(),
-                description: subgraph_info.description,
-                repository: subgraph_info.repository,
-                schema: subgraph_info.input,
-                network: network.to_string(),
-            };
-            Ok(info)
-        } else {
-            Err(StoreError::DeploymentNotFound(version.to_string()))
-        }
-    }
-
-    fn versions_for_subgraph_id(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
-        let primary = self.primary_conn()?;
-
-        primary.versions_for_subgraph_id(subgraph_id)
     }
 }
 
