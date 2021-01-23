@@ -127,16 +127,54 @@ impl WriteContext {
         debug!(self.logger, "Write block");
 
         let block = Arc::new(block);
-        let block_for_ommers = block.clone();
-        let block_for_store = block.clone();
+        let ommers = block.ommers.clone();
+        let block_for_transactions = block.block.clone();
+        let receipts = block.block.transaction_receipts.clone();
 
         Box::new(
             // Add the block entity
             self.set_entity(block.as_ref())
                 // Add uncle block entities
                 .and_then(move |context| {
-                    futures::stream::iter_ok::<_, Error>(block_for_ommers.ommers.clone())
+                    futures::stream::iter_ok::<_, Error>(ommers)
                         .fold(context, move |context, ommer| context.set_entity(ommer))
+                })
+                // Add block transactions
+                .and_then(move |context| {
+                    futures::stream::iter_ok::<_, Error>(
+                        block_for_transactions
+                            .block
+                            .transactions
+                            .into_iter()
+                            .zip(block_for_transactions.transaction_receipts.into_iter())
+                            .map(|transaction_and_receipt| {
+                                assert_eq!(
+                                    transaction_and_receipt.0.hash,
+                                    transaction_and_receipt.1.transaction_hash
+                                );
+                                LoadedTransaction::from(transaction_and_receipt)
+                            }),
+                    )
+                    .fold(
+                        context,
+                        move |context, transaction: LoadedTransaction| {
+                            context.set_entity(&transaction)
+                        },
+                    )
+                })
+                // Add transaction logs
+                .and_then(move |context| {
+                    futures::stream::iter_ok::<_, Error>(
+                        receipts
+                            .into_iter()
+                            .flat_map(move |receipt| receipt.logs.into_iter()),
+                    )
+                    .fold(
+                        context,
+                        move |context: WriteContext, log: Web3Log| {
+                            context.set_entity(&Log::from(log))
+                        },
+                    )
                 })
                 // Transact everything into the store
                 .and_then(move |context| {
@@ -154,7 +192,7 @@ impl WriteContext {
                     }
                     .modifications;
 
-                    let block_ptr = EthereumBlockPointer::from(&block_for_store.block);
+                    let block_ptr = EthereumBlockPointer::from(&block.block);
 
                     // Transact entity modifications into the store
                     let started = Instant::now();
