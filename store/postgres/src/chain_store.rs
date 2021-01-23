@@ -23,6 +23,50 @@ use graph::prelude::{
 use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
 use crate::{chain_head_listener::ChainHeadUpdateListener, connection_pool::ConnectionPool};
 
+/// Tables in the 'public' database schema that store chain-specific data
+mod public {
+    table! {
+        ethereum_networks (name) {
+            name -> Varchar,
+            head_block_hash -> Nullable<Varchar>,
+            head_block_number -> Nullable<BigInt>,
+            net_version -> Nullable<Varchar>,
+            genesis_block_hash -> Nullable<Varchar>,
+        }
+    }
+
+    table! {
+        ethereum_blocks (hash) {
+            hash -> Varchar,
+            number -> BigInt,
+            parent_hash -> Nullable<Varchar>,
+            network_name -> Varchar, // REFERENCES ethereum_networks (name),
+            data -> Jsonb,
+        }
+    }
+
+    table! {
+        /// `id` is the hash of contract address + encoded function call + block number.
+        eth_call_cache (id) {
+            id -> Bytea,
+            return_value -> Bytea,
+            contract_address -> Bytea,
+            block_number -> Integer,
+        }
+    }
+
+    table! {
+        /// When was a cached call on a contract last used? This is useful to clean old data.
+        eth_call_meta (contract_address) {
+            contract_address -> Bytea,
+            accessed_at -> Date,
+        }
+    }
+
+    joinable!(eth_call_cache -> eth_call_meta (contract_address));
+    allow_tables_to_appear_in_same_query!(eth_call_cache, eth_call_meta);
+}
+
 pub struct ChainStore {
     conn: ConnectionPool,
     network: String,
@@ -58,7 +102,7 @@ impl ChainStore {
         &self,
         new_net_identifiers: EthereumNetworkIdentifier,
     ) -> Result<(), Error> {
-        use crate::db_schema::ethereum_networks::dsl::*;
+        use public::ethereum_networks::dsl::*;
 
         let new_genesis_block_hash = new_net_identifiers.genesis_block_hash;
         let new_net_version = new_net_identifiers.net_version;
@@ -124,7 +168,7 @@ impl ChainStore {
     }
 
     pub fn chain_head_pointers(&self) -> Result<HashMap<String, EthereumBlockPointer>, StoreError> {
-        use crate::db_schema::ethereum_networks as n;
+        use public::ethereum_networks as n;
 
         let pointers: Vec<(String, EthereumBlockPointer)> = n::table
             .select((n::name, n::head_block_hash, n::head_block_number))
@@ -142,7 +186,7 @@ impl ChainStore {
     }
 
     pub fn chain_head_block(&self, network: &str) -> Result<Option<u64>, StoreError> {
-        use crate::db_schema::ethereum_networks as n;
+        use public::ethereum_networks as n;
 
         let number: Option<i64> = n::table
             .filter(n::name.eq(network))
@@ -177,7 +221,7 @@ impl ChainStoreTrait for ChainStore {
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
         E: From<Error> + Send + 'static,
     {
-        use crate::db_schema::ethereum_blocks::dsl::*;
+        use public::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
         let net_name = self.network.clone();
@@ -208,7 +252,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
-        use crate::db_schema::ethereum_blocks::dsl::*;
+        use public::ethereum_blocks::dsl::*;
 
         let conn = self.conn.clone();
         let net_name = self.network.clone();
@@ -268,7 +312,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
-        use crate::db_schema::ethereum_networks::dsl::*;
+        use public::ethereum_networks::dsl::*;
 
         ethereum_networks
             .select((head_block_hash, head_block_number))
@@ -287,9 +331,9 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
-        use crate::db_schema::ethereum_blocks::dsl::*;
         use diesel::dsl::{any, sql};
         use diesel::sql_types::Jsonb;
+        use public::ethereum_blocks::dsl::*;
 
         ethereum_blocks
             .select(sql::<Jsonb>("data -> 'block'"))
@@ -325,8 +369,8 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
-        use crate::db_schema::ethereum_blocks::dsl;
         use diesel::sql_types::{Integer, Text};
+        use public::ethereum_blocks::dsl;
 
         #[derive(QueryableByName)]
         struct MinBlock {
@@ -394,7 +438,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error> {
-        use crate::db_schema::ethereum_blocks::dsl;
+        use public::ethereum_blocks::dsl;
 
         let conn = self.get_conn()?;
         dsl::ethereum_blocks
@@ -409,7 +453,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error> {
-        use crate::db_schema::ethereum_blocks::dsl;
+        use public::ethereum_blocks::dsl;
 
         let conn = self.get_conn()?;
         diesel::delete(dsl::ethereum_blocks)
@@ -421,7 +465,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn block_number(&self, hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
-        use crate::db_schema::ethereum_blocks::dsl;
+        use public::ethereum_blocks::dsl;
 
         let conn = self.get_conn()?;
         dsl::ethereum_blocks
@@ -445,8 +489,8 @@ impl EthereumCallCache for ChainStore {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
     ) -> Result<Option<Vec<u8>>, Error> {
-        use crate::db_schema::{eth_call_cache, eth_call_meta};
         use diesel::dsl::sql;
+        use public::{eth_call_cache, eth_call_meta};
 
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
@@ -481,7 +525,7 @@ impl EthereumCallCache for ChainStore {
                 .get_result::<Vec<u8>>(conn)
                 .optional()?
             {
-                use crate::db_schema::eth_call_cache::dsl;
+                use public::eth_call_cache::dsl;
 
                 // Migrate to the new format by re-inserting the call and deleting the old entry.
                 self.set_call(contract_address, encoded_call, block, &return_value)?;
@@ -501,8 +545,8 @@ impl EthereumCallCache for ChainStore {
         block: EthereumBlockPointer,
         return_value: &[u8],
     ) -> Result<(), Error> {
-        use crate::db_schema::{eth_call_cache, eth_call_meta};
         use diesel::dsl::sql;
+        use public::{eth_call_cache, eth_call_meta};
 
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
@@ -623,8 +667,8 @@ pub mod test_support {
 #[cfg(debug_assertions)]
 impl test_support::SettableChainStore for ChainStore {
     fn set_chain(&self, genesis_hash: &str, chain: test_support::Chain) {
-        use crate::db_schema::ethereum_blocks as b;
-        use crate::db_schema::ethereum_networks as n;
+        use public::ethereum_blocks as b;
+        use public::ethereum_networks as n;
 
         let conn = self.conn.get().expect("can get a database connection");
 

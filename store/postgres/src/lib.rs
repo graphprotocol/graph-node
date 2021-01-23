@@ -44,12 +44,6 @@ mod store_events;
 mod subgraph_store;
 
 #[cfg(debug_assertions)]
-pub mod db_schema_for_tests {
-    pub use crate::db_schema::ethereum_blocks;
-    pub use crate::db_schema::ethereum_networks;
-}
-
-#[cfg(debug_assertions)]
 pub mod layout_for_tests {
     pub use crate::block_range::*;
     pub use crate::chain_store::test_support as chain_support;
