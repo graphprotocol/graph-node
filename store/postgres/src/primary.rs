@@ -93,6 +93,13 @@ table! {
     }
 }
 
+table! {
+    public.ens_names(hash) {
+        hash -> Varchar,
+        name -> Varchar,
+    }
+}
+
 /// We used to support different layout schemes. The old 'Split' scheme
 /// which used JSONB layout has been removed, and we will only deal
 /// with relational layout. Trying to do anything with a 'Split' subgraph
@@ -1043,5 +1050,16 @@ impl Connection {
             .select(s::name)
             .distinct()
             .load(&self.0)?)
+    }
+
+    pub fn find_ens_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
+        use ens_names as dsl;
+
+        dsl::table
+            .select(dsl::name)
+            .find(hash)
+            .get_result::<String>(&self.0)
+            .optional()
+            .map_err(|e| anyhow!("error looking up ens_name for hash {}: {}", hash, e).into())
     }
 }

@@ -1,5 +1,4 @@
 #[cfg(debug_assertions)]
-#[macro_use]
 extern crate diesel;
 
 #[cfg(debug_assertions)]

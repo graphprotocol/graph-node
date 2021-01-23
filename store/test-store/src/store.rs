@@ -249,14 +249,9 @@ pub fn transact_entity_operations(
 pub fn insert_ens_name(hash: &str, name: &str) {
     use diesel::insert_into;
     use diesel::prelude::*;
-    let conn = PRIMARY_POOL.get().unwrap();
+    use graph_store_postgres::command_support::catalog::ens_names;
 
-    table! {
-        ens_names(hash) {
-            hash -> Varchar,
-            name -> Varchar,
-        }
-    }
+    let conn = PRIMARY_POOL.get().unwrap();
 
     insert_into(ens_names::table)
         .values((ens_names::hash.eq(hash), ens_names::name.eq(name)))

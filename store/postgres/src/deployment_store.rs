@@ -950,25 +950,6 @@ impl DeploymentStore {
         }
     }
 
-    pub(crate) fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        use public::ens_names as dsl;
-
-        let conn = self
-            .get_conn()
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-
-        dsl::table
-            .select(dsl::name)
-            .find(hash)
-            .get_result::<String>(&conn)
-            .optional()
-            .map_err(|e| {
-                QueryExecutionError::StoreError(
-                    anyhow!("error looking up ens_name for hash {}: {}", hash, e).into(),
-                )
-            })
-    }
-
     pub(crate) fn transact_block_operations(
         &self,
         site: &Site,
@@ -1156,14 +1137,5 @@ impl DeploymentStore {
     pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
         let conn = self.get_conn()?;
         deployment::error_count(&conn, id)
-    }
-}
-
-mod public {
-    table! {
-        ens_names(hash) {
-            hash -> Varchar,
-            name -> Varchar,
-        }
     }
 }
