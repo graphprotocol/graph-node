@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use graph::{components::store::BlockStore as BlockStoreTrait, prelude::EthereumNetworkIdentifier};
+use graph::{
+    components::store::BlockStore as BlockStoreTrait,
+    prelude::{EthereumBlockPointer, EthereumNetworkIdentifier},
+};
 use graph::{components::store::CallCache as CallCacheTrait, prelude::StoreError};
 use graph::{
     constraint_violation,
@@ -110,6 +113,22 @@ impl BlockStore {
             }
         }
         Ok(Self { stores })
+    }
+
+    pub fn chain_head_pointers(&self) -> Result<HashMap<String, EthereumBlockPointer>, StoreError> {
+        let mut map = HashMap::new();
+        for store in self.stores.values() {
+            map.extend(store.chain_head_pointers()?);
+        }
+        Ok(map)
+    }
+
+    pub fn chain_head_block(&self, network: &str) -> Result<Option<u64>, StoreError> {
+        let store = self
+            .stores
+            .get(network)
+            .ok_or_else(|| constraint_violation!("unknown network `{}`", network))?;
+        store.chain_head_block(network)
     }
 }
 

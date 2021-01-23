@@ -560,7 +560,6 @@ impl SubgraphStore {
             infos.extend(store.deployment_statuses(&sites)?);
         }
         let infos = self.primary_conn()?.fill_assignments(infos)?;
-        let infos = self.primary_conn()?.fill_chain_head_pointers(infos)?;
         Ok(infos)
     }
 
@@ -581,13 +580,12 @@ impl SubgraphStore {
                 chain.latest_block.as_ref().map(|ref block| block.number());
             let subgraph_info = store.subgraph_info(&id)?;
             let network = self.network_name(&id)?;
-            let total_ethereum_blocks_count = self.primary_conn()?.chain_head_block(&network)?;
 
             let info = VersionInfo {
                 created_at,
                 deployment_id,
                 latest_ethereum_block_number,
-                total_ethereum_blocks_count,
+                total_ethereum_blocks_count: None,
                 synced: status.synced,
                 failed: status.health.is_failed(),
                 description: subgraph_info.description,
