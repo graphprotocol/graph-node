@@ -1,5 +1,6 @@
-use graph::prelude::{
-    ethabi, tiny_keccak, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError,
+use graph::{
+    constraint_violation,
+    prelude::{ethabi, tiny_keccak, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
 };
 
 use diesel::pg::PgConnection;
@@ -7,9 +8,9 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{insert_into, select, update};
 use graph::ensure;
-use std::convert::TryFrom;
-use std::iter::FromIterator;
 use std::sync::Arc;
+use std::{collections::HashMap, convert::TryFrom};
+use std::{convert::TryInto, iter::FromIterator};
 
 use graph::prelude::{
     serde_json, web3::types::H256, BlockNumber, ChainHeadUpdateListener as _,
@@ -120,6 +121,46 @@ impl ChainStore {
         }
 
         Ok(())
+    }
+
+    pub fn chain_head_pointers(&self) -> Result<HashMap<String, EthereumBlockPointer>, StoreError> {
+        use crate::db_schema::ethereum_networks as n;
+
+        let pointers: Vec<(String, EthereumBlockPointer)> = n::table
+            .select((n::name, n::head_block_hash, n::head_block_number))
+            .load::<(String, Option<String>, Option<i64>)>(&self.get_conn()?)?
+            .into_iter()
+            .filter_map(|(name, hash, number)| match (hash, number) {
+                (Some(hash), Some(number)) => Some((name, hash, number)),
+                _ => None,
+            })
+            .map(|(name, hash, number)| {
+                EthereumBlockPointer::try_from((hash.as_str(), number)).map(|ptr| (name, ptr))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(HashMap::from_iter(pointers))
+    }
+
+    pub fn chain_head_block(&self, network: &str) -> Result<Option<u64>, StoreError> {
+        use crate::db_schema::ethereum_networks as n;
+
+        let number: Option<i64> = n::table
+            .filter(n::name.eq(network))
+            .select(n::head_block_number)
+            .first::<Option<i64>>(&self.get_conn()?)
+            .optional()?
+            .flatten();
+
+        number.map(|number| number.try_into()).transpose().map_err(
+            |e: std::num::TryFromIntError| {
+                constraint_violation!(
+                    "head block number for {} is {:?} which does not fit into a u32: {}",
+                    network,
+                    number,
+                    e.to_string()
+                )
+            },
+        )
     }
 }
 

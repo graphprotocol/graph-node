@@ -283,11 +283,23 @@ impl QueryStoreManager for Store {
 
 impl StatusStore for Store {
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        self.store.status(filter)
+        let mut infos = self.store.status(filter)?;
+        let ptrs = self.block_store.chain_head_pointers()?;
+
+        for info in &mut infos {
+            for chain in &mut info.chains {
+                chain.chain_head_block = ptrs.get(&chain.network).map(|ptr| ptr.to_owned().into());
+            }
+        }
+        Ok(infos)
     }
 
     fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
-        self.store.version_info(version_id)
+        let mut info = self.store.version_info(version_id)?;
+
+        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network)?;
+
+        Ok(info)
     }
 
     fn versions_for_subgraph_id(
