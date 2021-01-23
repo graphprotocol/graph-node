@@ -209,6 +209,16 @@ impl EventProducer<JsonNotification> for NotificationListener {
     }
 }
 
+mod public {
+    table! {
+        large_notifications(id) {
+            id -> Integer,
+            payload -> Text,
+            created_at -> Timestamp,
+        }
+    }
+}
+
 // A utility to send JSON notifications that may be larger than the
 // 8000 bytes limit for Postgres NOTIFY payloads. Large notifications
 // are written to the `large_notifications` table and their ID is sent
@@ -286,9 +296,9 @@ impl JsonNotification {
         data: &serde_json::Value,
         conn: &PgConnection,
     ) -> Result<(), StoreError> {
-        use crate::db_schema::large_notifications::dsl::*;
         use diesel::ExpressionMethods;
         use diesel::RunQueryDsl;
+        use public::large_notifications::dsl::*;
 
         let msg = data.to_string();
 

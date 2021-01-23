@@ -951,7 +951,7 @@ impl DeploymentStore {
     }
 
     pub(crate) fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        use crate::db_schema::ens_names as dsl;
+        use public::ens_names as dsl;
 
         let conn = self
             .get_conn()
@@ -1156,5 +1156,14 @@ impl DeploymentStore {
     pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
         let conn = self.get_conn()?;
         deployment::error_count(&conn, id)
+    }
+}
+
+mod public {
+    table! {
+        ens_names(hash) {
+            hash -> Varchar,
+            name -> Varchar,
+        }
     }
 }
