@@ -667,6 +667,14 @@ impl StoreTrait for ShardedStore {
         })
     }
 
+    fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = pconn.unassign_subgraph(id)?;
+            pconn.send_store_event(&StoreEvent::new(changes))
+        })
+    }
+
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         let deployments = match filter {
             status::Filter::SubgraphName(name) => {

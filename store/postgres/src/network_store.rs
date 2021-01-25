@@ -210,6 +210,10 @@ impl StoreTrait for NetworkStore {
         self.store.reassign_subgraph(id, node)
     }
 
+    fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        self.store.unassign_subgraph(id)
+    }
+
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         self.store.create_subgraph(name)
     }
