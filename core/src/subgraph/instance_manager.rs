@@ -731,32 +731,19 @@ where
     )
     .await
     {
-        // The triggers were processed but some were skipped due to deterministic errors.
-        Ok(block_state) if block_state.has_errors() => {
-            // While the version is pending we fail the subgraph even if the error is deterministic.
-            // This prevents a buggy pending version from replacing a current version.
-            let store = &ctx.inputs.store;
-            let id = &ctx.inputs.deployment_id;
-            let fail_fast = || -> Result<bool, BlockProcessingError> {
-                Ok(!*DISABLE_FAIL_FAST
-                    && !store
-                        .is_deployment_synced(id)
-                        .map_err(BlockProcessingError::Unknown)?)
-            };
-
-            if !ctx
-                .inputs
-                .features
-                .contains(&SubgraphFeature::nonFatalErrors)
-                || fail_fast()?
-            {
-                // Take just the first error to report.
-                return Err(BlockProcessingError::Deterministic(
-                    block_state.deterministic_errors.into_iter().next().unwrap(),
-                ));
-            }
-
-            block_state
+        // The triggers were processed but some were skipped due to deterministic errors, if the
+        // `nonFatalErrors` feature is not present, return early with an error.
+        Ok(block_state)
+            if block_state.has_errors()
+                && !ctx
+                    .inputs
+                    .features
+                    .contains(&SubgraphFeature::nonFatalErrors) =>
+        {
+            // Take just the first error to report.
+            return Err(BlockProcessingError::Deterministic(
+                block_state.deterministic_errors.into_iter().next().unwrap(),
+            ));
         }
 
         // Triggers processed with no errors.
@@ -886,6 +873,8 @@ where
         .await?;
     }
 
+    let has_errors = block_state.has_errors();
+
     let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
         modifications: mods,
@@ -918,8 +907,17 @@ where
     let stopwatch = ctx.host_metrics.stopwatch.clone();
     let start = Instant::now();
 
+    let store = &ctx.inputs.store;
+    let id = &ctx.inputs.deployment_id;
+    let fail_fast = || -> Result<bool, BlockProcessingError> {
+        Ok(!*DISABLE_FAIL_FAST
+            && !store
+                .is_deployment_synced(id)
+                .map_err(BlockProcessingError::Unknown)?)
+    };
+
     match ctx.inputs.store.transact_block_operations(
-        subgraph_id,
+        subgraph_id.cheap_clone(),
         block_ptr_after,
         mods,
         stopwatch,
@@ -928,8 +926,22 @@ where
         Ok(_) => {
             let elapsed = start.elapsed().as_secs_f64();
             metrics.block_ops_transaction_duration.observe(elapsed);
+
+            // To prevent a buggy pending version from replacing a current version, if errors are
+            // present the subgraph will be unassigned.
+            if has_errors && fail_fast()? {
+                store
+                    .unassign_subgraph(&subgraph_id)
+                    .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+
+                // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
+                // just transacted so it will be already be set to unhealthy.
+                return Err(BlockProcessingError::Canceled);
+            }
+
             Ok((ctx, needs_restart))
         }
+
         Err(e) => Err(anyhow!("Error while processing block stream for a subgraph: {}", e).into()),
     }
 }

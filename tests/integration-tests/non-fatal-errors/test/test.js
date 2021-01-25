@@ -35,7 +35,7 @@ const waitForSubgraphToBeUnhealthy = async () =>
         });
 
         let health = result.data.indexingStatuses[0].health
-        if (result.data.indexingStatuses[0].synced && health == "unhealthy") {
+        if (health == "unhealthy") {
           resolve();
         } else if (health == "failed") {
           reject(new Error("Subgraph failed"));

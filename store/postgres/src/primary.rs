@@ -601,6 +601,31 @@ impl Connection {
         }
     }
 
+    pub fn unassign_subgraph(
+        &self,
+        id: &SubgraphDeploymentId,
+    ) -> Result<Vec<EntityChange>, StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        let conn = &self.0;
+        let delete_count = delete(a::table.filter(a::id.eq(id.as_str()))).execute(conn)?;
+
+        match delete_count {
+            0 => Ok(vec![]),
+            1 => {
+                let key =
+                    MetadataType::SubgraphDeploymentAssignment.key(id.clone(), id.to_string());
+                let op = MetadataOperation::Remove { key };
+                Ok(vec![op.into()])
+            }
+            _ => {
+                // `id` is the unique in the subgraph_deployment_assignment table,
+                // and we can therefore only update no or one entry
+                unreachable!()
+            }
+        }
+    }
+
     pub fn allocate_site(
         &self,
         shard: Shard,

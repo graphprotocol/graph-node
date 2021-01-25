@@ -1070,6 +1070,8 @@ pub trait Store: Send + Sync + 'static {
         node_id: &NodeId,
     ) -> Result<(), StoreError>;
 
+    fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError>;
+
     /// Start an existing subgraph deployment. This will reset the state of
     /// the subgraph to a known good state. `ops` needs to contain all the
     /// operations on the subgraph of subgraphs to reset the metadata of the
@@ -1266,6 +1268,10 @@ impl Store for MockStore {
     }
 
     fn reassign_subgraph(&self, _: &SubgraphDeploymentId, _: &NodeId) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unassign_subgraph(&self, _: &SubgraphDeploymentId) -> Result<(), StoreError> {
         unimplemented!()
     }
 
