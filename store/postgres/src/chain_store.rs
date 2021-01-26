@@ -140,6 +140,290 @@ impl Storage {
     }
 }
 
+impl Storage {
+    fn upsert_block(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+        block: EthereumBlock,
+    ) -> Result<(), Error> {
+        use public::ethereum_blocks as b;
+
+        let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
+        let values = (
+            b::hash.eq(format!("{:x}", block.block.hash.unwrap())),
+            b::number.eq(block.block.number.unwrap().as_u64() as i64),
+            b::parent_hash.eq(format!("{:x}", block.block.parent_hash)),
+            b::network_name.eq(network),
+            b::data.eq(json_blob),
+        );
+
+        // Insert blocks.
+        //
+        // If the table already contains a block with the same hash, then overwrite that block
+        // if it may be adding transaction receipts.
+        insert_into(b::table)
+            .values(values.clone())
+            .on_conflict(b::hash)
+            .do_update()
+            .set(values)
+            .execute(conn)
+            .map_err(Error::from)
+            .map(|_| ())
+    }
+
+    fn upsert_light_block(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+        block: LightEthereumBlock,
+    ) -> Result<(), Error> {
+        use public::ethereum_blocks as b;
+
+        let block_hash = format!("{:x}", block.hash.unwrap());
+        let p_hash = format!("{:x}", block.parent_hash);
+        let block_number = block.number.unwrap().as_u64();
+        let json_blob = serde_json::to_value(&EthereumBlock {
+            block,
+            transaction_receipts: Vec::new(),
+        })
+        .expect("Failed to serialize block");
+        let values = (
+            b::hash.eq(block_hash),
+            b::number.eq(block_number as i64),
+            b::parent_hash.eq(p_hash),
+            b::network_name.eq(network),
+            b::data.eq(json_blob),
+        );
+
+        // Insert blocks. On conflict do nothing, we don't want to erase transaction receipts.
+        insert_into(b::table)
+            .values(values.clone())
+            .on_conflict(b::hash)
+            .do_nothing()
+            .execute(conn)
+            .map(|_| ())
+            .map_err(Error::from)
+    }
+
+    fn blocks(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+        hashes: Vec<H256>,
+    ) -> Result<Vec<LightEthereumBlock>, Error> {
+        use diesel::dsl::any;
+        use diesel::sql_types::Jsonb;
+        use public::ethereum_blocks as b;
+
+        b::table
+            .select(sql::<Jsonb>("data -> 'block'"))
+            .filter(b::network_name.eq(network))
+            .filter(b::hash.eq(any(Vec::from_iter(
+                hashes.into_iter().map(|h| format!("{:x}", h)),
+            ))))
+            .load::<serde_json::Value>(conn)?
+            .into_iter()
+            .map(|block| serde_json::from_value(block).map_err(Into::into))
+            .collect()
+    }
+
+    fn block_hashes_by_block_number(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+        number: u64,
+    ) -> Result<Vec<H256>, Error> {
+        use public::ethereum_blocks as b;
+
+        b::table
+            .select(b::hash)
+            .filter(b::network_name.eq(&network))
+            .filter(b::number.eq(number as i64))
+            .get_results::<String>(conn)?
+            .into_iter()
+            .map(|h| h.parse())
+            .collect::<Result<Vec<H256>, _>>()
+            .map_err(Error::from)
+    }
+
+    fn confirm_block_hash(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+        number: u64,
+        hash: &H256,
+    ) -> Result<usize, Error> {
+        use public::ethereum_blocks as b;
+
+        diesel::delete(b::table)
+            .filter(b::network_name.eq(network))
+            .filter(b::number.eq(number as i64))
+            .filter(b::hash.ne(&format!("{:x}", hash)))
+            .execute(conn)
+            .map_err(Error::from)
+    }
+
+    fn block_number(
+        &self,
+        conn: &PgConnection,
+        hash: H256,
+    ) -> Result<Option<BlockNumber>, StoreError> {
+        use public::ethereum_blocks as b;
+
+        b::table
+            .select(b::number)
+            .filter(b::hash.eq(format!("{:x}", hash)))
+            .first::<i64>(conn)
+            .optional()?
+            .map(|number| {
+                BlockNumber::try_from(number)
+                    .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
+            })
+            .transpose()
+    }
+
+    /// Find the first block that is missing from the database needed to
+    /// complete the chain from block `hash` to the block with number
+    /// `first_block`. We return the hash of the missing block as an
+    /// array because the remaining code expects that, but the array will only
+    /// ever have at most one element.
+    fn missing_parents(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+        first_block: i64,
+        hash: &str,
+        genesis: &str,
+    ) -> Result<Vec<H256>, Error> {
+        // We recursively build a temp table 'chain' containing the hash and
+        // parent_hash of blocks to check. The 'last' value is used to stop
+        // the recursion and is true if one of these conditions is true:
+        //   * we are missing a parent block
+        //   * we checked the required number of blocks
+        //   * we checked the genesis block
+        const MISSING_PARENT_SQL: &str = "
+            with recursive chain(hash, parent_hash, last) as (
+                -- base case: look at the head candidate block
+                select b.hash, b.parent_hash, false
+                  from ethereum_blocks b
+                 where b.network_name = $1
+                   and b.hash = $2
+                   and b.hash != $3
+                union all
+                -- recursion step: add a block whose hash is the latest parent_hash
+                -- on chain
+                select chain.parent_hash,
+                       b.parent_hash,
+                       coalesce(b.parent_hash is null
+                             or b.number <= $4
+                             or b.hash = $3, true)
+                  from chain left outer join ethereum_blocks b
+                              on chain.parent_hash = b.hash
+                             and b.network_name = $1
+                 where not chain.last)
+             select hash
+               from chain
+              where chain.parent_hash is null;
+            ";
+
+        let missing = sql_query(MISSING_PARENT_SQL)
+            .bind::<Text, _>(network)
+            .bind::<Text, _>(&hash)
+            .bind::<Text, _>(&genesis)
+            .bind::<BigInt, _>(first_block)
+            .load::<BlockHash>(conn)?;
+
+        missing
+            .into_iter()
+            .map(|parent| parent.hash.parse())
+            .collect::<Result<_, _>>()
+            .map_err(Error::from)
+    }
+
+    /// Return the best candidate for the new chain head if there is a block
+    /// with a higher block number than the current chain head. The returned
+    /// value if the hash and number of the candidate and the genesis block
+    /// hash for the chain
+    fn chain_head_candidate(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+    ) -> Result<Option<(String, i64, String)>, Error> {
+        use public::ethereum_blocks as b;
+        use public::ethereum_networks as n;
+
+        b::table
+            .inner_join(n::table.on(b::network_name.eq(n::name)))
+            .filter(n::name.eq(network))
+            .filter(b::number.gt(sql("coalesce(ethereum_networks.head_block_number, -1)")))
+            .order_by((b::number.desc(), b::hash))
+            .select((b::hash, b::number, n::genesis_block_hash))
+            .first::<(String, i64, String)>(conn)
+            .optional()
+            .map_err(Error::from)
+    }
+
+    fn ancestor_block(
+        &self,
+        conn: &PgConnection,
+        block_ptr: EthereumBlockPointer,
+        offset: u64,
+    ) -> Result<Option<EthereumBlock>, Error> {
+        use public::ethereum_blocks as b;
+
+        const ANCESTOR_SQL: &str = "
+        with recursive ancestors(block_hash, block_offset) as (
+            values ($1, 0)
+            union all
+            select b.parent_hash, a.block_offset+1
+              from ancestors a, ethereum_blocks b
+             where a.block_hash = b.hash
+               and a.block_offset < $2
+        )
+        select a.block_hash
+          from ancestors a
+         where a.block_offset = $2;";
+
+        let hash = sql_query(ANCESTOR_SQL)
+            .bind::<Text, _>(block_ptr.hash_hex())
+            .bind::<BigInt, _>(offset as i64)
+            .get_result::<BlockHash>(conn)
+            .optional()?;
+
+        let hash = match hash {
+            None => return Ok(None),
+            Some(hash) => hash.hash,
+        };
+
+        let data = b::table
+            .filter(b::hash.eq(hash))
+            .select(b::data)
+            .first::<serde_json::Value>(conn)?;
+
+        let block = serde_json::from_value::<EthereumBlock>(data)
+            .expect("Failed to deserialize block from database");
+
+        Ok(Some(block))
+    }
+
+    fn delete_blocks_before(
+        &self,
+        conn: &PgConnection,
+        network: &str,
+        block: i32,
+    ) -> Result<usize, Error> {
+        use public::ethereum_blocks as b;
+
+        diesel::delete(b::table)
+            .filter(b::network_name.eq(network))
+            .filter(b::number.lt(block as i64))
+            .filter(b::number.gt(0))
+            .execute(conn)
+            .map_err(Error::from)
+    }
+}
+
 pub struct ChainStore {
     conn: ConnectionPool,
     network: String,
@@ -270,63 +554,6 @@ impl ChainStore {
             },
         )
     }
-
-    /// Find the first block that is missing from the database needed to
-    /// complete the chain from block `hash` to the block with number
-    /// `first_block`. We return the hash of the missing block as an
-    /// array because the remaining code expects that, but the array will only
-    /// ever have at most one element.
-    fn missing_parents(
-        &self,
-        conn: &PgConnection,
-        first_block: i64,
-        hash: &str,
-        genesis: &str,
-    ) -> Result<Vec<H256>, Error> {
-        // We recursively build a temp table 'chain' containing the hash and
-        // parent_hash of blocks to check. The 'last' value is used to stop
-        // the recursion and is true if one of these conditions is true:
-        //   * we are missing a parent block
-        //   * we checked the required number of blocks
-        //   * we checked the genesis block
-        const MISSING_PARENT_SQL: &str = "
-            with recursive chain(hash, parent_hash, last) as (
-                -- base case: look at the head candidate block
-                select b.hash, b.parent_hash, false
-                  from ethereum_blocks b
-                 where b.network_name = $1
-                   and b.hash = $2
-                   and b.hash != $3
-                union all
-                -- recursion step: add a block whose hash is the latest parent_hash
-                -- on chain
-                select chain.parent_hash,
-                       b.parent_hash,
-                       coalesce(b.parent_hash is null
-                             or b.number <= $4
-                             or b.hash = $3, true)
-                  from chain left outer join ethereum_blocks b
-                              on chain.parent_hash = b.hash
-                             and b.network_name = $1
-                 where not chain.last)
-             select hash
-               from chain
-              where chain.parent_hash is null;
-            ";
-
-        let missing = sql_query(MISSING_PARENT_SQL)
-            .bind::<Text, _>(&self.network)
-            .bind::<Text, _>(&hash)
-            .bind::<Text, _>(&genesis)
-            .bind::<BigInt, _>(first_block)
-            .load::<BlockHash>(conn)?;
-
-        missing
-            .into_iter()
-            .map(|parent| parent.hash.parse())
-            .collect::<Result<_, _>>()
-            .map_err(Error::from)
-    }
 }
 
 impl ChainStoreTrait for ChainStore {
@@ -342,103 +569,57 @@ impl ChainStoreTrait for ChainStore {
         B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
         E: From<Error> + Send + 'static,
     {
-        use public::ethereum_blocks::dsl::*;
-
         let conn = self.conn.clone();
-        let net_name = self.network.clone();
+        let network = self.network.clone();
+        let storage = self.storage.clone();
         Box::new(blocks.for_each(move |block| {
-            let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
-            let values = (
-                hash.eq(format!("{:x}", block.block.hash.unwrap())),
-                number.eq(block.block.number.unwrap().as_u64() as i64),
-                parent_hash.eq(format!("{:x}", block.block.parent_hash)),
-                network_name.eq(&net_name),
-                data.eq(json_blob),
-            );
-
-            // Insert blocks.
-            //
-            // If the table already contains a block with the same hash, then overwrite that block
-            // if it may be adding transaction receipts.
-            insert_into(ethereum_blocks)
-                .values(values.clone())
-                .on_conflict(hash)
-                .do_update()
-                .set(values)
-                .execute(&*conn.get().map_err(Error::from)?)
-                .map_err(Error::from)
+            let conn = conn.get().map_err(Error::from)?;
+            storage
+                .upsert_block(&conn, &network, block)
                 .map_err(E::from)
-                .map(|_| ())
         }))
     }
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
-        use public::ethereum_blocks::dsl::*;
-
-        let conn = self.conn.clone();
-        let net_name = self.network.clone();
+        let conn = self.conn.get()?;
         for block in blocks {
-            let block_hash = format!("{:x}", block.hash.unwrap());
-            let p_hash = format!("{:x}", block.parent_hash);
-            let block_number = block.number.unwrap().as_u64();
-            let json_blob = serde_json::to_value(&EthereumBlock {
-                block,
-                transaction_receipts: Vec::new(),
-            })
-            .expect("Failed to serialize block");
-            let values = (
-                hash.eq(block_hash),
-                number.eq(block_number as i64),
-                parent_hash.eq(p_hash),
-                network_name.eq(&net_name),
-                data.eq(json_blob),
-            );
-
-            // Insert blocks. On conflict do nothing, we don't want to erase transaction receipts.
-            insert_into(ethereum_blocks)
-                .values(values.clone())
-                .on_conflict(hash)
-                .do_nothing()
-                .execute(&*conn.get()?)?;
+            self.storage
+                .upsert_light_block(&conn, &self.network, block)?;
         }
         Ok(())
     }
 
     fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
-        use public::ethereum_blocks as b;
         use public::ethereum_networks as n;
 
         let conn = self.get_conn()?;
-        let candidate = b::table
-            .inner_join(n::table.on(b::network_name.eq(n::name)))
-            .filter(n::name.eq(&self.network))
-            .filter(b::number.gt(sql("coalesce(ethereum_networks.head_block_number, -1)")))
-            .order_by((b::number.desc(), b::hash))
-            .select((b::hash, b::number, n::genesis_block_hash))
-            .first::<(String, i64, String)>(&conn)
-            .optional()?;
-        let (hash, number, first_block, genesis) = match candidate {
-            None => return Ok(vec![]),
-            Some((hash, number, genesis)) => {
-                (hash, number, 0.max(number - ancestor_count as i64), genesis)
+        conn.transaction(|| {
+            let candidate = self.storage.chain_head_candidate(&conn, &self.network)?;
+            let (hash, number, first_block, genesis) = match candidate {
+                None => return Ok(vec![]),
+                Some((hash, number, genesis)) => {
+                    (hash, number, 0.max(number - ancestor_count as i64), genesis)
+                }
+            };
+
+            let missing =
+                self.storage
+                    .missing_parents(&conn, &self.network, first_block, &hash, &genesis)?;
+            if !missing.is_empty() {
+                return Ok(missing);
             }
-        };
 
-        let missing = self.missing_parents(&conn, first_block, &hash, &genesis)?;
-        if !missing.is_empty() {
-            return Ok(missing);
-        }
+            update(n::table.filter(n::name.eq(&self.network)))
+                .set((
+                    n::head_block_hash.eq(&hash),
+                    n::head_block_number.eq(number),
+                ))
+                .execute(&conn)?;
 
-        update(n::table.filter(n::name.eq(&self.network)))
-            .set((
-                n::head_block_hash.eq(&hash),
-                n::head_block_number.eq(number),
-            ))
-            .execute(&conn)?;
+            ChainHeadUpdateListener::send(&conn, &self.network, &hash, number)?;
 
-        ChainHeadUpdateListener::send(&conn, &self.network, &hash, number)?;
-
-        Ok(vec![])
+            Ok(vec![])
+        })
     }
 
     fn chain_head_updates(&self) -> ChainHeadUpdateStream {
@@ -466,20 +647,8 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
-        use diesel::dsl::any;
-        use diesel::sql_types::Jsonb;
-        use public::ethereum_blocks::dsl::*;
-
-        ethereum_blocks
-            .select(sql::<Jsonb>("data -> 'block'"))
-            .filter(network_name.eq(&self.network))
-            .filter(hash.eq(any(Vec::from_iter(
-                hashes.into_iter().map(|h| format!("{:x}", h)),
-            ))))
-            .load::<serde_json::Value>(&*self.get_conn()?)?
-            .into_iter()
-            .map(|block| serde_json::from_value(block).map_err(Into::into))
-            .collect()
+        let conn = self.get_conn()?;
+        self.storage.blocks(&conn, &self.network, hashes)
     }
 
     fn ancestor_block(
@@ -487,52 +656,17 @@ impl ChainStoreTrait for ChainStore {
         block_ptr: EthereumBlockPointer,
         offset: u64,
     ) -> Result<Option<EthereumBlock>, Error> {
-        use public::ethereum_blocks as b;
-
         ensure!(
             block_ptr.number >= offset,
             "block offset points to before genesis block"
         );
 
-        const ANCESTOR_SQL: &str = "
-        with recursive ancestors(block_hash, block_offset) as (
-            values ($1, 0)
-            union all
-            select b.parent_hash, a.block_offset+1
-              from ancestors a, ethereum_blocks b
-             where a.block_hash = b.hash
-               and a.block_offset < $2
-        )
-        select a.block_hash
-          from ancestors a
-         where a.block_offset = $2;";
-
         let conn = self.get_conn()?;
-        let hash = sql_query(ANCESTOR_SQL)
-            .bind::<Text, _>(block_ptr.hash_hex())
-            .bind::<BigInt, _>(offset as i64)
-            .get_result::<BlockHash>(&conn)
-            .optional()?;
-
-        let hash = match hash {
-            None => return Ok(None),
-            Some(hash) => hash.hash,
-        };
-
-        let data = b::table
-            .filter(b::hash.eq(hash))
-            .select(b::data)
-            .first::<serde_json::Value>(&conn)?;
-
-        let block = serde_json::from_value::<EthereumBlock>(data)
-            .expect("Failed to deserialize block from database");
-
-        Ok(Some(block))
+        self.storage.ancestor_block(&conn, block_ptr, offset)
     }
 
     fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
         use diesel::sql_types::Integer;
-        use public::ethereum_blocks::dsl;
 
         #[derive(QueryableByName)]
         struct MinBlock {
@@ -585,11 +719,8 @@ impl ChainStoreTrait for ChainStore {
                 // returns -1, and we should not do anything. We also guard
                 // against removing the genesis block
                 if *block > 0 {
-                    diesel::delete(dsl::ethereum_blocks)
-                        .filter(dsl::network_name.eq(&self.network))
-                        .filter(dsl::number.lt(*block as i64))
-                        .filter(dsl::number.gt(0))
-                        .execute(&conn)
+                    self.storage
+                        .delete_blocks_before(&conn, &self.network, *block)
                         .map(|rows| (*block, rows))
                 } else {
                     Ok((0, 0))
@@ -600,47 +731,23 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error> {
-        use public::ethereum_blocks::dsl;
-
         let conn = self.get_conn()?;
-        dsl::ethereum_blocks
-            .select(dsl::hash)
-            .filter(dsl::network_name.eq(&self.network))
-            .filter(dsl::number.eq(number as i64))
-            .get_results::<String>(&conn)?
-            .into_iter()
-            .map(|h| h.parse())
-            .collect::<Result<Vec<H256>, _>>()
-            .map_err(Error::from)
+        self.storage
+            .block_hashes_by_block_number(&conn, &self.network, number)
     }
 
     fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error> {
-        use public::ethereum_blocks::dsl;
-
         let conn = self.get_conn()?;
-        diesel::delete(dsl::ethereum_blocks)
-            .filter(dsl::network_name.eq(&self.network))
-            .filter(dsl::number.eq(number as i64))
-            .filter(dsl::hash.ne(&format!("{:x}", hash)))
-            .execute(&conn)
-            .map_err(Error::from)
+        self.storage
+            .confirm_block_hash(&conn, &self.network, number, hash)
     }
 
     fn block_number(&self, hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
-        use public::ethereum_blocks::dsl;
-
         let conn = self.get_conn()?;
-        dsl::ethereum_blocks
-            .select((dsl::network_name, dsl::number))
-            .filter(dsl::hash.eq(format!("{:x}", hash)))
-            .first::<(String, i64)>(&conn)
-            .optional()?
-            .map(|(name, number)| {
-                BlockNumber::try_from(number)
-                    .map(|number| (name, number))
-                    .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
-            })
-            .transpose()
+        Ok(self
+            .storage
+            .block_number(&conn, hash)?
+            .map(|number| (self.network.clone(), number)))
     }
 }
 
