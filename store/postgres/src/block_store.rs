@@ -23,8 +23,8 @@ mod primary {
             chains(id) {
                 id                 -> Integer,
                 name               -> Text,
-                net_version        -> Nullable<Text>,
-                genesis_block_hash -> Nullable<Text>,
+                net_version        -> Text,
+                genesis_block_hash -> Text,
                 shard              -> Text,
         }
     }
@@ -36,8 +36,8 @@ mod primary {
     pub struct Chain {
         pub id: i32,
         pub name: String,
-        pub net_version: Option<String>,
-        pub genesis_block: Option<String>,
+        pub net_version: String,
+        pub genesis_block: String,
         pub shard: Shard,
     }
 
