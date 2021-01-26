@@ -479,7 +479,8 @@ pub async fn execute_root_selection_set<R: Resolver>(
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-            cache.evict_with_period(*QUERY_CACHE_MAX_MEM, *QUERY_CACHE_STALE_PERIOD);
+            let max_mem = *QUERY_CACHE_MAX_MEM / (*QUERY_BLOCK_CACHE_SHARDS as usize);
+            cache.evict_with_period(max_mem, *QUERY_CACHE_STALE_PERIOD);
             cache.insert(
                 key,
                 WeightedResult {
