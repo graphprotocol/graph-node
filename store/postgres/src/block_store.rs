@@ -26,6 +26,7 @@ mod primary {
                 net_version        -> Text,
                 genesis_block_hash -> Text,
                 shard              -> Text,
+                namespace          -> Text,
         }
     }
 
@@ -39,6 +40,7 @@ mod primary {
         pub net_version: String,
         pub genesis_block: String,
         pub shard: Shard,
+        pub namespace: String,
     }
 
     pub fn load_chains(pool: &ConnectionPool) -> Result<Vec<Chain>, StoreError> {
