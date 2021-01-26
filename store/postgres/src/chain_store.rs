@@ -3,9 +3,14 @@ use graph::{
     prelude::{ethabi, tiny_keccak, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
 };
 
-use diesel::sql_types::Text;
 use diesel::{dsl::sql, pg::PgConnection};
 use diesel::{insert_into, update};
+use diesel::{
+    pg::Pg,
+    serialize::Output,
+    sql_types::Text,
+    types::{FromSql, ToSql},
+};
 use diesel::{prelude::*, sql_query};
 use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
@@ -13,9 +18,9 @@ use diesel::{
 };
 
 use graph::ensure;
-use std::sync::Arc;
-use std::{collections::HashMap, convert::TryFrom};
+use std::{collections::HashMap, convert::TryFrom, io::Write};
 use std::{convert::TryInto, iter::FromIterator};
+use std::{fmt, sync::Arc};
 
 use graph::prelude::{
     serde_json, web3::types::H256, BlockNumber, ChainHeadUpdateListener as _,
@@ -23,7 +28,6 @@ use graph::prelude::{
     Future, LightEthereumBlock, Stream,
 };
 
-use crate::primary::Namespace;
 use crate::{chain_head_listener::ChainHeadUpdateListener, connection_pool::ConnectionPool};
 
 /// Tables in the 'public' database schema that store chain-specific data
@@ -80,32 +84,59 @@ struct BlockHash {
     hash: String,
 }
 
-#[derive(Clone)]
-enum Storage {
+#[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
+#[sql_type = "diesel::sql_types::Text"]
+/// Storage for a chain. The underlying namespace (database schema) is either
+/// `public` or of the form `chain[0-9]+`.
+pub enum Storage {
+    /// Chain data is stored in shared tables
     Shared,
-    Private(Namespace),
+    /// The chain has its own namespace in the database with dedicated
+    /// tables
+    Private(String),
 }
 
-const PUBLIC_NAMESPACE: &str = "public";
-
-impl From<Namespace> for Storage {
-    fn from(nsp: Namespace) -> Self {
-        if nsp.as_str() == PUBLIC_NAMESPACE {
-            Storage::Shared
-        } else {
-            Storage::Private(nsp)
+impl fmt::Display for Storage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Shared => Self::PUBLIC.fmt(f),
+            Self::Private(nsp) => nsp.fmt(f),
         }
     }
 }
 
-impl From<Storage> for Namespace {
-    fn from(storage: Storage) -> Self {
-        use Storage::*;
+impl FromSql<Text, Pg> for Storage {
+    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        Self::new(s).map_err(Into::into)
+    }
+}
 
-        match storage {
-            Shared => Namespace::new(PUBLIC_NAMESPACE.to_string()).unwrap(),
-            Private(nsp) => nsp,
+impl ToSql<Text, Pg> for Storage {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        <String as ToSql<Text, Pg>>::to_sql(&self.to_string(), out)
+    }
+}
+
+impl Storage {
+    const PREFIX: &'static str = "chain";
+    const PUBLIC: &'static str = "public";
+
+    fn new(s: String) -> Result<Self, String> {
+        if s.as_str() == Self::PUBLIC {
+            return Ok(Self::Shared);
         }
+
+        if !s.starts_with(Self::PREFIX) || s.len() <= Self::PREFIX.len() {
+            return Err(s);
+        }
+        for c in s.chars().skip(Self::PREFIX.len()) {
+            if !c.is_numeric() {
+                return Err(s);
+            }
+        }
+
+        Ok(Self::Private(s))
     }
 }
 
@@ -120,7 +151,7 @@ pub struct ChainStore {
 impl ChainStore {
     pub fn new(
         network: String,
-        namespace: Namespace,
+        storage: Storage,
         net_identifier: EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
         pool: ConnectionPool,
@@ -128,7 +159,7 @@ impl ChainStore {
         let store = ChainStore {
             conn: pool,
             network,
-            storage: namespace.into(),
+            storage,
             genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
             chain_head_update_listener,
         };
@@ -164,7 +195,7 @@ impl ChainStore {
                 insert_into(ethereum_networks)
                     .values((
                         name.eq(&self.network),
-                        namespace.eq(Namespace::from(self.storage.clone())),
+                        namespace.eq(&self.storage),
                         head_block_hash.eq::<Option<String>>(None),
                         head_block_number.eq::<Option<i64>>(None),
                         net_version.eq(new_net_version),
