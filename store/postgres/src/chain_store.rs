@@ -32,8 +32,8 @@ mod public {
             name -> Varchar,
             head_block_hash -> Nullable<Varchar>,
             head_block_number -> Nullable<BigInt>,
-            net_version -> Nullable<Varchar>,
-            genesis_block_hash -> Nullable<Varchar>,
+            net_version -> Varchar,
+            genesis_block_hash -> Varchar,
         }
     }
 
@@ -121,7 +121,7 @@ impl ChainStore {
         let network_identifiers_opt = ethereum_networks
             .select((net_version, genesis_block_hash))
             .filter(name.eq(&self.network))
-            .first::<(Option<String>, Option<String>)>(&*self.get_conn()?)
+            .first::<(String, String)>(&*self.get_conn()?)
             .optional()?;
 
         match network_identifiers_opt {
@@ -132,9 +132,8 @@ impl ChainStore {
                         name.eq(&self.network),
                         head_block_hash.eq::<Option<String>>(None),
                         head_block_number.eq::<Option<i64>>(None),
-                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
-                        genesis_block_hash
-                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
+                        net_version.eq(new_net_version),
+                        genesis_block_hash.eq(format!("{:x}", new_genesis_block_hash)),
                     ))
                     .on_conflict(name)
                     .do_nothing()
@@ -142,7 +141,7 @@ impl ChainStore {
             }
 
             // Network is in database and has identifiers
-            Some((Some(last_net_version), Some(last_genesis_block_hash))) => {
+            Some((last_net_version, last_genesis_block_hash)) => {
                 if last_net_version != new_net_version {
                     panic!(
                         "Ethereum node provided net_version {}, \
@@ -160,18 +159,6 @@ impl ChainStore {
                         new_genesis_block_hash, last_genesis_block_hash
                     );
                 }
-            }
-
-            // Network is in database but is missing identifiers
-            Some(_) => {
-                update(ethereum_networks)
-                    .set((
-                        net_version.eq::<Option<String>>(Some(new_net_version.to_owned())),
-                        genesis_block_hash
-                            .eq::<Option<String>>(Some(format!("{:x}", new_genesis_block_hash))),
-                    ))
-                    .filter(name.eq(&self.network))
-                    .execute(&*self.get_conn()?)?;
             }
         }
 
@@ -362,23 +349,13 @@ impl ChainStoreTrait for ChainStore {
             .filter(b::number.gt(sql("coalesce(ethereum_networks.head_block_number, -1)")))
             .order_by((b::number.desc(), b::hash))
             .select((b::hash, b::number, n::genesis_block_hash))
-            .first::<(String, i64, Option<String>)>(&conn)
+            .first::<(String, i64, String)>(&conn)
             .optional()?;
         let (hash, number, first_block, genesis) = match candidate {
             None => return Ok(vec![]),
             Some((hash, number, genesis)) => {
                 (hash, number, 0.max(number - ancestor_count as i64), genesis)
             }
-        };
-        let genesis = match genesis {
-            None => {
-                return Err(constraint_violation!(
-                    "network `{}` has no genesis block hash",
-                    &self.network
-                )
-                .into());
-            }
-            Some(g) => g,
         };
 
         let missing = self.missing_parents(&conn, first_block, &hash, &genesis)?;
