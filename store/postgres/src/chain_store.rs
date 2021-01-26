@@ -5,7 +5,7 @@ use graph::{
 
 use diesel::sql_types::Text;
 use diesel::{dsl::sql, pg::PgConnection};
-use diesel::{insert_into, select, update};
+use diesel::{insert_into, update};
 use diesel::{prelude::*, sql_query};
 use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
@@ -23,9 +23,6 @@ use graph::prelude::{
     Future, LightEthereumBlock, Stream,
 };
 
-//use web3::types::H256;
-
-use crate::functions::lookup_ancestor_block;
 use crate::{chain_head_listener::ChainHeadUpdateListener, connection_pool::ConnectionPool};
 
 /// Tables in the 'public' database schema that store chain-specific data
@@ -72,6 +69,13 @@ mod public {
 
     joinable!(eth_call_cache -> eth_call_meta (contract_address));
     allow_tables_to_appear_in_same_query!(eth_call_cache, eth_call_meta);
+}
+
+// Helper for literal SQL queries that look up a block hash
+#[derive(QueryableByName)]
+struct BlockHash {
+    #[sql_type = "Text"]
+    hash: String,
 }
 
 pub struct ChainStore {
@@ -257,18 +261,12 @@ impl ChainStore {
               where chain.parent_hash is null;
             ";
 
-        #[derive(QueryableByName)]
-        struct MissingParent {
-            #[sql_type = "Text"]
-            hash: String,
-        };
-
         let missing = sql_query(MISSING_PARENT_SQL)
             .bind::<Text, _>(&self.network)
             .bind::<Text, _>(&hash)
             .bind::<Text, _>(&genesis)
             .bind::<BigInt, _>(first_block)
-            .load::<MissingParent>(conn)?;
+            .load::<BlockHash>(conn)?;
 
         missing
             .into_iter()
@@ -446,20 +444,47 @@ impl ChainStoreTrait for ChainStore {
         block_ptr: EthereumBlockPointer,
         offset: u64,
     ) -> Result<Option<EthereumBlock>, Error> {
+        use public::ethereum_blocks as b;
+
         ensure!(
             block_ptr.number >= offset,
             "block offset points to before genesis block"
         );
 
-        select(lookup_ancestor_block(block_ptr.hash_hex(), offset as i64))
-            .first::<Option<serde_json::Value>>(&*self.get_conn()?)
-            .map(|val_opt| {
-                val_opt.map(|val| {
-                    serde_json::from_value::<EthereumBlock>(val)
-                        .expect("Failed to deserialize block from database")
-                })
-            })
-            .map_err(Error::from)
+        const ANCESTOR_SQL: &str = "
+        with recursive ancestors(block_hash, block_offset) as (
+            values ($1, 0)
+            union all
+            select b.parent_hash, a.block_offset+1
+              from ancestors a, ethereum_blocks b
+             where a.block_hash = b.hash
+               and a.block_offset < $2
+        )
+        select a.block_hash
+          from ancestors a
+         where a.block_offset = $2;";
+
+        let conn = self.get_conn()?;
+        let hash = sql_query(ANCESTOR_SQL)
+            .bind::<Text, _>(block_ptr.hash_hex())
+            .bind::<BigInt, _>(offset as i64)
+            .get_result::<BlockHash>(&conn)
+            .optional()?;
+
+        let hash = match hash {
+            None => return Ok(None),
+            Some(hash) => hash.hash,
+        };
+
+        let data = b::table
+            .filter(b::hash.eq(hash))
+            .select(b::data)
+            .first::<serde_json::Value>(&conn)?;
+
+        let block = serde_json::from_value::<EthereumBlock>(data)
+            .expect("Failed to deserialize block from database");
+
+        Ok(Some(block))
     }
 
     fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
