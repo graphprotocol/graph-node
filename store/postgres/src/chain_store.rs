@@ -3,10 +3,15 @@ use graph::{
     prelude::{ethabi, tiny_keccak, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
 };
 
-use diesel::pg::PgConnection;
-use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
+use diesel::sql_types::Text;
+use diesel::{dsl::sql, pg::PgConnection};
 use diesel::{insert_into, select, update};
+use diesel::{prelude::*, sql_query};
+use diesel::{
+    r2d2::{ConnectionManager, PooledConnection},
+    sql_types::BigInt,
+};
+
 use graph::ensure;
 use std::sync::Arc;
 use std::{collections::HashMap, convert::TryFrom};
@@ -20,7 +25,7 @@ use graph::prelude::{
 
 //use web3::types::H256;
 
-use crate::functions::{attempt_chain_head_update, lookup_ancestor_block};
+use crate::functions::lookup_ancestor_block;
 use crate::{chain_head_listener::ChainHeadUpdateListener, connection_pool::ConnectionPool};
 
 /// Tables in the 'public' database schema that store chain-specific data
@@ -44,6 +49,8 @@ mod public {
             data -> Jsonb,
         }
     }
+
+    allow_tables_to_appear_in_same_query!(ethereum_networks, ethereum_blocks);
 
     table! {
         /// `id` is the hash of contract address + encoded function call + block number.
@@ -206,6 +213,69 @@ impl ChainStore {
             },
         )
     }
+
+    /// Find the first block that is missing from the database needed to
+    /// complete the chain from block `hash` to the block with number
+    /// `first_block`. We return the hash of the missing block as an
+    /// array because the remaining code expects that, but the array will only
+    /// ever have at most one element.
+    fn missing_parents(
+        &self,
+        conn: &PgConnection,
+        first_block: i64,
+        hash: &str,
+        genesis: &str,
+    ) -> Result<Vec<H256>, Error> {
+        // We recursively build a temp table 'chain' containing the hash and
+        // parent_hash of blocks to check. The 'last' value is used to stop
+        // the recursion and is true if one of these conditions is true:
+        //   * we are missing a parent block
+        //   * we checked the required number of blocks
+        //   * we checked the genesis block
+        const MISSING_PARENT_SQL: &str = "
+            with recursive chain(hash, parent_hash, last) as (
+                -- base case: look at the head candidate block
+                select b.hash, b.parent_hash, false
+                  from ethereum_blocks b
+                 where b.network_name = $1
+                   and b.hash = $2
+                   and b.hash != $3
+                union all
+                -- recursion step: add a block whose hash is the latest parent_hash
+                -- on chain
+                select chain.parent_hash,
+                       b.parent_hash,
+                       coalesce(b.parent_hash is null
+                             or b.number <= $4
+                             or b.hash = $3, true)
+                  from chain left outer join ethereum_blocks b
+                              on chain.parent_hash = b.hash
+                             and b.network_name = $1
+                 where not chain.last)
+             select hash
+               from chain
+              where chain.parent_hash is null;
+            ";
+
+        #[derive(QueryableByName)]
+        struct MissingParent {
+            #[sql_type = "Text"]
+            hash: String,
+        };
+
+        let missing = sql_query(MISSING_PARENT_SQL)
+            .bind::<Text, _>(&self.network)
+            .bind::<Text, _>(&hash)
+            .bind::<Text, _>(&genesis)
+            .bind::<BigInt, _>(first_block)
+            .load::<MissingParent>(conn)?;
+
+        missing
+            .into_iter()
+            .map(|parent| parent.hash.parse())
+            .collect::<Result<_, _>>()
+            .map_err(Error::from)
+    }
 }
 
 impl ChainStoreTrait for ChainStore {
@@ -284,26 +354,50 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
-        // Call attempt_head_update SQL function
-        select(attempt_chain_head_update(
-            &self.network,
-            ancestor_count as i64,
-        ))
-        .load(&*self.get_conn()?)
-        .map_err(Error::from)
-        // We got a single return value, but it's returned generically as a set of rows
-        .map(|mut rows: Vec<_>| {
-            assert_eq!(rows.len(), 1);
-            rows.pop().unwrap()
-        })
-        // Parse block hashes into H256 type
-        .map(|hashes: Vec<String>| {
-            hashes
-                .into_iter()
-                .map(|h| h.parse())
-                .collect::<Result<Vec<H256>, _>>()
-        })
-        .and_then(|r| r.map_err(Error::from))
+        use public::ethereum_blocks as b;
+        use public::ethereum_networks as n;
+
+        let conn = self.get_conn()?;
+        let candidate = b::table
+            .inner_join(n::table.on(b::network_name.eq(n::name)))
+            .filter(n::name.eq(&self.network))
+            .filter(b::number.gt(sql("coalesce(ethereum_networks.head_block_number, -1)")))
+            .order_by((b::number.desc(), b::hash))
+            .select((b::hash, b::number, n::genesis_block_hash))
+            .first::<(String, i64, Option<String>)>(&conn)
+            .optional()?;
+        let (hash, number, first_block, genesis) = match candidate {
+            None => return Ok(vec![]),
+            Some((hash, number, genesis)) => {
+                (hash, number, 0.max(number - ancestor_count as i64), genesis)
+            }
+        };
+        let genesis = match genesis {
+            None => {
+                return Err(constraint_violation!(
+                    "network `{}` has no genesis block hash",
+                    &self.network
+                )
+                .into());
+            }
+            Some(g) => g,
+        };
+
+        let missing = self.missing_parents(&conn, first_block, &hash, &genesis)?;
+        if !missing.is_empty() {
+            return Ok(missing);
+        }
+
+        update(n::table.filter(n::name.eq(&self.network)))
+            .set((
+                n::head_block_hash.eq(&hash),
+                n::head_block_number.eq(number),
+            ))
+            .execute(&conn)?;
+
+        ChainHeadUpdateListener::send(&conn, &self.network, &hash, number)?;
+
+        Ok(vec![])
     }
 
     fn chain_head_updates(&self) -> ChainHeadUpdateStream {
@@ -331,7 +425,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
-        use diesel::dsl::{any, sql};
+        use diesel::dsl::any;
         use diesel::sql_types::Jsonb;
         use public::ethereum_blocks::dsl::*;
 
@@ -369,7 +463,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
-        use diesel::sql_types::{Integer, Text};
+        use diesel::sql_types::Integer;
         use public::ethereum_blocks::dsl;
 
         #[derive(QueryableByName)]
@@ -489,7 +583,6 @@ impl EthereumCallCache for ChainStore {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
     ) -> Result<Option<Vec<u8>>, Error> {
-        use diesel::dsl::sql;
         use public::{eth_call_cache, eth_call_meta};
 
         let id = contract_call_id(&contract_address, encoded_call, &block);
@@ -545,7 +638,6 @@ impl EthereumCallCache for ChainStore {
         block: EthereumBlockPointer,
         return_value: &[u8],
     ) -> Result<(), Error> {
-        use diesel::dsl::sql;
         use public::{eth_call_cache, eth_call_meta};
 
         let id = contract_call_id(&contract_address, encoded_call, &block);
