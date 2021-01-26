@@ -51,10 +51,6 @@ wait_for_ipfs() {
 
 start_query_node() {
     export DISABLE_BLOCK_INGESTOR=true
-    # Set custom poll interval
-    if [ -n "$ethereum_polling_interval" ]; then
-        export ETHEREUM_POLLING_INTERVAL=$ethereum_polling_interval
-    fi
     graph-node \
         --postgres-url "$postgres_url" \
         --ethereum-rpc $ethereum \
@@ -67,10 +63,6 @@ start_index_node() {
     if [[ ${node_id} != "${BLOCK_INGESTOR}" ]]; then
         export DISABLE_BLOCK_INGESTOR=true
     fi
-    # Set custom poll interval
-    if [ -n "$ethereum_polling_interval" ]; then
-        export ETHEREUM_POLLING_INTERVAL=$ethereum_polling_interval
-    fi
 
     graph-node \
         --node-id "${node_id//-/_}" \
@@ -80,10 +72,6 @@ start_index_node() {
 }
 
 start_combined_node() {
-    # Set custom poll interval
-    if [ -n "$ethereum_polling_interval" ]; then
-        export ETHEREUM_POLLING_INTERVAL=$ethereum_polling_interval
-    fi
     graph-node \
         --postgres-url "$postgres_url" \
         --ethereum-rpc $ethereum \
@@ -100,6 +88,11 @@ sleep 5
 trap save_coredumps EXIT
 
 export PGAPPNAME="${node_id-$HOSTNAME}"
+
+# Set custom poll interval
+if [ -n "$ethereum_polling_interval" ]; then
+    export ETHEREUM_POLLING_INTERVAL=$ethereum_polling_interval
+fi
 
 case "${node_role-combined-node}" in
     query-node)
