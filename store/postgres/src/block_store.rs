@@ -17,6 +17,7 @@ mod primary {
     use diesel::{insert_into, ExpressionMethods, RunQueryDsl};
     use graph::prelude::{EthereumNetworkIdentifier, StoreError};
 
+    use crate::primary::Namespace;
     use crate::{connection_pool::ConnectionPool, Shard};
 
     table! {
@@ -40,7 +41,7 @@ mod primary {
         pub net_version: String,
         pub genesis_block: String,
         pub shard: Shard,
-        pub namespace: String,
+        pub namespace: Namespace,
     }
 
     pub fn load_chains(pool: &ConnectionPool) -> Result<Vec<Chain>, StoreError> {
@@ -51,9 +52,9 @@ mod primary {
     pub fn add_chain(
         pool: &ConnectionPool,
         name: &str,
-        ident: EthereumNetworkIdentifier,
+        ident: &EthereumNetworkIdentifier,
         shard: &Shard,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Namespace, StoreError> {
         let conn = pool.get()?;
         insert_into(chains::table)
             .values((
@@ -62,8 +63,9 @@ mod primary {
                 chains::genesis_block_hash.eq(format!("{:x}", &ident.genesis_block_hash)),
                 chains::shard.eq(shard.as_str()),
             ))
-            .execute(&conn)?;
-        Ok(())
+            .returning(chains::namespace)
+            .get_result::<Namespace>(&conn)
+            .map_err(StoreError::from)
     }
 }
 
@@ -92,15 +94,7 @@ impl BlockStore {
                 .ok_or_else(|| constraint_violation!("there is no pool for shard {}", shard))?
                 .clone();
 
-            let store = ChainStore::new(
-                network.clone(),
-                ident.clone(),
-                chain_head_update_listener.clone(),
-                pool,
-            );
-            stores.insert(network.clone(), Arc::new(store));
-
-            match chains.iter().find(|chain| chain.name == network) {
+            let namespace = match chains.iter().find(|chain| chain.name == network) {
                 Some(chain) => {
                     if chain.shard != shard {
                         return Err(StoreError::Unknown(anyhow!(
@@ -110,9 +104,19 @@ impl BlockStore {
                             shard
                         )));
                     }
+                    chain.namespace.clone()
                 }
-                None => primary::add_chain(&primary, &network, ident, &shard)?,
-            }
+                None => primary::add_chain(&primary, &network, &ident, &shard)?,
+            };
+
+            let store = ChainStore::new(
+                network.clone(),
+                namespace,
+                ident.clone(),
+                chain_head_update_listener.clone(),
+                pool,
+            );
+            stores.insert(network.clone(), Arc::new(store));
         }
         Ok(Self { stores })
     }
