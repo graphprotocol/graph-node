@@ -55,6 +55,17 @@ impl<T: AscValue> ArrayBuffer<T> {
     fn get(&self, byte_offset: u32, length: u32) -> Result<Vec<T>, DeterministicHostError> {
         let length = length as usize;
         let byte_offset = byte_offset as usize;
+
+        self.content[byte_offset..]
+            .chunks(size_of::<T>())
+            .take(length)
+            .map(T::from_asc_bytes)
+            .collect()
+
+        // TODO: This code is preferred as it validates the length of the array.
+        // But, some existing subgraphs were found to break when this was added.
+        // This needs to be root caused
+        /*
         let range = byte_offset..byte_offset + length * size_of::<T>();
         self.content
             .get(range)
@@ -64,6 +75,7 @@ impl<T: AscValue> ArrayBuffer<T> {
             .chunks_exact(size_of::<T>())
             .map(|bytes| T::from_asc_bytes(bytes))
             .collect()
+            */
     }
 }
 
