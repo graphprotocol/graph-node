@@ -17,7 +17,7 @@ mod primary {
     use diesel::{insert_into, ExpressionMethods, RunQueryDsl};
     use graph::prelude::{EthereumNetworkIdentifier, StoreError};
 
-    use crate::primary::Namespace;
+    use crate::chain_store::Storage;
     use crate::{connection_pool::ConnectionPool, Shard};
 
     table! {
@@ -41,7 +41,7 @@ mod primary {
         pub net_version: String,
         pub genesis_block: String,
         pub shard: Shard,
-        pub namespace: Namespace,
+        pub storage: Storage,
     }
 
     pub fn load_chains(pool: &ConnectionPool) -> Result<Vec<Chain>, StoreError> {
@@ -54,7 +54,7 @@ mod primary {
         name: &str,
         ident: &EthereumNetworkIdentifier,
         shard: &Shard,
-    ) -> Result<Namespace, StoreError> {
+    ) -> Result<Storage, StoreError> {
         let conn = pool.get()?;
         insert_into(chains::table)
             .values((
@@ -64,7 +64,7 @@ mod primary {
                 chains::shard.eq(shard.as_str()),
             ))
             .returning(chains::namespace)
-            .get_result::<Namespace>(&conn)
+            .get_result::<Storage>(&conn)
             .map_err(StoreError::from)
     }
 }
@@ -104,7 +104,7 @@ impl BlockStore {
                             shard
                         )));
                     }
-                    chain.namespace.clone()
+                    chain.storage.clone()
                 }
                 None => primary::add_chain(&primary, &network, &ident, &shard)?,
             };
