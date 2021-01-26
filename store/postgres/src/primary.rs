@@ -4,7 +4,10 @@
 use diesel::{
     data_types::PgTimestamp,
     dsl::{any, exists, not},
+    pg::Pg,
+    serialize::Output,
     sql_types::{Array, Text},
+    types::{FromSql, ToSql},
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -34,6 +37,7 @@ use std::{
     convert::TryFrom,
     convert::TryInto,
     fmt,
+    io::Write,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -189,7 +193,8 @@ pub struct UnusedDeployment {
     pub synced: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
+#[sql_type = "diesel::sql_types::Text"]
 /// A namespace (schema) in the database
 pub struct Namespace(String);
 
@@ -228,6 +233,19 @@ impl Namespace {
 impl fmt::Display for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl FromSql<Text, Pg> for Namespace {
+    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        Namespace::new(s).map_err(Into::into)
+    }
+}
+
+impl ToSql<Text, Pg> for Namespace {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
 

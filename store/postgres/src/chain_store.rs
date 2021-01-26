@@ -23,6 +23,7 @@ use graph::prelude::{
     Future, LightEthereumBlock, Stream,
 };
 
+use crate::primary::Namespace;
 use crate::{chain_head_listener::ChainHeadUpdateListener, connection_pool::ConnectionPool};
 
 /// Tables in the 'public' database schema that store chain-specific data
@@ -30,6 +31,7 @@ mod public {
     table! {
         ethereum_networks (name) {
             name -> Varchar,
+            namespace -> Varchar,
             head_block_hash -> Nullable<Varchar>,
             head_block_number -> Nullable<BigInt>,
             net_version -> Varchar,
@@ -78,9 +80,39 @@ struct BlockHash {
     hash: String,
 }
 
+#[derive(Clone)]
+enum Storage {
+    Shared,
+    Private(Namespace),
+}
+
+const PUBLIC_NAMESPACE: &str = "public";
+
+impl From<Namespace> for Storage {
+    fn from(nsp: Namespace) -> Self {
+        if nsp.as_str() == PUBLIC_NAMESPACE {
+            Storage::Shared
+        } else {
+            Storage::Private(nsp)
+        }
+    }
+}
+
+impl From<Storage> for Namespace {
+    fn from(storage: Storage) -> Self {
+        use Storage::*;
+
+        match storage {
+            Shared => Namespace::new(PUBLIC_NAMESPACE.to_string()).unwrap(),
+            Private(nsp) => nsp,
+        }
+    }
+}
+
 pub struct ChainStore {
     conn: ConnectionPool,
     network: String,
+    storage: Storage,
     genesis_block_ptr: EthereumBlockPointer,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
 }
@@ -88,6 +120,7 @@ pub struct ChainStore {
 impl ChainStore {
     pub fn new(
         network: String,
+        namespace: Namespace,
         net_identifier: EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
         pool: ConnectionPool,
@@ -95,6 +128,7 @@ impl ChainStore {
         let store = ChainStore {
             conn: pool,
             network,
+            storage: namespace.into(),
             genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
             chain_head_update_listener,
         };
@@ -130,6 +164,7 @@ impl ChainStore {
                 insert_into(ethereum_networks)
                     .values((
                         name.eq(&self.network),
+                        namespace.eq(Namespace::from(self.storage.clone())),
                         head_block_hash.eq::<Option<String>>(None),
                         head_block_number.eq::<Option<i64>>(None),
                         net_version.eq(new_net_version),
