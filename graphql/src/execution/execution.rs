@@ -80,6 +80,16 @@ lazy_static! {
         .expect("Invalid value for GRAPH_QUERY_BLOCK_CACHE_SHARDS environment variable, max is 255")
     };
 
+    static ref QUERY_LFU_CACHE_SHARDS: u8 = {
+        std::env::var("GRAPH_QUERY_LFU_CACHE_SHARDS")
+        .map(|s| {
+            s.parse::<u8>()
+             .expect("Invalid value for GRAPH_QUERY_LFU_CACHE_SHARDS environment variable, max is 255")
+        })
+        .unwrap_or(*QUERY_BLOCK_CACHE_SHARDS)
+    };
+
+
 
     // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
@@ -99,7 +109,7 @@ lazy_static! {
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: Vec<TimedMutex<LfuCache<QueryHash, WeightedResult>>> = {
         std::iter::repeat_with(|| TimedMutex::new(LfuCache::new(), "query_lfu_cache"))
-                    .take(*QUERY_BLOCK_CACHE_SHARDS as usize).collect()
+                    .take(*QUERY_LFU_CACHE_SHARDS as usize).collect()
     };
 }
 
