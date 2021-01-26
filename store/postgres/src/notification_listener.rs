@@ -28,6 +28,7 @@ lazy_static! {
             .unwrap_or(Duration::from_secs(300));
 }
 
+#[derive(Clone)]
 /// This newtype exists to make it hard to misuse the `NotificationListener` API in a way that
 /// could impact security.
 pub struct SafeChannelName(String);

@@ -8,10 +8,6 @@ sql_function! {
 }
 
 sql_function! {
-    fn attempt_chain_head_update(net_name: Text, ancestor_count: BigInt) -> Array<Text>
-}
-
-sql_function! {
     fn lookup_ancestor_block(start_block_hash: Text, ancestor_count: BigInt) -> Nullable<Jsonb>
 }
 

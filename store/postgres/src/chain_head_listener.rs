@@ -1,10 +1,17 @@
+use diesel::{PgConnection, RunQueryDsl};
+use lazy_static::lazy_static;
 use tokio::sync::watch;
 use web3::types::H256;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
-use graph::prelude::serde_json;
+use graph::prelude::serde_json::{self, json};
 use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
 use graph_chain_ethereum::BlockIngestorMetrics;
+
+lazy_static! {
+    pub static ref CHANNEL_NAME: SafeChannelName =
+        SafeChannelName::i_promise_this_is_safe("chain_head_updates");
+}
 
 pub struct ChainHeadUpdateListener {
     /// A receiver that gets all chain head updates for all networks. We
@@ -26,11 +33,7 @@ impl ChainHeadUpdateListener {
         let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         // Create a Postgres notification listener for chain head updates
-        let mut listener = NotificationListener::new(
-            &logger,
-            postgres_url,
-            SafeChannelName::i_promise_this_is_safe("chain_head_updates"),
-        );
+        let mut listener = NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
 
         let none_update = ChainHeadUpdate {
             network_name: "none".to_owned(),
@@ -86,6 +89,26 @@ impl ChainHeadUpdateListener {
 
         // We're ready, start listening to chain head updates
         listener.start();
+    }
+
+    pub fn send(
+        conn: &PgConnection,
+        network_name: &str,
+        hash: &str,
+        number: i64,
+    ) -> Result<(), StoreError> {
+        use crate::functions::pg_notify;
+
+        let msg = json! ({
+            "network_name": network_name,
+            "head_block_hash": hash,
+            "head_block_number": number
+        });
+
+        diesel::select(pg_notify("chain_head_updates", &msg.to_string()))
+            .execute(conn)
+            .map_err(StoreError::from)
+            .map(|_| ())
     }
 }
 
