@@ -49,6 +49,8 @@ ENV ethereum ""
 ENV node_role "combined-node"
 # The name of this node
 ENV node_id "default"
+# The ethereum network polling interval  (in milliseconds)
+ENV ethereum_polling_interval ""
 
 # HTTP port
 EXPOSE 8000
