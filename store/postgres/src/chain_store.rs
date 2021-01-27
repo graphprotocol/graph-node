@@ -371,7 +371,7 @@ mod data {
             &self,
             conn: &PgConnection,
             network: &str,
-        ) -> Result<Option<(String, i64, String)>, Error> {
+        ) -> Result<Option<(String, i64)>, Error> {
             use public::ethereum_blocks as b;
             use public::ethereum_networks as n;
 
@@ -380,8 +380,8 @@ mod data {
                 .filter(n::name.eq(network))
                 .filter(b::number.gt(sql("coalesce(ethereum_networks.head_block_number, -1)")))
                 .order_by((b::number.desc(), b::hash))
-                .select((b::hash, b::number, n::genesis_block_hash))
-                .first::<(String, i64, String)>(conn)
+                .select((b::hash, b::number))
+                .first::<(String, i64)>(conn)
                 .optional()
                 .map_err(Error::from)
         }
@@ -660,12 +660,11 @@ impl ChainStoreTrait for ChainStore {
         let conn = self.get_conn()?;
         conn.transaction(|| {
             let candidate = self.storage.chain_head_candidate(&conn, &self.network)?;
-            let (hash, number, first_block, genesis) = match candidate {
+            let (hash, number, first_block) = match candidate {
                 None => return Ok(vec![]),
-                Some((hash, number, genesis)) => {
-                    (hash, number, 0.max(number - ancestor_count as i64), genesis)
-                }
+                Some((hash, number)) => (hash, number, 0.max(number - ancestor_count as i64)),
             };
+            let genesis = self.genesis_block_ptr.hash_hex();
 
             let missing =
                 self.storage
