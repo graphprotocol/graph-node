@@ -375,10 +375,15 @@ mod data {
             use public::ethereum_blocks as b;
             use public::ethereum_networks as n;
 
-            b::table
-                .inner_join(n::table.on(b::network_name.eq(n::name)))
+            let head = n::table
                 .filter(n::name.eq(network))
-                .filter(b::number.gt(sql("coalesce(ethereum_networks.head_block_number, -1)")))
+                .select(n::head_block_number)
+                .first::<Option<i64>>(conn)?
+                .unwrap_or(-1);
+
+            b::table
+                .filter(b::network_name.eq(network))
+                .filter(b::number.gt(head))
                 .order_by((b::number.desc(), b::hash))
                 .select((b::hash, b::number))
                 .first::<(String, i64)>(conn)
