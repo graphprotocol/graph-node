@@ -10,8 +10,8 @@ use graph::{
     prelude::{Future01CompatExt, SubgraphDeploymentId},
 };
 use graph::{components::store::ChainStore as _, prelude::QueryStoreManager};
-use graph_store_postgres::ChainStore as DieselChainStore;
 use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::{layout_for_tests::FAKE_NETWORK_SHARED, ChainStore as DieselChainStore};
 
 use test_store::block_store::{
     Chain, FakeBlock, BLOCK_FIVE, BLOCK_FOUR, BLOCK_ONE, BLOCK_ONE_NO_PARENT, BLOCK_ONE_SIBLING,
@@ -26,7 +26,7 @@ const ANCESTOR_COUNT: u64 = 3;
 /// Test harness for running database integration tests.
 fn run_test<R, F>(chain: Chain, test: F)
 where
-    F: FnOnce(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + 'static,
+    F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + 'static,
     R: IntoFuture<Item = ()> + Send + 'static,
     R::Error: Send + Debug,
     R::Future: Send,
@@ -34,19 +34,19 @@ where
     run_test_sequentially(
         || (),
         |store, ()| async move {
-            block_store::set_chain(chain, NETWORK_NAME);
+            for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
+                block_store::set_chain(chain.clone(), name);
 
-            let chain_store = store
-                .block_store()
-                .chain_store(NETWORK_NAME)
-                .expect("chain store");
+                let chain_store = store.block_store().chain_store(name).expect("chain store");
 
-            // Run test
-            test(chain_store, store)
-                .into_future()
-                .compat()
-                .await
-                .expect("test finishes successfully");
+                // Run test
+                let result = test(chain_store, store.clone());
+                result
+                    .into_future()
+                    .compat()
+                    .await
+                    .expect("test finishes successfully");
+            }
         },
     );
 }
@@ -162,7 +162,9 @@ fn block_number() {
     run_test(chain, move |_, subgraph_store| -> Result<(), ()> {
         create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
 
-        let query_store = subgraph_store.query_store(subgraph.into(), false).unwrap();
+        let query_store = subgraph_store
+            .query_store(subgraph.clone().into(), false)
+            .unwrap();
         let block = query_store
             .block_number(GENESIS_BLOCK.block_hash())
             .expect("Found genesis block");

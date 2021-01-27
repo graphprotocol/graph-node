@@ -45,6 +45,7 @@ mod subgraph_store;
 #[cfg(debug_assertions)]
 pub mod layout_for_tests {
     pub use crate::block_range::*;
+    pub use crate::block_store::FAKE_NETWORK_SHARED;
     pub use crate::chain_store::test_support as chain_support;
     pub use crate::entities::STRING_PREFIX_SIZE;
     pub use crate::primary::{Connection, Namespace, EVENT_TAP, EVENT_TAP_ENABLED};

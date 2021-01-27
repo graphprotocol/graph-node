@@ -13,6 +13,9 @@ use graph::{
 use crate::{connection_pool::ConnectionPool, ChainHeadUpdateListener, ChainStore};
 use crate::{subgraph_store::PRIMARY_SHARD, Shard};
 
+#[cfg(debug_assertions)]
+pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
+
 mod primary {
     use diesel::{insert_into, ExpressionMethods, RunQueryDsl};
     use graph::prelude::{EthereumNetworkIdentifier, StoreError};
@@ -56,6 +59,24 @@ mod primary {
         shard: &Shard,
     ) -> Result<Storage, StoreError> {
         let conn = pool.get()?;
+
+        // For tests, we want to have a chain that still uses the
+        // shared `ethereum_blocks` table
+        #[cfg(debug_assertions)]
+        if name == super::FAKE_NETWORK_SHARED {
+            return insert_into(chains::table)
+                .values((
+                    chains::name.eq(name),
+                    chains::namespace.eq("public"),
+                    chains::net_version.eq(&ident.net_version),
+                    chains::genesis_block_hash.eq(format!("{:x}", &ident.genesis_block_hash)),
+                    chains::shard.eq(shard.as_str()),
+                ))
+                .returning(chains::namespace)
+                .get_result::<Storage>(&conn)
+                .map_err(StoreError::from);
+        }
+
         insert_into(chains::table)
             .values((
                 chains::name.eq(name),

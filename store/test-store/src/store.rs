@@ -12,6 +12,7 @@ use graph_graphql::prelude::{
 use graph_mock::MockMetricsRegistry;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
+use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{DeploymentPlacer, Store};
 use hex_literal::hex;
@@ -419,13 +420,16 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
             let subscription_manager = builder.subscription_manager();
             let primary_pool = builder.primary_pool();
 
-            let net_identifiers = EthereumNetworkIdentifier {
+            let ident = EthereumNetworkIdentifier {
                 net_version: NETWORK_VERSION.to_owned(),
                 genesis_block_hash: GENESIS_PTR.hash,
             };
 
             (
-                builder.network_store(vec![(NETWORK_NAME.to_string(), net_identifiers)]),
+                builder.network_store(vec![
+                    (NETWORK_NAME.to_string(), ident.clone()),
+                    (FAKE_NETWORK_SHARED.to_string(), ident),
+                ]),
                 primary_pool,
                 config,
                 subscription_manager,

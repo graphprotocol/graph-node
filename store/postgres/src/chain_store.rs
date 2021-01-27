@@ -63,8 +63,8 @@ pub use data::Storage;
 mod data {
     use graph::prelude::StoreError;
 
-    use diesel::insert_into;
-    use diesel::sql_types::BigInt;
+    use diesel::sql_types::{BigInt, Jsonb};
+    use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         pg::Pg,
@@ -73,6 +73,7 @@ mod data {
         types::{FromSql, ToSql},
     };
     use diesel::{prelude::*, sql_query};
+    use diesel_dynamic_schema as dds;
 
     use std::fmt;
     use std::iter::FromIterator;
@@ -106,7 +107,60 @@ mod data {
         hash: String,
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
+    type DynTable = dds::Table<String>;
+    type DynColumn<ST> = dds::Column<DynTable, &'static str, ST>;
+
+    /// The table that holds blocks when we store a chain in its own
+    /// dedicated database schema
+    #[derive(Clone, Debug)]
+    struct BlocksTable {
+        /// The fully qualified name of the blocks table, including the
+        /// schema
+        qname: String,
+        table: DynTable,
+    }
+
+    impl BlocksTable {
+        const TABLE_NAME: &'static str = "blocks";
+
+        fn new(namespace: &str) -> Self {
+            BlocksTable {
+                qname: format!("{}.{}", namespace, Self::TABLE_NAME),
+                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+            }
+        }
+
+        fn table(&self) -> DynTable {
+            self.table.clone()
+        }
+
+        fn hash(&self) -> DynColumn<Text> {
+            self.table.column::<Text, _>("hash")
+        }
+
+        fn number(&self) -> DynColumn<BigInt> {
+            self.table.column::<BigInt, _>("number")
+        }
+
+        fn data(&self) -> DynColumn<Jsonb> {
+            self.table.column::<Jsonb, _>("data")
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Schema {
+        name: String,
+        blocks: BlocksTable,
+    }
+
+    impl Schema {
+        fn new(name: String) -> Self {
+            let blocks = BlocksTable::new(&name);
+            Self { name, blocks }
+        }
+    }
+
+    #[derive(Clone, Debug, AsExpression, FromSqlRow)]
     #[sql_type = "diesel::sql_types::Text"]
     /// Storage for a chain. The underlying namespace (database schema) is either
     /// `public` or of the form `chain[0-9]+`.
@@ -115,14 +169,14 @@ mod data {
         Shared,
         /// The chain has its own namespace in the database with dedicated
         /// tables
-        Private(String),
+        Private(Schema),
     }
 
     impl fmt::Display for Storage {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
                 Self::Shared => Self::PUBLIC.fmt(f),
-                Self::Private(nsp) => nsp.fmt(f),
+                Self::Private(Schema { name, .. }) => name.fmt(f),
             }
         }
     }
@@ -158,74 +212,145 @@ mod data {
                 }
             }
 
-            Ok(Self::Private(s))
+            Ok(Self::Private(Schema::new(s)))
         }
     }
 
     impl Storage {
+        /// Create dedicated database tables for this chain if it uses
+        /// `Storage::Private`. If it uses `Storage::Shared`, do nothing since
+        /// a regular migration will already have created the `ethereum_blocks`
+        /// table
+        pub(super) fn create(&self, conn: &PgConnection) -> Result<(), Error> {
+            fn make_ddl(nsp: &str) -> String {
+                format!(
+                    "
+                create schema {nsp};
+                create table {nsp}.blocks (
+                  hash         text  not null primary key,
+                  number       int8  not null,
+                  parent_hash  text  not null,
+                  data         jsonb not null
+                );
+                create index blocks_number ON {nsp}.blocks using btree(number);
+            ",
+                    nsp = nsp
+                )
+            }
+
+            match self {
+                Storage::Shared => Ok(()),
+                Storage::Private(Schema { name, .. }) => {
+                    conn.batch_execute(&make_ddl(name))?;
+                    Ok(())
+                }
+            }
+        }
+
+        /// Insert a block. If the table already contains a block with the
+        /// same hash, then overwrite that block since it may be adding
+        /// transaction receipts.
         pub(super) fn upsert_block(
             &self,
             conn: &PgConnection,
             network: &str,
             block: EthereumBlock,
         ) -> Result<(), Error> {
-            use public::ethereum_blocks as b;
+            let hash = format!("{:x}", block.block.hash.unwrap());
+            let number = block.block.number.unwrap().as_u64() as i64;
+            let parent_hash = format!("{:x}", block.block.parent_hash);
+            let data = serde_json::to_value(&block).expect("Failed to serialize block");
 
-            let json_blob = serde_json::to_value(&block).expect("Failed to serialize block");
-            let values = (
-                b::hash.eq(format!("{:x}", block.block.hash.unwrap())),
-                b::number.eq(block.block.number.unwrap().as_u64() as i64),
-                b::parent_hash.eq(format!("{:x}", block.block.parent_hash)),
-                b::network_name.eq(network),
-                b::data.eq(json_blob),
-            );
+            let result = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
 
-            // Insert blocks.
-            //
-            // If the table already contains a block with the same hash, then overwrite that block
-            // if it may be adding transaction receipts.
-            insert_into(b::table)
-                .values(values.clone())
-                .on_conflict(b::hash)
-                .do_update()
-                .set(values)
-                .execute(conn)
-                .map_err(Error::from)
-                .map(|_| ())
+                    let values = (
+                        b::hash.eq(hash),
+                        b::number.eq(number),
+                        b::parent_hash.eq(parent_hash),
+                        b::network_name.eq(network),
+                        b::data.eq(data),
+                    );
+
+                    insert_into(b::table)
+                        .values(values.clone())
+                        .on_conflict(b::hash)
+                        .do_update()
+                        .set(values)
+                        .execute(conn)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query = format!(
+                        "insert into {}(hash, number, parent_hash, data) \
+                     values ($1, $2, $3, $4) \
+                         on conflict(hash) \
+                         do update set number = $2, parent_hash = $3, data = $4",
+                        blocks.qname,
+                    );
+                    sql_query(query)
+                        .bind::<Text, _>(hash)
+                        .bind::<BigInt, _>(number)
+                        .bind::<Text, _>(parent_hash)
+                        .bind::<Jsonb, _>(data)
+                        .execute(conn)
+                }
+            };
+            result.map(|_| ()).map_err(Error::from)
         }
 
+        /// Insert a light block. On conflict do nothing, since we
+        /// do not want to erase transaction receipts that might already
+        /// be there
         pub(super) fn upsert_light_block(
             &self,
             conn: &PgConnection,
             network: &str,
             block: LightEthereumBlock,
         ) -> Result<(), Error> {
-            use public::ethereum_blocks as b;
-
-            let block_hash = format!("{:x}", block.hash.unwrap());
-            let p_hash = format!("{:x}", block.parent_hash);
-            let block_number = block.number.unwrap().as_u64();
-            let json_blob = serde_json::to_value(&EthereumBlock {
+            let hash = format!("{:x}", block.hash.unwrap());
+            let parent_hash = format!("{:x}", block.parent_hash);
+            let number = block.number.unwrap().as_u64() as i64;
+            let data = serde_json::to_value(&EthereumBlock {
                 block,
                 transaction_receipts: Vec::new(),
             })
             .expect("Failed to serialize block");
-            let values = (
-                b::hash.eq(block_hash),
-                b::number.eq(block_number as i64),
-                b::parent_hash.eq(p_hash),
-                b::network_name.eq(network),
-                b::data.eq(json_blob),
-            );
 
-            // Insert blocks. On conflict do nothing, we don't want to erase transaction receipts.
-            insert_into(b::table)
-                .values(values.clone())
-                .on_conflict(b::hash)
-                .do_nothing()
-                .execute(conn)
-                .map(|_| ())
-                .map_err(Error::from)
+            let result = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    let values = (
+                        b::hash.eq(hash),
+                        b::number.eq(number),
+                        b::parent_hash.eq(parent_hash),
+                        b::network_name.eq(network),
+                        b::data.eq(data),
+                    );
+
+                    insert_into(b::table)
+                        .values(values.clone())
+                        .on_conflict(b::hash)
+                        .do_nothing()
+                        .execute(conn)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query = format!(
+                        "insert into {}(hash, number, parent_hash, data) \
+                         values ($1, $2, $3, $4) \
+                             on conflict(hash) do nothing",
+                        blocks.qname
+                    );
+                    sql_query(query)
+                        .bind::<Text, _>(hash)
+                        .bind::<BigInt, _>(number)
+                        .bind::<Text, _>(parent_hash)
+                        .bind::<Jsonb, _>(data)
+                        .execute(conn)
+                }
+            };
+            result.map(|_| ()).map_err(Error::from)
         }
 
         pub(super) fn blocks(
@@ -235,16 +360,28 @@ mod data {
             hashes: Vec<H256>,
         ) -> Result<Vec<LightEthereumBlock>, Error> {
             use diesel::dsl::any;
-            use diesel::sql_types::Jsonb;
-            use public::ethereum_blocks as b;
 
-            b::table
-                .select(sql::<Jsonb>("data -> 'block'"))
-                .filter(b::network_name.eq(network))
-                .filter(b::hash.eq(any(Vec::from_iter(
-                    hashes.into_iter().map(|h| format!("{:x}", h)),
-                ))))
-                .load::<serde_json::Value>(conn)?
+            let hashes = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    b::table
+                        .select(sql::<Jsonb>("data -> 'block'"))
+                        .filter(b::network_name.eq(network))
+                        .filter(b::hash.eq(any(Vec::from_iter(
+                            hashes.into_iter().map(|h| format!("{:x}", h)),
+                        ))))
+                        .load::<serde_json::Value>(conn)?
+                }
+                Storage::Private(Schema { blocks, .. }) => blocks
+                    .table()
+                    .select(sql::<Jsonb>("data -> 'block'"))
+                    .filter(blocks.hash().eq(any(Vec::from_iter(
+                        hashes.into_iter().map(|h| format!("{:x}", h)),
+                    ))))
+                    .load::<serde_json::Value>(conn)?,
+            };
+            hashes
                 .into_iter()
                 .map(|block| serde_json::from_value(block).map_err(Into::into))
                 .collect()
@@ -256,17 +393,30 @@ mod data {
             network: &str,
             number: u64,
         ) -> Result<Vec<H256>, Error> {
-            use public::ethereum_blocks as b;
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
 
-            b::table
-                .select(b::hash)
-                .filter(b::network_name.eq(&network))
-                .filter(b::number.eq(number as i64))
-                .get_results::<String>(conn)?
-                .into_iter()
-                .map(|h| h.parse())
-                .collect::<Result<Vec<H256>, _>>()
-                .map_err(Error::from)
+                    b::table
+                        .select(b::hash)
+                        .filter(b::network_name.eq(&network))
+                        .filter(b::number.eq(number as i64))
+                        .get_results::<String>(conn)?
+                        .into_iter()
+                        .map(|h| h.parse())
+                        .collect::<Result<Vec<H256>, _>>()
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { blocks, .. }) => blocks
+                    .table()
+                    .select(blocks.hash())
+                    .filter(blocks.number().eq(number as i64))
+                    .get_results::<String>(conn)?
+                    .into_iter()
+                    .map(|h| h.parse())
+                    .collect::<Result<Vec<H256>, _>>()
+                    .map_err(Error::from),
+            }
         }
 
         pub(super) fn confirm_block_hash(
@@ -276,14 +426,32 @@ mod data {
             number: u64,
             hash: &H256,
         ) -> Result<usize, Error> {
-            use public::ethereum_blocks as b;
+            let hash = format!("{:x}", hash);
+            let number = number as i64;
 
-            diesel::delete(b::table)
-                .filter(b::network_name.eq(network))
-                .filter(b::number.eq(number as i64))
-                .filter(b::hash.ne(&format!("{:x}", hash)))
-                .execute(conn)
-                .map_err(Error::from)
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    diesel::delete(b::table)
+                        .filter(b::network_name.eq(network))
+                        .filter(b::number.eq(number))
+                        .filter(b::hash.ne(&hash))
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query = format!(
+                        "delete from {} where number = $1 and hash != $2",
+                        blocks.qname
+                    );
+                    sql_query(query)
+                        .bind::<BigInt, _>(number)
+                        .bind::<Text, _>(hash)
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+            }
         }
 
         pub(super) fn block_number(
@@ -291,13 +459,24 @@ mod data {
             conn: &PgConnection,
             hash: H256,
         ) -> Result<Option<BlockNumber>, StoreError> {
-            use public::ethereum_blocks as b;
+            let number = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
 
-            b::table
-                .select(b::number)
-                .filter(b::hash.eq(format!("{:x}", hash)))
-                .first::<i64>(conn)
-                .optional()?
+                    b::table
+                        .select(b::number)
+                        .filter(b::hash.eq(format!("{:x}", hash)))
+                        .first::<i64>(conn)
+                        .optional()?
+                }
+                Storage::Private(Schema { blocks, .. }) => blocks
+                    .table()
+                    .select(blocks.number())
+                    .filter(blocks.hash().eq(format!("{:x}", hash)))
+                    .first::<i64>(conn)
+                    .optional()?,
+            };
+            number
                 .map(|number| {
                     BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
@@ -318,13 +497,15 @@ mod data {
             hash: &str,
             genesis: &str,
         ) -> Result<Vec<H256>, Error> {
-            // We recursively build a temp table 'chain' containing the hash and
-            // parent_hash of blocks to check. The 'last' value is used to stop
-            // the recursion and is true if one of these conditions is true:
-            //   * we are missing a parent block
-            //   * we checked the required number of blocks
-            //   * we checked the genesis block
-            const MISSING_PARENT_SQL: &str = "
+            match self {
+                Storage::Shared => {
+                    // We recursively build a temp table 'chain' containing the hash and
+                    // parent_hash of blocks to check. The 'last' value is used to stop
+                    // the recursion and is true if one of these conditions is true:
+                    //   * we are missing a parent block
+                    //   * we checked the required number of blocks
+                    //   * we checked the genesis block
+                    const MISSING_PARENT_SQL: &str = "
             with recursive chain(hash, parent_hash, last) as (
                 -- base case: look at the head candidate block
                 select b.hash, b.parent_hash, false
@@ -349,18 +530,62 @@ mod data {
               where chain.parent_hash is null;
             ";
 
-            let missing = sql_query(MISSING_PARENT_SQL)
-                .bind::<Text, _>(network)
-                .bind::<Text, _>(&hash)
-                .bind::<Text, _>(&genesis)
-                .bind::<BigInt, _>(first_block)
-                .load::<BlockHash>(conn)?;
+                    let missing = sql_query(MISSING_PARENT_SQL)
+                        .bind::<Text, _>(network)
+                        .bind::<Text, _>(&hash)
+                        .bind::<Text, _>(&genesis)
+                        .bind::<BigInt, _>(first_block)
+                        .load::<BlockHash>(conn)?;
 
-            missing
-                .into_iter()
-                .map(|parent| parent.hash.parse())
-                .collect::<Result<_, _>>()
-                .map_err(Error::from)
+                    missing
+                        .into_iter()
+                        .map(|parent| parent.hash.parse())
+                        .collect::<Result<_, _>>()
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    // This is the same as `MISSING_PARENT_SQL` above except that
+                    // the blocks table has a different name and that it does
+                    // not have a `network_name` column
+                    let query = format!(
+                        "
+            with recursive chain(hash, parent_hash, last) as (
+                -- base case: look at the head candidate block
+                select b.hash, b.parent_hash, false
+                  from {qname} b
+                 where b.hash = $1
+                   and b.hash != $2
+                union all
+                -- recursion step: add a block whose hash is the latest parent_hash
+                -- on chain
+                select chain.parent_hash,
+                       b.parent_hash,
+                       coalesce(b.parent_hash is null
+                             or b.number <= $3
+                             or b.hash = $2, true)
+                  from chain left outer join {qname} b
+                              on chain.parent_hash = b.hash
+                 where not chain.last)
+             select hash
+               from chain
+              where chain.parent_hash is null;
+            ",
+                        qname = blocks.qname
+                    );
+
+                    let missing = sql_query(query)
+                        .bind::<Text, _>(&hash)
+                        .bind::<Text, _>(&genesis)
+                        .bind::<BigInt, _>(first_block)
+                        .load::<BlockHash>(conn)?;
+
+                    missing
+                        .into_iter()
+                        .map(|parent| parent.hash.parse())
+                        .collect::<Result<_, _>>()
+                        .map_err(Error::from)
+                }
+            }
         }
 
         /// Return the best candidate for the new chain head if there is a block
@@ -372,7 +597,6 @@ mod data {
             conn: &PgConnection,
             network: &str,
         ) -> Result<Option<(String, i64)>, Error> {
-            use public::ethereum_blocks as b;
             use public::ethereum_networks as n;
 
             let head = n::table
@@ -381,14 +605,27 @@ mod data {
                 .first::<Option<i64>>(conn)?
                 .unwrap_or(-1);
 
-            b::table
-                .filter(b::network_name.eq(network))
-                .filter(b::number.gt(head))
-                .order_by((b::number.desc(), b::hash))
-                .select((b::hash, b::number))
-                .first::<(String, i64)>(conn)
-                .optional()
-                .map_err(Error::from)
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+                    b::table
+                        .filter(b::network_name.eq(network))
+                        .filter(b::number.gt(head))
+                        .order_by((b::number.desc(), b::hash))
+                        .select((b::hash, b::number))
+                        .first::<(String, i64)>(conn)
+                        .optional()
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { blocks, .. }) => blocks
+                    .table()
+                    .filter(blocks.number().gt(head))
+                    .order_by((blocks.number().desc(), blocks.hash()))
+                    .select((blocks.hash(), blocks.number()))
+                    .first::<(String, i64)>(conn)
+                    .optional()
+                    .map_err(Error::from),
+            }
         }
 
         pub(super) fn ancestor_block(
@@ -397,9 +634,9 @@ mod data {
             block_ptr: EthereumBlockPointer,
             offset: u64,
         ) -> Result<Option<EthereumBlock>, Error> {
-            use public::ethereum_blocks as b;
-
-            const ANCESTOR_SQL: &str = "
+            let hash = match self {
+                Storage::Shared => {
+                    const ANCESTOR_SQL: &str = "
         with recursive ancestors(block_hash, block_offset) as (
             values ($1, 0)
             union all
@@ -412,21 +649,58 @@ mod data {
           from ancestors a
          where a.block_offset = $2;";
 
-            let hash = sql_query(ANCESTOR_SQL)
-                .bind::<Text, _>(block_ptr.hash_hex())
-                .bind::<BigInt, _>(offset as i64)
-                .get_result::<BlockHash>(conn)
-                .optional()?;
+                    sql_query(ANCESTOR_SQL)
+                        .bind::<Text, _>(block_ptr.hash_hex())
+                        .bind::<BigInt, _>(offset as i64)
+                        .get_result::<BlockHash>(conn)
+                        .optional()?
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    // Same as ANCESTOR_SQL except for the table name
+                    let query = format!(
+                        "
+        with recursive ancestors(block_hash, block_offset) as (
+            values ($1, 0)
+            union all
+            select b.parent_hash, a.block_offset+1
+              from ancestors a, {} b
+             where a.block_hash = b.hash
+               and a.block_offset < $2
+        )
+        select a.block_hash
+          from ancestors a
+         where a.block_offset = $2;",
+                        blocks.qname
+                    );
+
+                    sql_query(query)
+                        .bind::<Text, _>(block_ptr.hash_hex())
+                        .bind::<BigInt, _>(offset as i64)
+                        .get_result::<BlockHash>(conn)
+                        .optional()?
+                }
+            };
 
             let hash = match hash {
                 None => return Ok(None),
                 Some(hash) => hash.hash,
             };
 
-            let data = b::table
-                .filter(b::hash.eq(hash))
-                .select(b::data)
-                .first::<serde_json::Value>(conn)?;
+            let data = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    b::table
+                        .filter(b::hash.eq(hash))
+                        .select(b::data)
+                        .first::<serde_json::Value>(conn)?
+                }
+                Storage::Private(Schema { blocks, .. }) => blocks
+                    .table()
+                    .filter(blocks.hash().eq(hash))
+                    .select(blocks.data())
+                    .first::<serde_json::Value>(conn)?,
+            };
 
             let block = serde_json::from_value::<EthereumBlock>(data)
                 .expect("Failed to deserialize block from database");
@@ -438,59 +712,102 @@ mod data {
             &self,
             conn: &PgConnection,
             network: &str,
-            block: i32,
+            block: i64,
         ) -> Result<usize, Error> {
-            use public::ethereum_blocks as b;
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
 
-            diesel::delete(b::table)
-                .filter(b::network_name.eq(network))
-                .filter(b::number.lt(block as i64))
-                .filter(b::number.gt(0))
-                .execute(conn)
-                .map_err(Error::from)
+                    diesel::delete(b::table)
+                        .filter(b::network_name.eq(network))
+                        .filter(b::number.lt(block))
+                        .filter(b::number.gt(0))
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query = format!(
+                        "delete from {} where number < $1 and number > 0",
+                        blocks.qname
+                    );
+                    sql_query(query)
+                        .bind::<BigInt, _>(block)
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+            }
         }
-    }
 
-    #[cfg(debug_assertions)]
-    // used by `super::set_chain` for test support
-    pub(super) fn set_chain(
-        conn: &PgConnection,
-        network: &str,
-        genesis_hash: &str,
-        chain: super::test_support::Chain,
-    ) {
-        use public::ethereum_blocks as b;
-        use public::ethereum_networks as n;
+        #[cfg(debug_assertions)]
+        // used by `super::set_chain` for test support
+        pub(super) fn set_chain(
+            &self,
+            conn: &PgConnection,
+            network: &str,
+            genesis_hash: &str,
+            chain: super::test_support::Chain,
+        ) {
+            use public::ethereum_networks as n;
 
-        diesel::delete(b::table.filter(b::network_name.eq(network)))
-            .execute(conn)
-            .expect("Failed to delete ethereum_blocks");
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
 
-        for block in &chain {
-            let number = block.number as i64;
+                    diesel::delete(b::table.filter(b::network_name.eq(network)))
+                        .execute(conn)
+                        .expect("Failed to delete ethereum_blocks");
 
-            let values = (
-                b::hash.eq(&block.hash),
-                b::number.eq(number),
-                b::parent_hash.eq(&block.parent_hash),
-                b::network_name.eq(network),
-                b::data.eq(serde_json::Value::Null),
-            );
+                    for block in &chain {
+                        let number = block.number as i64;
 
-            insert_into(b::table)
-                .values(values.clone())
+                        let values = (
+                            b::hash.eq(&block.hash),
+                            b::number.eq(number),
+                            b::parent_hash.eq(&block.parent_hash),
+                            b::network_name.eq(network),
+                            b::data.eq(serde_json::Value::Null),
+                        );
+
+                        insert_into(b::table)
+                            .values(values.clone())
+                            .execute(conn)
+                            .unwrap();
+                    }
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query = format!("delete from {}", blocks.qname);
+                    sql_query(query)
+                        .execute(conn)
+                        .expect(&format!("Failed to delete {}", blocks.qname));
+
+                    let query = format!(
+                        "insert into {}(hash, number, parent_hash, data) \
+                         values ($1, $2, $3, 'null'::jsonb)",
+                        blocks.qname
+                    );
+
+                    for block in &chain {
+                        let number = block.number as i64;
+
+                        sql_query(&query)
+                            .bind::<Text, _>(&block.hash)
+                            .bind::<BigInt, _>(number)
+                            .bind::<Text, _>(&block.parent_hash)
+                            .execute(conn)
+                            .unwrap();
+                    }
+                }
+            }
+
+            diesel::update(n::table.filter(n::name.eq(network)))
+                .set((
+                    n::genesis_block_hash.eq(genesis_hash),
+                    n::head_block_hash.eq::<Option<&str>>(None),
+                    n::head_block_number.eq::<Option<i64>>(None),
+                ))
                 .execute(conn)
                 .unwrap();
         }
-
-        diesel::update(n::table.filter(n::name.eq(network)))
-            .set((
-                n::genesis_block_hash.eq(genesis_hash),
-                n::head_block_hash.eq::<Option<&str>>(None),
-                n::head_block_number.eq::<Option<i64>>(None),
-            ))
-            .execute(conn)
-            .unwrap();
     }
 }
 
@@ -543,21 +860,25 @@ impl ChainStore {
             .first::<(String, String)>(&*self.get_conn()?)
             .optional()?;
 
+        let conn = self.get_conn()?;
         match network_identifiers_opt {
             // Network is missing in database
             None => {
-                insert_into(ethereum_networks)
-                    .values((
-                        name.eq(&self.network),
-                        namespace.eq(&self.storage),
-                        head_block_hash.eq::<Option<String>>(None),
-                        head_block_number.eq::<Option<i64>>(None),
-                        net_version.eq(new_net_version),
-                        genesis_block_hash.eq(format!("{:x}", new_genesis_block_hash)),
-                    ))
-                    .on_conflict(name)
-                    .do_nothing()
-                    .execute(&*self.get_conn()?)?;
+                conn.transaction(|| {
+                    insert_into(ethereum_networks)
+                        .values((
+                            name.eq(&self.network),
+                            namespace.eq(&self.storage),
+                            head_block_hash.eq::<Option<String>>(None),
+                            head_block_number.eq::<Option<i64>>(None),
+                            net_version.eq(new_net_version),
+                            genesis_block_hash.eq(format!("{:x}", new_genesis_block_hash)),
+                        ))
+                        .on_conflict(name)
+                        .do_nothing()
+                        .execute(&conn)?;
+                    self.storage.create(&conn)
+                })?;
             }
 
             // Network is in database and has identifiers
@@ -789,7 +1110,7 @@ impl ChainStoreTrait for ChainStore {
                 // against removing the genesis block
                 if *block > 0 {
                     self.storage
-                        .delete_blocks_before(&conn, &self.network, *block)
+                        .delete_blocks_before(&conn, &self.network, *block as i64)
                         .map(|rows| (*block, rows))
                 } else {
                     Ok((0, 0))
@@ -1005,6 +1326,7 @@ impl test_support::SettableChainStore for ChainStore {
     fn set_chain(&self, genesis_hash: &str, chain: test_support::Chain) {
         let conn = self.conn.get().expect("can get a database connection");
 
-        data::set_chain(&conn, &self.network, genesis_hash, chain);
+        self.storage
+            .set_chain(&conn, &self.network, genesis_hash, chain);
     }
 }
