@@ -745,6 +745,25 @@ fn check_find() {
             .check(vec![], drinks_query(vec!["beer", "water"]))
             .check(vec![], drinks_query(vec!["beer", "wine", "water"]));
 
+        // list not contains
+        let checker = checker
+            // User 3 do not have "beer" on its drinks list.
+            .check(
+                vec!["3"],
+                user_query().filter(EntityFilter::NotContains(
+                    "drinks".into(),
+                    vec!["beer"].into(),
+                )),
+            )
+            // Users 2 do not have "tea" on its drinks list.
+            .check(
+                vec!["2"],
+                user_query().filter(EntityFilter::NotContains(
+                    "drinks".into(),
+                    vec!["tea"].into(),
+                )),
+            );
+
         // string attributes
         let checker = checker
             .check(
