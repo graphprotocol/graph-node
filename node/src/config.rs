@@ -97,7 +97,7 @@ impl Config {
         }
         self.deployment.validate()?;
 
-        // Check that deployment rules only reference existing stores
+        // Check that deployment rules only reference existing stores and chains
         for (i, rule) in self.deployment.rules.iter().enumerate() {
             if !self.stores.contains_key(&rule.shard) {
                 return Err(anyhow!(
@@ -105,6 +105,15 @@ impl Config {
                     rule.shard,
                     i
                 ));
+            }
+            if let Some(network) = &rule.pred.network {
+                if !self.chains.chains.contains_key(network) {
+                    return Err(anyhow!(
+                        "unknown network {} in deployment rule {}",
+                        network,
+                        i
+                    ));
+                }
             }
         }
 
