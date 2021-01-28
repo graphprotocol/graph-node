@@ -830,8 +830,14 @@ impl<'a> QueryFilter<'a> {
                 }
             }
             Value::List(_) => {
-                out.push_identifier(column.name.as_str())?;
-                out.push_sql(" @> ");
+                if negated {
+                    out.push_sql(" not ");
+                    out.push_identifier(column.name.as_str())?;
+                    out.push_sql(" && ");
+                } else {
+                    out.push_identifier(column.name.as_str())?;
+                    out.push_sql(" @> ");
+                }
                 QueryValue(value, &column.column_type).walk_ast(out)?;
             }
             Value::Null
