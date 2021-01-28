@@ -3,10 +3,10 @@ use graph::{
     prelude::{ethabi, tiny_keccak, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
 };
 
+use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
-use diesel::{dsl::sql, pg::PgConnection};
 use diesel::{insert_into, update};
 
 use graph::ensure;
@@ -34,27 +34,6 @@ mod public {
             genesis_block_hash -> Varchar,
         }
     }
-
-    table! {
-        /// `id` is the hash of contract address + encoded function call + block number.
-        eth_call_cache (id) {
-            id -> Bytea,
-            return_value -> Bytea,
-            contract_address -> Bytea,
-            block_number -> Integer,
-        }
-    }
-
-    table! {
-        /// When was a cached call on a contract last used? This is useful to clean old data.
-        eth_call_meta (contract_address) {
-            contract_address -> Bytea,
-            accessed_at -> Date,
-        }
-    }
-
-    joinable!(eth_call_cache -> eth_call_meta (contract_address));
-    allow_tables_to_appear_in_same_query!(eth_call_cache, eth_call_meta);
 }
 
 pub use data::Storage;
@@ -63,7 +42,6 @@ pub use data::Storage;
 mod data {
     use graph::prelude::StoreError;
 
-    use diesel::sql_types::{BigInt, Jsonb};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
@@ -73,6 +51,10 @@ mod data {
         types::{FromSql, ToSql},
     };
     use diesel::{prelude::*, sql_query};
+    use diesel::{
+        sql_types::{BigInt, Bytea, Integer, Jsonb},
+        update,
+    };
     use diesel_dynamic_schema as dds;
 
     use std::fmt;
@@ -98,6 +80,27 @@ mod data {
         }
 
         allow_tables_to_appear_in_same_query!(ethereum_networks, ethereum_blocks);
+
+        table! {
+            /// `id` is the hash of contract address + encoded function call + block number.
+            eth_call_cache (id) {
+                id -> Bytea,
+                return_value -> Bytea,
+                contract_address -> Bytea,
+                block_number -> Integer,
+            }
+        }
+
+        table! {
+            /// When was a cached call on a contract last used? This is useful to clean old data.
+            eth_call_meta (contract_address) {
+                contract_address -> Bytea,
+                accessed_at -> Date,
+            }
+        }
+
+        joinable!(eth_call_cache -> eth_call_meta (contract_address));
+        allow_tables_to_appear_in_same_query!(eth_call_cache, eth_call_meta);
     }
 
     // Helper for literal SQL queries that look up a block hash
@@ -148,15 +151,82 @@ mod data {
     }
 
     #[derive(Clone, Debug)]
+    struct CallMetaTable {
+        qname: String,
+        table: DynTable,
+    }
+
+    impl CallMetaTable {
+        const TABLE_NAME: &'static str = "call_meta";
+
+        fn new(namespace: &str) -> Self {
+            CallMetaTable {
+                qname: format!("{}.{}", namespace, Self::TABLE_NAME),
+                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+            }
+        }
+
+        fn table(&self) -> DynTable {
+            self.table.clone()
+        }
+
+        fn contract_address(&self) -> DynColumn<Bytea> {
+            self.table.column::<Bytea, _>("contract_address")
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct CallCacheTable {
+        qname: String,
+        table: DynTable,
+    }
+
+    impl CallCacheTable {
+        const TABLE_NAME: &'static str = "call_cache";
+
+        fn new(namespace: &str) -> Self {
+            CallCacheTable {
+                qname: format!("{}.{}", namespace, Self::TABLE_NAME),
+                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+            }
+        }
+
+        fn table(&self) -> DynTable {
+            self.table.clone()
+        }
+
+        fn id(&self) -> DynColumn<Bytea> {
+            self.table.column::<Bytea, _>("id")
+        }
+
+        fn return_value(&self) -> DynColumn<Bytea> {
+            self.table.column::<Bytea, _>("return_value")
+        }
+
+        fn contract_address(&self) -> DynColumn<Bytea> {
+            self.table.column::<Bytea, _>("contract_address")
+        }
+    }
+
+    #[derive(Clone, Debug)]
     pub struct Schema {
         name: String,
         blocks: BlocksTable,
+        call_meta: CallMetaTable,
+        call_cache: CallCacheTable,
     }
 
     impl Schema {
         fn new(name: String) -> Self {
             let blocks = BlocksTable::new(&name);
-            Self { name, blocks }
+            let call_meta = CallMetaTable::new(&name);
+            let call_cache = CallCacheTable::new(&name);
+            Self {
+                name,
+                blocks,
+                call_meta,
+                call_cache,
+            }
         }
     }
 
@@ -233,6 +303,18 @@ mod data {
                   data         jsonb not null
                 );
                 create index blocks_number ON {nsp}.blocks using btree(number);
+
+                create table {nsp}.call_cache (
+	              id               bytea not null primary key,
+	              return_value     bytea not null,
+	              contract_address bytea not null,
+	              block_number     int4 not null
+                );
+
+                create table {nsp}.call_meta (
+                    contract_address bytea not null primary key,
+                    accessed_at      date  not null
+                );
             ",
                     nsp = nsp
                 )
@@ -738,6 +820,181 @@ mod data {
             }
         }
 
+        pub(super) fn get_call_and_access(
+            &self,
+            conn: &PgConnection,
+            id: &[u8],
+        ) -> Result<Option<(Vec<u8>, bool)>, Error> {
+            match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+                    use public::eth_call_meta as meta;
+
+                    cache::table
+                        .find(id.as_ref())
+                        .inner_join(meta::table)
+                        .select((
+                            cache::return_value,
+                            sql("CURRENT_DATE > eth_call_meta.accessed_at"),
+                        ))
+                        .get_result(conn)
+                        .optional()
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema {
+                    call_cache,
+                    call_meta,
+                    ..
+                }) => call_cache
+                    .table()
+                    .inner_join(
+                        call_meta.table().on(call_meta
+                            .contract_address()
+                            .eq(call_cache.contract_address())),
+                    )
+                    .filter(call_cache.id().eq(id))
+                    .select((
+                        call_cache.return_value(),
+                        sql("CURRENT_DATE > eth_call_meta.accessed_at"),
+                    ))
+                    .first(conn)
+                    .optional()
+                    .map_err(Error::from),
+            }
+        }
+
+        pub(super) fn get_call(
+            &self,
+            conn: &PgConnection,
+            id: &[u8],
+        ) -> Result<Option<Vec<u8>>, Error> {
+            match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+
+                    cache::table
+                        .find(id.as_ref())
+                        .select(cache::return_value)
+                        .get_result(conn)
+                        .optional()
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { call_cache, .. }) => call_cache
+                    .table()
+                    .filter(call_cache.id().eq(id))
+                    .select(call_cache.return_value())
+                    .first(conn)
+                    .optional()
+                    .map_err(Error::from),
+            }
+        }
+
+        pub(super) fn update_accessed_at(
+            &self,
+            conn: &PgConnection,
+            contract_address: &[u8],
+        ) -> Result<(), Error> {
+            let result = match self {
+                Storage::Shared => {
+                    use public::eth_call_meta as meta;
+
+                    update(meta::table.find(contract_address.as_ref()))
+                        .set(meta::accessed_at.eq(sql("CURRENT_DATE")))
+                        .execute(conn)
+                }
+                Storage::Private(Schema { call_meta, .. }) => {
+                    let query = format!(
+                        "update {} set accessed_at = CURRENT_DATE where contract_address = $1",
+                        call_meta.qname
+                    );
+                    sql_query(query)
+                        .bind::<Bytea, _>(contract_address)
+                        .execute(conn)
+                }
+            };
+            result.map(|_| ()).map_err(Error::from)
+        }
+
+        pub(super) fn clear_cache(&self, conn: &PgConnection, id: &[u8]) -> Result<(), Error> {
+            let result = match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+
+                    diesel::delete(cache::table.filter(cache::id.eq(id))).execute(conn)
+                }
+                Storage::Private(Schema { call_cache, .. }) => {
+                    let query = format!("delete from {} where id = $1", call_cache.qname);
+                    sql_query(query).bind::<Bytea, _>(id).execute(conn)
+                }
+            };
+            result.map(|_| ()).map_err(Error::from)
+        }
+
+        pub(super) fn set_call(
+            &self,
+            conn: &PgConnection,
+            id: &[u8],
+            contract_address: &[u8],
+            block_number: i32,
+            return_value: &[u8],
+        ) -> Result<(), Error> {
+            let result = match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+                    use public::eth_call_meta as meta;
+
+                    insert_into(cache::table)
+                        .values((
+                            cache::id.eq(id),
+                            cache::contract_address.eq(contract_address),
+                            cache::block_number.eq(block_number),
+                            cache::return_value.eq(return_value),
+                        ))
+                        .on_conflict_do_nothing()
+                        .execute(conn)?;
+
+                    let accessed_at = meta::accessed_at.eq(sql("CURRENT_DATE"));
+                    insert_into(meta::table)
+                        .values((
+                            meta::contract_address.eq(contract_address.as_ref()),
+                            accessed_at.clone(),
+                        ))
+                        .on_conflict(meta::contract_address)
+                        .do_update()
+                        .set(accessed_at)
+                        .execute(conn)
+                }
+                Storage::Private(Schema {
+                    call_cache,
+                    call_meta,
+                    ..
+                }) => {
+                    let query = format!(
+                        "insert into {}(id, contract_address, block_number, return_value) \
+                         values ($1, $2, $3, $4) on conflict do nothing",
+                        call_cache.qname
+                    );
+                    sql_query(query)
+                        .bind::<Bytea, _>(id)
+                        .bind::<Bytea, _>(contract_address)
+                        .bind::<Integer, _>(block_number)
+                        .bind::<Bytea, _>(return_value)
+                        .execute(conn)?;
+
+                    let query = format!(
+                        "insert into {}(contract_address, accessed_at) \
+                         values ($1, CURRENT_DATE) \
+                         on conflict do update set accessed_at = CURRENT_DATE",
+                        call_meta.qname
+                    );
+                    sql_query(query)
+                        .bind::<Bytea, _>(contract_address)
+                        .execute(conn)
+                }
+            };
+            result.map(|_| ()).map_err(Error::from)
+        }
+
         #[cfg(debug_assertions)]
         // used by `super::set_chain` for test support
         pub(super) fn set_chain(
@@ -1148,25 +1405,15 @@ impl EthereumCallCache for ChainStore {
         encoded_call: &[u8],
         block: EthereumBlockPointer,
     ) -> Result<Option<Vec<u8>>, Error> {
-        use public::{eth_call_cache, eth_call_meta};
-
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
         if let Some(call_output) = conn.transaction::<_, Error, _>(|| {
-            if let Some((return_value, update_accessed_at)) = eth_call_cache::table
-                .find(id.as_ref())
-                .inner_join(eth_call_meta::table)
-                .select((
-                    eth_call_cache::return_value,
-                    sql("CURRENT_DATE > eth_call_meta.accessed_at"),
-                ))
-                .get_result(conn)
-                .optional()?
+            if let Some((return_value, update_accessed_at)) =
+                self.storage.get_call_and_access(conn, id.as_ref())?
             {
                 if update_accessed_at {
-                    update(eth_call_meta::table.find(contract_address.as_ref()))
-                        .set(eth_call_meta::accessed_at.eq(sql("CURRENT_DATE")))
-                        .execute(conn)?;
+                    self.storage
+                        .update_accessed_at(conn, contract_address.as_ref())?;
                 }
                 Ok(Some(return_value))
             } else {
@@ -1177,18 +1424,10 @@ impl EthereumCallCache for ChainStore {
         } else {
             // No entry with the new id format, try the old one.
             let old_id = old_contract_call_id(&contract_address, &encoded_call, &block);
-            if let Some(return_value) = eth_call_cache::table
-                .find(old_id.as_ref())
-                .select(eth_call_cache::return_value)
-                .get_result::<Vec<u8>>(conn)
-                .optional()?
-            {
-                use public::eth_call_cache::dsl;
-
+            if let Some(return_value) = self.storage.get_call(conn, &old_id)? {
                 // Migrate to the new format by re-inserting the call and deleting the old entry.
                 self.set_call(contract_address, encoded_call, block, &return_value)?;
-                diesel::delete(eth_call_cache::table.filter(dsl::id.eq(old_id.as_ref())))
-                    .execute(conn)?;
+                self.storage.clear_cache(conn, old_id.as_ref())?;
                 Ok(Some(return_value))
             } else {
                 Ok(None)
@@ -1203,33 +1442,16 @@ impl EthereumCallCache for ChainStore {
         block: EthereumBlockPointer,
         return_value: &[u8],
     ) -> Result<(), Error> {
-        use public::{eth_call_cache, eth_call_meta};
-
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
         conn.transaction(|| {
-            insert_into(eth_call_cache::table)
-                .values((
-                    eth_call_cache::id.eq(id.as_ref()),
-                    eth_call_cache::contract_address.eq(contract_address.as_ref()),
-                    eth_call_cache::block_number.eq(block.number as i32),
-                    eth_call_cache::return_value.eq(return_value),
-                ))
-                .on_conflict_do_nothing()
-                .execute(conn)?;
-
-            let accessed_at = eth_call_meta::accessed_at.eq(sql("CURRENT_DATE"));
-            insert_into(eth_call_meta::table)
-                .values((
-                    eth_call_meta::contract_address.eq(contract_address.as_ref()),
-                    accessed_at.clone(),
-                ))
-                .on_conflict(eth_call_meta::contract_address)
-                .do_update()
-                .set(accessed_at)
-                .execute(conn)
-                .map(|_| ())
-                .map_err(Error::from)
+            self.storage.set_call(
+                conn,
+                id.as_ref(),
+                contract_address.as_ref(),
+                block.number as i32,
+                return_value,
+            )
         })
     }
 }
