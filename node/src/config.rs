@@ -373,7 +373,7 @@ pub struct Provider {
     pub features: Vec<String>,
 }
 
-const PROVIDER_FEATURES: [&str; 2] = ["traces", "archive "];
+const PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 
 impl Provider {
     fn validate(&self) -> Result<()> {
