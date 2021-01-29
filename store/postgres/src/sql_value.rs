@@ -1,6 +1,6 @@
 use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
-use diesel::sql_types::{Binary, Bool, Integer, Numeric, Text};
+use diesel::sql_types::{Binary, Bool, Integer, Text};
 use std::io::Write;
 use std::str::FromStr;
 
@@ -29,19 +29,6 @@ impl ToSql<Integer, Pg> for SqlValue {
         match self.0 {
             Value::Int(ref i) => <i32 as ToSql<Integer, Pg>>::to_sql(&i, out),
             _ => panic!("Failed to convert non-int attribute value to int in SQL"),
-        }
-    }
-}
-
-// Used only for JSONB support
-impl ToSql<Numeric, Pg> for SqlValue {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        match &self.0 {
-            Value::BigDecimal(d) => <_ as ToSql<Numeric, Pg>>::to_sql(&d, out),
-            Value::BigInt(number) => {
-                <_ as ToSql<Numeric, Pg>>::to_sql(&scalar::BigDecimal::new(number.clone(), 0), out)
-            }
-            _ => panic!("Failed to convert attribute value to bigint in SQL"),
         }
     }
 }
