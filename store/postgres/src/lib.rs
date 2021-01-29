@@ -1,3 +1,7 @@
+//! This crate implements the store for all chain and subgraph data. See the
+//! [Store] for the details of how the store is organized across
+//! different databases/shards.
+
 #[macro_use]
 extern crate derive_more;
 #[macro_use]

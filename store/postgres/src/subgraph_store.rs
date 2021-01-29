@@ -116,9 +116,56 @@ pub mod unused {
     }
 }
 
-/// Multiplex store operations on subgraphs and deployments between a primary
-/// and any number of additional storage shards. See [this document](../../docs/sharded.md)
-/// for details on how storage is split up
+/// Multiplex store operations on subgraphs and deployments between a
+/// primary and any number of additional storage shards. The primary
+/// contains information about named subgraphs, and how the underlying
+/// deployments are spread across shards, while the actual deployment data
+/// and metadata is stored in the shards.  Depending on the configuration,
+/// the database for the primary and for the shards can be the same
+/// database, in which case they are all backed by one connection pool, or
+/// separate databases in the same Postgres cluster, or entirely separate
+/// clusters. Details of how to configure shards can be found in [this
+/// document](https://github.com/graphprotocol/graph-node/blob/master/docs/sharding.md)
+///
+/// The primary uses the following database tables:
+/// - `public.deployment_schemas`: immutable data about deployments, including
+///   the shard that stores the deployment data and metadata, the namespace in
+///   the shard that contains the deployment data, and the network/chain that
+///   the  deployment is indexing
+/// - `subgraphs.subgraph` and `subgraphs.subgraph_version`: information about
+///   named subgraphs and how they map to deployments
+/// - `subgraphs.subgraph_deployment_assignment`: which index node is indexing
+///   what deployment
+///
+/// For each deployment, the corresponding shard contains a namespace for
+/// the deployment data; the schema in that namespace is generated from the
+/// deployment's GraphQL schema by the [crate::relational::Layout], which
+/// is also responsible for modifying and querying subgraph
+/// data. Deployment metadata is stored in tables in the `subgraphs`
+/// namespace in the same shard as the deployment data. The most important
+/// of these tables are
+///
+/// - `subgraphs.subgraph_deployment`: the main table for deployment metadata;
+///   most importantly, it stores the pointer to the current subgraph head, i.e.,
+///   the block up to which the subgraph has indexed the chain, together with
+///   other things like whether the subgraph has synced, whether it has failed
+///   and whether it encountered any errors
+/// - `subgraphs.subgraph_manifest`: immutable information derived from the YAML
+///   manifest for the deployment
+/// - `subgraphs.dynamic_ethereum_contract_data_source`: the data sources that
+///   the subgraph has created from templates in the manifest. Some detail about
+///   dynamic data sources is also stored in `subgraphs.ethereum_contract_source`
+/// - `subgraphs.subgraph_error`: details about errors that the deployment has
+///   encountered
+///
+/// There are more metadata tables, but they are rarely if ever read, only
+/// written to when a deployment is created and should be removed in a
+/// future version of `graph-node`
+///
+/// The `SubgraphStore` mostly orchestrates access to the primary and the
+/// shards.  The actual work is done by code in the `primary` module for
+/// queries against the primary store, and by the `DeploymentStore` for
+/// access to deployment data and metadata.
 pub struct SubgraphStore {
     primary: Arc<DeploymentStore>,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
