@@ -1,6 +1,6 @@
 use graph::{
     constraint_violation,
-    prelude::{ethabi, tiny_keccak, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
+    prelude::{ethabi, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
 };
 
 use diesel::pg::PgConnection;
@@ -863,32 +863,6 @@ mod data {
             }
         }
 
-        pub(super) fn get_call(
-            &self,
-            conn: &PgConnection,
-            id: &[u8],
-        ) -> Result<Option<Vec<u8>>, Error> {
-            match self {
-                Storage::Shared => {
-                    use public::eth_call_cache as cache;
-
-                    cache::table
-                        .find(id.as_ref())
-                        .select(cache::return_value)
-                        .get_result(conn)
-                        .optional()
-                        .map_err(Error::from)
-                }
-                Storage::Private(Schema { call_cache, .. }) => call_cache
-                    .table()
-                    .filter(call_cache.id().eq(id))
-                    .select(call_cache.return_value())
-                    .first(conn)
-                    .optional()
-                    .map_err(Error::from),
-            }
-        }
-
         pub(super) fn update_accessed_at(
             &self,
             conn: &PgConnection,
@@ -910,21 +884,6 @@ mod data {
                     sql_query(query)
                         .bind::<Bytea, _>(contract_address)
                         .execute(conn)
-                }
-            };
-            result.map(|_| ()).map_err(Error::from)
-        }
-
-        pub(super) fn clear_cache(&self, conn: &PgConnection, id: &[u8]) -> Result<(), Error> {
-            let result = match self {
-                Storage::Shared => {
-                    use public::eth_call_cache as cache;
-
-                    diesel::delete(cache::table.filter(cache::id.eq(id))).execute(conn)
-                }
-                Storage::Private(Schema { call_cache, .. }) => {
-                    let query = format!("delete from {} where id = $1", call_cache.qname);
-                    sql_query(query).bind::<Bytea, _>(id).execute(conn)
                 }
             };
             result.map(|_| ()).map_err(Error::from)
@@ -1422,16 +1381,7 @@ impl EthereumCallCache for ChainStore {
         })? {
             Ok(Some(call_output))
         } else {
-            // No entry with the new id format, try the old one.
-            let old_id = old_contract_call_id(&contract_address, &encoded_call, &block);
-            if let Some(return_value) = self.storage.get_call(conn, &old_id)? {
-                // Migrate to the new format by re-inserting the call and deleting the old entry.
-                self.set_call(contract_address, encoded_call, block, &return_value)?;
-                self.storage.clear_cache(conn, old_id.as_ref())?;
-                Ok(Some(return_value))
-            } else {
-                Ok(None)
-            }
+            Ok(None)
         }
     }
 
@@ -1454,21 +1404,6 @@ impl EthereumCallCache for ChainStore {
             )
         })
     }
-}
-
-/// Deprecated format for the contract call id.
-fn old_contract_call_id(
-    contract_address: &ethabi::Address,
-    encoded_call: &[u8],
-    block: &EthereumBlockPointer,
-) -> [u8; 16] {
-    let mut id = [0; 16];
-    let mut hash = tiny_keccak::Keccak::new_shake128();
-    hash.update(contract_address.as_ref());
-    hash.update(encoded_call);
-    hash.update(block.hash.as_ref());
-    hash.finalize(&mut id);
-    id
 }
 
 /// The id is the hashed encoded_call + contract_address + block hash to uniquely identify the call.
