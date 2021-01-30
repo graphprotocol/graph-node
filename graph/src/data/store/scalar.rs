@@ -14,7 +14,7 @@ use stable_hash::{
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;
-use std::ops::{Add, Deref, Div, Mul, Rem, Sub, BitOr, BitAnd, Shl, Shr};
+use std::ops::{Add, BitAnd, BitOr, Deref, Div, Mul, Rem, Shl, Shr, Sub};
 use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
