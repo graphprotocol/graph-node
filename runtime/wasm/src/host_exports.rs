@@ -560,10 +560,7 @@ impl HostExports {
         Ok(x.pow(exponent))
     }
 
-    pub(crate) fn big_int_from_string(
-        &self,
-        s: String,
-    ) -> Result<BigInt, DeterministicHostError> {
+    pub(crate) fn big_int_from_string(&self, s: String) -> Result<BigInt, DeterministicHostError> {
         BigInt::from_str(&s)
             .with_context(|| format!("string  is not a BigInt: '{}'", s))
             .map_err(DeterministicHostError)
