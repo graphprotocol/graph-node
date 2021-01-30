@@ -534,6 +534,7 @@ impl WasmInstance {
         link!("bigInt.mod", big_int_mod, x_ptr, y_ptr);
         link!("bigInt.pow", big_int_pow, x_ptr, exp);
         link!("bigInt.fromString", big_int_from_string, ptr);
+        link!("bigInt.bitOr", big_int_bit_or, x_ptr, y_ptr);
 
         link!("bigDecimal.toString", big_decimal_to_string, ptr);
         link!("bigDecimal.fromString", big_decimal_from_string, ptr);
@@ -1160,6 +1161,19 @@ impl WasmInstanceContext {
             .ctx
             .host_exports
             .big_int_pow(self.asc_get(x_ptr)?, exp)?;
+        self.asc_new(&result)
+    }
+
+    /// function bigInt.bitOr(x: BigInt, y: BigInt): BigInt
+    fn big_int_bit_or(
+        &mut self,
+        x_ptr: AscPtr<AscBigInt>,
+        y_ptr: AscPtr<AscBigInt>,
+    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+        let result = self
+            .ctx
+            .host_exports
+            .big_int_bit_or(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
         self.asc_new(&result)
     }
 
