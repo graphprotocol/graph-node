@@ -360,7 +360,7 @@ mod data {
         pub(super) fn upsert_block(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
             block: EthereumBlock,
         ) -> Result<(), Error> {
             let number = block.block.number.unwrap().as_u64() as i64;
@@ -376,7 +376,7 @@ mod data {
                         b::hash.eq(hash),
                         b::number.eq(number),
                         b::parent_hash.eq(parent_hash),
-                        b::network_name.eq(network),
+                        b::network_name.eq(chain),
                         b::data.eq(data),
                     );
 
@@ -414,7 +414,7 @@ mod data {
         pub(super) fn upsert_light_block(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
             block: LightEthereumBlock,
         ) -> Result<(), Error> {
             let hash = block.hash.unwrap();
@@ -436,7 +436,7 @@ mod data {
                         b::hash.eq(hash),
                         b::number.eq(number),
                         b::parent_hash.eq(parent_hash),
-                        b::network_name.eq(network),
+                        b::network_name.eq(chain),
                         b::data.eq(data),
                     );
 
@@ -467,7 +467,7 @@ mod data {
         pub(super) fn blocks(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
             hashes: Vec<H256>,
         ) -> Result<Vec<LightEthereumBlock>, Error> {
             use diesel::dsl::any;
@@ -478,7 +478,7 @@ mod data {
 
                     b::table
                         .select(sql::<Jsonb>("data -> 'block'"))
-                        .filter(b::network_name.eq(network))
+                        .filter(b::network_name.eq(chain))
                         .filter(b::hash.eq(any(Vec::from_iter(
                             hashes.into_iter().map(|h| format!("{:x}", h)),
                         ))))
@@ -503,7 +503,7 @@ mod data {
         pub(super) fn block_hashes_by_block_number(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
             number: u64,
         ) -> Result<Vec<H256>, Error> {
             match self {
@@ -512,7 +512,7 @@ mod data {
 
                     b::table
                         .select(b::hash)
-                        .filter(b::network_name.eq(&network))
+                        .filter(b::network_name.eq(&chain))
                         .filter(b::number.eq(number as i64))
                         .get_results::<String>(conn)?
                         .into_iter()
@@ -535,7 +535,7 @@ mod data {
         pub(super) fn confirm_block_hash(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
             number: u64,
             hash: &H256,
         ) -> Result<usize, Error> {
@@ -547,7 +547,7 @@ mod data {
 
                     let hash = format!("{:x}", hash);
                     diesel::delete(b::table)
-                        .filter(b::network_name.eq(network))
+                        .filter(b::network_name.eq(chain))
                         .filter(b::number.eq(number))
                         .filter(b::hash.ne(&hash))
                         .execute(conn)
@@ -605,7 +605,7 @@ mod data {
         pub(super) fn missing_parents(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
             first_block: i64,
             hash: H256,
             genesis: H256,
@@ -646,7 +646,7 @@ mod data {
                     let hash = format!("{:x}", hash);
                     let genesis = format!("{:x}", genesis);
                     let missing = sql_query(MISSING_PARENT_SQL)
-                        .bind::<Text, _>(network)
+                        .bind::<Text, _>(chain)
                         .bind::<Text, _>(&hash)
                         .bind::<Text, _>(&genesis)
                         .bind::<BigInt, _>(first_block)
@@ -710,12 +710,12 @@ mod data {
         pub(super) fn chain_head_candidate(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
         ) -> Result<Option<EthereumBlockPointer>, Error> {
             use public::ethereum_networks as n;
 
             let head = n::table
-                .filter(n::name.eq(network))
+                .filter(n::name.eq(chain))
                 .select(n::head_block_number)
                 .first::<Option<i64>>(conn)?
                 .unwrap_or(-1);
@@ -724,7 +724,7 @@ mod data {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
                     b::table
-                        .filter(b::network_name.eq(network))
+                        .filter(b::network_name.eq(chain))
                         .filter(b::number.gt(head))
                         .order_by((b::number.desc(), b::hash))
                         .select((b::hash, b::number))
@@ -833,7 +833,7 @@ mod data {
         pub(super) fn delete_blocks_before(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain: &str,
             block: i64,
         ) -> Result<usize, Error> {
             match self {
@@ -841,7 +841,7 @@ mod data {
                     use public::ethereum_blocks as b;
 
                     diesel::delete(b::table)
-                        .filter(b::network_name.eq(network))
+                        .filter(b::network_name.eq(chain))
                         .filter(b::number.lt(block))
                         .filter(b::number.gt(0))
                         .execute(conn)
@@ -1003,7 +1003,7 @@ mod data {
         pub(super) fn set_chain(
             &self,
             conn: &PgConnection,
-            network: &str,
+            chain_name: &str,
             genesis_hash: &str,
             chain: super::test_support::Chain,
         ) {
@@ -1013,7 +1013,7 @@ mod data {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
-                    diesel::delete(b::table.filter(b::network_name.eq(network)))
+                    diesel::delete(b::table.filter(b::network_name.eq(chain_name)))
                         .execute(conn)
                         .expect("Failed to delete ethereum_blocks");
                 }
@@ -1026,11 +1026,11 @@ mod data {
             }
 
             for block in &chain {
-                self.upsert_block(conn, network, block.as_ethereum_block())
+                self.upsert_block(conn, chain_name, block.as_ethereum_block())
                     .unwrap();
             }
 
-            diesel::update(n::table.filter(n::name.eq(network)))
+            diesel::update(n::table.filter(n::name.eq(chain_name)))
                 .set((
                     n::genesis_block_hash.eq(genesis_hash),
                     n::head_block_hash.eq::<Option<&str>>(None),
@@ -1044,7 +1044,7 @@ mod data {
 
 pub struct ChainStore {
     conn: ConnectionPool,
-    network: String,
+    chain: String,
     storage: data::Storage,
     genesis_block_ptr: EthereumBlockPointer,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
@@ -1053,7 +1053,7 @@ pub struct ChainStore {
 
 impl ChainStore {
     pub(crate) fn new(
-        network: String,
+        chain: String,
         storage: data::Storage,
         net_identifier: EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
@@ -1062,7 +1062,7 @@ impl ChainStore {
     ) -> Self {
         let store = ChainStore {
             conn: pool,
-            network,
+            chain,
             storage,
             genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
             chain_head_update_listener,
@@ -1090,7 +1090,7 @@ impl ChainStore {
 
         let network_identifiers_opt = ethereum_networks
             .select((net_version, genesis_block_hash))
-            .filter(name.eq(&self.network))
+            .filter(name.eq(&self.chain))
             .first::<(String, String)>(&*self.get_conn()?)
             .optional()?;
 
@@ -1101,7 +1101,7 @@ impl ChainStore {
                 conn.transaction(|| {
                     insert_into(ethereum_networks)
                         .values((
-                            name.eq(&self.network),
+                            name.eq(&self.chain),
                             namespace.eq(&self.storage),
                             head_block_hash.eq::<Option<String>>(None),
                             head_block_number.eq::<Option<i64>>(None),
@@ -1158,11 +1158,11 @@ impl ChainStore {
         Ok(HashMap::from_iter(pointers))
     }
 
-    pub fn chain_head_block(&self, network: &str) -> Result<Option<u64>, StoreError> {
+    pub fn chain_head_block(&self, chain: &str) -> Result<Option<u64>, StoreError> {
         use public::ethereum_networks as n;
 
         let number: Option<i64> = n::table
-            .filter(n::name.eq(network))
+            .filter(n::name.eq(chain))
             .select(n::head_block_number)
             .first::<Option<i64>>(&self.get_conn()?)
             .optional()?
@@ -1172,7 +1172,7 @@ impl ChainStore {
             |e: std::num::TryFromIntError| {
                 constraint_violation!(
                     "head block number for {} is {:?} which does not fit into a u32: {}",
-                    network,
+                    chain,
                     number,
                     e.to_string()
                 )
@@ -1195,7 +1195,7 @@ impl ChainStoreTrait for ChainStore {
         E: From<Error> + Send + 'static,
     {
         let conn = self.conn.clone();
-        let network = self.network.clone();
+        let network = self.chain.clone();
         let storage = self.storage.clone();
         Box::new(blocks.for_each(move |block| {
             let conn = conn.get().map_err(Error::from)?;
@@ -1208,8 +1208,7 @@ impl ChainStoreTrait for ChainStore {
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
         let conn = self.conn.get()?;
         for block in blocks {
-            self.storage
-                .upsert_light_block(&conn, &self.network, block)?;
+            self.storage.upsert_light_block(&conn, &self.chain, block)?;
         }
         Ok(())
     }
@@ -1220,7 +1219,7 @@ impl ChainStoreTrait for ChainStore {
         let (missing, ptr) = {
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(Vec<H256>, Option<(String, i64)>), Error> {
-                let candidate = self.storage.chain_head_candidate(&conn, &self.network)?;
+                let candidate = self.storage.chain_head_candidate(&conn, &self.chain)?;
                 let (ptr, first_block) = match candidate {
                     None => return Ok((vec![], None)),
                     Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
@@ -1228,7 +1227,7 @@ impl ChainStoreTrait for ChainStore {
 
                 let missing = self.storage.missing_parents(
                     &conn,
-                    &self.network,
+                    &self.chain,
                     first_block as i64,
                     ptr.hash,
                     self.genesis_block_ptr.hash,
@@ -1239,7 +1238,7 @@ impl ChainStoreTrait for ChainStore {
 
                 let hash = ptr.hash_hex();
                 let number = ptr.number as i64;
-                update(n::table.filter(n::name.eq(&self.network)))
+                update(n::table.filter(n::name.eq(&self.chain)))
                     .set((
                         n::head_block_hash.eq(&hash),
                         n::head_block_number.eq(number),
@@ -1257,7 +1256,7 @@ impl ChainStoreTrait for ChainStore {
 
     fn chain_head_updates(&self) -> ChainHeadUpdateStream {
         self.chain_head_update_listener
-            .subscribe(self.network.to_owned())
+            .subscribe(self.chain.to_owned())
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
@@ -1265,7 +1264,7 @@ impl ChainStoreTrait for ChainStore {
 
         ethereum_networks
             .select((head_block_hash, head_block_number))
-            .filter(name.eq(&self.network))
+            .filter(name.eq(&self.chain))
             .load::<(Option<String>, Option<i64>)>(&*self.get_conn()?)
             .map(|rows| {
                 rows.first()
@@ -1281,7 +1280,7 @@ impl ChainStoreTrait for ChainStore {
 
     fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
         let conn = self.get_conn()?;
-        self.storage.blocks(&conn, &self.network, hashes)
+        self.storage.blocks(&conn, &self.chain, hashes)
     }
 
     fn ancestor_block(
@@ -1346,7 +1345,7 @@ impl ChainStoreTrait for ChainStore {
             .expect("ancestor_count fits into a signed 32 bit integer");
         diesel::sql_query(query)
             .bind::<Integer, _>(ancestor_count)
-            .bind::<Text, _>(&self.network)
+            .bind::<Text, _>(&self.chain)
             .load::<MinBlock>(&conn)?
             .first()
             .map(|MinBlock { block }| {
@@ -1355,7 +1354,7 @@ impl ChainStoreTrait for ChainStore {
                 // against removing the genesis block
                 if *block > 0 {
                     self.storage
-                        .delete_blocks_before(&conn, &self.network, *block as i64)
+                        .delete_blocks_before(&conn, &self.chain, *block as i64)
                         .map(|rows| (*block, rows))
                 } else {
                     Ok((0, 0))
@@ -1368,13 +1367,13 @@ impl ChainStoreTrait for ChainStore {
     fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error> {
         let conn = self.get_conn()?;
         self.storage
-            .block_hashes_by_block_number(&conn, &self.network, number)
+            .block_hashes_by_block_number(&conn, &self.chain, number)
     }
 
     fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error> {
         let conn = self.get_conn()?;
         self.storage
-            .confirm_block_hash(&conn, &self.network, number, hash)
+            .confirm_block_hash(&conn, &self.chain, number, hash)
     }
 
     fn block_number(&self, hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
@@ -1382,7 +1381,7 @@ impl ChainStoreTrait for ChainStore {
         Ok(self
             .storage
             .block_number(&conn, hash)?
-            .map(|number| (self.network.clone(), number)))
+            .map(|number| (self.chain.clone(), number)))
     }
 }
 
@@ -1525,6 +1524,6 @@ impl test_support::SettableChainStore for ChainStore {
         let conn = self.conn.get().expect("can get a database connection");
 
         self.storage
-            .set_chain(&conn, &self.network, genesis_hash, chain);
+            .set_chain(&conn, &self.chain, genesis_hash, chain);
     }
 }

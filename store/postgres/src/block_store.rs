@@ -140,7 +140,7 @@ impl BlockStore {
     pub fn new(
         logger: Logger,
         // (network, ident, shard)
-        networks: Vec<(String, EthereumNetworkIdentifier, Shard)>,
+        chains: Vec<(String, EthereumNetworkIdentifier, Shard)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
@@ -149,7 +149,7 @@ impl BlockStore {
             .get(&PRIMARY_SHARD)
             .expect("we always have a primary pool")
             .clone();
-        let chains = primary::load_chains(&primary)?;
+        let existing_chains = primary::load_chains(&primary)?;
 
         let block_store = Self {
             logger,
@@ -160,8 +160,11 @@ impl BlockStore {
         };
 
         // For each configured chain, add a chain store
-        for (network, ident, shard) in networks {
-            let chain = match chains.iter().find(|chain| chain.name == network) {
+        for (chain_name, ident, shard) in chains {
+            let chain = match existing_chains
+                .iter()
+                .find(|chain| chain.name == chain_name)
+            {
                 Some(chain) => {
                     if chain.shard != shard {
                         return Err(StoreError::Unknown(anyhow!(
@@ -173,7 +176,7 @@ impl BlockStore {
                     }
                     chain.clone()
                 }
-                None => primary::add_chain(&block_store.primary, &network, &ident, &shard)?,
+                None => primary::add_chain(&block_store.primary, &chain_name, &ident, &shard)?,
             };
 
             block_store.add_chain_store(&chain)?;
@@ -188,7 +191,7 @@ impl BlockStore {
             .keys()
             .cloned()
             .collect::<Vec<_>>();
-        for chain in chains
+        for chain in existing_chains
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
@@ -235,28 +238,28 @@ impl BlockStore {
         Ok(map)
     }
 
-    pub fn chain_head_block(&self, network: &str) -> Result<Option<u64>, StoreError> {
+    pub fn chain_head_block(&self, chain: &str) -> Result<Option<u64>, StoreError> {
         let store = self
-            .store(network)
-            .ok_or_else(|| constraint_violation!("unknown network `{}`", network))?;
-        store.chain_head_block(network)
+            .store(chain)
+            .ok_or_else(|| constraint_violation!("unknown network `{}`", chain))?;
+        store.chain_head_block(chain)
     }
 
-    fn lookup_chain(&self, network: &str) -> Result<Option<Arc<ChainStore>>, StoreError> {
+    fn lookup_chain(&self, chain: &str) -> Result<Option<Arc<ChainStore>>, StoreError> {
         // See if we have that chain in the database even if it wasn't one
         // of the configured chains
         let conn = self.primary.get()?;
-        primary::find_chain(&conn, network)?
+        primary::find_chain(&conn, chain)?
             .map(|chain| self.add_chain_store(&chain))
             .transpose()
     }
 
-    fn store(&self, network: &str) -> Option<Arc<ChainStore>> {
+    fn store(&self, chain: &str) -> Option<Arc<ChainStore>> {
         let store = self
             .stores
             .read()
             .unwrap()
-            .get(network)
+            .get(chain)
             .map(|store| store.cheap_clone());
         if store.is_some() {
             return store;
@@ -265,8 +268,8 @@ impl BlockStore {
         // suppress errors here since it will be very rare that we look up
         // a chain from the database as most of them will be set up when
         // the block store is created
-        self.lookup_chain(network).unwrap_or_else(|e| {
-                error!(&self.logger, "Error getting chain from store"; "network" => network, "error" => e.to_string());
+        self.lookup_chain(chain).unwrap_or_else(|e| {
+                error!(&self.logger, "Error getting chain from store"; "network" => chain, "error" => e.to_string());
                 None
             })
     }
