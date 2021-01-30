@@ -7,7 +7,7 @@ let one = BigDecimal.fromString("1");
 export function handleTrigger(event: Trigger): void {
   // There are 35 digits after the dot.
   // big_decimal exponent will be: -35 - 6109 = -6144.
-  // Minmum exponent is: -6143.
+  // Minimum exponent is: -6143.
   // So 1 digit will be removed, the 8, and the 6 will be rounded to 7.
   let small = BigDecimal.fromString("0.99999999999999999999999999999999968");
 
