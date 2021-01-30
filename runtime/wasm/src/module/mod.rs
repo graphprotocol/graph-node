@@ -533,6 +533,7 @@ impl WasmInstance {
         link!("bigInt.dividedByDecimal", big_int_divided_by_decimal, x, y);
         link!("bigInt.mod", big_int_mod, x_ptr, y_ptr);
         link!("bigInt.pow", big_int_pow, x_ptr, exp);
+        link!("bigInt.fromString", big_int_from_string, ptr);
 
         link!("bigDecimal.toString", big_decimal_to_string, ptr);
         link!("bigDecimal.fromString", big_decimal_from_string, ptr);
@@ -882,6 +883,18 @@ impl WasmInstanceContext {
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
         let n: BigInt = self.asc_get(big_int_ptr)?;
         self.asc_new(&n.to_string())
+    }
+
+    /// function bigInt.fromString(x: string): BigInt
+    fn big_int_from_string(
+        &mut self,
+        string_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+        let result = self
+            .ctx
+            .host_exports
+            .big_int_from_string(self.asc_get(string_ptr)?)?;
+        self.asc_new(&result)
     }
 
     /// function typeConversion.bigIntToHex(n: Uint8Array): string

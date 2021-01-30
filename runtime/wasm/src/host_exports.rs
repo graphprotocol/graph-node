@@ -560,6 +560,15 @@ impl HostExports {
         Ok(x.pow(exponent))
     }
 
+    pub(crate) fn big_int_from_string(
+        &self,
+        s: String,
+    ) -> Result<BigInt, DeterministicHostError> {
+        BigInt::from_str(&s)
+            .with_context(|| format!("string  is not a BigInt: '{}'", s))
+            .map_err(DeterministicHostError)
+    }
+
     /// Useful for IPFS hashes stored as bytes
     pub(crate) fn bytes_to_base58(&self, bytes: Vec<u8>) -> Result<String, DeterministicHostError> {
         Ok(::bs58::encode(&bytes).into_string())
