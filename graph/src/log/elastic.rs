@@ -1,6 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
-use std::fmt::Write;
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -14,6 +13,8 @@ use serde::Serialize;
 use serde_json::json;
 use slog::*;
 use slog_async;
+
+use crate::prelude::CheapClone;
 
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
@@ -41,10 +42,10 @@ where
     })
 }
 
-// Log message meta data.
+// Log message source.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ElasticLogMeta {
+struct Source {
     module: String,
     line: i64,
     column: i64,
@@ -55,72 +56,30 @@ struct ElasticLogMeta {
 #[serde(rename_all = "camelCase")]
 struct ElasticLog {
     id: String,
-    #[serde(flatten)]
-    custom_id: HashMap<String, String>,
-    arguments: HashMap<String, String>,
     timestamp: String,
-    text: String,
     #[serde(serialize_with = "serialize_log_level")]
     level: Level,
-    meta: ElasticLogMeta,
+    text: String,
+    #[serde(flatten)]
+    custom_id: HashMap<String, String>,
+    arguments: BTreeMap<String, String>,
+    source: Source,
 }
 
-struct HashMapKVSerializer {
-    kvs: Vec<(String, String)>,
+struct KVSerializer<'a> {
+    kvs: &'a mut BTreeMap<String, String>,
 }
 
-impl HashMapKVSerializer {
-    fn new() -> Self {
-        HashMapKVSerializer {
-            kvs: Default::default(),
-        }
-    }
-
-    fn finish(self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        self.kvs.into_iter().for_each(|(k, v)| {
-            map.insert(k, v);
-        });
-        map
+impl<'a> KVSerializer<'a> {
+    fn new(kvs: &'a mut BTreeMap<String, String>) -> Self {
+        Self { kvs }
     }
 }
 
-impl Serializer for HashMapKVSerializer {
+impl<'a> Serializer for KVSerializer<'a> {
     fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        Ok(self.kvs.push((key.into(), format!("{}", val))))
-    }
-}
-
-/// A super-simple slog Serializer for concatenating key/value arguments.
-struct SimpleKVSerializer {
-    kvs: Vec<(String, String)>,
-}
-
-impl SimpleKVSerializer {
-    /// Creates a new `SimpleKVSerializer`.
-    fn new() -> Self {
-        SimpleKVSerializer {
-            kvs: Default::default(),
-        }
-    }
-
-    /// Collects all key/value arguments into a single, comma-separated string.
-    /// Returns the number of key/value pairs and the string itself.
-    fn finish(self) -> (usize, String) {
-        (
-            self.kvs.len(),
-            self.kvs
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k, v))
-                .collect::<Vec<_>>()
-                .join(", "),
-        )
-    }
-}
-
-impl Serializer for SimpleKVSerializer {
-    fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        Ok(self.kvs.push((key.into(), format!("{}", val))))
+        self.kvs.insert(key.into(), format!("{}", val));
+        Ok(())
     }
 }
 
@@ -153,7 +112,7 @@ pub struct ElasticDrainConfig {
 ///     "level": "debug",
 ///     "timestamp": "2018-11-08T00:54:52.589258000Z",
 ///     "subgraphId": "Qmb31zcpzqga7ERaUTp83gVdYcuBasz4rXUHFufikFTJGU",
-///     "meta": {
+///     "source": {
 ///       "module": "graph_chain_ethereum::block_stream",
 ///       "line": 220,
 ///       "column": 9
@@ -164,55 +123,74 @@ pub struct ElasticDrainConfig {
 /// }
 /// ```
 pub struct ElasticDrain {
-    config: ElasticDrainConfig,
-    error_logger: Logger,
+    custom_id_key: String,
+    custom_id_value: String,
     logs: Arc<Mutex<Vec<ElasticLog>>>,
+    system_logger: Logger,
 }
 
 impl ElasticDrain {
     /// Creates a new `ElasticDrain`.
-    pub fn new(config: ElasticDrainConfig, error_logger: Logger) -> Self {
+    pub fn new(config: ElasticDrainConfig, system_logger: Logger) -> Self {
+        // Parse the endpoint URL
+        let mut endpoint = reqwest::Url::parse(config.general.endpoint.as_str())
+            .expect("invalid Elasticsearch URL");
+        endpoint.set_path("_bulk");
+
         let drain = ElasticDrain {
-            config,
-            error_logger,
+            custom_id_key: config.custom_id_key,
+            custom_id_value: config.custom_id_value,
             logs: Arc::new(Mutex::new(vec![])),
+
+            system_logger,
         };
-        drain.periodically_flush_logs();
+        drain.periodically_flush_logs(
+            endpoint,
+            config.general,
+            config.flush_interval,
+            config.index,
+            config.document_type,
+        );
         drain
     }
 
-    fn periodically_flush_logs(&self) {
+    fn periodically_flush_logs(
+        &self,
+        endpoint: reqwest::Url,
+        general: ElasticLoggingConfig,
+        flush_interval: Duration,
+        index: String,
+        document_type: String,
+    ) {
         use futures03::stream::StreamExt;
 
-        let flush_logger = self.error_logger.clone();
-        let logs = self.logs.clone();
-        let config = self.config.clone();
+        let system_logger = self.system_logger.cheap_clone();
+        let logs = self.logs.cheap_clone();
 
-        crate::task_spawn::spawn(tokio::time::interval(self.config.flush_interval).for_each(
-            move |_| {
-                let logs = logs.clone();
-                let config = config.clone();
-                let flush_logger = flush_logger.clone();
-                async move {
-                    let logs_to_send = {
-                        let mut logs = logs.lock().unwrap();
-                        let logs_to_send = (*logs).clone();
-                        // Clear the logs, so the next batch can be recorded
-                        logs.clear();
-                        logs_to_send
-                    };
+        crate::task_spawn::spawn(async move {
+            let mut interval = tokio::time::interval(flush_interval);
 
-                    // Do nothing if there are no logs to flush
-                    if logs_to_send.is_empty() {
-                        return;
-                    }
+            while interval.next().await.is_some() {
+                let logs_to_send = {
+                    let mut logs = logs.lock().unwrap();
+                    std::mem::take(&mut *logs)
+                };
 
-                    trace!(
-                        flush_logger,
-                        "Flushing {} logs to Elasticsearch",
-                        logs_to_send.len()
-                    );
+                // Do nothing if there are no logs to flush
+                if logs_to_send.is_empty() {
+                    continue;
+                }
 
+                debug!(
+                    system_logger,
+                    "Flushing {} logs to Elasticsearch",
+                    logs_to_send.len(),
+                );
+
+                // Send logs in chunks of a 1000 messages per request
+                let mut stream = futures03::stream::iter(logs_to_send.chunks(1000));
+
+                while let Some(chunk) = stream.next().await {
                     // The Elasticsearch batch API takes requests with the following format:
                     // ```ignore
                     // action_and_meta_data\n
@@ -220,73 +198,69 @@ impl ElasticDrain {
                     // action_and_meta_data\n
                     // optional_source\n
                     // ```
-                    // For more details, see:
-                    // https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
-                    //
-                    // We're assembly the request body in the same way below:
-                    let batch_body = logs_to_send.iter().fold(String::from(""), |mut out, log| {
-                        // Try to serialize the log itself to a JSON string
+
+                    let mut body = String::new();
+                    for log in chunk.into_iter() {
+                        // Try to serialize the log message to JSON
                         match serde_json::to_string(log) {
-                            Ok(log_line) => {
-                                // Serialize the action line to a string
-                                let action_line = json!({
+                            Ok(msg) => {
+                                // Generate an action line for the log message
+                                let action = json!({
                                     "index": {
-                                        "_index": config.index,
-                                        "_type": config.document_type,
-                                        "_id": log.id,
+                                      "_index": &index,
+                                      "_type": &document_type,
+                                      "_id": log.id,
                                     }
                                 })
                                 .to_string();
 
-                                // Combine the two lines with newlines, make sure there is
-                                // a newline at the end as well
-                                out.push_str(format!("{}\n{}\n", action_line, log_line).as_str());
+                                // Add action line and \n to the body
+                                body.push_str(action.as_str());
+                                body.push_str("\n");
+
+                                // Add log message and \n to the body
+                                body.push_str(msg.as_str());
+                                body.push_str("\n");
                             }
                             Err(e) => {
-                                error!(
-                                    flush_logger,
-                                    "Failed to serialize Elasticsearch log to JSON: {}", e
+                                warn!(
+                                    system_logger,
+                                    "Failed to serialize log message to JSON";
+                                    "error" => format!("{}", e)
                                 );
                             }
-                        };
-
-                        out
-                    });
-
-                    // Build the batch API URL
-                    let mut batch_url = reqwest::Url::parse(config.general.endpoint.as_str())
-                        .expect("invalid Elasticsearch URL");
-                    batch_url.set_path("_bulk");
+                        }
+                    }
 
                     // Send batch of logs to Elasticsearch
                     let client = Client::new();
-                    let logger_for_err = flush_logger.clone();
 
-                    let header = match config.general.username {
+                    let header = match &general.username {
                         Some(username) => client
-                            .post(batch_url)
+                            .post(endpoint.as_str())
                             .header("Content-Type", "application/json")
-                            .basic_auth(username, config.general.password.clone()),
+                            .basic_auth(username, general.password.clone()),
                         None => client
-                            .post(batch_url)
+                            .post(endpoint.as_str())
                             .header("Content-Type", "application/json"),
                     };
-                    header
-                        .body(batch_body)
+
+                    if let Err(e) = header
+                        .body(body)
                         .send()
                         .and_then(|response| async { response.error_for_status() })
-                        .map_ok(|_| ())
-                        .unwrap_or_else(move |e| {
-                            // Log if there was a problem sending the logs
-                            error!(
-                                logger_for_err,
-                                "Failed to send logs to Elasticsearch: {}", e
-                            );
-                        })
-                        .await;
+                        .await
+                    {
+                        // Log if there was a problem sending the logs
+                        error!(
+                            system_logger,
+                            "Failed to send logs to Elasticsearch";
+                            "error" => format!("{}", e),
+                        );
+                    }
                 }
-            },
-        ));
+            }
+        });
     }
 }
 
@@ -299,56 +273,40 @@ impl Drain for ElasticDrain {
         if record.level() == Level::Trace {
             return Ok(());
         }
-        let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true);
-        let id = format!("{}-{}", self.config.custom_id_value, timestamp);
 
-        // Serialize logger arguments
-        let mut serializer = SimpleKVSerializer::new();
-        record
-            .kv()
-            .serialize(record, &mut serializer)
-            .expect("failed to serializer logger arguments");
-        let (n_logger_kvs, logger_kvs) = serializer.finish();
+        let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true);
+        let id = format!("{}-{}", self.custom_id_value, timestamp);
+
+        let mut arguments = BTreeMap::new();
 
         // Serialize log message arguments
-        let mut serializer = SimpleKVSerializer::new();
+        let mut serializer = KVSerializer::new(&mut arguments);
         values
             .serialize(record, &mut serializer)
             .expect("failed to serialize log message arguments");
-        let (n_value_kvs, value_kvs) = serializer.finish();
 
-        // Serialize log message arguments into hash map
-        let mut serializer = HashMapKVSerializer::new();
+        // Serialize logger arguments
         record
             .kv()
             .serialize(record, &mut serializer)
-            .expect("failed to serialize log message arguments into hash map");
-        let arguments = serializer.finish();
+            .expect("failed to serialize logger arguments");
 
-        let mut text = format!("{}", record.msg());
-        if n_logger_kvs > 0 {
-            write!(text, ", {}", logger_kvs).unwrap();
-        }
-        if n_value_kvs > 0 {
-            write!(text, ", {}", value_kvs).unwrap();
-        }
+        // Serialize the log message itself
+        let text = format!("{}", record.msg());
 
         // Prepare custom id for log document
         let mut custom_id = HashMap::new();
-        custom_id.insert(
-            self.config.custom_id_key.clone(),
-            self.config.custom_id_value.clone(),
-        );
+        custom_id.insert(self.custom_id_key.clone(), self.custom_id_value.clone());
 
         // Prepare log document
         let log = ElasticLog {
             id: id.clone(),
-            custom_id: custom_id,
+            custom_id,
             arguments,
             timestamp,
             text,
             level: record.level(),
-            meta: ElasticLogMeta {
+            source: Source {
                 module: record.module().into(),
                 line: record.line() as i64,
                 column: record.column() as i64,
