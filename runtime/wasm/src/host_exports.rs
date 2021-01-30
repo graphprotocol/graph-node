@@ -593,6 +593,14 @@ impl HostExports {
         Ok(x << bits)
     }
 
+    pub(crate) fn big_int_right_shift(
+        &self,
+        x: BigInt,
+        bits: u8,
+    ) -> Result<BigInt, DeterministicHostError> {
+        Ok(x >> bits)
+    }
+
     /// Useful for IPFS hashes stored as bytes
     pub(crate) fn bytes_to_base58(&self, bytes: Vec<u8>) -> Result<String, DeterministicHostError> {
         Ok(::bs58::encode(&bytes).into_string())
