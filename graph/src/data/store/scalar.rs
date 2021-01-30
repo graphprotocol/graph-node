@@ -14,7 +14,7 @@ use stable_hash::{
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;
-use std::ops::{Add, Deref, Div, Mul, Rem, Sub, BitOr, BitAnd};
+use std::ops::{Add, Deref, Div, Mul, Rem, Sub, BitOr, BitAnd, Shl};
 use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
@@ -459,6 +459,14 @@ impl BitAnd for BigInt {
 
     fn bitand(self, other: Self) -> Self {
         Self::from(self.0.bitand(other.0))
+    }
+}
+
+impl Shl<u8> for BigInt {
+    type Output = Self;
+
+    fn shl(self, bits: u8) -> Self {
+        Self::from(self.0.shl(bits.into()))
     }
 }
 
