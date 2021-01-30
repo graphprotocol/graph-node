@@ -537,6 +537,7 @@ impl WasmInstance {
         link!("bigInt.bitOr", big_int_bit_or, x_ptr, y_ptr);
         link!("bigInt.bitAnd", big_int_bit_and, x_ptr, y_ptr);
         link!("bigInt.leftShift", big_int_left_shift, x_ptr, bits);
+        link!("bigInt.rightShift", big_int_right_shift, x_ptr, bits);
 
         link!("bigDecimal.toString", big_decimal_to_string, ptr);
         link!("bigDecimal.fromString", big_decimal_from_string, ptr);
@@ -1203,6 +1204,20 @@ impl WasmInstanceContext {
             .ctx
             .host_exports
             .big_int_left_shift(self.asc_get(x_ptr)?, bits)?;
+        self.asc_new(&result)
+    }
+
+    /// function bigInt.rightShift(x: BigInt, bits: u8): BigInt
+    fn big_int_right_shift(
+        &mut self,
+        x_ptr: AscPtr<AscBigInt>,
+        bits: u32,
+    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError(e.into()))?;
+        let result = self
+            .ctx
+            .host_exports
+            .big_int_right_shift(self.asc_get(x_ptr)?, bits)?;
         self.asc_new(&result)
     }
 
