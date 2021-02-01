@@ -128,8 +128,33 @@ mod primary {
     }
 }
 
+/// The store that chains use to maintain their state and cache often used
+/// data from a chain. The `BlockStore` maintains information about all
+/// configured chains, and serves as a directory of chains, whereas the
+/// [ChainStore] manages chain-specific data. The `BlockStore` is sharded so
+/// that each chain can use, depending on configuration, a separate database.
+/// Regardless of configuration, the data for each chain is stored in its
+/// own database namespace, though for historical reasons, the code also deals
+/// with a shared table for the block and call cache for chains in the
+/// `public` namespace.
+///
+/// The `BlockStore` uses the table `public.chains` to keep immutable
+/// information about each chain, including a mapping from the chain name
+/// to the shard holding the chain specific data, and the database namespace
+/// for that chain.
+///
+/// Chains are identified by the name with which they are configured in the
+/// configuration file. Once a chain has been used with the system, it is
+/// not possible to change its configuration, in particular, the database
+/// shard and namespace, and the genesis block and net version must not
+/// change between runs of `graph-node`
 pub struct BlockStore {
     logger: Logger,
+    /// Map chain names to the corresponding store. This map is updated
+    /// dynamically with new chains if an operation would require a chain
+    /// that is not yet in `stores`. It is initialized with all chains
+    /// known to the system at startup, either from configuration or from
+    /// previous state in the database.
     stores: RwLock<HashMap<String, Arc<ChainStore>>>,
     pools: HashMap<Shard, ConnectionPool>,
     primary: ConnectionPool,
@@ -137,6 +162,17 @@ pub struct BlockStore {
 }
 
 impl BlockStore {
+    /// Create a new `BlockStore` by creating a `ChainStore` for each entry
+    /// in `networks`. The creation process checks that the configuration for
+    /// existing chains has not changed from the last time `graph-node` ran, and
+    /// creates new entries in its chain directory for chains we had not used
+    /// previously. It also creates a `ChainStore` for each chain that was used
+    /// in previous runs of the node, regardless of whether it is mentioned in
+    /// `chains` to ensure that queries against such chains will succeed.
+    ///
+    /// Each entry in `chains` gives the chain name, the network identifier,
+    /// and the name of the database shard for the chain. The `ChainStore` for
+    /// a chain uses the pool from `pools` for the given shard.
     pub fn new(
         logger: Logger,
         // (network, ident, shard)
