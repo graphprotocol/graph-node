@@ -528,6 +528,21 @@ impl TryFrom<(&str, i64)> for EthereumBlockPointer {
     }
 }
 
+impl TryFrom<(&[u8], i64)> for EthereumBlockPointer {
+    type Error = anyhow::Error;
+
+    fn try_from((bytes, number): (&[u8], i64)) -> Result<Self, Self::Error> {
+        let hash = if bytes.len() == H256::len_bytes() {
+            H256::from_slice(bytes)
+        } else {
+            return Err(anyhow!(
+                "invalid H256 value `{}` has {} bytes instead of {}"
+            ));
+        };
+        Ok(EthereumBlockPointer::from((hash, number)))
+    }
+}
+
 impl<'a> From<&'a EthereumCall> for EthereumBlockPointer {
     fn from(call: &'a EthereumCall) -> EthereumBlockPointer {
         EthereumBlockPointer {
