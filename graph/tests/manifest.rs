@@ -134,7 +134,7 @@ graft:
 specVersion: 0.0.2
 ";
 
-    let store = test_store::STORE.clone();
+    let store = test_store::STORE.subgraph_store();
 
     test_store::STORE_RUNTIME.lock().unwrap().block_on(async {
         let unvalidated = resolve_unvalidated(YAML).await;

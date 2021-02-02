@@ -14,7 +14,9 @@ use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
-use graph_store_postgres::{DeploymentPlacer, Store};
+use graph_store_postgres::{
+    BlockStore as DieselBlcokStore, DeploymentPlacer, Store, SubgraphStore as DieselSubgraphStore,
+};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
@@ -53,6 +55,8 @@ lazy_static! {
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
     pub static ref SUBSCRIPTION_MANAGER: Arc<SubscriptionManager> = STORE_POOL_CONFIG.3.clone();
     static ref NODE_ID: NodeId = NodeId::new("test").unwrap();
+    static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
+    static ref BLOCK_STORE: Arc<DieselBlcokStore> = STORE.block_store();
     pub static ref GENESIS_PTR: EthereumBlockPointer = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -128,7 +132,7 @@ where
 }
 
 pub fn remove_subgraphs() {
-    STORE
+    SUBGRAPH_STORE
         .delete_all_entities_for_test_use_only()
         .expect("deleting test entities succeeds");
 }
@@ -163,7 +167,7 @@ fn create_subgraph(
         name.truncate(32);
         SubgraphName::new(name).unwrap()
     };
-    STORE.create_deployment_replace(
+    SUBGRAPH_STORE.create_deployment_replace(
         name,
         &schema,
         deployment,
@@ -171,7 +175,7 @@ fn create_subgraph(
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
     )?;
-    STORE.start_subgraph_deployment(&*LOGGER, &subgraph_id)
+    SUBGRAPH_STORE.start_subgraph_deployment(&*LOGGER, &subgraph_id)
 }
 
 pub fn create_test_subgraph(subgraph_id: &SubgraphDeploymentId, schema: &str) {
@@ -184,8 +188,8 @@ pub fn remove_subgraph(id: &SubgraphDeploymentId) {
         name.truncate(32);
         SubgraphName::new(name).unwrap()
     };
-    STORE.remove_subgraph(name).unwrap();
-    STORE.subgraph_store().remove_deployment(id).unwrap();
+    SUBGRAPH_STORE.remove_subgraph(name).unwrap();
+    SUBGRAPH_STORE.remove_deployment(id).unwrap();
 }
 
 pub fn create_grafted_subgraph(
@@ -210,7 +214,7 @@ pub fn transact_errors(
         subgraph_id.clone(),
         metrics_registry.clone(),
     );
-    store.transact_block_operations(
+    store.subgraph_store().transact_block_operations(
         subgraph_id,
         block_ptr_to,
         Vec::new(),
@@ -221,7 +225,7 @@ pub fn transact_errors(
 
 /// Convenience to transact EntityOperation instead of EntityModification
 pub fn transact_entity_operations(
-    store: &Arc<Store>,
+    store: &Arc<DieselSubgraphStore>,
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
@@ -277,7 +281,7 @@ pub fn insert_entities(
         });
 
     transact_entity_operations(
-        &STORE,
+        &*SUBGRAPH_STORE,
         subgraph_id.clone(),
         GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
@@ -354,8 +358,8 @@ fn execute_subgraph_query_internal(
         QueryTarget::Deployment(id) => id,
         _ => unreachable!("tests do not use this"),
     };
-    let schema = STORE.api_schema(&id).unwrap();
-    let network = Some(STORE.network_name(&id).unwrap());
+    let schema = SUBGRAPH_STORE.api_schema(&id).unwrap();
+    let network = Some(SUBGRAPH_STORE.network_name(&id).unwrap());
     let query = return_err!(PreparedQuery::new(
         &logger,
         schema,

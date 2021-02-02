@@ -29,7 +29,7 @@ fn insert_and_query(
         });
 
     transact_entity_operations(
-        &STORE,
+        &STORE.subgraph_store(),
         subgraph_id.clone(),
         GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),

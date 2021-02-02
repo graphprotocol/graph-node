@@ -15,7 +15,7 @@ use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
-use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
 use web3::types::{Address, H256};
 
 const USER_GQL: &str = "
@@ -125,11 +125,12 @@ where
     run_test_sequentially(
         || (),
         |store, ()| async move {
+            let subgraph_store = store.subgraph_store();
             // Reset state before starting
-            remove_test_data(store.clone());
+            remove_test_data(subgraph_store.clone());
 
             // Seed database with test data
-            insert_test_data(store.clone());
+            insert_test_data(subgraph_store.clone());
 
             // Run test
             test(store).await
@@ -141,7 +142,7 @@ where
 ///
 /// Inserts data in test blocks `GENESIS_PTR`, `TEST_BLOCK_1_PTR`, and
 /// `TEST_BLOCK_2_PTR`
-fn insert_test_data(store: Arc<DieselStore>) {
+fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     let manifest = SubgraphManifest {
         id: TEST_SUBGRAPH_ID.clone(),
         location: "/ipfs/test".to_owned(),
@@ -278,7 +279,7 @@ fn create_test_entity(
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<DieselStore>) {
+fn remove_test_data(store: Arc<DieselSubgraphStore>) {
     store
         .delete_all_entities_for_test_use_only()
         .expect("deleting test entities succeeds");
@@ -298,11 +299,15 @@ fn delete_entity() {
         let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
 
         // Check that there is an entity to remove.
-        store.get(entity_key.clone()).unwrap().unwrap();
+        store
+            .subgraph_store()
+            .get(entity_key.clone())
+            .unwrap()
+            .unwrap();
 
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Remove {
@@ -316,7 +321,7 @@ fn delete_entity() {
         );
 
         // Check that that the deleted entity id is not present
-        assert!(store.get(entity_key).unwrap().is_none());
+        assert!(store.subgraph_store().get(entity_key).unwrap().is_none());
     })
 }
 
@@ -325,7 +330,7 @@ fn delete_entity() {
 fn get_entity_1() {
     run_test(|store| async move {
         let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
-        let result = store.get(key).unwrap();
+        let result = store.subgraph_store().get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
@@ -356,7 +361,7 @@ fn get_entity_1() {
 fn get_entity_3() {
     run_test(|store| async move {
         let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
-        let result = store.get(key).unwrap();
+        let result = store.subgraph_store().get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
@@ -398,7 +403,7 @@ fn insert_entity() {
         );
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![test_entity],
@@ -410,7 +415,7 @@ fn insert_entity() {
         );
 
         // Check that new record is in the store
-        store.get(entity_key).unwrap().unwrap();
+        store.subgraph_store().get(entity_key).unwrap().unwrap();
     })
 }
 
@@ -435,12 +440,19 @@ fn update_existing() {
         };
 
         // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(store.get(entity_key.clone()).unwrap().unwrap(), new_data);
+        assert_ne!(
+            store
+                .subgraph_store()
+                .get(entity_key.clone())
+                .unwrap()
+                .unwrap(),
+            new_data
+        );
 
         // Set test entity; as the entity already exists an update should be performed
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![op],
@@ -456,7 +468,10 @@ fn update_existing() {
 
         new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-        assert_eq!(store.get(entity_key).unwrap(), Some(new_data));
+        assert_eq!(
+            store.subgraph_store().get(entity_key).unwrap(),
+            Some(new_data)
+        );
     })
 }
 
@@ -472,13 +487,14 @@ fn partially_update_existing() {
         ]);
 
         let original_entity = store
+            .subgraph_store()
             .get(entity_key.clone())
             .unwrap()
             .expect("entity not found");
 
         // Set test entity; as the entity already exists an update should be performed
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Set {
@@ -489,7 +505,11 @@ fn partially_update_existing() {
         .unwrap();
 
         // Obtain the updated entity from the store
-        let updated_entity = store.get(entity_key).unwrap().expect("entity not found");
+        let updated_entity = store
+            .subgraph_store()
+            .get(entity_key)
+            .unwrap()
+            .expect("entity not found");
 
         // Verify that the values of all attributes we have set were either unset
         // (in the case of Value::Null) or updated to the new values
@@ -519,6 +539,7 @@ impl QueryChecker {
 
         let entities = self
             .store
+            .subgraph_store()
             .find(query)
             .expect("store.find failed to execute query");
 
@@ -992,6 +1013,7 @@ async fn check_basic_revert(
 
     let subscription = subscribe(subgraph_id, entity_type);
     let state = store
+        .subgraph_store()
         .deployment_state_from_id(subgraph_id.to_owned())
         .await
         .expect("can get deployment state");
@@ -999,10 +1021,12 @@ async fn check_basic_revert(
 
     // Revert block 3
     store
+        .subgraph_store()
         .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_1_PTR)
         .unwrap();
 
     let returned_entities = store
+        .subgraph_store()
         .find(this_query.clone())
         .expect("store.find operation failed");
 
@@ -1016,6 +1040,7 @@ async fn check_basic_revert(
     assert_eq!(&test_value, returned_name.unwrap());
 
     let state = store
+        .subgraph_store()
         .deployment_state_from_id(subgraph_id.to_owned())
         .await
         .expect("can get deployment state");
@@ -1054,7 +1079,7 @@ fn revert_block_with_delete() {
 
         // Process deletion
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Remove { key: del_key }],
@@ -1066,6 +1091,7 @@ fn revert_block_with_delete() {
         // Revert deletion
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
+            .subgraph_store()
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
             .unwrap();
         assert_eq!(
@@ -1075,6 +1101,7 @@ fn revert_block_with_delete() {
 
         // Query after revert
         let returned_entities = store
+            .subgraph_store()
             .find(this_query.clone())
             .expect("store.find operation failed");
 
@@ -1111,13 +1138,14 @@ fn revert_block_with_partial_update() {
         ]);
 
         let original_entity = store
+            .subgraph_store()
             .get(entity_key.clone())
             .unwrap()
             .expect("missing entity");
 
         // Set test entity; as the entity already exists an update should be performed
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![EntityOperation::Set {
@@ -1132,12 +1160,14 @@ fn revert_block_with_partial_update() {
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
+            .subgraph_store()
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
             .unwrap();
         assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
         // Obtain the reverted entity from the store
         let reverted_entity = store
+            .subgraph_store()
             .get(entity_key.clone())
             .unwrap()
             .expect("missing entity");
@@ -1188,6 +1218,8 @@ fn mock_data_source() -> DataSource {
 #[test]
 fn revert_block_with_dynamic_data_source_operations() {
     run_test(|store| async move {
+        let store = store.subgraph_store();
+
         // Create operations to add a user
         let user_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
         let partial_entity = Entity::from(vec![
@@ -1300,6 +1332,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let name = SubgraphName::new("test/entity-changes-are-fired").unwrap();
         let node_id = NodeId::new("test").unwrap();
         store
+            .subgraph_store()
             .create_subgraph_deployment(
                 name,
                 &schema,
@@ -1330,7 +1363,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ),
         ];
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             subgraph_id.clone(),
             *TEST_BLOCK_1_PTR,
             added_entities
@@ -1360,7 +1393,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
         // Commit update & delete ops
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             subgraph_id.clone(),
             *TEST_BLOCK_2_PTR,
             vec![update_op, delete_op],
@@ -1430,7 +1463,7 @@ fn throttle_subscription_delivers() {
         );
 
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![user4],
@@ -1474,7 +1507,7 @@ fn throttle_subscription_throttles() {
         );
 
         transact_entity_operations(
-            &store,
+            &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
             *TEST_BLOCK_3_PTR,
             vec![user4],
@@ -1495,6 +1528,7 @@ fn throttle_subscription_throttles() {
 fn subgraph_schema_types_have_subgraph_id_directive() {
     run_test(|store| async move {
         let schema = store
+            .subgraph_store()
             .api_schema(&TEST_SUBGRAPH_ID)
             .expect("test subgraph should have a schema");
         for typedef in schema
@@ -1565,6 +1599,7 @@ fn handle_large_string_with_index() {
         );
 
         store
+            .subgraph_store()
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
                 *TEST_BLOCK_3_PTR,
@@ -1586,6 +1621,7 @@ fn handle_large_string_with_index() {
             .asc(NAME);
 
         let ids = store
+            .subgraph_store()
             .find(query)
             .expect("Could not find entity")
             .iter()
@@ -1604,6 +1640,7 @@ fn handle_large_string_with_index() {
             .asc(NAME);
 
         let ids = store
+            .subgraph_store()
             .find(query)
             .expect("Could not find entity")
             .iter()
@@ -1617,7 +1654,7 @@ fn handle_large_string_with_index() {
 }
 
 #[derive(Clone)]
-struct WindowQuery(EntityQuery, Arc<DieselStore>);
+struct WindowQuery(EntityQuery, Arc<DieselSubgraphStore>);
 
 impl WindowQuery {
     fn new(store: &Arc<DieselStore>) -> Self {
@@ -1625,7 +1662,7 @@ impl WindowQuery {
             user_query()
                 .filter(EntityFilter::GreaterThan("age".into(), Value::from(0)))
                 .first(10),
-            store.clone(),
+            store.subgraph_store(),
         )
         .default_window()
     }
@@ -1761,8 +1798,13 @@ fn window() {
     ];
 
     run_test(|store| async move {
-        transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
-            .expect("Failed to create test users");
+        transact_entity_operations(
+            &store.subgraph_store(),
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            ops,
+        )
+        .expect("Failed to create test users");
 
         // Get the first 2 entries in each 'color group'
         WindowQuery::new(&store)
@@ -1834,6 +1876,7 @@ fn find_at_block() {
             query.block = block;
 
             let entities = store
+                .subgraph_store()
                 .find(query)
                 .expect("store.find failed to execute query");
 
@@ -1868,7 +1911,7 @@ fn cleanup_cached_blocks() {
 
 #[test]
 fn reorg_tracking() {
-    fn update_john(store: &Arc<DieselStore>, age: i32, block: &EthereumBlockPointer) {
+    fn update_john(store: &Arc<DieselSubgraphStore>, age: i32, block: &EthereumBlockPointer) {
         let test_entity_1 = create_test_entity(
             "1",
             USER,
@@ -1911,6 +1954,8 @@ fn reorg_tracking() {
     // Check that reorg_count, max_reorg_depth, and latest_ethereum_block_number
     // are reported correctly in DeploymentState
     run_test(|store| async move {
+        let store = store.subgraph_store();
+
         check_state!(store, 0, 0, 2);
 
         // Jump to block 4

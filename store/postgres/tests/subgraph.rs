@@ -15,7 +15,7 @@ use graph::{
     prelude::{CheapClone, NodeId, SubgraphDeploymentId, SubgraphStore as _},
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
-use graph_store_postgres::Store;
+use graph_store_postgres::SubgraphStore;
 
 use std::collections::HashSet;
 use test_store::*;
@@ -54,7 +54,7 @@ fn reassign_subgraph() {
         id
     }
 
-    fn find_assignment(store: &Store, id: &SubgraphDeploymentId) -> Option<String> {
+    fn find_assignment(store: &SubgraphStore, id: &SubgraphDeploymentId) -> Option<String> {
         store
             .assigned_node(id)
             .unwrap()
@@ -62,6 +62,8 @@ fn reassign_subgraph() {
     }
 
     run_test_sequentially(setup, |store, id| async move {
+        let store = store.subgraph_store();
+
         // Check our setup
         let node = find_assignment(store.as_ref(), &id);
         let placement = place("test").expect("the test config places deployments");
@@ -112,7 +114,7 @@ fn create_subgraph() {
     }
 
     fn deploy(
-        store: &Store,
+        store: &SubgraphStore,
         id: &str,
         mode: SubgraphVersionSwitchingMode,
     ) -> HashSet<EntityChange> {
@@ -167,6 +169,8 @@ fn create_subgraph() {
 
     // Test VersionSwitchingMode::Instant
     run_test_sequentially(remove_subgraphs, |store, _| async move {
+        let store = store.subgraph_store();
+
         const MODE: SubgraphVersionSwitchingMode = SubgraphVersionSwitchingMode::Instant;
         const ID: &str = "instant";
         const ID2: &str = "instant2";
@@ -228,6 +232,8 @@ fn create_subgraph() {
 
     // Test VersionSwitchingMode::Synced
     run_test_sequentially(remove_subgraphs, |store, _| async move {
+        let store = store.subgraph_store();
+
         const MODE: SubgraphVersionSwitchingMode = SubgraphVersionSwitchingMode::Synced;
         const ID: &str = "synced";
         const ID2: &str = "synced2";
@@ -398,7 +404,11 @@ fn status() {
             deterministic: true,
         };
 
-        store.fail_subgraph(id.clone(), error).await.unwrap();
+        store
+            .subgraph_store()
+            .fail_subgraph(id.clone(), error)
+            .await
+            .unwrap();
         let infos = store
             .status(status::Filter::Deployments(vec![id.to_string()]))
             .unwrap();
@@ -425,7 +435,13 @@ fn version_info() {
     }
 
     run_test_sequentially(setup, |store, id| async move {
-        transact_entity_operations(&store, id.clone(), BLOCK_ONE.clone(), vec![]).unwrap();
+        transact_entity_operations(
+            &store.subgraph_store(),
+            id.clone(),
+            BLOCK_ONE.clone(),
+            vec![],
+        )
+        .unwrap();
 
         let primary = primary_connection();
         let (current, _) = primary.versions_for_subgraph(&*NAME).unwrap();
@@ -528,7 +544,11 @@ fn fatal_vs_non_fatal() {
             deterministic: true,
         };
 
-        store.fail_subgraph(id.clone(), error()).await.unwrap();
+        store
+            .subgraph_store()
+            .fail_subgraph(id.clone(), error())
+            .await
+            .unwrap();
 
         assert!(!query_store
             .has_non_fatal_errors(id.cheap_clone(), None)

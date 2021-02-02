@@ -8,7 +8,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
-use graph_store_postgres::Store as DieselStore;
+use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
 use web3::types::H256;
 
 const USER_GQL: &str = "
@@ -84,12 +84,12 @@ lazy_static! {
 /// Test harness for running database integration tests.
 fn run_test<R, F>(test: F)
 where
-    F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
+    F: FnOnce(Arc<DieselSubgraphStore>) -> R + Send + 'static,
     R: IntoFuture<Item = ()> + Send + 'static,
     R::Error: Send + Debug,
     R::Future: Send,
 {
-    let store = STORE.clone();
+    let store = STORE.subgraph_store();
 
     // Lock regardless of poisoning. This also forces sequential test execution.
     let mut runtime = match STORE_RUNTIME.lock() {
@@ -115,7 +115,7 @@ where
 ///
 /// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
 /// use.
-fn insert_test_data(store: Arc<DieselStore>) {
+fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     let manifest = SubgraphManifest {
         id: TEST_SUBGRAPH_ID.clone(),
         location: "/ipfs/test".to_owned(),
@@ -252,7 +252,7 @@ fn create_test_entity(
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<DieselStore>) {
+fn remove_test_data(store: Arc<DieselSubgraphStore>) {
     store
         .delete_all_entities_for_test_use_only()
         .expect("deleting test entities succeeds");
@@ -262,6 +262,7 @@ fn remove_test_data(store: Arc<DieselStore>) {
 fn graft() {
     run_test(move |store| -> Result<(), ()> {
         const SUBGRAPH: &str = "grafted";
+
         let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
         let res = test_store::create_grafted_subgraph(
             &subgraph_id,

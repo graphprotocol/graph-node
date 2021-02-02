@@ -72,14 +72,19 @@ fn test_valid_module_and_store_with_timeout(
 
     let module = WasmInstance::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
-        mock_context(deployment_id, data_source, store.clone(), call_cache),
+        mock_context(
+            deployment_id,
+            data_source,
+            store.subgraph_store(),
+            call_cache,
+        ),
         host_metrics,
         timeout,
         experimental_features,
     )
     .unwrap();
 
-    (module, store)
+    (module, store.subgraph_store())
 }
 
 fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstance {

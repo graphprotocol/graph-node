@@ -60,7 +60,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Subgrap
         templates: vec![],
     };
 
-    insert_test_entities(STORE.as_ref(), manifest);
+    insert_test_entities(STORE.subgraph_store().as_ref(), manifest);
 
     id
 }
@@ -223,7 +223,7 @@ fn insert_test_entities(store: &impl SubgraphStore, manifest: SubgraphManifest) 
         });
 
         transact_entity_operations(
-            &STORE,
+            &STORE.subgraph_store(),
             id.clone(),
             block_ptr,
             insert_ops.collect::<Vec<_>>(),
@@ -887,7 +887,7 @@ fn query_complexity_subscriptions() {
             max_skip: std::u32::MAX,
             load_manager: mock_query_load_manager(),
         };
-        let schema = STORE.api_schema(&id).unwrap();
+        let schema = STORE.subgraph_store().api_schema(&id).unwrap();
 
         // This query is exactly at the maximum complexity.
         // FIXME: Not collecting the stream because that will hang the test.
@@ -1278,7 +1278,7 @@ fn subscription_gets_result_even_without_events() {
             .query_store(id.clone().into(), true)
             .await
             .unwrap();
-        let schema = STORE.api_schema(&id).unwrap();
+        let schema = STORE.subgraph_store().api_schema(&id).unwrap();
 
         let query = Query::new(
             graphql_parser::parse_query(
@@ -1557,6 +1557,7 @@ fn query_detects_reorg() {
             .expect("invalid test query")
             .into_static();
         let state = STORE
+            .subgraph_store()
             .deployment_state_from_id(id.clone())
             .await
             .expect("failed to get state");
@@ -1576,6 +1577,7 @@ fn query_detects_reorg() {
 
         // Revert one block
         STORE
+            .subgraph_store()
             .revert_block_operations(id.clone(), GENESIS_PTR.clone())
             .unwrap();
         // A query is still fine since we implicitly query at block 0; we were
@@ -1591,7 +1593,13 @@ fn query_detects_reorg() {
         // We move the subgraph head forward, which will execute the query at block 1
         // But the state we have is also for block 1, but with a smaller reorg count
         // and we therefore report an error
-        transact_entity_operations(&*STORE, id.clone(), BLOCK_ONE.clone(), vec![]).unwrap();
+        transact_entity_operations(
+            &STORE.subgraph_store(),
+            id.clone(),
+            BLOCK_ONE.clone(),
+            vec![],
+        )
+        .unwrap();
         let result = execute_query_document(&id, query.clone()).await;
         match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */
@@ -1757,6 +1765,7 @@ fn non_fatal_errors() {
 
             // Test error reverts.
             STORE
+                .subgraph_store()
                 .revert_block_operations(id.clone(), *BLOCK_ONE)
                 .unwrap();
             let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
