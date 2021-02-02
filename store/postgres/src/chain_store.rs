@@ -760,7 +760,7 @@ mod data {
              where a.block_hash = b.hash
                and a.block_offset < $2
         )
-        select a.block_hash
+        select a.block_hash as hash
           from ancestors a
          where a.block_offset = $2;";
 
@@ -794,7 +794,7 @@ mod data {
              where a.block_hash = b.hash
                and a.block_offset < $2
         )
-        select a.block_hash
+        select a.block_hash as hash
           from ancestors a
          where a.block_offset = $2;",
                         blocks.qname
