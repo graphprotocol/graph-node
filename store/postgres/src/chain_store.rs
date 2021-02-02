@@ -57,9 +57,9 @@ mod data {
     };
     use diesel_dynamic_schema as dds;
 
+    use std::fmt;
     use std::iter::FromIterator;
     use std::{convert::TryFrom, io::Write};
-    use std::{fmt, str::FromStr};
 
     use graph::prelude::{
         serde_json, web3::types::H256, BlockNumber, Error, EthereumBlock, EthereumBlockPointer,
@@ -1000,6 +1000,7 @@ mod data {
             chain: super::test_support::Chain,
         ) {
             use public::ethereum_networks as n;
+            use std::str::FromStr;
 
             match self {
                 Storage::Shared => {
