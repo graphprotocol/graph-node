@@ -1000,7 +1000,6 @@ mod data {
             chain: super::test_support::Chain,
         ) {
             use public::ethereum_networks as n;
-            use std::str::FromStr;
 
             match self {
                 Storage::Shared => {
@@ -1009,48 +1008,18 @@ mod data {
                     diesel::delete(b::table.filter(b::network_name.eq(network)))
                         .execute(conn)
                         .expect("Failed to delete ethereum_blocks");
-
-                    for block in &chain {
-                        let number = block.number as i64;
-
-                        let values = (
-                            b::hash.eq(&block.hash),
-                            b::number.eq(number),
-                            b::parent_hash.eq(&block.parent_hash),
-                            b::network_name.eq(network),
-                            b::data.eq(serde_json::Value::Null),
-                        );
-
-                        insert_into(b::table)
-                            .values(values.clone())
-                            .execute(conn)
-                            .unwrap();
-                    }
                 }
                 Storage::Private(Schema { blocks, .. }) => {
                     let query = format!("delete from {}", blocks.qname);
                     sql_query(query)
                         .execute(conn)
                         .expect(&format!("Failed to delete {}", blocks.qname));
-
-                    let query = format!(
-                        "insert into {}(hash, number, parent_hash, data) \
-                         values ($1, $2, $3, 'null'::jsonb)",
-                        blocks.qname
-                    );
-
-                    for block in &chain {
-                        let number = block.number as i64;
-                        let hash = H256::from_str(&block.hash).unwrap();
-                        let parent_hash = H256::from_str(&block.parent_hash).unwrap();
-                        sql_query(&query)
-                            .bind::<Bytea, _>(hash.as_bytes())
-                            .bind::<BigInt, _>(number)
-                            .bind::<Bytea, _>(parent_hash.as_bytes())
-                            .execute(conn)
-                            .unwrap();
-                    }
                 }
+            }
+
+            for block in &chain {
+                self.upsert_block(conn, network, block.as_ethereum_block())
+                    .unwrap();
             }
 
             diesel::update(n::table.filter(n::name.eq(network)))
@@ -1307,7 +1276,9 @@ impl ChainStoreTrait for ChainStore {
     ) -> Result<Option<EthereumBlock>, Error> {
         ensure!(
             block_ptr.number >= offset,
-            "block offset points to before genesis block"
+            "block offset {} for block `{}` points to before genesis block",
+            offset,
+            block_ptr.hash_hex()
         );
 
         let conn = self.get_conn()?;
@@ -1469,7 +1440,7 @@ fn contract_call_id(
 pub mod test_support {
     use std::str::FromStr;
 
-    use graph::prelude::{web3::types::H256, EthereumBlockPointer};
+    use graph::prelude::{web3::types::H256, EthereumBlock, EthereumBlockPointer};
 
     // Hash indicating 'no parent'
     pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -1508,6 +1479,18 @@ pub mod test_support {
                 number: self.number,
                 hash: self.block_hash(),
             }
+        }
+
+        pub fn as_ethereum_block(&self) -> EthereumBlock {
+            let parent_hash =
+                H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
+
+            let mut block = EthereumBlock::default();
+            block.block.number = Some(self.number.into());
+            block.block.parent_hash = parent_hash;
+            block.block.hash = Some(self.block_hash());
+
+            block
         }
     }
 

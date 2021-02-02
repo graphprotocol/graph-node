@@ -5,9 +5,10 @@ use futures::future::IntoFuture;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use graph::prelude::anyhow;
 use graph::{
     components::store::BlockStore as _,
-    prelude::{Future01CompatExt, SubgraphDeploymentId},
+    prelude::{anyhow::Error, Future01CompatExt, SubgraphDeploymentId},
 };
 use graph::{components::store::ChainStore as _, prelude::QueryStoreManager};
 use graph_store_postgres::Store as DieselStore;
@@ -45,7 +46,7 @@ where
                     .into_future()
                     .compat()
                     .await
-                    .expect("test finishes successfully");
+                    .expect(&format!("test finishes successfully on network {}", name));
             }
         },
     );
@@ -227,4 +228,77 @@ fn block_hashes_by_number() {
         assert_eq!(vec![BLOCK_TWO.block_hash()], hashes);
         Ok(())
     })
+}
+
+#[track_caller]
+fn check_ancestor(
+    store: &Arc<DieselChainStore>,
+    child: &FakeBlock,
+    offset: u64,
+    exp: &FakeBlock,
+) -> Result<(), Error> {
+    let act = store
+        .ancestor_block(child.block_ptr(), offset)?
+        .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
+    let act_hash = format!("{:x}", act.block.hash.unwrap());
+    let exp_hash = &exp.hash;
+
+    if &act_hash != exp_hash {
+        Err(anyhow!(
+            "expected hash `{}` but got `{}`",
+            exp_hash,
+            act_hash
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn ancestor_block_simple() {
+    let chain = vec![
+        &*GENESIS_BLOCK,
+        &*BLOCK_ONE,
+        &*BLOCK_TWO,
+        &*BLOCK_THREE,
+        &*BLOCK_FOUR,
+        &*BLOCK_FIVE,
+    ];
+
+    run_test(chain, move |store, _| -> Result<(), Error> {
+        check_ancestor(&store, &*BLOCK_FIVE, 1, &*BLOCK_FOUR)?;
+        check_ancestor(&store, &*BLOCK_FIVE, 2, &*BLOCK_THREE)?;
+        check_ancestor(&store, &*BLOCK_FIVE, 3, &*BLOCK_TWO)?;
+        check_ancestor(&store, &*BLOCK_FIVE, 4, &*BLOCK_ONE)?;
+        check_ancestor(&store, &*BLOCK_FIVE, 5, &*GENESIS_BLOCK)?;
+        check_ancestor(&store, &*BLOCK_THREE, 2, &*BLOCK_ONE)?;
+
+        for offset in [6, 7, 8, 50].iter() {
+            let offset = offset.clone() as u64;
+            let res = store.ancestor_block(BLOCK_FIVE.block_ptr(), offset);
+            assert!(res.is_err());
+        }
+
+        let block = store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1)?;
+        assert!(block.is_none());
+        Ok(())
+    });
+}
+
+#[test]
+fn ancestor_block_ommers() {
+    let chain = vec![
+        &*GENESIS_BLOCK,
+        &*BLOCK_ONE,
+        &*BLOCK_ONE_SIBLING,
+        &*BLOCK_TWO,
+    ];
+
+    run_test(chain, move |store, _| -> Result<(), Error> {
+        check_ancestor(&store, &*BLOCK_ONE, 1, &*GENESIS_BLOCK)?;
+        check_ancestor(&store, &*BLOCK_ONE_SIBLING, 1, &*GENESIS_BLOCK)?;
+        check_ancestor(&store, &*BLOCK_TWO, 1, &*BLOCK_ONE)?;
+        check_ancestor(&store, &*BLOCK_TWO, 2, &*GENESIS_BLOCK)?;
+        Ok(())
+    });
 }
