@@ -1410,6 +1410,7 @@ fn throttle_subscription_delivers() {
             store
                 .clone()
                 .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                .await
                 .unwrap(),
             TEST_SUBGRAPH_ID.clone(),
             Duration::from_millis(500),
@@ -1453,6 +1454,7 @@ fn throttle_subscription_throttles() {
             store
                 .clone()
                 .query_store(TEST_SUBGRAPH_ID.clone().into(), true)
+                .await
                 .unwrap(),
             TEST_SUBGRAPH_ID.clone(),
             Duration::from_secs(30),

@@ -851,7 +851,11 @@ fn query_complexity() {
 fn query_complexity_subscriptions() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
+        let store = STORE
+            .clone()
+            .query_store(id.clone().into(), true)
+            .await
+            .unwrap();
 
         let query = Query::new(
             graphql_parser::parse_query(
@@ -914,7 +918,11 @@ fn query_complexity_subscriptions() {
             None,
         );
 
-        let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
+        let store = STORE
+            .clone()
+            .query_store(id.clone().into(), true)
+            .await
+            .unwrap();
 
         let options = SubscriptionExecutionOptions {
             logger,
@@ -1265,7 +1273,11 @@ fn cannot_filter_by_derved_relationship_fields() {
 fn subscription_gets_result_even_without_events() {
     run_test_sequentially(setup, |_, id| async move {
         let logger = Logger::root(slog::Discard, o!());
-        let store = STORE.clone().query_store(id.clone().into(), true).unwrap();
+        let store = STORE
+            .clone()
+            .query_store(id.clone().into(), true)
+            .await
+            .unwrap();
         let schema = STORE.api_schema(&id).unwrap();
 
         let query = Query::new(

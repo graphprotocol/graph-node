@@ -1,16 +1,14 @@
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
-use futures::future::IntoFuture;
-use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 
-use graph::prelude::anyhow;
-use graph::{
-    components::store::BlockStore as _,
-    prelude::{anyhow::Error, Future01CompatExt, SubgraphDeploymentId},
-};
-use graph::{components::store::ChainStore as _, prelude::QueryStoreManager};
+use graph::cheap_clone::CheapClone;
+use graph::components::store::ChainStore as _;
+use graph::prelude::QueryStoreManager;
+use graph::prelude::{anyhow::anyhow, anyhow::Error};
+use graph::{components::store::BlockStore as _, prelude::SubgraphDeploymentId};
 use graph_store_postgres::Store as DieselStore;
 use graph_store_postgres::{layout_for_tests::FAKE_NETWORK_SHARED, ChainStore as DieselChainStore};
 
@@ -25,12 +23,9 @@ use test_store::*;
 const ANCESTOR_COUNT: u64 = 3;
 
 /// Test harness for running database integration tests.
-fn run_test<R, F>(chain: Chain, test: F)
+fn run_test<F>(chain: Chain, test: F)
 where
-    F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + 'static,
-    R: IntoFuture<Item = ()> + Send + 'static,
-    R::Error: Send + Debug,
-    R::Future: Send,
+    F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> Result<(), Error> + Send + 'static,
 {
     run_test_sequentially(
         || (),
@@ -41,12 +36,28 @@ where
                 let chain_store = store.block_store().chain_store(name).expect("chain store");
 
                 // Run test
-                let result = test(chain_store, store.clone());
-                result
-                    .into_future()
-                    .compat()
-                    .await
+                test(chain_store.cheap_clone(), store.cheap_clone())
                     .expect(&format!("test finishes successfully on network {}", name));
+            }
+        },
+    );
+}
+
+fn run_test_async<R, F>(chain: Chain, test: F)
+where
+    F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + Sync + 'static,
+    R: Future<Output = ()> + Send + 'static,
+{
+    run_test_sequentially(
+        || (),
+        |store, ()| async move {
+            for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
+                block_store::set_chain(chain.clone(), name);
+
+                let chain_store = store.block_store().chain_store(name).expect("chain store");
+
+                // Run test
+                test(chain_store.cheap_clone(), store.clone()).await;
             }
         },
     );
@@ -62,7 +73,7 @@ fn check_chain_head_update(
     head_exp: Option<&'static FakeBlock>,
     missing: Option<&'static str>,
 ) {
-    run_test(chain, move |store, _| -> Result<(), ()> {
+    run_test(chain, move |store, _| {
         let missing_act: Vec<_> = store
             .attempt_chain_head_update(ANCESTOR_COUNT)
             .expect("attempt_chain_head_update failed")
@@ -160,28 +171,31 @@ fn block_number() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     let subgraph = SubgraphDeploymentId::new("nonExistentSubgraph").unwrap();
 
-    run_test(chain, move |_, subgraph_store| -> Result<(), ()> {
-        create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
+    run_test_async(chain, move |_, subgraph_store| {
+        let subgraph = subgraph.cheap_clone();
+        async move {
+            create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
 
-        let query_store = subgraph_store
-            .query_store(subgraph.clone().into(), false)
-            .unwrap();
-        let block = query_store
-            .block_number(GENESIS_BLOCK.block_hash())
-            .expect("Found genesis block");
-        assert_eq!(Some(0), block);
+            let query_store = subgraph_store
+                .query_store(subgraph.cheap_clone().into(), false)
+                .await
+                .unwrap();
 
-        let block = query_store
-            .block_number(BLOCK_ONE.block_hash())
-            .expect("Found block 1");
-        assert_eq!(Some(1), block);
+            let block = query_store
+                .block_number(GENESIS_BLOCK.block_hash())
+                .expect("Found genesis block");
+            assert_eq!(Some(0), block);
 
-        let block = query_store
-            .block_number(BLOCK_THREE.block_hash())
-            .expect("Looked for block 3");
-        assert!(block.is_none());
+            let block = query_store
+                .block_number(BLOCK_ONE.block_hash())
+                .expect("Found block 1");
+            assert_eq!(Some(1), block);
 
-        Ok(())
+            let block = query_store
+                .block_number(BLOCK_THREE.block_hash())
+                .expect("Looked for block 3");
+            assert!(block.is_none());
+        }
     })
 }
 
@@ -193,7 +207,7 @@ fn block_hashes_by_number() {
         &*BLOCK_TWO,
         &*BLOCK_TWO_NO_PARENT,
     ];
-    run_test(chain, move |store, _| -> Result<(), ()> {
+    run_test(chain, move |store, _| {
         let hashes = store.block_hashes_by_block_number(1).unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
