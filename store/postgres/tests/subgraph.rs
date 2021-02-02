@@ -460,7 +460,7 @@ fn subgraph_error() {
             test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
 
             let count = || -> usize {
-                let store = store.store();
+                let store = store.subgraph_store();
                 store.error_count(&subgraph_id).unwrap()
             };
 

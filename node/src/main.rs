@@ -261,7 +261,7 @@ async fn main() {
             let subscription_server = GraphQLSubscriptionServer::new(
                 &logger,
                 graphql_runner.clone(),
-                network_store.store(),
+                network_store.subgraph_store(),
             );
 
             let mut index_node_server = IndexNodeServer::new(
@@ -288,7 +288,7 @@ async fn main() {
                             )
                             .expect(&*format!("adapter for network, {}", network_name))
                             .clone(),
-                        network_store.store(),
+                        network_store.subgraph_store(),
                         metrics_registry.clone(),
                         format!("network/{}", network_subgraph).into(),
                         None,
@@ -320,7 +320,7 @@ async fn main() {
             }
 
             let block_stream_builder = BlockStreamBuilder::new(
-                network_store.store(),
+                network_store.subgraph_store(),
                 network_store.block_store(),
                 eth_networks.clone(),
                 node_id.clone(),
@@ -330,7 +330,7 @@ async fn main() {
             let runtime_host_builder = WASMRuntimeHostBuilder::new(
                 eth_networks.clone(),
                 link_resolver.clone(),
-                network_store.store(),
+                network_store.subgraph_store(),
                 network_store.block_store(),
                 arweave_adapter,
                 three_box_adapter,
@@ -338,7 +338,7 @@ async fn main() {
 
             let subgraph_instance_manager = SubgraphInstanceManager::new(
                 &logger_factory,
-                network_store.store(),
+                network_store.subgraph_store(),
                 network_store.block_store(),
                 eth_networks.clone(),
                 runtime_host_builder,
@@ -350,7 +350,7 @@ async fn main() {
             let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
                 &logger_factory,
                 link_resolver.clone(),
-                network_store.store(),
+                network_store.subgraph_store(),
             );
 
             // Forward subgraph events from the subgraph provider to the subgraph instance manager
@@ -373,7 +373,7 @@ async fn main() {
                 &logger_factory,
                 link_resolver,
                 Arc::new(subgraph_provider),
-                network_store.store(),
+                network_store.subgraph_store(),
                 subscription_manager,
                 network_store.block_store(),
                 eth_networks.clone(),

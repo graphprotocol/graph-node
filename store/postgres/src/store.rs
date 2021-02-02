@@ -31,17 +31,20 @@ use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
 /// Code that needs to access the store should use the traits from [graph::components::store]
 /// and only require the smallest traits that are suitable for their purpose
 pub struct Store {
-    store: Arc<SubgraphStore>,
+    subgraph_store: Arc<SubgraphStore>,
     block_store: Arc<BlockStore>,
 }
 
 impl Store {
-    pub fn new(store: Arc<SubgraphStore>, block_store: Arc<BlockStore>) -> Self {
-        Self { store, block_store }
+    pub fn new(subgraph_store: Arc<SubgraphStore>, block_store: Arc<BlockStore>) -> Self {
+        Self {
+            subgraph_store,
+            block_store,
+        }
     }
 
-    pub fn store(&self) -> Arc<SubgraphStore> {
-        self.store.cheap_clone()
+    pub fn subgraph_store(&self) -> Arc<SubgraphStore> {
+        self.subgraph_store.cheap_clone()
     }
 
     pub fn block_store(&self) -> Arc<BlockStore> {
@@ -60,13 +63,19 @@ impl Store {
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        self.store
-            .create_deployment_replace(name, schema, deployment, node_id, network_name, mode)
+        self.subgraph_store.create_deployment_replace(
+            name,
+            schema,
+            deployment,
+            node_id,
+            network_name,
+            mode,
+        )
     }
 
     #[cfg(debug_assertions)]
     pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
-        self.store.delete_all_entities_for_test_use_only()
+        self.subgraph_store.delete_all_entities_for_test_use_only()
     }
 }
 
@@ -76,14 +85,16 @@ impl SubgraphStoreTrait for Store {
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
-        self.store.block_ptr(subgraph_id)
+        self.subgraph_store.block_ptr(subgraph_id)
     }
 
     fn supports_proof_of_indexing<'a>(
         self: Arc<Self>,
         subgraph_id: &'a graph::prelude::SubgraphDeploymentId,
     ) -> graph::prelude::DynTryFuture<'a, bool> {
-        self.store.clone().supports_proof_of_indexing(subgraph_id)
+        self.subgraph_store
+            .clone()
+            .supports_proof_of_indexing(subgraph_id)
     }
 
     fn get_proof_of_indexing<'a>(
@@ -92,7 +103,7 @@ impl SubgraphStoreTrait for Store {
         indexer: &'a Option<Address>,
         block: EthereumBlockPointer,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
-        self.store
+        self.subgraph_store
             .clone()
             .get_proof_of_indexing(subgraph_id, indexer, block)
     }
@@ -101,7 +112,7 @@ impl SubgraphStoreTrait for Store {
         &self,
         key: graph::prelude::EntityKey,
     ) -> Result<Option<graph::prelude::Entity>, QueryExecutionError> {
-        self.store.get(key)
+        self.subgraph_store.get(key)
     }
 
     fn get_many(
@@ -112,25 +123,25 @@ impl SubgraphStoreTrait for Store {
         std::collections::BTreeMap<EntityType, Vec<graph::prelude::Entity>>,
         graph::prelude::StoreError,
     > {
-        self.store.get_many(subgraph_id, ids_for_type)
+        self.subgraph_store.get_many(subgraph_id, ids_for_type)
     }
 
     fn find(
         &self,
         query: graph::prelude::EntityQuery,
     ) -> Result<Vec<graph::prelude::Entity>, QueryExecutionError> {
-        self.store.find(query)
+        self.subgraph_store.find(query)
     }
 
     fn find_one(
         &self,
         query: graph::prelude::EntityQuery,
     ) -> Result<Option<graph::prelude::Entity>, QueryExecutionError> {
-        self.store.find_one(query)
+        self.subgraph_store.find_one(query)
     }
 
     fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        self.store.find_ens_name(hash)
+        self.subgraph_store.find_ens_name(hash)
     }
 
     fn transact_block_operations(
@@ -141,7 +152,7 @@ impl SubgraphStoreTrait for Store {
         stopwatch: graph::prelude::StopwatchMetrics,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), graph::prelude::StoreError> {
-        self.store.transact_block_operations(
+        self.subgraph_store.transact_block_operations(
             subgraph_id,
             block_ptr_to,
             mods,
@@ -155,7 +166,7 @@ impl SubgraphStoreTrait for Store {
         subgraph_id: graph::prelude::SubgraphDeploymentId,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), graph::prelude::StoreError> {
-        self.store
+        self.subgraph_store
             .revert_block_operations(subgraph_id, block_ptr_to)
     }
 
@@ -163,14 +174,14 @@ impl SubgraphStoreTrait for Store {
         &self,
         name: graph::prelude::SubgraphName,
     ) -> Result<graph::prelude::DeploymentState, graph::prelude::StoreError> {
-        self.store.deployment_state_from_name(name).await
+        self.subgraph_store.deployment_state_from_name(name).await
     }
 
     async fn deployment_state_from_id(
         &self,
         id: graph::prelude::SubgraphDeploymentId,
     ) -> Result<graph::prelude::DeploymentState, graph::prelude::StoreError> {
-        self.store.deployment_state_from_id(id).await
+        self.subgraph_store.deployment_state_from_id(id).await
     }
 
     async fn fail_subgraph(
@@ -178,7 +189,7 @@ impl SubgraphStoreTrait for Store {
         id: SubgraphDeploymentId,
         error: SubgraphError,
     ) -> Result<(), StoreError> {
-        self.store.fail_subgraph(id, error).await
+        self.subgraph_store.fail_subgraph(id, error).await
     }
 
     fn create_subgraph_deployment(
@@ -190,8 +201,14 @@ impl SubgraphStoreTrait for Store {
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<(), StoreError> {
-        self.store
-            .create_subgraph_deployment(name, schema, deployment, node_id, network_name, mode)
+        self.subgraph_store.create_subgraph_deployment(
+            name,
+            schema,
+            deployment,
+            node_id,
+            network_name,
+            mode,
+        )
     }
 
     fn start_subgraph_deployment(
@@ -199,7 +216,8 @@ impl SubgraphStoreTrait for Store {
         logger: &graph::prelude::Logger,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<(), graph::prelude::StoreError> {
-        self.store.start_subgraph_deployment(logger, subgraph_id)
+        self.subgraph_store
+            .start_subgraph_deployment(logger, subgraph_id)
     }
 
     fn unfail(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
@@ -207,15 +225,15 @@ impl SubgraphStoreTrait for Store {
     }
 
     fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
-        self.store.is_deployment_synced(id)
+        self.subgraph_store.is_deployment_synced(id)
     }
 
     fn deployment_synced(&self, id: &graph::prelude::SubgraphDeploymentId) -> Result<(), Error> {
-        self.store.deployment_synced(id)
+        self.subgraph_store.deployment_synced(id)
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        self.store.remove_subgraph(name)
+        self.subgraph_store.remove_subgraph(name)
     }
 
     fn reassign_subgraph(
@@ -223,55 +241,57 @@ impl SubgraphStoreTrait for Store {
         id: &SubgraphDeploymentId,
         node: &NodeId,
     ) -> Result<(), StoreError> {
-        self.store.reassign_subgraph(id, node)
+        self.subgraph_store.reassign_subgraph(id, node)
     }
 
     fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        self.store.unassign_subgraph(id)
+        self.subgraph_store.unassign_subgraph(id)
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        self.store.create_subgraph(name)
+        self.subgraph_store.create_subgraph(name)
     }
 
     async fn load_dynamic_data_sources(
         &self,
         subgraph_id: SubgraphDeploymentId,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        self.store.load_dynamic_data_sources(subgraph_id).await
+        self.subgraph_store
+            .load_dynamic_data_sources(subgraph_id)
+            .await
     }
 
     fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
-        self.store.assigned_node(id)
+        self.subgraph_store.assigned_node(id)
     }
 
     fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
-        self.store.assignments(node)
+        self.subgraph_store.assignments(node)
     }
 
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
-        self.store.subgraph_exists(name)
+        self.subgraph_store.subgraph_exists(name)
     }
 
     fn input_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<Arc<graph::prelude::Schema>, StoreError> {
-        self.store.input_schema(subgraph_id)
+        self.subgraph_store.input_schema(subgraph_id)
     }
 
     fn api_schema(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<Arc<graph::prelude::ApiSchema>, StoreError> {
-        self.store.api_schema(subgraph_id)
+        self.subgraph_store.api_schema(subgraph_id)
     }
 
     fn network_name(
         &self,
         subgraph_id: &graph::prelude::SubgraphDeploymentId,
     ) -> Result<String, StoreError> {
-        self.store.network_name(subgraph_id)
+        self.subgraph_store.network_name(subgraph_id)
     }
 }
 
@@ -285,7 +305,7 @@ impl QueryStoreManager for Store {
         Arc<dyn graph::prelude::QueryStore + Send + Sync>,
         graph::prelude::QueryExecutionError,
     > {
-        let store = self.store.cheap_clone();
+        let store = self.subgraph_store.cheap_clone();
         let (store, site, replica) = graph::spawn_blocking_allow_panic(move || {
             store
                 .replica_for_query(target, for_subscription)
@@ -309,7 +329,7 @@ impl QueryStoreManager for Store {
 
 impl StatusStore for Store {
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        let mut infos = self.store.status(filter)?;
+        let mut infos = self.subgraph_store.status(filter)?;
         let ptrs = self.block_store.chain_head_pointers()?;
 
         for info in &mut infos {
@@ -321,7 +341,7 @@ impl StatusStore for Store {
     }
 
     fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
-        let mut info = self.store.version_info(version_id)?;
+        let mut info = self.subgraph_store.version_info(version_id)?;
 
         info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network)?;
 
@@ -332,14 +352,16 @@ impl StatusStore for Store {
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.store.versions_for_subgraph_id(subgraph_id)
+        self.subgraph_store.versions_for_subgraph_id(subgraph_id)
     }
 
     fn supports_proof_of_indexing<'a>(
         self: Arc<Self>,
         subgraph_id: &'a SubgraphDeploymentId,
     ) -> graph::prelude::DynTryFuture<'a, bool> {
-        self.store.clone().supports_proof_of_indexing(subgraph_id)
+        self.subgraph_store
+            .clone()
+            .supports_proof_of_indexing(subgraph_id)
     }
 
     fn get_proof_of_indexing<'a>(
@@ -348,7 +370,7 @@ impl StatusStore for Store {
         indexer: &'a Option<Address>,
         block: EthereumBlockPointer,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
-        self.store
+        self.subgraph_store
             .clone()
             .get_proof_of_indexing(subgraph_id, indexer, block)
     }
