@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use graph::{
@@ -13,8 +14,8 @@ use graph::{
     data::subgraph::status,
     prelude::{
         web3::types::Address, CheapClone, Error, EthereumBlockPointer, NodeId, QueryExecutionError,
-        QueryStore as QueryStoreTrait, Schema, StoreError, SubgraphDeploymentEntity,
-        SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
+        Schema, StoreError, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphName,
+        SubgraphVersionSwitchingMode,
     },
 };
 
@@ -263,13 +264,26 @@ impl SubgraphStoreTrait for Store {
     }
 }
 
+#[async_trait]
 impl QueryStoreManager for Store {
-    fn query_store(
+    async fn query_store(
         &self,
         target: graph::data::query::QueryTarget,
         for_subscription: bool,
-    ) -> Result<Arc<dyn QueryStoreTrait + Send + Sync>, QueryExecutionError> {
-        let (store, site, replica) = self.store.replica_for_query(target, for_subscription)?;
+    ) -> Result<
+        Arc<dyn graph::prelude::QueryStore + Send + Sync>,
+        graph::prelude::QueryExecutionError,
+    > {
+        let store = self.store.cheap_clone();
+        let (store, site, replica) = graph::spawn_blocking_allow_panic(move || {
+            store
+                .replica_for_query(target, for_subscription)
+                .map_err(|e| e.into())
+        })
+        .await
+        .map_err(|e| QueryExecutionError::Panic(e.to_string()))
+        .and_then(|x| x)?;
+
         let chain_store = self.block_store.chain_store(&site.network).ok_or_else(|| {
             constraint_violation!(
                 "Subgraphs index a known network, but {} indexes `{}` which we do not know about. This is most likely a configuration error.",
@@ -277,6 +291,7 @@ impl QueryStoreManager for Store {
                 site.network
             )
         })?;
+
         Ok(Arc::new(QueryStore::new(store, chain_store, site, replica)))
     }
 }

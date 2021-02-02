@@ -515,7 +515,10 @@ fn fatal_vs_non_fatal() {
     }
 
     run_test_sequentially(setup, |store, id| async move {
-        let query_store = store.query_store(id.cheap_clone().into(), false).unwrap();
+        let query_store = store
+            .query_store(id.cheap_clone().into(), false)
+            .await
+            .unwrap();
 
         let error = || SubgraphError {
             subgraph_id: id.clone(),

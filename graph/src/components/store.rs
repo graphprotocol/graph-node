@@ -1117,6 +1117,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<String, StoreError>;
 }
 
+#[async_trait]
 pub trait QueryStoreManager: Send + Sync + 'static {
     /// Get a new `QueryStore`. A `QueryStore` is tied to a DB replica, so if Graph Node is
     /// configured to use secondary DB servers the queries will be distributed between servers.
@@ -1127,7 +1128,7 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     /// metadata about the deployment `id` (but not metadata about other deployments).
     ///
     /// If `for_subscription` is true, the main replica will always be used.
-    fn query_store(
+    async fn query_store(
         &self,
         target: QueryTarget,
         for_subscription: bool,

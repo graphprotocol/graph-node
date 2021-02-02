@@ -366,7 +366,9 @@ fn execute_subgraph_query_internal(
     ));
     let mut result = QueryResults::empty();
     let deployment = query.schema.id().clone();
-    let store = STORE.clone().query_store(deployment.into(), false).unwrap();
+    let store = rt
+        .block_on(STORE.clone().query_store(deployment.into(), false))
+        .unwrap();
     for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
         let resolver = return_err!(rt.block_on(StoreResolver::at_block(
