@@ -90,6 +90,7 @@ struct CacheByBlock {
 
     // The value is `(result, n_hits)`.
     cache: HashMap<QueryHash, (Arc<QueryResult>, AtomicU64)>,
+    total_insert_time: Duration,
 }
 
 impl CacheByBlock {
@@ -99,6 +100,7 @@ impl CacheByBlock {
             max_weight,
             weight: 0,
             cache: HashMap::new(),
+            total_insert_time: Duration::default(),
         }
     }
 
@@ -114,8 +116,10 @@ impl CacheByBlock {
         assert!(!value.has_errors());
         let fits_in_cache = self.weight + weight <= self.max_weight;
         if fits_in_cache {
+            let start = Instant::now();
             self.weight += weight;
             self.cache.insert(key, (value, AtomicU64::new(0)));
+            self.total_insert_time += start.elapsed();
         }
         fits_in_cache
     }
@@ -129,7 +133,6 @@ pub struct QueryBlockCache {
     cache_by_network: Vec<(String, VecDeque<CacheByBlock>)>,
     max_weight: usize,
     max_blocks: usize,
-    total_insert_time: Duration,
 }
 
 impl QueryBlockCache {
@@ -139,7 +142,6 @@ impl QueryBlockCache {
             cache_by_network: Vec::new(),
             max_weight,
             max_blocks,
-            total_insert_time: Duration::default(),
         }
     }
 
@@ -174,10 +176,7 @@ impl QueryBlockCache {
 
         // If there is already a cache by the block of this query, just add it there.
         if let Some(cache_by_block) = cache.iter_mut().find(|c| c.block == block_ptr) {
-            let start = Instant::now();
-            let inserted = cache_by_block.insert(key, result.cheap_clone(), weight);
-            self.total_insert_time += start.elapsed();
-            return inserted;
+            return cache_by_block.insert(key, result.cheap_clone(), weight);
         }
 
         // We're creating a new `CacheByBlock` if:
@@ -195,8 +194,10 @@ impl QueryBlockCache {
             // Stats are reported in a task since we don't need the lock for it.
             let block = cache.pop_back().unwrap();
             let shard = self.shard;
-            let insert_time_ms = self.total_insert_time.as_millis();
+            let network = network.to_string();
+
             graph::spawn(async move {
+                let insert_time_ms = block.total_insert_time.as_millis();
                 let mut dead_inserts = 0;
                 let mut total_hits = 0;
                 for (_, hits) in block.cache.values() {
@@ -209,6 +210,7 @@ impl QueryBlockCache {
                 let n_entries = block.cache.len();
                 debug!(logger, "Rotating query cache, stats for last block";
                     "shard" => shard,
+                    "network" => network,
                     "entries" => n_entries,
                     "avg_hits" => format!("{0:.2}", (total_hits as f64) / (n_entries as f64)),
                     "dead_inserts" => dead_inserts,
@@ -220,7 +222,7 @@ impl QueryBlockCache {
 
         // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
         let mut cache_by_block = CacheByBlock::new(block_ptr, self.max_weight);
-        let cache_insert = cache_by_block.insert(key, result.cheap_clone(), weight);
+        let cache_insert = cache_by_block.insert(key, result, weight);
         cache.push_front(cache_by_block);
         cache_insert
     }
