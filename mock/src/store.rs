@@ -122,11 +122,14 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn deployment_state_from_name(&self, _: SubgraphName) -> Result<DeploymentState, StoreError> {
+    async fn deployment_state_from_name(
+        &self,
+        _: SubgraphName,
+    ) -> Result<DeploymentState, StoreError> {
         unimplemented!()
     }
 
-    fn deployment_state_from_id(
+    async fn deployment_state_from_id(
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {

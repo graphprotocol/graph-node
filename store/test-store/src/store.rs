@@ -442,7 +442,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
     .unwrap()
 }
 
-pub fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection {
+pub fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection<'static> {
     let conn = PRIMARY_POOL.get().unwrap();
     graph_store_postgres::layout_for_tests::Connection::new(conn)
 }

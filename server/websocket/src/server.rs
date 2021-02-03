@@ -28,21 +28,20 @@ where
         }
     }
 
-    fn subgraph_id_from_url_path(
+    async fn subgraph_id_from_url_path(
         store: Arc<S>,
         path: &str,
     ) -> Result<Option<SubgraphDeploymentId>, Error> {
-        fn id_from_name<S: SubgraphStore>(
+        async fn id_from_name<S: SubgraphStore>(
             store: Arc<S>,
             name: String,
         ) -> Option<SubgraphDeploymentId> {
-            SubgraphName::new(name)
+            let subgraph_name = SubgraphName::new(name).ok()?;
+            store
+                .deployment_state_from_name(subgraph_name)
+                .await
                 .ok()
-                .map(|subgraph_name| store.deployment_state_from_name(subgraph_name))
-                .transpose()
-                .map(|state| state.map(|state| state.id))
-                .ok()
-                .flatten()
+                .map(|state| state.id)
         }
 
         let path_segments = {
@@ -60,10 +59,10 @@ where
         match path_segments.as_slice() {
             &["subgraphs", "id", subgraph_id] => Ok(SubgraphDeploymentId::new(subgraph_id).ok()),
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
-                Ok(id_from_name(store, path_segments[2..].join("/")))
+                Ok(id_from_name(store, path_segments[2..].join("/")).await)
             }
             &["subgraphs", "network", _, _] => {
-                Ok(id_from_name(store, path_segments[1..].join("/")))
+                Ok(id_from_name(store, path_segments[1..].join("/")).await)
             }
             _ => Ok(None),
         }
@@ -110,20 +109,36 @@ where
                 // Try to obtain the subgraph ID or name from the URL path.
                 // Return a 404 if the URL path contains no name/ID segment.
                 let path = request.uri().path();
-                let subgraph_id = Self::subgraph_id_from_url_path(store.clone(), path.as_ref())
-                    .map_err(|e| {
-                        error!(
-                            logger,
-                            "Error resolving subgraph ID from URL path";
-                            "error" => e.to_string()
-                        );
 
-                        Response::builder().status(StatusCode::INTERNAL_SERVER_ERROR).body(None).unwrap()
-                    }).and_then(|subgraph_id_opt| {
-                        subgraph_id_opt.ok_or_else(|| {
-                            Response::builder().status(StatusCode::NOT_FOUND).body(None).unwrap()
-                        })
-                    })?;
+                // `block_in_place` is not recommended but in this case we have no alternative since
+                // we're in an async context but `tokio_tungstenite` doesn't allow this callback
+                // to be a future.
+                let subgraph_id = tokio::task::block_in_place(|| {
+                    graph::block_on(Self::subgraph_id_from_url_path(
+                        store.clone(),
+                        path.as_ref(),
+                    ))
+                })
+                .map_err(|e| {
+                    error!(
+                        logger,
+                        "Error resolving subgraph ID from URL path";
+                        "error" => e.to_string()
+                    );
+
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(None)
+                        .unwrap()
+                })
+                .and_then(|subgraph_id_opt| {
+                    subgraph_id_opt.ok_or_else(|| {
+                        Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(None)
+                            .unwrap()
+                    })
+                })?;
 
                 // Check if the subgraph is deployed
                 match store.is_deployed(&subgraph_id) {
@@ -131,13 +146,19 @@ where
                         error!(logger, "Failed to establish WS connection, no data found for subgraph";
                                         "subgraph_id" => subgraph_id.to_string(),
                         );
-                        return Err(Response::builder().status(StatusCode::NOT_FOUND).body(None).unwrap());
+                        return Err(Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(None)
+                            .unwrap());
                     }
                     Ok(true) => (),
                 }
 
                 *accept_subgraph_id.lock().unwrap() = Some(subgraph_id);
-                response.headers_mut().insert("Sec-WebSocket-Protocol", HeaderValue::from_static("graphql-ws"));
+                response.headers_mut().insert(
+                    "Sec-WebSocket-Protocol",
+                    HeaderValue::from_static("graphql-ws"),
+                );
                 Ok(response)
             })
             .then(move |result| async move {

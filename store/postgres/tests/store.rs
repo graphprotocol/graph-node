@@ -993,6 +993,7 @@ async fn check_basic_revert(
     let subscription = subscribe(subgraph_id, entity_type);
     let state = store
         .deployment_state_from_id(subgraph_id.to_owned())
+        .await
         .expect("can get deployment state");
     assert_eq!(subgraph_id, &state.id);
 
@@ -1016,6 +1017,7 @@ async fn check_basic_revert(
 
     let state = store
         .deployment_state_from_id(subgraph_id.to_owned())
+        .await
         .expect("can get deployment state");
     assert_eq!(subgraph_id, &state.id);
 
@@ -1894,6 +1896,7 @@ fn reorg_tracking() {
             let subgraph_id = TEST_SUBGRAPH_ID.to_owned();
             let state = &$store
                 .deployment_state_from_id(subgraph_id.clone())
+                .await
                 .expect("can get deployment state");
             assert_eq!(&subgraph_id, &state.id, "subgraph_id");
             assert_eq!($reorg_count, state.reorg_count, "reorg_count");

@@ -1053,12 +1053,12 @@ impl DeploymentStore {
         Ok(event)
     }
 
-    pub(crate) fn deployment_state_from_id(
+    pub(crate) async fn deployment_state_from_id(
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {
-        let conn = self.get_conn()?;
-        deployment::state(&conn, id)
+        self.with_conn(|conn, _| deployment::state(&conn, id).map_err(|e| e.into()))
+            .await
     }
 
     pub(crate) async fn fail_subgraph(

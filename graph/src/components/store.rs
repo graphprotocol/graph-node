@@ -1011,12 +1011,14 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Find the deployment for the current version of subgraph `name` and
     /// return details about it needed for executing queries
-    fn deployment_state_from_name(&self, name: SubgraphName)
-        -> Result<DeploymentState, StoreError>;
+    async fn deployment_state_from_name(
+        &self,
+        name: SubgraphName,
+    ) -> Result<DeploymentState, StoreError>;
 
     /// Find the deployment for the subgraph deployment `id` and
     /// return details about it needed for executing queries
-    fn deployment_state_from_id(
+    async fn deployment_state_from_id(
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError>;
@@ -1218,11 +1220,14 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn deployment_state_from_name(&self, _: SubgraphName) -> Result<DeploymentState, StoreError> {
+    async fn deployment_state_from_name(
+        &self,
+        _: SubgraphName,
+    ) -> Result<DeploymentState, StoreError> {
         unimplemented!()
     }
 
-    fn deployment_state_from_id(
+    async fn deployment_state_from_id(
         &self,
         _: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {
@@ -1453,7 +1458,7 @@ pub trait QueryStore: Send + Sync {
 
     /// Find the current state for the subgraph deployment `id` and
     /// return details about it needed for executing queries
-    fn deployment_state(&self) -> Result<DeploymentState, QueryExecutionError>;
+    async fn deployment_state(&self) -> Result<DeploymentState, QueryExecutionError>;
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
