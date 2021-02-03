@@ -152,18 +152,18 @@ impl SubgraphStoreTrait for Store {
             .revert_block_operations(subgraph_id, block_ptr_to)
     }
 
-    fn deployment_state_from_name(
+    async fn deployment_state_from_name(
         &self,
         name: graph::prelude::SubgraphName,
     ) -> Result<graph::prelude::DeploymentState, graph::prelude::StoreError> {
-        self.store.deployment_state_from_name(name)
+        self.store.deployment_state_from_name(name).await
     }
 
-    fn deployment_state_from_id(
+    async fn deployment_state_from_id(
         &self,
         id: graph::prelude::SubgraphDeploymentId,
     ) -> Result<graph::prelude::DeploymentState, graph::prelude::StoreError> {
-        self.store.deployment_state_from_id(id)
+        self.store.deployment_state_from_id(id).await
     }
 
     async fn fail_subgraph(

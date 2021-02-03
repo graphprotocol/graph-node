@@ -350,6 +350,15 @@ impl SubgraphStore {
         Ok(primary::Connection::new(conn))
     }
 
+    pub(crate) async fn with_primary_conn<T: Send + 'static>(
+        &self,
+        f: impl 'static + Send + FnOnce(primary::Connection) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        self.primary
+            .with_conn(|conn, _| f(primary::Connection::new(conn)).map_err(|e| e.into()))
+            .await
+    }
+
     pub(crate) fn replica_for_query(
         &self,
         target: QueryTarget,
@@ -701,20 +710,22 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.send_store_event(&event)
     }
 
-    fn deployment_state_from_name(
+    async fn deployment_state_from_name(
         &self,
         name: SubgraphName,
     ) -> Result<DeploymentState, StoreError> {
-        let id = self.primary_conn()?.current_deployment_for_subgraph(name)?;
-        self.deployment_state_from_id(id)
+        let id = self
+            .with_primary_conn(|conn| conn.current_deployment_for_subgraph(name))
+            .await?;
+        self.deployment_state_from_id(id).await
     }
 
-    fn deployment_state_from_id(
+    async fn deployment_state_from_id(
         &self,
         id: SubgraphDeploymentId,
     ) -> Result<DeploymentState, StoreError> {
         let (store, _) = self.store(&id)?;
-        store.deployment_state_from_id(id)
+        store.deployment_state_from_id(id).await
     }
 
     fn start_subgraph_deployment(

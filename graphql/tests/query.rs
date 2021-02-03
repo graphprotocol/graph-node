@@ -1558,6 +1558,7 @@ fn query_detects_reorg() {
             .into_static();
         let state = STORE
             .deployment_state_from_id(id.clone())
+            .await
             .expect("failed to get state");
 
         // Inject a fake initial state; c435c25decbc4ad7bbbadf8e0ced0ff2
