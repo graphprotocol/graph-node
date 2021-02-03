@@ -340,7 +340,10 @@ where
                                             err_id.clone(),
                                             result,
                                         );
-                                        error_sink.unbounded_send(msg.into()).unwrap();
+
+                                        // An error means the client closed the websocket, ignore
+                                        // and let it be handled in the websocket loop above.
+                                        let _ = error_sink.unbounded_send(msg.into());
                                     }
                                 }
                             };
