@@ -14,6 +14,7 @@ pub struct Deployment {
     pub namespace: String,
     pub node_id: Option<String>,
     pub shard: String,
+    pub chain: String,
 }
 
 impl Deployment {
@@ -39,6 +40,7 @@ impl Deployment {
                 ds::name,
                 a::node_id.nullable(),
                 ds::shard,
+                ds::network,
             ));
 
         let deployments: Vec<Deployment> = if name.starts_with("sgd") {
@@ -60,6 +62,7 @@ impl Deployment {
             "id",
             "namespace",
             "shard",
+            "chain",
             "node_id",
         ]);
 
@@ -70,6 +73,7 @@ impl Deployment {
                 deployment.deployment,
                 deployment.namespace,
                 deployment.shard,
+                deployment.chain,
                 deployment.node_id.unwrap_or("---".to_string()),
             ]);
         }
