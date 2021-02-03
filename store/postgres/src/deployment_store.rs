@@ -999,6 +999,7 @@ impl DeploymentStore {
                     &econn.conn,
                     &site.deployment,
                     deterministic_errors,
+                    block_ptr_to.block_number(),
                 )?;
             }
 

@@ -11,7 +11,7 @@ const fetchSubgraphs = createApolloFetch({
   uri: "http://localhost:18030/graphql",
 });
 const fetchSubgraph = createApolloFetch({
-  uri: "http://localhost:18000/subgraphs/name/test/remove-then-update",
+  uri: "http://localhost:18000/subgraphs/name/test/non-fatal-errors",
 });
 
 const exec = (cmd) => {

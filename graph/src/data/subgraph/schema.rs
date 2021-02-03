@@ -1157,7 +1157,7 @@ pub struct SubgraphError {
     pub block_ptr: Option<EthereumBlockPointer>,
     pub handler: Option<String>,
 
-    // `true` if we are certain the error is determinsitic. If in doubt, this is `false`.
+    // `true` if we are certain the error is deterministic. If in doubt, this is `false`.
     pub deterministic: bool,
 }
 

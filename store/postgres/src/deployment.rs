@@ -550,12 +550,13 @@ pub(crate) fn insert_subgraph_errors(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     deterministic_errors: Vec<SubgraphError>,
+    block: BlockNumber,
 ) -> Result<(), StoreError> {
     for error in deterministic_errors {
         insert_subgraph_error(conn, error)?;
     }
 
-    check_health(conn, id)
+    check_health(conn, id, block)
 }
 
 #[cfg(debug_assertions)]
@@ -571,13 +572,16 @@ pub(crate) fn error_count(
         .get_result::<i64>(conn)? as usize)
 }
 
-/// Checks if the subgraph is healthy or unhealthy as of the latest block, based on the presence of
-/// deterministic errors. Has no effect on failed subgraphs.
-fn check_health(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+/// Checks if the subgraph is healthy or unhealthy as of the given block, or the subgraph latest
+/// block if `None`, based on the presence of non-fatal errors. Has no effect on failed subgraphs.
+fn check_health(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    block: BlockNumber,
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
-    // Errors have unbounded upper bounds so if one exists, it exists as of the latest block.
-    let has_errors = has_non_fatal_errors(conn, id, None)?;
+    let has_errors = has_non_fatal_errors(conn, id, Some(block))?;
 
     let (new, old) = match has_errors {
         true => (SubgraphHealth::Unhealthy, SubgraphHealth::Healthy),
@@ -611,7 +615,10 @@ pub(crate) fn revert_subgraph_errors(
     )
     .execute(conn)?;
 
-    check_health(conn, id)
+    // The result will be the same at `reverted_block` or `reverted_block - 1` since the errors at
+    // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
+    // is the block being reverted to.
+    check_health(conn, id, reverted_block - 1)
 }
 
 /// Drop the schema `namespace`. This deletes all data for the subgraph,
