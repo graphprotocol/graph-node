@@ -79,6 +79,23 @@ pub enum Command {
     Unused(UnusedCommand),
     /// Check the configuration file
     Check,
+    /// Remove a named subgraph
+    Remove {
+        /// The name of the subgraph to remove
+        name: String,
+    },
+    /// Assign or reassign a deployment
+    Reassign {
+        /// The id of the deployment to reassign
+        id: String,
+        /// The name of the node that should index the deployment
+        node: String,
+    },
+    /// Unassign a deployment
+    Unassign {
+        /// The id of the deployment to unassign
+        id: String,
+    },
 }
 
 #[derive(Clone, Debug, StructOpt)]
@@ -198,6 +215,18 @@ async fn main() {
             }
             Err(e) => Err(anyhow!("error serializing config: {}", e)),
         },
+        Remove { name } => {
+            let store = make_store(&logger, &config);
+            commands::remove::run(store, name)
+        }
+        Unassign { id } => {
+            let store = make_store(&logger, &config);
+            commands::assign::unassign(store, id)
+        }
+        Reassign { id, node } => {
+            let store = make_store(&logger, &config);
+            commands::assign::reassign(store, id, node)
+        }
     };
     if let Err(e) = result {
         die!("error: {}", e)
