@@ -1,7 +1,7 @@
 use git_testament::{git_testament, render_testament};
+use graph::prometheus::Registry;
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
-use prometheus::Registry;
 use std::env;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -657,8 +657,8 @@ mod test {
     use graph::components::ethereum::NodeCapabilities;
     use graph::log::logger;
     use graph::prelude::tokio;
+    use graph::prometheus::Registry;
     use graph_core::MetricsRegistry;
-    use prometheus::Registry;
     use std::sync::Arc;
 
     #[tokio::test]

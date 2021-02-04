@@ -97,12 +97,12 @@ impl MetricsRegistryTrait for MetricsRegistry {
                     "registering metric [{}] because it was already registered", name,
                 );
             }
-            PrometheusError::InconsistentCardinality(expected, got) => {
+            PrometheusError::InconsistentCardinality { expect, got } => {
                 error!(
                     self.logger,
                     "registering metric [{}] failed due to inconsistent caridinality, expected = {} got = {}",
                     name,
-                    expected,
+                    expect,
                     got,
                 );
             }

@@ -49,7 +49,7 @@ tiny-keccak = "1.5.0"
 tokio = { version = "0.2.22", features = ["stream", "rt-threaded", "rt-util", "blocking", "time", "sync", "macros", "test-util"] }
 tokio-retry = { git = "https://github.com/graphprotocol/rust-tokio-retry", branch = "update-to-tokio-02" }
 url = "2.1.1"
-prometheus = "0.7.0"
+prometheus = "0.11.0"
 priority-queue = "0.7.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 uuid = { version = "0.8.1", features = ["v4"] }

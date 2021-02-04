@@ -2,10 +2,10 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use anyhow::Error;
+use graph::prometheus::{Encoder, Registry, TextEncoder};
 use hyper;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
-use prometheus::{Encoder, Registry, TextEncoder};
 use thiserror::Error;
 
 use graph::prelude::{MetricsServer as MetricsServerTrait, *};
