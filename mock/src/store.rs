@@ -185,6 +185,10 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
+    fn unfail(&self, _: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
     fn is_deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
         unimplemented!()
     }

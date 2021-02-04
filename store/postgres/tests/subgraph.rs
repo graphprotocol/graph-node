@@ -12,7 +12,7 @@ use graph::{
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
-    prelude::{o, slog, CheapClone, Logger, NodeId, SubgraphDeploymentId, SubgraphStore as _},
+    prelude::{CheapClone, NodeId, SubgraphDeploymentId, SubgraphStore as _},
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::Store;
@@ -554,7 +554,6 @@ fn fail_unfail() {
     }
 
     run_test_sequentially(setup, |store, id| async move {
-        let logger = Logger::root(slog::Discard, o!());
         let query_store = store
             .query_store(id.cheap_clone().into(), false)
             .await
@@ -576,7 +575,7 @@ fn fail_unfail() {
             .unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
-        store.start_subgraph_deployment(&logger, &id).unwrap();
+        store.unfail(&id).unwrap();
 
         // Advance the block ptr to the block of the deleted error.
         transact_entity_operations(&store, id.cheap_clone(), BLOCKS[1], vec![]).unwrap();

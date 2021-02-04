@@ -1080,15 +1080,15 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError>;
 
-    /// Start an existing subgraph deployment. This will reset the state of
-    /// the subgraph to a known good state. `ops` needs to contain all the
-    /// operations on the subgraph of subgraphs to reset the metadata of the
-    /// subgraph
+    /// Start an existing subgraph deployment.
     fn start_subgraph_deployment(
         &self,
         logger: &Logger,
         subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError>;
+
+    /// Remove the fatal error from a subgraph and check if it is healthy or unhealthy.
+    fn unfail(&self, subgraph_id: &SubgraphDeploymentId) -> Result<(), StoreError>;
 
     /// Load the dynamic data sources for the given deployment
     async fn load_dynamic_data_sources(
@@ -1275,6 +1275,10 @@ impl SubgraphStore for MockStore {
         _logger: &Logger,
         _subgraph_id: &SubgraphDeploymentId,
     ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail(&self, _: &SubgraphDeploymentId) -> Result<(), StoreError> {
         unimplemented!()
     }
 
