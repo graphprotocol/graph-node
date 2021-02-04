@@ -195,6 +195,10 @@ impl SubgraphStoreTrait for Store {
         self.store.start_subgraph_deployment(logger, subgraph_id)
     }
 
+    fn unfail(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        self.store.unfail(id)
+    }
+
     fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
         self.store.is_deployment_synced(id)
     }

@@ -1071,10 +1071,12 @@ impl DeploymentStore {
         graft_base: Option<(Site, EthereumBlockPointer)>,
     ) -> Result<(), StoreError> {
         let econn = self.get_entity_conn(&site, ReplicaId::Main)?;
-        econn.transaction(|| {
-            deployment::unfail(&econn.conn, &site.deployment)?;
-            econn.start_subgraph(logger, graft_base)
-        })
+        econn.transaction(|| econn.start_subgraph(logger, graft_base))
+    }
+
+    pub(crate) fn unfail(&self, site: Arc<Site>) -> Result<(), StoreError> {
+        let econn = self.get_entity_conn(&site, ReplicaId::Main)?;
+        econn.transaction(|| deployment::unfail(&econn.conn, &site.deployment))
     }
 
     #[cfg(debug_assertions)]

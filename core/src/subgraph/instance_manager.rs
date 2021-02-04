@@ -455,6 +455,7 @@ where
     let store_for_err = ctx.inputs.store.cheap_clone();
     let logger = ctx.state.logger.cheap_clone();
     let id_for_err = ctx.inputs.deployment_id.clone();
+    let mut first_run = true;
 
     loop {
         debug!(logger, "Starting or restarting subgraph");
@@ -596,6 +597,18 @@ where
             match res {
                 Ok((c, needs_restart)) => {
                     ctx = c;
+
+                    // Unfail the subgraph if it was previously failed.
+                    // As an optimization we check this only on the first run.
+                    if first_run {
+                        first_run = false;
+
+                        ctx.inputs
+                            .store
+                            .unfail(&ctx.inputs.deployment_id)
+                            .map_err(|_| ())?;
+                    }
+
                     if needs_restart {
                         // Cancel the stream for real
                         ctx.state
