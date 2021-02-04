@@ -1,9 +1,9 @@
 use std::{env, sync::Arc};
 
 use git_testament::{git_testament, render_testament};
+use graph::prometheus::Registry;
 use graph_core::MetricsRegistry;
 use lazy_static::lazy_static;
-use prometheus::Registry;
 use structopt::StructOpt;
 
 use graph::{

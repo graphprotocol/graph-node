@@ -29,6 +29,7 @@ pub use task_spawn::{
 };
 
 pub use bytes;
+pub use prometheus;
 pub use stable_hash;
 pub use url;
 
