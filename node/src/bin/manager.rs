@@ -8,7 +8,7 @@ use structopt::StructOpt;
 
 use graph::{
     log::logger,
-    prelude::{anyhow, info, o, slog, tokio, Logger, NodeId},
+    prelude::{info, o, slog, tokio, Logger, NodeId},
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
@@ -79,15 +79,11 @@ pub enum Command {
         #[structopt(long, short)]
         used: bool,
     },
-    /// Print how a specific subgraph would be placed
-    Place { name: String, network: String },
     /// Manage unused deployments
     ///
     /// Record which deployments are unused with `record`, then remove them
     /// with `remove`
     Unused(UnusedCommand),
-    /// Check the configuration file
-    Check,
     /// Remove a named subgraph
     Remove {
         /// The name of the subgraph to remove
@@ -105,6 +101,11 @@ pub enum Command {
         /// The id of the deployment to unassign
         id: String,
     },
+    /// Check and interrogate the configuration
+    ///
+    /// Print information about a configuration file without
+    /// actually connecting to databases or network clients
+    Config(ConfigCommand),
 }
 
 #[derive(Clone, Debug, StructOpt)]
@@ -128,6 +129,31 @@ pub enum UnusedCommand {
         /// Remove a specific deployment
         #[structopt(short, long, conflicts_with = "count")]
         deployment: Option<String>,
+    },
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub enum ConfigCommand {
+    /// Check and validate the configuration file
+    Check {
+        /// Print the configuration as JSON
+        #[structopt(long)]
+        print: bool,
+    },
+    /// Print how a specific subgraph would be placed
+    Place {
+        /// The name of the subgraph
+        name: String,
+        /// The network the subgraph indexes
+        network: String,
+    },
+    /// Information about the size of database pools
+    Pools {
+        /// The names of the nodes that are going to run
+        nodes: Vec<String>,
+        /// Print connections by shard rather than by node
+        #[structopt(short, long)]
+        shard: bool,
     },
 }
 
@@ -212,7 +238,6 @@ async fn main() {
             let pool = make_main_pool();
             commands::info::run(pool, name, current, pending, used)
         }
-        Place { name, network } => commands::place::run(&config.deployment, &name, &network),
         Unused(cmd) => {
             let store = make_store();
             use UnusedCommand::*;
@@ -226,14 +251,17 @@ async fn main() {
                 }
             }
         }
-        Check => match config.to_json() {
-            Ok(txt) => {
-                println!("{}", txt);
-                eprintln!("Successfully validated configuration");
-                Ok(())
+        Config(cmd) => {
+            use ConfigCommand::*;
+
+            match cmd {
+                Place { name, network } => {
+                    commands::config::place(&config.deployment, &name, &network)
+                }
+                Check { print } => commands::config::check(&config, print),
+                Pools { nodes, shard } => commands::config::pools(&config, nodes, shard),
             }
-            Err(e) => Err(anyhow!("error serializing config: {}", e)),
-        },
+        }
         Remove { name } => {
             let store = make_store();
             commands::remove::run(store, name)
