@@ -198,7 +198,8 @@ async fn main() {
 
     let expensive_queries = read_expensive_queries().unwrap();
 
-    let store_builder = StoreBuilder::new(&logger, &config, metrics_registry.cheap_clone());
+    let store_builder =
+        StoreBuilder::new(&logger, &node_id, &config, metrics_registry.cheap_clone());
 
     graph::spawn(
         futures::stream::FuturesOrdered::from_iter(stores_eth_networks.flatten().into_iter().map(

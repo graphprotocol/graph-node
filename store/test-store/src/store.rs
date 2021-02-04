@@ -52,6 +52,7 @@ lazy_static! {
     pub static ref STORE: Arc<Store> = STORE_POOL_CONFIG.0.clone();
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
     pub static ref SUBSCRIPTION_MANAGER: Arc<SubscriptionManager> = STORE_POOL_CONFIG.3.clone();
+    static ref NODE_ID: NodeId = NodeId::new("test").unwrap();
     pub static ref GENESIS_PTR: EthereumBlockPointer = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -162,12 +163,11 @@ fn create_subgraph(
         name.truncate(32);
         SubgraphName::new(name).unwrap()
     };
-    let node_id = NodeId::new("test").unwrap();
     STORE.create_deployment_replace(
         name,
         &schema,
         deployment,
-        node_id,
+        NODE_ID.clone(),
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
     )?;
@@ -418,7 +418,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
     let registry = Arc::new(MockMetricsRegistry::new());
     std::thread::spawn(move || {
         STORE_RUNTIME.lock().unwrap().block_on(async {
-            let builder = StoreBuilder::new(&*LOGGER, &config, registry);
+            let builder = StoreBuilder::new(&*LOGGER, &*NODE_ID, &config, registry);
             let subscription_manager = builder.subscription_manager();
             let primary_pool = builder.primary_pool();
 

@@ -39,6 +39,7 @@ and the replicas will receive 50% of the traffic each. In the `vip` shard,
 [store.primary]
 connection = "postgresql://graph:${PGPASSWORD}@primary/graph"
 weight = 0
+pool_size = 10
 [store.primary.replicas.repl1]
 connection = "postgresql://graph:${PGPASSWORD}@primary-repl1/graph"
 weight = 1
@@ -49,6 +50,7 @@ weight = 1
 [store.vip]
 connection = "postgresql://graph:${PGPASSWORD}@${VIP_MAIN}/graph"
 weight = 1
+pool_size = 10
 [store.vip.replicas.repl1]
 connection = "postgresql://graph:${PGPASSWORD}@${VIP_REPL1}/graph"
 weight = 1
@@ -58,6 +60,41 @@ The `connection` string must be a valid [libpq connection
 string](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING). Before
 passing the connection string to Postgres, environment variables embedded
 in the string are expanded.
+
+### Setting the `pool_size`
+
+Each shard must indicate how many database connections each `graph-node`
+instance should keep in its connection pool for that database. For
+replicas, the pool size defaults to the pool size of the main database, but
+can also be set explicitly. Such a setting replaces the setting from the
+main database.
+
+The `pool_size` can either be a number like in the example above, in which
+case any `graph-node` instance will use a connection pool of that size, or a set
+of rules that uses different sizes for different `graph-node` instances,
+keyed off the `node_id` set on the command line. When using rules, the
+`pool_size` is set like this:
+
+```toml
+pool_size = [
+  { node = "index_node_general_.*", size = 20 },
+  { node = "index_node_special_.*", size = 30 },
+  { node = "query_node_.*", size = 80 }
+]
+```
+
+Each rule consists of a regular expression `node` and the size that should
+be used if the current instance's `node_id` matches that regular
+expression. You can use the command `graphman config pools` to check how
+many connections each `graph-node` instance will use, and how many database
+connections will be opened by all `graph-node` instance. The rules are
+checked in the order in which they are written, and the first one that
+matches is used. It is an error if no rule matches.
+
+It is highly recommended to run `graphman config pools $all_nodes` every
+time the configuration is changed to make sure that the connection pools
+are what is expected. Here, `$all_nodes` should be a list of all the node
+names that will use this configuration file.
 
 ## Configuring Ethereum Providers
 
@@ -162,18 +199,17 @@ indexers = [ <.. list of all indexing nodes ..> ]
 A configuration file can be checked for validity by passing the `--check-config`
 flag to `graph-node`. The command
 ```shell
-graph-node --config $CONFIG_FILE --check-config --ethereum-rpc 'something'
+graph-node --config $CONFIG_FILE --check-config
 ```
 will read the configuration file and print information about syntax errors or, for
-valid files, a JSON representation of the configuration. (The fact that
-`--ethereum-rpc` needs to be specified will be addressed in a future release)
+valid files, a JSON representation of the configuration.
 
 ## Simulating deployment placement
 
 Given a configuration file, placement of newly deployed subgraphs can be
 simulated with
 ```shell
-graphman --config $CONFIG_FILE place some/subgraph mainnet
+graphman --config $CONFIG_FILE config place some/subgraph mainnet
 ```
 The command will not make any changes, but simply print where that subgraph
 would be placed. The output will indicate the database shard that will hold

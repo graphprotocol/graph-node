@@ -1,7 +1,7 @@
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
-use graph::prelude::{o, MetricsRegistry};
+use graph::prelude::{o, MetricsRegistry, NodeId};
 use graph::{
     prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
     util::security::SafeDisplay,
@@ -26,7 +26,12 @@ pub struct StoreBuilder {
 }
 
 impl StoreBuilder {
-    pub fn new(logger: &Logger, config: &Config, registry: Arc<dyn MetricsRegistry>) -> Self {
+    pub fn new(
+        logger: &Logger,
+        node: &NodeId,
+        config: &Config,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
         let primary_shard = config.primary_store().clone();
 
         let subscription_manager = Arc::new(SubscriptionManager::new(
@@ -35,7 +40,7 @@ impl StoreBuilder {
         ));
 
         let (store, pools) =
-            Self::make_sharded_store_and_primary_pool(logger, config, registry.cheap_clone());
+            Self::make_sharded_store_and_primary_pool(logger, node, config, registry.cheap_clone());
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -58,6 +63,7 @@ impl StoreBuilder {
     /// the connection pool for the primary shard
     fn make_sharded_store_and_primary_pool(
         logger: &Logger,
+        node: &NodeId,
         config: &Config,
         registry: Arc<dyn MetricsRegistry>,
     ) -> (Arc<SubgraphStore>, HashMap<ShardName, ConnectionPool>) {
@@ -66,10 +72,10 @@ impl StoreBuilder {
             .iter()
             .map(|(name, shard)| {
                 let logger = logger.new(o!("shard" => name.to_string()));
-                let conn_pool = Self::main_pool(&logger, name, shard, registry.cheap_clone());
+                let conn_pool = Self::main_pool(&logger, node, name, shard, registry.cheap_clone());
 
                 let (read_only_conn_pools, weights) =
-                    Self::replica_pools(&logger, name, shard, registry.cheap_clone());
+                    Self::replica_pools(&logger, node, name, shard, registry.cheap_clone());
 
                 let name =
                     ShardName::new(name.to_string()).expect("shard names have been validated");
@@ -98,33 +104,39 @@ impl StoreBuilder {
     #[allow(dead_code)]
     pub fn make_sharded_store(
         logger: &Logger,
+        node: &NodeId,
         config: &Config,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Arc<SubgraphStore> {
-        Self::make_sharded_store_and_primary_pool(logger, config, registry).0
+        Self::make_sharded_store_and_primary_pool(logger, node, config, registry).0
     }
 
     /// Create a connection pool for the main database of hte primary shard
     /// without connecting to all the other configured databases
     pub fn main_pool(
         logger: &Logger,
+        node: &NodeId,
         name: &str,
         shard: &Shard,
         registry: Arc<dyn MetricsRegistry>,
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
+        let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
+            "we can determine the pool size for store {}",
+            name
+        ));
         info!(
             logger,
             "Connecting to Postgres";
             "url" => SafeDisplay(shard.connection.as_str()),
-            "conn_pool_size" => shard.pool_size,
+            "conn_pool_size" => pool_size,
             "weight" => shard.weight
         );
         ConnectionPool::create(
             name,
             "main",
             shard.connection.to_owned(),
-            shard.pool_size,
+            pool_size,
             &logger,
             registry.cheap_clone(),
         )
@@ -133,6 +145,7 @@ impl StoreBuilder {
     /// Create connection pools for each of the replicas
     fn replica_pools(
         logger: &Logger,
+        node: &NodeId,
         name: &str,
         shard: &Shard,
         registry: Arc<dyn MetricsRegistry>,
@@ -153,11 +166,15 @@ impl StoreBuilder {
                         "weight" => replica.weight
                     );
                     weights.push(replica.weight);
+                    let pool_size = replica.pool_size.size_for(node, name).expect(&format!(
+                        "we can determine the pool size for replica {}",
+                        name
+                    ));
                     ConnectionPool::create(
                         name,
                         pool,
                         replica.connection.clone(),
-                        replica.pool_size,
+                        pool_size,
                         &logger,
                         registry.cheap_clone(),
                     )

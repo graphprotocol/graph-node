@@ -8,7 +8,7 @@ use structopt::StructOpt;
 
 use graph::{
     log::logger,
-    prelude::{anyhow, info, o, slog, tokio, Logger},
+    prelude::{anyhow, info, o, slog, tokio, Logger, NodeId},
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
@@ -41,10 +41,19 @@ lazy_static! {
 pub struct Opt {
     #[structopt(
         long,
+        short,
         env = "GRAPH_NODE_CONFIG",
         help = "the name of the configuration file"
     )]
     pub config: String,
+    #[structopt(
+        long,
+        default_value = "default",
+        value_name = "NODE_ID",
+        env = "GRAPH_NODE_ID",
+        help = "a unique identifier for this node"
+    )]
+    pub node_id: String,
     #[structopt(subcommand)]
     pub cmd: Command,
 }
@@ -139,18 +148,19 @@ fn make_registry(logger: &Logger) -> Arc<MetricsRegistry> {
     ))
 }
 
-fn make_main_pool(logger: &Logger, config: &Config) -> ConnectionPool {
+fn make_main_pool(logger: &Logger, node_id: &NodeId, config: &Config) -> ConnectionPool {
     let primary = config.primary_store();
     StoreBuilder::main_pool(
         &logger,
+        node_id,
         PRIMARY_SHARD.as_str(),
         primary,
         make_registry(logger),
     )
 }
 
-fn make_store(logger: &Logger, config: &Config) -> Arc<SubgraphStore> {
-    StoreBuilder::make_sharded_store(logger, config, make_registry(logger))
+fn make_store(logger: &Logger, node_id: &NodeId, config: &Config) -> Arc<SubgraphStore> {
+    StoreBuilder::make_sharded_store(logger, node_id, config, make_registry(logger))
 }
 
 #[tokio::main]
@@ -177,11 +187,20 @@ async fn main() {
         }
         Ok(config) => config,
     };
+    let node = match NodeId::new(&opt.node_id) {
+        Err(()) => {
+            eprintln!("invalid node id: {}", opt.node_id);
+            std::process::exit(1);
+        }
+        Ok(node) => node,
+    };
+    let make_main_pool = || make_main_pool(&logger, &node, &config);
+    let make_store = || make_store(&logger, &node, &config);
 
     use Command::*;
     let result = match opt.cmd {
         TxnSpeed { delay } => {
-            let pool = make_main_pool(&logger, &config);
+            let pool = make_main_pool();
             commands::txn_speed::run(pool, delay)
         }
         Info {
@@ -190,12 +209,12 @@ async fn main() {
             pending,
             used,
         } => {
-            let pool = make_main_pool(&logger, &config);
+            let pool = make_main_pool();
             commands::info::run(pool, name, current, pending, used)
         }
         Place { name, network } => commands::place::run(&config.deployment, &name, &network),
         Unused(cmd) => {
-            let store = make_store(&logger, &config);
+            let store = make_store();
             use UnusedCommand::*;
 
             match cmd {
@@ -216,15 +235,15 @@ async fn main() {
             Err(e) => Err(anyhow!("error serializing config: {}", e)),
         },
         Remove { name } => {
-            let store = make_store(&logger, &config);
+            let store = make_store();
             commands::remove::run(store, name)
         }
         Unassign { id } => {
-            let store = make_store(&logger, &config);
+            let store = make_store();
             commands::assign::unassign(store, id)
         }
         Reassign { id, node } => {
-            let store = make_store(&logger, &config);
+            let store = make_store();
             commands::assign::reassign(store, id, node)
         }
     };
