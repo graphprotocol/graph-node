@@ -14,7 +14,7 @@ use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore, PRIMARY_SHARD};
 
-use crate::config::Config;
+use crate::config::Config as Cfg;
 use graph_node::manager::commands;
 
 git_testament!(TESTAMENT);
@@ -148,7 +148,7 @@ fn make_registry(logger: &Logger) -> Arc<MetricsRegistry> {
     ))
 }
 
-fn make_main_pool(logger: &Logger, node_id: &NodeId, config: &Config) -> ConnectionPool {
+fn make_main_pool(logger: &Logger, node_id: &NodeId, config: &Cfg) -> ConnectionPool {
     let primary = config.primary_store();
     StoreBuilder::main_pool(
         &logger,
@@ -159,7 +159,7 @@ fn make_main_pool(logger: &Logger, node_id: &NodeId, config: &Config) -> Connect
     )
 }
 
-fn make_store(logger: &Logger, node_id: &NodeId, config: &Config) -> Arc<SubgraphStore> {
+fn make_store(logger: &Logger, node_id: &NodeId, config: &Cfg) -> Arc<SubgraphStore> {
     StoreBuilder::make_sharded_store(logger, node_id, config, make_registry(logger))
 }
 
@@ -180,7 +180,7 @@ async fn main() {
         render_testament!(TESTAMENT)
     );
 
-    let config = match Config::load(&logger, &opt.clone().into()) {
+    let config = match Cfg::load(&logger, &opt.clone().into()) {
         Err(e) => {
             eprintln!("configuration error: {}", e);
             std::process::exit(1);
