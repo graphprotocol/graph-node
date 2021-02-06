@@ -9,7 +9,6 @@ use graph::data::subgraph::status;
 use graph::prelude::{
     error, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
 };
-use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::convert::TryInto;
@@ -21,17 +20,16 @@ use std::{
     collections::{BTreeMap, HashMap},
     time::Duration,
 };
-use tokio::sync::Semaphore;
 
 use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, futures03, info, o, tokio, web3, ApiSchema, BlockNumber, CheapClone,
-    DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification, EntityOrder, EntityQuery,
-    EntityRange, Error, EthereumBlockPointer, Logger, MetadataOperation, MetricsRegistry,
-    QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, SubgraphDeploymentId,
-    Value, BLOCK_NUMBER_MAX,
+    anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, CheapClone, DeploymentState,
+    DynTryFuture, Entity, EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange,
+    Error, EthereumBlockPointer, Logger, MetadataOperation, MetricsRegistry, QueryExecutionError,
+    Schema, StopwatchMetrics, StoreError, StoreEvent, SubgraphDeploymentId, Value,
+    BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -42,17 +40,6 @@ use crate::relational::{Layout, METADATA_LAYOUT};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
 use crate::{deployment, primary::Namespace};
-
-lazy_static! {
-    static ref CONNECTION_LIMITER: Semaphore = {
-        let db_conn_pool_size = std::env::var("STORE_CONNECTION_POOL_SIZE")
-            .unwrap_or("10".into())
-            .parse::<usize>()
-            .expect("invalid STORE_CONNECTION_POOL_SIZE");
-
-        Semaphore::new(db_conn_pool_size)
-    };
-}
 
 embed_migrations!("./migrations");
 
@@ -578,14 +565,7 @@ impl DeploymentStore {
     pub(crate) fn get_conn(
         &self,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        loop {
-            match self.conn.get_timeout(Duration::from_secs(60)) {
-                Ok(conn) => return Ok(conn),
-                Err(e) => error!(self.logger, "Error checking out connection, retrying";
-                   "error" => e.to_string(),
-                ),
-            }
-        }
+        self.conn.get_with_timeout_warning(&self.logger)
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.

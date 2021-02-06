@@ -265,4 +265,18 @@ impl ConnectionPool {
             Err(CancelableError::Cancel) => panic!("The closure supplied to with_entity_conn must not return Err(Canceled) unless the supplied token was canceled."),
         }
     }
+
+    pub fn get_with_timeout_warning(
+        &self,
+        logger: &Logger,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error> {
+        loop {
+            match self.get_timeout(Duration::from_secs(60)) {
+                Ok(conn) => return Ok(conn),
+                Err(e) => error!(logger, "Error checking out connection, retrying";
+                   "error" => e.to_string(),
+                ),
+            }
+        }
+    }
 }
