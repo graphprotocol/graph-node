@@ -1,7 +1,11 @@
 use diesel::pg::PgConnection;
-use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
+use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection};
 
-use graph::prelude::*;
+use graph::prelude::{
+    error, info, o, tokio::sync::Semaphore, CancelGuard, CancelHandle, CancelToken as _,
+    CancelableError, Counter, Gauge, Logger, MetricsRegistry, MovingStats, PoolWaitStats,
+    StoreError,
+};
 
 use std::fmt;
 use std::sync::Arc;
@@ -11,12 +15,13 @@ use std::{collections::HashMap, sync::RwLock};
 #[derive(Clone)]
 pub struct ConnectionPool {
     pool: Pool<ConnectionManager<PgConnection>>,
+    limiter: Arc<Semaphore>,
     pub(crate) wait_stats: PoolWaitStats,
 }
 
 struct ErrorHandler(Logger, Counter);
 
-impl Debug for ErrorHandler {
+impl std::fmt::Debug for ErrorHandler {
     fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Result::Ok(())
     }
@@ -76,7 +81,7 @@ impl EventHandler {
     }
 }
 
-impl Debug for EventHandler {
+impl std::fmt::Debug for EventHandler {
     fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Result::Ok(())
     }
@@ -164,7 +169,100 @@ impl ConnectionPool {
             .max_size(pool_size)
             .build(conn_manager)
             .unwrap();
+        let limiter = Arc::new(Semaphore::new(pool_size as usize));
         info!(logger_store, "Pool successfully connected to Postgres");
-        ConnectionPool { pool, wait_stats }
+        ConnectionPool {
+            pool,
+            limiter,
+            wait_stats,
+        }
+    }
+
+    /// Execute a closure with a connection to the database.
+    ///
+    /// # API
+    ///   The API of using a closure to bound the usage of the connection serves several
+    ///   purposes:
+    ///
+    ///   * Moves blocking database access out of the `Future::poll`. Within
+    ///     `Future::poll` (which includes all `async` methods) it is illegal to
+    ///     perform a blocking operation. This includes all accesses to the
+    ///     database, acquiring of locks, etc. Calling a blocking operation can
+    ///     cause problems with `Future` combinators (including but not limited
+    ///     to select, timeout, and FuturesUnordered) and problems with
+    ///     executors/runtimes. This method moves the database work onto another
+    ///     thread in a way which does not block `Future::poll`.
+    ///
+    ///   * Limit the total number of connections. Because the supplied closure
+    ///     takes a reference, we know the scope of the usage of all entity
+    ///     connections and can limit their use in a non-blocking way.
+    ///
+    /// # Cancellation
+    ///   The normal pattern for futures in Rust is drop to cancel. Once we
+    ///   spawn the database work in a thread though, this expectation no longer
+    ///   holds because the spawned task is the independent of this future. So,
+    ///   this method provides a cancel token which indicates that the `Future`
+    ///   has been dropped. This isn't *quite* as good as drop on cancel,
+    ///   because a drop on cancel can do things like cancel http requests that
+    ///   are in flight, but checking for cancel periodically is a significant
+    ///   improvement.
+    ///
+    ///   The implementation of the supplied closure should check for cancel
+    ///   between every operation that is potentially blocking. This includes
+    ///   any method which may interact with the database. The check can be
+    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
+    ///   to check for cancel, so when in doubt it is better to have too many
+    ///   checks than too few.
+    ///
+    /// # Panics:
+    ///   * This task will panic if the supplied closure panics
+    ///   * This task will panic if the supplied closure returns Err(Cancelled)
+    ///     when the supplied cancel token is not cancelled.
+    pub(crate) async fn with_conn<T: Send + 'static>(
+        &self,
+        f: impl 'static
+            + Send
+            + FnOnce(
+                &PooledConnection<ConnectionManager<PgConnection>>,
+                &CancelHandle,
+            ) -> Result<T, CancelableError<StoreError>>,
+    ) -> Result<T, StoreError> {
+        let _permit = self.limiter.acquire().await;
+        let pool = self.clone();
+
+        let cancel_guard = CancelGuard::new();
+        let cancel_handle = cancel_guard.handle();
+
+        let result = graph::spawn_blocking_allow_panic(move || {
+            // It is possible time has passed between scheduling on the
+            // threadpool and being executed. Time to check for cancel.
+            cancel_handle.check_cancel()?;
+
+            // A failure to establish a connection is propagated as though the
+            // closure failed.
+            let conn = pool
+                .get()
+                .map_err(|e| CancelableError::Error(StoreError::Unknown(e.into())))?;
+
+            // It is possible time has passed while establishing a connection.
+            // Time to check for cancel.
+            cancel_handle.check_cancel()?;
+
+            f(&conn, &cancel_handle)
+        })
+        .await
+        .unwrap(); // Propagate panics, though there shouldn't be any.
+
+        drop(cancel_guard);
+
+        // Finding cancel isn't technically unreachable, since there is nothing
+        // stopping the supplied closure from returning Canceled even if the
+        // supplied handle wasn't canceled. That would be very unexpected, the
+        // doc comment for this function says we will panic in this scenario.
+        match result {
+            Ok(t) => Ok(t),
+            Err(CancelableError::Error(e)) => Err(e),
+            Err(CancelableError::Cancel) => panic!("The closure supplied to with_entity_conn must not return Err(Canceled) unless the supplied token was canceled."),
+        }
     }
 }

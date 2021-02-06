@@ -7,8 +7,7 @@ use futures03::FutureExt as _;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
-    error, CancelGuard, CancelHandle, CancelToken, CancelableError, PoolWaitStats,
-    SubgraphDeploymentEntity,
+    error, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
 };
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
@@ -531,43 +530,7 @@ impl DeploymentStore {
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
-        let _permit = CONNECTION_LIMITER.acquire().await;
-        let store = self.clone();
-
-        let cancel_guard = CancelGuard::new();
-        let cancel_handle = cancel_guard.handle();
-
-        let result = graph::spawn_blocking_allow_panic(move || {
-            // It is possible time has passed between scheduling on the
-            // threadpool and being executed. Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            // A failure to establish a connection is propagated as though the
-            // closure failed.
-            let conn = store
-                .get_conn()
-                .map_err(|e| CancelableError::Error(StoreError::Unknown(e)))?;
-
-            // It is possible time has passed while establishing a connection.
-            // Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            f(&conn, &cancel_handle)
-        })
-        .await
-        .unwrap(); // Propagate panics, though there shouldn't be any.
-
-        drop(cancel_guard);
-
-        // Finding cancel isn't technically unreachable, since there is nothing
-        // stopping the supplied closure from returning Canceled even if the
-        // supplied handle wasn't canceled. That would be very unexpected, the
-        // doc comment for this function says we will panic in this scenario.
-        match result {
-            Ok(t) => Ok(t),
-            Err(CancelableError::Error(e)) => Err(e),
-            Err(CancelableError::Cancel) => panic!("The closure supplied to with_entity_conn must not return Err(Canceled) unless the supplied token was canceled."),
-        }
+        self.conn.with_conn(f).await
     }
 
     /// Executes a closure with an `e::Connection` reference.
