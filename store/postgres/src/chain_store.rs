@@ -179,6 +179,7 @@ mod data {
 
     impl CallMetaTable {
         const TABLE_NAME: &'static str = "call_meta";
+        const ACCESSED_AT: &'static str = "accessed_at";
 
         fn new(namespace: &str) -> Self {
             CallMetaTable {
@@ -891,7 +892,11 @@ mod data {
                     .filter(call_cache.id().eq(id))
                     .select((
                         call_cache.return_value(),
-                        sql("CURRENT_DATE > eth_call_meta.accessed_at"),
+                        sql(&format!(
+                            "CURRENT_DATE > {}.{}",
+                            CallMetaTable::TABLE_NAME,
+                            CallMetaTable::ACCESSED_AT
+                        )),
                     ))
                     .first(conn)
                     .optional()
@@ -979,7 +984,7 @@ mod data {
                     let query = format!(
                         "insert into {}(contract_address, accessed_at) \
                          values ($1, CURRENT_DATE) \
-                         on conflict do update set accessed_at = CURRENT_DATE",
+                         on conflict(contract_address) do update set accessed_at = CURRENT_DATE",
                         call_meta.qname
                     );
                     sql_query(query)

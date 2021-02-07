@@ -4,11 +4,11 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use graph::cheap_clone::CheapClone;
-use graph::components::store::ChainStore as _;
 use graph::prelude::QueryStoreManager;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
+use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::SubgraphDeploymentId};
+use graph::{components::store::ChainStore as _, prelude::EthereumCallCache as _};
 use graph_store_postgres::Store as DieselStore;
 use graph_store_postgres::{layout_for_tests::FAKE_NETWORK_SHARED, ChainStore as DieselChainStore};
 
@@ -315,4 +315,47 @@ fn ancestor_block_ommers() {
         check_ancestor(&store, &*BLOCK_TWO, 2, &*GENESIS_BLOCK)?;
         Ok(())
     });
+}
+
+#[test]
+fn eth_call_cache() {
+    let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+
+    run_test(chain, |store, _| {
+        let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
+        let return_value: [u8; 3] = [7, 8, 9];
+
+        store
+            .set_call(address, &call, BLOCK_ONE.block_ptr(), &return_value)
+            .unwrap();
+
+        let ret = store
+            .get_call(address, &call, GENESIS_BLOCK.block_ptr())
+            .unwrap();
+        assert!(ret.is_none());
+
+        let ret = store
+            .get_call(address, &call, BLOCK_ONE.block_ptr())
+            .unwrap()
+            .unwrap();
+        assert_eq!(&return_value, ret.as_slice());
+
+        let ret = store
+            .get_call(address, &call, BLOCK_TWO.block_ptr())
+            .unwrap();
+        assert!(ret.is_none());
+
+        let new_return_value: [u8; 3] = [10, 11, 12];
+        store
+            .set_call(address, &call, BLOCK_TWO.block_ptr(), &new_return_value)
+            .unwrap();
+        let ret = store
+            .get_call(address, &call, BLOCK_TWO.block_ptr())
+            .unwrap()
+            .unwrap();
+        assert_eq!(&new_return_value, ret.as_slice());
+
+        Ok(())
+    })
 }
