@@ -85,17 +85,17 @@ OPTIONS:
             Elasticsearch service to write subgraph logs to [env: ELASTICSEARCH_URL=]
 
         --elasticsearch-user <USER>                   User to use for Elasticsearch logging [env: ELASTICSEARCH_USER=]
-        --ethereum-ipc <NETWORK_NAME:FILE>
-            Ethereum network name (e.g. 'mainnet'), comma-seperated capabilities (eg `full,archive), and a Ethereum IPC pipe, separated by a ':'
+        --ethereum-ipc <NETWORK_NAME:[CAPABILITIES]:FILE>
+            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg full,archive), and a Ethereum IPC pipe, separated by a ':'
 
         --ethereum-polling-interval <MILLISECONDS>
             How often to poll the Ethereum node for new blocks [env: ETHEREUM_POLLING_INTERVAL=]  [default: 500]
 
-        --ethereum-rpc <NETWORK_NAME:URL>
-            Ethereum network name (e.g. 'mainnet'), comma-seperated capabilities (eg `full,archive), and a Ethereum RPC URL, separated by a ':'
+        --ethereum-rpc <NETWORK_NAME:[CAPABILITIES]:URL>
+            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and a Ethereum RPC URL, separated by a ':'
 
-        --ethereum-ws <NETWORK_NAME:URL>
-            Ethereum network name (e.g. 'mainnet'), comma-seperated capabilities (eg `full,archive), and a Ethereum WebSocket URL, separated by a ':'
+        --ethereum-ws <NETWORK_NAME:[CAPABILITIES]:URL>
+            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg `full,archive), and a Ethereum WebSocket URL, separated by a ':'
 
         --http-port <PORT>                            Port for the GraphQL HTTP server [default: 8000]
         --ipfs <HOST:PORT>                            HTTP address of an IPFS node
