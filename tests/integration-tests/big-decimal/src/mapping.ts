@@ -44,22 +44,22 @@ export function handleTrigger(event: Trigger): void {
   // Test big decimal division.
   assert(one / BigDecimal.fromString("10") == BigDecimal.fromString("0.1"));
 
+  // Test big int fromString
+  assert(BigInt.fromString("8888") == BigInt.fromI32(8888));
+
   let bigInt = BigInt.fromString("8888888888888888");
 
-  let bigInt2 = BigInt.fromI32(8888888888888888);
-
-  // Test big int fromString
-  assert(bigInt == bigInt2, "bigInt not equal to ", bigInt2);
-
   // Test big int bit or
-  assert(bigInt | BigInt.fromI32(42) == BigInt.fromI32(8888888888888890));
+  assert(
+    (bigInt | BigInt.fromI32(42)) == BigInt.fromString("8888888888888890")
+  );
 
   // Test big int bit and
-  assert(bigInt & BigInt.fromI32(42) == BigInt.fromI32(40));
+  assert((bigInt & BigInt.fromI32(42)) == BigInt.fromI32(40));
 
   // Test big int left shift
-  assert(bigInt << 6 == BigInt.fromI32(568888888888888832));
+  assert(bigInt << 6 == BigInt.fromString("568888888888888832"));
 
   // Test big int right shift
-  assert(bigInt >> 6 == BigInt.fromI32(138888888888888));
+  assert(bigInt >> 6 == BigInt.fromString("138888888888888"));
 }
