@@ -358,6 +358,13 @@ impl HostExports {
                 e
             ))),
 
+            // Also retry on timeouts.
+            Err(EthereumContractCallError::Timeout) => Err(EthereumCallError::PossibleReorg(anyhow::anyhow!(
+                "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
+                unresolved_call.function_name,
+                unresolved_call.contract_name,
+            ))),
+
             Err(e) => Err(EthereumCallError::Unknown(anyhow::anyhow!(
                 "Failed to call function \"{}\" of contract \"{}\": {}",
                 unresolved_call.function_name,
