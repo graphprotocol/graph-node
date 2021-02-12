@@ -159,6 +159,7 @@ impl BlockStore {
             chain_head_update_listener,
         };
 
+        // For each configured chain, add a chain store
         for (network, ident, shard) in networks {
             let chain = match chains.iter().find(|chain| chain.name == network) {
                 Some(chain) => {
@@ -175,6 +176,22 @@ impl BlockStore {
                 None => primary::add_chain(&block_store.primary, &network, &ident, &shard)?,
             };
 
+            block_store.add_chain_store(&chain)?;
+        }
+
+        // There might be chains we have in the database that are not yet/
+        // no longer configured. Add a chain store for each of them, too
+        let configured_chains = block_store
+            .stores
+            .read()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for chain in chains
+            .iter()
+            .filter(|chain| !configured_chains.contains(&chain.name))
+        {
             block_store.add_chain_store(&chain)?;
         }
         Ok(block_store)
