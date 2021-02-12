@@ -46,6 +46,10 @@ impl SafeChannelName {
     pub fn i_promise_this_is_safe(channel_name: impl Into<String>) -> Self {
         SafeChannelName(channel_name.into())
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 pub struct NotificationListener {

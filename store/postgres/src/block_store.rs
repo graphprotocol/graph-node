@@ -10,7 +10,10 @@ use graph::{
     prelude::{anyhow, CheapClone},
 };
 
-use crate::{connection_pool::ConnectionPool, ChainHeadUpdateListener, ChainStore};
+use crate::{
+    chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool,
+    ChainHeadUpdateListener, ChainStore,
+};
 use crate::{subgraph_store::PRIMARY_SHARD, Shard};
 
 #[cfg(debug_assertions)]
@@ -130,11 +133,13 @@ impl BlockStore {
                 None => primary::add_chain(&primary, &network, &ident, &shard)?,
             };
 
+            let sender = ChainHeadUpdateSender::new(primary.clone(), network.clone());
             let store = ChainStore::new(
                 network.clone(),
                 namespace,
                 ident.clone(),
                 chain_head_update_listener.clone(),
+                sender,
                 pool,
             );
             stores.insert(network.clone(), Arc::new(store));

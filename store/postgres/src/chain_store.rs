@@ -20,7 +20,10 @@ use graph::prelude::{
     Stream,
 };
 
-use crate::{chain_head_listener::ChainHeadUpdateListener, connection_pool::ConnectionPool};
+use crate::{
+    chain_head_listener::{ChainHeadUpdateListener, ChainHeadUpdateSender},
+    connection_pool::ConnectionPool,
+};
 
 /// Tables in the 'public' database schema that store chain-specific data
 mod public {
@@ -1045,14 +1048,16 @@ pub struct ChainStore {
     storage: data::Storage,
     genesis_block_ptr: EthereumBlockPointer,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+    chain_head_update_sender: ChainHeadUpdateSender,
 }
 
 impl ChainStore {
-    pub fn new(
+    pub(crate) fn new(
         network: String,
         storage: data::Storage,
         net_identifier: EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+        chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
     ) -> Self {
         let store = ChainStore {
@@ -1061,6 +1066,7 @@ impl ChainStore {
             storage,
             genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
             chain_head_update_listener,
+            chain_head_update_sender,
         };
 
         // Add network to store and check network identifiers
@@ -1212,37 +1218,40 @@ impl ChainStoreTrait for ChainStore {
         use public::ethereum_networks as n;
 
         let conn = self.get_conn()?;
-        conn.transaction(|| {
-            let candidate = self.storage.chain_head_candidate(&conn, &self.network)?;
-            let (ptr, first_block) = match candidate {
-                None => return Ok(vec![]),
-                Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
-            };
+        let (missing, ptr) =
+            conn.transaction(|| -> Result<(Vec<H256>, Option<(String, i64)>), Error> {
+                let candidate = self.storage.chain_head_candidate(&conn, &self.network)?;
+                let (ptr, first_block) = match candidate {
+                    None => return Ok((vec![], None)),
+                    Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
+                };
 
-            let missing = self.storage.missing_parents(
-                &conn,
-                &self.network,
-                first_block as i64,
-                ptr.hash,
-                self.genesis_block_ptr.hash,
-            )?;
-            if !missing.is_empty() {
-                return Ok(missing);
-            }
+                let missing = self.storage.missing_parents(
+                    &conn,
+                    &self.network,
+                    first_block as i64,
+                    ptr.hash,
+                    self.genesis_block_ptr.hash,
+                )?;
+                if !missing.is_empty() {
+                    return Ok((missing, None));
+                }
 
-            let hash = ptr.hash_hex();
-            let number = ptr.number as i64;
-            update(n::table.filter(n::name.eq(&self.network)))
-                .set((
-                    n::head_block_hash.eq(&hash),
-                    n::head_block_number.eq(number),
-                ))
-                .execute(&conn)?;
+                let hash = ptr.hash_hex();
+                let number = ptr.number as i64;
+                update(n::table.filter(n::name.eq(&self.network)))
+                    .set((
+                        n::head_block_hash.eq(&hash),
+                        n::head_block_number.eq(number),
+                    ))
+                    .execute(&conn)?;
+                Ok((missing, Some((hash, number))))
+            })?;
+        if let Some((hash, number)) = ptr {
+            self.chain_head_update_sender.send(&hash, number)?;
+        }
 
-            ChainHeadUpdateListener::send(&conn, &self.network, &hash, number)?;
-
-            Ok(vec![])
-        })
+        Ok(missing)
     }
 
     fn chain_head_updates(&self) -> ChainHeadUpdateStream {

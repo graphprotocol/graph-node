@@ -1,9 +1,12 @@
-use diesel::{PgConnection, RunQueryDsl};
+use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
 use tokio::sync::watch;
 use web3::types::H256;
 
-use crate::notification_listener::{NotificationListener, SafeChannelName};
+use crate::{
+    connection_pool::ConnectionPool,
+    notification_listener::{NotificationListener, SafeChannelName},
+};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
 use graph_chain_ethereum::BlockIngestorMetrics;
@@ -25,6 +28,13 @@ pub struct ChainHeadUpdateListener {
     /// very low
     update_receiver: watch::Receiver<ChainHeadUpdate>,
     _listener: NotificationListener,
+}
+
+/// Sender for messages that the `ChainHeadUpdateListener` on other nodes
+/// will receive. The sender is specific to a particular chain.
+pub(crate) struct ChainHeadUpdateSender {
+    pool: ConnectionPool,
+    chain_name: String,
 }
 
 impl ChainHeadUpdateListener {
@@ -90,26 +100,6 @@ impl ChainHeadUpdateListener {
         // We're ready, start listening to chain head updates
         listener.start();
     }
-
-    pub fn send(
-        conn: &PgConnection,
-        network_name: &str,
-        hash: &str,
-        number: i64,
-    ) -> Result<(), StoreError> {
-        use crate::functions::pg_notify;
-
-        let msg = json! ({
-            "network_name": network_name,
-            "head_block_hash": hash,
-            "head_block_number": number
-        });
-
-        diesel::select(pg_notify("chain_head_updates", &msg.to_string()))
-            .execute(conn)
-            .map_err(StoreError::from)
-            .map(|_| ())
-    }
 }
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
@@ -129,5 +119,30 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                 .boxed()
                 .compat(),
         )
+    }
+}
+
+impl ChainHeadUpdateSender {
+    pub fn new(pool: ConnectionPool, network_name: String) -> Self {
+        Self {
+            pool,
+            chain_name: network_name,
+        }
+    }
+
+    pub fn send(&self, hash: &str, number: i64) -> Result<(), StoreError> {
+        use crate::functions::pg_notify;
+
+        let msg = json! ({
+            "network_name": &self.chain_name,
+            "head_block_hash": hash,
+            "head_block_number": number
+        });
+
+        let conn = self.pool.get()?;
+        diesel::select(pg_notify(CHANNEL_NAME.as_str(), &msg.to_string()))
+            .execute(&conn)
+            .map_err(StoreError::from)
+            .map(|_| ())
     }
 }
