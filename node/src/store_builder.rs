@@ -204,9 +204,16 @@ impl StoreBuilder {
             })
             .collect();
 
+        let logger = self.logger.new(o!("component" => "BlockStore"));
+
         let block_store = Arc::new(
-            DieselBlockStore::new(networks, &self.pools, chain_head_update_listener.clone())
-                .expect("Creating the BlockStore works"),
+            DieselBlockStore::new(
+                logger,
+                networks,
+                self.pools.clone(),
+                chain_head_update_listener.clone(),
+            )
+            .expect("Creating the BlockStore works"),
         );
 
         Arc::new(DieselStore::new(
