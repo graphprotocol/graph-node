@@ -29,7 +29,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install IPFS
@@ -88,7 +87,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: rustfmt-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install dependencies
@@ -121,7 +119,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: check-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Install dependencies
