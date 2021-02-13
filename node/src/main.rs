@@ -130,6 +130,7 @@ async fn main() {
 
     let node_id =
         NodeId::new(opt.node_id.clone()).expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
+    let query_only = config.query_only(&node_id);
 
     // Obtain subgraph related command-line arguments
     let subgraph = opt.subgraph.clone();
@@ -184,10 +185,15 @@ async fn main() {
     let mut metrics_server =
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
-    // Ethereum clients
-    let eth_networks = create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
-        .await
-        .expect("Failed to parse Ethereum networks");
+    // Ethereum clients; query nodes ignore all ethereum clients and never
+    // connect to them directly
+    let eth_networks = if query_only {
+        EthereumNetworks::new()
+    } else {
+        create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
+            .await
+            .expect("Failed to parse Ethereum networks")
+    };
 
     let graphql_metrics_registry = metrics_registry.clone();
 

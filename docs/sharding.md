@@ -181,6 +181,19 @@ indexers = [
 
 ```
 
+## Query nodes
+
+Nodes can be configured to explicitly be query nodes by including the
+following in the configuration file:
+```toml
+[general]
+query = "<regular expression>"
+```
+
+Any node whose `--node-id` matches the regular expression will be set up to
+only respond to queries. For now, that only means that the node will not
+try to connect to any of the configured Ethereum providers.
+
 ## Basic Setup
 
 The following file is equivalent to using the `--postgres-url` command line

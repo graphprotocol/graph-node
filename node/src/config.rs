@@ -15,6 +15,8 @@ use std::fs::read_to_string;
 use url::Url;
 
 const ANY_NAME: &str = ".*";
+/// A regular expression that matches nothing
+const NO_NAME: &str = ".^";
 
 pub struct Opt {
     pub postgres_url: Option<String>,
@@ -51,6 +53,7 @@ impl Default for Opt {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
+    pub general: Option<GeneralSection>,
     #[serde(rename = "store")]
     pub stores: BTreeMap<String, Shard>,
     pub chains: ChainSection,
@@ -154,6 +157,7 @@ impl Config {
         let chains = ChainSection::from_opt(opt)?;
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(opt)?);
         Ok(Config {
+            general: None,
             stores,
             chains,
             deployment,
@@ -175,6 +179,22 @@ impl Config {
             .get(PRIMARY_SHARD.as_str())
             .expect("a validated config has a primary store")
     }
+
+    pub fn query_only(&self, node: &NodeId) -> bool {
+        self.general
+            .as_ref()
+            .map(|g| match g.query.find(node.as_str()) {
+                None => false,
+                Some(m) => m.as_str() == node.as_str(),
+            })
+            .unwrap_or(false)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GeneralSection {
+    #[serde(with = "serde_regex", default = "no_name")]
+    query: Regex,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -655,6 +675,10 @@ fn replace_host(url: &str, host: &str) -> String {
 // Various default functions for deserialization
 fn any_name() -> Regex {
     Regex::new(ANY_NAME).unwrap()
+}
+
+fn no_name() -> Regex {
+    Regex::new(NO_NAME).unwrap()
 }
 
 fn primary_store() -> String {
