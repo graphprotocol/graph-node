@@ -1217,8 +1217,8 @@ impl ChainStoreTrait for ChainStore {
     fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
         use public::ethereum_networks as n;
 
-        let conn = self.get_conn()?;
-        let (missing, ptr) =
+        let (missing, ptr) = {
+            let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(Vec<H256>, Option<(String, i64)>), Error> {
                 let candidate = self.storage.chain_head_candidate(&conn, &self.network)?;
                 let (ptr, first_block) = match candidate {
@@ -1246,7 +1246,8 @@ impl ChainStoreTrait for ChainStore {
                     ))
                     .execute(&conn)?;
                 Ok((missing, Some((hash, number))))
-            })?;
+            })
+        }?;
         if let Some((hash, number)) = ptr {
             self.chain_head_update_sender.send(&hash, number)?;
         }
