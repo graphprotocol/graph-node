@@ -1011,17 +1011,30 @@ mod data {
 
             match self {
                 Storage::Shared => {
+                    use public::eth_call_cache as c;
+                    use public::eth_call_meta as m;
                     use public::ethereum_blocks as b;
 
                     diesel::delete(b::table.filter(b::network_name.eq(chain_name)))
                         .execute(conn)
                         .expect("Failed to delete ethereum_blocks");
+                    // We don't have a good way to clean out the call cache
+                    // per chain; just nuke everything
+                    diesel::delete(c::table).execute(conn).unwrap();
+                    diesel::delete(m::table).execute(conn).unwrap();
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query = format!("delete from {}", blocks.qname);
-                    sql_query(query)
-                        .execute(conn)
-                        .expect(&format!("Failed to delete {}", blocks.qname));
+                Storage::Private(Schema {
+                    blocks,
+                    call_meta,
+                    call_cache,
+                    ..
+                }) => {
+                    for qname in &[&blocks.qname, &call_meta.qname, &call_cache.qname] {
+                        let query = format!("delete from {}", qname);
+                        sql_query(query)
+                            .execute(conn)
+                            .expect(&format!("Failed to delete {}", qname));
+                    }
                 }
             }
 
@@ -1044,7 +1057,7 @@ mod data {
 
 pub struct ChainStore {
     conn: ConnectionPool,
-    chain: String,
+    pub chain: String,
     storage: data::Storage,
     genesis_block_ptr: EthereumBlockPointer,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
