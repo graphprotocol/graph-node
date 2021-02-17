@@ -119,19 +119,6 @@ table! {
     }
 }
 
-table! {
-    subgraphs.ethereum_contract_data_source (vid) {
-        vid -> BigInt,
-        id -> Text,
-        kind -> Text,
-        name -> Text,
-        network -> Nullable<Text>,
-        source -> Text,
-        mapping -> Text,
-        block_range -> Range<Integer>,
-    }
-}
-
 allow_tables_to_appear_in_same_query!(subgraph_deployment, subgraph_error);
 
 /// Look up the graft point for the given subgraph in the database and

@@ -52,7 +52,6 @@ pub enum MetadataType {
     // need this type so we can send store events for assignment changes
     SubgraphDeploymentAssignment,
     SubgraphManifest,
-    EthereumContractDataSource,
     DynamicEthereumContractDataSource,
     EthereumContractSource,
     EthereumContractMapping,
@@ -396,66 +395,6 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
             repository: manifest.repository.clone(),
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct EthereumContractDataSourceEntity {
-    pub kind: String,
-    pub network: Option<String>,
-    pub name: String,
-    pub source: EthereumContractSourceEntity,
-    pub mapping: EthereumContractMappingEntity,
-}
-
-impl TypedEntity for EthereumContractDataSourceEntity {
-    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSource;
-    type IdType = String;
-}
-
-impl EthereumContractDataSourceEntity {
-    pub fn write_operations(
-        self,
-        subgraph: &SubgraphDeploymentId,
-        id: &str,
-    ) -> Vec<MetadataOperation> {
-        let mut ops = vec![];
-
-        let source_id = format!("{}-source", id);
-        ops.extend(self.source.write_operations(subgraph, &source_id));
-
-        let mapping_id = format!("{}-mapping", id);
-        ops.extend(self.mapping.write_operations(subgraph, &mapping_id));
-
-        let entity = entity! {
-            id: id,
-            kind: self.kind,
-            network: self.network,
-            name: self.name,
-            source: source_id,
-            mapping: mapping_id,
-        };
-
-        ops.push(set_metadata_operation(
-            subgraph.clone(),
-            Self::TYPENAME,
-            id,
-            entity,
-        ));
-
-        ops
-    }
-}
-
-impl<'a> From<&'a super::DataSource> for EthereumContractDataSourceEntity {
-    fn from(data_source: &'a super::DataSource) -> Self {
-        Self {
-            kind: data_source.kind.clone(),
-            name: data_source.name.clone(),
-            network: data_source.network.clone(),
-            source: data_source.source.clone().into(),
-            mapping: EthereumContractMappingEntity::from(&data_source.mapping),
         }
     }
 }

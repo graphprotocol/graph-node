@@ -921,7 +921,6 @@ impl ShardData for MetadataType {
             SubgraphDeploymentAssignment => false,
             SubgraphDeployment
             | SubgraphManifest
-            | EthereumContractDataSource
             | DynamicEthereumContractDataSource
             | EthereumContractSource
             | EthereumContractMapping

@@ -71,15 +71,6 @@ type SubgraphManifest @entity {
     schema: String!
 }
 
-type EthereumContractDataSource @entity {
-    id: ID!
-    kind: String!
-    name: String!
-    network: String
-    source: EthereumContractSource!
-    mapping: EthereumContractMapping!
-}
-
 type DynamicEthereumContractDataSource @entity {
     id: ID!
     kind: String!
