@@ -29,6 +29,7 @@ fn node_fails_to_start_with_unnamed_ethereum_network() {
 }
 
 #[test]
+#[ignore = "non deterministic"]
 fn node_fails_to_start_with_invalid_ipfs() {
     assert_cli::Assert::main_binary()
         .with_args(&[
