@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use chrono::prelude::{SecondsFormat, Utc};
 use futures03::TryFutureExt;
+use http::header::CONTENT_TYPE;
 use reqwest;
 use reqwest::Client;
 use serde::ser::Serializer as SerdeSerializer;
@@ -265,11 +266,11 @@ impl ElasticDrain {
                     let header = match config.general.username {
                         Some(username) => client
                             .post(batch_url)
-                            .header("Content-Type", "application/json")
+                            .header(CONTENT_TYPE, "application/json")
                             .basic_auth(username, config.general.password.clone()),
                         None => client
                             .post(batch_url)
-                            .header("Content-Type", "application/json"),
+                            .header(CONTENT_TYPE, "application/json"),
                     };
                     header
                         .body(batch_body)
