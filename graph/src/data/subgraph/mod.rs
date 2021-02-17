@@ -26,7 +26,6 @@ use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
-    EthereumContractDataSourceTemplateEntity, EthereumContractDataSourceTemplateSourceEntity,
     EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
     EthereumContractSourceEntity,
 };
@@ -485,12 +484,6 @@ pub struct TemplateSource {
     pub abi: String,
 }
 
-impl From<EthereumContractDataSourceTemplateSourceEntity> for TemplateSource {
-    fn from(entity: EthereumContractDataSourceTemplateSourceEntity) -> Self {
-        Self { abi: entity.abi }
-    }
-}
-
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedMappingABI {
     pub name: String,
@@ -837,18 +830,6 @@ pub struct BaseDataSourceTemplate<M> {
     pub name: String,
     pub source: TemplateSource,
     pub mapping: M,
-}
-
-impl From<EthereumContractDataSourceTemplateEntity> for UnresolvedDataSourceTemplate {
-    fn from(entity: EthereumContractDataSourceTemplateEntity) -> Self {
-        Self {
-            kind: entity.kind,
-            network: entity.network,
-            name: entity.name,
-            source: entity.source.into(),
-            mapping: entity.mapping.into(),
-        }
-    }
 }
 
 pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;

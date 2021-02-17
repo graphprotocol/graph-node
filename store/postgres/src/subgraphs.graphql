@@ -136,20 +136,6 @@ type EthereumContractEventHandler @entity {
     handler: String!
 }
 
-type EthereumContractDataSourceTemplate @entity {
-    id: ID!
-    kind: String!
-    name: String!
-    network: String
-    source: EthereumContractDataSourceTemplateSource!
-    mapping: EthereumContractMapping!
-}
-
-type EthereumContractDataSourceTemplateSource @entity {
-    id: ID!
-    abi: String!
-}
-
 type SubgraphError {
   id: ID!
 

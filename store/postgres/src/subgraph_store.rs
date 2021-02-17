@@ -929,8 +929,6 @@ impl ShardData for MetadataType {
             | EthereumBlockHandlerFilterEntity
             | EthereumCallHandlerEntity
             | EthereumContractEventHandler
-            | EthereumContractDataSourceTemplate
-            | EthereumContractDataSourceTemplateSource
             | SubgraphError => true,
         }
     }

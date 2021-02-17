@@ -60,8 +60,6 @@ pub enum MetadataType {
     EthereumBlockHandlerFilterEntity,
     EthereumCallHandlerEntity,
     EthereumContractEventHandler,
-    EthereumContractDataSourceTemplate,
-    EthereumContractDataSourceTemplateSource,
     SubgraphError,
 }
 
@@ -938,112 +936,6 @@ impl TryFromValue for EthereumContractEventHandlerEntity {
             event: map.get_required("event")?,
             topic0: map.get_optional("topic0")?,
             handler: map.get_required("handler")?,
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct EthereumContractDataSourceTemplateEntity {
-    pub kind: String,
-    pub network: Option<String>,
-    pub name: String,
-    pub source: EthereumContractDataSourceTemplateSourceEntity,
-    pub mapping: EthereumContractMappingEntity,
-}
-
-impl TypedEntity for EthereumContractDataSourceTemplateEntity {
-    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSourceTemplate;
-    type IdType = String;
-}
-
-impl WriteOperations for EthereumContractDataSourceTemplateEntity {
-    fn generate(self, id: &str, ops: &mut dyn OperationList) {
-        let source_id = format!("{}-source", id);
-        self.source.generate(&source_id, ops);
-
-        let mapping_id = format!("{}-mapping", id);
-        self.mapping.generate(&mapping_id, ops);
-
-        let mut entity = Entity::new();
-        entity.set("id", id);
-        entity.set("kind", self.kind);
-        entity.set("network", self.network);
-        entity.set("name", self.name);
-        entity.set("source", source_id);
-        entity.set("mapping", mapping_id);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
-    }
-}
-
-impl From<&super::DataSourceTemplate> for EthereumContractDataSourceTemplateEntity {
-    fn from(template: &super::DataSourceTemplate) -> Self {
-        Self {
-            kind: template.kind.clone(),
-            name: template.name.clone(),
-            network: template.network.clone(),
-            source: template.source.clone().into(),
-            mapping: EthereumContractMappingEntity::from(&template.mapping),
-        }
-    }
-}
-
-impl TryFromValue for EthereumContractDataSourceTemplateEntity {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        let map = match value {
-            q::Value::Object(map) => Ok(map),
-            _ => Err(anyhow!(
-                "Cannot parse value into a data source template entity: {:?}",
-                value
-            )),
-        }?;
-
-        Ok(Self {
-            kind: map.get_required("kind")?,
-            name: map.get_required("name")?,
-            network: map.get_optional("network")?,
-            source: map.get_required("source")?,
-            mapping: map.get_required("mapping")?,
-        })
-    }
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub struct EthereumContractDataSourceTemplateSourceEntity {
-    pub abi: String,
-}
-
-impl TypedEntity for EthereumContractDataSourceTemplateSourceEntity {
-    const TYPENAME: MetadataType = MetadataType::EthereumContractDataSourceTemplateSource;
-    type IdType = String;
-}
-
-impl WriteOperations for EthereumContractDataSourceTemplateSourceEntity {
-    fn generate(self, id: &str, ops: &mut dyn OperationList) {
-        let mut entity = Entity::new();
-        entity.set("id", id);
-        entity.set("abi", self.abi);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
-    }
-}
-
-impl From<super::TemplateSource> for EthereumContractDataSourceTemplateSourceEntity {
-    fn from(source: super::TemplateSource) -> Self {
-        Self { abi: source.abi }
-    }
-}
-
-impl TryFromValue for EthereumContractDataSourceTemplateSourceEntity {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        let map = match value {
-            q::Value::Object(map) => Ok(map),
-            _ => Err(anyhow!(
-                "Cannot parse value into a template source entity: {:?}",
-                value
-            )),
-        }?;
-
-        Ok(Self {
-            abi: map.get_required("abi")?,
         })
     }
 }
