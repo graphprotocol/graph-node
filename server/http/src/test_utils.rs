@@ -1,14 +1,14 @@
 use graph::prelude::serde_json;
 use graph::prelude::*;
 use http::StatusCode;
-use hyper::{Body, Response};
+use hyper::{header::ACCESS_CONTROL_ALLOW_ORIGIN, Body, Response};
 
 /// Asserts that the response is a successful GraphQL response; returns its `"data"` field.
 pub fn assert_successful_response(
     response: Response<Body>,
 ) -> serde_json::Map<String, serde_json::Value> {
     assert_eq!(response.status(), StatusCode::OK);
-
+    assert_expected_headers(&response);
     futures03::executor::block_on(
         hyper::body::to_bytes(response.into_body())
             .map_ok(|chunk| {
@@ -35,7 +35,7 @@ pub fn assert_error_response(
     graphql_response: bool,
 ) -> Vec<serde_json::Value> {
     assert_eq!(response.status(), expected_status);
-
+    assert_expected_headers(&response);
     let body = String::from_utf8(
         futures03::executor::block_on(hyper::body::to_bytes(response.into_body()))
             .unwrap()
@@ -58,4 +58,14 @@ pub fn assert_error_response(
         .as_array()
         .expect("GraphQL \"errors\" field must be a vector")
         .clone()
+}
+
+pub fn assert_expected_headers(response: &Response<Body>) {
+    assert_eq!(
+        response
+            .headers()
+            .get(ACCESS_CONTROL_ALLOW_ORIGIN)
+            .expect("Missing CORS Header"),
+        &"*"
+    );
 }
