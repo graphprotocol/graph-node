@@ -345,8 +345,6 @@ pub struct SubgraphManifestEntity {
     repository: Option<String>,
     features: Vec<String>,
     schema: String,
-    data_sources: Vec<EthereumContractDataSourceEntity>,
-    templates: Vec<EthereumContractDataSourceTemplateEntity>,
 }
 
 impl TypedEntity for SubgraphManifestEntity {
@@ -366,28 +364,9 @@ impl SubgraphManifestEntity {
             repository,
             features,
             schema,
-            data_sources,
-            templates,
         } = self;
 
         let mut ops = vec![];
-
-        let mut data_source_ids: Vec<Value> = vec![];
-        for (i, data_source) in data_sources.into_iter().enumerate() {
-            let data_source_id = format!("{}-data-source-{}", id, i);
-            ops.extend(data_source.write_operations(subgraph, &data_source_id));
-            data_source_ids.push(data_source_id.into());
-        }
-
-        let template_ids: Vec<Value> = templates
-            .into_iter()
-            .enumerate()
-            .map(|(i, template)| {
-                let template_id = format!("{}-templates-{}", id, i);
-                ops.extend(template.write_operations(subgraph, &template_id));
-                template_id.into()
-            })
-            .collect();
 
         let entity = entity! {
             id: id,
@@ -396,8 +375,6 @@ impl SubgraphManifestEntity {
             repository: repository,
             features: features,
             schema: schema,
-            dataSources: data_source_ids,
-            templates: template_ids,
         };
 
         ops.push(set_metadata_operation(
@@ -419,12 +396,6 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
             repository: manifest.repository.clone(),
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
-            data_sources: manifest.data_sources.iter().map(Into::into).collect(),
-            templates: manifest
-                .templates
-                .iter()
-                .map(EthereumContractDataSourceTemplateEntity::from)
-                .collect(),
         }
     }
 }

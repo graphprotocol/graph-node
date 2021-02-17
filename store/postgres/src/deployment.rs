@@ -115,8 +115,6 @@ table! {
         repository -> Nullable<Text>,
         features -> Array<Text>,
         schema -> Text,
-        data_sources -> Array<Text>,
-        templates -> Nullable<Array<Text>>,
         block_range -> Range<Integer>,
     }
 }
