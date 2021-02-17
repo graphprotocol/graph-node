@@ -92,19 +92,6 @@ type EthereumContractSource @entity {
     startBlock: BigInt
 }
 
-type EthereumContractMapping @entity {
-    id: ID!
-    kind: String!
-    apiVersion: String!
-    language: String!
-    file: String!
-    entities: [String!]!
-    abis: [EthereumContractAbi!]!
-    blockHandlers: [EthereumBlockHandlerEntity!]
-    callHandlers: [EthereumCallHandlerEntity!]
-    eventHandlers: [EthereumContractEventHandler!]
-}
-
 type EthereumContractAbi @entity {
     id: ID!
     name: String!

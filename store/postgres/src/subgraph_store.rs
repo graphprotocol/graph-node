@@ -923,7 +923,6 @@ impl ShardData for MetadataType {
             | SubgraphManifest
             | DynamicEthereumContractDataSource
             | EthereumContractSource
-            | EthereumContractMapping
             | EthereumContractAbi
             | EthereumBlockHandlerEntity
             | EthereumBlockHandlerFilterEntity

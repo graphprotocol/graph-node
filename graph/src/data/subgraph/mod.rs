@@ -26,8 +26,7 @@ use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
 use crate::data::subgraph::schema::{
     EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
-    EthereumContractEventHandlerEntity, EthereumContractMappingEntity,
-    EthereumContractSourceEntity,
+    EthereumContractEventHandlerEntity, EthereumContractSourceEntity,
 };
 use crate::prelude::CheapClone;
 
@@ -711,22 +710,6 @@ impl UnresolvedMapping {
             runtime,
             link,
         })
-    }
-}
-
-impl From<EthereumContractMappingEntity> for UnresolvedMapping {
-    fn from(entity: EthereumContractMappingEntity) -> Self {
-        Self {
-            kind: entity.kind,
-            api_version: entity.api_version,
-            language: entity.language,
-            entities: entity.entities,
-            abis: entity.abis.into_iter().map(Into::into).collect(),
-            event_handlers: entity.event_handlers.into_iter().map(Into::into).collect(),
-            call_handlers: entity.call_handlers.into_iter().map(Into::into).collect(),
-            block_handlers: entity.block_handlers.into_iter().map(Into::into).collect(),
-            file: entity.file.into(),
-        }
     }
 }
 
