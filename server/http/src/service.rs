@@ -8,6 +8,7 @@ use std::time::Instant;
 use graph::prelude::*;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
+use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, LOCATION};
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
@@ -119,6 +120,7 @@ where
     async fn index(self) -> GraphQLServiceResult {
         Ok(Response::builder()
             .status(200)
+            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .body(Body::from(String::from(
                 "Access deployed subgraphs by deployment ID at \
                 /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>",
@@ -131,6 +133,7 @@ where
         async move {
             Ok(Response::builder()
                 .status(200)
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .body(Body::from(contents))
                 .unwrap())
         }
@@ -142,6 +145,7 @@ where
         async {
             Ok(Response::builder()
                 .status(200)
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .body(Body::from(contents))
                 .unwrap())
         }
@@ -231,7 +235,8 @@ where
             .map(|loc_header_val| {
                 Response::builder()
                     .status(StatusCode::FOUND)
-                    .header(header::LOCATION, loc_header_val)
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .header(LOCATION, loc_header_val)
                     .body(Body::from("Redirecting..."))
                     .unwrap()
             })
@@ -242,6 +247,7 @@ where
         async {
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .body(Body::from("Not found"))
                 .unwrap())
         }
@@ -338,6 +344,7 @@ where
                 Err(err @ GraphQLServerError::ClientError(_)) => Ok(Response::builder()
                     .status(400)
                     .header("Content-Type", "text/plain")
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .body(Body::from(err.to_string()))
                     .unwrap()),
                 Err(err @ GraphQLServerError::QueryError(_)) => {
@@ -346,6 +353,7 @@ where
                     Ok(Response::builder()
                         .status(400)
                         .header("Content-Type", "text/plain")
+                        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(format!("Query error: {}", err)))
                         .unwrap())
                 }
@@ -355,6 +363,7 @@ where
                     Ok(Response::builder()
                         .status(500)
                         .header("Content-Type", "text/plain")
+                        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(format!("Internal server error: {}", err)))
                         .unwrap())
                 }

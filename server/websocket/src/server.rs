@@ -1,4 +1,5 @@
 use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
+use http::header::ACCESS_CONTROL_ALLOW_ORIGIN;
 use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
@@ -128,6 +129,7 @@ where
 
                     Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
+			.header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(None)
                         .unwrap()
                 })
@@ -135,6 +137,7 @@ where
                     subgraph_id_opt.ok_or_else(|| {
                         Response::builder()
                             .status(StatusCode::NOT_FOUND)
+			    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                             .body(None)
                             .unwrap()
                     })
@@ -148,6 +151,7 @@ where
                         );
                         return Err(Response::builder()
                             .status(StatusCode::NOT_FOUND)
+                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                             .body(None)
                             .unwrap());
                     }

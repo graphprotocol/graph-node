@@ -2,6 +2,7 @@
 //! in this file is private API and experimental and subject to change at
 //! any time
 use http::{Response, StatusCode};
+use hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN;
 use hyper::Body;
 use std::{
     collections::HashMap,
@@ -234,6 +235,7 @@ fn handle_not_found() -> Result<Response<Body>, GraphQLServerError> {
     Ok(Response::builder()
         .status(StatusCode::NOT_FOUND)
         .header("Content-Type", "text/plain")
+        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Body::from("Not found\n"))
         .unwrap())
 }
