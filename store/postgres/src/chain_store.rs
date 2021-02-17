@@ -1349,8 +1349,8 @@ impl ChainStoreTrait for ChainStore {
                 select min(d.latest_ethereum_block_number) as block
                   from subgraphs.subgraph_deployment d,
                        subgraphs.subgraph_deployment_assignment a,
-                       subgraphs.ethereum_contract_data_source ds
-                 where left(ds.id, 46) = d.id
+                       deployment_schemas ds
+                 where ds.subgraph = d.id
                    and a.id = d.id
                    and not d.failed
                    and ds.network = $2) a;";

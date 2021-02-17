@@ -181,15 +181,14 @@ fn print_copy_dds(layout: &Layout) {
     println!(
         r#"
 insert into subgraphs.dynamic_ethereum_contract_data_source(id, kind, name,
-              network, source, mapping, ethereum_block_hash,
-              ethereum_block_number, deployment, block_range)
-select x.new_id, e.kind, e.name, e.network, {source}, {mapping},
+              network, source, ethereum_block_hash,
+              ethereum_block_number, deployment, context, block_range)
+select x.new_id, e.kind, e.name, e.network, {source},
        e.ethereum_block_hash, e.ethereum_block_number, $3 as deployment,
-       e.block_range
+       e.context, e.block_range
   from xlat x, subgraphs.dynamic_ethereum_contract_data_source e
  where x.id = e.id"#,
         source = xlat("source", false),
-        mapping = xlat("mapping", false),
     );
 }
 
