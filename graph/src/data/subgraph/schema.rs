@@ -406,7 +406,6 @@ pub struct DynamicEthereumContractDataSourceEntity {
     network: Option<String>,
     name: String,
     source: EthereumContractSourceEntity,
-    mapping: EthereumContractMappingEntity,
     context: Option<DataSourceContext>,
 }
 
@@ -435,7 +434,6 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
         self.source.generate(&source_id, ops);
 
         let mapping_id = format!("{}-mapping", id);
-        self.mapping.generate(&mapping_id, ops);
 
         let Self {
             kind,
@@ -445,7 +443,6 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
             name,
             network,
             source: _,
-            mapping: _,
             context,
         } = self;
 
@@ -488,7 +485,7 @@ impl<'a, 'b, 'c>
             network,
             name,
             source,
-            mapping,
+            mapping: _,
             context,
             creation_block: _,
         } = data_source;
@@ -501,7 +498,6 @@ impl<'a, 'b, 'c>
             name: name.clone(),
             network: network.clone(),
             source: source.clone().into(),
-            mapping: EthereumContractMappingEntity::from(mapping),
             context: context.clone(),
         }
     }

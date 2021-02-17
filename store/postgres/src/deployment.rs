@@ -98,7 +98,6 @@ table! {
         name -> Text,
         network -> Nullable<Text>,
         source -> Text,
-        mapping -> Text,
         ethereum_block_hash -> Binary,
         ethereum_block_number -> Numeric,
         deployment -> Text,

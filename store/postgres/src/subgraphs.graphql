@@ -77,7 +77,6 @@ type DynamicEthereumContractDataSource @entity {
     name: String!
     network: String
     source: EthereumContractSource!
-    mapping: EthereumContractMapping!
     ethereumBlockHash: Bytes!
     ethereumBlockNumber: BigInt!
     deployment: SubgraphDeployment!
