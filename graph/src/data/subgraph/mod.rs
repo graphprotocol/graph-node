@@ -24,10 +24,7 @@ use crate::data::graphql::TryFromValue;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
-use crate::data::subgraph::schema::{
-    EthereumBlockHandlerEntity, EthereumCallHandlerEntity, EthereumContractAbiEntity,
-    EthereumContractEventHandlerEntity, EthereumContractSourceEntity,
-};
+use crate::data::subgraph::schema::EthereumContractSourceEntity;
 use crate::prelude::CheapClone;
 
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
@@ -489,15 +486,6 @@ pub struct UnresolvedMappingABI {
     pub file: Link,
 }
 
-impl From<EthereumContractAbiEntity> for UnresolvedMappingABI {
-    fn from(entity: EthereumContractAbiEntity) -> Self {
-        Self {
-            name: entity.name,
-            file: entity.file.into(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct MappingABI {
     pub name: String,
@@ -542,28 +530,10 @@ pub enum BlockHandlerFilter {
     Call,
 }
 
-impl From<EthereumBlockHandlerEntity> for MappingBlockHandler {
-    fn from(entity: EthereumBlockHandlerEntity) -> Self {
-        Self {
-            handler: entity.handler,
-            filter: None,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingCallHandler {
     pub function: String,
     pub handler: String,
-}
-
-impl From<EthereumCallHandlerEntity> for MappingCallHandler {
-    fn from(entity: EthereumCallHandlerEntity) -> Self {
-        Self {
-            function: entity.function,
-            handler: entity.handler,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -577,16 +547,6 @@ impl MappingEventHandler {
     pub fn topic0(&self) -> H256 {
         self.topic0
             .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
-    }
-}
-
-impl From<EthereumContractEventHandlerEntity> for MappingEventHandler {
-    fn from(entity: EthereumContractEventHandlerEntity) -> Self {
-        Self {
-            event: entity.event,
-            topic0: entity.topic0,
-            handler: entity.handler,
-        }
     }
 }
 

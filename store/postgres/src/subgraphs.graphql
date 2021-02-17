@@ -92,36 +92,6 @@ type EthereumContractSource @entity {
     startBlock: BigInt
 }
 
-type EthereumContractAbi @entity {
-    id: ID!
-    name: String!
-    file: String!
-}
-
-type EthereumBlockHandlerEntity @entity {
-    id: ID!
-    handler: String!
-    filter: EthereumBlockHandlerFilterEntity
-}
-
-type EthereumBlockHandlerFilterEntity @entity {
-    id: ID!
-    kind: String!
-}
-
-type EthereumCallHandlerEntity @entity {
-    id: ID!
-    function: String!
-    handler: String!
-}
-
-type EthereumContractEventHandler @entity {
-    id: ID!
-    event: String!
-    topic0: Bytes
-    handler: String!
-}
-
 type SubgraphError {
   id: ID!
 
