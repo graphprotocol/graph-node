@@ -587,7 +587,11 @@ fn fail_unfail() {
             deterministic: true,
         };
 
-        store.fail_subgraph(id.clone(), error).await.unwrap();
+        store
+            .subgraph_store()
+            .fail_subgraph(id.clone(), error)
+            .await
+            .unwrap();
 
         assert!(!query_store
             .has_non_fatal_errors(id.cheap_clone(), None)
@@ -595,10 +599,11 @@ fn fail_unfail() {
             .unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
-        store.unfail(&id).unwrap();
+        store.subgraph_store().unfail(&id).unwrap();
 
         // Advance the block ptr to the block of the deleted error.
-        transact_entity_operations(&store, id.cheap_clone(), BLOCKS[1], vec![]).unwrap();
+        transact_entity_operations(&store.subgraph_store(), id.cheap_clone(), BLOCKS[1], vec![])
+            .unwrap();
 
         // We still have no fatal errors.
         assert!(!query_store
