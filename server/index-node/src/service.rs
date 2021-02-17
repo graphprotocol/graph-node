@@ -1,4 +1,4 @@
-use http::header;
+use http::header::{self, ACCESS_CONTROL_ALLOW_ORIGIN, LOCATION};
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use std::task::Context;
@@ -62,6 +62,7 @@ where
     /// Serves a static file.
     fn serve_file(contents: &'static str) -> Response<Body> {
         Response::builder()
+            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .status(200)
             .body(Body::from(contents))
             .unwrap()
@@ -70,6 +71,7 @@ where
     fn index() -> Response<Body> {
         Response::builder()
             .status(200)
+            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .body(Body::from("OK"))
             .unwrap()
     }
@@ -143,7 +145,8 @@ where
             .map(|loc_header_val| {
                 Response::builder()
                     .status(StatusCode::FOUND)
-                    .header(header::LOCATION, loc_header_val)
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .header(LOCATION, loc_header_val)
                     .body(Body::from("Redirecting..."))
                     .unwrap()
             })
@@ -153,6 +156,7 @@ where
     pub(crate) fn handle_not_found() -> Response<Body> {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
+            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header("Content-Type", "text/plain")
             .body(Body::from("Not found\n"))
             .unwrap()
@@ -225,6 +229,7 @@ where
                         Ok(Response::builder()
                             .status(400)
                             .header("Content-Type", "text/plain")
+                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                             .body(Body::from(format!("Invalid request: {}", err)))
                             .unwrap())
                     }
@@ -234,6 +239,7 @@ where
                         Ok(Response::builder()
                             .status(400)
                             .header("Content-Type", "text/plain")
+                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                             .body(Body::from(format!("Query error: {}", err)))
                             .unwrap())
                     }
@@ -243,6 +249,7 @@ where
                         Ok(Response::builder()
                             .status(500)
                             .header("Content-Type", "text/plain")
+                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                             .body(Body::from(format!("Internal server error: {}", err)))
                             .unwrap())
                     }

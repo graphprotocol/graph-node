@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Error;
 use graph::prometheus::{Encoder, Registry, TextEncoder};
 use hyper;
+use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
 use thiserror::Error;
@@ -75,7 +76,8 @@ impl MetricsServerTrait for PrometheusMetricsServer {
                     futures03::future::ok::<_, Error>(
                         Response::builder()
                             .status(200)
-                            .header(hyper::header::CONTENT_TYPE, encoder.format_type())
+                            .header(CONTENT_TYPE, encoder.format_type())
+                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                             .body(Body::from(buffer))
                             .unwrap(),
                     )
