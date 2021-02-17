@@ -8,7 +8,10 @@ use std::time::Instant;
 use graph::prelude::*;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
-use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, LOCATION};
+use http::header::{
+    ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
+    CONTENT_TYPE, LOCATION,
+};
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
@@ -217,9 +220,9 @@ where
         async {
             Ok(Response::builder()
                 .status(200)
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Access-Control-Allow-Headers", "Content-Type, User-Agent")
-                .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
+                .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
                 .body(Body::from(""))
                 .unwrap())
         }
@@ -343,7 +346,7 @@ where
                 Ok(response) => Ok(response),
                 Err(err @ GraphQLServerError::ClientError(_)) => Ok(Response::builder()
                     .status(400)
-                    .header("Content-Type", "text/plain")
+                    .header(CONTENT_TYPE, "text/plain")
                     .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .body(Body::from(err.to_string()))
                     .unwrap()),
@@ -352,7 +355,7 @@ where
 
                     Ok(Response::builder()
                         .status(400)
-                        .header("Content-Type", "text/plain")
+                        .header(CONTENT_TYPE, "text/plain")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(format!("Query error: {}", err)))
                         .unwrap())
@@ -362,7 +365,7 @@ where
 
                     Ok(Response::builder()
                         .status(500)
-                        .header("Content-Type", "text/plain")
+                        .header(CONTENT_TYPE, "text/plain")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(format!("Internal server error: {}", err)))
                         .unwrap())

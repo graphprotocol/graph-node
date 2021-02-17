@@ -3,6 +3,10 @@ use crate::{
     data::graphql::SerializableValue,
     prelude::{q, CacheWeight, SubgraphDeploymentId},
 };
+use http::header::{
+    ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
+    CONTENT_TYPE,
+};
 use serde::ser::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -158,10 +162,10 @@ impl QueryResults {
             serde_json::to_string(self).expect("Failed to serialize GraphQL response to JSON");
         http::Response::builder()
             .status(status_code)
-            .header("Access-Control-Allow-Origin", "*")
-            .header("Access-Control-Allow-Headers", "Content-Type, User-Agent")
-            .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
-            .header("Content-Type", "application/json")
+            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
+            .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
+            .header(CONTENT_TYPE, "application/json")
             .body(T::from(json))
             .unwrap()
     }

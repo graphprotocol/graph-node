@@ -2,7 +2,10 @@
 //! in this file is private API and experimental and subject to change at
 //! any time
 use http::{Response, StatusCode};
-use hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN;
+use hyper::header::{
+    ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
+    CONTENT_TYPE,
+};
 use hyper::Body;
 use std::{
     collections::HashMap,
@@ -234,7 +237,7 @@ where
 fn handle_not_found() -> Result<Response<Body>, GraphQLServerError> {
     Ok(Response::builder()
         .status(StatusCode::NOT_FOUND)
-        .header("Content-Type", "text/plain")
+        .header(CONTENT_TYPE, "text/plain")
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Body::from("Not found\n"))
         .unwrap())
@@ -246,10 +249,10 @@ fn as_http_response(value: &q::Value) -> http::Response<Body> {
         .expect("Failed to serialize response to JSON");
     http::Response::builder()
         .status(status_code)
-        .header("Access-Control-Allow-Origin", "*")
-        .header("Access-Control-Allow-Headers", "Content-Type, User-Agent")
-        .header("Access-Control-Allow-Methods", "GET, OPTIONS, POST")
-        .header("Content-Type", "application/json")
+        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
+        .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
+        .header(CONTENT_TYPE, "application/json")
         .body(Body::from(json))
         .unwrap()
 }
