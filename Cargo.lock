@@ -2427,9 +2427,9 @@ dependencies = [
 
 [[package]]
 name = "lru_time_cache"
-version = "0.11.2"
+version = "0.11.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebac060fafad3adedd0c66a80741a92ff4bc8e94a273df2ba3770ab206f2e29a"
+checksum = "7ce7a913007f8d825242cd5017962f09bc3f19f91a382498c1e6756c842e3908"
 
 [[package]]
 name = "mach"
