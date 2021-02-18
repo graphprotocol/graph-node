@@ -1,0 +1,1 @@
+Please add support for Fantom Opera Mainnet (Ethereum compatible).
