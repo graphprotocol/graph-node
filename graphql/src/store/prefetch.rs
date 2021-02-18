@@ -695,7 +695,7 @@ fn collect_fields_inner<'a>(
                 );
             }
         }
-    };
+    }
 
     // Only consider selections that are not skipped and should be included
     let selections = selection_set
