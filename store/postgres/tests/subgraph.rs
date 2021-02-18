@@ -430,6 +430,7 @@ fn version_info() {
     fn setup() -> SubgraphDeploymentId {
         let id = SubgraphDeploymentId::new(NAME).unwrap();
         remove_subgraphs();
+        block_store::set_chain(vec![], NETWORK_NAME);
         create_test_subgraph(&id, SUBGRAPH_GQL);
         id
     }
