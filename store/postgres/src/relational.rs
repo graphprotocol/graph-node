@@ -424,7 +424,7 @@ impl Layout {
         }
 
         // 2. Copy dynamic data sources and adjust their ID
-        use crate::deployment::dynamic_ethereum_contract_data_source as decds;
+        use crate::dynds::dynamic_ethereum_contract_data_source as decds;
         // Find existing dynamic data sources
         let start = Instant::now();
         let dds = decds::table

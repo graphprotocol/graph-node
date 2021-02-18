@@ -91,24 +91,6 @@ table! {
 }
 
 table! {
-    subgraphs.dynamic_ethereum_contract_data_source (vid) {
-        vid -> BigInt,
-        id -> Text,
-        kind -> Text,
-        name -> Text,
-        network -> Nullable<Text>,
-        source -> Text,
-        address -> Nullable<Binary>,
-        abi -> Nullable<Text>,
-        start_block -> Nullable<Integer>,
-        ethereum_block_hash -> Binary,
-        ethereum_block_number -> Numeric,
-        deployment -> Text,
-        block_range -> Range<Integer>,
-    }
-}
-
-table! {
     subgraphs.subgraph_manifest (vid) {
         vid -> BigInt,
         id -> Text,
