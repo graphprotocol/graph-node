@@ -1579,7 +1579,7 @@ fn handle_large_string_with_index() {
         let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), id.to_owned());
 
         EntityModification::Insert { key, data }
-    };
+    }
 
     run_test(|store| async move {
         // We have to produce a massive string (1_000_000 chars) because
