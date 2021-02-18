@@ -400,6 +400,9 @@ pub struct DynamicEthereumContractDataSourceEntity {
     network: Option<String>,
     name: String,
     source: EthereumContractSourceEntity,
+    address: Option<Address>,
+    abi: Option<String>,
+    start_block: u64,
     context: Option<DataSourceContext>,
 }
 
@@ -437,6 +440,9 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
             name,
             network,
             source: _,
+            address,
+            abi,
+            start_block,
             context,
         } = self;
 
@@ -446,6 +452,9 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
             network: network,
             name: name,
             source: source_id,
+            address: address,
+            abi: abi,
+            startBlock: start_block,
             mapping: mapping_id,
             deployment: deployment,
             ethereumBlockHash: ethereum_block_hash,
@@ -492,6 +501,9 @@ impl<'a, 'b, 'c>
             name: name.clone(),
             network: network.clone(),
             source: source.clone().into(),
+            address: source.address,
+            abi: Some(source.abi.clone()),
+            start_block: source.start_block,
             context: context.clone(),
         }
     }

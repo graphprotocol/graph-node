@@ -6,9 +6,10 @@ with xlat as (
       from subgraphs.ethereum_contract_source e, xlat x
      where left(e.id, 40) = x.id)
 insert into subgraphs.dynamic_ethereum_contract_data_source(id, kind, name,
-              network, source, ethereum_block_hash,
+              network, address, abi, start_block, ethereum_block_hash,
               ethereum_block_number, deployment, context, block_range)
-select x.new_id, e.kind, e.name, e.network, (x.new_id || right(e.source, -40)) as source,
+select x.new_id, e.kind, e.name, e.network,
+       e.address, e.abi, e.start_block,
        e.ethereum_block_hash, e.ethereum_block_number, $3 as deployment,
        e.context, e.block_range
   from xlat x, subgraphs.dynamic_ethereum_contract_data_source e
