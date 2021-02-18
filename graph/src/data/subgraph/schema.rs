@@ -25,7 +25,7 @@ use web3::types::*;
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
 use crate::components::store::{EntityOperation, MetadataKey, MetadataOperation};
-use crate::data::graphql::{TryFromValue, ValueMap};
+use crate::data::graphql::TryFromValue;
 use crate::data::store::{Entity, Value};
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
@@ -53,7 +53,6 @@ pub enum MetadataType {
     SubgraphDeploymentAssignment,
     SubgraphManifest,
     DynamicEthereumContractDataSource,
-    EthereumContractSource,
     SubgraphError,
 }
 
@@ -399,7 +398,6 @@ pub struct DynamicEthereumContractDataSourceEntity {
     ethereum_block_number: u64,
     network: Option<String>,
     name: String,
-    source: EthereumContractSourceEntity,
     address: Option<Address>,
     abi: Option<String>,
     start_block: u64,
@@ -428,7 +426,6 @@ impl TypedEntity for DynamicEthereumContractDataSourceEntity {
 impl WriteOperations for DynamicEthereumContractDataSourceEntity {
     fn generate(self, id: &str, ops: &mut dyn OperationList) {
         let source_id = format!("{}-source", id);
-        self.source.generate(&source_id, ops);
 
         let mapping_id = format!("{}-mapping", id);
 
@@ -439,7 +436,6 @@ impl WriteOperations for DynamicEthereumContractDataSourceEntity {
             ethereum_block_number,
             name,
             network,
-            source: _,
             address,
             abi,
             start_block,
@@ -500,63 +496,11 @@ impl<'a, 'b, 'c>
             ethereum_block_number: block_ptr.number,
             name: name.clone(),
             network: network.clone(),
-            source: source.clone().into(),
             address: source.address,
             abi: Some(source.abi.clone()),
             start_block: source.start_block,
             context: context.clone(),
         }
-    }
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub struct EthereumContractSourceEntity {
-    pub address: Option<super::Address>,
-    pub abi: String,
-    pub start_block: u64,
-}
-
-impl TypedEntity for EthereumContractSourceEntity {
-    const TYPENAME: MetadataType = MetadataType::EthereumContractSource;
-    type IdType = String;
-}
-
-impl WriteOperations for EthereumContractSourceEntity {
-    fn generate(self, id: &str, ops: &mut dyn OperationList) {
-        let mut entity = Entity::new();
-        entity.set("id", id);
-        entity.set("address", self.address);
-        entity.set("abi", self.abi);
-        entity.set("startBlock", self.start_block);
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
-    }
-}
-
-impl From<super::Source> for EthereumContractSourceEntity {
-    fn from(source: super::Source) -> Self {
-        Self {
-            address: source.address,
-            abi: source.abi,
-            start_block: source.start_block,
-        }
-    }
-}
-
-impl TryFromValue for EthereumContractSourceEntity {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
-        let map = match value {
-            q::Value::Object(map) => Ok(map),
-            _ => Err(anyhow!(
-                "Cannot parse value into a contract source entity: {:?}",
-                value
-            )),
-        }?;
-
-        Ok(Self {
-            address: map.get_optional("address")?,
-            abi: map.get_required("abi")?,
-            start_block: map.get_optional("startBlock")?.unwrap_or_default(),
-        })
     }
 }
 

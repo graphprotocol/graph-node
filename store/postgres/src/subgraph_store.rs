@@ -152,8 +152,7 @@ pub mod unused {
 /// - `subgraphs.subgraph_manifest`: immutable information derived from the YAML
 ///   manifest for the deployment
 /// - `subgraphs.dynamic_ethereum_contract_data_source`: the data sources that
-///   the subgraph has created from templates in the manifest. Some detail about
-///   dynamic data sources is also stored in `subgraphs.ethereum_contract_source`
+///   the subgraph has created from templates in the manifest.
 /// - `subgraphs.subgraph_error`: details about errors that the deployment has
 ///   encountered
 ///
@@ -922,7 +921,6 @@ impl ShardData for MetadataType {
             SubgraphDeployment
             | SubgraphManifest
             | DynamicEthereumContractDataSource
-            | EthereumContractSource
             | SubgraphError => true,
         }
     }

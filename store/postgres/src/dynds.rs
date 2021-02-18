@@ -3,13 +3,13 @@
 use std::ops::Bound;
 
 use diesel::pg::PgConnection;
-use diesel::prelude::{ExpressionMethods, JoinOnDsl, QueryDsl, RunQueryDsl};
+use diesel::prelude::{ExpressionMethods, QueryDsl, RunQueryDsl};
 
 use graph::{
     components::store::StoredDynamicDataSource,
     constraint_violation,
     data::subgraph::Source,
-    prelude::{bigdecimal::ToPrimitive, web3::types::H160, BigDecimal, StoreError},
+    prelude::{bigdecimal::ToPrimitive, web3::types::H160, BlockNumber, StoreError},
 };
 
 use crate::block_range::first_block_in_range;
@@ -28,7 +28,9 @@ table! {
         kind -> Text,
         name -> Text,
         network -> Nullable<Text>,
-        source -> Text,
+        address -> Binary,
+        abi -> Text,
+        start_block -> Integer,
         mapping -> Text,
         ethereum_block_hash -> Binary,
         ethereum_block_number -> Numeric,
@@ -37,41 +39,15 @@ table! {
         block_range -> Range<Integer>,
     }
 }
-
-table! {
-    subgraphs.ethereum_contract_source (vid) {
-        vid -> BigInt,
-        id -> Text,
-        address -> Nullable<Binary>,
-        abi -> Text,
-        start_block -> Nullable<Numeric>,
-        block_range -> Range<Integer>,
-    }
-}
-
 // END GENERATED CODE
-
-allow_tables_to_appear_in_same_query!(
-    dynamic_ethereum_contract_data_source,
-    ethereum_contract_source
-);
 
 fn to_source(
     deployment: &str,
     ds_id: &str,
-    (address, abi, start_block): (Option<Vec<u8>>, String, Option<BigDecimal>),
+    address: Vec<u8>,
+    abi: String,
+    start_block: BlockNumber,
 ) -> Result<Source, StoreError> {
-    // Treat a missing address as an error
-    let address = match address {
-        Some(address) => address,
-        None => {
-            return Err(constraint_violation!(
-                "Dynamic data source {} for deployment {} is missing an address",
-                ds_id,
-                deployment
-            ));
-        }
-    };
     if address.len() != 20 {
         return Err(constraint_violation!(
             "Data source address 0x`{:?}` for dynamic data source {} in deployment {} should have be 20 bytes long but is {} bytes long",
@@ -82,19 +58,14 @@ fn to_source(
     let address = Some(H160::from_slice(address.as_slice()));
 
     // Assume a missing start block is the same as 0
-    let start_block = start_block
-        .map(|s| {
-            s.to_u64().ok_or_else(|| {
-                constraint_violation!(
-                    "Start block {:?} for dynamic data source {} in deployment {} is not a u64",
-                    s,
-                    ds_id,
-                    deployment
-                )
-            })
-        })
-        .transpose()?
-        .unwrap_or(0);
+    let start_block = start_block.to_u64().ok_or_else(|| {
+        constraint_violation!(
+            "Start block {:?} for dynamic data source {} in deployment {} is not a u64",
+            start_block,
+            ds_id,
+            deployment
+        )
+    })?;
 
     Ok(Source {
         address,
@@ -105,19 +76,19 @@ fn to_source(
 
 pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
-    use ethereum_contract_source as ecs;
 
     // Query to load the data sources. Ordering by the creation block and `vid` makes sure they are
     // in insertion order which is important for the correctness of reverts and the execution order
     // of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     let dds: Vec<_> = decds::table
-        .inner_join(ecs::table.on(decds::source.eq(ecs::id)))
         .filter(decds::deployment.eq(id))
         .select((
             decds::id,
             decds::name,
             decds::context,
-            (ecs::address, ecs::abi, ecs::start_block),
+            decds::address,
+            decds::abi,
+            decds::start_block,
             decds::block_range,
         ))
         .order_by((decds::ethereum_block_number, decds::vid))
@@ -125,13 +96,15 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
             String,
             String,
             Option<String>,
-            (Option<Vec<u8>>, String, Option<BigDecimal>),
+            Vec<u8>,
+            String,
+            BlockNumber,
             (Bound<i32>, Bound<i32>),
         )>(conn)?;
 
     let mut data_sources: Vec<StoredDynamicDataSource> = Vec::new();
-    for (ds_id, name, context, source, range) in dds.into_iter() {
-        let source = to_source(id, &ds_id, source)?;
+    for (ds_id, name, context, address, abi, start_block, range) in dds.into_iter() {
+        let source = to_source(id, &ds_id, address, abi, start_block)?;
         let creation_block = first_block_in_range(&range);
         let data_source = StoredDynamicDataSource {
             name,

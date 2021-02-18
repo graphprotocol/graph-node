@@ -76,7 +76,6 @@ type DynamicEthereumContractDataSource @entity {
     kind: String!
     name: String!
     network: String
-    source: EthereumContractSource!
     address: Bytes
     abi: String!
     startBlock: BigInt
@@ -86,13 +85,6 @@ type DynamicEthereumContractDataSource @entity {
 
     "JSON object with user-provided keys and values, can be parsed as an entity"
     context: String
-}
-
-type EthereumContractSource @entity {
-    id: ID!
-    address: Bytes
-    abi: String!
-    startBlock: BigInt
 }
 
 type SubgraphError {

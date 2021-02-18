@@ -24,7 +24,6 @@ use crate::data::graphql::TryFromValue;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
-use crate::data::subgraph::schema::EthereumContractSourceEntity;
 use crate::prelude::CheapClone;
 
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
@@ -463,16 +462,6 @@ pub struct Source {
     pub abi: String,
     #[serde(rename = "startBlock", default)]
     pub start_block: u64,
-}
-
-impl From<EthereumContractSourceEntity> for Source {
-    fn from(entity: EthereumContractSourceEntity) -> Self {
-        Self {
-            address: entity.address,
-            abi: entity.abi,
-            start_block: entity.start_block,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
