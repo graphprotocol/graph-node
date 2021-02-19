@@ -302,11 +302,21 @@ mod tests {
     use ipfs_api::IpfsClient;
     use serde_json::json;
 
+    #[track_caller]
+    fn ipfs_test_client() -> IpfsClient {
+        match ::std::env::var("IPFS_TEST_URI") {
+            Ok(uri) => {
+                IpfsClient::new_from_uri(&uri).expect("failed to create test IpfsClient struct")
+            }
+            Err(_) => IpfsClient::default(),
+        }
+    }
+
     #[tokio::test]
     async fn max_file_size() {
         env::set_var(MAX_IPFS_FILE_SIZE_VAR, "200");
         let file: &[u8] = &[0u8; 201];
-        let client = IpfsClient::default();
+        let client = ipfs_test_client();
         let resolver = super::LinkResolver::from(client.clone());
 
         let logger = Logger::root(slog::Discard, o!());
@@ -326,7 +336,7 @@ mod tests {
     }
 
     async fn json_round_trip(text: &'static str) -> Result<Vec<Value>, Error> {
-        let client = IpfsClient::default();
+        let client = ipfs_test_client();
         let resolver = super::LinkResolver::from(client.clone());
 
         let logger = Logger::root(slog::Discard, o!());

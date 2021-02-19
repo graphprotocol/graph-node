@@ -73,6 +73,8 @@ jobs:
         with:
           command: test
           args: --verbose --all -- --nocapture
+        env:
+          IPFS_TEST_URI: "http://ipfs:5001"
 
   rustfmt:
     name: Check rustfmt style
