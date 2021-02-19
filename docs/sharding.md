@@ -146,7 +146,7 @@ where the deployment is placed. The `match` element of a rule can have a
 `name`, a [regular expression](https://docs.rs/regex/1.4.2/regex/#syntax)
 that is matched against the subgraph name for the deployment, and a
 `network` name that is compared to the network that the new deployment
-indexes.
+indexes. The `network` name can either be a string, or a list of strings.
 
 The last rule must not have a `match` statement to make sure that there is
 always some shard and some indexer that will work on a deployment.
@@ -168,6 +168,9 @@ indexers = [ "index-node-vip-0", "index-node-vip-1" ]
 match = { network = "kovan" }
 # No shard, so we use the default shard called 'primary'
 indexers = [ "index-node-kovan-0" ]
+[[deployment.rule]]
+match = { network = [ "xdai", "poa-core" ] }
+indexers = [ "index-node-other-0" ]
 [[deployment.rule]]
 # There's no 'match', so any subgraph matches
 indexers = [

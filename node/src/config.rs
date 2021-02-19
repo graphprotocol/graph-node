@@ -110,13 +110,15 @@ impl Config {
                     i
                 ));
             }
-            if let Some(network) = &rule.pred.network {
-                if !self.chains.chains.contains_key(network) {
-                    return Err(anyhow!(
-                        "unknown network {} in deployment rule {}",
-                        network,
-                        i
-                    ));
+            if let Some(networks) = &rule.pred.network {
+                for network in networks.to_vec() {
+                    if !self.chains.chains.contains_key(&network) {
+                        return Err(anyhow!(
+                            "unknown network {} in deployment rule {}",
+                            network,
+                            i
+                        ));
+                    }
                 }
             }
         }
@@ -624,7 +626,7 @@ impl Rule {
 struct Predicate {
     #[serde(with = "serde_regex", default = "any_name")]
     name: Regex,
-    network: Option<String>,
+    network: Option<NetworkPredicate>,
 }
 
 impl Predicate {
@@ -634,7 +636,7 @@ impl Predicate {
 
     pub fn matches(&self, name: &str, network: &str) -> bool {
         if let Some(n) = &self.network {
-            if n != network {
+            if !n.matches(network) {
                 return false;
             }
         }
@@ -651,6 +653,31 @@ impl Default for Predicate {
         Predicate {
             name: any_name(),
             network: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum NetworkPredicate {
+    Single(String),
+    Many(Vec<String>),
+}
+
+impl NetworkPredicate {
+    fn matches(&self, network: &str) -> bool {
+        use NetworkPredicate::*;
+        match self {
+            Single(n) => n == network,
+            Many(ns) => ns.iter().any(|n| n == network),
+        }
+    }
+
+    fn to_vec(&self) -> Vec<String> {
+        use NetworkPredicate::*;
+        match self {
+            Single(n) => vec![n.clone()],
+            Many(ns) => ns.clone(),
         }
     }
 }
