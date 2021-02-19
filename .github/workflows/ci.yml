@@ -18,6 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         rust: [ "stable", "beta" ]
+
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.4.23
+
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -31,13 +36,13 @@ jobs:
             ~/.cargo/git
           key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Install IPFS
-        run: |
-          wget --no-verbose "https://dist.ipfs.io/go-ipfs/v0.4.17/go-ipfs_v0.4.17_linux-amd64.tar.gz" -O /tmp/ipfs.tar.gz
-          ( cd $HOME && tar xzvf /tmp/ipfs.tar.gz )
-          export PATH="$HOME/go-ipfs:$PATH"
-          ipfs init
-          ipfs daemon &> /dev/null &
+      # - name: Install IPFS
+      #   run: |
+      #     wget --no-verbose "https://dist.ipfs.io/go-ipfs/v0.4.17/go-ipfs_v0.4.17_linux-amd64.tar.gz" -O /tmp/ipfs.tar.gz
+      #     ( cd $HOME && tar xzvf /tmp/ipfs.tar.gz )
+      #     export PATH="$HOME/go-ipfs:$PATH"
+      #     ipfs init
+      #     ipfs daemon &> /dev/null &
 
       - name: Install Node 11
         uses: actions/setup-node@v2
