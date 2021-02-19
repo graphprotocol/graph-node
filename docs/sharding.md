@@ -163,23 +163,23 @@ that are passed with `--node-id` when those index nodes are started.
 [[deployment.rule]]
 match = { name = "(vip|important)/.*" }
 shard = "vip"
-indexers = [ "index-node-vip-0", "index-node-vip-1" ]
+indexers = [ "index_node_vip_0", "index_node_vip_1" ]
 [[deployment.rule]]
 match = { network = "kovan" }
 # No shard, so we use the default shard called 'primary'
-indexers = [ "index-node-kovan-0" ]
+indexers = [ "index_node_kovan_0" ]
 [[deployment.rule]]
 match = { network = [ "xdai", "poa-core" ] }
-indexers = [ "index-node-other-0" ]
+indexers = [ "index_node_other_0" ]
 [[deployment.rule]]
 # There's no 'match', so any subgraph matches
 indexers = [
-    "index-node-community-0",
-    "index-node-community-1",
-    "index-node-community-2",
-    "index-node-community-3",
-    "index-node-community-4",
-    "index-node-community-5"
+    "index_node_community_0",
+    "index_node_community_1",
+    "index_node_community_2",
+    "index_node_community_3",
+    "index_node_community_4",
+    "index_node_community_5"
   ]
 
 ```
