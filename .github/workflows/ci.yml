@@ -23,7 +23,7 @@ jobs:
       ipfs:
         image: ipfs/go-ipfs:v0.4.23
         ports:
-          - 5001:5001
+          - 15001:5001
 
     runs-on: ubuntu-latest
     steps:
