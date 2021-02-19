@@ -36,14 +36,6 @@ jobs:
             ~/.cargo/git
           key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      # - name: Install IPFS
-      #   run: |
-      #     wget --no-verbose "https://dist.ipfs.io/go-ipfs/v0.4.17/go-ipfs_v0.4.17_linux-amd64.tar.gz" -O /tmp/ipfs.tar.gz
-      #     ( cd $HOME && tar xzvf /tmp/ipfs.tar.gz )
-      #     export PATH="$HOME/go-ipfs:$PATH"
-      #     ipfs init
-      #     ipfs daemon &> /dev/null &
-
       - name: Install Node 11
         uses: actions/setup-node@v2
         with:
@@ -65,6 +57,11 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+
+      - name: Populate IPFS config file
+        run: |
+          mkdir "${HOME}/.ipfs"
+          echo ipfs:5001 > "${HOME}/.ipfs/api"
 
       - name: Run unit and integration tests
         uses: actions-rs/cargo@v1
