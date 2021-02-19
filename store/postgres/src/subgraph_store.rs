@@ -341,14 +341,12 @@ impl SubgraphStore {
             }
         }
 
-        let mut event = {
-            // Create the actual databases schema and metadata entries
-            let deployment_store = self
-                .stores
-                .get(&shard)
-                .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
-            deployment_store.create_deployment(schema, deployment, &site, graft_site, replace)?
-        };
+        // Create the actual databases schema and metadata entries
+        let deployment_store = self
+            .stores
+            .get(&shard)
+            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
+        deployment_store.create_deployment(schema, deployment, &site, graft_site, replace)?;
 
         let exists_and_synced = |id: &SubgraphDeploymentId| {
             let (store, _) = self.store(id)?;
@@ -367,7 +365,7 @@ impl SubgraphStore {
                 mode,
                 exists_and_synced,
             )?;
-            event.changes.extend(changes);
+            let event = StoreEvent::new(changes);
             pconn.send_store_event(&event)?;
             Ok(())
         })

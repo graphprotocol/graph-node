@@ -157,13 +157,7 @@ fn create_subgraph() {
 
     fn deploy_event(id: &str) -> HashSet<EntityChange> {
         let mut changes = HashSet::new();
-        changes.insert(set(MetadataType::SubgraphDeployment, id, id));
         changes.insert(set(MetadataType::SubgraphDeploymentAssignment, id, id));
-        changes.insert(set(
-            MetadataType::SubgraphManifest,
-            id,
-            &format!("{}-manifest", id),
-        ));
         changes
     }
 

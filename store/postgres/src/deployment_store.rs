@@ -24,9 +24,8 @@ use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, CheapClone, DeploymentState,
     DynTryFuture, Entity, EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange,
-    Error, EthereumBlockPointer, Logger, MetadataOperation, MetricsRegistry, QueryExecutionError,
-    Schema, StopwatchMetrics, StoreError, StoreEvent, SubgraphDeploymentId, Value,
-    BLOCK_NUMBER_MAX,
+    Error, EthereumBlockPointer, Logger, MetricsRegistry, QueryExecutionError, Schema,
+    StopwatchMetrics, StoreError, StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -230,7 +229,7 @@ impl DeploymentStore {
         site: &Site,
         graft_site: Option<Site>,
         replace: bool,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
         // This is a bit of a Frankenconnection: we don't have the actual
         // layout yet; but for applying metadata, it's fine to use the metadata
@@ -243,17 +242,20 @@ impl DeploymentStore {
         econn.transaction(|| -> Result<_, StoreError> {
             let exists = deployment::exists(&econn.conn, &site.deployment)?;
 
-            let event = if replace || !exists {
-                let ops = deployment.create_operations(&site.deployment);
-                self.apply_metadata_operations_with_conn(&econn, ops)?
-            } else {
-                StoreEvent::new(vec![])
+            if replace || !exists {
+                deployment::create_deployment(
+                    &econn.conn,
+                    &site.deployment,
+                    deployment,
+                    exists,
+                    replace,
+                )?;
             };
 
             if !exists {
                 econn.create_schema(site.namespace.clone(), schema, graft_site)?;
             }
-            Ok(event)
+            Ok(())
         })
     }
 
@@ -353,50 +355,6 @@ impl DeploymentStore {
         Ok(())
     }
 
-    /// Apply a metadata operation in Postgres.
-    fn apply_metadata_operation(
-        &self,
-        conn: &e::Connection,
-        operation: MetadataOperation,
-    ) -> Result<i32, StoreError> {
-        match operation {
-            MetadataOperation::Set { key, data } => {
-                let key = key.into();
-
-                // Load the entity if exists
-                let entity = self.get_entity(conn, &key)?;
-
-                // Identify whether this is an insert or an update operation and
-                // merge the changes into the entity.
-                let result = match entity {
-                    Some(mut entity) => {
-                        entity.merge_remove_null_fields(data);
-                        conn.update(&key, entity, None).map(|_| 0)
-                    }
-                    None => {
-                        // Merge with a new entity since that removes values that
-                        // were set to Value::Null
-                        let mut entity = Entity::new();
-                        entity.merge_remove_null_fields(data);
-                        conn.insert(&key, entity, None).map(|_| 1)
-                    }
-                };
-
-                result.map_err(|e| {
-                    anyhow!(
-                        "Failed to set entity ({}, {}, {}): {}",
-                        key.subgraph_id,
-                        key.entity_type,
-                        key.entity_id,
-                        e
-                    )
-                    .into()
-                })
-            }
-            MetadataOperation::Remove { .. } => unreachable!("metadata is never deleted"),
-        }
-    }
-
     fn apply_entity_modifications(
         &self,
         conn: &e::Connection,
@@ -448,21 +406,6 @@ impl DeploymentStore {
         }
         conn.update_entity_count(count)?;
         Ok(())
-    }
-
-    pub(crate) fn apply_metadata_operations_with_conn(
-        &self,
-        econn: &e::Connection,
-        operations: Vec<MetadataOperation>,
-    ) -> Result<StoreEvent, StoreError> {
-        // Emit a store event for the changes we are about to make
-        let event: StoreEvent = operations.clone().into();
-
-        // Actually apply the operations
-        for operation in operations.into_iter() {
-            self.apply_metadata_operation(econn, operation)?;
-        }
-        Ok(event)
     }
 
     /// Execute a closure with a connection to the database.

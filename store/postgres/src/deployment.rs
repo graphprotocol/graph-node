@@ -1,13 +1,15 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use diesel::pg::PgConnection;
-use diesel::prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use diesel::{
     dsl::{delete, insert_into, select, sql, update},
     sql_types::Integer,
 };
-use graph::data::subgraph::schema::SubgraphError;
+use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
+use diesel::{
+    prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
+    sql_types::Nullable,
+};
 use graph::data::subgraph::{
     schema::{MetadataType, SubgraphManifestEntity},
     SubgraphFeature,
@@ -17,11 +19,12 @@ use graph::prelude::{
     DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError,
     StoreEvent, SubgraphDeploymentId,
 };
+use graph::{data::subgraph::schema::SubgraphError, prelude::SubgraphDeploymentEntity};
 use stable_hash::crypto::SetHasher;
 use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 
-use crate::block_range::BLOCK_RANGE_COLUMN;
+use crate::block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE};
 use graph::constraint_violation;
 
 // Diesel tables for some of the metadata
@@ -613,4 +616,102 @@ pub fn drop_schema(
 
     let query = format!("drop schema if exists {} cascade", namespace);
     Ok(conn.batch_execute(&*query)?)
+}
+
+pub fn create_deployment(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    deployment: SubgraphDeploymentEntity,
+    exists: bool,
+    replace: bool,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+    use subgraph_manifest as m;
+
+    fn h(hash: &Option<H256>) -> Option<&[u8]> {
+        hash.as_ref().map(|hash| hash.as_bytes())
+    }
+
+    fn n(number: Option<u64>) -> SqlLiteral<Nullable<Numeric>> {
+        match number {
+            None => sql("null"),
+            Some(number) => sql(&format!("{}::numeric", number)),
+        }
+    }
+
+    let SubgraphDeploymentEntity {
+        manifest:
+            SubgraphManifestEntity {
+                spec_version,
+                description,
+                repository,
+                features,
+                schema,
+            },
+        failed,
+        health: _,
+        synced,
+        fatal_error: _,
+        non_fatal_errors: _,
+        earliest_ethereum_block_hash,
+        earliest_ethereum_block_number,
+        latest_ethereum_block_hash,
+        latest_ethereum_block_number,
+        graft_base,
+        graft_block_hash,
+        graft_block_number,
+        reorg_count: _,
+        current_reorg_depth: _,
+        max_reorg_depth: _,
+    } = deployment;
+
+    let manifest_id = SubgraphManifestEntity::id(id);
+
+    let deployment_values = (
+        d::id.eq(id.as_str()),
+        d::manifest.eq(&manifest_id),
+        d::failed.eq(failed),
+        d::synced.eq(synced),
+        d::health.eq(SubgraphHealth::Healthy),
+        d::fatal_error.eq::<Option<String>>(None),
+        d::non_fatal_errors.eq::<Vec<String>>(vec![]),
+        d::earliest_ethereum_block_hash.eq(h(&earliest_ethereum_block_hash)),
+        d::earliest_ethereum_block_number.eq(n(earliest_ethereum_block_number)),
+        d::latest_ethereum_block_hash.eq(h(&latest_ethereum_block_hash)),
+        d::latest_ethereum_block_number.eq(n(latest_ethereum_block_number)),
+        d::entity_count.eq(sql("0")),
+        d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),
+        d::graft_block_hash.eq(h(&graft_block_hash)),
+        d::graft_block_number.eq(n(graft_block_number)),
+        d::block_range.eq(UNVERSIONED_RANGE),
+    );
+
+    let manifest_values = (
+        m::id.eq(&manifest_id),
+        m::spec_version.eq(spec_version),
+        m::description.eq(description),
+        m::repository.eq(repository),
+        m::features.eq(features),
+        m::schema.eq(schema),
+        m::block_range.eq(UNVERSIONED_RANGE),
+    );
+
+    if exists && replace {
+        update(d::table.filter(d::id.eq(id.as_str())))
+            .set(deployment_values)
+            .execute(conn)?;
+
+        update(m::table.filter(m::id.eq(&manifest_id)))
+            .set(manifest_values)
+            .execute(conn)?;
+    } else {
+        insert_into(d::table)
+            .values(deployment_values)
+            .execute(conn)?;
+
+        insert_into(m::table)
+            .values(manifest_values)
+            .execute(conn)?;
+    }
+    Ok(())
 }

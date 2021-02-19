@@ -208,22 +208,22 @@ impl TryFromValue for SubgraphHealth {
 
 #[derive(Debug)]
 pub struct SubgraphDeploymentEntity {
-    manifest: SubgraphManifestEntity,
-    failed: bool,
-    health: SubgraphHealth,
-    synced: bool,
-    fatal_error: Option<SubgraphError>,
-    non_fatal_errors: Vec<SubgraphError>,
-    earliest_ethereum_block_hash: Option<H256>,
-    earliest_ethereum_block_number: Option<u64>,
-    latest_ethereum_block_hash: Option<H256>,
-    latest_ethereum_block_number: Option<u64>,
+    pub manifest: SubgraphManifestEntity,
+    pub failed: bool,
+    pub health: SubgraphHealth,
+    pub synced: bool,
+    pub fatal_error: Option<SubgraphError>,
+    pub non_fatal_errors: Vec<SubgraphError>,
+    pub earliest_ethereum_block_hash: Option<H256>,
+    pub earliest_ethereum_block_number: Option<u64>,
+    pub latest_ethereum_block_hash: Option<H256>,
+    pub latest_ethereum_block_number: Option<u64>,
     pub graft_base: Option<SubgraphDeploymentId>,
-    graft_block_hash: Option<H256>,
-    graft_block_number: Option<u64>,
-    reorg_count: i32,
-    current_reorg_depth: i32,
-    max_reorg_depth: i32,
+    pub graft_block_hash: Option<H256>,
+    pub graft_block_number: Option<u64>,
+    pub reorg_count: i32,
+    pub current_reorg_depth: i32,
+    pub max_reorg_depth: i32,
 }
 
 impl TypedEntity for SubgraphDeploymentEntity {
@@ -269,72 +269,15 @@ impl SubgraphDeploymentEntity {
         }
         self
     }
-
-    pub fn create_operations(self, id: &SubgraphDeploymentId) -> Vec<MetadataOperation> {
-        let mut ops = vec![];
-
-        let SubgraphDeploymentEntity {
-            manifest,
-            failed,
-            health,
-            synced,
-            fatal_error,
-            non_fatal_errors,
-            earliest_ethereum_block_hash,
-            earliest_ethereum_block_number,
-            latest_ethereum_block_hash,
-            latest_ethereum_block_number,
-            graft_base,
-            graft_block_hash,
-            graft_block_number,
-            reorg_count: _,
-            current_reorg_depth: _,
-            max_reorg_depth: _,
-        } = self;
-
-        // A fresh subgraph will not have any errors.
-        assert!(fatal_error.is_none());
-        assert!(non_fatal_errors.is_empty());
-        let non_fatal_errors = Vec::<Value>::new();
-
-        let manifest_id = SubgraphManifestEntity::id(&id);
-        ops.extend(manifest.write_operations(id, &manifest_id));
-
-        let entity = entity! {
-            id: id.to_string(),
-            manifest: manifest_id,
-            failed: failed,
-            health: health,
-            synced: synced,
-            nonFatalErrors: non_fatal_errors,
-            earliestEthereumBlockHash: earliest_ethereum_block_hash,
-            earliestEthereumBlockNumber: earliest_ethereum_block_number,
-            latestEthereumBlockHash: latest_ethereum_block_hash,
-            latestEthereumBlockNumber: latest_ethereum_block_number,
-            entityCount: 0 as u64,
-            graftBase: graft_base.map(|sid| sid.to_string()),
-            graftBlockHash: graft_block_hash,
-            graftBlockNumber: graft_block_number,
-        };
-
-        ops.push(set_metadata_operation(
-            id.clone(),
-            Self::TYPENAME,
-            id.to_string(),
-            entity,
-        ));
-
-        ops
-    }
 }
 
 #[derive(Debug)]
 pub struct SubgraphManifestEntity {
-    spec_version: String,
-    description: Option<String>,
-    repository: Option<String>,
-    features: Vec<String>,
-    schema: String,
+    pub spec_version: String,
+    pub description: Option<String>,
+    pub repository: Option<String>,
+    pub features: Vec<String>,
+    pub schema: String,
 }
 
 impl TypedEntity for SubgraphManifestEntity {
@@ -345,36 +288,6 @@ impl TypedEntity for SubgraphManifestEntity {
 impl SubgraphManifestEntity {
     pub fn id(subgraph_id: &SubgraphDeploymentId) -> String {
         format!("{}-manifest", subgraph_id)
-    }
-
-    fn write_operations(self, subgraph: &SubgraphDeploymentId, id: &str) -> Vec<MetadataOperation> {
-        let SubgraphManifestEntity {
-            spec_version,
-            description,
-            repository,
-            features,
-            schema,
-        } = self;
-
-        let mut ops = vec![];
-
-        let entity = entity! {
-            id: id,
-            specVersion: spec_version,
-            description: description,
-            repository: repository,
-            features: features,
-            schema: schema,
-        };
-
-        ops.push(set_metadata_operation(
-            subgraph.clone(),
-            Self::TYPENAME,
-            id,
-            entity,
-        ));
-
-        ops
     }
 }
 
@@ -501,18 +414,6 @@ impl<'a, 'b, 'c>
             start_block: source.start_block,
             context: context.clone(),
         }
-    }
-}
-
-fn set_metadata_operation(
-    subgraph: SubgraphDeploymentId,
-    entity: MetadataType,
-    entity_id: impl Into<String>,
-    data: impl Into<Entity>,
-) -> MetadataOperation {
-    MetadataOperation::Set {
-        key: entity.key(subgraph, entity_id.into()),
-        data: data.into(),
     }
 }
 
