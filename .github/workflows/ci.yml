@@ -58,12 +58,6 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Populate IPFS config file
-        run: |
-          mkdir "${HOME}/.ipfs"
-          echo ipfs:5001 > "${HOME}/.ipfs/api"
-          cat "${HOME}/.ipfs/api"
-
       - name: Verify IPFS connection from host
         run: |
           docker logs "${{ job.services.ipfs.id }}"
@@ -74,7 +68,7 @@ jobs:
           command: test
           args: --verbose --all -- --nocapture
         env:
-          IPFS_TEST_URI: "http://ipfs:5001"
+          IPFS_TEST_URI: "https://ipfs:5001"
 
   rustfmt:
     name: Check rustfmt style
