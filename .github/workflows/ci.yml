@@ -22,6 +22,8 @@ jobs:
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.4.23
+        ports:
+          - 5001:5001
 
     runs-on: ubuntu-latest
     steps:
@@ -68,7 +70,7 @@ jobs:
           command: test
           args: --verbose --all -- --nocapture
         env:
-          IPFS_TEST_URI: "https://ipfs:5001"
+          IPFS_TEST_URI: "http://ipfs:5001"
 
   rustfmt:
     name: Check rustfmt style
