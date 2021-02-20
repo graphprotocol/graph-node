@@ -71,6 +71,7 @@ jobs:
           args: --verbose --all -- --nocapture
         env:
           IPFS_TEST_URI: "http://localhost:15001"
+          GRAPH_ALLOW_NON_DETERMINISTIC_IPFS: "true"
 
   rustfmt:
     name: Check rustfmt style
