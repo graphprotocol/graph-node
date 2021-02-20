@@ -106,9 +106,11 @@ jobs:
         with:
           node-version: '11'
         run: |
-            npm install --global yarn
-            yarn global add @graphprotocol/graph --prefix /usr/local
-            /usr/local/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test
+          npm install --global yarn
+          yarn global add @graphprotocol/graph --prefix /usr/local
+          /usr/local/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test
+
+
 
   rustfmt:
     name: Check rustfmt style
