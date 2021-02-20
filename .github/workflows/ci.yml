@@ -109,7 +109,7 @@ jobs:
       - name: Run Integration Tests
         run: |
           npm install --global yarn
-          yarn global add @graphprotocol/graph-cli
+          yarn global add https://github.com/tilacog/graph-cli.git#docker-compose-logging
           $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test
 
 
