@@ -67,6 +67,44 @@ jobs:
           IPFS_TEST_URI: "http://localhost:15001"
           GRAPH_ALLOW_NON_DETERMINISTIC_IPFS: "true"
 
+  integration-tests:
+    name: Run integration tests
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [ "stable", "beta" ]
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Install Node 11
+        uses: actions/setup-node@v2
+        with:
+          node-version: '11'
+
+      - name: Run integration tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --verbose --pagckage graph-tests -- --nocapture
+
   rustfmt:
     name: Check rustfmt style
     strategy:
