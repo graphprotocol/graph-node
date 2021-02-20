@@ -101,10 +101,12 @@ jobs:
         with:
           command: build
 
-      - name: Run integration tests
+      - name: Install Node 11
         uses: actions/setup-node@v2
         with:
           node-version: '11'
+
+      - name: Run Integration Tests
         run: |
           npm install --global yarn
           yarn global add @graphprotocol/graph --prefix /usr/local
