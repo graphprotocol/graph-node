@@ -105,7 +105,7 @@ jobs:
         uses: actions/setup-node@v2
         with:
           node-version: '11'
-        - run: |
+        run: |
             npm install --global yarn
             yarn global add @graphprotocol/graph --prefix /usr/local
             /usr/local/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test
