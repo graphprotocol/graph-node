@@ -25,6 +25,17 @@ jobs:
         ports:
           - 15001:5001
 
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: graph_node_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -42,16 +53,6 @@ jobs:
         uses: actions/setup-node@v2
         with:
           node-version: '11'
-
-      - name: Install Postgres
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libpq-dev postgresql
-          echo "host    all             all             127.0.0.1/32            md5" > sudo tee -a /etc/postgresql/10/main/pg_hba.conf
-          sudo service postgresql restart && sleep 3
-          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-          sudo service postgresql restart && sleep 3
-          sudo -u postgres createdb graph_node_test
 
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
