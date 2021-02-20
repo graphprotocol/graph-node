@@ -99,6 +99,13 @@ jobs:
         with:
           node-version: '11'
 
+      - name: build graph-node
+        env:
+          RUSTFLAGS: "-D warnings"
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
       - name: Run integration tests
         uses: actions-rs/cargo@v1
         with:
