@@ -94,12 +94,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Install Node 11
-        uses: actions/setup-node@v2
-        with:
-          node-version: '11'
-
-      - name: build graph-node
+      - name: Build graph-node
         env:
           RUSTFLAGS: "-D warnings"
         uses: actions-rs/cargo@v1
@@ -107,10 +102,13 @@ jobs:
           command: build
 
       - name: Run integration tests
-        uses: actions-rs/cargo@v1
+        uses: actions/setup-node@v2
         with:
-          command: test
-          args: --verbose --package graph-tests -- --nocapture
+          node-version: '11'
+        - run: |
+            npm install --global yarn
+            yarn global add @graphprotocol/graph --prefix /usr/local
+            /usr/local/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test
 
   rustfmt:
     name: Check rustfmt style
