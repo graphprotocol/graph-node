@@ -64,7 +64,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose --all -- --nocapture
+          args: --verbose --workspace --exclude tests -- --nocapture
         env:
           IPFS_TEST_URI: "http://localhost:15001"
           GRAPH_ALLOW_NON_DETERMINISTIC_IPFS: "true"
