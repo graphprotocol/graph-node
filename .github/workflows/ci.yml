@@ -103,7 +103,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose --pagckage graph-tests -- --nocapture
+          args: --verbose --package graph-tests -- --nocapture
 
   rustfmt:
     name: Check rustfmt style
