@@ -110,15 +110,15 @@ jobs:
         run: |
           npm install --global yarn
           yarn global add https://github.com/tilacog/graph-cli.git#docker-compose-logging
-          (cd tests/integration-tests/big-decimal                   && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/data-source-context           && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/data-source-revert            && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/fatal-error                   && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/non-fatal-errors              && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/ganache-reverts               && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/overloaded-contract-functions && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/remove-then-update            && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
-          (cd tests/integration-tests/value-roundtrip               && $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/big-decimal                   && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/data-source-context           && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/data-source-revert            && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/fatal-error                   && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/non-fatal-errors              && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/ganache-reverts               && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/overloaded-contract-functions && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/remove-then-update            && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
+          (cd $GITHUB_WORKSPACE/tests/integration-tests/value-roundtrip               && $HOME/.yarn/bin/graph test --standalone-node $GITHUB_WORKSPACE/target/debug/graph-node --node-logs yarn test)
 
   rustfmt:
     name: Check rustfmt style
