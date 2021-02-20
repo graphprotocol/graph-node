@@ -108,7 +108,7 @@ jobs:
         run: |
           npm install --global yarn
           yarn global add @graphprotocol/graph --prefix /usr/local
-          /usr/local/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test
+          graph test --standalone-node target/debug/graph-node --node-logs yarn test
 
 
 
