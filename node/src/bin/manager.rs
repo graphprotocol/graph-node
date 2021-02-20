@@ -2,8 +2,9 @@ use std::{collections::HashMap, env, sync::Arc};
 
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
-use graph::prometheus::Registry;
+use graph::{data::graphql::effort::LoadManager, prometheus::Registry};
 use graph_core::MetricsRegistry;
+use graph_graphql::prelude::GraphQlRunner;
 use lazy_static::lazy_static;
 use structopt::StructOpt;
 
@@ -11,14 +12,13 @@ use graph::{
     log::logger,
     prelude::{info, o, slog, tokio, Logger, NodeId},
 };
-use graph_node::config;
-use graph_node::store_builder::StoreBuilder;
+use graph_node::{manager::PanicSubscriptionManager, store_builder::StoreBuilder};
 use graph_store_postgres::{
     connection_pool::ConnectionPool, Shard, Store, SubgraphStore, SubscriptionManager,
     PRIMARY_SHARD,
 };
 
-use crate::config::Config as Cfg;
+use graph_node::config::{self, Config as Cfg};
 use graph_node::manager::commands;
 
 git_testament!(TESTAMENT);
@@ -136,6 +136,17 @@ pub enum Command {
     Listen(ListenCommand),
     /// Manage deployment copies and grafts
     Copy(CopyCommand),
+    /// Run a GraphQL query
+    Query {
+        /// The subgraph to query
+        ///
+        /// Either a deployment id `Qm..` or a subgraph name
+        target: String,
+        /// The GraphQL query
+        query: String,
+        /// The variables in the form `key=value`
+        vars: Vec<String>,
+    },
 }
 
 impl Command {
@@ -336,6 +347,23 @@ impl Context {
 
         (store, pools)
     }
+
+    fn graphql_runner(self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
+        let logger = self.logger.clone();
+        let registry = self.registry.clone();
+
+        let store = self.store();
+
+        let subscription_manager = Arc::new(PanicSubscriptionManager);
+        let load_manager = Arc::new(LoadManager::new(&logger, vec![], registry, 128));
+
+        Arc::new(GraphQlRunner::new(
+            &logger,
+            store,
+            subscription_manager,
+            load_manager,
+        ))
+    }
 }
 
 #[tokio::main]
@@ -464,6 +492,11 @@ async fn main() {
                 Status { dst } => commands::copy::status(ctx.pools(), dst),
             }
         }
+        Query {
+            target,
+            query,
+            vars,
+        } => commands::query::run(ctx.graphql_runner(), target, query, vars).await,
     };
     if let Err(e) = result {
         die!("error: {}", e)
