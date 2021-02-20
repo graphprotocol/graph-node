@@ -109,8 +109,8 @@ jobs:
       - name: Run Integration Tests
         run: |
           npm install --global yarn
-          yarn global add @graphprotocol/graph-cli --prefix /usr/local
-          graph test --standalone-node target/debug/graph-node --node-logs yarn test
+          yarn global add @graphprotocol/graph-cli
+          $HOME/.yarn/bin/graph test --standalone-node target/debug/graph-node --node-logs yarn test
 
 
 
