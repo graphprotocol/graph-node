@@ -13,6 +13,7 @@ use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
 use graph_mock::MockMetricsRegistry;
+use ipfs_api::IpfsClient;
 use test_store::{NETWORK_NAME, STORE};
 
 use web3::types::{Address, H160};
@@ -165,9 +166,7 @@ fn mock_host_exports(
         Arc::new(templates),
         data_source.mapping.abis,
         mock_ethereum_adapter,
-        Arc::new(graph_core::LinkResolver::from(
-            ipfs_api::IpfsClient::default(),
-        )),
+        Arc::new(graph_core::LinkResolver::from(ipfs_test_client())),
         store,
         call_cache,
         arweave_adapter,
@@ -295,7 +294,7 @@ async fn json_parsing() {
 
 #[tokio::test(threaded_scheduler)]
 async fn ipfs_cat() {
-    let ipfs = Arc::new(ipfs_api::IpfsClient::default());
+    let ipfs = Arc::new(ipfs_test_client());
     let hash = ipfs.add(Cursor::new("42")).await.unwrap().hash;
 
     // Ipfs host functions use `block_on` which must be called from a sync context,
@@ -337,7 +336,7 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
 async fn ipfs_map() {
     const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
 
-    let ipfs = Arc::new(ipfs_api::IpfsClient::default());
+    let ipfs = Arc::new(ipfs_test_client());
     let subgraph_id = "ipfsMap";
 
     async fn run_ipfs_map(
@@ -765,4 +764,12 @@ async fn detect_contract_calls() {
             .calls_host_fn("ethereum.call"),
         true
     );
+}
+
+#[track_caller]
+fn ipfs_test_client() -> IpfsClient {
+    match ::std::env::var("IPFS_TEST_URI") {
+        Ok(uri) => IpfsClient::new_from_uri(&uri).expect("failed to create test IpfsClient struct"),
+        Err(_) => IpfsClient::default(),
+    }
 }
