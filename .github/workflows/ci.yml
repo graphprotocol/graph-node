@@ -60,10 +60,6 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Verify IPFS connection from host
-        run: |
-          docker logs "${{ job.services.ipfs.id }}"
-
       - name: Run unit and integration tests
         uses: actions-rs/cargo@v1
         with:
