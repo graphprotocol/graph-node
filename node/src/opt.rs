@@ -73,7 +73,7 @@ pub struct Opt {
         conflicts_with_all = &["ethereum-ws", "ethereum-ipc", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:URL",
         env="ETHEREUM_RPC",
-        help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and a Ethereum RPC URL, separated by a ':'",
+        help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'",
     )]
     pub ethereum_rpc: Vec<String>,
     #[structopt(long, min_values=0,
@@ -81,7 +81,7 @@ pub struct Opt {
         conflicts_with_all = &["ethereum-rpc", "ethereum-ipc", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:URL",
         env="ETHEREUM_WS",
-        help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive`, and a Ethereum WebSocket URL, separated by a ':'",
+        help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive`, and an Ethereum WebSocket URL, separated by a ':'",
     )]
     pub ethereum_ws: Vec<String>,
     #[structopt(long, min_values=0,
@@ -89,7 +89,7 @@ pub struct Opt {
         conflicts_with_all = &["ethereum-rpc", "ethereum-ws", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:FILE",
         env="ETHEREUM_IPC",
-        help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and a Ethereum IPC pipe, separated by a ':'",
+        help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum IPC pipe, separated by a ':'",
     )]
     pub ethereum_ipc: Vec<String>,
     #[structopt(
