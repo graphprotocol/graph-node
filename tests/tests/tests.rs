@@ -52,6 +52,8 @@ fn run_test(test: &str) {
             "test",
             "--standalone-node",
             graph_node.to_str().unwrap(),
+            "--timeout",
+            "100000",
             "--node-logs",
             "yarn test",
         ],
