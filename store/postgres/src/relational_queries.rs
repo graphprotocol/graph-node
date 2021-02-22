@@ -51,6 +51,16 @@ lazy_static! {
             })
             .unwrap_or(150)
     };
+    /// When we add `order by id` to a query should we add instead
+    /// `order by id, block_range`
+    static ref ORDER_BY_BLOCK_RANGE: bool = {
+        env::var("ORDER_BY_BLOCK_RANGE")
+            .ok()
+            .map(|s| {
+                s == "1"
+            })
+            .unwrap_or(false)
+    };
 }
 
 #[derive(Debug)]
@@ -2042,7 +2052,14 @@ impl<'a> SortKey<'a> {
     /// Generate selecting the sort key if it is needed
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
-            SortKey::None | SortKey::Id => Ok(()),
+            SortKey::None => Ok(()),
+            SortKey::Id => {
+                if *ORDER_BY_BLOCK_RANGE {
+                    out.push_sql(", c.");
+                    out.push_sql(BLOCK_RANGE_COLUMN);
+                }
+                Ok(())
+            }
             SortKey::Key {
                 column,
                 value: _,
@@ -2065,7 +2082,12 @@ impl<'a> SortKey<'a> {
             SortKey::None => Ok(()),
             SortKey::Id => {
                 out.push_sql("order by ");
-                out.push_identifier(PRIMARY_KEY_COLUMN)
+                out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                if *ORDER_BY_BLOCK_RANGE {
+                    out.push_sql(", ");
+                    out.push_sql(BLOCK_RANGE_COLUMN);
+                }
+                Ok(())
             }
             SortKey::Key {
                 column,
