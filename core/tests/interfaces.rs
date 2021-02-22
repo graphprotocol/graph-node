@@ -48,7 +48,7 @@ fn insert_and_query(
 macro_rules! extract_data {
     ($result: expr) => {
         match $result.to_result() {
-            Err(errors) => panic!(format!("Unexpected errors return for query: {:#?}", errors)),
+            Err(errors) => panic!("Unexpected errors return for query: {:#?}", errors),
             Ok(data) => data,
         }
     };

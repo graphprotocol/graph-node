@@ -294,7 +294,7 @@ fn mock_query_load_manager() -> Arc<MockQueryLoadManager> {
 macro_rules! extract_data {
     ($result: expr) => {
         match $result.to_result() {
-            Err(errors) => panic!(format!("Unexpected errors return for query: {:#?}", errors)),
+            Err(errors) => panic!("Unexpected errors return for query: {:#?}", errors),
             Ok(data) => data,
         }
     };
@@ -1167,10 +1167,7 @@ fn ambiguous_derived_from_result() {
                 assert_eq!(target_type.as_str(), "Band");
                 assert_eq!(target_field.as_str(), "originalSongs");
             }
-            e => panic!(format!(
-                "expected AmbiguousDerivedFromResult error, got {}",
-                e
-            )),
+            e => panic!("expected AmbiguousDerivedFromResult error, got {}", e),
         }
     })
 }
@@ -1264,7 +1261,7 @@ fn cannot_filter_by_derved_relationship_fields() {
                     )]),
                 );
             }
-            e => panic!(format!("expected ResolveEntitiesError, got {}", e)),
+            e => panic!("expected ResolveEntitiesError, got {}", e),
         };
     })
 }

@@ -404,7 +404,8 @@ async fn ipfs_map() {
         .unwrap_err();
     assert!(
         format!("{:#}", err).contains("JSON value is not an object."),
-        format!("{:#}", err)
+        "{:#}",
+        err
     );
 
     // Malformed JSON

@@ -1230,7 +1230,7 @@ async fn successfully_runs_introspection_query_against_complex_schema() {
     )
     .await;
 
-    assert!(!result.has_errors(), format!("{:#?}", result));
+    assert!(!result.has_errors(), "{:#?}", result);
 }
 
 #[tokio::test]
