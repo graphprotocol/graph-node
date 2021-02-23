@@ -386,7 +386,7 @@ async fn ipfs_map() {
         })
         .join()
         .unwrap()
-    };
+    }
 
     // Try it with two valid objects
     let (str1, thing1) = make_thing(subgraph_id, "one", "eins");
