@@ -1319,7 +1319,7 @@ impl ChainStoreTrait for ChainStore {
         struct MinBlock {
             #[sql_type = "Integer"]
             block: i32,
-        };
+        }
 
         // Remove all blocks from the cache that are behind the slowest
         // subgraph's head block, but retain the genesis block. We stay
