@@ -99,6 +99,17 @@ impl From<UnsupportedFilter> for diesel::result::Error {
     }
 }
 
+// Similar to graph::prelude::constraint_violation, but returns a Diesel
+// error for use in the guts of query generation
+macro_rules! constraint_violation {
+    ($msg:expr) => {{
+        diesel::result::Error::QueryBuilderError(anyhow!("{}", $msg).into())
+    }};
+    ($fmt:expr, $($arg:tt)*) => {{
+        diesel::result::Error::QueryBuilderError(anyhow!("{}", $fmt, $($arg)*))
+    }}
+}
+
 fn str_as_bytes(id: &str) -> QueryResult<scalar::Bytes> {
     scalar::Bytes::from_str(&id).map_err(|e| DieselError::SerializationError(Box::new(e)))
 }
@@ -1893,7 +1904,11 @@ impl<'a> FilterCollection<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum SortKey<'a> {
     None,
-    Id,
+    /// Order by `id asc`
+    IdAsc,
+    /// Order by `id desc`
+    IdDesc,
+    /// Order by some other column; `column` will never be `id`
     Key {
         column: &'a Column,
         value: Option<&'a str>,
@@ -1933,23 +1948,25 @@ impl<'a> SortKey<'a> {
                     },
                     None => unreachable!(),
                 }
-            } else {
-                if column.is_primary_key() && direction == ASC {
-                    Ok(SortKey::Id)
-                } else {
-                    Ok(SortKey::Key {
-                        column,
-                        value: None,
-                        direction,
-                    })
+            } else if column.is_primary_key() {
+                match direction {
+                    ASC => Ok(SortKey::IdAsc),
+                    DESC => Ok(SortKey::IdDesc),
+                    _ => unreachable!("direction is 'asc' or 'desc'"),
                 }
+            } else {
+                Ok(SortKey::Key {
+                    column,
+                    value: None,
+                    direction,
+                })
             }
         }
 
         match order {
             EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC),
             EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC),
-            EntityOrder::Default => Ok(SortKey::Id),
+            EntityOrder::Default => Ok(SortKey::IdAsc),
             EntityOrder::Unordered => Ok(SortKey::None),
         }
     }
@@ -1958,7 +1975,7 @@ impl<'a> SortKey<'a> {
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::Id => {
+            SortKey::IdAsc | SortKey::IdDesc => {
                 if *ORDER_BY_BLOCK_RANGE {
                     out.push_sql(", c.");
                     out.push_sql(BLOCK_RANGE_COLUMN);
@@ -1970,11 +1987,11 @@ impl<'a> SortKey<'a> {
                 value: _,
                 direction: _,
             } => {
-                let name = column.name.as_str();
-                if !column.is_primary_key() {
-                    out.push_sql(", c.");
-                    out.push_identifier(name)?;
+                if column.is_primary_key() {
+                    return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                 }
+                out.push_sql(", c.");
+                out.push_identifier(column.name.as_str())?;
                 Ok(())
             }
         }
@@ -1985,12 +2002,23 @@ impl<'a> SortKey<'a> {
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::Id => {
+            SortKey::IdAsc => {
                 out.push_sql("order by ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 if *ORDER_BY_BLOCK_RANGE {
                     out.push_sql(", ");
                     out.push_sql(BLOCK_RANGE_COLUMN);
+                }
+                Ok(())
+            }
+            SortKey::IdDesc => {
+                out.push_sql("order by ");
+                out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                out.push_sql(" desc");
+                if *ORDER_BY_BLOCK_RANGE {
+                    out.push_sql(", ");
+                    out.push_sql(BLOCK_RANGE_COLUMN);
+                    out.push_sql(" desc");
                 }
                 Ok(())
             }
@@ -2010,9 +2038,15 @@ impl<'a> SortKey<'a> {
     fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::Id => {
+            SortKey::IdAsc => {
                 out.push_sql("order by g$parent_id, ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)
+            }
+            SortKey::IdDesc => {
+                out.push_sql("order by g$parent_id, ");
+                out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                out.push_sql(" desc");
+                Ok(())
             }
             SortKey::Key {
                 column,
@@ -2033,6 +2067,13 @@ impl<'a> SortKey<'a> {
         direction: &str,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
+        if column.is_primary_key() {
+            // This shouldn't happen since we'd use SortKey::IdAsc/Desc
+            return Err(constraint_violation!(
+                "sort_expr called with primary key column"
+            ));
+        }
+
         match &column.column_type {
             ColumnType::TSVector(config) => {
                 let algorithm = match config.algorithm {
@@ -2045,41 +2086,29 @@ impl<'a> SortKey<'a> {
                 out.push_sql(", to_tsquery(");
 
                 out.push_bind_param::<Text, _>(&String::from(value.unwrap()))?;
-                out.push_sql(")) ");
-                out.push_sql(direction);
-                out.push_sql(" nulls last");
-                if name != PRIMARY_KEY_COLUMN {
-                    out.push_sql(", ");
-                    out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                }
-                Ok(())
+                out.push_sql("))");
             }
             _ => {
                 let name = column.name.as_str();
-                if *REVERSIBLE_ORDER_BY_OFF {
-                    // Old behavior
-                    out.push_identifier(name)?;
-                    out.push_sql(" ");
-                    out.push_sql(direction);
-                    out.push_sql(" nulls last");
-                    if name != PRIMARY_KEY_COLUMN {
-                        out.push_sql(", ");
-                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                    }
-                } else {
-                    out.push_identifier(name)?;
-                    out.push_sql(" ");
-                    out.push_sql(direction);
-                    if name != PRIMARY_KEY_COLUMN {
-                        out.push_sql(", ");
-                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                        out.push_sql(" ");
-                        out.push_sql(direction);
-                    }
-                }
-                Ok(())
+                out.push_identifier(name)?;
             }
         }
+        if *REVERSIBLE_ORDER_BY_OFF {
+            // Old behavior
+            out.push_sql(" ");
+            out.push_sql(direction);
+            out.push_sql(" nulls last");
+            out.push_sql(", ");
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        } else {
+            out.push_sql(" ");
+            out.push_sql(direction);
+            out.push_sql(", ");
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            out.push_sql(" ");
+            out.push_sql(direction);
+        }
+        Ok(())
     }
 }
 
