@@ -1923,11 +1923,15 @@ impl<'a> SortKey<'a> {
                     None => unreachable!(),
                 }
             } else {
-                Ok(SortKey::Key {
-                    column,
-                    value: None,
-                    direction,
-                })
+                if column.is_primary_key() && direction == ASC {
+                    Ok(SortKey::Id)
+                } else {
+                    Ok(SortKey::Key {
+                        column,
+                        value: None,
+                        direction,
+                    })
+                }
             }
         }
 
