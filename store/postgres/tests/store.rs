@@ -1834,14 +1834,14 @@ fn window() {
             .first(1)
             .skip(1)
             .desc("favorite_color")
-            .expect(vec!["11", "5", "7"], "q5");
+            .expect(vec!["10", "5", "7"], "q5");
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
             .desc("favorite_color")
             .above(25)
-            .expect(vec!["6", "8"], "q6");
+            .expect(vec!["4", "2"], "q6");
 
         // Check queries for interfaces
         WindowQuery::new(&store)
@@ -1850,7 +1850,7 @@ fn window() {
             .desc("favorite_color")
             .above(12)
             .against_color_and_age()
-            .expect(vec!["11", "5", "7"], "q7");
+            .expect(vec!["10", "5", "8"], "q7");
 
         WindowQuery::new(&store)
             .first(1)

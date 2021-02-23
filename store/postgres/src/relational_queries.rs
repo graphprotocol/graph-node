@@ -62,6 +62,17 @@ lazy_static! {
             })
             .unwrap_or(false)
     };
+    /// Reversible order by. Change our `order by` clauses so that `asc`
+    /// and `desc` ordering produce reverse orders. Setting this
+    /// turns the new, correct behavior off
+    static ref REVERSIBLE_ORDER_BY_OFF: bool = {
+        env::var("REVERSIBLE_ORDER_BY_OFF")
+            .ok()
+            .map(|s| {
+                s == "1"
+            })
+            .unwrap_or(false)
+    };
 }
 
 #[derive(Debug)]
@@ -2045,13 +2056,26 @@ impl<'a> SortKey<'a> {
             }
             _ => {
                 let name = column.name.as_str();
-                out.push_identifier(name)?;
-                out.push_sql(" ");
-                out.push_sql(direction);
-                out.push_sql(" nulls last");
-                if name != PRIMARY_KEY_COLUMN {
-                    out.push_sql(", ");
-                    out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                if *REVERSIBLE_ORDER_BY_OFF {
+                    // Old behavior
+                    out.push_identifier(name)?;
+                    out.push_sql(" ");
+                    out.push_sql(direction);
+                    out.push_sql(" nulls last");
+                    if name != PRIMARY_KEY_COLUMN {
+                        out.push_sql(", ");
+                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                    }
+                } else {
+                    out.push_identifier(name)?;
+                    out.push_sql(" ");
+                    out.push_sql(direction);
+                    if name != PRIMARY_KEY_COLUMN {
+                        out.push_sql(", ");
+                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                        out.push_sql(" ");
+                        out.push_sql(direction);
+                    }
                 }
                 Ok(())
             }
