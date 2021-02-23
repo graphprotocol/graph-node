@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
+  RUST_BACKTRACE: full
   THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
 
 jobs:
@@ -19,6 +19,23 @@ jobs:
       matrix:
         rust: [ "stable", "beta" ]
     runs-on: ubuntu-latest
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.4.23
+        ports:
+          - 5001:5001
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: graph_node_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -31,28 +48,10 @@ jobs:
             ~/.cargo/git
           key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Install IPFS
-        run: |
-          wget --no-verbose "https://dist.ipfs.io/go-ipfs/v0.4.17/go-ipfs_v0.4.17_linux-amd64.tar.gz" -O /tmp/ipfs.tar.gz
-          ( cd $HOME && tar xzvf /tmp/ipfs.tar.gz )
-          export PATH="$HOME/go-ipfs:$PATH"
-          ipfs init
-          ipfs daemon &> /dev/null &
-
       - name: Install Node 11
         uses: actions/setup-node@v2
         with:
           node-version: '11'
-
-      - name: Install Postgres
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libpq-dev postgresql
-          echo "host    all             all             127.0.0.1/32            md5" > sudo tee -a /etc/postgresql/10/main/pg_hba.conf
-          sudo service postgresql restart && sleep 3
-          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-          sudo service postgresql restart && sleep 3
-          sudo -u postgres createdb graph_node_test
 
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
