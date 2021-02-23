@@ -1893,11 +1893,22 @@ fn find_at_block() {
 
 #[test]
 fn cleanup_cached_blocks() {
+    if store_is_sharded() {
+        // When the store is sharded, the setup in main.rs makes sure we
+        // don't ever try to clean up cached blocks
+        println!("store is sharded, skipping test");
+        return;
+    }
+
     run_test(|store| async move {
-        // This test is somewhat silly in that there is nothing to clean up.
-        // The main purpose for this test is to ensure that the SQL query
-        // we run in `cleanup_cached_blocks` to figure out the first block
-        // that should be removed is syntactically correct
+        use block_store::*;
+        // The test subgraph is at block 2. Since we don't ever delete
+        // the genesis block, the only block eligible for cleanup is BLOCK_ONE
+        // and the first retained block is block 2.
+        block_store::set_chain(
+            vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO, &*BLOCK_THREE],
+            NETWORK_NAME,
+        );
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -1905,7 +1916,7 @@ fn cleanup_cached_blocks() {
         let cleaned = chain_store
             .cleanup_cached_blocks(10)
             .expect("cleanup succeeds");
-        assert_eq!((0, 0), cleaned);
+        assert_eq!((2, 1), cleaned);
     })
 }
 

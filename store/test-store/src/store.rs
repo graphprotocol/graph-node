@@ -400,6 +400,10 @@ fn execute_subgraph_query_internal(
     result
 }
 
+pub fn store_is_sharded() -> bool {
+    CONFIG.stores.len() > 1
+}
+
 fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) {
     let mut opt = Opt::default();
     let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| s.len() > 0);
