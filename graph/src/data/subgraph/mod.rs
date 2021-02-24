@@ -304,7 +304,7 @@ pub enum SubgraphRegistrarError {
     QueryExecutionError(QueryExecutionError),
     #[error("subgraph registrar error with store: {0}")]
     StoreError(StoreError),
-    #[error("subgraph validation error: {0:?}")]
+    #[error("subgraph validation error: {}", display_vector(.0))]
     ManifestValidationError(Vec<SubgraphManifestValidationError>),
     #[error("subgraph deployment error: {0}")]
     SubgraphDeploymentError(StoreError),
@@ -1272,4 +1272,30 @@ impl FromStr for SubgraphFeature {
             _ => Err(anyhow::anyhow!("invalid subgraph feature {}", s)),
         }
     }
+}
+
+fn display_vector(input: &Vec<impl std::fmt::Display>) -> impl std::fmt::Display {
+    let formatted_errors = input
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<String>>()
+        .join("; ");
+    format!("[{}]", formatted_errors)
+}
+
+#[test]
+fn test_display_vector() {
+    let manifest_validation_error = SubgraphRegistrarError::ManifestValidationError(vec![
+        SubgraphManifestValidationError::NoDataSources,
+        SubgraphManifestValidationError::SourceAddressRequired,
+    ]);
+
+    let expected_display_message =
+	"subgraph validation error: [subgraph has no data sources; subgraph source address is required]"
+	.to_string();
+
+    assert_eq!(
+        expected_display_message,
+        format!("{}", manifest_validation_error)
+    )
 }
