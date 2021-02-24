@@ -23,9 +23,9 @@ use web3::types::*;
 
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
-use crate::components::store::{EntityOperation, MetadataKey, MetadataOperation};
+use crate::components::store::MetadataKey;
 use crate::data::graphql::TryFromValue;
-use crate::data::store::{Entity, Value};
+use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
 
@@ -84,51 +84,6 @@ impl From<MetadataType> for String {
 pub trait TypedEntity {
     const TYPENAME: MetadataType;
     type IdType: ToString;
-}
-
-// See also: ed42d219c6704a4aab57ce1ea66698e7.
-// Note: The types here need to be in sync with the metadata GraphQL schema.
-
-trait OperationList {
-    fn add(&mut self, entity: MetadataType, id: String, data: Entity);
-}
-
-struct MetadataOperationList(SubgraphDeploymentId, Vec<MetadataOperation>);
-
-impl OperationList for MetadataOperationList {
-    fn add(&mut self, entity_type: MetadataType, id: String, data: Entity) {
-        let key = entity_type.key(self.0.clone(), id);
-        self.1.push(MetadataOperation::Set { key, data })
-    }
-}
-
-struct EntityOperationList(SubgraphDeploymentId, Vec<EntityOperation>);
-
-impl OperationList for EntityOperationList {
-    fn add(&mut self, entity_type: MetadataType, id: String, data: Entity) {
-        let key = entity_type.key(self.0.clone(), id).into();
-        self.1.push(EntityOperation::Set { key, data })
-    }
-}
-
-trait WriteOperations: Sized {
-    fn generate(self, id: &str, ops: &mut dyn OperationList);
-
-    fn write_operations(self, subgraph: &SubgraphDeploymentId, id: &str) -> Vec<MetadataOperation> {
-        let mut ops = MetadataOperationList(subgraph.clone(), Vec::new());
-        self.generate(id, &mut ops);
-        ops.1
-    }
-
-    fn write_entity_operations(
-        self,
-        subgraph: &SubgraphDeploymentId,
-        id: &str,
-    ) -> Vec<EntityOperation> {
-        let mut ops = EntityOperationList(subgraph.clone(), Vec::new());
-        self.generate(id, &mut ops);
-        ops.1
-    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
