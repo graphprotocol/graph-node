@@ -13,9 +13,7 @@ use graph::components::{
     store::EntityType,
 };
 use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::schema::{
-    DynamicEthereumContractDataSourceEntity, SubgraphError, POI_OBJECT,
-};
+use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -726,7 +724,6 @@ where
     // Obtain current and new block pointer (after this block is processed)
     let light_block = Arc::new(block.light_block());
     let block_ptr_after = EthereumBlockPointer::from(&block);
-    let block_ptr_for_new_data_sources = block_ptr_after.clone();
 
     let metrics = ctx.subgraph_metrics.clone();
 
@@ -855,7 +852,6 @@ where
             &mut ctx,
             &mut block_state.entity_cache,
             data_sources,
-            block_ptr_for_new_data_sources,
         );
 
         // Process the triggers in each host in the same order the
@@ -907,6 +903,7 @@ where
     let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
         modifications: mods,
+        data_sources,
         entity_lfu_cache: mut cache,
     } = block_state
         .entity_cache
@@ -950,6 +947,7 @@ where
         block_ptr_after,
         mods,
         stopwatch,
+        data_sources,
         block_state.deterministic_errors,
     ) {
         Ok(_) => {
@@ -1123,7 +1121,6 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S, C>(
     ctx: &mut IndexingContext<B, T, S, C>,
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
-    block_ptr: EthereumBlockPointer,
 ) where
     B: BlockStreamBuilder,
     S: SubgraphStore,
@@ -1146,14 +1143,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, S, C>(
             "name" => &data_source.name,
             "address" => &data_source.source.address.map(|address| address.to_string()).unwrap_or("none".to_string()),
         );
-        let entity = DynamicEthereumContractDataSourceEntity::from((
-            &ctx.inputs.deployment_id,
-            data_source,
-            &block_ptr,
-        ));
-        let id = DynamicEthereumContractDataSourceEntity::make_id();
-        let operations = entity.write_entity_operations(&ctx.inputs.deployment_id, id.as_ref());
-        entity_cache.append(operations);
+        entity_cache.add_data_source(data_source);
     }
 
     // Merge log filters from data sources into the block stream builder

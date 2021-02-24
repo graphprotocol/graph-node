@@ -2,17 +2,24 @@
 
 use std::ops::Bound;
 
-use diesel::pg::PgConnection;
-use diesel::prelude::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{
+    dsl::sql,
+    prelude::{ExpressionMethods, QueryDsl, RunQueryDsl},
+};
+use diesel::{insert_into, pg::PgConnection};
 
 use graph::{
     components::store::StoredDynamicDataSource,
     constraint_violation,
     data::subgraph::Source,
-    prelude::{bigdecimal::ToPrimitive, web3::types::H160, BlockNumber, StoreError},
+    prelude::{
+        bigdecimal::ToPrimitive, web3::types::H160, BlockNumber, EthereumBlockPointer, StoreError,
+        SubgraphDeploymentId,
+    },
 };
+use uuid::Uuid;
 
-use crate::block_range::first_block_in_range;
+use crate::block_range::{first_block_in_range, BlockRange};
 
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
@@ -25,13 +32,11 @@ table! {
     subgraphs.dynamic_ethereum_contract_data_source (vid) {
         vid -> BigInt,
         id -> Text,
-        kind -> Text,
         name -> Text,
-        network -> Nullable<Text>,
         address -> Binary,
         abi -> Text,
         start_block -> Integer,
-        mapping -> Text,
+        // Never read
         ethereum_block_hash -> Binary,
         ethereum_block_number -> Numeric,
         deployment -> Text,
@@ -122,4 +127,62 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
         data_sources.push(data_source);
     }
     Ok(data_sources)
+}
+
+pub(crate) fn make_id() -> String {
+    format!("{}-dynamic", Uuid::new_v4().to_simple())
+}
+
+pub(crate) fn insert(
+    conn: &PgConnection,
+    deployment: &SubgraphDeploymentId,
+    data_sources: Vec<StoredDynamicDataSource>,
+    block_ptr: &EthereumBlockPointer,
+) -> Result<usize, StoreError> {
+    use dynamic_ethereum_contract_data_source as decds;
+
+    let dds: Vec<_> = data_sources
+        .into_iter()
+        .map(|ds| {
+            let StoredDynamicDataSource {
+                name,
+                source:
+                    Source {
+                        address,
+                        abi,
+                        start_block,
+                    },
+                context,
+                creation_block: _,
+            } = ds;
+            // Why Option???
+            let address = match address {
+                Some(address) => address.as_bytes().to_vec(),
+                None => {
+                    return Err(constraint_violation!(
+                        "dynamic data sources must have an address, but `{}` has none",
+                        name
+                    ));
+                }
+            };
+            let range = block_ptr.number as i32..;
+            Ok((
+                decds::deployment.eq(deployment.as_str()),
+                decds::id.eq(make_id()),
+                decds::name.eq(name),
+                decds::context.eq(context),
+                decds::address.eq(address),
+                decds::abi.eq(abi),
+                decds::start_block.eq(start_block as i32),
+                decds::ethereum_block_number.eq(sql(&format!("{}::numeric", block_ptr.number))),
+                decds::ethereum_block_hash.eq(block_ptr.hash.as_bytes()),
+                decds::block_range.eq(BlockRange::from(range).as_pair()),
+            ))
+        })
+        .collect::<Result<_, _>>()?;
+
+    insert_into(decds::table)
+        .values(dds)
+        .execute(conn)
+        .map_err(|e| e.into())
 }

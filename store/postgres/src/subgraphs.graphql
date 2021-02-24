@@ -73,9 +73,7 @@ type SubgraphManifest @entity {
 
 type DynamicEthereumContractDataSource @entity {
     id: ID!
-    kind: String!
     name: String!
-    network: String
     address: Bytes
     abi: String!
     startBlock: BigInt

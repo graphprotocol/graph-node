@@ -166,6 +166,7 @@ impl WriteContext {
                                 modifications,
                                 stopwatch,
                                 Vec::new(),
+                                Vec::new(),
                             )
                             .map_err(|e| e.into())
                             .map(move |_| {

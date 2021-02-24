@@ -1236,21 +1236,21 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Create operations to add a dynamic data source
         let data_source = mock_data_source();
-        let dynamic_ds = DynamicEthereumContractDataSourceEntity::from((
-            &TEST_SUBGRAPH_ID.clone(),
-            &data_source,
-            &TEST_BLOCK_4_PTR.clone(),
-        ));
 
-        let mut ops = vec![EntityOperation::Set {
+        let ops = vec![EntityOperation::Set {
             key: user_key.clone(),
             data: partial_entity.clone(),
         }];
-        ops.extend(dynamic_ds.write_entity_operations(&*TEST_SUBGRAPH_ID, "dynamic-data-source"));
 
         // Add user and dynamic data source to the store
-        transact_entity_operations(&store, TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR, ops)
-            .unwrap();
+        transact_entities_and_dynamic_data_sources(
+            &store,
+            TEST_SUBGRAPH_ID.clone(),
+            *TEST_BLOCK_3_PTR,
+            vec![&data_source],
+            ops,
+        )
+        .unwrap();
 
         // Verify that the user is no longer the original
         assert_ne!(
@@ -1262,15 +1262,12 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source exists afterwards
-        let dynamic_ds_key = EntityKey::metadata(
-            TEST_SUBGRAPH_ID.clone(),
-            MetadataType::DynamicEthereumContractDataSource,
-            String::from("dynamic-data-source"),
-        );
-        store
-            .get(dynamic_ds_key.clone())
-            .unwrap()
-            .expect("dynamic data source entity wasn't written to store");
+        let loaded_dds = store
+            .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
+            .await
+            .unwrap();
+        assert_eq!(1, loaded_dds.len());
+        assert_eq!(data_source.source, loaded_dds[0].source);
 
         let subscription = subscribe(&TEST_SUBGRAPH_ID, USER);
 
@@ -1289,7 +1286,11 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source is gone after the reversion
-        assert!(store.get(dynamic_ds_key.clone()).unwrap().is_none());
+        let loaded_dds = store
+            .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
+            .await
+            .unwrap();
+        assert_eq!(0, loaded_dds.len());
 
         // Verify that the right change events were emitted for the reversion
         let expected_events = vec![StoreEvent {
@@ -1608,6 +1609,7 @@ fn handle_large_string_with_index() {
                     make_insert_op(TWO, &other_text),
                 ],
                 stopwatch_metrics,
+                Vec::new(),
                 Vec::new(),
             )
             .expect("Failed to insert large text");

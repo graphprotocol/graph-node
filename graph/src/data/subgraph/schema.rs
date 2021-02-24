@@ -19,7 +19,6 @@ use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
 use strum_macros::{EnumString, IntoStaticStr};
-use uuid::Uuid;
 use web3::types::*;
 
 use super::SubgraphDeploymentId;
@@ -52,7 +51,6 @@ pub enum MetadataType {
     // need this type so we can send store events for assignment changes
     SubgraphDeploymentAssignment,
     SubgraphManifest,
-    DynamicEthereumContractDataSource,
     SubgraphError,
 }
 
@@ -299,120 +297,6 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
             repository: manifest.repository.clone(),
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct DynamicEthereumContractDataSourceEntity {
-    kind: String,
-    deployment: String,
-    ethereum_block_hash: H256,
-    ethereum_block_number: u64,
-    network: Option<String>,
-    name: String,
-    address: Option<Address>,
-    abi: Option<String>,
-    start_block: u64,
-    context: Option<DataSourceContext>,
-}
-
-impl DynamicEthereumContractDataSourceEntity {
-    pub fn write_entity_operations(
-        self,
-        subgraph: &SubgraphDeploymentId,
-        id: &str,
-    ) -> Vec<EntityOperation> {
-        WriteOperations::write_entity_operations(self, subgraph, id)
-    }
-
-    pub fn make_id() -> String {
-        format!("{}-dynamic", Uuid::new_v4().to_simple())
-    }
-}
-
-impl TypedEntity for DynamicEthereumContractDataSourceEntity {
-    const TYPENAME: MetadataType = MetadataType::DynamicEthereumContractDataSource;
-    type IdType = String;
-}
-
-impl WriteOperations for DynamicEthereumContractDataSourceEntity {
-    fn generate(self, id: &str, ops: &mut dyn OperationList) {
-        let source_id = format!("{}-source", id);
-
-        let mapping_id = format!("{}-mapping", id);
-
-        let Self {
-            kind,
-            deployment,
-            ethereum_block_hash,
-            ethereum_block_number,
-            name,
-            network,
-            address,
-            abi,
-            start_block,
-            context,
-        } = self;
-
-        let entity = entity! {
-            id: id,
-            kind: kind,
-            network: network,
-            name: name,
-            source: source_id,
-            address: address,
-            abi: abi,
-            startBlock: start_block,
-            mapping: mapping_id,
-            deployment: deployment,
-            ethereumBlockHash: ethereum_block_hash,
-            ethereumBlockNumber: ethereum_block_number,
-            context: context
-                .as_ref()
-                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
-        };
-
-        ops.add(Self::TYPENAME, id.to_owned(), entity);
-    }
-}
-
-impl<'a, 'b, 'c>
-    From<(
-        &'a SubgraphDeploymentId,
-        &'b super::DataSource,
-        &'c EthereumBlockPointer,
-    )> for DynamicEthereumContractDataSourceEntity
-{
-    fn from(
-        data: (
-            &'a SubgraphDeploymentId,
-            &'b super::DataSource,
-            &'c EthereumBlockPointer,
-        ),
-    ) -> Self {
-        let (deployment_id, data_source, block_ptr) = data;
-        let DataSource {
-            kind,
-            network,
-            name,
-            source,
-            mapping: _,
-            context,
-            creation_block: _,
-        } = data_source;
-
-        Self {
-            kind: kind.clone(),
-            deployment: deployment_id.to_string(),
-            ethereum_block_hash: block_ptr.hash,
-            ethereum_block_number: block_ptr.number,
-            name: name.clone(),
-            network: network.clone(),
-            address: source.address,
-            abi: Some(source.abi.clone()),
-            start_block: source.start_block,
-            context: context.clone(),
         }
     }
 }

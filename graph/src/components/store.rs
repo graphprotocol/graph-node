@@ -193,16 +193,6 @@ fn key_stable_hash() {
         &key,
         "905b57035d6f98cff8281e7b055e10570a2bd31190507341c6716af2d3c1ad98",
     );
-
-    let key = EntityKey::metadata(
-        id.clone(),
-        MetadataType::DynamicEthereumContractDataSource,
-        format!("{}-manifest-data-source-1", &id),
-    );
-    hashes_to(
-        &key,
-        "062283bacf94a7910f1332889e0a11f4abce34fa666eb883aabbcd248e8be1c3",
-    );
 }
 
 /// Supported types of store filters.
@@ -932,6 +922,20 @@ pub struct StoredDynamicDataSource {
     pub creation_block: Option<u64>,
 }
 
+impl From<&DataSource> for StoredDynamicDataSource {
+    fn from(ds: &DataSource) -> Self {
+        Self {
+            name: ds.name.clone(),
+            source: ds.source.clone(),
+            context: ds
+                .context
+                .as_ref()
+                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
+            creation_block: ds.creation_block,
+        }
+    }
+}
+
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
     ///
@@ -996,6 +1000,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
+        data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError>;
 
@@ -1207,6 +1212,7 @@ impl SubgraphStore for MockStore {
         _block_ptr_to: EthereumBlockPointer,
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
+        _data_sources: Vec<StoredDynamicDataSource>,
         _deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
         unimplemented!()
@@ -1595,6 +1601,8 @@ pub struct EntityCache {
     // Marks whether updates should go in `handler_updates`.
     in_handler: bool,
 
+    data_sources: Vec<StoredDynamicDataSource>,
+
     /// The store is only used to read entities.
     pub store: Arc<dyn SubgraphStore>,
 }
@@ -1610,6 +1618,7 @@ impl Debug for EntityCache {
 
 pub struct ModificationsAndCache {
     pub modifications: Vec<EntityModification>,
+    pub data_sources: Vec<StoredDynamicDataSource>,
     pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
@@ -1620,6 +1629,7 @@ impl EntityCache {
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
+            data_sources: vec![],
             store,
         }
     }
@@ -1633,6 +1643,7 @@ impl EntityCache {
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
+            data_sources: vec![],
             store,
         }
     }
@@ -1692,6 +1703,11 @@ impl EntityCache {
                 }
             }
         }
+    }
+
+    /// Add a dynamic data source
+    pub fn add_data_source(&mut self, data_source: &DataSource) {
+        self.data_sources.push(data_source.into());
     }
 
     fn entity_op(&mut self, key: EntityKey, op: EntityOp) {
@@ -1808,6 +1824,7 @@ impl EntityCache {
         }
         Ok(ModificationsAndCache {
             modifications: mods,
+            data_sources: self.data_sources,
             entity_lfu_cache: self.current,
         })
     }

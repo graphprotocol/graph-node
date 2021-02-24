@@ -5,7 +5,9 @@ use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
-use graph::{components::store::EntityType, prelude::NodeId};
+use graph::{
+    components::store::EntityType, components::store::StoredDynamicDataSource, prelude::NodeId,
+};
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
@@ -219,6 +221,7 @@ pub fn transact_errors(
         block_ptr_to,
         Vec::new(),
         stopwatch_metrics,
+        Vec::new(),
         errs,
     )
 }
@@ -228,6 +231,16 @@ pub fn transact_entity_operations(
     store: &Arc<DieselSubgraphStore>,
     subgraph_id: SubgraphDeploymentId,
     block_ptr_to: EthereumBlockPointer,
+    ops: Vec<EntityOperation>,
+) -> Result<(), StoreError> {
+    transact_entities_and_dynamic_data_sources(store, subgraph_id, block_ptr_to, vec![], ops)
+}
+
+pub fn transact_entities_and_dynamic_data_sources(
+    store: &Arc<DieselSubgraphStore>,
+    subgraph_id: SubgraphDeploymentId,
+    block_ptr_to: EthereumBlockPointer,
+    data_sources: Vec<&DataSource>,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
     let mut entity_cache = EntityCache::new(store.clone());
@@ -242,11 +255,16 @@ pub fn transact_entity_operations(
         subgraph_id.clone(),
         metrics_registry.clone(),
     );
+    let data_sources = data_sources
+        .into_iter()
+        .map(|ds| StoredDynamicDataSource::from(ds))
+        .collect();
     store.transact_block_operations(
         subgraph_id,
         block_ptr_to,
         mods,
         stopwatch_metrics,
+        data_sources,
         Vec::new(),
     )
 }

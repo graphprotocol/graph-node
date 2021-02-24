@@ -30,15 +30,10 @@ use crate::{
     },
 };
 use graph::components::store::EntityType;
+use graph::data::graphql::ext::{DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
-use graph::data::subgraph::schema::{
-    DynamicEthereumContractDataSourceEntity, POI_OBJECT, POI_TABLE,
-};
-use graph::data::{
-    graphql::ext::{DocumentExt, ObjectTypeExt},
-    subgraph::schema::MetadataType,
-};
+use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger,
@@ -48,6 +43,7 @@ use graph::prelude::{
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, BLOCK_UNVERSIONED};
 pub use crate::catalog::Catalog;
+use crate::dynds;
 use crate::entities::STRING_PREFIX_SIZE;
 
 lazy_static! {
@@ -432,9 +428,7 @@ impl Layout {
             .filter(decds::deployment.eq(base_subgraph.as_str()))
             .load::<String>(conn)?;
         // Create an equal number of brand new ids
-        let new_dds = (0..dds.len())
-            .map(|_| DynamicEthereumContractDataSourceEntity::make_id())
-            .collect::<Vec<_>>();
+        let new_dds = (0..dds.len()).map(|_| dynds::make_id()).collect::<Vec<_>>();
         // Copy the data sources and all their subordinate entities, translating
         // ids into new ids in the process and attaching them to `dest_subgraph`
         rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, dest_subgraph.as_str())
@@ -809,7 +803,7 @@ impl Layout {
         block: BlockNumber,
     ) -> Result<(), StoreError> {
         assert!(self.catalog.namespace.is_metadata());
-        const DDS: MetadataType = MetadataType::DynamicEthereumContractDataSource;
+        const DDS: &str = "DynamicEthereumContractDataSource";
 
         // Delete dynamic data sources for this subgraph at the given block
         // and get their id's
@@ -838,9 +832,11 @@ impl Layout {
             // assumptions, most importantly, that the id of any entity that
             // belongs to a dynmaic data source starts with the id of that data
             // source
-            for table in self.tables.values().filter(|table| {
-                table.object != DDS.as_str() && !table.object.starts_with("Subgraph")
-            }) {
+            for table in self
+                .tables
+                .values()
+                .filter(|table| table.object != DDS && !table.object.starts_with("Subgraph"))
+            {
                 DeleteByPrefixQuery::new(table, &dds, prefix_len).get_results(conn)?;
             }
         }

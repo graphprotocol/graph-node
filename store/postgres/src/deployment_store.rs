@@ -31,11 +31,11 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
-use crate::primary::Site;
 use crate::relational::{Layout, METADATA_LAYOUT};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
 use crate::{deployment, primary::Namespace};
+use crate::{dynds, primary::Site};
 
 embed_migrations!("./migrations");
 
@@ -878,6 +878,7 @@ impl DeploymentStore {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
+        data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<StoreEvent, StoreError> {
         // All operations should apply only to data or metadata for this subgraph
@@ -915,6 +916,8 @@ impl DeploymentStore {
             let section = stopwatch.start_section("apply_entity_modifications");
             self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
             section.end();
+
+            dynds::insert(&econn.conn, &site.deployment, data_sources, &block_ptr_to)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(

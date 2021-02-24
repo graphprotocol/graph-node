@@ -710,6 +710,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
+        data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
         assert!(
@@ -722,6 +723,7 @@ impl SubgraphStoreTrait for SubgraphStore {
             block_ptr_to,
             mods,
             stopwatch,
+            data_sources,
             deterministic_errors,
         )?;
         self.send_store_event(&event)
@@ -916,10 +918,7 @@ impl ShardData for MetadataType {
 
         match self {
             SubgraphDeploymentAssignment => false,
-            SubgraphDeployment
-            | SubgraphManifest
-            | DynamicEthereumContractDataSource
-            | SubgraphError => true,
+            SubgraphDeployment | SubgraphManifest | SubgraphError => true,
         }
     }
 }

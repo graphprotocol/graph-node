@@ -109,6 +109,7 @@ impl SubgraphStore for MockStore {
         _block_ptr_to: EthereumBlockPointer,
         _mods: Vec<EntityModification>,
         _stopwatch: StopwatchMetrics,
+        _data_sources: Vec<StoredDynamicDataSource>,
         _deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
         unimplemented!()
