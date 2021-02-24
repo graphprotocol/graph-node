@@ -26,7 +26,7 @@ const waitForSubgraphToBeUnhealthy = async () =>
   new Promise((resolve, reject) => {
     // Wait for 5s
     let deadline = Date.now() + 50 * 1000;
-
+abcdefghijklmnopqrstuvwxyz
     // Function to check if the subgraph is synced
     const checkSubgraphSynced = async () => {
       try {
