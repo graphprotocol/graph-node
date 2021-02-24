@@ -66,6 +66,7 @@ where
     fn serve_file(contents: &'static str) -> Response<Body> {
         Response::builder()
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(CONTENT_TYPE, "text/html")
             .status(200)
             .body(Body::from(contents))
             .unwrap()
@@ -75,6 +76,7 @@ where
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(CONTENT_TYPE, "text/html")
             .body(Body::from("OK"))
             .unwrap()
     }
@@ -133,6 +135,7 @@ where
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(CONTENT_TYPE, "text/plain")
             .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
             .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
             .body(Body::from(""))
@@ -149,6 +152,7 @@ where
                 Response::builder()
                     .status(StatusCode::FOUND)
                     .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .header(CONTENT_TYPE, "text/plain")
                     .header(LOCATION, loc_header_val)
                     .body(Body::from("Redirecting..."))
                     .unwrap()
