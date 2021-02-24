@@ -2,6 +2,29 @@
 
 ## next - unreleased
 
+## 0.22.0
+
+### Feature: Block store sharding
+This release makes it possible to [shard the block and call cache](./docs/sharding.md) for chain
+data across multiple independent Postgres databases. **This feature is considered experimental. We
+encourage users to try this out in a test environment, but do not recommend it yet for production
+use.** In particular, the details of how sharding is configured may change in backwards-incompatible
+ways in the future.
+
+### Feature: Non-fatal errors update
+Non-fatal errors (see release 0.20 for details) is documented and can now be enabled on graph-cli.
+Various related bug fixes have been made #2121 #2136 #2149 #2160.
+
+### Improvements
+- Add bitwise operations and string constructor to BigInt #2151.
+- docker: Allow custom ethereum poll interval #2139.
+- Deterministic error work in preparation for gas #2112
+
+### Bug fixes
+- Fix not contains filter #2146.
+- Resolve __typename in _meta field #2118
+- Add CORS for all HTTP responses #2196
+
 ## 0.21.1
 
 - Fix subgraphs failing with a `fatalError` when deployed while already running
