@@ -48,10 +48,10 @@ jobs:
             ~/.cargo/git
           key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Install Node 11
+      - name: Install Node 14
         uses: actions/setup-node@v2
         with:
-          node-version: '11'
+          node-version: '14'
 
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
