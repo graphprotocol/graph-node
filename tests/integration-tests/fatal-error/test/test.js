@@ -7,8 +7,9 @@ const Contract = artifacts.require("./Contract.sol");
 
 const srcDir = path.join(__dirname, "..");
 
+const indexPort = process.env.GRAPH_NODE_INDEX_PORT || 18030;
 const fetchSubgraphs = createApolloFetch({
-  uri: "http://localhost:18030/graphql",
+  uri: `http://localhost:${indexPort}/graphql`,
 });
 
 const exec = (cmd) => {
@@ -21,7 +22,7 @@ const exec = (cmd) => {
 
 const waitForSubgraphToFailWithError = async (blockNumber) =>
   new Promise((resolve, reject) => {
-    let deadline = Date.now() + 5 * 10000;
+    let deadline = Date.now() + 60 * 1000;
 
     const checkSubgraphFailed = async () => {
       try {

@@ -7,12 +7,15 @@ const Contract = artifacts.require("./Contract.sol");
 
 const srcDir = path.join(__dirname, "..");
 
+const httpPort = process.env.GRAPH_NODE_HTTP_PORT || 18000;
+const indexPort = process.env.GRAPH_NODE_INDEX_PORT || 18030;
+
 const fetchSubgraphs = createApolloFetch({
-  uri: "http://localhost:18030/graphql"
+  uri: `http://localhost:${indexPort}/graphql`
 });
 const fetchSubgraph = createApolloFetch({
   uri:
-    "http://localhost:18000/subgraphs/name/test/overloaded-contract-functions"
+    `http://localhost:${httpPort}/subgraphs/name/test/overloaded-contract-functions`
 });
 
 const exec = cmd => {
@@ -25,8 +28,8 @@ const exec = cmd => {
 
 const waitForSubgraphToBeSynced = async () =>
   new Promise((resolve, reject) => {
-    // Wait for 5s
-    let deadline = Date.now() + 5 * 1000;
+    // Wait for 60s
+    let deadline = Date.now() + 60 * 1000;
 
     // Function to check if the subgraph is synced
     const checkSubgraphSynced = async () => {
