@@ -713,7 +713,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
         assert!(
-            mods.in_shard(&id),
+            same_subgraph(&mods, &id),
             "can only transact operations within one shard"
         );
         let (store, site) = self.store(&id)?;
@@ -905,27 +905,6 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 }
 
-trait ShardData {
-    // Return `true` if this object resides in the shard for the
-    // data for the given deployment
-    fn in_shard(&self, id: &SubgraphDeploymentId) -> bool;
-}
-
-impl<T> ShardData for Vec<T>
-where
-    T: ShardData,
-{
-    fn in_shard(&self, id: &SubgraphDeploymentId) -> bool {
-        self.iter().all(|op| op.in_shard(id))
-    }
-}
-
-impl ShardData for EntityModification {
-    fn in_shard(&self, id: &SubgraphDeploymentId) -> bool {
-        let key = self.entity_key();
-
-        match &key.entity_type {
-            EntityType::Data(_) => &key.subgraph_id == id,
-        }
-    }
+fn same_subgraph(mods: &Vec<EntityModification>, id: &SubgraphDeploymentId) -> bool {
+    mods.iter().all(|md| &md.entity_key().subgraph_id == id)
 }

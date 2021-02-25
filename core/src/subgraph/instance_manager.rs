@@ -989,7 +989,7 @@ async fn update_proof_of_indexing(
         // Create the special POI entity key specific to this causality_region
         let entity_key = EntityKey {
             subgraph_id: deployment_id.clone(),
-            entity_type: EntityType::data(POI_OBJECT.to_owned()),
+            entity_type: EntityType::new(POI_OBJECT.to_owned()),
             entity_id: causality_region,
         };
 

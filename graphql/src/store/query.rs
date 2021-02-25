@@ -329,7 +329,7 @@ pub fn collect_entities_from_query_field(
 
     entities
         .into_iter()
-        .map(|(id, entity_type)| SubscriptionFilter::Entities(id, EntityType::data(entity_type)))
+        .map(|(id, entity_type)| SubscriptionFilter::Entities(id, EntityType::new(entity_type)))
         .collect()
 }
 

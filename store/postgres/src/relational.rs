@@ -653,7 +653,7 @@ impl Layout {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type.expect_data())?;
+        let table = self.table_for_entity(&key.entity_type.as_str())?;
         ClampRangeQuery::new(table, key, block).execute(conn)?;
         let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
@@ -666,7 +666,7 @@ impl Layout {
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type.expect_data())?;
+        let table = self.table_for_entity(&key.entity_type.as_str())?;
         Ok(ClampRangeQuery::new(table, key, block).execute(conn)?)
     }
 
@@ -709,7 +709,7 @@ impl Layout {
                 .filter(|id| !unclamped.contains(id))
                 .map(|id| EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: EntityType::data(table.object.clone()),
+                    entity_type: EntityType::new(table.object.clone()),
                     entity_id: id,
                     operation: EntityChangeOperation::Removed,
                 });
@@ -717,7 +717,7 @@ impl Layout {
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|id| EntityChange::Data {
                 subgraph_id: subgraph_id.clone(),
-                entity_type: EntityType::Data(table.object.clone()),
+                entity_type: EntityType::new(table.object.clone()),
                 entity_id: id,
                 operation: EntityChangeOperation::Set,
             });

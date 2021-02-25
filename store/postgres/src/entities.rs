@@ -98,9 +98,7 @@ impl Connection<'_> {
                 self.subgraph, key.subgraph_id
             );
         }
-        match &key.entity_type {
-            EntityType::Data(_) => self.data.as_ref(),
-        }
+        self.data.as_ref()
     }
 
     /// Do any cleanup to bring the subgraph into a known good state
@@ -137,10 +135,8 @@ impl Connection<'_> {
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
         assert_eq!(&self.subgraph, &key.subgraph_id);
-
-        match &key.entity_type {
-            EntityType::Data(name) => self.data.find(&self.conn, name, &key.entity_id, block),
-        }
+        self.data
+            .find(&self.conn, &key.entity_type.as_str(), &key.entity_id, block)
     }
 
     /// Returns a sequence of `(type, entity)`.
@@ -153,7 +149,6 @@ impl Connection<'_> {
         // Split the entities into data and metadata depending on their type
         let data = ids_for_type
             .iter()
-            .filter(|(typ, _)| typ.is_data_type())
             .map(|(typ, ids)| (typ.as_str(), ids))
             .collect();
 
@@ -163,7 +158,7 @@ impl Connection<'_> {
             .data
             .find_many(&self.conn, data, block)?
             .into_iter()
-            .map(|(name, entities)| (EntityType::data(name), entities))
+            .map(|(name, entities)| (EntityType::new(name), entities))
             .collect();
         Ok(data)
     }
@@ -198,12 +193,10 @@ impl Connection<'_> {
         entity: Entity,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
-        use EntityType::*;
-
         let layout = self.layout_for(key);
-        match (&key.entity_type, ptr) {
-            (Data(_), Some(ptr)) => layout.insert(&self.conn, key, entity, block_number(ptr)),
-            (Data(_), None) => unreachable!("data changes are always versioned"),
+        match ptr {
+            Some(ptr) => layout.insert(&self.conn, key, entity, block_number(ptr)),
+            None => unreachable!("data changes are always versioned"),
         }
     }
 
@@ -216,12 +209,10 @@ impl Connection<'_> {
         entity: Entity,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<(), StoreError> {
-        use EntityType::*;
-
         let layout = self.layout_for(key);
-        match (&key.entity_type, ptr) {
-            (Data(_), Some(ptr)) => layout.update(&self.conn, key, entity, block_number(ptr)),
-            (Data(_), None) => unreachable!("data changes are always versioned"),
+        match ptr {
+            Some(ptr) => layout.update(&self.conn, key, entity, block_number(ptr)),
+            None => unreachable!("data changes are always versioned"),
         }
     }
 
@@ -230,12 +221,10 @@ impl Connection<'_> {
         key: &EntityKey,
         ptr: Option<&EthereumBlockPointer>,
     ) -> Result<usize, StoreError> {
-        use EntityType::*;
-
         let layout = self.layout_for(key);
-        match (&key.entity_type, ptr) {
-            (Data(_), Some(ptr)) => layout.delete(&self.conn, key, block_number(ptr)),
-            (Data(_), None) => unreachable!("data changes are always versioned"),
+        match ptr {
+            Some(ptr) => layout.delete(&self.conn, key, block_number(ptr)),
+            None => unreachable!("data changes are always versioned"),
         }
     }
 

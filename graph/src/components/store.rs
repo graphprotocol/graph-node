@@ -35,50 +35,21 @@ lazy_static! {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum EntityType {
-    Data(String),
-}
+pub struct EntityType(String);
 
 impl EntityType {
-    pub fn data(entity_type: String) -> Self {
-        Self::Data(entity_type)
-    }
-
-    pub fn is_data_type(&self) -> bool {
-        match self {
-            Self::Data(_) => true,
-        }
-    }
-
-    pub fn is_data(&self, entity_type: &str) -> bool {
-        match self {
-            Self::Data(s) => s == entity_type,
-        }
+    pub fn new(entity_type: String) -> Self {
+        Self(entity_type)
     }
 
     pub fn as_str(&self) -> &str {
-        match self {
-            Self::Data(name) => name.as_str(),
-        }
-    }
-
-    /// Expect `self` to reference a `Data` entity type and return the
-    /// type's name
-    ///
-    /// # Panics
-    /// This method will panic if `self` is a `Metadata` type
-    pub fn expect_data(&self) -> &str {
-        match self {
-            Self::Data(s) => s.as_str(),
-        }
+        &self.0
     }
 }
 
 impl fmt::Display for EntityType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Data(s) => write!(f, "{}", s),
-        }
+        write!(f, "{}", self.0)
     }
 }
 
@@ -99,18 +70,13 @@ pub struct EntityKey {
 
 impl StableHash for EntityKey {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        use EntityType::*;
-
-        match &self.entity_type {
-            Data(name) => {
-                // EntityType used to just be a string for normal entities
-                self.subgraph_id
-                    .stable_hash(sequence_number.next_child(), state);
-                name.stable_hash(sequence_number.next_child(), state);
-                self.entity_id
-                    .stable_hash(sequence_number.next_child(), state);
-            }
-        }
+        self.subgraph_id
+            .stable_hash(sequence_number.next_child(), state);
+        self.entity_type
+            .as_str()
+            .stable_hash(sequence_number.next_child(), state);
+        self.entity_id
+            .stable_hash(sequence_number.next_child(), state);
     }
 }
 
@@ -118,7 +84,7 @@ impl EntityKey {
     pub fn data(subgraph_id: SubgraphDeploymentId, entity_type: String, entity_id: String) -> Self {
         Self {
             subgraph_id,
-            entity_type: EntityType::Data(entity_type),
+            entity_type: EntityType::new(entity_type),
             entity_id,
         }
     }
@@ -474,15 +440,11 @@ pub enum EntityChange {
 
 impl EntityChange {
     pub fn for_data(key: EntityKey, operation: EntityChangeOperation) -> Self {
-        use EntityType::*;
-
-        match &key.entity_type {
-            Data(_) => Self::Data {
-                subgraph_id: key.subgraph_id,
-                entity_type: key.entity_type,
-                entity_id: key.entity_id,
-                operation,
-            },
+        Self::Data {
+            subgraph_id: key.subgraph_id,
+            entity_type: key.entity_type,
+            entity_id: key.entity_id,
+            operation,
         }
     }
 

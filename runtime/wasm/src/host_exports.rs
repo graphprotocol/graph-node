@@ -202,7 +202,7 @@ impl HostExports {
 
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type: EntityType::data(entity_type),
+            entity_type: EntityType::new(entity_type),
             entity_id,
         };
         let entity = Entity::from(data);
@@ -244,7 +244,7 @@ impl HostExports {
         }
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type: EntityType::data(entity_type),
+            entity_type: EntityType::new(entity_type),
             entity_id,
         };
         state.entity_cache.remove(key);
@@ -260,7 +260,7 @@ impl HostExports {
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type: EntityType::data(entity_type.clone()),
+            entity_type: EntityType::new(entity_type.clone()),
             entity_id: entity_id.clone(),
         };
 

@@ -323,18 +323,16 @@ impl DeploymentStore {
             .subgraph_info_with_conn(&conn.conn, &key.subgraph_id)?
             .api;
         let types_for_interface = schema.types_for_interface();
-        let entity_type = match &key.entity_type {
-            EntityType::Data(s) => s,
-        };
+        let entity_type = key.entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
             schema
-                .interfaces_for_type(entity_type)
+                .interfaces_for_type(&entity_type)
                 .into_iter()
                 .flatten()
                 .map(|interface| &types_for_interface[&interface.name])
                 .flatten()
                 .map(|object_type| &object_type.name)
-                .filter(|type_name| *type_name != entity_type),
+                .filter(|type_name| *type_name != &entity_type),
         );
 
         if !types_with_shared_interface.is_empty() {
@@ -363,7 +361,6 @@ impl DeploymentStore {
         for modification in mods {
             use EntityModification::*;
 
-            let do_count = modification.entity_key().entity_type.is_data_type();
             let n = match modification {
                 Overwrite { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -396,9 +393,7 @@ impl DeploymentStore {
                         .into()
                     }),
             }?;
-            if do_count {
-                count += n;
-            }
+            count += n;
         }
         conn.update_entity_count(count)?;
         Ok(())

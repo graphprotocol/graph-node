@@ -133,11 +133,7 @@ impl CacheWeight for usize {
 
 impl CacheWeight for EntityType {
     fn indirect_weight(&self) -> usize {
-        use EntityType::*;
-
-        match self {
-            Data(s) => s.indirect_weight(),
-        }
+        0
     }
 }
 

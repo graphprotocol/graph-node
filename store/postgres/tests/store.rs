@@ -935,7 +935,7 @@ fn make_entity_change(
 ) -> EntityChange {
     EntityChange::Data {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type: EntityType::data(entity_type.to_owned()),
+        entity_type: EntityType::new(entity_type.to_owned()),
         entity_id: entity_id.to_owned(),
         operation: op,
     }
@@ -992,7 +992,7 @@ fn subscribe(
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
     let subscription = SUBSCRIPTION_MANAGER.subscribe(vec![SubscriptionFilter::Entities(
         subgraph.clone(),
-        EntityType::data(entity_type.to_owned()),
+        EntityType::new(entity_type.to_owned()),
     )]);
 
     StoreEventStream::new(subscription)
@@ -1298,7 +1298,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             changes: HashSet::from_iter(
                 vec![EntityChange::Data {
                     subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
-                    entity_type: EntityType::data(USER.into()),
+                    entity_type: EntityType::new(USER.into()),
                     entity_id: "1".into(),
                     operation: EntityChangeOperation::Set,
                 }]
@@ -1402,7 +1402,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         .unwrap();
 
         // We're expecting two events to be written to the subscription stream
-        let user_type = EntityType::data(USER.to_owned());
+        let user_type = EntityType::new(USER.to_owned());
         let expected = vec![
             StoreEvent::new(vec![
                 EntityChange::Data {

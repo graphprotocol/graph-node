@@ -165,7 +165,7 @@ specVersion: 0.0.2
         thing.set("id", "datthing");
         test_store::insert_entities(
             subgraph,
-            vec![(EntityType::data("Thing".to_string()), thing)],
+            vec![(EntityType::new("Thing".to_string()), thing)],
         )
         .expect("Can insert a thing");
 

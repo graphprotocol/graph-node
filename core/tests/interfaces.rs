@@ -22,7 +22,7 @@ fn insert_and_query(
         .map(|(data, entity_type)| EntityOperation::Set {
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
-                entity_type: EntityType::data(entity_type.to_owned()),
+                entity_type: EntityType::new(entity_type.to_owned()),
                 entity_id: data["id"].clone().as_string().unwrap(),
             },
             data,
