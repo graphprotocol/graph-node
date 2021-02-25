@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use std::str::FromStr;
 use test_store::*;
 
-use graph::components::store::{EntityKey, EntityOrder, EntityQuery};
+use graph::components::store::{EntityKey, EntityOrder, EntityQuery, EntityType};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
@@ -275,7 +275,7 @@ fn graft() {
         let query = EntityQuery::new(
             subgraph_id.clone(),
             BLOCK_NUMBER_MAX,
-            EntityCollection::All(vec![USER.to_owned()]),
+            EntityCollection::All(vec![EntityType::from(USER)]),
         )
         .order(EntityOrder::Descending(
             "name".to_string(),

@@ -6,12 +6,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
+use graph::components::ethereum::{triggers_in_block, EthereumNetworks};
 use graph::components::store::{BlockStore, ModificationsAndCache};
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
-use graph::components::{
-    ethereum::{triggers_in_block, EthereumNetworks},
-    store::EntityType,
-};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
@@ -989,7 +986,7 @@ async fn update_proof_of_indexing(
         // Create the special POI entity key specific to this causality_region
         let entity_key = EntityKey {
             subgraph_id: deployment_id.clone(),
-            entity_type: EntityType::new(POI_OBJECT.to_owned()),
+            entity_type: POI_OBJECT.to_owned(),
             entity_id: causality_region,
         };
 

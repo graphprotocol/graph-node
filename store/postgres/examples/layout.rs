@@ -289,7 +289,7 @@ fn print_list_metadata(layout: &Layout) {
         println!("select '{}' as entity, id", &table.object);
         let name = table.qualified_name.as_str().replace("\"", "");
         println!("  from {} e", name);
-        if table.object == "DynamicEthereumContractDataSource" {
+        if table.object.as_str() == "DynamicEthereumContractDataSource" {
             println!(" where e.deployment = $1");
         } else {
             println!(" where left(e.id, 46) = $1");

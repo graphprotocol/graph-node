@@ -561,7 +561,7 @@ fn user_query() -> EntityQuery {
     EntityQuery::new(
         TEST_SUBGRAPH_ID.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(vec![USER.to_owned()]),
+        EntityCollection::All(vec![EntityType::from(USER)]),
     )
 }
 
@@ -1734,7 +1734,8 @@ impl WindowQuery {
 
     fn against_color_and_age(self) -> Self {
         let mut query = self.0;
-        query.collection = EntityCollection::All(vec![USER.to_owned(), "Person".to_owned()]);
+        query.collection =
+            EntityCollection::All(vec![EntityType::from(USER), EntityType::from("Person")]);
         WindowQuery(query, self.1).default_window()
     }
 

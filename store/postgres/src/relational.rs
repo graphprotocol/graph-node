@@ -193,14 +193,14 @@ impl TryFrom<&s::Type> for IdType {
     }
 }
 
-type IdTypeMap = HashMap<String, IdType>;
+type IdTypeMap = HashMap<EntityType, IdType>;
 
 type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
 #[derive(Debug, Clone)]
 pub struct Layout {
     /// Maps the GraphQL name of a type to the relational table
-    pub tables: HashMap<String, Arc<Table>>,
+    pub tables: HashMap<EntityType, Arc<Table>>,
     /// The database schema for this subgraph
     pub catalog: Catalog,
     /// Enums defined in the schema and their possible values. The names
@@ -277,7 +277,7 @@ impl Layout {
         // and interfaces in the schema
         let id_types = object_types
             .iter()
-            .map(|obj_type| IdType::try_from(*obj_type).map(|t| (obj_type.name.to_owned(), t)))
+            .map(|obj_type| IdType::try_from(*obj_type).map(|t| (EntityType::from(*obj_type), t)))
             .chain(id_types_for_interface)
             .collect::<Result<IdTypeMap, _>>()?;
 
@@ -498,16 +498,16 @@ impl Layout {
             .map(|rc| rc.as_ref())
     }
 
-    pub fn table_for_entity(&self, entity: &str) -> Result<&Arc<Table>, StoreError> {
+    pub fn table_for_entity(&self, entity: &EntityType) -> Result<&Arc<Table>, StoreError> {
         self.tables
             .get(entity)
-            .ok_or_else(|| StoreError::UnknownTable(entity.to_owned()))
+            .ok_or_else(|| StoreError::UnknownTable(entity.to_string()))
     }
 
     pub fn find(
         &self,
         conn: &PgConnection,
-        entity: &str,
+        entity: &EntityType,
         id: &str,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
@@ -522,9 +522,9 @@ impl Layout {
     pub fn find_many<'a>(
         &self,
         conn: &PgConnection,
-        ids_for_type: BTreeMap<&str, &Vec<&str>>,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<String, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -539,7 +539,7 @@ impl Layout {
             tables,
             block,
         };
-        let mut entities_for_type: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
+        let mut entities_for_type: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
             entities_for_type
                 .entry(data.entity_type())
@@ -556,7 +556,7 @@ impl Layout {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(key.entity_type.as_str())?;
+        let table = self.table_for_entity(&key.entity_type)?;
         let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
         Ok(())
@@ -566,7 +566,7 @@ impl Layout {
         &self,
         conn: &PgConnection,
         entity_id: &String,
-        entities: Vec<&String>,
+        entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
             .load(conn)?
@@ -653,7 +653,7 @@ impl Layout {
         entity: Entity,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type.as_str())?;
+        let table = self.table_for_entity(&key.entity_type)?;
         ClampRangeQuery::new(table, key, block).execute(conn)?;
         let query = InsertQuery::new(table, key, entity, block)?;
         query.execute(conn)?;
@@ -666,7 +666,7 @@ impl Layout {
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type.as_str())?;
+        let table = self.table_for_entity(&key.entity_type)?;
         Ok(ClampRangeQuery::new(table, key, block).execute(conn)?)
     }
 
@@ -709,7 +709,7 @@ impl Layout {
                 .filter(|id| !unclamped.contains(id))
                 .map(|id| EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: EntityType::new(table.object.clone()),
+                    entity_type: table.object.clone(),
                     entity_id: id,
                     operation: EntityChangeOperation::Removed,
                 });
@@ -717,7 +717,7 @@ impl Layout {
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|id| EntityChange::Data {
                 subgraph_id: subgraph_id.clone(),
-                entity_type: EntityType::new(table.object.clone()),
+                entity_type: table.object.clone(),
                 entity_id: id,
                 operation: EntityChangeOperation::Set,
             });
@@ -749,7 +749,7 @@ impl Layout {
         lazy_static! {
             // Tables from which we should not delete entries for `subgraph`
             // See also: ed42d219c6704a4aab57ce1ea66698e7
-            static ref OTHER_TABLES: Vec<String> = vec![
+            static ref OTHER_TABLES: Vec<EntityType> = vec![
                 // Not deployment specific
                 "Subgraph",
                 // Not deployment specific
@@ -760,7 +760,7 @@ impl Layout {
                 "SubgraphDeploymentAssignment",
             ]
             .into_iter()
-            .map(String::from)
+            .map(|s| EntityType::new(s.to_string()))
             .collect();
         }
 
@@ -849,7 +849,7 @@ impl ColumnType {
         let name = named_type(field_type);
 
         // See if its an object type defined in the schema
-        if let Some(id_type) = id_types.get(name) {
+        if let Some(id_type) = id_types.get(&EntityType::new(name.to_string())) {
             return Ok(id_type.clone().into());
         }
 
@@ -1027,7 +1027,7 @@ impl Column {
         named_type(&self.field_type) == "String" && !self.is_list()
     }
 
-    pub fn is_assignable_from(&self, source: &Self, object: &str) -> Option<String> {
+    pub fn is_assignable_from(&self, source: &Self, object: &EntityType) -> Option<String> {
         if !self.is_nullable() && source.is_nullable() {
             Some(format!(
                 "The attribute {}.{} is non-nullable, \
@@ -1083,7 +1083,7 @@ pub(crate) const VID_COLUMN: &str = "vid";
 #[derive(Clone, Debug)]
 pub struct Table {
     /// The name of the GraphQL object type ('Thing')
-    pub object: String,
+    pub object: EntityType,
     /// The name of the database table for this type ('thing'), snakecased
     /// version of `object`
     pub name: SqlName,
@@ -1127,7 +1127,7 @@ impl Table {
         let is_account_like =
             ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.namespace, table_name));
         let table = Table {
-            object: defn.name.clone(),
+            object: EntityType::from(defn),
             name: table_name.clone(),
             qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
             is_account_like,
@@ -1347,7 +1347,7 @@ mod tests {
             .table(&"thing".into())
             .expect("failed to get 'thing' table");
         assert_eq!(SqlName::from("thing"), table.name);
-        assert_eq!("Thing", table.object);
+        assert_eq!("Thing", table.object.as_str());
 
         let id = table
             .column(&PRIMARY_KEY_COLUMN.into())

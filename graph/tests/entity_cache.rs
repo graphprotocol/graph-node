@@ -79,7 +79,7 @@ fn overwrite_modifications() {
         let mut map = BTreeMap::new();
 
         map.insert(
-            EntityType::new("Band".to_string()),
+            EntityType::from("Band"),
             vec![
                 make_band(
                     "mogwai",
@@ -146,7 +146,7 @@ fn consecutive_modifications() {
         let mut map = BTreeMap::new();
 
         map.insert(
-            EntityType::new("Band".to_string()),
+            EntityType::from("Band"),
             vec![
                 make_band(
                     "mogwai",

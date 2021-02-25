@@ -9,12 +9,12 @@ use std::iter::once;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::data::graphql::*;
 use graph::prelude::{
     q, s, ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
     EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore,
     Value as StoreValue, WindowAttribute,
 };
+use graph::{components::store::EntityType, data::graphql::*};
 
 use crate::execution::{ExecutionContext, Resolver};
 use crate::query::ast as qast;
@@ -192,10 +192,10 @@ enum JoinRelation<'a> {
 struct JoinCond<'a> {
     /// The (concrete) object type of the parent, interfaces will have
     /// one `JoinCond` for each implementing type
-    parent_type: &'a str,
+    parent_type: EntityType,
     /// The (concrete) object type of the child, interfaces will have
     /// one `JoinCond` for each implementing type
-    child_type: &'a str,
+    child_type: EntityType,
     relation: JoinRelation<'a>,
 }
 
@@ -215,8 +215,8 @@ impl<'a> JoinCond<'a> {
                 JoinRelation::Derived(JoinField::new(field))
             };
         JoinCond {
-            parent_type: parent_type.name.as_str(),
-            child_type: child_type.name.as_str(),
+            parent_type: parent_type.into(),
+            child_type: child_type.into(),
             relation,
         }
     }
@@ -382,7 +382,7 @@ impl<'a> Join<'a> {
         for cond in &self.conds {
             let mut parents_by_id = parents
                 .iter()
-                .filter(|parent| parent.typename() == cond.parent_type)
+                .filter(|parent| parent.typename() == cond.parent_type.as_str())
                 .filter_map(|parent| parent.id().ok().map(|id| (id, &**parent)))
                 .collect::<Vec<_>>();
 
@@ -677,8 +677,8 @@ fn collect_fields_inner<'a>(
             // each type in the intersection between the root interface and the
             // interface in the fragment type condition.
             let types_for_interface = ctx.query.schema.types_for_interface();
-            let root_tys = &types_for_interface[outer_type_condition.name()];
-            let fragment_tys = &types_for_interface[fragment_ty.name()];
+            let root_tys = &types_for_interface[&outer_type_condition.into()];
+            let fragment_tys = &types_for_interface[&fragment_ty.into()];
             let intersection_tys = root_tys.iter().filter(|root_ty| {
                 fragment_tys
                     .iter()
@@ -792,7 +792,7 @@ fn fetch(
     join: &Join<'_>,
     arguments: HashMap<&String, q::Value>,
     multiplicity: ChildMultiplicity,
-    types_for_interface: &BTreeMap<String, Vec<s::ObjectType>>,
+    types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     block: BlockNumber,
     max_first: u32,
     max_skip: u32,

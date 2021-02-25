@@ -5,11 +5,14 @@ use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 
-use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
     web3::types::H256, ChildMultiplicity, Entity, EntityCollection, EntityKey, EntityLink,
     EntityOrder, EntityRange, EntityWindow, ParentLink, Schema, SubgraphDeploymentId, Value,
     WindowAttribute, BLOCK_NUMBER_MAX,
+};
+use graph::{
+    components::store::EntityType,
+    data::store::scalar::{BigDecimal, BigInt},
 };
 use graph_store_postgres::layout_for_tests::{Layout, Namespace};
 
@@ -61,6 +64,7 @@ lazy_static! {
         __typename: "Thing"
     };
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
+    static ref THING: EntityType = EntityType::from("Thing");
 }
 
 /// Removes test data from the database behind the store.
@@ -164,7 +168,7 @@ fn bad_id() {
         // We test that we get errors for various strings that are not
         // valid 'Bytes' strings; we use `find` to force the conversion
         // from String -> Bytes internally
-        let res = layout.find(conn, "Thing", "bad", BLOCK_NUMBER_MAX);
+        let res = layout.find(conn, &*THING, "bad", BLOCK_NUMBER_MAX);
         assert!(res.is_err());
         assert_eq!(
             "store error: Odd number of digits",
@@ -172,7 +176,7 @@ fn bad_id() {
         );
 
         // We do not allow the `\x` prefix that Postgres uses
-        let res = layout.find(conn, "Thing", "\\xbadd", BLOCK_NUMBER_MAX);
+        let res = layout.find(conn, &*THING, "\\xbadd", BLOCK_NUMBER_MAX);
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'\\\\\' at position 0",
@@ -180,11 +184,11 @@ fn bad_id() {
         );
 
         // Having the '0x' prefix is ok
-        let res = layout.find(conn, "Thing", "0xbadd", BLOCK_NUMBER_MAX);
+        let res = layout.find(conn, &*THING, "0xbadd", BLOCK_NUMBER_MAX);
         assert!(res.is_ok());
 
         // Using non-hex characters is also bad
-        let res = layout.find(conn, "Thing", "nope", BLOCK_NUMBER_MAX);
+        let res = layout.find(conn, &*THING, "nope", BLOCK_NUMBER_MAX);
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'n\' at position 0",
@@ -202,14 +206,14 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = layout
-            .find(conn, "Thing", ID, BLOCK_NUMBER_MAX)
+            .find(conn, &*THING, ID, BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
         assert_entity_eq!(scrub(&*BEEF_ENTITY), entity);
 
         // Find non-existing entity
         let entity = layout
-            .find(conn, "Thing", "badd", BLOCK_NUMBER_MAX)
+            .find(conn, &*THING, "badd", BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[badd]");
         assert!(entity.is_none());
     });
@@ -225,9 +229,8 @@ fn find_many() {
         insert_thing(&conn, &layout, ID, NAME);
         insert_thing(&conn, &layout, ID2, NAME2);
 
-        let mut id_map: BTreeMap<&str, &Vec<&str>> = BTreeMap::default();
-        let ids = vec![ID, ID2, "badd"];
-        id_map.insert("Thing", &ids);
+        let mut id_map: BTreeMap<&EntityType, Vec<&str>> = BTreeMap::default();
+        id_map.insert(&*THING, vec![ID, ID2, "badd"]);
 
         let entities = layout
             .find_many(conn, id_map, BLOCK_NUMBER_MAX)
@@ -235,7 +238,7 @@ fn find_many() {
         assert_eq!(1, entities.len());
 
         let ids = entities
-            .get("Thing")
+            .get(&*THING)
             .expect("We got some things")
             .iter()
             .map(|thing| thing.id().unwrap())
@@ -265,7 +268,7 @@ fn update() {
             .expect("Failed to update");
 
         let actual = layout
-            .find(conn, "Thing", &entity.id().unwrap(), BLOCK_NUMBER_MAX)
+            .find(conn, &*THING, &entity.id().unwrap(), BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -386,14 +389,14 @@ fn query() {
         // for a discussion of the various types of relationships and queries
 
         // EntityCollection::All
-        let coll = EntityCollection::All(vec!["Thing".to_owned()]);
+        let coll = EntityCollection::All(vec![THING.clone()]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2, ROOT, GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type A, many
         //   things(where: { children_contains: [CHILD1] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: "Thing".to_owned(),
+            child_type: THING.clone(),
             ids: vec![CHILD1.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::List("children".to_string()),
@@ -406,7 +409,7 @@ fn query() {
         // EntityCollection::Window, type A, single
         //   things(where: { children_contains: [GRANDCHILD1, GRANDCHILD2] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: "Thing".to_owned(),
+            child_type: THING.clone(),
             ids: vec![GRANDCHILD1.to_owned(), GRANDCHILD2.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::List("children".to_string()),
@@ -419,7 +422,7 @@ fn query() {
         // EntityCollection::Window, type B, many
         //   things(where: { parent: [ROOT] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: "Thing".to_owned(),
+            child_type: THING.clone(),
             ids: vec![ROOT.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::Scalar("parent".to_string()),
@@ -432,7 +435,7 @@ fn query() {
         // EntityCollection::Window, type B, single
         //   things(where: { parent: [CHILD1, CHILD2] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: "Thing".to_owned(),
+            child_type: THING.clone(),
             ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::Scalar("parent".to_string()),
@@ -446,7 +449,7 @@ fn query() {
         //   things { children { id } }
         // This is the inner 'children' query
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: "Thing".to_owned(),
+            child_type: THING.clone(),
             ids: vec![ROOT.to_owned()],
             link: EntityLink::Parent(ParentLink::List(vec![vec![
                 CHILD1.to_owned(),
@@ -460,7 +463,7 @@ fn query() {
         //   things { parent { id } }
         // This is the inner 'parent' query
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: "Thing".to_owned(),
+            child_type: THING.clone(),
             ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
             link: EntityLink::Parent(ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()])),
         }]);

@@ -129,7 +129,7 @@ fn interface_type_object(
         description: interface_type.description.clone(),
         fields:
             field_objects(schema, type_objects, &interface_type.fields),
-        possibleTypes: schema.types_for_interface()[&interface_type.name]
+        possibleTypes: schema.types_for_interface()[&interface_type.into()]
             .iter()
             .map(|object_type| q::Value::String(object_type.name.to_owned()))
             .collect::<Vec<_>>(),
@@ -189,7 +189,7 @@ fn object_interfaces(
 ) -> q::Value {
     q::Value::List(
         schema
-            .interfaces_for_type(&object_type.name)
+            .interfaces_for_type(&object_type.into())
             .unwrap_or(&vec![])
             .iter()
             .map(|typedef| interface_type_object(schema, type_objects, typedef))

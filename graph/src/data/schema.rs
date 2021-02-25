@@ -1,4 +1,4 @@
-use crate::components::store::SubgraphStore;
+use crate::components::store::{EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::store::ValueType;
 use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
@@ -390,12 +390,12 @@ impl ApiSchema {
         &self.schema
     }
 
-    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
         &self.schema.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &String) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
         self.schema.interfaces_for_type(type_name)
     }
 }
@@ -407,10 +407,10 @@ pub struct Schema {
     pub document: s::Document,
 
     // Maps type name to implemented interfaces.
-    pub interfaces_for_type: BTreeMap<String, Vec<InterfaceType>>,
+    pub interfaces_for_type: BTreeMap<EntityType, Vec<InterfaceType>>,
 
     // Maps an interface name to the list of entities that implement it.
-    pub types_for_interface: BTreeMap<String, Vec<ObjectType>>,
+    pub types_for_interface: BTreeMap<EntityType, Vec<ObjectType>>,
 }
 
 impl Schema {
@@ -474,8 +474,8 @@ impl Schema {
         document: &s::Document,
     ) -> Result<
         (
-            BTreeMap<String, Vec<InterfaceType>>,
-            BTreeMap<String, Vec<ObjectType>>,
+            BTreeMap<EntityType, Vec<InterfaceType>>,
+            BTreeMap<EntityType, Vec<ObjectType>>,
         ),
         SchemaValidationError,
     > {
@@ -484,7 +484,7 @@ impl Schema {
         let mut types_for_interface =
             BTreeMap::from_iter(document.definitions.iter().filter_map(|d| match d {
                 Definition::TypeDefinition(TypeDefinition::Interface(t)) => {
-                    Some((t.name.clone(), vec![]))
+                    Some((EntityType::from(t), vec![]))
                 }
                 _ => None,
             }));
@@ -510,11 +510,11 @@ impl Schema {
                 Self::validate_interface_implementation(object_type, &interface_type)?;
 
                 interfaces_for_type
-                    .entry(object_type.name.clone())
+                    .entry(EntityType::from(object_type))
                     .or_default()
                     .push(interface_type);
                 types_for_interface
-                    .get_mut(&implemented_interface)
+                    .get_mut(&EntityType::new(implemented_interface))
                     .unwrap()
                     .push(object_type.clone());
             }
@@ -590,12 +590,12 @@ impl Schema {
     }
 
     /// Returned map has one an entry for each interface in the schema.
-    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
         &self.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &String) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
         self.interfaces_for_type.get(type_name)
     }
 

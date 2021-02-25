@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Error};
 use hex;
+use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
 use stable_hash::{SequenceNumber, StableHash, StableHasher};
@@ -10,14 +11,16 @@ use std::{fmt, fmt::Display};
 use web3::types::*;
 
 use super::SubgraphDeploymentId;
-use crate::components::ethereum::EthereumBlockPointer;
+use crate::components::{ethereum::EthereumBlockPointer, store::EntityType};
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
 
 pub const POI_TABLE: &str = "poi2$";
-pub const POI_OBJECT: &str = "Poi$";
+lazy_static! {
+    pub static ref POI_OBJECT: EntityType = EntityType::new("Poi$".to_string());
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SubgraphHealth {

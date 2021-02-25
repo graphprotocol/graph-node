@@ -1,5 +1,6 @@
 use futures::stream::poll_fn;
 use futures::{Async, Future, Poll, Stream};
+use graphql_parser::schema as s;
 use lazy_static::lazy_static;
 use mockall::predicate::*;
 use mockall::*;
@@ -34,16 +35,25 @@ lazy_static! {
             .unwrap_or_else(|| Duration::from_millis(1000));
 }
 
+/// The type name of an entity. This is the string that is used in the
+/// subgraph's GraphQL schema as `type NAME @entity { .. }`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityType(String);
 
 impl EntityType {
+    /// Construct a new entity type. Ideally, this is only called when
+    /// `entity_type` either comes from the GraphQL schema, or from
+    /// the database from fields that are known to contain a valid entity type
     pub fn new(entity_type: String) -> Self {
         Self(entity_type)
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
     }
 }
 
@@ -52,6 +62,29 @@ impl fmt::Display for EntityType {
         write!(f, "{}", self.0)
     }
 }
+
+impl<'a> From<&s::ObjectType<'a, String>> for EntityType {
+    fn from(object_type: &s::ObjectType<'a, String>) -> Self {
+        EntityType::new(object_type.name.to_owned())
+    }
+}
+
+impl<'a> From<&s::InterfaceType<'a, String>> for EntityType {
+    fn from(interface_type: &s::InterfaceType<'a, String>) -> Self {
+        EntityType::new(interface_type.name.to_owned())
+    }
+}
+
+// This conversion should only be used in tests since it makes it too
+// easy to convert random strings into entity types
+#[cfg(debug_assertions)]
+impl From<&str> for EntityType {
+    fn from(s: &str) -> Self {
+        EntityType::new(s.to_owned())
+    }
+}
+
+impl CheapClone for EntityType {}
 
 // Note: Do not modify fields without making a backward compatible change to
 // the StableHash impl (below)
@@ -269,7 +302,7 @@ pub enum EntityLink {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityWindow {
     /// The entity type for this window
-    pub child_type: String,
+    pub child_type: EntityType,
     /// The ids of parents that should be considered for this window
     pub ids: Vec<String>,
     /// How to get the parent id
@@ -284,7 +317,7 @@ pub struct EntityWindow {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityCollection {
     /// Use all entities of the given types
-    All(Vec<String>),
+    All(Vec<EntityType>),
     /// Use entities according to the windows. The set of entities that we
     /// apply order and range to is formed by taking all entities matching
     /// the window, and grouping them by the attribute of the window. Entities

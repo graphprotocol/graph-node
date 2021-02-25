@@ -19,11 +19,14 @@ use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-use graph::data::{schema::FulltextAlgorithm, store::scalar};
 use graph::prelude::{
     anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value,
+};
+use graph::{
+    components::store::EntityType,
+    data::{schema::FulltextAlgorithm, store::scalar},
 };
 
 use crate::entities::STRING_PREFIX_SIZE;
@@ -421,8 +424,8 @@ pub struct EntityData {
 }
 
 impl EntityData {
-    pub fn entity_type(&self) -> String {
-        self.entity.clone()
+    pub fn entity_type(&self) -> EntityType {
+        EntityType::new(self.entity.clone())
     }
 
     /// Map the `EntityData` using the schema information in `Layout`
@@ -430,13 +433,17 @@ impl EntityData {
         self,
         layout: &Layout,
     ) -> Result<T, StoreError> {
-        let table = layout.table_for_entity(&self.entity)?;
+        let entity_type = EntityType::new(self.entity);
+        let table = layout.table_for_entity(&entity_type)?;
 
         use serde_json::Value as j;
         match self.data {
             j::Object(map) => {
                 let mut out = T::default();
-                out.insert_entity_data("__typename".to_owned(), T::Value::from_string(self.entity));
+                out.insert_entity_data(
+                    "__typename".to_owned(),
+                    T::Value::from_string(entity_type.into_string()),
+                );
                 for (key, json) in map {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that
@@ -1119,7 +1126,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where id = $1
         out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&self.table.object)?;
+        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1150,7 +1157,7 @@ pub struct FindManyQuery<'a> {
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: BTreeMap<&'a str, &'a Vec<&'a str>>,
+    pub(crate) ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
     pub(crate) block: BlockNumber,
 }
 
@@ -1171,14 +1178,14 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object)?;
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
             out.push_sql(" as entity, to_jsonb(e.*) as data\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
             table
                 .primary_key()
-                .is_in(&self.ids_for_type[table.object.as_str()], &mut out)?;
+                .is_in(&self.ids_for_type[&table.object], &mut out)?;
             out.push_sql(" and ");
             BlockRangeContainsClause::new(&table, "e.", self.block).walk_ast(out.reborrow())?;
         }
@@ -1300,7 +1307,7 @@ pub struct ConflictingEntityQuery<'a> {
 impl<'a> ConflictingEntityQuery<'a> {
     pub fn new(
         layout: &'a Layout,
-        entities: Vec<&'a String>,
+        entities: Vec<EntityType>,
         entity_id: &'a String,
     ) -> Result<Self, StoreError> {
         let tables = entities
@@ -1330,7 +1337,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object)?;
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
@@ -2133,7 +2140,7 @@ impl<'a> FilterQuery<'a> {
 
     fn select_entity_and_data(table: &Table, out: &mut AstPass<Pg>) {
         out.push_sql("select '");
-        out.push_sql(&table.object);
+        out.push_sql(table.object.as_str());
         out.push_sql("' as entity, to_jsonb(c.*) as data");
     }
 
@@ -2231,7 +2238,7 @@ impl<'a> FilterQuery<'a> {
             //        c.vid,
             //        c.${sort_key}
             out.push_sql("select '");
-            out.push_sql(&table.object);
+            out.push_sql(&table.object.as_str());
             out.push_sql("' as entity, c.id, c.vid");
             self.sort_key.select(&mut out)?;
             self.filtered_rows(table, filter, out.reborrow())?;
@@ -2254,7 +2261,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql(" c,");
             out.push_sql(" matches m");
             out.push_sql("\n where c.vid = m.vid and m.entity = ");
-            out.push_bind_param::<Text, _>(&table.object)?;
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
         }
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
@@ -2334,7 +2341,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("\n  from ");
             out.push_sql(table_name.as_str());
             out.push_sql(" c, matches m\n where c.vid = m.vid and m.entity = '");
-            out.push_sql(object);
+            out.push_sql(object.as_str());
             out.push_sql("'");
         }
         out.push_sql("\n ");

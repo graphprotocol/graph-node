@@ -5,10 +5,13 @@ use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::str::FromStr;
 
-use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
 use graph::prelude::{
     web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityQuery,
     EntityRange, Schema, SubgraphDeploymentId, Value, ValueType, BLOCK_NUMBER_MAX,
+};
+use graph::{
+    components::store::EntityType,
+    data::store::scalar::{BigDecimal, BigInt, Bytes},
 };
 use graph_store_postgres::layout_for_tests::{Layout, Namespace, STRING_PREFIX_SIZE};
 
@@ -166,6 +169,9 @@ lazy_static! {
         entity.set("__typename", "NullableStrings");
         entity
     };
+    static ref SCALAR: EntityType = EntityType::from("Scalar");
+    static ref NO_ENTITY: EntityType = EntityType::from("NoEntity");
+    static ref NULLABLE_STRINGS: EntityType = EntityType::from("NullableStrings");
 }
 
 /// Removes test data from the database behind the store.
@@ -403,19 +409,19 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = layout
-            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
+            .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&*SCALAR_ENTITY), entity);
 
         // Find non-existing entity
         let entity = layout
-            .find(conn, "Scalar", "noone", BLOCK_NUMBER_MAX)
+            .find(conn, &*SCALAR, "noone", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
 
         // Find for non-existing entity type
-        let err = layout.find(conn, "NoEntity", "one", BLOCK_NUMBER_MAX);
+        let err = layout.find(conn, &*NO_ENTITY, "one", BLOCK_NUMBER_MAX);
         match err {
             Err(e) => assert_eq!("unknown table 'NoEntity'", e.to_string()),
             _ => {
@@ -438,7 +444,7 @@ fn insert_null_fulltext_fields() {
 
         // Find entity with null string values
         let entity = layout
-            .find(conn, "NullableStrings", "one", BLOCK_NUMBER_MAX)
+            .find(conn, &*NULLABLE_STRINGS, "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&*EMPTY_NULLABLESTRINGS_ENTITY), entity);
@@ -469,7 +475,7 @@ fn update() {
         entity.set("strings", Value::Null);
 
         let actual = layout
-            .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
+            .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -499,7 +505,7 @@ fn serialize_bigdecimal() {
                 .expect("Failed to update");
 
             let actual = layout
-                .find(conn, "Scalar", "one", BLOCK_NUMBER_MAX)
+                .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
                 .expect("Failed to read Scalar[one]")
                 .unwrap();
             assert_entity_eq!(&entity, actual);
@@ -512,7 +518,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
     ]);
-    let collection = EntityCollection::All(vec!["Scalar".to_owned()]);
+    let collection = EntityCollection::All(vec![SCALAR.to_owned()]);
     layout
         .query::<Entity>(
             &*LOGGER,
@@ -561,9 +567,9 @@ fn delete() {
 fn conflicting_entity() {
     run_test(|conn, layout| {
         let id = "fred";
-        let cat = "Cat".to_owned();
-        let dog = "Dog".to_owned();
-        let ferret = "Ferret".to_owned();
+        let cat = EntityType::from("Cat");
+        let dog = EntityType::from("Dog");
+        let ferret = EntityType::from("Ferret");
 
         let mut fred = Entity::new();
         fred.set("id", id);
@@ -572,19 +578,23 @@ fn conflicting_entity() {
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![&cat, &ferret])
+            .conflicting_entity(&conn, &id.to_owned(), vec![cat.clone(), ferret.clone()])
             .unwrap();
         assert_eq!(Some("Cat".to_owned()), conflict);
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret])
+            .conflicting_entity(&conn, &id.to_owned(), vec![dog.clone(), ferret.clone()])
             .unwrap();
         assert_eq!(None, conflict);
 
         // Chairs are not pets
-        let chair = "Chair".to_owned();
-        let result = layout.conflicting_entity(&conn, &id.to_owned(), vec![&dog, &ferret, &chair]);
+        let chair = EntityType::from("Chair");
+        let result = layout.conflicting_entity(
+            &conn,
+            &id.to_owned(),
+            vec![dog.clone(), ferret.clone(), chair.clone()],
+        );
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
     })
@@ -658,7 +668,7 @@ fn query(entity_types: Vec<&str>) -> EntityQuery {
     EntityQuery::new(
         THINGS_SUBGRAPH_ID.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(entity_types.into_iter().map(|s| s.to_owned()).collect()),
+        EntityCollection::All(entity_types.into_iter().map(EntityType::from).collect()),
     )
 }
 

@@ -318,13 +318,13 @@ impl DeploymentStore {
         let entity_type = key.entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
             schema
-                .interfaces_for_type(&entity_type)
+                .interfaces_for_type(&key.entity_type)
                 .into_iter()
                 .flatten()
-                .map(|interface| &types_for_interface[&interface.name])
+                .map(|interface| &types_for_interface[&interface.into()])
                 .flatten()
-                .map(|object_type| &object_type.name)
-                .filter(|type_name| *type_name != &entity_type),
+                .map(EntityType::from)
+                .filter(|type_name| type_name != &key.entity_type),
         );
 
         if !types_with_shared_interface.is_empty() {
@@ -751,7 +751,7 @@ impl DeploymentStore {
                         let entities = conn
                             .query::<Entity>(
                                 &logger,
-                                EntityCollection::All(vec![POI_OBJECT.to_owned()]),
+                                EntityCollection::All(vec![POI_OBJECT.cheap_clone()]),
                                 None,
                                 EntityOrder::Default,
                                 EntityRange {

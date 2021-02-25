@@ -1,5 +1,5 @@
-use crate::prelude::s;
 use crate::prelude::Schema;
+use crate::{components::store::EntityType, prelude::s};
 use std::collections::BTreeMap;
 
 use super::ObjectTypeExt;
@@ -19,6 +19,15 @@ impl<'a> From<&'a s::ObjectType> for ObjectOrInterface<'a> {
 impl<'a> From<&'a s::InterfaceType> for ObjectOrInterface<'a> {
     fn from(interface: &'a s::InterfaceType) -> Self {
         ObjectOrInterface::Interface(interface)
+    }
+}
+
+impl<'a> From<ObjectOrInterface<'a>> for EntityType {
+    fn from(ooi: ObjectOrInterface) -> Self {
+        match ooi {
+            ObjectOrInterface::Object(ty) => EntityType::from(ty),
+            ObjectOrInterface::Interface(ty) => EntityType::from(ty),
+        }
     }
 }
 
@@ -67,7 +76,7 @@ impl<'a> ObjectOrInterface<'a> {
             ObjectOrInterface::Object(object) => Some(vec![object]),
             ObjectOrInterface::Interface(interface) => schema
                 .types_for_interface()
-                .get(&interface.name)
+                .get(&interface.into())
                 .map(|object_types| object_types.iter().collect()),
         }
     }
@@ -77,11 +86,11 @@ impl<'a> ObjectOrInterface<'a> {
     pub fn matches(
         self,
         typename: &str,
-        types_for_interface: &BTreeMap<String, Vec<s::ObjectType>>,
+        types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     ) -> bool {
         match self {
             ObjectOrInterface::Object(o) => o.name == typename,
-            ObjectOrInterface::Interface(i) => types_for_interface[&i.name]
+            ObjectOrInterface::Interface(i) => types_for_interface[&i.into()]
                 .iter()
                 .any(|o| o.name == typename),
         }

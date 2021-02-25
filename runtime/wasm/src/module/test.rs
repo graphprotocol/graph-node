@@ -669,7 +669,7 @@ async fn entity_store() {
     steve.set("id", "steve");
     steve.set("name", "Steve");
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
-    let user_type = EntityType::new("User".to_string());
+    let user_type = EntityType::from("User");
     test_store::insert_entities(
         subgraph_id,
         vec![(user_type.clone(), alex), (user_type, steve)],

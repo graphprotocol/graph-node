@@ -19,16 +19,17 @@ pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
     arguments: &HashMap<&String, q::Value>,
-    types_for_interface: &BTreeMap<String, Vec<s::ObjectType>>,
+    types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
-        ObjectOrInterface::Object(object) => vec![object.name.clone()],
-        ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
+        ObjectOrInterface::Object(object) => vec![(*object).into()],
+        ObjectOrInterface::Interface(interface) => types_for_interface
+            [&EntityType::from(*interface)]
             .iter()
-            .map(|o| o.name.clone())
+            .map(|o| o.into())
             .collect(),
     });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
@@ -335,7 +336,10 @@ pub fn collect_entities_from_query_field(
 
 #[cfg(test)]
 mod tests {
-    use graph::prelude::s::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue};
+    use graph::{
+        components::store::EntityType,
+        prelude::s::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
+    };
     use graphql_parser::Pos;
     use std::collections::{BTreeMap, HashMap};
 
@@ -428,7 +432,7 @@ mod tests {
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec!["Entity1".to_string()])
+            EntityCollection::All(vec![EntityType::from("Entity1")])
         );
         assert_eq!(
             build_query(
@@ -441,7 +445,7 @@ mod tests {
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec!["Entity2".to_string()])
+            EntityCollection::All(vec![EntityType::from("Entity2")])
         );
     }
 

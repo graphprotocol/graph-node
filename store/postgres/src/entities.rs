@@ -135,7 +135,7 @@ impl Connection<'_> {
     ) -> Result<Option<Entity>, StoreError> {
         assert_eq!(&self.subgraph, &key.subgraph_id);
         self.data
-            .find(&self.conn, &key.entity_type.as_str(), &key.entity_id, block)
+            .find(&self.conn, &key.entity_type, &key.entity_id, block)
     }
 
     /// Returns a sequence of `(type, entity)`.
@@ -145,21 +145,7 @@ impl Connection<'_> {
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        // Split the entities into data and metadata depending on their type
-        let data = ids_for_type
-            .iter()
-            .map(|(typ, ids)| (typ.as_str(), ids))
-            .collect();
-
-        // Look the entities up in the correct layout and lift their type names
-        // (strings) to proper `EntityTypes`
-        let data: BTreeMap<EntityType, Vec<Entity>> = self
-            .data
-            .find_many(&self.conn, data, block)?
-            .into_iter()
-            .map(|(name, entities)| (EntityType::new(name), entities))
-            .collect();
-        Ok(data)
+        self.data.find_many(&self.conn, ids_for_type, block)
     }
 
     pub(crate) fn query<T: crate::relational_queries::FromEntityData>(
@@ -180,7 +166,7 @@ impl Connection<'_> {
     pub(crate) fn conflicting_entity(
         &self,
         entity_id: &String,
-        entities: Vec<&String>,
+        entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         self.data
             .conflicting_entity(&self.conn, entity_id, entities)
@@ -297,7 +283,7 @@ impl Connection<'_> {
     }
 
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {
-        self.data.tables.contains_key(POI_OBJECT)
+        self.data.tables.contains_key(&*POI_OBJECT)
     }
 
     /// Look up the schema for `subgraph` and return its entity layout.
