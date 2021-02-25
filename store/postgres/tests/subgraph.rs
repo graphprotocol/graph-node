@@ -1,6 +1,5 @@
 use graph::{
     components::store::StatusStore,
-    data::subgraph::schema::MetadataType,
     data::subgraph::schema::SubgraphError,
     data::subgraph::schema::SubgraphHealth,
     prelude::EntityChange,
@@ -27,20 +26,16 @@ const SUBGRAPH_GQL: &str = "
     }
 ";
 
-fn set(typ: MetadataType, subgraph_id: &str, id: &str) -> EntityChange {
-    EntityChange {
+fn assigned(subgraph_id: &str) -> EntityChange {
+    EntityChange::Assignment {
         subgraph_id: SubgraphDeploymentId::new(subgraph_id).unwrap(),
-        entity_type: typ.into(),
-        entity_id: id.to_string(),
         operation: EntityChangeOperation::Set,
     }
 }
 
-fn removed(typ: MetadataType, subgraph_id: &str, id: &str) -> EntityChange {
-    EntityChange {
+fn unassigned(subgraph_id: &str) -> EntityChange {
+    EntityChange::Assignment {
         subgraph_id: SubgraphDeploymentId::new(subgraph_id).unwrap(),
-        entity_type: typ.into(),
-        entity_id: id.to_string(),
         operation: EntityChangeOperation::Removed,
     }
 }
@@ -80,11 +75,7 @@ fn reassign_subgraph() {
         // to 'left', the second time from 'left' to 'left', with the same results
         for _ in 0..2 {
             let node = NodeId::new("left").unwrap();
-            let expected = vec![StoreEvent::new(vec![set(
-                MetadataType::SubgraphDeploymentAssignment,
-                &id,
-                id.as_str(),
-            )])];
+            let expected = vec![StoreEvent::new(vec![assigned(&id)])];
 
             let events = tap_store_events(|| store.reassign_subgraph(&id, &node).unwrap());
             let node = find_assignment(store.as_ref(), &id);
@@ -157,7 +148,7 @@ fn create_subgraph() {
 
     fn deploy_event(id: &str) -> HashSet<EntityChange> {
         let mut changes = HashSet::new();
-        changes.insert(set(MetadataType::SubgraphDeploymentAssignment, id, id));
+        changes.insert(assigned(id));
         changes
     }
 
@@ -194,7 +185,7 @@ fn create_subgraph() {
 
         // Deploying again overwrites current
         let mut expected = deploy_event(ID2);
-        expected.insert(removed(MetadataType::SubgraphDeploymentAssignment, ID, ID));
+        expected.insert(unassigned(ID));
 
         let events = deploy(store.as_ref(), ID2, MODE);
         assert_eq!(expected, events);
@@ -210,11 +201,7 @@ fn create_subgraph() {
 
         // Deploying again still overwrites current
         let mut expected = deploy_event(ID3);
-        expected.insert(removed(
-            MetadataType::SubgraphDeploymentAssignment,
-            ID2,
-            ID2,
-        ));
+        expected.insert(unassigned(ID2));
 
         let events = deploy(store.as_ref(), ID3, MODE);
         assert_eq!(expected, events);
@@ -264,7 +251,7 @@ fn create_subgraph() {
 
         // Deploy again, current is not synced, so it gets replaced
         let mut expected = deploy_event(ID2);
-        expected.insert(removed(MetadataType::SubgraphDeploymentAssignment, ID, ID));
+        expected.insert(unassigned(ID));
 
         let events = deploy(store.as_ref(), ID2, MODE);
         assert_eq!(expected, events);
@@ -298,11 +285,7 @@ fn create_subgraph() {
         // next block gets processed and the pending version is promoted to
         // current
         let mut expected = HashSet::new();
-        expected.insert(removed(
-            MetadataType::SubgraphDeploymentAssignment,
-            ID3,
-            ID3,
-        ));
+        expected.insert(unassigned(ID3));
 
         let events = deploy(store.as_ref(), ID2, MODE);
         assert_eq!(expected, events);

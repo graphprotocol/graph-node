@@ -933,7 +933,7 @@ fn make_entity_change(
     entity_id: &str,
     op: EntityChangeOperation,
 ) -> EntityChange {
-    EntityChange {
+    EntityChange::Data {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
         entity_type: EntityType::data(entity_type.to_owned()),
         entity_id: entity_id.to_owned(),
@@ -1296,7 +1296,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let expected_events = vec![StoreEvent {
             tag: 3,
             changes: HashSet::from_iter(
-                vec![EntityChange {
+                vec![EntityChange::Data {
                     subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
                     entity_type: EntityType::data(USER.into()),
                     entity_id: "1".into(),
@@ -1405,13 +1405,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let user_type = EntityType::data(USER.to_owned());
         let expected = vec![
             StoreEvent::new(vec![
-                EntityChange {
+                EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
                     entity_id: added_entities[0].clone().0,
                     operation: EntityChangeOperation::Set,
                 },
-                EntityChange {
+                EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
                     entity_id: added_entities[1].clone().0,
@@ -1419,13 +1419,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 },
             ]),
             StoreEvent::new(vec![
-                EntityChange {
+                EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
                     entity_id: "1".to_owned(),
                     operation: EntityChangeOperation::Set,
                 },
-                EntityChange {
+                EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
                     entity_id: added_entities[1].clone().0,

@@ -508,29 +508,56 @@ pub enum EntityChangeOperation {
 
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct EntityChange {
-    /// ID of the subgraph the changed entity belongs to.
-    pub subgraph_id: SubgraphDeploymentId,
-    /// Entity type name of the changed entity.
-    pub entity_type: EntityType,
-    /// ID of the changed entity.
-    pub entity_id: String,
-    /// Operation that caused the change.
-    pub operation: EntityChangeOperation,
+pub enum EntityChange {
+    Data {
+        subgraph_id: SubgraphDeploymentId,
+        /// Entity type name of the changed entity.
+        entity_type: EntityType,
+        /// ID of the changed entity.
+        entity_id: String,
+        /// Operation that caused the change.
+        operation: EntityChangeOperation,
+    },
+    Assignment {
+        subgraph_id: SubgraphDeploymentId,
+        operation: EntityChangeOperation,
+    },
 }
 
 impl EntityChange {
     pub fn from_key(key: EntityKey, operation: EntityChangeOperation) -> Self {
-        Self {
-            subgraph_id: key.subgraph_id,
-            entity_type: key.entity_type,
-            entity_id: key.entity_id,
-            operation,
+        use EntityType::*;
+
+        match &key.entity_type {
+            Data(_) => Self::Data {
+                subgraph_id: key.subgraph_id,
+                entity_type: key.entity_type,
+                entity_id: key.entity_id,
+                operation,
+            },
+            Metadata(MetadataType::SubgraphDeploymentAssignment) => Self::Assignment {
+                subgraph_id: key.subgraph_id,
+                operation,
+            },
+            Metadata(mt) => {
+                panic!(
+                    "we only generate metadata entity changes for assignments, not for `{:?}`",
+                    mt
+                )
+            }
         }
     }
 
     pub fn as_filter(&self) -> SubscriptionFilter {
-        SubscriptionFilter::Entities(self.subgraph_id.clone(), self.entity_type.clone())
+        use EntityChange::*;
+        match self {
+            Data {
+                subgraph_id,
+                entity_type,
+                ..
+            } => SubscriptionFilter::Entities(subgraph_id.clone(), entity_type.clone()),
+            Assignment { .. } => SubscriptionFilter::Assignment,
+        }
     }
 }
 

@@ -164,25 +164,24 @@ where
                     .changes
                     .iter()
                     .filter(|change| filter.matches(change))
-                    .map(|change| change.to_owned())
+                    .map(|change| match change {
+                        EntityChange::Data { .. } => unreachable!(),
+                        EntityChange::Assignment {
+                            subgraph_id,
+                            operation,
+                        } => (subgraph_id.clone(), operation.clone()),
+                    })
                     .collect::<Vec<_>>();
                 stream::iter_ok(assignments)
             })
             .flatten()
             .and_then(
-                move |entity_change| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
+                move |(subgraph_hash, operation)| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
                     trace!(logger, "Received assignment change";
-                                   "entity_change" => format!("{:?}", entity_change));
-                    let subgraph_hash = SubgraphDeploymentId::new(entity_change.entity_id.clone())
-                        .map_err(|s| {
-                            anyhow!(
-                                "Invalid subgraph hash `{}` in assignment entity: {:#?}",
-                                s,
-                                entity_change.clone(),
-                            )
-                        })?;
+                                   "deployment" => subgraph_hash.as_str(),
+                                   "operation" => format!("{:?}", operation));
 
-                    match entity_change.operation {
+                    match operation {
                         EntityChangeOperation::Set => {
                             store
                                 .assigned_node(&subgraph_hash)

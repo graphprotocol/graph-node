@@ -758,7 +758,7 @@ impl Layout {
             let deleted = removed
                 .into_iter()
                 .filter(|id| !unclamped.contains(id))
-                .map(|id| EntityChange {
+                .map(|id| EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: EntityType::data(table.object.clone()),
                     entity_id: id,
@@ -766,7 +766,7 @@ impl Layout {
                 });
             changes.extend(deleted);
             // EntityChange for versions that we just updated or inserted
-            let set = unclamped.into_iter().map(|id| EntityChange {
+            let set = unclamped.into_iter().map(|id| EntityChange::Data {
                 subgraph_id: subgraph_id.clone(),
                 entity_type: EntityType::Data(table.object.clone()),
                 entity_id: id,
