@@ -22,9 +22,9 @@ use std::time::{Duration, Instant};
 use crate::{
     primary::{Namespace, METADATA_NAMESPACE},
     relational_queries::{
-        self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery, DeleteQuery,
-        EntityData, FilterCollection, FilterQuery, FindManyQuery, FindQuery, InsertQuery,
-        RevertClampQuery, RevertRemoveQuery, UpdateQuery,
+        self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery, EntityData,
+        FilterCollection, FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
+        RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -35,8 +35,7 @@ use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
     EntityFilter, EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, BLOCK_UNVERSIONED};
@@ -563,18 +562,6 @@ impl Layout {
         Ok(())
     }
 
-    pub fn insert_unversioned(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        entity: Entity,
-    ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(key.entity_type.expect_metadata())?;
-        let query = InsertQuery::new(table, key, entity, BLOCK_UNVERSIONED)?;
-        query.execute(conn)?;
-        Ok(())
-    }
-
     pub fn conflicting_entity(
         &self,
         conn: &PgConnection,
@@ -673,35 +660,6 @@ impl Layout {
         Ok(())
     }
 
-    pub fn update_unversioned(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        entity: &Entity,
-    ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
-        let query = UpdateQuery::new(table, key, entity)?;
-        Ok(query.execute(conn)?)
-    }
-
-    pub fn overwrite_unversioned(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-        mut entity: Entity,
-    ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
-        // Set any attributes not mentioned in the entity to
-        // their default (NULL)
-        for column in table.columns.iter() {
-            if !entity.contains_key(&column.field) {
-                entity.insert(column.field.clone(), Value::Null);
-            }
-        }
-        let query = UpdateQuery::new(table, key, &entity)?;
-        Ok(query.execute(conn)?)
-    }
-
     pub fn delete(
         &self,
         conn: &PgConnection,
@@ -710,15 +668,6 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&key.entity_type.expect_data())?;
         Ok(ClampRangeQuery::new(table, key, block).execute(conn)?)
-    }
-
-    pub fn delete_unversioned(
-        &self,
-        conn: &PgConnection,
-        key: &EntityKey,
-    ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type.expect_metadata())?;
-        Ok(DeleteQuery::new(table, key).execute(conn)?)
     }
 
     pub fn revert_block(

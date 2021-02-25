@@ -137,7 +137,6 @@ impl CacheWeight for EntityType {
 
         match self {
             Data(s) => s.indirect_weight(),
-            EntityType::Metadata(_) => 0,
         }
     }
 }

@@ -325,10 +325,6 @@ impl DeploymentStore {
         let types_for_interface = schema.types_for_interface();
         let entity_type = match &key.entity_type {
             EntityType::Data(s) => s,
-            EntityType::Metadata(_) => {
-                // Metadata has no interfaces
-                return Ok(());
-            }
         };
         let types_with_shared_interface = Vec::from_iter(
             schema

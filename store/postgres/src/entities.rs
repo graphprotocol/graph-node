@@ -28,11 +28,10 @@ use diesel::RunQueryDsl;
 use maybe_owned::MaybeOwned;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use graph::data::subgraph::schema::{MetadataType, POI_OBJECT, POI_TABLE};
+use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
     EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
@@ -42,7 +41,7 @@ use graph::{components::store::EntityType, data::schema::Schema as SubgraphSchem
 
 use crate::deployment;
 use crate::primary::Site;
-use crate::relational::{Catalog, Layout, METADATA_LAYOUT};
+use crate::relational::{Catalog, Layout};
 use crate::{block_range::block_number, primary::Namespace};
 
 /// The size of string prefixes that we index. This is chosen so that we
@@ -100,7 +99,6 @@ impl Connection<'_> {
             );
         }
         match &key.entity_type {
-            EntityType::Metadata(_) => METADATA_LAYOUT.as_ref(),
             EntityType::Data(_) => self.data.as_ref(),
         }
     }
@@ -142,9 +140,6 @@ impl Connection<'_> {
 
         match &key.entity_type {
             EntityType::Data(name) => self.data.find(&self.conn, name, &key.entity_id, block),
-            EntityType::Metadata(typ) => {
-                METADATA_LAYOUT.find(&self.conn, typ.as_str(), &key.entity_id, block)
-            }
         }
     }
 
@@ -161,35 +156,15 @@ impl Connection<'_> {
             .filter(|(typ, _)| typ.is_data_type())
             .map(|(typ, ids)| (typ.as_str(), ids))
             .collect();
-        let metadata = ids_for_type
-            .iter()
-            .filter(|(typ, _)| !typ.is_data_type())
-            .map(|(typ, ids)| (typ.as_str(), ids))
-            .collect();
 
         // Look the entities up in the correct layout and lift their type names
         // (strings) to proper `EntityTypes`
-        let mut data: BTreeMap<EntityType, Vec<Entity>> = self
+        let data: BTreeMap<EntityType, Vec<Entity>> = self
             .data
             .find_many(&self.conn, data, block)?
             .into_iter()
             .map(|(name, entities)| (EntityType::data(name), entities))
             .collect();
-        let metadata: BTreeMap<EntityType, Vec<Entity>> = METADATA_LAYOUT
-            .find_many(&self.conn, metadata, block)?
-            .into_iter()
-            .map(|(name, entities)| {
-                MetadataType::from_str(name.as_str())
-                    .map(|typ| (EntityType::metadata(typ), entities))
-                    .map_err(|e| {
-                        StoreError::ConstraintViolation(format!(
-                            "unknown metadata type in database: {}",
-                            e
-                        ))
-                    })
-            })
-            .collect::<Result<_, _>>()?;
-        data.extend(metadata.into_iter());
         Ok(data)
     }
 
@@ -228,10 +203,6 @@ impl Connection<'_> {
         let layout = self.layout_for(key);
         match (&key.entity_type, ptr) {
             (Data(_), Some(ptr)) => layout.insert(&self.conn, key, entity, block_number(ptr)),
-            (Metadata(_), Some(ptr)) => {
-                METADATA_LAYOUT.insert(&self.conn, key, entity, block_number(ptr))
-            }
-            (Metadata(_), None) => layout.insert_unversioned(&self.conn, key, entity),
             (Data(_), None) => unreachable!("data changes are always versioned"),
         }
     }
@@ -250,12 +221,6 @@ impl Connection<'_> {
         let layout = self.layout_for(key);
         match (&key.entity_type, ptr) {
             (Data(_), Some(ptr)) => layout.update(&self.conn, key, entity, block_number(ptr)),
-            (Metadata(_), Some(ptr)) => {
-                METADATA_LAYOUT.update(&self.conn, key, entity, block_number(ptr))
-            }
-            (Metadata(_), None) => METADATA_LAYOUT
-                .overwrite_unversioned(&self.conn, key, entity)
-                .map(|_| ()),
             (Data(_), None) => unreachable!("data changes are always versioned"),
         }
     }
@@ -270,8 +235,6 @@ impl Connection<'_> {
         let layout = self.layout_for(key);
         match (&key.entity_type, ptr) {
             (Data(_), Some(ptr)) => layout.delete(&self.conn, key, block_number(ptr)),
-            (Metadata(_), Some(_)) => unreachable!("versioned metadata is never deleted"),
-            (Metadata(_), None) => unreachable!("unversioned metadata is never deleted"),
             (Data(_), None) => unreachable!("data changes are always versioned"),
         }
     }

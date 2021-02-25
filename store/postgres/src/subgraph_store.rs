@@ -16,7 +16,6 @@ use graph::{
     },
     constraint_violation,
     data::query::QueryTarget,
-    data::subgraph::schema::MetadataType,
     data::subgraph::schema::SubgraphError,
     data::subgraph::status,
     prelude::StoreEvent,
@@ -24,8 +23,8 @@ use graph::{
     prelude::{
         lazy_static, o, web3::types::Address, ApiSchema, CheapClone, DeploymentState, DynTryFuture,
         Entity, EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
-        MetadataOperation, MetricsRegistry, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
-        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        MetricsRegistry, NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+        SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
         SubgraphVersionSwitchingMode,
     },
 };
@@ -912,28 +911,6 @@ trait ShardData {
     fn in_shard(&self, id: &SubgraphDeploymentId) -> bool;
 }
 
-impl ShardData for MetadataType {
-    fn in_shard(&self, _: &SubgraphDeploymentId) -> bool {
-        use MetadataType::*;
-
-        match self {
-            SubgraphDeploymentAssignment => false,
-            SubgraphDeployment | SubgraphManifest | SubgraphError => true,
-        }
-    }
-}
-
-impl ShardData for MetadataOperation {
-    fn in_shard(&self, id: &SubgraphDeploymentId) -> bool {
-        use MetadataOperation::*;
-        match self {
-            Set { key, .. } | Remove { key, .. } => {
-                &key.subgraph_id == id && key.entity_type.in_shard(id)
-            }
-        }
-    }
-}
-
 impl<T> ShardData for Vec<T>
 where
     T: ShardData,
@@ -949,7 +926,6 @@ impl ShardData for EntityModification {
 
         match &key.entity_type {
             EntityType::Data(_) => &key.subgraph_id == id,
-            EntityType::Metadata(typ) => &key.subgraph_id == id && typ.in_shard(id),
         }
     }
 }

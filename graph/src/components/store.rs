@@ -37,7 +37,6 @@ lazy_static! {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EntityType {
     Data(String),
-    Metadata(MetadataType),
 }
 
 impl EntityType {
@@ -45,28 +44,21 @@ impl EntityType {
         Self::Data(entity_type)
     }
 
-    pub fn metadata(entity_type: MetadataType) -> Self {
-        Self::Metadata(entity_type)
-    }
-
     pub fn is_data_type(&self) -> bool {
         match self {
             Self::Data(_) => true,
-            Self::Metadata(_) => false,
         }
     }
 
     pub fn is_data(&self, entity_type: &str) -> bool {
         match self {
             Self::Data(s) => s == entity_type,
-            Self::Metadata(_) => false,
         }
     }
 
     pub fn as_str(&self) -> &str {
         match self {
             Self::Data(name) => name.as_str(),
-            Self::Metadata(typ) => typ.as_str(),
         }
     }
 
@@ -78,21 +70,6 @@ impl EntityType {
     pub fn expect_data(&self) -> &str {
         match self {
             Self::Data(s) => s.as_str(),
-            Self::Metadata(_) => {
-                unreachable!("callers check that this is never called for metadata")
-            }
-        }
-    }
-
-    /// Expect `self` to reference a `Metadata` entity type and return the
-    /// type's name
-    ///
-    /// # Panics
-    /// This method will panic if `self` is a `Data` type
-    pub fn expect_metadata(&self) -> &str {
-        match self {
-            Self::Data(_) => unreachable!("callers check that this is never called for data"),
-            Self::Metadata(typ) => typ.as_str(),
         }
     }
 }
@@ -101,14 +78,7 @@ impl fmt::Display for EntityType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Data(s) => write!(f, "{}", s),
-            Self::Metadata(typ) => write!(f, "%{}", typ.as_str()),
         }
-    }
-}
-
-impl From<MetadataType> for EntityType {
-    fn from(typ: MetadataType) -> Self {
-        EntityType::Metadata(typ)
     }
 }
 
@@ -140,16 +110,6 @@ impl StableHash for EntityKey {
                 self.entity_id
                     .stable_hash(sequence_number.next_child(), state);
             }
-            Metadata(typ) => {
-                // We used to represent metadata entities with
-                // SubgraphDeploymentId("subgraphs") and the entity type was just
-                // the string representation of MetadataType.
-                let name = typ.to_string();
-                "subgraphs".stable_hash(sequence_number.next_child().next_child(), state);
-                name.stable_hash(sequence_number.next_child(), state);
-                self.entity_id
-                    .stable_hash(sequence_number.next_child(), state);
-            }
         }
     }
 }
@@ -159,18 +119,6 @@ impl EntityKey {
         Self {
             subgraph_id,
             entity_type: EntityType::Data(entity_type),
-            entity_id,
-        }
-    }
-
-    pub fn metadata(
-        subgraph_id: SubgraphDeploymentId,
-        entity_type: MetadataType,
-        entity_id: String,
-    ) -> Self {
-        Self {
-            subgraph_id,
-            entity_type: EntityType::Metadata(entity_type),
             entity_id,
         }
     }
@@ -535,7 +483,6 @@ impl EntityChange {
                 entity_id: key.entity_id,
                 operation,
             },
-            Metadata(_) => unreachable!("we ensure that for_data is never called with metadata"),
         }
     }
 
@@ -811,16 +758,6 @@ pub struct MetadataKey {
 
     /// ID of the individual entity.
     pub entity_id: String,
-}
-
-impl From<MetadataKey> for EntityKey {
-    fn from(key: MetadataKey) -> Self {
-        EntityKey {
-            subgraph_id: key.subgraph_id,
-            entity_type: EntityType::Metadata(key.entity_type),
-            entity_id: key.entity_id,
-        }
-    }
 }
 
 /// An operation on subgraph metadata. All operations implicitly only concern
