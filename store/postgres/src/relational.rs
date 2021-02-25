@@ -7,9 +7,7 @@
 //! The pivotal struct in this module is the `Layout` which handles all the
 //! information about mapping a GraphQL schema to database tables
 use diesel::connection::SimpleConnection;
-use diesel::{
-    debug_query, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
-};
+use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::prelude::{q, s};
 use inflector::Inflector;
 use lazy_static::lazy_static;
@@ -420,20 +418,9 @@ impl Layout {
         }
 
         // 2. Copy dynamic data sources and adjust their ID
-        use crate::dynds::dynamic_ethereum_contract_data_source as decds;
-        // Find existing dynamic data sources
         let start = Instant::now();
-        let dds = decds::table
-            .select(decds::id)
-            .filter(decds::deployment.eq(base_subgraph.as_str()))
-            .load::<String>(conn)?;
-        // Create an equal number of brand new ids
-        let new_dds = (0..dds.len()).map(|_| dynds::make_id()).collect::<Vec<_>>();
-        // Copy the data sources and all their subordinate entities, translating
-        // ids into new ids in the process and attaching them to `dest_subgraph`
-        rq::CopyDynamicDataSourceQuery::new(&dds, &new_dds, dest_subgraph.as_str())
-            .execute(conn)?;
-        info!(logger, "Copied {} dynamic data sources", dds.len();
+        let count = dynds::copy(conn, base_subgraph, dest_subgraph)?;
+        info!(logger, "Copied {} dynamic data sources", count;
               "time_ms" => start.elapsed().as_millis());
 
         // 3. Rewind the subgraph. `revert_block` gets rid of everything

@@ -5,6 +5,8 @@ use std::ops::Bound;
 use diesel::{
     dsl::sql,
     prelude::{ExpressionMethods, QueryDsl, RunQueryDsl},
+    sql_query,
+    sql_types::{Array, Text},
 };
 use diesel::{insert_into, pg::PgConnection};
 
@@ -185,4 +187,35 @@ pub(crate) fn insert(
         .values(dds)
         .execute(conn)
         .map_err(|e| e.into())
+}
+
+pub(crate) fn copy(
+    conn: &PgConnection,
+    src: &SubgraphDeploymentId,
+    dst: &SubgraphDeploymentId,
+) -> Result<usize, StoreError> {
+    const QUERY: &str = "\
+      insert into subgraphs.dynamic_ethereum_contract_data_source(id, name,
+             address, abi, start_block, ethereum_block_hash,
+             ethereum_block_number, deployment, context, block_range)
+      select xlat.new_id, e.name, e.address, e.abi, e.start_block,
+             e.ethereum_block_hash, e.ethereum_block_number, $3 as deployment,
+             e.context, e.block_range
+        from subgraphs.dynamic_ethereum_contract_data_source e,
+             unnest($1::text[], $2::text[]) as xlat(id, new_id)
+       where xlat.id = e.id";
+    use dynamic_ethereum_contract_data_source as decds;
+
+    let dds = decds::table
+        .select(decds::id)
+        .filter(decds::deployment.eq(src.as_str()))
+        .load::<String>(conn)?;
+    // Create an equal number of brand new ids
+    let new_dds = (0..dds.len()).map(|_| make_id()).collect::<Vec<_>>();
+
+    Ok(sql_query(QUERY)
+        .bind::<Array<Text>, _>(dds)
+        .bind::<Array<Text>, _>(new_dds)
+        .bind::<Text, _>(dst.as_str())
+        .execute(conn)?)
 }
