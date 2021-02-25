@@ -525,7 +525,7 @@ pub enum EntityChange {
 }
 
 impl EntityChange {
-    pub fn from_key(key: EntityKey, operation: EntityChangeOperation) -> Self {
+    pub fn for_data(key: EntityKey, operation: EntityChangeOperation) -> Self {
         use EntityType::*;
 
         match &key.entity_type {
@@ -535,16 +535,17 @@ impl EntityChange {
                 entity_id: key.entity_id,
                 operation,
             },
-            Metadata(MetadataType::SubgraphDeploymentAssignment) => Self::Assignment {
-                subgraph_id: key.subgraph_id,
-                operation,
-            },
-            Metadata(mt) => {
-                panic!(
-                    "we only generate metadata entity changes for assignments, not for `{:?}`",
-                    mt
-                )
-            }
+            Metadata(_) => unreachable!("we ensure that for_data is never called with metadata"),
+        }
+    }
+
+    pub fn for_assignment(
+        subgraph_id: SubgraphDeploymentId,
+        operation: EntityChangeOperation,
+    ) -> Self {
+        Self::Assignment {
+            subgraph_id,
+            operation,
         }
     }
 
@@ -557,18 +558,6 @@ impl EntityChange {
                 ..
             } => SubscriptionFilter::Entities(subgraph_id.clone(), entity_type.clone()),
             Assignment { .. } => SubscriptionFilter::Assignment,
-        }
-    }
-}
-
-impl From<MetadataOperation> for EntityChange {
-    fn from(operation: MetadataOperation) -> Self {
-        use self::MetadataOperation::*;
-        match operation {
-            Set { key, .. } => EntityChange::from_key(key.into(), EntityChangeOperation::Set),
-            Remove { key, .. } => {
-                EntityChange::from_key(key.into(), EntityChangeOperation::Removed)
-            }
         }
     }
 }
@@ -589,13 +578,6 @@ pub struct StoreEvent {
     pub changes: HashSet<EntityChange>,
 }
 
-impl From<Vec<MetadataOperation>> for StoreEvent {
-    fn from(operations: Vec<MetadataOperation>) -> Self {
-        let changes: Vec<_> = operations.into_iter().map(EntityChange::from).collect();
-        StoreEvent::new(changes)
-    }
-}
-
 impl<'a> FromIterator<&'a EntityModification> for StoreEvent {
     fn from_iter<I: IntoIterator<Item = &'a EntityModification>>(mods: I) -> Self {
         let changes: Vec<_> = mods
@@ -604,10 +586,10 @@ impl<'a> FromIterator<&'a EntityModification> for StoreEvent {
                 use self::EntityModification::*;
                 match op {
                     Insert { key, .. } | Overwrite { key, .. } => {
-                        EntityChange::from_key(key.clone(), EntityChangeOperation::Set)
+                        EntityChange::for_data(key.clone(), EntityChangeOperation::Set)
                     }
                     Remove { key } => {
-                        EntityChange::from_key(key.clone(), EntityChangeOperation::Removed)
+                        EntityChange::for_data(key.clone(), EntityChangeOperation::Removed)
                     }
                 }
             })

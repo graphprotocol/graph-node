@@ -23,12 +23,11 @@ use diesel::{
 };
 use graph::{
     constraint_violation,
-    data::subgraph::schema::MetadataType,
     data::subgraph::status,
     prelude::{
-        anyhow, bigdecimal::ToPrimitive, entity, lazy_static, serde_json, EntityChange,
-        EntityChangeOperation, MetadataOperation, NodeId, StoreError, SubgraphDeploymentId,
-        SubgraphName, SubgraphVersionSwitchingMode,
+        anyhow, bigdecimal::ToPrimitive, lazy_static, serde_json, EntityChange,
+        EntityChangeOperation, NodeId, StoreError, SubgraphDeploymentId, SubgraphName,
+        SubgraphVersionSwitchingMode,
     },
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
@@ -352,10 +351,7 @@ impl<'a> Connection<'a> {
             .into_iter()
             .map(|r| {
                 SubgraphDeploymentId::new(r.id.clone())
-                    .map(|id| {
-                        let key = MetadataType::SubgraphDeploymentAssignment.key(id, r.id);
-                        MetadataOperation::Remove { key }.into()
-                    })
+                    .map(|id| EntityChange::for_assignment(id, EntityChangeOperation::Removed))
                     .map_err(|id| {
                         StoreError::ConstraintViolation(format!(
                             "invalid id `{}` for deployment assignment",
@@ -558,12 +554,7 @@ impl<'a> Connection<'a> {
         // Clean up any assignments we might have displaced
         let mut changes = self.remove_unused_assignments()?;
         if new_assignment {
-            let change = EntityChange::from_key(
-                MetadataType::SubgraphDeploymentAssignment
-                    .key(id.clone(), id.to_string())
-                    .into(),
-                EntityChangeOperation::Set,
-            );
+            let change = EntityChange::for_assignment(id.clone(), EntityChangeOperation::Set);
             changes.push(change);
         }
         Ok(changes)
@@ -614,13 +605,8 @@ impl<'a> Connection<'a> {
         match updates {
             0 => Err(StoreError::DeploymentNotFound(id.to_string())),
             1 => {
-                let key =
-                    MetadataType::SubgraphDeploymentAssignment.key(id.clone(), id.to_string());
-                let op = MetadataOperation::Set {
-                    key,
-                    data: entity! { node_id: node.to_string() },
-                };
-                Ok(vec![op.into()])
+                let change = EntityChange::for_assignment(id.clone(), EntityChangeOperation::Set);
+                Ok(vec![change])
             }
             _ => {
                 // `id` is the primary key of the subgraph_deployment_assignment table,
@@ -642,10 +628,9 @@ impl<'a> Connection<'a> {
         match delete_count {
             0 => Ok(vec![]),
             1 => {
-                let key =
-                    MetadataType::SubgraphDeploymentAssignment.key(id.clone(), id.to_string());
-                let op = MetadataOperation::Remove { key };
-                Ok(vec![op.into()])
+                let change =
+                    EntityChange::for_assignment(id.clone(), EntityChangeOperation::Removed);
+                Ok(vec![change])
             }
             _ => {
                 // `id` is the unique in the subgraph_deployment_assignment table,
