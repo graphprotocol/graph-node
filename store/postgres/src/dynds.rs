@@ -3,6 +3,7 @@
 use std::ops::Bound;
 
 use diesel::{
+    delete,
     dsl::sql,
     prelude::{ExpressionMethods, QueryDsl, RunQueryDsl},
     sql_query,
@@ -21,7 +22,7 @@ use graph::{
 };
 use uuid::Uuid;
 
-use crate::block_range::{first_block_in_range, BlockRange};
+use crate::block_range::{first_block_in_range, BlockRange, BLOCK_UNVERSIONED};
 
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
@@ -218,4 +219,21 @@ pub(crate) fn copy(
         .bind::<Array<Text>, _>(new_dds)
         .bind::<Text, _>(dst.as_str())
         .execute(conn)?)
+}
+
+pub(crate) fn revert(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    block: BlockNumber,
+) -> Result<(), StoreError> {
+    use crate::functions::lower;
+    use dynamic_ethereum_contract_data_source as decds;
+
+    let dds = decds::table.filter(decds::deployment.eq(id.as_str()));
+    if block == BLOCK_UNVERSIONED {
+        delete(dds).execute(conn)?;
+    } else {
+        delete(dds.filter(lower(decds::block_range).ge(block))).execute(conn)?;
+    }
+    Ok(())
 }

@@ -30,10 +30,7 @@ use crate::entities::STRING_PREFIX_SIZE;
 use crate::relational::{Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
 use crate::sql_value::SqlValue;
 use crate::{
-    block_range::{
-        BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
-        BLOCK_UNVERSIONED,
-    },
+    block_range::{BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
     primary::Namespace,
 };
 
@@ -2700,54 +2697,6 @@ fn block_number_max_is_i32_max() {
     // makes sure that BLOCK_NUMBER_MAX still is what we think it is
     assert_eq!(2147483647, graph::prelude::BLOCK_NUMBER_MAX);
 }
-
-/// A query that removes all dynamic data sources for a given subgraph
-/// whose block range lies entirely beyond `block`. The query only deletes
-/// the data sources but not any related objects
-#[derive(Debug, Clone, Constructor)]
-pub struct DeleteDynamicDataSourcesQuery<'a> {
-    subgraph: &'a str,
-    block: BlockNumber,
-}
-
-impl<'a> QueryFragment<Pg> for DeleteDynamicDataSourcesQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-
-        // Construct a query
-        //   delete from subgraphs.dynamic_ethereum_contract_data_source
-        //    where lower(block_range) >= $block
-        //      and deployment = $subgraph
-        //   returning id
-        out.push_sql("delete from subgraphs.dynamic_ethereum_contract_data_source\n");
-        out.push_sql(" where");
-        if self.block != BLOCK_UNVERSIONED {
-            out.push_sql(" lower(");
-            out.push_identifier(BLOCK_RANGE_COLUMN)?;
-            out.push_sql(") >= ");
-            out.push_bind_param::<Integer, _>(&self.block)?;
-            out.push_sql(" and");
-        }
-        out.push_sql(" deployment = ");
-        out.push_bind_param::<Text, _>(&self.subgraph)?;
-        out.push_sql("\nreturning ");
-        out.push_identifier(PRIMARY_KEY_COLUMN)
-    }
-}
-
-impl<'a> QueryId for DeleteDynamicDataSourcesQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> LoadQuery<PgConnection, RevertEntityData> for DeleteDynamicDataSourcesQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
-        conn.query_by_name(&self)
-    }
-}
-
-impl<'a, Conn> RunQueryDsl<Conn> for DeleteDynamicDataSourcesQuery<'a> {}
 
 /// Remove all entities from the given table whose id has a prefix that
 /// matches one of the given prefixes. This query is mostly useful to

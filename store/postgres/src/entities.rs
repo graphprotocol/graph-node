@@ -294,7 +294,7 @@ impl Connection<'_> {
         // importantly creation of dynamic data sources. We ensure in the
         // rest of the code that we only record history for those meta data
         // changes that might need to be reverted
-        METADATA_LAYOUT.revert_metadata(&self.conn, &self.subgraph, block)?;
+        Layout::revert_metadata(&self.conn, &self.subgraph, block)?;
         Ok((event, count))
     }
 
