@@ -19,7 +19,6 @@
 // constant. As a consequence, a lot of Diesel functionality is not available
 // for dynamic tables.
 
-use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::{Integer, Text};
@@ -31,13 +30,13 @@ use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use graph::components::store::EntityType;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
-    anyhow, info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
-    EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
+    info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityRange,
+    EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId,
 };
-use graph::{components::store::EntityType, data::schema::Schema as SubgraphSchema};
 
 use crate::deployment;
 use crate::primary::Site;
@@ -295,42 +294,6 @@ impl Connection<'_> {
         E: From<diesel::result::Error>,
     {
         self.conn.transaction(f)
-    }
-
-    /// Create the database schema for a new subgraph, including all tables etc.
-    ///
-    /// It is an error if `deployment_schemas` already has an entry for this
-    /// `subgraph_id`. Note that `self` must be a connection for the subgraph
-    /// of subgraphs
-    pub(crate) fn create_schema(
-        &self,
-        namespace: Namespace,
-        schema: &SubgraphSchema,
-        graft_site: Option<Site>,
-    ) -> Result<(), StoreError> {
-        let query = format!("create schema {}", namespace);
-        self.conn.batch_execute(&*query)?;
-
-        let layout = Layout::create_relational_schema(&self.conn, schema, namespace)?;
-        // See if we are grafting and check that the graft is permissible
-        if let Some(graft_site) = graft_site {
-            let base = &Connection::layout(
-                &self.conn,
-                graft_site.namespace.clone(),
-                &graft_site.deployment,
-            )?;
-            let errors = layout.can_copy_from(&base);
-            if !errors.is_empty() {
-                return Err(StoreError::Unknown(anyhow!(
-                    "The subgraph `{}` cannot be used as the graft base \
-                                        for `{}` because the schemas are incompatible:\n    - {}",
-                    &base.catalog.namespace,
-                    &layout.catalog.namespace,
-                    errors.join("\n    - ")
-                )));
-            }
-        }
-        Ok(())
     }
 
     /// Remove all data and metadata for a deployment. This is an associated

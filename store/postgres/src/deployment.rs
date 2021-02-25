@@ -2,6 +2,7 @@
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
 use diesel::{
+    connection::SimpleConnection,
     dsl::{delete, insert_into, select, sql, update},
     sql_types::Integer,
 };
@@ -10,6 +11,7 @@ use diesel::{
     prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
     sql_types::Nullable,
 };
+use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
@@ -21,6 +23,9 @@ use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE};
+use crate::entities as e;
+use crate::primary::{Namespace, Site};
+use crate::relational::Layout;
 use graph::constraint_violation;
 
 // Diesel tables for some of the metadata
@@ -591,6 +596,39 @@ pub(crate) fn revert_subgraph_errors(
     check_health(conn, id, reverted_block - 1)
 }
 
+/// Create the database schema for a new subgraph, including all tables etc.
+///
+/// It is an error if `deployment_schemas` already has an entry for this
+/// `subgraph_id`. Note that `self` must be a connection for the subgraph
+/// of subgraphs
+pub(crate) fn create_schema(
+    conn: &PgConnection,
+    namespace: Namespace,
+    schema: &SubgraphSchema,
+    graft_site: Option<Site>,
+) -> Result<(), StoreError> {
+    let query = format!("create schema {}", namespace);
+    conn.batch_execute(&*query)?;
+
+    let layout = Layout::create_relational_schema(&conn, schema, namespace)?;
+    // See if we are grafting and check that the graft is permissible
+    if let Some(graft_site) = graft_site {
+        let base =
+            &e::Connection::layout(&conn, graft_site.namespace.clone(), &graft_site.deployment)?;
+        let errors = layout.can_copy_from(&base);
+        if !errors.is_empty() {
+            return Err(StoreError::Unknown(anyhow!(
+                "The subgraph `{}` cannot be used as the graft base \
+                                        for `{}` because the schemas are incompatible:\n    - {}",
+                &base.catalog.namespace,
+                &layout.catalog.namespace,
+                errors.join("\n    - ")
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Drop the schema `namespace`. This deletes all data for the subgraph,
 /// and can not be reversed. It does not remove any of the metadata
 /// in the `subgraphs` schema for the deployment
@@ -598,8 +636,6 @@ pub fn drop_schema(
     conn: &diesel::pg::PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
-    use diesel::connection::SimpleConnection;
-
     let query = format!("drop schema if exists {} cascade", namespace);
     Ok(conn.batch_execute(&*query)?)
 }

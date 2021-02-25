@@ -31,7 +31,7 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
-use crate::relational::{Layout, METADATA_LAYOUT};
+use crate::relational::Layout;
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
 use crate::{deployment, primary::Namespace};
@@ -231,20 +231,12 @@ impl DeploymentStore {
         replace: bool,
     ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
-        // This is a bit of a Frankenconnection: we don't have the actual
-        // layout yet; but for applying metadata, it's fine to use the metadata
-        // layout
-        let econn = e::Connection::new(
-            conn.into(),
-            METADATA_LAYOUT.clone(),
-            site.deployment.clone(),
-        );
-        econn.transaction(|| -> Result<_, StoreError> {
-            let exists = deployment::exists(&econn.conn, &site.deployment)?;
+        conn.transaction(|| -> Result<_, StoreError> {
+            let exists = deployment::exists(&conn, &site.deployment)?;
 
             if replace || !exists {
                 deployment::create_deployment(
-                    &econn.conn,
+                    &conn,
                     &site.deployment,
                     deployment,
                     exists,
@@ -253,7 +245,7 @@ impl DeploymentStore {
             };
 
             if !exists {
-                econn.create_schema(site.namespace.clone(), schema, graft_site)?;
+                deployment::create_schema(&conn, site.namespace.clone(), schema, graft_site)?;
             }
             Ok(())
         })
