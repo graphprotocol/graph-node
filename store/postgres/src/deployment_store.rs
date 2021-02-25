@@ -928,9 +928,8 @@ impl DeploymentStore {
                 )?;
             }
 
-            let metadata_event =
-                deployment::forward_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
-            Ok(event.extend(metadata_event))
+            deployment::forward_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
+            Ok(event)
         })?;
 
         Ok(event)
@@ -968,12 +967,11 @@ impl DeploymentStore {
                 }
             }
 
-            let metadata_event =
-                deployment::revert_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
+            deployment::revert_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
 
             let (event, count) = econn.revert_block(&block_ptr_from)?;
             econn.update_entity_count(count)?;
-            Ok(event.extend(metadata_event))
+            Ok(event)
         })?;
 
         Ok(event)

@@ -10,14 +10,10 @@ use diesel::{
     prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
     sql_types::Nullable,
 };
-use graph::data::subgraph::{
-    schema::{MetadataType, SubgraphManifestEntity},
-    SubgraphFeature,
-};
+use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
-    DeploymentState, EntityChange, EntityChangeOperation, EthereumBlockPointer, Schema, StoreError,
-    StoreEvent, SubgraphDeploymentId,
+    DeploymentState, EthereumBlockPointer, Schema, StoreError, SubgraphDeploymentId,
 };
 use graph::{data::subgraph::schema::SubgraphError, prelude::SubgraphDeploymentEntity};
 use stable_hash::crypto::SetHasher;
@@ -218,21 +214,11 @@ pub fn features(
         .collect()
 }
 
-fn block_ptr_store_event(id: &SubgraphDeploymentId) -> StoreEvent {
-    let change = EntityChange {
-        entity_type: MetadataType::SubgraphDeployment.into(),
-        entity_id: id.to_string(),
-        subgraph_id: id.to_owned(),
-        operation: EntityChangeOperation::Set,
-    };
-    StoreEvent::new(vec![change])
-}
-
 pub fn forward_block_ptr(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     ptr: EthereumBlockPointer,
-) -> Result<StoreEvent, StoreError> {
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     // Work around a Diesel issue with serializing BigDecimals to numeric
@@ -245,7 +231,7 @@ pub fn forward_block_ptr(
             d::current_reorg_depth.eq(0),
         ))
         .execute(conn)
-        .map(|_| block_ptr_store_event(id))
+        .map(|_| ())
         .map_err(|e| e.into())
 }
 
@@ -253,7 +239,7 @@ pub fn revert_block_ptr(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     ptr: EthereumBlockPointer,
-) -> Result<StoreEvent, StoreError> {
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     // Work around a Diesel issue with serializing BigDecimals to numeric
@@ -268,7 +254,7 @@ pub fn revert_block_ptr(
             d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
         ))
         .execute(conn)
-        .map(|_| block_ptr_store_event(id))
+        .map(|_| ())
         .map_err(|e| e.into())
 }
 
