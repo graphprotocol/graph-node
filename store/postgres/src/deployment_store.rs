@@ -345,7 +345,7 @@ impl DeploymentStore {
         &self,
         conn: &e::Connection,
         mods: Vec<EntityModification>,
-        ptr: Option<&EthereumBlockPointer>,
+        ptr: &EthereumBlockPointer,
         stopwatch: StopwatchMetrics,
     ) -> Result<(), StoreError> {
         let mut count = 0;
@@ -897,7 +897,7 @@ impl DeploymentStore {
 
             // Make the changes
             let section = stopwatch.start_section("apply_entity_modifications");
-            self.apply_entity_modifications(&econn, mods, Some(&block_ptr_to), stopwatch)?;
+            self.apply_entity_modifications(&econn, mods, &block_ptr_to, stopwatch)?;
             section.end();
 
             dynds::insert(&econn.conn, &site.deployment, data_sources, &block_ptr_to)?;

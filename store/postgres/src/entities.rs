@@ -190,13 +190,10 @@ impl Connection<'_> {
         &self,
         key: &EntityKey,
         entity: Entity,
-        ptr: Option<&EthereumBlockPointer>,
+        ptr: &EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         let layout = self.layout_for(key);
-        match ptr {
-            Some(ptr) => layout.insert(&self.conn, key, entity, block_number(ptr)),
-            None => unreachable!("data changes are always versioned"),
-        }
+        layout.insert(&self.conn, key, entity, block_number(ptr))
     }
 
     /// Overwrite an entity with a new version. The `ptr` indicates
@@ -206,25 +203,19 @@ impl Connection<'_> {
         &self,
         key: &EntityKey,
         entity: Entity,
-        ptr: Option<&EthereumBlockPointer>,
+        ptr: &EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         let layout = self.layout_for(key);
-        match ptr {
-            Some(ptr) => layout.update(&self.conn, key, entity, block_number(ptr)),
-            None => unreachable!("data changes are always versioned"),
-        }
+        layout.update(&self.conn, key, entity, block_number(ptr))
     }
 
     pub(crate) fn delete(
         &self,
         key: &EntityKey,
-        ptr: Option<&EthereumBlockPointer>,
+        ptr: &EthereumBlockPointer,
     ) -> Result<usize, StoreError> {
         let layout = self.layout_for(key);
-        match ptr {
-            Some(ptr) => layout.delete(&self.conn, key, block_number(ptr)),
-            None => unreachable!("data changes are always versioned"),
-        }
+        layout.delete(&self.conn, key, block_number(ptr))
     }
 
     pub(crate) fn revert_block(
