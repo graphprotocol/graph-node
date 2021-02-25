@@ -1,15 +1,4 @@
 //! Entity types that contain the graph-node state.
-//!
-//! Entity type methods follow these naming conventions:
-//! - `*_operations`: Method does not have any side effects, but returns a sequence of operations
-//!   to be provided to `Store::apply_entity_operations`.
-//! - `create_*_operations`: Create an entity, unless the entity already exists (in which case the
-//!   transaction is aborted).
-//! - `update_*_operations`: Update an entity, unless the entity does not exist (in which case the
-//!   transaction is aborted).
-//! - `write_*_operations`: Create an entity or update an existing entity.
-//!
-//! See `subgraphs.graphql` in the store for corresponding graphql schema.
 
 use anyhow::{anyhow, Error};
 use hex;
@@ -18,7 +7,6 @@ use rand::Rng;
 use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
-use strum_macros::{EnumString, IntoStaticStr};
 use web3::types::*;
 
 use super::SubgraphDeploymentId;
@@ -30,52 +18,6 @@ use crate::prelude::*;
 
 pub const POI_TABLE: &str = "poi2$";
 pub const POI_OBJECT: &str = "Poi$";
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    IntoStaticStr,
-    EnumString,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-)]
-pub enum MetadataType {
-    SubgraphDeployment,
-    // This is the only metadata type that is stored in the primary. We only
-    // need this type so we can send store events for assignment changes
-    SubgraphDeploymentAssignment,
-    SubgraphManifest,
-    SubgraphError,
-}
-
-impl MetadataType {
-    pub fn as_str(&self) -> &'static str {
-        self.into()
-    }
-}
-
-impl Display for MetadataType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-impl From<MetadataType> for String {
-    fn from(m: MetadataType) -> Self {
-        m.to_string()
-    }
-}
-
-/// Generic type for the entity types defined below.
-pub trait TypedEntity {
-    const TYPENAME: MetadataType;
-    type IdType: ToString;
-}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SubgraphHealth {
@@ -170,11 +112,6 @@ pub struct SubgraphDeploymentEntity {
     pub max_reorg_depth: i32,
 }
 
-impl TypedEntity for SubgraphDeploymentEntity {
-    const TYPENAME: MetadataType = MetadataType::SubgraphDeployment;
-    type IdType = SubgraphDeploymentId;
-}
-
 impl SubgraphDeploymentEntity {
     pub fn new(
         source_manifest: &SubgraphManifest,
@@ -222,11 +159,6 @@ pub struct SubgraphManifestEntity {
     pub repository: Option<String>,
     pub features: Vec<String>,
     pub schema: String,
-}
-
-impl TypedEntity for SubgraphManifestEntity {
-    const TYPENAME: MetadataType = MetadataType::SubgraphManifest;
-    type IdType = String;
 }
 
 impl SubgraphManifestEntity {
