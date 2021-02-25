@@ -23,7 +23,6 @@ use web3::types::*;
 
 use super::SubgraphDeploymentId;
 use crate::components::ethereum::EthereumBlockPointer;
-use crate::components::store::MetadataKey;
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
@@ -57,14 +56,6 @@ pub enum MetadataType {
 impl MetadataType {
     pub fn as_str(&self) -> &'static str {
         self.into()
-    }
-
-    pub fn key(&self, subgraph_id: SubgraphDeploymentId, entity_id: String) -> MetadataKey {
-        MetadataKey {
-            subgraph_id,
-            entity_type: self.clone(),
-            entity_id,
-        }
     }
 }
 

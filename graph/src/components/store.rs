@@ -708,43 +708,6 @@ pub enum EntityOperation {
     Remove { key: EntityKey },
 }
 
-/// This is almost the same as `EntityKey`, but we only allow `MetadataType`
-/// as the `entity_type`
-#[derive(Clone, Debug)]
-pub struct MetadataKey {
-    /// ID of the subgraph.
-    pub subgraph_id: SubgraphDeploymentId,
-
-    /// Name of the entity type.
-    pub entity_type: MetadataType,
-
-    /// ID of the individual entity.
-    pub entity_id: String,
-}
-
-/// An operation on subgraph metadata. All operations implicitly only concern
-/// the subgraph of subgraphs.
-#[derive(Clone, Debug)]
-pub enum MetadataOperation {
-    /// Locates the entity with type `entity` and the given `id` in the
-    /// subgraph of subgraphs and sets its attributes according to the
-    /// contents of `data`.  If no such entity exists, creates a new entity.
-    Set { key: MetadataKey, data: Entity },
-
-    /// Removes an entity with the specified entity type and id if one exists.
-    Remove { key: MetadataKey },
-}
-
-impl MetadataOperation {
-    pub fn key(&self) -> &MetadataKey {
-        use MetadataOperation::*;
-
-        match self {
-            Set { key, .. } | Remove { key, .. } => key,
-        }
-    }
-}
-
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("store error: {0}")]
