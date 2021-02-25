@@ -2,12 +2,14 @@
   "private": true,
   "workspaces": [
     "arweave-and-3box",
+    "big-decimal",
     "data-source-context",
+    "data-source-revert",
     "fatal-error",
     "ganache-reverts",
+    "non-fatal-errors",
     "overloaded-contract-functions",
     "remove-then-update",
-    "value-roundtrip",
-    "big-decimal"
+    "value-roundtrip"
   ]
 }

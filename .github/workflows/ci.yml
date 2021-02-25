@@ -12,8 +12,8 @@ env:
   THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
 
 jobs:
-  test:
-    name: Run tests
+  unit-tests:
+    name: Run unit tests
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +48,44 @@ jobs:
             ~/.cargo/git
           key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
 
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Install lld
+        run: sudo apt-get install -y lld
+
+      - name: Run unit tests
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+        with:
+          command: test
+          args: --verbose --workspace --exclude graph-tests -- --nocapture
+
+  integration-tests:
+    name: Run integration tests
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [ "stable", "beta" ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+
       - name: Install Node 14
         uses: actions/setup-node@v2
         with:
@@ -60,11 +98,24 @@ jobs:
           toolchain: ${{ matrix.rust }}
           override: true
 
-      - name: Run unit and integration tests
+      - name: Install lld and jq
+        run: sudo apt-get install -y lld jq
+
+      - name: Build graph-node
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
         uses: actions-rs/cargo@v1
         with:
+          command: build
+
+      - name: Run integration tests
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+          N_CONCURRENT_TESTS: "1"
+        with:
           command: test
-          args: --verbose --all -- --nocapture
+          args: --verbose --package graph-tests -- --nocapture
 
   rustfmt:
     name: Check rustfmt style
@@ -95,6 +146,8 @@ jobs:
 
       - name: Check formating
         uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-D warnings"
         with:
           command: fmt
           args: --all -- --check
@@ -126,9 +179,9 @@ jobs:
           sudo apt-get -y install libpq-dev
 
       - name: Cargo check (debug)
+        uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: "-D warnings"
-        uses: actions-rs/cargo@v1
         with:
           command: check
           args: --tests

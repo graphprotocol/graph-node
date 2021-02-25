@@ -1,4 +1,4 @@
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
 
 contract Contract {
   event Trigger();

@@ -4,7 +4,9 @@ version = "0.22.0"
 edition = "2018"
 
 [dev-dependencies]
-duct = "0.13"
-lazy_static = "1.4.0"
-fail = { version = "0.4", features = ["failpoints"] }
-defer = "0.1"
+bollard = "0.10"
+tokio = {version = "1.2.0", features = ["rt", "macros", "process"]}
+tokio-stream = "0.1"
+futures = "0.3.13"
+port_check = "0.1.5"
+anyhow = "1.0.38"
