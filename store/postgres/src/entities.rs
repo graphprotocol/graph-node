@@ -296,8 +296,6 @@ impl Connection<'_> {
         namespace: Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Layout, StoreError> {
-        assert!(!namespace.is_metadata());
-
         let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
         let has_poi = supports_proof_of_indexing(conn, &namespace)?;
         let catalog = Catalog::new(conn, namespace)?;
@@ -311,9 +309,6 @@ fn supports_proof_of_indexing(
     conn: &diesel::pg::PgConnection,
     namespace: &Namespace,
 ) -> Result<bool, StoreError> {
-    if namespace.is_metadata() {
-        return Ok(false);
-    }
     #[derive(Debug, QueryableByName)]
     struct Table {
         #[sql_type = "Text"]

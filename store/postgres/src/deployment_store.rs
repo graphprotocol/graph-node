@@ -505,8 +505,6 @@ impl DeploymentStore {
         site: &Site,
         replica: ReplicaId,
     ) -> Result<e::Connection, Error> {
-        assert!(!site.namespace.is_metadata());
-
         let start = Instant::now();
         let conn = match replica {
             ReplicaId::Main => self.get_conn()?,
@@ -546,8 +544,6 @@ impl DeploymentStore {
         namespace: &Namespace,
         subgraph: &SubgraphDeploymentId,
     ) -> Result<Arc<Layout>, StoreError> {
-        assert!(!namespace.is_metadata());
-
         if let Some(layout) = self.layout_cache.lock().unwrap().get(subgraph) {
             return Ok(layout.clone());
         }

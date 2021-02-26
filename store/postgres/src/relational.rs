@@ -376,10 +376,6 @@ impl Layout {
         base_subgraph: &SubgraphDeploymentId,
         block: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
-        // This can not be used to copy data to or from the metadata subgraph
-        assert!(!self.catalog.namespace.is_metadata());
-        assert!(!base_layout.catalog.namespace.is_metadata());
-
         info!(
             logger,
             "Initializing graft by copying data from {} to {}",

@@ -25,9 +25,8 @@ use graph::{
     constraint_violation,
     data::subgraph::status,
     prelude::{
-        anyhow, bigdecimal::ToPrimitive, lazy_static, serde_json, EntityChange,
-        EntityChangeOperation, NodeId, StoreError, SubgraphDeploymentId, SubgraphName,
-        SubgraphVersionSwitchingMode,
+        anyhow, bigdecimal::ToPrimitive, serde_json, EntityChange, EntityChangeOperation, NodeId,
+        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
@@ -192,16 +191,8 @@ pub struct UnusedDeployment {
 /// A namespace (schema) in the database
 pub struct Namespace(String);
 
-lazy_static! {
-    pub static ref METADATA_NAMESPACE: Namespace = Namespace(String::from("subgraphs"));
-}
-
 impl Namespace {
     pub fn new(s: String) -> Result<Self, String> {
-        if s.as_str() == METADATA_NAMESPACE.as_str() {
-            return Ok(Namespace(s));
-        }
-
         // Normal database namespaces must be of the form `sgd[0-9]+`
         if !s.starts_with("sgd") || s.len() <= 3 {
             return Err(s);
@@ -213,10 +204,6 @@ impl Namespace {
         }
 
         Ok(Namespace(s))
-    }
-
-    pub fn is_metadata(&self) -> bool {
-        self == &*METADATA_NAMESPACE
     }
 
     pub fn as_str(&self) -> &str {
