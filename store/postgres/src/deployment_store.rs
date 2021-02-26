@@ -142,7 +142,13 @@ pub struct StoreInner {
 
     conn: ConnectionPool,
     read_only_pools: Vec<ConnectionPool>,
+
+    /// A list of the available replicas set up such that when we run
+    /// through the list once, we picked each replica according to its
+    /// desired weight. Each replica can appear multiple times in the list
     replica_order: Vec<ReplicaId>,
+    /// The current position in `replica_order` so we know which one to
+    /// pick next
     conn_round_robin_counter: AtomicUsize,
 
     /// A cache of commonly needed data about a subgraph.
@@ -181,7 +187,6 @@ impl DeploymentStore {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
 
-        // Create the entities table (if necessary)
         initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
 
         // Create a list of replicas with repetitions according to the weights
@@ -255,7 +260,11 @@ impl DeploymentStore {
     // is not reversible
     pub(crate) fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
-        conn.transaction(|| e::Connection::drop_deployment(&conn, site))
+        conn.transaction(|| {
+            crate::deployment::drop_schema(&conn, &site.namespace)?;
+            crate::dynds::drop(&conn, &site.deployment)?;
+            crate::deployment::drop_metadata(&conn, &site.deployment)
+        })
     }
 
     /// Gets an entity from Postgres.
