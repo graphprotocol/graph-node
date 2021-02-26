@@ -58,12 +58,6 @@ lazy_static::lazy_static! {
     pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
 }
 
-// Diesel tables for some of the metadata
-// See also: ed42d219c6704a4aab57ce1ea66698e7
-// Changes to the GraphQL schema might require changes to these tables.
-// The definitions of the tables can be generated with
-//    cargo run -p graph-store-postgres --example layout -- \
-//      -g diesel store/postgres/src/subgraphs.graphql subgraphs
 table! {
     subgraphs.subgraph (vid) {
         vid -> BigInt,

@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::{
-    primary::{Namespace, METADATA_NAMESPACE},
+    primary::Namespace,
     relational_queries::{
         self as rq, ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection,
         FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
@@ -56,18 +56,6 @@ lazy_static! {
             .ok()
             .map(|v| v.split(",").map(|s| s.to_owned()).collect())
             .unwrap_or(HashSet::new())
-    };
-
-    pub static ref METADATA_LAYOUT: Arc<Layout> = {
-        const SUBGRAPHS_SCHEMA: &str = include_str!("subgraphs.graphql");
-        // This is pretty awful: we need to have some deployment id so
-        // we can parse the GraphQL schema. The deployment id won't stick
-        // around since it gets dropped once the layout is constructed
-        let id = SubgraphDeploymentId::new("Qmsubgraphs").unwrap();
-        let schema = Schema::parse(SUBGRAPHS_SCHEMA, id).expect("the metadata schema is valid GraphQL");
-        let catalog = Catalog::make_empty(METADATA_NAMESPACE.clone()).expect("we can successfully construct a catalog for metadata");
-        let layout = Layout::new(&schema, catalog, false).expect("we can successfully construct a layout for metadata");
-        Arc::new(layout)
     };
 }
 

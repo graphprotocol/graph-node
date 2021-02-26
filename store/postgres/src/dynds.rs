@@ -19,13 +19,6 @@ use graph::{
     },
 };
 
-// Diesel tables for some of the metadata
-// See also: ed42d219c6704a4aab57ce1ea66698e7
-// Changes to the GraphQL schema might require changes to these tables.
-// The definitions of the tables can be generated with
-//    cargo run -p graph-store-postgres --example layout -- \
-//      -g diesel store/postgres/src/subgraphs.graphql subgraphs
-// BEGIN GENERATED CODE
 table! {
     subgraphs.dynamic_ethereum_contract_data_source (vid) {
         vid -> BigInt,
@@ -40,7 +33,6 @@ table! {
         context -> Nullable<Text>,
     }
 }
-// END GENERATED CODE
 
 fn to_source(
     deployment: &str,

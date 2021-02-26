@@ -28,12 +28,6 @@ use crate::primary::{Namespace, Site};
 use crate::relational::Layout;
 use graph::constraint_violation;
 
-// Diesel tables for some of the metadata
-// See also: ed42d219c6704a4aab57ce1ea66698e7
-// Changes to the GraphQL schema might require changes to these tables.
-// The definitions of the tables can be generated with
-//    cargo run -p graph-store-postgres --example layout -- \
-//      -g diesel store/postgres/src/subgraphs.graphql subgraphs
 #[derive(DbEnum, Debug, Clone, Copy)]
 pub enum SubgraphHealth {
     Failed,
