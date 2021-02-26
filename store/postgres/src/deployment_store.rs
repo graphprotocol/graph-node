@@ -848,10 +848,10 @@ impl DeploymentStore {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let conn = self
-            .get_entity_conn(site, ReplicaId::Main)
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        conn.find_many(ids_for_type, BLOCK_NUMBER_MAX)
+        let conn = self.get_conn()?;
+        let layout = self.layout(&conn, site)?;
+
+        layout.find_many(&conn, ids_for_type, BLOCK_NUMBER_MAX)
     }
 
     pub(crate) fn find(

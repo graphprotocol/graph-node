@@ -23,14 +23,12 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::Connection as _;
 use maybe_owned::MaybeOwned;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use graph::components::store::EntityType;
 use graph::data::subgraph::schema::POI_OBJECT;
-use graph::prelude::{
-    BlockNumber, Entity, EntityKey, EthereumBlockPointer, StoreError, SubgraphDeploymentId,
-};
+use graph::prelude::{Entity, EntityKey, EthereumBlockPointer, StoreError, SubgraphDeploymentId};
 
 use crate::block_range::block_number;
 use crate::relational::Layout;
@@ -90,16 +88,6 @@ impl Connection<'_> {
             );
         }
         self.data.as_ref()
-    }
-
-    /// Returns a sequence of `(type, entity)`.
-    /// If the entity isn't present that means it wasn't found.
-    pub(crate) fn find_many(
-        &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-        block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.data.find_many(&self.conn, ids_for_type, block)
     }
 
     pub(crate) fn conflicting_entity(
