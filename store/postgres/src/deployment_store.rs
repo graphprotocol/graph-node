@@ -484,7 +484,7 @@ impl DeploymentStore {
                 .inc_by(start.elapsed().as_secs_f64());
 
             cancel_handle.check_cancel()?;
-            let layout = store.layout(&conn, &site.namespace, &site.deployment)?;
+            let layout = store.layout(&conn, site.as_ref())?;
             cancel_handle.check_cancel()?;
             let conn = e::Connection::new(conn.into(), layout, site.deployment.clone());
 
@@ -526,7 +526,7 @@ impl DeploymentStore {
                 site.deployment.as_str(),
             )?
             .inc_by(start.elapsed().as_secs_f64());
-        let data = self.layout(&conn, &site.namespace, &site.deployment)?;
+        let data = self.layout(&conn, site)?;
         Ok(e::Connection::new(
             conn.into(),
             data,
@@ -550,20 +550,23 @@ impl DeploymentStore {
     pub(crate) fn layout(
         &self,
         conn: &PgConnection,
-        namespace: &Namespace,
-        subgraph: &SubgraphDeploymentId,
+        site: &Site,
     ) -> Result<Arc<Layout>, StoreError> {
-        if let Some(layout) = self.layout_cache.lock().unwrap().get(subgraph) {
+        if let Some(layout) = self.layout_cache.lock().unwrap().get(&site.deployment) {
             return Ok(layout.clone());
         }
 
-        let layout = Arc::new(e::Connection::layout(conn, namespace.clone(), subgraph)?);
+        let layout = Arc::new(e::Connection::layout(
+            conn,
+            site.namespace.clone(),
+            &site.deployment,
+        )?);
         if layout.is_cacheable() {
             &self
                 .layout_cache
                 .lock()
                 .unwrap()
-                .insert(subgraph.clone(), layout.clone());
+                .insert(site.deployment.clone(), layout.clone());
         }
         Ok(layout.clone())
     }
