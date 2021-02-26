@@ -19,8 +19,6 @@ use graph::{
     },
 };
 
-use crate::block_range::BLOCK_UNVERSIONED;
-
 // Diesel tables for some of the metadata
 // See also: ed42d219c6704a4aab57ce1ea66698e7
 // Changes to the GraphQL schema might require changes to these tables.
@@ -207,12 +205,7 @@ pub(crate) fn revert(
     use dynamic_ethereum_contract_data_source as decds;
 
     let dds = decds::table.filter(decds::deployment.eq(id.as_str()));
-    if block == BLOCK_UNVERSIONED {
-        delete(dds).execute(conn)?;
-    } else {
-        delete(dds.filter(decds::ethereum_block_number.ge(sql(&block.to_string()))))
-            .execute(conn)?;
-    }
+    delete(dds.filter(decds::ethereum_block_number.ge(sql(&block.to_string())))).execute(conn)?;
     Ok(())
 }
 
