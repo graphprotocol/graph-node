@@ -31,6 +31,7 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
+use crate::block_range::block_number;
 use crate::relational::{Catalog, Layout};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
@@ -310,7 +311,8 @@ impl DeploymentStore {
 
     fn check_interface_entity_uniqueness(
         &self,
-        conn: &e::Connection,
+        conn: &PgConnection,
+        layout: &Layout,
         key: &EntityKey,
     ) -> Result<(), StoreError> {
         // Collect all types that share an interface implementation with this
@@ -323,9 +325,7 @@ impl DeploymentStore {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self
-            .subgraph_info_with_conn(&conn.conn, &key.subgraph_id)?
-            .api;
+        let schema = self.subgraph_info_with_conn(&conn, &key.subgraph_id)?.api;
         let types_for_interface = schema.types_for_interface();
         let entity_type = key.entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
@@ -341,7 +341,7 @@ impl DeploymentStore {
 
         if !types_with_shared_interface.is_empty() {
             if let Some(conflicting_entity) =
-                conn.conflicting_entity(&key.entity_id, types_with_shared_interface)?
+                layout.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
             {
                 return Err(StoreError::ConflictingId(
                     entity_type.clone(),
@@ -355,7 +355,8 @@ impl DeploymentStore {
 
     fn apply_entity_modifications(
         &self,
-        conn: &e::Connection,
+        conn: &PgConnection,
+        layout: &Layout,
         mods: Vec<EntityModification>,
         ptr: &EthereumBlockPointer,
         stopwatch: StopwatchMetrics,
@@ -368,22 +369,26 @@ impl DeploymentStore {
             let n = match modification {
                 Overwrite { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
-                    self.check_interface_entity_uniqueness(conn, &key)?;
+                    self.check_interface_entity_uniqueness(conn, layout, &key)?;
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_update");
-                    conn.update(&key, data, ptr).map(|_| 0)
+                    layout
+                        .update(conn, &key, data, block_number(ptr))
+                        .map(|_| 0)
                 }
                 Insert { key, data } => {
                     let section = stopwatch.start_section("check_interface_entity_uniqueness");
-                    self.check_interface_entity_uniqueness(conn, &key)?;
+                    self.check_interface_entity_uniqueness(conn, layout, &key)?;
                     section.end();
 
                     let _section = stopwatch.start_section("apply_entity_modifications_insert");
-                    conn.insert(&key, data, ptr).map(|_| 1)
+                    layout
+                        .insert(conn, &key, data, block_number(ptr))
+                        .map(|_| 1)
                 }
-                Remove { key } => conn
-                    .delete(&key, ptr)
+                Remove { key } => layout
+                    .delete(conn, &key, block_number(ptr))
                     // This conversion is ok since n will only be 0 or 1
                     .map(|n| -(n as i32))
                     .map_err(|e| {
@@ -924,8 +929,15 @@ impl DeploymentStore {
             let event: StoreEvent = mods.iter().collect();
 
             // Make the changes
+            let layout = self.layout(&econn.conn, site)?;
             let section = stopwatch.start_section("apply_entity_modifications");
-            let count = self.apply_entity_modifications(&econn, mods, &block_ptr_to, stopwatch)?;
+            let count = self.apply_entity_modifications(
+                &econn.conn,
+                layout.as_ref(),
+                mods,
+                &block_ptr_to,
+                stopwatch,
+            )?;
             deployment::update_entity_count(
                 &econn.conn,
                 &site.deployment,

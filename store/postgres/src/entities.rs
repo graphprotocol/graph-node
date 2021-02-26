@@ -26,11 +26,9 @@ use maybe_owned::MaybeOwned;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use graph::components::store::EntityType;
 use graph::data::subgraph::schema::POI_OBJECT;
-use graph::prelude::{Entity, EntityKey, EthereumBlockPointer, StoreError, SubgraphDeploymentId};
+use graph::prelude::SubgraphDeploymentId;
 
-use crate::block_range::block_number;
 use crate::relational::Layout;
 
 /// The size of string prefixes that we index. This is chosen so that we
@@ -67,70 +65,11 @@ pub struct Connection<'a> {
     /// go into this
     pub data: Arc<Layout>,
     /// The subgraph that is accessible through this connection
+    #[allow(dead_code)]
     subgraph: SubgraphDeploymentId,
 }
 
 impl Connection<'_> {
-    /// Return the layout for `key`, which must refer either to the subgraph
-    /// for this connection, or the metadata subgraph.
-    ///
-    /// # Panics
-    ///
-    /// If `key` does not reference the connection's subgraph or the metadata
-    /// subgraph
-    fn layout_for(&self, key: &EntityKey) -> &Layout {
-        if &key.subgraph_id != &self.subgraph {
-            panic!(
-                "A connection can only be used with one subgraph and \
-                 the metadata subgraph.\nThe connection for {} is also \
-                 used with {}",
-                self.subgraph, key.subgraph_id
-            );
-        }
-        self.data.as_ref()
-    }
-
-    pub(crate) fn conflicting_entity(
-        &self,
-        entity_id: &String,
-        entities: Vec<EntityType>,
-    ) -> Result<Option<String>, StoreError> {
-        self.data
-            .conflicting_entity(&self.conn, entity_id, entities)
-    }
-
-    pub(crate) fn insert(
-        &self,
-        key: &EntityKey,
-        entity: Entity,
-        ptr: &EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        let layout = self.layout_for(key);
-        layout.insert(&self.conn, key, entity, block_number(ptr))
-    }
-
-    /// Overwrite an entity with a new version. The `ptr` indicates
-    /// at which block the new version becomes valid if it is given. If it is
-    /// `None`, the entity is treated as unversioned
-    pub(crate) fn update(
-        &self,
-        key: &EntityKey,
-        entity: Entity,
-        ptr: &EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        let layout = self.layout_for(key);
-        layout.update(&self.conn, key, entity, block_number(ptr))
-    }
-
-    pub(crate) fn delete(
-        &self,
-        key: &EntityKey,
-        ptr: &EthereumBlockPointer,
-    ) -> Result<usize, StoreError> {
-        let layout = self.layout_for(key);
-        layout.delete(&self.conn, key, block_number(ptr))
-    }
-
     pub(crate) fn transaction<T, E, F>(&self, f: F) -> Result<T, E>
     where
         F: FnOnce() -> Result<T, E>,
