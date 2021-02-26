@@ -92,16 +92,6 @@ impl Connection<'_> {
         self.data.as_ref()
     }
 
-    pub(crate) fn find(
-        &self,
-        key: &EntityKey,
-        block: BlockNumber,
-    ) -> Result<Option<Entity>, StoreError> {
-        assert_eq!(&self.subgraph, &key.subgraph_id);
-        self.data
-            .find(&self.conn, &key.entity_type, &key.entity_id, block)
-    }
-
     /// Returns a sequence of `(type, entity)`.
     /// If the entity isn't present that means it wasn't found.
     pub(crate) fn find_many(

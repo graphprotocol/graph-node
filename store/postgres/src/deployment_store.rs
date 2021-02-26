@@ -287,26 +287,6 @@ impl DeploymentStore {
         })
     }
 
-    /// Gets an entity from Postgres.
-    fn get_entity(
-        &self,
-        conn: &e::Connection,
-        key: &EntityKey,
-    ) -> Result<Option<Entity>, QueryExecutionError> {
-        // We should really have callers pass in a block number; but until
-        // that is fully plumbed in, we just use the biggest possible block
-        // number so that we will always return the latest version,
-        // i.e., the one with an infinite upper bound
-        conn.find(key, BLOCK_NUMBER_MAX).map_err(|e| {
-            QueryExecutionError::ResolveEntityError(
-                key.subgraph_id.clone(),
-                key.entity_type.to_string(),
-                key.entity_id.clone(),
-                format!("Invalid entity {}", e),
-            )
-        })
-    }
-
     pub(crate) fn execute_query<T: FromEntityData>(
         &self,
         conn: &PgConnection,
@@ -840,10 +820,24 @@ impl DeploymentStore {
         site: &Site,
         key: EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        let conn = self
-            .get_entity_conn(site, ReplicaId::Main)
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.get_entity(&conn, &key)
+        let conn = self.get_conn().map_err(|e| StoreError::Unknown(e))?;
+        let layout = self.layout(&conn, site)?;
+
+        // We should really have callers pass in a block number; but until
+        // that is fully plumbed in, we just use the biggest possible block
+        // number so that we will always return the latest version,
+        // i.e., the one with an infinite upper bound
+
+        layout
+            .find(&conn, &key.entity_type, &key.entity_id, BLOCK_NUMBER_MAX)
+            .map_err(|e| {
+                QueryExecutionError::ResolveEntityError(
+                    key.subgraph_id.clone(),
+                    key.entity_type.to_string(),
+                    key.entity_id.clone(),
+                    format!("Invalid entity {}", e),
+                )
+            })
     }
 
     pub(crate) fn get_many(
