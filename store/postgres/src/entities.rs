@@ -29,8 +29,7 @@ use std::sync::{Arc, Mutex};
 use graph::components::store::EntityType;
 use graph::data::subgraph::schema::POI_OBJECT;
 use graph::prelude::{
-    BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityRange,
-    EthereumBlockPointer, Logger, QueryExecutionError, StoreError, SubgraphDeploymentId,
+    BlockNumber, Entity, EntityKey, EthereumBlockPointer, StoreError, SubgraphDeploymentId,
 };
 
 use crate::block_range::block_number;
@@ -111,21 +110,6 @@ impl Connection<'_> {
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         self.data.find_many(&self.conn, ids_for_type, block)
-    }
-
-    pub(crate) fn query<T: crate::relational_queries::FromEntityData>(
-        &self,
-        logger: &Logger,
-        collection: EntityCollection,
-        filter: Option<EntityFilter>,
-        order: EntityOrder,
-        range: EntityRange,
-        block: BlockNumber,
-        query_id: Option<String>,
-    ) -> Result<Vec<T>, QueryExecutionError> {
-        self.data.query(
-            logger, &self.conn, collection, filter, order, range, block, query_id,
-        )
     }
 
     pub(crate) fn conflicting_entity(

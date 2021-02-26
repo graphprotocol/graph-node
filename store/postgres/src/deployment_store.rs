@@ -23,9 +23,9 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, CheapClone, DeploymentState,
-    DynTryFuture, Entity, EntityKey, EntityModification, EntityOrder, EntityQuery, EntityRange,
-    Error, EthereumBlockPointer, Logger, MetricsRegistry, QueryExecutionError, Schema,
-    StopwatchMetrics, StoreError, StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, EntityRange, Error,
+    EthereumBlockPointer, Logger, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics,
+    StoreError, StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -309,13 +309,16 @@ impl DeploymentStore {
 
     pub(crate) fn execute_query<T: FromEntityData>(
         &self,
-        conn: &e::Connection,
+        conn: &PgConnection,
+        site: &Site,
         query: EntityQuery,
     ) -> Result<Vec<T>, QueryExecutionError> {
-        // Process results; deserialize JSON data
+        let layout = self.layout(conn, site)?;
+
         let logger = query.logger.unwrap_or(self.logger.clone());
-        conn.query(
+        layout.query(
             &logger,
+            conn,
             query.collection,
             query.filter,
             query.order,
@@ -523,6 +526,17 @@ impl DeploymentStore {
         idx: usize,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         self.read_only_pools[idx].get().map_err(Error::from)
+    }
+
+    pub(crate) fn get_replica_conn(
+        &self,
+        replica: ReplicaId,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+        let conn = match replica {
+            ReplicaId::Main => self.get_conn()?,
+            ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
+        };
+        Ok(conn)
     }
 
     // Duplicated logic - this function may eventually go away.
@@ -739,10 +753,11 @@ impl DeploymentStore {
         indexer: &'a Option<Address>,
         block: EthereumBlockPointer,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
-        let logger = self.logger.cheap_clone();
         let indexer = indexer.clone();
         let site2 = site.clone();
         let site3 = site.clone();
+        let site4 = site.clone();
+        let store = self.clone();
 
         async move {
             let entities = self
@@ -773,19 +788,13 @@ impl DeploymentStore {
                             return Ok(None);
                         }
 
-                        let entities = conn
-                            .query::<Entity>(
-                                &logger,
-                                EntityCollection::All(vec![POI_OBJECT.cheap_clone()]),
-                                None,
-                                EntityOrder::Default,
-                                EntityRange {
-                                    first: None,
-                                    skip: 0,
-                                },
-                                block.number.try_into().unwrap(),
-                                None,
-                            )
+                        let query = EntityQuery::new(
+                            site4.deployment.clone(),
+                            block.number.try_into().unwrap(),
+                            EntityCollection::All(vec![POI_OBJECT.cheap_clone()]),
+                        );
+                        let entities = store
+                            .execute_query::<Entity>(&conn.conn, &site4, query)
                             .map_err(anyhow::Error::from)?;
 
                         Ok(Some(entities))
@@ -857,9 +866,9 @@ impl DeploymentStore {
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self
-            .get_entity_conn(site, ReplicaId::Main)
+            .get_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.execute_query(&conn, query)
+        self.execute_query(&conn, site, query)
     }
 
     pub(crate) fn find_one(
@@ -870,10 +879,10 @@ impl DeploymentStore {
         query.range = EntityRange::first(1);
 
         let conn = self
-            .get_entity_conn(site, ReplicaId::Main)
+            .get_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
 
-        let mut results = self.execute_query(&conn, query)?;
+        let mut results = self.execute_query(&conn, site, query)?;
         match results.len() {
             0 | 1 => Ok(results.pop()),
             n => panic!("find_one query found {} results", n),
