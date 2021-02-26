@@ -640,6 +640,19 @@ pub fn drop_schema(
     Ok(conn.batch_execute(&*query)?)
 }
 
+pub fn drop_metadata(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+    use subgraph_manifest as m;
+
+    // We don't need to delete from subgraph_error since that cascades from
+    // deleting the subgraph_deployment
+    let manifest: String = delete(d::table.filter(d::id.eq(id.as_str())))
+        .returning(d::manifest)
+        .get_result(conn)?;
+    delete(m::table.filter(m::id.eq(manifest))).execute(conn)?;
+    Ok(())
+}
+
 pub fn create_deployment(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,

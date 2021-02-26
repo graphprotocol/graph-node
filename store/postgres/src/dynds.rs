@@ -237,3 +237,11 @@ pub(crate) fn revert(
     }
     Ok(())
 }
+
+pub(crate) fn drop(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
+    use dynamic_ethereum_contract_data_source as decds;
+
+    delete(decds::table.filter(decds::deployment.eq(id.as_str())))
+        .execute(conn)
+        .map_err(|e| e.into())
+}

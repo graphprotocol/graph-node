@@ -279,7 +279,8 @@ impl Connection<'_> {
     /// for the subgraph
     pub(crate) fn drop_deployment(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
         crate::deployment::drop_schema(conn, &site.namespace)?;
-        Layout::drop_metadata(conn, &site.deployment)
+        crate::dynds::drop(conn, &site.deployment)?;
+        crate::deployment::drop_metadata(conn, &site.deployment)
     }
 
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {

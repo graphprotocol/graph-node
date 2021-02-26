@@ -22,9 +22,8 @@ use std::time::{Duration, Instant};
 use crate::{
     primary::{Namespace, METADATA_NAMESPACE},
     relational_queries::{
-        self as rq, ClampRangeQuery, ConflictingEntityQuery, DeleteByPrefixQuery, EntityData,
-        FilterCollection, FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
-        RevertRemoveQuery,
+        self as rq, ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection,
+        FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -38,7 +37,7 @@ use graph::prelude::{
     QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
 };
 
-use crate::block_range::{BLOCK_RANGE_COLUMN, BLOCK_UNVERSIONED};
+use crate::block_range::BLOCK_RANGE_COLUMN;
 pub use crate::catalog::Catalog;
 use crate::dynds;
 use crate::entities::STRING_PREFIX_SIZE;
@@ -738,45 +737,6 @@ impl Layout {
     ) -> Result<(), StoreError> {
         crate::dynds::revert(conn, &subgraph, block)?;
         crate::deployment::revert_subgraph_errors(conn, &subgraph, block)?;
-
-        Ok(())
-    }
-
-    pub fn drop_metadata(
-        conn: &PgConnection,
-        subgraph: &SubgraphDeploymentId,
-    ) -> Result<(), StoreError> {
-        lazy_static! {
-            // Tables from which we should not delete entries for `subgraph`
-            // See also: ed42d219c6704a4aab57ce1ea66698e7
-            static ref OTHER_TABLES: Vec<EntityType> = vec![
-                // Not deployment specific
-                "Subgraph",
-                // Not deployment specific
-                "SubgraphVersion",
-                // Not a table, but a view
-                "SubgraphDeploymentDetail",
-                // Not in the data shard
-                "SubgraphDeploymentAssignment",
-            ]
-            .into_iter()
-            .map(|s| EntityType::new(s.to_string()))
-            .collect();
-        }
-
-        // Revert dynamic data sources to before the genesis block
-        Layout::revert_metadata(conn, subgraph, BLOCK_UNVERSIONED)?;
-
-        // Delete 'static' metadata
-        for table in METADATA_LAYOUT
-            .tables
-            .values()
-            .filter(|table| !OTHER_TABLES.contains(&table.object))
-        {
-            let id = subgraph.to_string();
-            let prefix_len = id.len() as i32;
-            DeleteByPrefixQuery::new(table, &vec![id], prefix_len).get_results(conn)?;
-        }
 
         Ok(())
     }
