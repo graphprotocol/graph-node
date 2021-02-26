@@ -4,7 +4,7 @@
 use diesel::{
     connection::SimpleConnection,
     dsl::{delete, insert_into, select, sql, update},
-    sql_types::Integer,
+    sql_types::{Integer, Text},
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
 use diesel::{
@@ -706,4 +706,45 @@ pub fn create_deployment(
             .execute(conn)?;
     }
     Ok(())
+}
+
+pub fn update_entity_count(
+    conn: &PgConnection,
+    id: &SubgraphDeploymentId,
+    full_count_query: &str,
+    count: i32,
+) -> Result<(), StoreError> {
+    if count == 0 {
+        return Ok(());
+    }
+
+    // The big complication in this query is how to determine what the
+    // new entityCount should be. We want to make sure that if the entityCount
+    // is NULL or the special value `-1`, it gets recomputed. Using `-1` here
+    // makes it possible to manually set the `entityCount` to that value
+    // to force a recount; setting it to `NULL` is not desirable since
+    // `entityCount` on the GraphQL level is not nullable, and so setting
+    // `entityCount` to `NULL` could cause errors at that layer; temporarily
+    // returning `-1` is more palatable. To be exact, recounts have to be
+    // done here, from the subgraph writer.
+    //
+    // The first argument of `coalesce` will be `NULL` if the entity count
+    // is `NULL` or `-1`, forcing `coalesce` to evaluate its second
+    // argument, the query to count entities. In all other cases,
+    // `coalesce` does not evaluate its second argument
+    let query = format!(
+        "
+        update subgraphs.subgraph_deployment
+           set entity_count =
+                 coalesce((nullif(entity_count, -1)) + $1,
+                          ({full_count_query}))
+         where id = $2
+        ",
+        full_count_query = full_count_query
+    );
+    Ok(diesel::sql_query(query)
+        .bind::<Integer, _>(count)
+        .bind::<Text, _>(id.as_str())
+        .execute(conn)
+        .map(|_| ())?)
 }

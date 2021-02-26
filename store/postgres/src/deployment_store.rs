@@ -376,7 +376,7 @@ impl DeploymentStore {
         mods: Vec<EntityModification>,
         ptr: &EthereumBlockPointer,
         stopwatch: StopwatchMetrics,
-    ) -> Result<(), StoreError> {
+    ) -> Result<i32, StoreError> {
         let mut count = 0;
 
         for modification in mods {
@@ -416,8 +416,7 @@ impl DeploymentStore {
             }?;
             count += n;
         }
-        conn.update_entity_count(count)?;
-        Ok(())
+        Ok(count)
     }
 
     /// Execute a closure with a connection to the database.
@@ -644,9 +643,9 @@ impl DeploymentStore {
 
     fn block_ptr_with_conn(
         subgraph_id: &SubgraphDeploymentId,
-        conn: &e::Connection,
+        conn: &PgConnection,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
-        Ok(deployment::block_ptr(&conn.conn, subgraph_id)?)
+        Ok(deployment::block_ptr(&conn, subgraph_id)?)
     }
 
     pub(crate) fn deployment_details(
@@ -713,22 +712,20 @@ impl DeploymentStore {
 /// variations in their signatures
 impl DeploymentStore {
     pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<EthereumBlockPointer>, Error> {
-        Self::block_ptr_with_conn(
-            &site.deployment,
-            &self
-                .get_entity_conn(site, ReplicaId::Main)
-                .map_err(|e| QueryExecutionError::StoreError(e.into()))?,
-        )
+        let conn = self.get_conn()?;
+        Self::block_ptr_with_conn(&site.deployment, &conn)
     }
 
     pub(crate) fn supports_proof_of_indexing<'a>(
         self: Arc<Self>,
         site: Arc<Site>,
     ) -> DynTryFuture<'a, bool> {
+        let store = self.clone();
         async move {
-            self.with_entity_conn(site, |conn, cancel| {
+            self.with_conn(move |conn, cancel| {
                 cancel.check_cancel()?;
-                Ok(conn.supports_proof_of_indexing())
+                let layout = store.layout(conn, &site)?;
+                Ok(layout.tables.contains_key(&*POI_OBJECT))
             })
             .await
             .map_err(|e| e.into())
@@ -758,7 +755,7 @@ impl DeploymentStore {
 
                     conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
                         let latest_block_ptr =
-                            match Self::block_ptr_with_conn(&site.deployment, conn)? {
+                            match Self::block_ptr_with_conn(&site.deployment, &conn.conn)? {
                                 Some(inner) => inner,
                                 None => return Ok(None),
                             };
@@ -907,7 +904,7 @@ impl DeploymentStore {
         let econn = self.get_entity_conn(site, ReplicaId::Main)?;
 
         let event = econn.transaction(|| -> Result<_, StoreError> {
-            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &econn)?;
+            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &econn.conn)?;
             if let Some(ref block_ptr_from) = block_ptr_from {
                 if block_ptr_from.number >= block_ptr_to.number {
                     return Err(StoreError::DuplicateBlockProcessing(
@@ -925,7 +922,13 @@ impl DeploymentStore {
 
             // Make the changes
             let section = stopwatch.start_section("apply_entity_modifications");
-            self.apply_entity_modifications(&econn, mods, &block_ptr_to, stopwatch)?;
+            let count = self.apply_entity_modifications(&econn, mods, &block_ptr_to, stopwatch)?;
+            deployment::update_entity_count(
+                &econn.conn,
+                &site.deployment,
+                econn.data.count_query.as_str(),
+                count,
+            )?;
             section.end();
 
             dynds::insert(&econn.conn, &site.deployment, data_sources, &block_ptr_to)?;
@@ -951,11 +954,11 @@ impl DeploymentStore {
         site: &Site,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<StoreEvent, StoreError> {
-        let econn = self.get_entity_conn(site, ReplicaId::Main)?;
+        let conn = self.get_conn()?;
 
-        let event = econn.transaction(|| -> Result<_, StoreError> {
+        let event = conn.transaction(|| -> Result<_, StoreError> {
             // Unwrap: If we are reverting then the block ptr is not `None`.
-            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &econn)?.unwrap();
+            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
 
             // Sanity check on block numbers
             if block_ptr_from.number != block_ptr_to.number + 1 {
@@ -963,7 +966,7 @@ impl DeploymentStore {
             }
 
             // Don't revert past a graft point
-            let info = self.subgraph_info_with_conn(&econn.conn, &site.deployment)?;
+            let info = self.subgraph_info_with_conn(&conn, &site.deployment)?;
             if let Some(graft_block) = info.graft_block {
                 if graft_block as u64 > block_ptr_to.number {
                     return Err(anyhow!(
@@ -978,10 +981,33 @@ impl DeploymentStore {
                 }
             }
 
-            deployment::revert_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
+            deployment::revert_block_ptr(&conn, &site.deployment, block_ptr_to)?;
 
-            let (event, count) = econn.revert_block(&block_ptr_from)?;
-            econn.update_entity_count(count)?;
+            // Revert the data
+            let layout = self.layout(&conn, site)?;
+
+            // At 1 block per 15 seconds, the maximum i32
+            // value affords just over 1020 years of blocks.
+            let block = block_ptr_from
+                .number
+                .try_into()
+                .expect("block numbers fit into an i32");
+
+            let (event, count) = layout.revert_block(&conn, &site.deployment, block)?;
+
+            // Revert the meta data changes that correspond to this subgraph.
+            // Only certain meta data changes need to be reverted, most
+            // importantly creation of dynamic data sources. We ensure in the
+            // rest of the code that we only record history for those meta data
+            // changes that might need to be reverted
+            Layout::revert_metadata(&conn, &site.deployment, block)?;
+
+            deployment::update_entity_count(
+                &conn,
+                &site.deployment,
+                layout.count_query.as_str(),
+                count,
+            )?;
             Ok(event)
         })?;
 
@@ -1088,8 +1114,8 @@ impl DeploymentStore {
     }
 
     pub(crate) fn unfail(&self, site: Arc<Site>) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn(&site, ReplicaId::Main)?;
-        econn.transaction(|| deployment::unfail(&econn.conn, &site.deployment))
+        let conn = self.get_conn()?;
+        conn.transaction(|| deployment::unfail(&conn, &site.deployment))
     }
 
     #[cfg(debug_assertions)]

@@ -21,20 +21,16 @@
 
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::sql_types::{Integer, Text};
 use diesel::Connection as _;
-use diesel::RunQueryDsl;
 use maybe_owned::MaybeOwned;
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 
 use graph::components::store::EntityType;
 use graph::data::subgraph::schema::POI_OBJECT;
 use graph::prelude::{
     BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityRange,
-    EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId,
+    EthereumBlockPointer, Logger, QueryExecutionError, StoreError, SubgraphDeploymentId,
 };
 
 use crate::block_range::block_number;
@@ -72,7 +68,7 @@ pub struct Connection<'a> {
     pub conn: MaybeOwned<'a, PooledConnection<ConnectionManager<PgConnection>>>,
     /// The layout of the actual subgraph data; entities
     /// go into this
-    data: Arc<Layout>,
+    pub data: Arc<Layout>,
     /// The subgraph that is accessible through this connection
     subgraph: SubgraphDeploymentId,
 }
@@ -171,67 +167,6 @@ impl Connection<'_> {
     ) -> Result<usize, StoreError> {
         let layout = self.layout_for(key);
         layout.delete(&self.conn, key, block_number(ptr))
-    }
-
-    pub(crate) fn revert_block(
-        &self,
-        block_ptr: &EthereumBlockPointer,
-    ) -> Result<(StoreEvent, i32), StoreError> {
-        // At 1 block per 15 seconds, the maximum i32
-        // value affords just over 1020 years of blocks.
-        let block = block_ptr
-            .number
-            .try_into()
-            .expect("block numbers fit into an i32");
-
-        // Revert the block in the subgraph itself
-        let (event, count) = self.data.revert_block(&self.conn, &self.subgraph, block)?;
-        // Revert the meta data changes that correspond to this subgraph.
-        // Only certain meta data changes need to be reverted, most
-        // importantly creation of dynamic data sources. We ensure in the
-        // rest of the code that we only record history for those meta data
-        // changes that might need to be reverted
-        Layout::revert_metadata(&self.conn, &self.subgraph, block)?;
-        Ok((event, count))
-    }
-
-    pub(crate) fn update_entity_count(&self, count: i32) -> Result<(), StoreError> {
-        if count == 0 {
-            return Ok(());
-        }
-
-        let count_query = self.data.count_query.as_str();
-
-        // The big complication in this query is how to determine what the
-        // new entityCount should be. We want to make sure that if the entityCount
-        // is NULL or the special value `-1`, it gets recomputed. Using `-1` here
-        // makes it possible to manually set the `entityCount` to that value
-        // to force a recount; setting it to `NULL` is not desirable since
-        // `entityCount` on the GraphQL level is not nullable, and so setting
-        // `entityCount` to `NULL` could cause errors at that layer; temporarily
-        // returning `-1` is more palatable. To be exact, recounts have to be
-        // done here, from the subgraph writer.
-        //
-        // The first argument of `coalesce` will be `NULL` if the entity count
-        // is `NULL` or `-1`, forcing `coalesce` to evaluate its second
-        // argument, the query to count entities. In all other cases,
-        // `coalesce` does not evaluate its second argument
-        let query = format!(
-            "
-            update subgraphs.subgraph_deployment
-               set entity_count =
-                     coalesce((nullif(entity_count, -1)) + $1,
-                              ({count_query}))
-             where id = $2
-            ",
-            count_query = count_query
-        );
-        let conn: &PgConnection = &self.conn;
-        Ok(diesel::sql_query(query)
-            .bind::<Integer, _>(count)
-            .bind::<Text, _>(self.subgraph.as_str())
-            .execute(conn)
-            .map(|_| ())?)
     }
 
     pub(crate) fn transaction<T, E, F>(&self, f: F) -> Result<T, E>
