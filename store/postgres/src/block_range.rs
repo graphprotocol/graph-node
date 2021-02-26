@@ -79,12 +79,6 @@ pub(crate) fn block_number(block_ptr: &EthereumBlockPointer) -> BlockNumber {
     }
 }
 
-impl BlockRange {
-    pub fn as_pair(&self) -> (Bound<BlockNumber>, Bound<BlockNumber>) {
-        (self.0, self.1)
-    }
-}
-
 impl From<RangeFrom<BlockNumber>> for BlockRange {
     fn from(range: RangeFrom<BlockNumber>) -> BlockRange {
         BlockRange(

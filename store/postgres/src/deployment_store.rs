@@ -32,10 +32,10 @@ use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
 use crate::block_range::block_number;
+use crate::deployment;
 use crate::relational::{Catalog, Layout};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
-use crate::{deployment, primary::Namespace};
 use crate::{dynds, primary::Site};
 
 embed_migrations!("./migrations");
@@ -607,7 +607,10 @@ impl DeploymentStore {
 
     // Only used for tests
     #[cfg(debug_assertions)]
-    pub(crate) fn drop_deployment_schema(&self, namespace: &Namespace) -> Result<(), StoreError> {
+    pub(crate) fn drop_deployment_schema(
+        &self,
+        namespace: &crate::primary::Namespace,
+    ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
         deployment::drop_schema(&conn, namespace)
     }
