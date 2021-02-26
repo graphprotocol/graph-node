@@ -33,7 +33,6 @@ mod deployment;
 mod deployment_store;
 mod detail;
 mod dynds;
-mod entities;
 mod functions;
 mod jsonb;
 mod notification_listener;
@@ -51,7 +50,6 @@ pub mod layout_for_tests {
     pub use crate::block_range::*;
     pub use crate::block_store::FAKE_NETWORK_SHARED;
     pub use crate::chain_store::test_support as chain_support;
-    pub use crate::entities::STRING_PREFIX_SIZE;
     pub use crate::primary::{Connection, Namespace, EVENT_TAP, EVENT_TAP_ENABLED};
     pub use crate::relational::*;
 }
@@ -75,7 +73,6 @@ pub mod command_support {
             subgraph_version,
         };
     }
-    pub use crate::entities::Connection;
     pub use crate::primary::Namespace;
     pub use crate::relational::{Catalog, Column, ColumnType, Layout};
 }

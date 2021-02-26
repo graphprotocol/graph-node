@@ -34,7 +34,7 @@ use web3::types::Address;
 use crate::block_range::block_number;
 use crate::relational::{Catalog, Layout};
 use crate::relational_queries::FromEntityData;
-use crate::{connection_pool::ConnectionPool, detail, entities as e};
+use crate::{connection_pool::ConnectionPool, detail};
 use crate::{deployment, primary::Namespace};
 use crate::{dynds, primary::Site};
 
@@ -158,7 +158,7 @@ pub struct StoreInner {
     /// A cache for the layout metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
-    pub(crate) layout_cache: e::LayoutCache,
+    pub(crate) layout_cache: Mutex<HashMap<SubgraphDeploymentId, Arc<Layout>>>,
 }
 
 /// Storage of the data for individual deployments. Each `DeploymentStore`
@@ -216,7 +216,7 @@ impl DeploymentStore {
             replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
-            layout_cache: e::make_layout_cache(),
+            layout_cache: Mutex::new(HashMap::new()),
         };
         let store = DeploymentStore(Arc::new(store));
 

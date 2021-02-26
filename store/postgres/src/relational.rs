@@ -40,7 +40,14 @@ use graph::prelude::{
 use crate::block_range::BLOCK_RANGE_COLUMN;
 pub use crate::catalog::Catalog;
 use crate::dynds;
-use crate::entities::STRING_PREFIX_SIZE;
+
+/// The size of string prefixes that we index. This is chosen so that we
+/// will index strings that people will do string comparisons like
+/// `=` or `!=` on; if text longer than this is stored in a String attribute
+/// it is highly unlikely that they will be used for exact string operations.
+/// This also makes sure that we do not put strings into a BTree index that's
+/// bigger than Postgres' limit on such strings which is about 2k
+pub const STRING_PREFIX_SIZE: usize = 256;
 
 lazy_static! {
     /// Experimental: a list of fully qualified table names that contain

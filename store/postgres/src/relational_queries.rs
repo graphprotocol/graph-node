@@ -29,8 +29,9 @@ use graph::{
     data::{schema::FulltextAlgorithm, store::scalar},
 };
 
-use crate::entities::STRING_PREFIX_SIZE;
-use crate::relational::{Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN};
+use crate::relational::{
+    Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE,
+};
 use crate::sql_value::SqlValue;
 use crate::{
     block_range::{BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
