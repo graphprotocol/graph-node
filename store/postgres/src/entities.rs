@@ -28,20 +28,17 @@ use maybe_owned::MaybeOwned;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use graph::components::store::EntityType;
-use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
+use graph::data::subgraph::schema::POI_OBJECT;
 use graph::prelude::{
-    info, BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityRange,
+    BlockNumber, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityRange,
     EthereumBlockPointer, Logger, QueryExecutionError, StoreError, StoreEvent,
     SubgraphDeploymentId,
 };
 
-use crate::deployment;
-use crate::primary::Site;
-use crate::relational::{Catalog, Layout};
-use crate::{block_range::block_number, primary::Namespace};
+use crate::block_range::block_number;
+use crate::relational::Layout;
 
 /// The size of string prefixes that we index. This is chosen so that we
 /// will index strings that people will do string comparisons like
@@ -98,34 +95,6 @@ impl Connection<'_> {
             );
         }
         self.data.as_ref()
-    }
-
-    /// Do any cleanup to bring the subgraph into a known good state
-    pub(crate) fn start_subgraph(
-        &self,
-        logger: &Logger,
-        graft_base: Option<(Site, EthereumBlockPointer)>,
-    ) -> Result<(), StoreError> {
-        if let Some((base, block)) = graft_base {
-            let layout = &self.data;
-            let start = Instant::now();
-            let base_layout =
-                &Connection::layout(&self.conn, base.namespace.clone(), &base.deployment)?;
-            layout.copy_from(
-                logger,
-                &self.conn,
-                &self.subgraph,
-                &base_layout,
-                &base.deployment,
-                block,
-            )?;
-            // Set the block ptr to the graft point to signal that we successfully
-            // performed the graft
-            deployment::forward_block_ptr(&self.conn, &self.subgraph, block.clone())?;
-            info!(logger, "Subgraph successfully initialized";
-            "time_ms" => start.elapsed().as_millis());
-        }
-        Ok(())
     }
 
     pub(crate) fn find(
@@ -276,39 +245,4 @@ impl Connection<'_> {
     pub(crate) fn supports_proof_of_indexing(&self) -> bool {
         self.data.tables.contains_key(&*POI_OBJECT)
     }
-
-    /// Look up the schema for `subgraph` and return its entity layout.
-    /// Returns an error if `subgraph` does not have an entry in
-    /// `deployment_schemas`, which can only happen if `create_schema` was not
-    /// called for that `subgraph`
-    pub(crate) fn layout(
-        conn: &PgConnection,
-        namespace: Namespace,
-        subgraph: &SubgraphDeploymentId,
-    ) -> Result<Layout, StoreError> {
-        let subgraph_schema = deployment::schema(conn, subgraph.to_owned())?;
-        let has_poi = supports_proof_of_indexing(conn, &namespace)?;
-        let catalog = Catalog::new(conn, namespace)?;
-        let layout = Layout::new(&subgraph_schema, catalog, has_poi)?;
-
-        Ok(layout)
-    }
-}
-
-fn supports_proof_of_indexing(
-    conn: &diesel::pg::PgConnection,
-    namespace: &Namespace,
-) -> Result<bool, StoreError> {
-    #[derive(Debug, QueryableByName)]
-    struct Table {
-        #[sql_type = "Text"]
-        pub table_name: String,
-    }
-    let query =
-        "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name=$2";
-    let result: Vec<Table> = diesel::sql_query(query)
-        .bind::<Text, _>(namespace.as_str())
-        .bind::<Text, _>(POI_TABLE)
-        .load(conn)?;
-    Ok(result.len() > 0)
 }

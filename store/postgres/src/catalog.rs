@@ -3,7 +3,7 @@ use diesel::prelude::RunQueryDsl;
 use diesel::sql_types::Text;
 use std::collections::{HashMap, HashSet};
 
-use graph::prelude::StoreError;
+use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
 
 use crate::{primary::Namespace, relational::SqlName};
 
@@ -71,4 +71,22 @@ fn get_text_columns(
             map
         });
     Ok(map)
+}
+
+pub fn supports_proof_of_indexing(
+    conn: &diesel::pg::PgConnection,
+    namespace: &Namespace,
+) -> Result<bool, StoreError> {
+    #[derive(Debug, QueryableByName)]
+    struct Table {
+        #[sql_type = "Text"]
+        pub table_name: String,
+    }
+    let query =
+        "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name=$2";
+    let result: Vec<Table> = diesel::sql_query(query)
+        .bind::<Text, _>(namespace.as_str())
+        .bind::<Text, _>(POI_TABLE)
+        .load(conn)?;
+    Ok(result.len() > 0)
 }

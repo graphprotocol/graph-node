@@ -31,7 +31,7 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
-use crate::relational::Layout;
+use crate::relational::{Catalog, Layout};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail, entities as e};
 use crate::{deployment, primary::Namespace};
@@ -239,6 +239,7 @@ impl DeploymentStore {
         conn.transaction(|| -> Result<_, StoreError> {
             let exists = deployment::exists(&conn, &site.deployment)?;
 
+            // Create (or update) the metadata. Update only happens in tests
             if replace || !exists {
                 deployment::create_deployment(
                     &conn,
@@ -249,8 +250,27 @@ impl DeploymentStore {
                 )?;
             };
 
+            // Create the schema for the subgraph data
             if !exists {
-                deployment::create_schema(&conn, site.namespace.clone(), schema, graft_site)?;
+                let query = format!("create schema {}", &site.namespace);
+                conn.batch_execute(&query)?;
+
+                let layout = Layout::create_relational_schema(&conn, schema, site.namespace.clone())?;
+                // See if we are grafting and check that the graft is permissible
+                if let Some(graft_site) = graft_site {
+                    let base =
+                        self.layout(&conn, &graft_site)?;
+                    let errors = layout.can_copy_from(&base);
+                    if !errors.is_empty() {
+                        return Err(StoreError::Unknown(anyhow!(
+                            "The subgraph `{}` cannot be used as the graft base \
+                                                    for `{}` because the schemas are incompatible:\n    - {}",
+                            &base.catalog.namespace,
+                            &layout.catalog.namespace,
+                            errors.join("\n    - ")
+                        )));
+                    }
+                }
             }
             Ok(())
         })
@@ -556,11 +576,11 @@ impl DeploymentStore {
             return Ok(layout.clone());
         }
 
-        let layout = Arc::new(e::Connection::layout(
-            conn,
-            site.namespace.clone(),
-            &site.deployment,
-        )?);
+        let subgraph_schema = deployment::schema(conn, site.deployment.clone())?;
+        let has_poi = crate::catalog::supports_proof_of_indexing(conn, &site.namespace)?;
+        let catalog = Catalog::new(conn, site.namespace.clone())?;
+        let layout = Arc::new(Layout::new(&subgraph_schema, catalog, has_poi)?);
+
         if layout.is_cacheable() {
             &self
                 .layout_cache
@@ -1041,8 +1061,30 @@ impl DeploymentStore {
         site: Arc<Site>,
         graft_base: Option<(Site, EthereumBlockPointer)>,
     ) -> Result<(), StoreError> {
-        let econn = self.get_entity_conn(&site, ReplicaId::Main)?;
-        econn.transaction(|| econn.start_subgraph(logger, graft_base))
+        let conn = self.get_conn()?;
+
+        // Do any cleanup to bring the subgraph into a known good state
+        conn.transaction(|| {
+            let layout = self.layout(&conn, site.as_ref())?;
+            if let Some((base, block)) = graft_base {
+                let base_layout = self.layout(&conn, &base)?;
+                let start = Instant::now();
+                layout.copy_from(
+                    logger,
+                    &conn,
+                    &site.deployment,
+                    &base_layout,
+                    &base.deployment,
+                    block,
+                )?;
+                // Set the block ptr to the graft point to signal that we successfully
+                // performed the graft
+                deployment::forward_block_ptr(&conn, &site.deployment, block.clone())?;
+                info!(logger, "Subgraph successfully initialized";
+                    "time_ms" => start.elapsed().as_millis());
+            }
+            Ok(())
+        })
     }
 
     pub(crate) fn unfail(&self, site: Arc<Site>) -> Result<(), StoreError> {

@@ -11,7 +11,6 @@ use diesel::{
     prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
     sql_types::Nullable,
 };
-use graph::data::schema::Schema as SubgraphSchema;
 use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
@@ -23,9 +22,6 @@ use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 
 use crate::block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE};
-use crate::entities as e;
-use crate::primary::{Namespace, Site};
-use crate::relational::Layout;
 use graph::constraint_violation;
 
 #[derive(DbEnum, Debug, Clone, Copy)]
@@ -588,39 +584,6 @@ pub(crate) fn revert_subgraph_errors(
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
     // is the block being reverted to.
     check_health(conn, id, reverted_block - 1)
-}
-
-/// Create the database schema for a new subgraph, including all tables etc.
-///
-/// It is an error if `deployment_schemas` already has an entry for this
-/// `subgraph_id`. Note that `self` must be a connection for the subgraph
-/// of subgraphs
-pub(crate) fn create_schema(
-    conn: &PgConnection,
-    namespace: Namespace,
-    schema: &SubgraphSchema,
-    graft_site: Option<Site>,
-) -> Result<(), StoreError> {
-    let query = format!("create schema {}", namespace);
-    conn.batch_execute(&*query)?;
-
-    let layout = Layout::create_relational_schema(&conn, schema, namespace)?;
-    // See if we are grafting and check that the graft is permissible
-    if let Some(graft_site) = graft_site {
-        let base =
-            &e::Connection::layout(&conn, graft_site.namespace.clone(), &graft_site.deployment)?;
-        let errors = layout.can_copy_from(&base);
-        if !errors.is_empty() {
-            return Err(StoreError::Unknown(anyhow!(
-                "The subgraph `{}` cannot be used as the graft base \
-                                        for `{}` because the schemas are incompatible:\n    - {}",
-                &base.catalog.namespace,
-                &layout.catalog.namespace,
-                errors.join("\n    - ")
-            )));
-        }
-    }
-    Ok(())
 }
 
 /// Drop the schema `namespace`. This deletes all data for the subgraph,
