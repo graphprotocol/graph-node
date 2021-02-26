@@ -24,8 +24,8 @@ use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, CheapClone, DeploymentState,
     DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, EntityRange, Error,
-    EthereumBlockPointer, Logger, MetricsRegistry, QueryExecutionError, Schema, StopwatchMetrics,
-    StoreError, StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    EthereumBlockPointer, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+    StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -159,8 +159,6 @@ pub struct StoreInner {
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
     pub(crate) layout_cache: e::LayoutCache,
-
-    registry: Arc<dyn MetricsRegistry>,
 }
 
 /// Storage of the data for individual deployments. Each `DeploymentStore`
@@ -183,7 +181,6 @@ impl DeploymentStore {
         pool: ConnectionPool,
         read_only_pools: Vec<ConnectionPool>,
         mut pool_weights: Vec<usize>,
-        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
@@ -220,7 +217,6 @@ impl DeploymentStore {
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
             layout_cache: e::make_layout_cache(),
-            registry,
         };
         let store = DeploymentStore(Arc::new(store));
 
@@ -459,47 +455,6 @@ impl DeploymentStore {
         self.conn.with_conn(f).await
     }
 
-    /// Executes a closure with an `e::Connection` reference.
-    /// The `e::Connection` gives access to subgraph specific storage in the database - mostly for
-    /// storing and loading entities local to that subgraph.
-    ///
-    /// This uses `with_conn` under the hood. Please see it's documentation for important details
-    /// about usage.
-    async fn with_entity_conn<T: Send + 'static>(
-        self: Arc<Self>,
-        site: Arc<Site>,
-        f: impl 'static
-            + Send
-            + FnOnce(&e::Connection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let store = self.cheap_clone();
-
-        // Duplicated logic: No need to make re-usable when the
-        // other end will go away.
-        // See also 220c1ae9-3e8a-42d3-bcc5-b1244a69b8a9
-        let start = Instant::now();
-        let registry = self.registry.cheap_clone();
-
-        self.with_conn(move |conn, cancel_handle| {
-            registry
-                .global_deployment_counter(
-                    "deployment_get_entity_conn_secs",
-                    "total time spent getting an entity connection",
-                    site.deployment.as_str(),
-                )
-                .map_err(|e| CancelableError::Error(StoreError::Unknown(e.into())))?
-                .inc_by(start.elapsed().as_secs_f64());
-
-            cancel_handle.check_cancel()?;
-            let layout = store.layout(&conn, site.as_ref())?;
-            cancel_handle.check_cancel()?;
-            let conn = e::Connection::new(conn.into(), layout, site.deployment.clone());
-
-            f(&conn, cancel_handle)
-        })
-        .await
-    }
-
     /// Deprecated. Use `with_conn` instead.
     fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         self.conn.get_with_timeout_warning(&self.logger)
@@ -522,34 +477,6 @@ impl DeploymentStore {
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
         };
         Ok(conn)
-    }
-
-    // Duplicated logic - this function may eventually go away.
-    // See also 220c1ae9-3e8a-42d3-bcc5-b1244a69b8a9
-    /// Deprecated. Use `with_entity_conn` instead
-    pub(crate) fn get_entity_conn(
-        &self,
-        site: &Site,
-        replica: ReplicaId,
-    ) -> Result<e::Connection, Error> {
-        let start = Instant::now();
-        let conn = match replica {
-            ReplicaId::Main => self.get_conn()?,
-            ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
-        };
-        self.registry
-            .global_deployment_counter(
-                "deployment_get_entity_conn_secs",
-                "total time spent getting an entity connection",
-                site.deployment.as_str(),
-            )?
-            .inc_by(start.elapsed().as_secs_f64());
-        let data = self.layout(&conn, site)?;
-        Ok(e::Connection::new(
-            conn.into(),
-            data,
-            site.deployment.clone(),
-        ))
     }
 
     pub(crate) fn wait_stats(&self, replica: ReplicaId) -> &PoolWaitStats {
@@ -739,23 +666,24 @@ impl DeploymentStore {
         block: EthereumBlockPointer,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         let indexer = indexer.clone();
-        let site2 = site.clone();
         let site3 = site.clone();
         let site4 = site.clone();
         let store = self.clone();
 
         async move {
             let entities = self
-                .with_entity_conn(site2, move |conn, cancel| {
+                .with_conn(move |conn, cancel| {
                     cancel.check_cancel()?;
 
-                    if !conn.supports_proof_of_indexing() {
+                    let layout = store.layout(conn, &site4)?;
+
+                    if !layout.tables.contains_key(&*POI_OBJECT) {
                         return Ok(None);
                     }
 
                     conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
                         let latest_block_ptr =
-                            match Self::block_ptr_with_conn(&site.deployment, &conn.conn)? {
+                            match Self::block_ptr_with_conn(&site.deployment, conn)? {
                                 Some(inner) => inner,
                                 None => return Ok(None),
                             };
@@ -779,7 +707,7 @@ impl DeploymentStore {
                             EntityCollection::All(vec![POI_OBJECT.cheap_clone()]),
                         );
                         let entities = store
-                            .execute_query::<Entity>(&conn.conn, &site4, query)
+                            .execute_query::<Entity>(conn, &site4, query)
                             .map_err(anyhow::Error::from)?;
 
                         Ok(Some(entities))
@@ -909,10 +837,10 @@ impl DeploymentStore {
             );
         }
 
-        let econn = self.get_entity_conn(site, ReplicaId::Main)?;
+        let conn = self.get_conn()?;
 
-        let event = econn.transaction(|| -> Result<_, StoreError> {
-            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &econn.conn)?;
+        let event = conn.transaction(|| -> Result<_, StoreError> {
+            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?;
             if let Some(ref block_ptr_from) = block_ptr_from {
                 if block_ptr_from.number >= block_ptr_to.number {
                     return Err(StoreError::DuplicateBlockProcessing(
@@ -929,35 +857,35 @@ impl DeploymentStore {
             let event: StoreEvent = mods.iter().collect();
 
             // Make the changes
-            let layout = self.layout(&econn.conn, site)?;
+            let layout = self.layout(&conn, site)?;
             let section = stopwatch.start_section("apply_entity_modifications");
             let count = self.apply_entity_modifications(
-                &econn.conn,
+                &conn,
                 layout.as_ref(),
                 mods,
                 &block_ptr_to,
                 stopwatch,
             )?;
             deployment::update_entity_count(
-                &econn.conn,
+                &conn,
                 &site.deployment,
-                econn.data.count_query.as_str(),
+                layout.count_query.as_str(),
                 count,
             )?;
             section.end();
 
-            dynds::insert(&econn.conn, &site.deployment, data_sources, &block_ptr_to)?;
+            dynds::insert(&conn, &site.deployment, data_sources, &block_ptr_to)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(
-                    &econn.conn,
+                    &conn,
                     &site.deployment,
                     deterministic_errors,
                     block_ptr_to.block_number(),
                 )?;
             }
 
-            deployment::forward_block_ptr(&econn.conn, &site.deployment, block_ptr_to)?;
+            deployment::forward_block_ptr(&conn, &site.deployment, block_ptr_to)?;
             Ok(event)
         })?;
 

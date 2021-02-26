@@ -77,8 +77,4 @@ impl Connection<'_> {
     {
         self.conn.transaction(f)
     }
-
-    pub(crate) fn supports_proof_of_indexing(&self) -> bool {
-        self.data.tables.contains_key(&*POI_OBJECT)
-    }
 }

@@ -93,7 +93,6 @@ impl StoreBuilder {
             logger,
             shards,
             Arc::new(config.deployment.clone()),
-            registry.cheap_clone(),
         ));
 
         (store, pools)

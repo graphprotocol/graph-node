@@ -21,11 +21,10 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
-        lazy_static, o, web3::types::Address, ApiSchema, CheapClone, DeploymentState, DynTryFuture,
-        Entity, EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
-        MetricsRegistry, NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-        SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        lazy_static, o, web3::types::Address, ApiSchema, DeploymentState, DynTryFuture, Entity,
+        EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger, NodeId,
+        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
+        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
 };
 use store::StoredDynamicDataSource;
@@ -191,7 +190,6 @@ impl SubgraphStore {
         logger: &Logger,
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
-        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let primary = stores
             .iter()
@@ -209,7 +207,6 @@ impl SubgraphStore {
                         main_pool,
                         read_only_pools,
                         weights,
-                        registry.cheap_clone(),
                     )),
                 )
             },
