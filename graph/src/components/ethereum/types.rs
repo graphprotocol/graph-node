@@ -414,7 +414,7 @@ impl Clone for EthereumCallData {
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Maximum block number supported: 2^63 - 1
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EthereumBlockPointer {
     pub hash: H256,
     pub number: u64,

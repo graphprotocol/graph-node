@@ -1196,7 +1196,7 @@ impl ChainStore {
 
 impl ChainStoreTrait for ChainStore {
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
-        Ok(self.genesis_block_ptr)
+        Ok(self.genesis_block_ptr.clone())
     }
 
     fn upsert_blocks<B, E>(
@@ -1233,7 +1233,7 @@ impl ChainStoreTrait for ChainStore {
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(Vec<H256>, Option<(String, i64)>), Error> {
                 let candidate = self.storage.chain_head_candidate(&conn, &self.chain)?;
-                let (ptr, first_block) = match candidate {
+                let (ptr, first_block) = match &candidate {
                     None => return Ok((vec![], None)),
                     Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
                 };

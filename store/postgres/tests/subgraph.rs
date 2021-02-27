@@ -517,7 +517,7 @@ fn fatal_vs_non_fatal() {
         let error = || SubgraphError {
             subgraph_id: id.clone(),
             message: "test".to_string(),
-            block_ptr: Some(BLOCKS[1]),
+            block_ptr: Some(BLOCKS[1].clone()),
             handler: None,
             deterministic: true,
         };
@@ -560,7 +560,7 @@ fn fail_unfail() {
         let error = SubgraphError {
             subgraph_id: id.clone(),
             message: "test".to_string(),
-            block_ptr: Some(BLOCKS[1]),
+            block_ptr: Some(BLOCKS[1].clone()),
             handler: None,
             deterministic: true,
         };
@@ -580,8 +580,13 @@ fn fail_unfail() {
         store.subgraph_store().unfail(&id).unwrap();
 
         // Advance the block ptr to the block of the deleted error.
-        transact_entity_operations(&store.subgraph_store(), id.cheap_clone(), BLOCKS[1], vec![])
-            .unwrap();
+        transact_entity_operations(
+            &store.subgraph_store(),
+            id.cheap_clone(),
+            BLOCKS[1].clone(),
+            vec![],
+        )
+        .unwrap();
 
         // We still have no fatal errors.
         assert!(!query_store

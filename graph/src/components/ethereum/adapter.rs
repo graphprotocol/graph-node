@@ -802,12 +802,16 @@ fn parse_block_triggers(
     let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
     let trigger_every_block = block_filter.trigger_every_block;
     let call_filter = EthereumCallFilter::from(block_filter);
+    let block_ptr2 = block_ptr.clone();
     let mut triggers = block
         .calls
         .iter()
         .filter(move |call| call_filter.matches(call))
         .map(move |call| {
-            EthereumTrigger::Block(block_ptr, EthereumBlockTriggerType::WithCallTo(call.to))
+            EthereumTrigger::Block(
+                block_ptr2.clone(),
+                EthereumBlockTriggerType::WithCallTo(call.to),
+            )
         })
         .collect::<Vec<EthereumTrigger>>();
     if trigger_every_block {

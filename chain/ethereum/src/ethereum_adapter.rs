@@ -1222,7 +1222,7 @@ where
         // Check if we have it cached, if not do the call and cache.
         Box::new(
             match cache
-                .get_call(call.address, &call_data, call.block_ptr)
+                .get_call(call.address, &call_data, call.block_ptr.clone())
                 .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
                 .ok()
                 .flatten()
@@ -1239,7 +1239,7 @@ where
                             logger.clone(),
                             call.address,
                             Bytes(call_data.clone()),
-                            call.block_ptr,
+                            call.block_ptr.clone(),
                         )
                         .map(move |result| {
                             let _ = cache

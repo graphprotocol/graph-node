@@ -361,7 +361,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
     let mut key: Option<QueryHash> = None;
 
     if R::CACHEABLE && (*CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(ctx.query.schema.id())) {
-        if let (Some(block_ptr), Some(network)) = (block_ptr, &ctx.query.network) {
+        if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
             // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
             // - Metadata queries are not cacheable.
             // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.

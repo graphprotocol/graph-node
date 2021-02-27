@@ -70,7 +70,7 @@ where
         ctx.cheap_clone(),
         selection_set.cheap_clone(),
         query_type,
-        block_ptr,
+        block_ptr.clone(),
     )
     .await;
     let elapsed = start.elapsed();

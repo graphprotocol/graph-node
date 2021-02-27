@@ -250,8 +250,8 @@ where
         );
         trace!(
             ctx.logger, "Subgraph pointer";
-            "hash" => format!("{:?}", subgraph_ptr.map(|block| block.hash)),
-            "number" => subgraph_ptr.map(|block| block.number),
+            "hash" => format!("{:?}", subgraph_ptr.as_ref().map(|block| block.hash)),
+            "number" => subgraph_ptr.as_ref().map(|block| block.number),
         );
 
         // Make sure not to include genesis in the reorg threshold.
@@ -259,7 +259,7 @@ where
 
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
-        if let Some(ptr) = subgraph_ptr {
+        if let Some(ptr) = &subgraph_ptr {
             if ptr.number >= head_ptr.number {
                 return Box::new(future::ok(ReconciliationStep::Done))
                     as Box<dyn Future<Item = _, Error = _> + Send>;
@@ -305,7 +305,7 @@ where
         // Ethereum RPC calls can give us accurate data without race conditions.
         // (This is mostly due to some unfortunate API design decisions on the Ethereum side)
         if subgraph_ptr.is_none()
-            || (head_ptr.number - subgraph_ptr.unwrap().number) > reorg_threshold
+            || (head_ptr.number - subgraph_ptr.as_ref().unwrap().number) > reorg_threshold
         {
             // Since we are beyond the reorg threshold, the Ethereum node knows what block has
             // been permanently assigned this block number.
@@ -314,6 +314,7 @@ where
             // uncled?
             Box::new(
                 subgraph_ptr
+                    .as_ref()
                     .map_or(
                         Box::new(future::ok(true)) as Box<dyn Future<Item = _, Error = _> + Send>,
                         |ptr| {
@@ -321,7 +322,7 @@ where
                                 &ctx.logger,
                                 ctx.metrics.ethrpc_metrics.clone(),
                                 ctx.chain_store.clone(),
-                                ptr,
+                                ptr.clone(),
                             )
                         },
                     )
@@ -453,7 +454,7 @@ where
                 subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 
             #[cfg(debug_assertions)]
-            if test_reorg(subgraph_ptr) {
+            if test_reorg(subgraph_ptr.clone()) {
                 return Box::new(future::ok(ReconciliationStep::Revert(subgraph_ptr)));
             }
 
