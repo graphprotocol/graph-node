@@ -1763,7 +1763,7 @@ fn non_fatal_errors() {
             // Test error reverts.
             STORE
                 .subgraph_store()
-                .revert_block_operations(id.clone(), *BLOCK_ONE)
+                .revert_block_operations(id.clone(), BLOCK_ONE.clone())
                 .unwrap();
             let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
             let query = graphql_parser::parse_query(query).unwrap().into_static();

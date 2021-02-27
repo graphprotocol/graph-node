@@ -105,10 +105,10 @@ where
             .get_optional::<Address>("indexer")
             .expect("Invalid indexer");
 
-        let poi_fut = self
-            .store
-            .clone()
-            .get_proof_of_indexing(&deployment_id, &indexer, block);
+        let poi_fut =
+            self.store
+                .clone()
+                .get_proof_of_indexing(&deployment_id, &indexer, block.clone());
         let poi = match futures::executor::block_on(poi_fut) {
             Ok(Some(poi)) => q::Value::String(format!("0x{}", hex::encode(&poi))),
             Ok(None) => q::Value::Null,

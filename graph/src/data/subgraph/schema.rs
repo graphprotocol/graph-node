@@ -128,9 +128,9 @@ impl SubgraphDeploymentEntity {
             synced,
             fatal_error: None,
             non_fatal_errors: vec![],
-            earliest_ethereum_block_hash: earliest_ethereum_block.map(Into::into),
-            earliest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
-            latest_ethereum_block_hash: earliest_ethereum_block.map(Into::into),
+            earliest_ethereum_block_hash: earliest_ethereum_block.clone().map(Into::into),
+            earliest_ethereum_block_number: earliest_ethereum_block.clone().map(Into::into),
+            latest_ethereum_block_hash: earliest_ethereum_block.clone().map(Into::into),
             latest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
             graft_base: None,
             graft_block_hash: None,
@@ -199,7 +199,7 @@ impl Display for SubgraphError {
         if let Some(handler) = &self.handler {
             write!(f, " in handler `{}`", handler)?;
         }
-        if let Some(block_ptr) = self.block_ptr {
+        if let Some(block_ptr) = &self.block_ptr {
             write!(f, " at block {}", block_ptr)?;
         }
         Ok(())

@@ -184,7 +184,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *GENESIS_PTR,
+        GENESIS_PTR.clone(),
         vec![test_entity_1],
     )
     .unwrap();
@@ -212,7 +212,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_1_PTR,
+        TEST_BLOCK_1_PTR.clone(),
         vec![test_entity_2, test_entity_3_1],
     )
     .unwrap();
@@ -230,7 +230,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        *TEST_BLOCK_2_PTR,
+        TEST_BLOCK_2_PTR.clone(),
         vec![test_entity_3_2],
     )
     .unwrap();
@@ -309,7 +309,7 @@ fn delete_entity() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![EntityOperation::Remove {
                 key: entity_key.clone(),
             }],
@@ -405,7 +405,7 @@ fn insert_entity() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![test_entity],
         )
         .unwrap();
@@ -454,7 +454,7 @@ fn update_existing() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![op],
         )
         .unwrap();
@@ -496,7 +496,7 @@ fn partially_update_existing() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
                 data: partial_entity.clone(),
@@ -1022,7 +1022,7 @@ async fn check_basic_revert(
     // Revert block 3
     store
         .subgraph_store()
-        .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_1_PTR)
+        .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_1_PTR.clone())
         .unwrap();
 
     let returned_entities = store
@@ -1081,7 +1081,7 @@ fn revert_block_with_delete() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![EntityOperation::Remove { key: del_key }],
         )
         .unwrap();
@@ -1092,7 +1092,7 @@ fn revert_block_with_delete() {
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .subgraph_store()
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         assert_eq!(
             count + 1,
@@ -1147,7 +1147,7 @@ fn revert_block_with_partial_update() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
                 data: partial_entity.clone(),
@@ -1161,7 +1161,7 @@ fn revert_block_with_partial_update() {
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .subgraph_store()
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
@@ -1246,7 +1246,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         transact_entities_and_dynamic_data_sources(
             &store,
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![&data_source],
             ops,
         )
@@ -1273,7 +1273,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Revert block that added the user and the dynamic data source
         store
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .expect("revert block operations failed unexpectedly");
 
         // Verify that the user is the original again
@@ -1329,7 +1329,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         };
 
         // Create SubgraphDeploymentEntity
-        let deployment = SubgraphDeploymentEntity::new(&manifest, false, Some(*TEST_BLOCK_0_PTR));
+        let deployment =
+            SubgraphDeploymentEntity::new(&manifest, false, Some(TEST_BLOCK_0_PTR.clone()));
         let name = SubgraphName::new("test/entity-changes-are-fired").unwrap();
         let node_id = NodeId::new("test").unwrap();
         store
@@ -1366,7 +1367,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         transact_entity_operations(
             &store.subgraph_store(),
             subgraph_id.clone(),
-            *TEST_BLOCK_1_PTR,
+            TEST_BLOCK_1_PTR.clone(),
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
@@ -1396,7 +1397,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         transact_entity_operations(
             &store.subgraph_store(),
             subgraph_id.clone(),
-            *TEST_BLOCK_2_PTR,
+            TEST_BLOCK_2_PTR.clone(),
             vec![update_op, delete_op],
         )
         .unwrap();
@@ -1466,7 +1467,7 @@ fn throttle_subscription_delivers() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![user4],
         )
         .unwrap();
@@ -1510,7 +1511,7 @@ fn throttle_subscription_throttles() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             vec![user4],
         )
         .unwrap();
@@ -1603,7 +1604,7 @@ fn handle_large_string_with_index() {
             .subgraph_store()
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
-                *TEST_BLOCK_3_PTR,
+                TEST_BLOCK_3_PTR.clone(),
                 vec![
                     make_insert_op(ONE, &long_text),
                     make_insert_op(TWO, &other_text),
@@ -1804,7 +1805,7 @@ fn window() {
         transact_entity_operations(
             &store.subgraph_store(),
             TEST_SUBGRAPH_ID.clone(),
-            *TEST_BLOCK_3_PTR,
+            TEST_BLOCK_3_PTR.clone(),
             ops,
         )
         .expect("Failed to create test users");
@@ -1984,13 +1985,13 @@ fn reorg_tracking() {
 
         // Back to block 3
         store
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
             .unwrap();
         check_state!(store, 1, 1, 3);
 
         // Back to block 2
         store
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         check_state!(store, 2, 2, 2);
 
@@ -2008,17 +2009,17 @@ fn reorg_tracking() {
 
         // Revert all the way back to block 2
         store
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_4_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_4_PTR.clone())
             .unwrap();
         check_state!(store, 3, 2, 4);
 
         store
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_3_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
             .unwrap();
         check_state!(store, 4, 2, 3);
 
         store
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), *TEST_BLOCK_2_PTR)
+            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         check_state!(store, 5, 3, 2);
     })

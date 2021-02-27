@@ -672,6 +672,7 @@ impl DeploymentStore {
         let site3 = site.clone();
         let site4 = site.clone();
         let store = self.clone();
+        let block2 = block.clone();
 
         async move {
             let entities = self
@@ -741,7 +742,7 @@ impl DeploymentStore {
                 })
                 .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
-            let mut finisher = ProofOfIndexingFinisher::new(&block, &site3.deployment, &indexer);
+            let mut finisher = ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer);
             for (name, region) in by_causality_region.drain() {
                 finisher.add_causality_region(&name, &region);
             }
@@ -1047,11 +1048,11 @@ impl DeploymentStore {
                     &site.deployment,
                     &base_layout,
                     &base.deployment,
-                    block,
+                    block.clone(),
                 )?;
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
-                deployment::forward_block_ptr(&conn, &site.deployment, block.clone())?;
+                deployment::forward_block_ptr(&conn, &site.deployment, block)?;
                 info!(logger, "Subgraph successfully initialized";
                     "time_ms" => start.elapsed().as_millis());
             }

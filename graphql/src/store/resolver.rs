@@ -93,6 +93,7 @@ impl StoreResolver {
 
     pub fn block_number(&self) -> BlockNumber {
         self.block_ptr
+            .as_ref()
             .map(|ptr| ptr.number as BlockNumber)
             .unwrap_or(BLOCK_NUMBER_MAX)
     }
@@ -167,6 +168,7 @@ impl StoreResolver {
         if object_type.is_meta() {
             let hash = self
                 .block_ptr
+                .as_ref()
                 .and_then(|ptr| {
                     // locate_block indicates that we do not have a block hash
                     // by setting the hash to `zero`
@@ -180,6 +182,7 @@ impl StoreResolver {
                 .unwrap_or(q::Value::Null);
             let number = self
                 .block_ptr
+                .as_ref()
                 .map(|ptr| q::Value::Int((ptr.number as i32).into()))
                 .unwrap_or(q::Value::Null);
             let mut map = BTreeMap::new();

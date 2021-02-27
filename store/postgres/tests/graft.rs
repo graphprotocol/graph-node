@@ -157,7 +157,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        BLOCKS[0],
+        BLOCKS[0].clone(),
         vec![test_entity_1],
     )
     .unwrap();
@@ -185,7 +185,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        BLOCKS[1],
+        BLOCKS[1].clone(),
         vec![test_entity_2, test_entity_3_1],
     )
     .unwrap();
@@ -203,7 +203,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     transact_entity_operations(
         &store,
         TEST_SUBGRAPH_ID.clone(),
-        BLOCKS[2],
+        BLOCKS[2].clone(),
         vec![test_entity_3_2],
     )
     .unwrap();
@@ -268,7 +268,7 @@ fn graft() {
             &subgraph_id,
             GRAFT_GQL,
             TEST_SUBGRAPH_ID.as_str(),
-            BLOCKS[1],
+            BLOCKS[1].clone(),
         );
         assert!(res.is_ok());
 
@@ -304,14 +304,15 @@ fn graft() {
             key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "3".to_owned()),
             data: shaq,
         };
-        transact_entity_operations(&store, subgraph_id.clone(), BLOCKS[2], vec![op]).unwrap();
+        transact_entity_operations(&store, subgraph_id.clone(), BLOCKS[2].clone(), vec![op])
+            .unwrap();
 
         store
-            .revert_block_operations(subgraph_id.clone(), BLOCKS[1])
+            .revert_block_operations(subgraph_id.clone(), BLOCKS[1].clone())
             .expect("We can revert a block we just created");
 
         let err = store
-            .revert_block_operations(subgraph_id.clone(), BLOCKS[0])
+            .revert_block_operations(subgraph_id.clone(), BLOCKS[0].clone())
             .expect_err("Reverting past graft point is not allowed");
 
         assert!(err.to_string().contains("Can not revert subgraph"));

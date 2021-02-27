@@ -132,7 +132,7 @@ impl IntoValue for Info {
                 handler: handler,
                 block: object! {
                     __typename: "Block",
-                    number: block_ptr.map(|x| x.number),
+                    number: block_ptr.as_ref().map(|x| x.number),
                     hash: block_ptr.map(|x| q::Value::from(Value::Bytes(x.hash.as_ref().into()))),
                 },
                 deterministic: deterministic,
