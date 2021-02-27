@@ -527,6 +527,12 @@ impl From<Address> for Bytes {
     }
 }
 
+impl From<web3::types::Bytes> for Bytes {
+    fn from(bytes: web3::types::Bytes) -> Bytes {
+        Bytes::from(bytes.0.as_slice())
+    }
+}
+
 impl Serialize for Bytes {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.to_string().serialize(serializer)

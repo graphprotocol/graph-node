@@ -87,7 +87,7 @@ fn check_chain_head_update(
         let head_hash_act = store
             .chain_head_ptr()
             .expect("chain_head_ptr failed")
-            .map(|ebp| format!("{:x}", ebp.hash));
+            .map(|ebp| ebp.hash_hex());
         assert_eq!(head_hash_exp, head_hash_act);
         Ok(())
     })

@@ -173,10 +173,11 @@ impl StoreResolver {
                     // locate_block indicates that we do not have a block hash
                     // by setting the hash to `zero`
                     // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                    if ptr.hash == web3::types::H256::zero() {
+                    let hash_h256 = ptr.hash_as_h256();
+                    if hash_h256 == web3::types::H256::zero() {
                         None
                     } else {
-                        Some(q::Value::String(format!("0x{:x}", ptr.hash)))
+                        Some(q::Value::String(format!("0x{:x}", hash_h256)))
                     }
                 })
                 .unwrap_or(q::Value::Null);

@@ -412,7 +412,7 @@ where
         let block_id = if self.is_ganache || *ETH_CALL_BY_NUMBER {
             BlockId::Number(block_ptr.number.into())
         } else {
-            BlockId::Hash(block_ptr.hash)
+            BlockId::Hash(block_ptr.hash_as_h256())
         };
 
         retry("eth_call RPC call", &logger)
@@ -932,10 +932,7 @@ where
                     })
                 })
                 .from_err()
-                .map(move |block_hash| EthereumBlockPointer {
-                    hash: block_hash,
-                    number: block_number,
-                }),
+                .map(move |block_hash| EthereumBlockPointer::from((block_hash, block_number))),
         )
     }
 
@@ -1072,7 +1069,7 @@ where
                         .ok_or_else(|| {
                             anyhow!("Ethereum node is missing block #{}", block_ptr.number)
                         })
-                        .map(|block_hash| block_hash == block_ptr.hash)
+                        .map(|block_hash| block_hash == block_ptr.hash_as_h256())
                 }),
         )
     }

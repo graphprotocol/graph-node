@@ -536,7 +536,7 @@ fn create_subgraph_version(
                     logger,
                     "Set subgraph start block";
                     "block_number" => format!("{:?}", start_block.as_ref().map(|block| block.number)),
-                    "block_hash" => format!("{:?}", start_block.as_ref().map(|block| block.hash)),
+                    "block_hash" => format!("{:?}", start_block.as_ref().map(|block| &block.hash)),
                 );
 
                 info!(

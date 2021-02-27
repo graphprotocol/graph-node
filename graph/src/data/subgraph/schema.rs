@@ -108,7 +108,7 @@ pub struct SubgraphDeploymentEntity {
     pub latest_ethereum_block_hash: Option<H256>,
     pub latest_ethereum_block_number: Option<u64>,
     pub graft_base: Option<SubgraphDeploymentId>,
-    pub graft_block_hash: Option<H256>,
+    pub graft_block_hash: Option<Bytes>,
     pub graft_block_number: Option<u64>,
     pub reorg_count: i32,
     pub current_reorg_depth: i32,

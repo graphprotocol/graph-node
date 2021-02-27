@@ -9,7 +9,7 @@ lazy_static! {
     // Genesis block
     pub static ref GENESIS_BLOCK: FakeBlock = FakeBlock {
         number: super::GENESIS_PTR.number,
-        hash: format!("{:x}", super::GENESIS_PTR.hash),
+        hash: super::GENESIS_PTR.hash_hex(),
         parent_hash: NO_PARENT.to_string()
     };
     pub static ref BLOCK_ONE: FakeBlock = GENESIS_BLOCK
