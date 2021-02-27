@@ -981,12 +981,7 @@ impl<'a> Connection<'a> {
                 detail.latest_ethereum_block_number.clone(),
             )?
             .map(|b| b.to_ptr())
-            .map(|ptr| {
-                (
-                    Some(Vec::from(ptr.hash.as_bytes())),
-                    Some(ptr.number as i32),
-                )
-            })
+            .map(|ptr| (Some(Vec::from(ptr.hash_slice())), Some(ptr.number as i32)))
             .unwrap_or((None, None));
             let entity_count = detail.entity_count.to_u64().unwrap_or(0) as i32;
 

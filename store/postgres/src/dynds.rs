@@ -156,7 +156,7 @@ pub(crate) fn insert(
                 decds::abi.eq(abi),
                 decds::start_block.eq(start_block as i32),
                 decds::ethereum_block_number.eq(sql(&format!("{}::numeric", block_ptr.number))),
-                decds::ethereum_block_hash.eq(block_ptr.hash.as_bytes()),
+                decds::ethereum_block_hash.eq(block_ptr.hash_slice()),
             ))
         })
         .collect::<Result<_, _>>()?;

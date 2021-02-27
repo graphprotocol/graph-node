@@ -250,7 +250,7 @@ where
         );
         trace!(
             ctx.logger, "Subgraph pointer";
-            "hash" => format!("{:?}", subgraph_ptr.as_ref().map(|block| block.hash)),
+            "hash" => format!("{:?}", subgraph_ptr.as_ref().map(|block| &block.hash)),
             "number" => subgraph_ptr.as_ref().map(|block| block.number),
         );
 
@@ -475,7 +475,7 @@ where
                 Some(head_ancestor) => {
                     // We stopped one block short, so we'll compare the parent hash to the
                     // subgraph ptr.
-                    if head_ancestor.block.parent_hash == subgraph_ptr.hash {
+                    if head_ancestor.block.parent_hash == subgraph_ptr.hash_as_h256() {
                         // The subgraph ptr is an ancestor of the head block.
                         // We cannot use an RPC call here to find the first interesting block
                         // due to the race conditions previously mentioned,

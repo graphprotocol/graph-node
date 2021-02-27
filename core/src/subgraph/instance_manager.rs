@@ -494,7 +494,7 @@ where
                         logger,
                         "Reverting block to get back to main chain";
                         "block_number" => format!("{}", subgraph_ptr.number),
-                        "block_hash" => format!("{}", subgraph_ptr.hash)
+                        "block_hash" => format!("{}", subgraph_ptr.hash_as_h256())
                     );
 
                     // We would like to revert the DB state to the parent of the current block.
@@ -505,7 +505,7 @@ where
                         .load_blocks(
                             logger.cheap_clone(),
                             ctx.inputs.chain_store.cheap_clone(),
-                            HashSet::from_iter(Some(subgraph_ptr.hash)),
+                            HashSet::from_iter(Some(subgraph_ptr.hash_as_h256())),
                         )
                         .collect()
                         .compat()

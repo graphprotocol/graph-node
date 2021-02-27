@@ -75,10 +75,7 @@ mod tests {
         }
 
         let block_number = (block_count - 1) as u64;
-        let block_ptr = EthereumBlockPointer {
-            number: block_number,
-            hash: reference.block_hash,
-        };
+        let block_ptr = EthereumBlockPointer::from((reference.block_hash, block_number));
 
         // This region emulates the request
         let mut finisher =

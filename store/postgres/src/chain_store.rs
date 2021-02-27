@@ -805,7 +805,7 @@ mod data {
                     );
 
                     let hash = sql_query(query)
-                        .bind::<Bytea, _>(block_ptr.hash.as_bytes())
+                        .bind::<Bytea, _>(&block_ptr.hash.0)
                         .bind::<BigInt, _>(offset as i64)
                         .get_result::<BlockHashBytea>(conn)
                         .optional()?;
@@ -1242,8 +1242,8 @@ impl ChainStoreTrait for ChainStore {
                     &conn,
                     &self.chain,
                     first_block as i64,
-                    ptr.hash,
-                    self.genesis_block_ptr.hash,
+                    ptr.hash_as_h256(),
+                    self.genesis_block_ptr.hash_as_h256(),
                 )?;
                 if !missing.is_empty() {
                     return Ok((missing, None));
@@ -1458,7 +1458,7 @@ fn contract_call_id(
     let mut hash = blake3::Hasher::new();
     hash.update(encoded_call);
     hash.update(contract_address.as_ref());
-    hash.update(block.hash.as_ref());
+    hash.update(block.hash_slice());
     *hash.finalize().as_bytes()
 }
 
@@ -1502,10 +1502,7 @@ pub mod test_support {
         }
 
         pub fn block_ptr(&self) -> EthereumBlockPointer {
-            EthereumBlockPointer {
-                number: self.number,
-                hash: self.block_hash(),
-            }
+            EthereumBlockPointer::from((self.block_hash(), self.number))
         }
 
         pub fn as_ethereum_block(&self) -> EthereumBlock {

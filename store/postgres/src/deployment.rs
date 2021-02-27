@@ -12,6 +12,7 @@ use diesel::{
     sql_types::Nullable,
 };
 use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
+use graph::prelude::web3::types::Bytes;
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
     DeploymentState, EthereumBlockPointer, Schema, StoreError, SubgraphDeploymentId,
@@ -222,7 +223,7 @@ pub fn forward_block_ptr(
     update(d::table.filter(d::id.eq(id.as_str())))
         .set((
             d::latest_ethereum_block_number.eq(sql(&number)),
-            d::latest_ethereum_block_hash.eq(ptr.hash.as_bytes()),
+            d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
             d::current_reorg_depth.eq(0),
         ))
         .execute(conn)
@@ -243,7 +244,7 @@ pub fn revert_block_ptr(
     update(d::table.filter(d::id.eq(id.as_str())))
         .set((
             d::latest_ethereum_block_number.eq(sql(&number)),
-            d::latest_ethereum_block_hash.eq(ptr.hash.as_bytes()),
+            d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
             d::reorg_count.eq(d::reorg_count + 1),
             d::current_reorg_depth.eq(d::current_reorg_depth + 1),
             d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
@@ -413,7 +414,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
             e::message.eq(message),
             e::handler.eq(handler),
             e::deterministic.eq(deterministic),
-            e::block_hash.eq(block_ptr.as_ref().map(|ptr| ptr.hash.as_bytes())),
+            e::block_hash.eq(block_ptr.as_ref().map(|ptr| ptr.hash_slice())),
             e::block_range.eq((Bound::Included(block_num), Bound::Unbounded)),
         ))
         .on_conflict_do_nothing()
@@ -624,6 +625,10 @@ pub fn create_deployment(
         hash.as_ref().map(|hash| hash.as_bytes())
     }
 
+    fn b(hash: &Option<Bytes>) -> Option<&[u8]> {
+        hash.as_ref().map(|hash| hash.0.as_slice())
+    }
+
     fn n(number: Option<u64>) -> SqlLiteral<Nullable<Numeric>> {
         match number {
             None => sql("null"),
@@ -673,7 +678,7 @@ pub fn create_deployment(
         d::latest_ethereum_block_number.eq(n(latest_ethereum_block_number)),
         d::entity_count.eq(sql("0")),
         d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),
-        d::graft_block_hash.eq(h(&graft_block_hash)),
+        d::graft_block_hash.eq(b(&graft_block_hash)),
         d::graft_block_number.eq(n(graft_block_number)),
         d::block_range.eq(UNVERSIONED_RANGE),
     );

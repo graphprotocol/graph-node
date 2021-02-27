@@ -450,7 +450,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
 
             let ident = EthereumNetworkIdentifier {
                 net_version: NETWORK_VERSION.to_owned(),
-                genesis_block_hash: GENESIS_PTR.hash,
+                genesis_block_hash: GENESIS_PTR.hash_as_h256(),
             };
 
             (

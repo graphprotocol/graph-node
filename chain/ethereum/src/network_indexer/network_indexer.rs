@@ -322,10 +322,7 @@ fn load_parent_block_from_store(
         })
         .map(move |parent_hash: H256| {
             // Create a block pointer for the parent
-            EthereumBlockPointer {
-                number: block_ptr.number - 1,
-                hash: parent_hash,
-            }
+            EthereumBlockPointer::from((parent_hash, block_ptr.number - 1))
         }),
     )
 }
