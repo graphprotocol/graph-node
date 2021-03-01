@@ -4,7 +4,7 @@ version = "0.22.0"
 edition = "2018"
 
 [dependencies]
-async-trait = "0.1.41"
+async-trait = "0.1.42"
 blake3 = "0.3.7"
 derive_more = { version = "0.99.11" }
 diesel = { version = "1.4.5", features = ["postgres", "serde_json", "numeric", "r2d2"] }
