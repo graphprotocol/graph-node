@@ -27,7 +27,7 @@ http = "0.2"
 futures = "0.1.21"
 graphql-parser = "0.3"
 lazy_static = "1.4.0"
-mockall = "0.8"
+mockall = "0.9"
 num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.0"
 num-traits = "0.2"
