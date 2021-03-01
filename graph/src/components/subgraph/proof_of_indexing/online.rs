@@ -3,7 +3,7 @@
 //! to the reference implementation, but this is updated incrementally
 
 use super::ProofOfIndexingEvent;
-use crate::prelude::{debug, EthereumBlockPointer, Logger, SubgraphDeploymentId};
+use crate::prelude::{debug, BlockNumber, EthereumBlockPointer, Logger, SubgraphDeploymentId};
 use lazy_static::lazy_static;
 use stable_hash::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash::prelude::*;
@@ -65,7 +65,7 @@ fn traverse_seq_no(counts: &[usize]) -> Blake3SeqNo {
 }
 
 impl BlockEventStream {
-    fn new(block_number: u64) -> Self {
+    fn new(block_number: BlockNumber) -> Self {
         let events = traverse_seq_no(&[
             1,                                // kvp -> v
             0,                                // CausalityRegion.blocks: Vec<Block>
@@ -101,7 +101,7 @@ impl BlockEventStream {
 
 #[derive(Default)]
 pub struct ProofOfIndexing {
-    block_number: u64,
+    block_number: BlockNumber,
     /// The POI is updated for each data source independently. This is necessary because
     /// some data sources (eg: IPFS files) may be unreliable and therefore cannot mix
     /// state with other data sources. This may also give us some freedom to change
@@ -116,7 +116,7 @@ impl fmt::Debug for ProofOfIndexing {
 }
 
 impl ProofOfIndexing {
-    pub fn new(block_number: u64) -> Self {
+    pub fn new(block_number: BlockNumber) -> Self {
         Self {
             block_number,
             per_causality_region: HashMap::new(),
@@ -154,7 +154,7 @@ impl ProofOfIndexing {
 }
 
 pub struct ProofOfIndexingFinisher {
-    block_number: u64,
+    block_number: BlockNumber,
     state: SetHasher,
     causality_count: usize,
 }

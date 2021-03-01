@@ -16,9 +16,9 @@ use fail::fail_point;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
-    static ref MAX_BLOCK_RANGE_SIZE: u64 = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
+    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
         .unwrap_or("2000".into())
-        .parse::<u64>()
+        .parse::<BlockNumber>()
         .expect("invalid GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE");
 
     /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
@@ -70,7 +70,7 @@ enum ReconciliationStep {
     Revert(EthereumBlockPointer),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
-    ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>, u64),
+    ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>, BlockNumber),
 
     /// This step is a no-op, but we need to check again for a next step.
     Retry,
@@ -86,17 +86,21 @@ struct BlockStreamContext<S, C> {
     eth_adapter: Arc<dyn EthereumAdapter>,
     node_id: NodeId,
     subgraph_id: SubgraphDeploymentId,
-    reorg_threshold: u64,
+    // This is not really a block number, but the (unsigned) difference
+    // between two block numbers
+    reorg_threshold: BlockNumber,
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
-    start_blocks: Vec<u64>,
+    start_blocks: Vec<BlockNumber>,
     include_calls_in_blocks: bool,
     logger: Logger,
     metrics: Arc<BlockStreamMetrics>,
     previous_triggers_per_block: f64,
-    previous_block_range_size: u64,
-    max_block_range_size: u64,
+    // Not a BlockNumber, but the difference between two block numbers
+    previous_block_range_size: BlockNumber,
+    // Not a BlockNumber, but the difference between two block numbers
+    max_block_range_size: BlockNumber,
 }
 
 impl<S, C> Clone for BlockStreamContext<S, C> {
@@ -132,7 +136,7 @@ pub struct BlockStream<S, C> {
 // This is the same as `ReconciliationStep` but without retries.
 enum NextBlocks {
     /// Blocks and range size
-    Blocks(VecDeque<EthereumBlockWithTriggers>, u64),
+    Blocks(VecDeque<EthereumBlockWithTriggers>, BlockNumber),
 
     /// Revert the current block pointed at by the subgraph pointer.
     Revert(EthereumBlockPointer),
@@ -153,9 +157,9 @@ where
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
-        start_blocks: Vec<u64>,
+        start_blocks: Vec<BlockNumber>,
         include_calls_in_blocks: bool,
-        reorg_threshold: u64,
+        reorg_threshold: BlockNumber,
         logger: Logger,
         metrics: Arc<BlockStreamMetrics>,
     ) -> Self {
@@ -360,11 +364,11 @@ where
 
                             // Get the next subsequent data source start block to ensure the block range
                             // is aligned with data source.
-                            let next_start_block: u64 = start_blocks
+                            let next_start_block: BlockNumber = start_blocks
                                 .into_iter()
                                 .filter(|block_num| block_num > &from)
                                 .min()
-                                .unwrap_or(std::u64::MAX);
+                                .unwrap_or(BLOCK_NUMBER_MAX);
 
                             // End either just before the the next data source start_block or
                             // just prior to the reorg threshold. It isn't safe to go any farther
@@ -395,7 +399,7 @@ where
                                     / ctx.previous_triggers_per_block)
                                     .max(1.0)
                                     .min(range_size_upper_limit as f64)
-                                    as u64
+                                    as BlockNumber
                             };
                             let to = cmp::min(from + range_size - 1, to_limit);
 
@@ -497,7 +501,10 @@ where
                                     .calls_in_block(
                                         &logger,
                                         ctx.metrics.ethrpc_metrics.clone(),
-                                        head_ancestor.block.number.unwrap().as_u64(),
+                                        BlockNumber::try_from(
+                                            head_ancestor.block.number.unwrap().as_u64(),
+                                        )
+                                        .unwrap(),
                                         head_ancestor.block.hash.unwrap(),
                                     )
                                     .map(move |calls| EthereumBlockWithCalls {
@@ -727,7 +734,7 @@ pub struct BlockStreamBuilder<S, B, M> {
     block_store: Arc<B>,
     eth_networks: EthereumNetworks,
     node_id: NodeId,
-    reorg_threshold: u64,
+    reorg_threshold: BlockNumber,
     metrics_registry: Arc<M>,
 }
 
@@ -755,7 +762,7 @@ where
         block_store: Arc<B>,
         eth_networks: EthereumNetworks,
         node_id: NodeId,
-        reorg_threshold: u64,
+        reorg_threshold: BlockNumber,
         metrics_registry: Arc<M>,
     ) -> Self {
         BlockStreamBuilder {
@@ -782,7 +789,7 @@ where
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
         network_name: String,
-        start_blocks: Vec<u64>,
+        start_blocks: Vec<BlockNumber>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,
@@ -847,7 +854,7 @@ fn test_reorg(ptr: EthereumBlockPointer) -> bool {
         if REORGED.is_completed() {
             return false;
         }
-        let reorg_at = u64::from_str(&reorg_at.unwrap()).unwrap();
+        let reorg_at = BlockNumber::from_str(&reorg_at.unwrap()).unwrap();
         let should_reorg = ptr.number == reorg_at;
         if should_reorg {
             REORGED.call_once(|| {})

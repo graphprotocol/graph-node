@@ -38,7 +38,7 @@ struct IndexingInputs<B, S, C> {
     deployment_id: SubgraphDeploymentId,
     features: BTreeSet<SubgraphFeature>,
     network_name: String,
-    start_blocks: Vec<u64>,
+    start_blocks: Vec<BlockNumber>,
     store: Arc<S>,
     chain_store: Arc<C>,
     eth_adapter: Arc<dyn EthereumAdapter>,

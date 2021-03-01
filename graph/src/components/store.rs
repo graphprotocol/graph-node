@@ -764,7 +764,7 @@ pub enum StoreError {
         "subgraph `{0}` has already processed block `{1}`; \
          there are most likely two (or more) nodes indexing this subgraph"
     )]
-    DuplicateBlockProcessing(SubgraphDeploymentId, u64),
+    DuplicateBlockProcessing(SubgraphDeploymentId, BlockNumber),
     /// An internal error where we expected the application logic to enforce
     /// some constraint, e.g., that subgraph names are unique, but found that
     /// constraint to not hold
@@ -823,7 +823,7 @@ pub struct StoredDynamicDataSource {
     pub name: String,
     pub source: Source,
     pub context: Option<String>,
-    pub creation_block: Option<u64>,
+    pub creation_block: Option<BlockNumber>,
 }
 
 impl From<&DataSource> for StoredDynamicDataSource {
@@ -1281,7 +1281,7 @@ pub trait ChainStore: Send + Sync + 'static {
     ///
     /// If the candidate new head block had one or more missing ancestors, returns
     /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
-    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
+    fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
     /// Subscribe to chain head updates.
     fn chain_head_updates(&self) -> ChainHeadUpdateStream;
@@ -1304,7 +1304,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn ancestor_block(
         &self,
         block_ptr: EthereumBlockPointer,
-        offset: u64,
+        offset: BlockNumber,
     ) -> Result<Option<EthereumBlock>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and
@@ -1312,14 +1312,17 @@ pub trait ChainStore: Send + Sync + 'static {
     /// and the number of blocks deleted.
     /// We will never remove blocks that are within `ancestor_count` of
     /// the chain head.
-    fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error>;
+    fn cleanup_cached_blocks(
+        &self,
+        ancestor_count: BlockNumber,
+    ) -> Result<(BlockNumber, usize), Error>;
 
     /// Return the hashes of all blocks with the given number
-    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
+    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error>;
 
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number
-    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error>;
+    fn confirm_block_hash(&self, number: BlockNumber, hash: &H256) -> Result<usize, Error>;
 
     /// Find the block with `block_hash` and return the network name and number
     fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;

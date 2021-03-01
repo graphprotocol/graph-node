@@ -915,7 +915,7 @@ impl DeploymentStore {
             // Don't revert past a graft point
             let info = self.subgraph_info_with_conn(&conn, &site.deployment)?;
             if let Some(graft_block) = info.graft_block {
-                if graft_block as u64 > block_ptr_to.number {
+                if graft_block > block_ptr_to.number {
                     return Err(anyhow!(
                         "Can not revert subgraph `{}` to block {} as it was \
                         grafted at block {} and reverting past a graft point \

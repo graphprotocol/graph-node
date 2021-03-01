@@ -464,7 +464,7 @@ pub struct Source {
     pub address: Option<Address>,
     pub abi: String,
     #[serde(rename = "startBlock", default)]
-    pub start_block: u64,
+    pub start_block: BlockNumber,
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
@@ -674,7 +674,7 @@ pub struct BaseDataSource<M> {
     pub mapping: M,
     pub context: Option<DataSourceContext>,
     #[serde(skip)]
-    pub creation_block: Option<u64>,
+    pub creation_block: Option<BlockNumber>,
 }
 
 pub type UnresolvedDataSource = BaseDataSource<UnresolvedMapping>;
@@ -816,7 +816,7 @@ impl Graft {
                 self.base
             )),
             Ok(Some(ptr)) => {
-                if ptr.number < self.block as u64 {
+                if ptr.number < self.block {
                     gbi(format!(
                         "failed to graft onto `{}` at block {} since it has only processed block {}",
                         self.base, self.block, ptr.number
@@ -1038,7 +1038,7 @@ impl SubgraphManifest {
             .expect("Validated manifest does not have a network defined on any datasource")
     }
 
-    pub fn start_blocks(&self) -> Vec<u64> {
+    pub fn start_blocks(&self) -> Vec<BlockNumber> {
         self.data_sources
             .iter()
             .map(|data_source| data_source.source.start_block)

@@ -504,7 +504,7 @@ mod data {
             &self,
             conn: &PgConnection,
             chain: &str,
-            number: u64,
+            number: BlockNumber,
         ) -> Result<Vec<H256>, Error> {
             match self {
                 Storage::Shared => {
@@ -536,7 +536,7 @@ mod data {
             &self,
             conn: &PgConnection,
             chain: &str,
-            number: u64,
+            number: BlockNumber,
             hash: &H256,
         ) -> Result<usize, Error> {
             let number = number as i64;
@@ -751,7 +751,7 @@ mod data {
             &self,
             conn: &PgConnection,
             block_ptr: EthereumBlockPointer,
-            offset: u64,
+            offset: BlockNumber,
         ) -> Result<Option<EthereumBlock>, Error> {
             let data = match self {
                 Storage::Shared => {
@@ -1171,7 +1171,7 @@ impl ChainStore {
         Ok(HashMap::from_iter(pointers))
     }
 
-    pub fn chain_head_block(&self, chain: &str) -> Result<Option<u64>, StoreError> {
+    pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         use public::ethereum_networks as n;
 
         let number: Option<i64> = n::table
@@ -1226,7 +1226,7 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
-    fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error> {
+    fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error> {
         use public::ethereum_networks as n;
 
         let (missing, ptr) = {
@@ -1299,7 +1299,7 @@ impl ChainStoreTrait for ChainStore {
     fn ancestor_block(
         &self,
         block_ptr: EthereumBlockPointer,
-        offset: u64,
+        offset: BlockNumber,
     ) -> Result<Option<EthereumBlock>, Error> {
         ensure!(
             block_ptr.number >= offset,
@@ -1312,7 +1312,10 @@ impl ChainStoreTrait for ChainStore {
         self.storage.ancestor_block(&conn, block_ptr, offset)
     }
 
-    fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error> {
+    fn cleanup_cached_blocks(
+        &self,
+        ancestor_count: BlockNumber,
+    ) -> Result<(BlockNumber, usize), Error> {
         use diesel::sql_types::Integer;
 
         #[derive(QueryableByName)]
@@ -1377,13 +1380,13 @@ impl ChainStoreTrait for ChainStore {
             .map_err(|e| e.into())
     }
 
-    fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error> {
+    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error> {
         let conn = self.get_conn()?;
         self.storage
             .block_hashes_by_block_number(&conn, &self.chain, number)
     }
 
-    fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error> {
+    fn confirm_block_hash(&self, number: BlockNumber, hash: &H256) -> Result<usize, Error> {
         let conn = self.get_conn()?;
         self.storage
             .confirm_block_hash(&conn, &self.chain, number, hash)
@@ -1467,7 +1470,7 @@ fn contract_call_id(
 pub mod test_support {
     use std::str::FromStr;
 
-    use graph::prelude::{web3::types::H256, EthereumBlock, EthereumBlockPointer};
+    use graph::prelude::{web3::types::H256, BlockNumber, EthereumBlock, EthereumBlockPointer};
 
     // Hash indicating 'no parent'
     pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -1475,7 +1478,7 @@ pub mod test_support {
     /// the block number, hash, and the hash of the parent block
     #[derive(Clone, Debug, PartialEq)]
     pub struct FakeBlock {
-        pub number: u64,
+        pub number: BlockNumber,
         pub hash: String,
         pub parent_hash: String,
     }
@@ -1489,7 +1492,7 @@ pub mod test_support {
             }
         }
 
-        pub fn make_no_parent(number: u64, hash: &str) -> Self {
+        pub fn make_no_parent(number: BlockNumber, hash: &str) -> Self {
             FakeBlock {
                 number,
                 hash: hash.to_owned(),

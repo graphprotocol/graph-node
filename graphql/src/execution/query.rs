@@ -313,7 +313,7 @@ impl Query {
     pub fn log_cache_status(
         &self,
         selection_set: &q::SelectionSet,
-        block: u64,
+        block: BlockNumber,
         start: Instant,
         cache_status: String,
     ) {

@@ -11,12 +11,12 @@ use web3::types::{
     U128, U256, U64,
 };
 
-use crate::prelude::{EntityKey, SubgraphDeploymentId, ToEntityKey};
+use crate::prelude::{BlockNumber, EntityKey, SubgraphDeploymentId, ToEntityKey};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
 pub trait LightEthereumBlockExt {
-    fn number(&self) -> u64;
+    fn number(&self) -> BlockNumber;
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
@@ -25,8 +25,8 @@ pub trait LightEthereumBlockExt {
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
-    fn number(&self) -> u64 {
-        self.number.unwrap().as_u64()
+    fn number(&self) -> BlockNumber {
+        BlockNumber::try_from(self.number.unwrap().as_u64()).unwrap()
     }
 
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
@@ -83,7 +83,7 @@ impl BlockFinality {
         }
     }
 
-    pub fn number(&self) -> u64 {
+    pub fn number(&self) -> BlockNumber {
         match self {
             BlockFinality::Final(block) => block.number(),
             BlockFinality::NonFinal(block) => block.ethereum_block.block.number(),
@@ -129,7 +129,7 @@ pub struct EthereumCall {
     pub gas_used: U256,
     pub input: Bytes,
     pub output: Bytes,
-    pub block_number: u64,
+    pub block_number: BlockNumber,
     pub block_hash: H256,
     pub transaction_hash: Option<H256>,
     transaction_index: u64,
@@ -165,7 +165,7 @@ impl EthereumCall {
             gas_used,
             input: call.input.clone(),
             output,
-            block_number: trace.block_number,
+            block_number: trace.block_number as BlockNumber,
             block_hash: trace.block_hash,
             transaction_hash: trace.transaction_hash,
             transaction_index,
@@ -207,11 +207,11 @@ pub enum EthereumBlockTriggerType {
 }
 
 impl EthereumTrigger {
-    pub fn block_number(&self) -> u64 {
+    pub fn block_number(&self) -> BlockNumber {
         match self {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.number,
             EthereumTrigger::Call(call) => call.block_number,
-            EthereumTrigger::Log(log) => log.block_number.unwrap().as_u64(),
+            EthereumTrigger::Log(log) => i32::try_from(log.block_number.unwrap().as_u64()).unwrap(),
         }
     }
 
@@ -411,11 +411,11 @@ impl Clone for EthereumCallData {
 
 /// A block hash and block number from a specific Ethereum block.
 ///
-/// Maximum block number supported: 2^63 - 1
+/// Block numbers are signed 32 bit integers
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EthereumBlockPointer {
     pub hash: Bytes,
-    pub number: u64,
+    pub number: BlockNumber,
 }
 
 impl StableHash for EthereumBlockPointer {
@@ -437,16 +437,8 @@ impl EthereumBlockPointer {
     }
 
     /// Block number to be passed into the store. Panics if it does not fit in an i32.
-    pub fn block_number(&self) -> crate::components::store::BlockNumber {
-        if self.number <= std::i32::MAX as u64 {
-            self.number as i32
-        } else {
-            panic!(
-                "Block numbers bigger than {} are not supported, but received block number {}",
-                std::i32::MAX,
-                self.number
-            )
-        }
+    pub fn block_number(&self) -> BlockNumber {
+        self.number
     }
 
     pub fn hash_as_h256(&self) -> H256 {
@@ -488,16 +480,20 @@ impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
     }
 }
 
-impl From<(H256, u64)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
-        if number >= (1 << 63) {
-            panic!("block number out of range: {}", number);
-        }
-
+impl From<(H256, i32)> for EthereumBlockPointer {
+    fn from((hash, number): (H256, i32)) -> EthereumBlockPointer {
         EthereumBlockPointer {
             hash: Bytes(hash.as_bytes().to_vec()),
             number,
         }
+    }
+}
+
+impl From<(H256, u64)> for EthereumBlockPointer {
+    fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
+        let number = i32::try_from(number).unwrap();
+
+        EthereumBlockPointer::from((hash, number))
     }
 }
 
@@ -559,7 +555,7 @@ impl From<EthereumBlockPointer> for H256 {
     }
 }
 
-impl From<EthereumBlockPointer> for u64 {
+impl From<EthereumBlockPointer> for BlockNumber {
     fn from(ptr: EthereumBlockPointer) -> Self {
         ptr.number
     }

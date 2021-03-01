@@ -46,7 +46,7 @@ struct RuntimeHostConfig {
     data_source_network: String,
     data_source_name: String,
     data_source_context: Option<DataSourceContext>,
-    data_source_creation_block: Option<u64>,
+    data_source_creation_block: Option<BlockNumber>,
     contract: Source,
     templates: Arc<Vec<DataSourceTemplate>>,
 }
@@ -187,7 +187,7 @@ pub struct RuntimeHost {
     data_source_event_handlers: Vec<MappingEventHandler>,
     data_source_call_handlers: Vec<MappingCallHandler>,
     data_source_block_handlers: Vec<MappingBlockHandler>,
-    data_source_creation_block: Option<u64>,
+    data_source_creation_block: Option<BlockNumber>,
     mapping_request_sender: Sender<MappingRequest>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
@@ -471,7 +471,8 @@ impl RuntimeHostTrait for RuntimeHost {
     fn matches_log(&self, log: &Log) -> bool {
         self.matches_log_address(log)
             && self.matches_log_signature(log)
-            && self.data_source_contract.start_block <= log.block_number.unwrap().as_u64()
+            && self.data_source_contract.start_block
+                <= BlockNumber::try_from(log.block_number.unwrap().as_u64()).unwrap()
     }
 
     fn matches_call(&self, call: &EthereumCall) -> bool {
@@ -483,7 +484,7 @@ impl RuntimeHostTrait for RuntimeHost {
     fn matches_block(
         &self,
         block_trigger_type: &EthereumBlockTriggerType,
-        block_number: u64,
+        block_number: BlockNumber,
     ) -> bool {
         self.matches_block_trigger(block_trigger_type)
             && self.data_source_contract.start_block <= block_number
@@ -738,7 +739,7 @@ impl RuntimeHostTrait for RuntimeHost {
         .await
     }
 
-    fn creation_block_number(&self) -> Option<u64> {
+    fn creation_block_number(&self) -> Option<BlockNumber> {
         self.data_source_creation_block
     }
 }

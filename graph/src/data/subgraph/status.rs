@@ -27,7 +27,7 @@ impl EthereumBlock {
         self.0
     }
 
-    pub fn number(&self) -> u64 {
+    pub fn number(&self) -> i32 {
         self.0.number
     }
 }

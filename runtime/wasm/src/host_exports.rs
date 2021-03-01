@@ -680,7 +680,7 @@ impl HostExports {
         name: String,
         params: Vec<String>,
         context: Option<DataSourceContext>,
-        creation_block: u64,
+        creation_block: BlockNumber,
     ) -> Result<(), HostExportError> {
         info!(
             logger,

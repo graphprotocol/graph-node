@@ -30,7 +30,7 @@ mock! {
 
         fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 
-        fn attempt_chain_head_update(&self, ancestor_count: u64) -> Result<Vec<H256>, Error>;
+        fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
         fn chain_head_updates(&self) -> ChainHeadUpdateStream;
 
@@ -41,14 +41,14 @@ mock! {
         fn ancestor_block(
             &self,
             block_ptr: EthereumBlockPointer,
-            offset: u64,
+            offset: BlockNumber,
         ) -> Result<Option<EthereumBlock>, Error>;
 
-        fn cleanup_cached_blocks(&self, ancestor_count: u64) -> Result<(BlockNumber, usize), Error>;
+        fn cleanup_cached_blocks(&self, ancestor_count: BlockNumber) -> Result<(BlockNumber, usize), Error>;
 
-        fn block_hashes_by_block_number(&self, number: u64) -> Result<Vec<H256>, Error>;
+        fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error>;
 
-        fn confirm_block_hash(&self, number: u64, hash: &H256) -> Result<usize, Error>;
+        fn confirm_block_hash(&self, number: BlockNumber, hash: &H256) -> Result<usize, Error>;
 
         fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
     }

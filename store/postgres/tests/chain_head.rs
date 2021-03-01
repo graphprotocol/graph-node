@@ -4,8 +4,8 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use graph::prelude::QueryStoreManager;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
+use graph::prelude::{BlockNumber, QueryStoreManager};
 use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::SubgraphDeploymentId};
 use graph::{components::store::ChainStore as _, prelude::EthereumCallCache as _};
@@ -20,7 +20,7 @@ use test_store::*;
 
 // The ancestor count we use for chain head updates. We keep this very small
 // to make setting up the tests easier
-const ANCESTOR_COUNT: u64 = 3;
+const ANCESTOR_COUNT: BlockNumber = 3;
 
 /// Test harness for running database integration tests.
 fn run_test<F>(chain: Chain, test: F)
@@ -248,7 +248,7 @@ fn block_hashes_by_number() {
 fn check_ancestor(
     store: &Arc<DieselChainStore>,
     child: &FakeBlock,
-    offset: u64,
+    offset: BlockNumber,
     exp: &FakeBlock,
 ) -> Result<(), Error> {
     let act = store
@@ -288,7 +288,7 @@ fn ancestor_block_simple() {
         check_ancestor(&store, &*BLOCK_THREE, 2, &*BLOCK_ONE)?;
 
         for offset in [6, 7, 8, 50].iter() {
-            let offset = offset.clone() as u64;
+            let offset = offset.clone();
             let res = store.ancestor_block(BLOCK_FIVE.block_ptr(), offset);
             assert!(res.is_err());
         }

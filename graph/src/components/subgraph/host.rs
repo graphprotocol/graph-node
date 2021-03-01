@@ -45,7 +45,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
     fn matches_call(&self, call: &EthereumCall) -> bool;
 
     /// Returns true if the RuntimeHost has a handler for an Ethereum block.
-    fn matches_block(&self, call: &EthereumBlockTriggerType, block_number: u64) -> bool;
+    fn matches_block(&self, call: &EthereumBlockTriggerType, block_number: BlockNumber) -> bool;
 
     /// Process an Ethereum event and return a vector of entity operations.
     async fn process_log(
@@ -81,7 +81,7 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
 
     /// Block number in which this host was created.
     /// Returns `None` for static data sources.
-    fn creation_block_number(&self) -> Option<u64>;
+    fn creation_block_number(&self) -> Option<BlockNumber>;
 }
 
 pub struct HostMetrics {

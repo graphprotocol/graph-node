@@ -50,16 +50,6 @@ fn to_source(
     }
     let address = Some(H160::from_slice(address.as_slice()));
 
-    // Assume a missing start block is the same as 0
-    let start_block = start_block.to_u64().ok_or_else(|| {
-        constraint_violation!(
-            "Start block {:?} for dynamic data source {} in deployment {} is not a u64",
-            start_block,
-            vid,
-            deployment
-        )
-    })?;
-
     Ok(Source {
         address,
         abi,
@@ -98,7 +88,7 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
     let mut data_sources: Vec<StoredDynamicDataSource> = Vec::new();
     for (vid, name, context, address, abi, start_block, creation_block) in dds.into_iter() {
         let source = to_source(id, vid, address, abi, start_block)?;
-        let creation_block = creation_block.to_u64();
+        let creation_block = creation_block.to_i32();
         let data_source = StoredDynamicDataSource {
             name,
             source,

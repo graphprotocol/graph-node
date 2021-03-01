@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use futures::prelude::*;
 
-use crate::prelude::Schema;
+use crate::prelude::{BlockNumber, Schema};
 
 #[derive(Debug)]
 /// This is only needed to support the explorer API
 pub struct VersionInfo {
     pub created_at: String,
     pub deployment_id: String,
-    pub latest_ethereum_block_number: Option<u64>,
-    pub total_ethereum_blocks_count: Option<u64>,
+    pub latest_ethereum_block_number: Option<BlockNumber>,
+    pub total_ethereum_blocks_count: Option<BlockNumber>,
     pub synced: bool,
     pub failed: bool,
     pub description: Option<String>,

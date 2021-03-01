@@ -18,7 +18,7 @@ pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
         network_name: String,
-        start_blocks: Vec<u64>,
+        start_blocks: Vec<BlockNumber>,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,

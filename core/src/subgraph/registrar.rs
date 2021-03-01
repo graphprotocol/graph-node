@@ -472,11 +472,7 @@ fn resolve_subgraph_chain_blocks(
                     let base_block = base.block;
                     Box::new(
                         ethereum_adapter
-                            .block_pointer_from_number(
-                                &logger1,
-                                chain_store1.clone(),
-                                base.block as u64,
-                            )
+                            .block_pointer_from_number(&logger1, chain_store1.clone(), base.block)
                             .map(|ptr| Some((base.base, ptr)))
                             .map_err(move |_| {
                                 SubgraphRegistrarError::ManifestValidationError(vec![

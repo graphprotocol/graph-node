@@ -8,7 +8,7 @@ use rand::Rng;
 use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
-use web3::types::*;
+use web3::types::{Bytes, H256};
 
 use super::SubgraphDeploymentId;
 use crate::components::{ethereum::EthereumBlockPointer, store::EntityType};
@@ -104,12 +104,12 @@ pub struct SubgraphDeploymentEntity {
     pub fatal_error: Option<SubgraphError>,
     pub non_fatal_errors: Vec<SubgraphError>,
     pub earliest_ethereum_block_hash: Option<H256>,
-    pub earliest_ethereum_block_number: Option<u64>,
+    pub earliest_ethereum_block_number: Option<BlockNumber>,
     pub latest_ethereum_block_hash: Option<H256>,
-    pub latest_ethereum_block_number: Option<u64>,
+    pub latest_ethereum_block_number: Option<BlockNumber>,
     pub graft_base: Option<SubgraphDeploymentId>,
     pub graft_block_hash: Option<Bytes>,
-    pub graft_block_number: Option<u64>,
+    pub graft_block_number: Option<BlockNumber>,
     pub reorg_count: i32,
     pub current_reorg_depth: i32,
     pub max_reorg_depth: i32,

@@ -14,7 +14,7 @@ pub struct DataSourceTemplateInfo {
     pub template: DataSourceTemplate,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,
-    pub creation_block: u64,
+    pub creation_block: BlockNumber,
 }
 
 #[derive(Debug)]
@@ -140,5 +140,5 @@ pub trait SubgraphInstance<H: RuntimeHost> {
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<H>>, anyhow::Error>;
 
-    fn revert_data_sources(&mut self, reverted_block: u64);
+    fn revert_data_sources(&mut self, reverted_block: BlockNumber);
 }

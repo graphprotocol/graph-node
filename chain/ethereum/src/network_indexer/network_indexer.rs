@@ -173,7 +173,7 @@ fn fetch_block_and_ommers_by_number(
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
     metrics: Arc<NetworkIndexerMetrics>,
-    block_number: u64,
+    block_number: BlockNumber,
 ) -> BlockFuture {
     let logger_for_err = logger.clone();
 
@@ -250,7 +250,7 @@ fn fetch_block_and_ommers_by_number(
     )
 }
 
-fn fetch_blocks(context: &Context, block_numbers: Range<u64>) -> BlockStream {
+fn fetch_blocks(context: &Context, block_numbers: Range<BlockNumber>) -> BlockStream {
     let logger = context.logger.clone();
     let adapter = context.adapter.clone();
     let metrics = context.metrics.clone();
@@ -433,7 +433,7 @@ fn update_chain_and_local_head_metrics(
     context
         .metrics
         .local_head
-        .set(local_head.map_or(0u64, |ptr| ptr.number) as f64);
+        .set(local_head.map_or(0 as BlockNumber, |ptr| ptr.number) as f64);
 }
 
 /**
@@ -763,8 +763,11 @@ impl PollStateMachine for StateMachine {
 
                 // Ignore the chain head if its number is below the current local head;
                 // it would mean we're switching to a shorter chain, which makes no sense
-                if chain_head.number.unwrap().as_u64()
-                    < state.local_head.as_ref().map_or(0u64, |ptr| ptr.number)
+                if chain_head.number()
+                    < state
+                        .local_head
+                        .as_ref()
+                        .map_or(0 as BlockNumber, |ptr| ptr.number)
                 {
                     debug!(
                         context.logger,
@@ -784,9 +787,8 @@ impl PollStateMachine for StateMachine {
 
                 // Calculate the number of blocks remaining before we are in sync with the
                 // network; fetch no more than 1000 blocks at a time.
-                let chain_head_number = chain_head.number.unwrap().as_u64();
-                let next_block_number =
-                    state.local_head.as_ref().map_or(0u64, |ptr| ptr.number + 1);
+                let chain_head_number = chain_head.number();
+                let next_block_number = state.local_head.as_ref().map_or(0, |ptr| ptr.number + 1);
                 let remaining_blocks = chain_head_number + 1 - next_block_number;
                 let block_range_size = remaining_blocks.min(1000);
                 let block_numbers = next_block_number..(next_block_number + block_range_size);
@@ -927,11 +929,11 @@ impl PollStateMachine for StateMachine {
         // The `PollChainHead` state already guards against indexing shorter
         // chains; this check here is just to catch bugs in the subsequent
         // block fetching.
-        let block_number = block.inner().number.unwrap().as_u64();
+        let block_number = block.inner().number();
         match &state.local_head {
             None => {
                 assert!(
-                    block_number == context.start_block.as_ref().map_or(0u64, |ptr| ptr.number),
+                    block_number == context.start_block.as_ref().map_or(0, |ptr| ptr.number),
                     "first block must match the start block of the network indexer",
                 );
             }

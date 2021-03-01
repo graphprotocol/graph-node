@@ -295,7 +295,7 @@ where
         })
     }
 
-    fn revert_data_sources(&mut self, reverted_block: u64) {
+    fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
         // `hosts` is ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         while self

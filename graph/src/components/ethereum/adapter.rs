@@ -11,7 +11,7 @@ use std::fmt;
 use std::marker::Unpin;
 use thiserror::Error;
 use tiny_keccak::keccak256;
-use web3::types::*;
+use web3::types::{Address, Block, Log, H2048, H256};
 
 use super::types::*;
 use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
@@ -278,7 +278,7 @@ impl EthereumLogFilter {
 pub struct EthereumCallFilter {
     // Each call filter has a map of filters keyed by address, each containing a tuple with
     // start_block and the set of function signatures
-    pub contract_addresses_function_signatures: HashMap<Address, (u64, HashSet<[u8; 4]>)>,
+    pub contract_addresses_function_signatures: HashMap<Address, (BlockNumber, HashSet<[u8; 4]>)>,
 }
 
 impl EthereumCallFilter {
@@ -362,7 +362,7 @@ impl EthereumCallFilter {
         contract_addresses_function_signatures.is_empty()
     }
 
-    pub fn start_blocks(&self) -> Vec<u64> {
+    pub fn start_blocks(&self) -> Vec<BlockNumber> {
         self.contract_addresses_function_signatures
             .values()
             .filter(|(start_block, _fn_sigs)| start_block > &0)
@@ -371,12 +371,12 @@ impl EthereumCallFilter {
     }
 }
 
-impl FromIterator<(u64, Address, [u8; 4])> for EthereumCallFilter {
+impl FromIterator<(BlockNumber, Address, [u8; 4])> for EthereumCallFilter {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (u64, Address, [u8; 4])>,
+        I: IntoIterator<Item = (BlockNumber, Address, [u8; 4])>,
     {
-        let mut lookup: HashMap<Address, (u64, HashSet<[u8; 4]>)> = HashMap::new();
+        let mut lookup: HashMap<Address, (BlockNumber, HashSet<[u8; 4]>)> = HashMap::new();
         iter.into_iter()
             .for_each(|(start_block, address, function_signature)| {
                 if !lookup.contains_key(&address) {
@@ -403,14 +403,14 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
                 .contract_addresses
                 .into_iter()
                 .map(|(start_block_opt, address)| (address, (start_block_opt, HashSet::default())))
-                .collect::<HashMap<Address, (u64, HashSet<[u8; 4]>)>>(),
+                .collect::<HashMap<Address, (BlockNumber, HashSet<[u8; 4]>)>>(),
         }
     }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct EthereumBlockFilter {
-    pub contract_addresses: HashSet<(u64, Address)>,
+    pub contract_addresses: HashSet<(BlockNumber, Address)>,
     pub trigger_every_block: bool,
 }
 
@@ -476,7 +476,7 @@ impl EthereumBlockFilter {
         );
     }
 
-    pub fn start_blocks(&self) -> Vec<u64> {
+    pub fn start_blocks(&self) -> Vec<BlockNumber> {
         self.contract_addresses
             .iter()
             .cloned()
@@ -651,8 +651,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn block_range_to_ptrs(
         &self,
         logger: Logger,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send>;
 
     /// Find a block by its hash.
@@ -665,7 +665,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn block_by_number(
         &self,
         logger: &Logger,
-        block_number: u64,
+        block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
@@ -680,7 +680,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
-        block_number: u64,
+        block_number: BlockNumber,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send>;
 
     /// Find a block by its number. The `block_is_final` flag indicates whether
@@ -701,7 +701,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
-        block_number: u64,
+        block_number: BlockNumber,
         block_is_final: bool,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
@@ -734,7 +734,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        block_number: u64,
+        block_number: BlockNumber,
         block_hash: H256,
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send>;
 
@@ -742,8 +742,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         log_filter: EthereumLogFilter,
     ) -> DynTryFuture<'static, Vec<Log>, Error>;
 
@@ -751,8 +751,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         call_filter: EthereumCallFilter,
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send>;
 
@@ -835,13 +835,14 @@ pub async fn triggers_in_block(
 ) -> Result<EthereumBlockWithTriggers, Error> {
     match &ethereum_block {
         BlockFinality::Final(block) => {
+            let block_number = block.number() as BlockNumber;
             let mut blocks = blocks_with_triggers(
                 adapter,
                 logger,
                 chain_store,
                 subgraph_metrics,
-                block.number(),
-                block.number(),
+                block_number,
+                block_number,
                 log_filter,
                 call_filter,
                 block_filter,
@@ -884,8 +885,8 @@ pub async fn blocks_with_triggers(
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-    from: u64,
-    to: u64,
+    from: BlockNumber,
+    to: BlockNumber,
     log_filter: EthereumLogFilter,
     call_filter: EthereumCallFilter,
     block_filter: EthereumBlockFilter,
@@ -967,7 +968,7 @@ pub async fn blocks_with_triggers(
 
     let mut block_hashes: HashSet<H256> =
         triggers.iter().map(EthereumTrigger::block_hash).collect();
-    let mut triggers_by_block: HashMap<u64, Vec<EthereumTrigger>> =
+    let mut triggers_by_block: HashMap<BlockNumber, Vec<EthereumTrigger>> =
         triggers.into_iter().fold(HashMap::new(), |mut map, t| {
             map.entry(t.block_number()).or_default().push(t);
             map
@@ -982,7 +983,7 @@ pub async fn blocks_with_triggers(
     let mut blocks = adapter
         .load_blocks(logger1, chain_store, block_hashes)
         .and_then(
-            move |block| match triggers_by_block.remove(&block.number()) {
+            move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(EthereumBlockWithTriggers::new(
                     triggers,
                     BlockFinality::Final(block),
@@ -1001,8 +1002,8 @@ pub async fn blocks_with_triggers(
 
     // Sanity check that the returned blocks are in the correct range.
     // Unwrap: `blocks` always includes at least `to`.
-    let first = blocks.first().unwrap().ethereum_block.number();
-    let last = blocks.last().unwrap().ethereum_block.number();
+    let first = blocks.first().unwrap().ethereum_block.number() as BlockNumber;
+    let last = blocks.last().unwrap().ethereum_block.number() as BlockNumber;
     if first < from {
         return Err(anyhow!(
             "block {} returned by the Ethereum node is before {}, the first block of the requested range",

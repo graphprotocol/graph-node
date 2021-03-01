@@ -44,16 +44,16 @@ use store_builder::StoreBuilder;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
-    static ref REORG_THRESHOLD: u64 = env::var("ETHEREUM_REORG_THRESHOLD")
+    static ref REORG_THRESHOLD: BlockNumber = env::var("ETHEREUM_REORG_THRESHOLD")
         .ok()
-        .map(|s| u64::from_str(&s)
+        .map(|s| BlockNumber::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_REORG_THRESHOLD")))
         .unwrap_or(50);
 
     // Default to an ancestor count of 50 blocks
-    static ref ANCESTOR_COUNT: u64 = env::var("ETHEREUM_ANCESTOR_COUNT")
+    static ref ANCESTOR_COUNT: BlockNumber = env::var("ETHEREUM_ANCESTOR_COUNT")
         .ok()
-        .map(|s| u64::from_str(&s)
+        .map(|s| BlockNumber::from_str(&s)
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
         .unwrap_or(50);
 }

@@ -5,7 +5,7 @@ use std::{
 
 use graph::{
     components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, EthereumBlockPointer, EthereumNetworkIdentifier, Logger},
+    prelude::{error, BlockNumber, EthereumBlockPointer, EthereumNetworkIdentifier, Logger},
 };
 use graph::{components::store::CallCache as CallCacheTrait, prelude::StoreError};
 use graph::{
@@ -274,7 +274,7 @@ impl BlockStore {
         Ok(map)
     }
 
-    pub fn chain_head_block(&self, chain: &str) -> Result<Option<u64>, StoreError> {
+    pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         let store = self
             .store(chain)
             .ok_or_else(|| constraint_violation!("unknown network `{}`", chain))?;
