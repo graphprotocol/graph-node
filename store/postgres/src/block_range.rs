@@ -68,15 +68,7 @@ pub(crate) fn first_block_in_range(
 /// operation that does not record history, which should not happen
 /// with how we currently use relational schemas
 pub(crate) fn block_number(block_ptr: &EthereumBlockPointer) -> BlockNumber {
-    if block_ptr.number < std::i32::MAX as u64 {
-        block_ptr.number as i32
-    } else {
-        panic!(
-            "Block numbers bigger than {} are not supported, but received block number {}",
-            std::i32::MAX,
-            block_ptr.number
-        )
-    }
+    block_ptr.number
 }
 
 impl From<RangeFrom<BlockNumber>> for BlockRange {

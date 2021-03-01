@@ -217,7 +217,7 @@ fn create_mock_ethereum_adapter(
     let chains_for_block_by_number = chains.clone();
     adapter
         .expect_block_by_number()
-        .returning(move |_, number: u64| {
+        .returning(move |_, number| {
             let chains = chains_for_block_by_number.lock().unwrap();
             Box::new(future::result(
                 chains
@@ -226,7 +226,7 @@ fn create_mock_ethereum_adapter(
                     .map(|chain| {
                         chain
                             .iter()
-                            .find(|block| block.inner().number.unwrap().as_u64() == number)
+                            .find(|block| block.inner().number() == number)
                             .map(|block| block.clone().block.block)
                     }),
             ))

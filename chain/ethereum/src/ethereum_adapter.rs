@@ -8,16 +8,27 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ethabi::ParamType;
-use graph::components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *};
 use graph::prelude::{
     anyhow, debug, error, ethabi,
     futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-    hex, retry, stream, tiny_keccak, trace, warn, web3, ChainStore, CheapClone, DynTryFuture,
-    Error, EthereumCallCache, Logger, TimeoutError,
+    hex, retry, stream, tiny_keccak, trace, warn,
+    web3::{
+        self,
+        types::{
+            Address, Block, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest,
+            FilterBuilder, Log, H256,
+        },
+    },
+    BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
+    TimeoutError,
+};
+use graph::{
+    components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *},
+    prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use web3::api::Web3;
 use web3::transports::batch::Batch;
-use web3::types::{Filter, *};
+use web3::types::Filter;
 
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
@@ -28,18 +39,18 @@ pub struct EthereumAdapter<T: web3::Transport> {
 }
 
 lazy_static! {
-    static ref TRACE_STREAM_STEP_SIZE: u64 = std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
+    static ref TRACE_STREAM_STEP_SIZE: BlockNumber = std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
         .unwrap_or("200".into())
-        .parse::<u64>()
+        .parse::<BlockNumber>()
         .expect("invalid trace stream step size");
 
     /// Maximum range size for `eth.getLogs` requests that dont filter on
     /// contract address, only event signature, and are therefore expensive.
     ///
     /// According to Ethereum node operators, size 500 is reasonable here.
-    static ref MAX_EVENT_ONLY_RANGE: u64 = std::env::var("GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE")
+    static ref MAX_EVENT_ONLY_RANGE: BlockNumber = std::env::var("GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE")
         .unwrap_or("500".into())
-        .parse::<u64>()
+        .parse::<BlockNumber>()
         .expect("invalid number of parallel Ethereum block ranges to scan");
 
     static ref BLOCK_BATCH_SIZE: usize = std::env::var("ETHEREUM_BLOCK_BATCH_SIZE")
@@ -124,8 +135,8 @@ where
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         addresses: Vec<H160>,
     ) -> impl Future<Item = Vec<Trace>, Error = Error> {
         let eth = self.clone();
@@ -211,8 +222,8 @@ where
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         filter: Arc<EthGetLogsFilter>,
         too_many_logs_fingerprints: &'static [&'static str],
     ) -> impl Future<Item = Vec<Log>, Error = TimeoutError<web3::error::Error>> {
@@ -258,8 +269,8 @@ where
         self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         addresses: Vec<H160>,
     ) -> impl Stream<Item = Trace, Error = Error> + Send {
         if from > to {
@@ -308,8 +319,8 @@ where
         &self,
         logger: Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         filter: EthGetLogsFilter,
     ) -> DynTryFuture<'static, Vec<Log>, Error> {
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
@@ -578,7 +589,7 @@ where
     fn load_block_ptrs_rpc(
         &self,
         logger: Logger,
-        block_nums: Vec<u64>,
+        block_nums: Vec<BlockNumber>,
     ) -> impl Stream<Item = EthereumBlockPointer, Error = Error> + Send {
         let web3 = self.web3.clone();
 
@@ -589,7 +600,7 @@ where
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
-                        .block(BlockId::Number(BlockNumber::Number(block_num.into())))
+                        .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
                         .from_err::<Error>()
                         .and_then(move |block| {
                             block.ok_or_else(|| {
@@ -632,7 +643,7 @@ where
             .timeout_secs(30)
             .run(move || {
                 web3.eth()
-                    .block(BlockId::Number(BlockNumber::Number(0.into())))
+                    .block(BlockId::Number(Web3BlockNumber::Number(0.into())))
                     .from_err()
                     .and_then(|gen_block_opt| {
                         future::result(
@@ -674,7 +685,7 @@ where
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
-                        .block(BlockNumber::Latest.into())
+                        .block(Web3BlockNumber::Latest.into())
                         .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))
                         .from_err()
                         .and_then(|block_opt| {
@@ -704,7 +715,7 @@ where
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     web3.eth()
-                        .block_with_txs(BlockNumber::Latest.into())
+                        .block_with_txs(Web3BlockNumber::Latest.into())
                         .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))
                         .from_err()
                         .and_then(|block_opt| {
@@ -767,7 +778,7 @@ where
     fn block_by_number(
         &self,
         logger: &Logger,
-        block_number: u64,
+        block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
@@ -916,7 +927,7 @@ where
         &self,
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
-        block_number: u64,
+        block_number: BlockNumber,
     ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
         Box::new(
             // When this method is called (from the subgraph registrar), we don't
@@ -940,7 +951,7 @@ where
         &self,
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
-        block_number: u64,
+        block_number: BlockNumber,
         block_is_final: bool,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
@@ -1078,7 +1089,7 @@ where
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        block_number: u64,
+        block_number: BlockNumber,
         block_hash: H256,
     ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
         let eth = self.clone();
@@ -1130,8 +1141,8 @@ where
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         log_filter: EthereumLogFilter,
     ) -> DynTryFuture<'static, Vec<Log>, Error> {
         let eth: Self = self.cheap_clone();
@@ -1156,8 +1167,8 @@ where
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
         call_filter: EthereumCallFilter,
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
         let eth = self.clone();
@@ -1308,8 +1319,8 @@ where
     fn block_range_to_ptrs(
         &self,
         logger: Logger,
-        from: u64,
-        to: u64,
+        from: BlockNumber,
+        to: BlockNumber,
     ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
         // Currently we can't go to the DB for this because there might be duplicate entries for
         // the same block number.

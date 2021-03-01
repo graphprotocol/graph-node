@@ -1,8 +1,15 @@
 use lazy_static;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use graph::prelude::*;
-use web3::types::*;
+use graph::{
+    prelude::{
+        error, info, o, stream, tokio, trace, warn, web3::types::H256, BlockNumber, ChainStore,
+        ComponentLoggerConfig, ElasticComponentLoggerConfig, Error, EthereumAdapter,
+        EthereumAdapterError, EthereumBlock, Future, Future01CompatExt, LogCode, Logger,
+        LoggerFactory, MetricsRegistry, Stream,
+    },
+    prometheus::GaugeVec,
+};
 
 lazy_static! {
     // graph_node::config disallows setting this in a store with multiple
@@ -43,7 +50,7 @@ where
 {
     chain_store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
-    ancestor_count: u64,
+    ancestor_count: BlockNumber,
     _network_name: String,
     logger: Logger,
     polling_interval: Duration,
@@ -56,7 +63,7 @@ where
     pub fn new(
         chain_store: Arc<S>,
         eth_adapter: Arc<dyn EthereumAdapter>,
-        ancestor_count: u64,
+        ancestor_count: BlockNumber,
         network_name: String,
         logger_factory: &LoggerFactory,
         polling_interval: Duration,

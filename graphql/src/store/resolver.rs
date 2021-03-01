@@ -109,7 +109,7 @@ impl StoreResolver {
                 .map_err(|e| StoreError::from(e).into())
                 .and_then(|ptr| {
                     let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    if ptr.number < number as u64 {
+                    if ptr.number < number {
                         Err(QueryExecutionError::ValueParseError(
                             "block.number".to_owned(),
                             format!(

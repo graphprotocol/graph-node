@@ -629,7 +629,7 @@ pub fn create_deployment(
         hash.as_ref().map(|hash| hash.0.as_slice())
     }
 
-    fn n(number: Option<u64>) -> SqlLiteral<Nullable<Numeric>> {
+    fn n(number: Option<BlockNumber>) -> SqlLiteral<Nullable<Numeric>> {
         match number {
             None => sql("null"),
             Some(number) => sql(&format!("{}::numeric", number)),

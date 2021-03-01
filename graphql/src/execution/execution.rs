@@ -365,7 +365,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
             // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
             // - Metadata queries are not cacheable.
             // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
-            if block_ptr.number != BLOCK_NUMBER_MAX as u64 {
+            if block_ptr.number != BLOCK_NUMBER_MAX {
                 // Calculate the hash outside of the lock
                 let cache_key = cache_key(&ctx, &selection_set, &block_ptr);
                 let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
