@@ -124,7 +124,7 @@ where
         Ok(Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-            .header(CONTENT_TYPE, "text/html")
+            .header(CONTENT_TYPE, "text/plain")
             .body(Body::from(String::from(
                 "Access deployed subgraphs by deployment ID at \
                 /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>",
@@ -244,7 +244,7 @@ where
                     .status(StatusCode::FOUND)
                     .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .header(LOCATION, loc_header_val)
-                    .header(CONTENT_TYPE, "text/html")
+                    .header(CONTENT_TYPE, "text/plain")
                     .body(Body::from("Redirecting..."))
                     .unwrap()
             })
@@ -255,7 +255,7 @@ where
         async {
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .header(CONTENT_TYPE, "text/html")
+                .header(CONTENT_TYPE, "text/plain")
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .body(Body::from("Not found"))
                 .unwrap())
@@ -352,7 +352,7 @@ where
                 Ok(response) => Ok(response),
                 Err(err @ GraphQLServerError::ClientError(_)) => Ok(Response::builder()
                     .status(400)
-                    .header(CONTENT_TYPE, "text/html")
+                    .header(CONTENT_TYPE, "text/plain")
                     .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .body(Body::from(err.to_string()))
                     .unwrap()),
@@ -361,7 +361,7 @@ where
 
                     Ok(Response::builder()
                         .status(400)
-                        .header(CONTENT_TYPE, "text/html")
+                        .header(CONTENT_TYPE, "text/plain")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(format!("Query error: {}", err)))
                         .unwrap())
@@ -371,7 +371,7 @@ where
 
                     Ok(Response::builder()
                         .status(500)
-                        .header(CONTENT_TYPE, "text/html")
+                        .header(CONTENT_TYPE, "text/plain")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(format!("Internal server error: {}", err)))
                         .unwrap())
