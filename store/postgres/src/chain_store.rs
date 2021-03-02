@@ -805,7 +805,7 @@ mod data {
                     );
 
                     let hash = sql_query(query)
-                        .bind::<Bytea, _>(&block_ptr.hash.0)
+                        .bind::<Bytea, _>(block_ptr.hash_slice())
                         .bind::<BigInt, _>(offset as i64)
                         .get_result::<BlockHashBytea>(conn)
                         .optional()?;
