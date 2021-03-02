@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::{
-    primary::Namespace,
+    primary::{Namespace, Site},
     relational_queries::{
         self as rq, ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection,
         FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
@@ -207,6 +207,8 @@ type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
 #[derive(Debug, Clone)]
 pub struct Layout {
+    /// Details of where the subgraph is stored
+    pub site: Arc<Site>,
     /// Maps the GraphQL name of a type to the relational table
     pub tables: HashMap<EntityType, Arc<Table>>,
     /// The database schema for this subgraph
@@ -223,6 +225,7 @@ impl Layout {
     /// GraphQL schema `schema`. The name of the database schema in which
     /// the subgraph's tables live is in `schema`.
     pub fn new(
+        site: Arc<Site>,
         schema: &Schema,
         catalog: Catalog,
         create_proof_of_indexing: bool,
@@ -331,6 +334,7 @@ impl Layout {
             });
 
         Ok(Layout {
+            site,
             catalog,
             tables,
             enums,
@@ -380,11 +384,11 @@ impl Layout {
 
     pub fn create_relational_schema(
         conn: &PgConnection,
+        site: Arc<Site>,
         schema: &Schema,
-        namespace: Namespace,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(conn, namespace.clone())?;
-        let layout = Self::new(schema, catalog, true)?;
+        let catalog = Catalog::new(conn, site.namespace.clone())?;
+        let layout = Self::new(site, schema, catalog, true)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
@@ -1313,14 +1317,22 @@ fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
 mod tests {
     use super::*;
 
+    use crate::PRIMARY_SHARD;
+
     const ID_TYPE: ColumnType = ColumnType::String;
 
     fn test_layout(gql: &str) -> Layout {
         let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
-        let schema = Schema::parse(gql, subgraph).expect("Test schema invalid");
+        let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
         let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
-        let catalog = Catalog::make_empty(namespace).expect("Can not create catalog");
-        Layout::new(&schema, catalog, false).expect("Failed to construct Layout")
+        let catalog = Catalog::make_empty(namespace.clone()).expect("Can not create catalog");
+        let site = Site {
+            deployment: subgraph,
+            shard: PRIMARY_SHARD.clone(),
+            namespace: namespace,
+            network: "anet".to_string(),
+        };
+        Layout::new(Arc::new(site), &schema, catalog, false).expect("Failed to construct Layout")
     }
 
     #[test]

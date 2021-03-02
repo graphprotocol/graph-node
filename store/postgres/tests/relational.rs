@@ -16,7 +16,11 @@ use graph::{
     components::store::EntityType,
     data::store::scalar::{BigDecimal, BigInt, Bytes},
 };
-use graph_store_postgres::layout_for_tests::{Layout, Namespace, STRING_PREFIX_SIZE};
+use graph_store_postgres::{
+    command_support::catalog::Site,
+    layout_for_tests::{Layout, Namespace, STRING_PREFIX_SIZE},
+    PRIMARY_SHARD,
+};
 
 use test_store::*;
 
@@ -395,11 +399,16 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
 
 fn insert_test_data(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
-
+    let site = Site {
+        deployment: THINGS_SUBGRAPH_ID.clone(),
+        shard: PRIMARY_SHARD.clone(),
+        namespace: NAMESPACE.clone(),
+        network: NETWORK_NAME.to_string(),
+    };
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, NAMESPACE.to_owned())
+    Layout::create_relational_schema(&conn, Arc::new(site), &schema)
         .expect("Failed to create relational schema")
 }
 

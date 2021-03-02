@@ -328,12 +328,14 @@ impl SubgraphStore {
         let site = self
             .primary_conn()?
             .allocate_site(shard.clone(), &schema.id, network_name)?;
+        let site = Arc::new(site);
 
         let graft_site = deployment
             .graft_base
             .as_ref()
             .map(|base| self.primary_conn()?.find_existing_site(&base))
-            .transpose()?;
+            .transpose()?
+            .map(|site| Arc::new(site));
         if let Some(ref graft_site) = graft_site {
             if &graft_site.shard != &shard {
                 return Err(constraint_violation!("Can not graft across shards. {} is in shard {}, and the base {} is in shard {}", site.deployment, site.shard, graft_site.deployment, graft_site.shard));
@@ -345,7 +347,7 @@ impl SubgraphStore {
             .stores
             .get(&shard)
             .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
-        deployment_store.create_deployment(schema, deployment, &site, graft_site, replace)?;
+        deployment_store.create_deployment(schema, deployment, site, graft_site, replace)?;
 
         let exists_and_synced = |id: &SubgraphDeploymentId| {
             let (store, _) = self.store(id)?;
@@ -682,7 +684,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         let (store, site) = self.store(&key.subgraph_id)?;
-        store.get(site.as_ref(), key)
+        store.get(site, key)
     }
 
     fn get_many(
@@ -691,17 +693,17 @@ impl SubgraphStoreTrait for SubgraphStore {
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         let (store, site) = self.store(&id)?;
-        store.get_many(site.as_ref(), ids_for_type)
+        store.get_many(site, ids_for_type)
     }
 
     fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
-        store.find(site.as_ref(), query)
+        store.find(site, query)
     }
 
     fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
-        store.find_one(site.as_ref(), query)
+        store.find_one(site, query)
     }
 
     fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
@@ -723,7 +725,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         );
         let (store, site) = self.store(&id)?;
         let event = store.transact_block_operations(
-            site.as_ref(),
+            site,
             block_ptr_to,
             mods,
             stopwatch,
@@ -739,7 +741,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
-        let event = store.revert_block_operations(site.as_ref(), block_ptr_to)?;
+        let event = store.revert_block_operations(site, block_ptr_to)?;
         self.send_store_event(&event)
     }
 
@@ -771,7 +773,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let graft_base = match store.graft_pending(id)? {
             Some((base_id, base_ptr)) => {
                 let site = self.primary_conn()?.find_existing_site(&base_id)?;
-                Some((site, base_ptr))
+                Some((Arc::new(site), base_ptr))
             }
             None => None,
         };

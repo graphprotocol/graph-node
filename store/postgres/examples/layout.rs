@@ -2,11 +2,14 @@ extern crate clap;
 extern crate graph_store_postgres;
 
 use clap::App;
-use std::fs;
 use std::process::exit;
+use std::{fs, sync::Arc};
 
 use graph::prelude::{Schema, SubgraphDeploymentId};
-use graph_store_postgres::command_support::{Catalog, Column, ColumnType, Layout, Namespace};
+use graph_store_postgres::{
+    command_support::{catalog::Site, Catalog, Column, ColumnType, Layout, Namespace},
+    PRIMARY_SHARD,
+};
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);
@@ -134,17 +137,26 @@ pub fn main() {
 
     let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
-    let schema = ensure(Schema::parse(&schema, subgraph), "Failed to parse schema");
+    let schema = ensure(
+        Schema::parse(&schema, subgraph.clone()),
+        "Failed to parse schema",
+    );
     let namespace = ensure(
         Namespace::new(namespace.to_string()),
         "Invalid database schema",
     );
     let catalog = ensure(
-        Catalog::make_empty(namespace),
+        Catalog::make_empty(namespace.clone()),
         "Failed to construct catalog",
     );
+    let site = Site {
+        deployment: subgraph,
+        shard: PRIMARY_SHARD.clone(),
+        namespace: namespace,
+        network: "anet".to_string(),
+    };
     let layout = ensure(
-        Layout::new(&schema, catalog, false),
+        Layout::new(Arc::new(site), &schema, catalog, false),
         "Failed to construct Mapping",
     );
     match kind {

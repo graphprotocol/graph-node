@@ -152,8 +152,8 @@ impl DeploymentStore {
         &self,
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
-        site: &Site,
-        graft_site: Option<Site>,
+        site: Arc<Site>,
+        graft_site: Option<Arc<Site>>,
         replace: bool,
     ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
@@ -176,11 +176,11 @@ impl DeploymentStore {
                 let query = format!("create schema {}", &site.namespace);
                 conn.batch_execute(&query)?;
 
-                let layout = Layout::create_relational_schema(&conn, schema, site.namespace.clone())?;
+                let layout = Layout::create_relational_schema(&conn, site.clone(), schema)?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(graft_site) = graft_site {
                     let base =
-                        self.layout(&conn, &graft_site)?;
+                        self.layout(&conn, graft_site)?;
                     let errors = layout.can_copy_from(&base);
                     if !errors.is_empty() {
                         return Err(StoreError::Unknown(anyhow!(
@@ -211,7 +211,7 @@ impl DeploymentStore {
     pub(crate) fn execute_query<T: FromEntityData>(
         &self,
         conn: &PgConnection,
-        site: &Site,
+        site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<Vec<T>, QueryExecutionError> {
         let layout = self.layout(conn, site)?;
@@ -475,7 +475,7 @@ impl DeploymentStore {
     pub(crate) fn layout(
         &self,
         conn: &PgConnection,
-        site: &Site,
+        site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
         if let Some(layout) = self.layout_cache.lock().unwrap().get(&site.deployment) {
             return Ok(layout.clone());
@@ -484,7 +484,12 @@ impl DeploymentStore {
         let subgraph_schema = deployment::schema(conn, site.deployment.clone())?;
         let has_poi = crate::catalog::supports_proof_of_indexing(conn, &site.namespace)?;
         let catalog = Catalog::new(conn, site.namespace.clone())?;
-        let layout = Arc::new(Layout::new(&subgraph_schema, catalog, has_poi)?);
+        let layout = Arc::new(Layout::new(
+            site.clone(),
+            &subgraph_schema,
+            catalog,
+            has_poi,
+        )?);
 
         if layout.is_cacheable() {
             &self
@@ -641,7 +646,7 @@ impl DeploymentStore {
         async move {
             self.with_conn(move |conn, cancel| {
                 cancel.check_cancel()?;
-                let layout = store.layout(conn, &site)?;
+                let layout = store.layout(conn, site)?;
                 Ok(layout.supports_proof_of_indexing())
             })
             .await
@@ -667,7 +672,7 @@ impl DeploymentStore {
                 .with_conn(move |conn, cancel| {
                     cancel.check_cancel()?;
 
-                    let layout = store.layout(conn, &site4)?;
+                    let layout = store.layout(conn, site4.clone())?;
 
                     if !layout.supports_proof_of_indexing() {
                         return Ok(None);
@@ -699,7 +704,7 @@ impl DeploymentStore {
                             EntityCollection::All(vec![POI_OBJECT.cheap_clone()]),
                         );
                         let entities = store
-                            .execute_query::<Entity>(conn, &site4, query)
+                            .execute_query::<Entity>(conn, site4, query)
                             .map_err(anyhow::Error::from)?;
 
                         Ok(Some(entities))
@@ -742,7 +747,7 @@ impl DeploymentStore {
 
     pub(crate) fn get(
         &self,
-        site: &Site,
+        site: Arc<Site>,
         key: EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self.get_conn().map_err(|e| StoreError::Unknown(e))?;
@@ -767,7 +772,7 @@ impl DeploymentStore {
 
     pub(crate) fn get_many(
         &self,
-        site: &Site,
+        site: Arc<Site>,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
@@ -781,7 +786,7 @@ impl DeploymentStore {
 
     pub(crate) fn find(
         &self,
-        site: &Site,
+        site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self
@@ -792,7 +797,7 @@ impl DeploymentStore {
 
     pub(crate) fn find_one(
         &self,
-        site: &Site,
+        site: Arc<Site>,
         mut query: EntityQuery,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         query.range = EntityRange::first(1);
@@ -810,7 +815,7 @@ impl DeploymentStore {
 
     pub(crate) fn transact_block_operations(
         &self,
-        site: &Site,
+        site: Arc<Site>,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
@@ -849,7 +854,7 @@ impl DeploymentStore {
             let event: StoreEvent = mods.iter().collect();
 
             // Make the changes
-            let layout = self.layout(&conn, site)?;
+            let layout = self.layout(&conn, site.clone())?;
             let section = stopwatch.start_section("apply_entity_modifications");
             let count = self.apply_entity_modifications(
                 &conn,
@@ -886,7 +891,7 @@ impl DeploymentStore {
 
     pub(crate) fn revert_block_operations(
         &self,
-        site: &Site,
+        site: Arc<Site>,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
@@ -919,7 +924,7 @@ impl DeploymentStore {
             deployment::revert_block_ptr(&conn, &site.deployment, block_ptr_to)?;
 
             // Revert the data
-            let layout = self.layout(&conn, site)?;
+            let layout = self.layout(&conn, site.clone())?;
 
             // At 1 block per 15 seconds, the maximum i32
             // value affords just over 1020 years of blocks.
@@ -1020,15 +1025,15 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_base: Option<(Site, EthereumBlockPointer)>,
+        graft_base: Option<(Arc<Site>, EthereumBlockPointer)>,
     ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
 
         // Do any cleanup to bring the subgraph into a known good state
         conn.transaction(|| {
-            let layout = self.layout(&conn, site.as_ref())?;
+            let layout = self.layout(&conn, site.clone())?;
             if let Some((base, block)) = graft_base {
-                let base_layout = self.layout(&conn, &base)?;
+                let base_layout = self.layout(&conn, base.clone())?;
                 let start = Instant::now();
                 layout.copy_from(
                     logger,

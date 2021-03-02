@@ -1,6 +1,11 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph_mock::MockMetricsRegistry;
+use hex_literal::hex;
+use lazy_static::lazy_static;
+use std::{collections::BTreeMap, sync::Arc};
+
 use graph::prelude::{
     o, slog, web3::types::H256, ChildMultiplicity, Entity, EntityCollection, EntityKey, EntityLink,
     EntityOrder, EntityRange, EntityWindow, Logger, ParentLink, Schema, StopwatchMetrics,
@@ -10,12 +15,12 @@ use graph::{
     components::store::EntityType,
     data::store::scalar::{BigDecimal, BigInt},
 };
-use graph_mock::MockMetricsRegistry;
-use graph_store_postgres::layout_for_tests::{Layout, Namespace};
-use hex_literal::hex;
-use lazy_static::lazy_static;
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use graph_store_postgres::{
+    command_support::catalog::Site,
+    layout_for_tests::{Layout, Namespace},
+    PRIMARY_SHARD,
+};
+
 use test_store::*;
 
 const THINGS_GQL: &str = "
@@ -112,7 +117,13 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, &schema, NAMESPACE.to_owned())
+    let site = Site {
+        deployment: THINGS_SUBGRAPH_ID.clone(),
+        shard: PRIMARY_SHARD.clone(),
+        namespace: NAMESPACE.clone(),
+        network: NETWORK_NAME.to_string(),
+    };
+    Layout::create_relational_schema(&conn, Arc::new(site), &schema)
         .expect("Failed to create relational schema")
 }
 
