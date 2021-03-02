@@ -19,6 +19,8 @@ use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
+use crate::components::ethereum::BlockHash;
+
 /// All operations on `BigDecimal` return a normalized value.
 // Caveat: The exponent is currently an i64 and may overflow. See
 // https://github.com/akubera/bigdecimal-rs/issues/54.
@@ -530,6 +532,12 @@ impl From<Address> for Bytes {
 impl From<web3::types::Bytes> for Bytes {
     fn from(bytes: web3::types::Bytes) -> Bytes {
         Bytes::from(bytes.0.as_slice())
+    }
+}
+
+impl From<BlockHash> for Bytes {
+    fn from(hash: BlockHash) -> Self {
+        Bytes(hash.0)
     }
 }
 

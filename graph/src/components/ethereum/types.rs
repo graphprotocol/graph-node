@@ -409,18 +409,28 @@ impl Clone for EthereumCallData {
     }
 }
 
+/// A simple marker for byte arrays that are really block hashes
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct BlockHash(pub Box<[u8]>);
+
+impl From<H256> for BlockHash {
+    fn from(hash: H256) -> Self {
+        BlockHash(hash.as_bytes().into())
+    }
+}
+
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Block numbers are signed 32 bit integers
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EthereumBlockPointer {
-    pub hash: Bytes,
+    pub hash: BlockHash,
     pub number: BlockNumber,
 }
 
 impl StableHash for EthereumBlockPointer {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        AsBytes(self.hash.0.as_slice()).stable_hash(sequence_number.next_child(), state);
+        AsBytes(self.hash.0.as_ref()).stable_hash(sequence_number.next_child(), state);
         self.number.stable_hash(sequence_number.next_child(), state);
     }
 }
@@ -446,7 +456,7 @@ impl EthereumBlockPointer {
     }
 
     pub fn hash_slice(&self) -> &[u8] {
-        self.hash.0.as_slice()
+        self.hash.0.as_ref()
     }
 }
 
@@ -483,7 +493,7 @@ impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
 impl From<(H256, i32)> for EthereumBlockPointer {
     fn from((hash, number): (H256, i32)) -> EthereumBlockPointer {
         EthereumBlockPointer {
-            hash: Bytes(hash.as_bytes().to_vec()),
+            hash: hash.into(),
             number,
         }
     }

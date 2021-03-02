@@ -11,11 +11,13 @@ use diesel::{
     prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
     sql_types::Nullable,
 };
-use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
-use graph::prelude::web3::types::Bytes;
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
     DeploymentState, EthereumBlockPointer, Schema, StoreError, SubgraphDeploymentId,
+};
+use graph::{
+    components::ethereum::BlockHash,
+    data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature},
 };
 use graph::{data::subgraph::schema::SubgraphError, prelude::SubgraphDeploymentEntity};
 use stable_hash::crypto::SetHasher;
@@ -625,8 +627,8 @@ pub fn create_deployment(
         hash.as_ref().map(|hash| hash.as_bytes())
     }
 
-    fn b(hash: &Option<Bytes>) -> Option<&[u8]> {
-        hash.as_ref().map(|hash| hash.0.as_slice())
+    fn b(hash: &Option<BlockHash>) -> Option<&[u8]> {
+        hash.as_ref().map(|hash| hash.0.as_ref())
     }
 
     fn n(number: Option<BlockNumber>) -> SqlLiteral<Nullable<Numeric>> {
