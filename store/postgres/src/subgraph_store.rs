@@ -340,6 +340,8 @@ impl SubgraphStore {
             if &graft_site.shard != &shard {
                 return Err(constraint_violation!("Can not graft across shards. {} is in shard {}, and the base {} is in shard {}", site.deployment, site.shard, graft_site.deployment, graft_site.shard));
             }
+            self.primary_conn()?
+                .record_active_copy(graft_site.as_ref(), site.as_ref())?;
         }
 
         // Create the actual databases schema and metadata entries
@@ -782,12 +784,13 @@ impl SubgraphStoreTrait for SubgraphStore {
 
         let graft_base = match store.graft_pending(id)? {
             Some((base_id, base_ptr)) => {
-                let site = self.primary_conn()?.find_existing_site(&base_id)?;
-                Some((Arc::new(site), base_ptr))
+                let src = self.primary_conn()?.find_existing_site(&base_id)?;
+                Some((Arc::new(src), base_ptr))
             }
             None => None,
         };
-        store.start_subgraph(logger, site, graft_base)
+        store.start_subgraph(logger, site.clone(), graft_base)?;
+        self.primary_conn()?.copy_finished(site.as_ref())
     }
 
     fn unfail(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {

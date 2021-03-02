@@ -145,7 +145,7 @@ impl ForeignServer {
         } else {
             format!(
                 "import foreign schema public
-                        limit to (deployment_schemas, chains) \
+                        limit to (deployment_schemas, chains, active_copies) \
                         from server {shard} into {nsp};",
                 shard = Self::name(&*PRIMARY_SHARD),
                 nsp = Self::PRIMARY_PUBLIC

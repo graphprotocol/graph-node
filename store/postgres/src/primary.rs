@@ -91,6 +91,15 @@ table! {
 }
 
 table! {
+    active_copies(dst) {
+        src -> Integer,
+        dst -> Integer,
+        queued_at -> Date,
+        cancelled_at -> Nullable<Date>,
+    }
+}
+
+table! {
     public.ens_names(hash) {
         hash -> Varchar,
         name -> Varchar,
@@ -1048,5 +1057,28 @@ impl<'a> Connection<'a> {
             .get_result::<String>(self.0.as_ref())
             .optional()
             .map_err(|e| anyhow!("error looking up ens_name for hash {}: {}", hash, e).into())
+    }
+
+    pub fn record_active_copy(&self, src: &Site, dst: &Site) -> Result<(), StoreError> {
+        use active_copies as cp;
+
+        insert_into(cp::table)
+            .values((
+                cp::src.eq(src.id),
+                cp::dst.eq(dst.id),
+                cp::queued_at.eq(sql("now()")),
+            ))
+            .on_conflict_do_nothing()
+            .execute(self.0.as_ref())?;
+
+        Ok(())
+    }
+
+    pub fn copy_finished(&self, dst: &Site) -> Result<(), StoreError> {
+        use active_copies as cp;
+
+        delete(cp::table.filter(cp::dst.eq(dst.id))).execute(self.0.as_ref())?;
+
+        Ok(())
     }
 }

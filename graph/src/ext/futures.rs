@@ -310,3 +310,13 @@ impl From<anyhow::Error> for CancelableError<anyhow::Error> {
         Self::Error(e)
     }
 }
+
+impl From<CancelableError<StoreError>> for StoreError {
+    fn from(err: CancelableError<StoreError>) -> StoreError {
+        use CancelableError::*;
+        match err {
+            Cancel => StoreError::Canceled,
+            Error(e) => e,
+        }
+    }
+}

@@ -625,6 +625,9 @@ impl DeploymentStore {
         delete from subgraphs.subgraph_deployment_assignment;
         delete from subgraphs.subgraph_version;
         delete from subgraphs.subgraph_manifest;
+        delete from subgraphs.copy_table_state;
+        delete from subgraphs.copy_state;
+        delete from active_copies;
     ";
 
         let conn = self.get_conn()?;

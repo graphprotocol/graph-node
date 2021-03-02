@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Range, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -2829,3 +2829,105 @@ impl<'a> QueryId for CopyEntityDataQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for CopyEntityDataQuery<'a> {}
+
+/// Copy the data of one table to another table. All rows whose `vid` is in
+/// the range `[first_vid, last_vid)` will be copied
+#[derive(Debug, Clone)]
+pub struct CopyEntityBatchQuery<'a> {
+    src: &'a Table,
+    dst: &'a Table,
+    // A list of columns common between src and dst that
+    // need to be copied
+    columns: Vec<&'a Column>,
+    first_vid: i64,
+    last_vid: i64,
+}
+
+impl<'a> CopyEntityBatchQuery<'a> {
+    pub fn new(
+        dst: &'a Table,
+        src: &'a Table,
+        first_vid: i64,
+        last_vid: i64,
+    ) -> Result<Self, StoreError> {
+        let mut columns = Vec::new();
+        for dcol in &dst.columns {
+            if let Some(scol) = src.column(&dcol.name) {
+                if let Some(msg) = dcol.is_assignable_from(scol, &src.object) {
+                    return Err(anyhow!("{}", msg).into());
+                } else {
+                    columns.push(dcol);
+                }
+            } else if !dcol.is_nullable() {
+                return Err(anyhow!(
+                    "The attribute {}.{} is non-nullable, \
+                     but there is no such attribute in the source",
+                    dst.object,
+                    dcol.field
+                )
+                .into());
+            } else {
+                columns.push(dcol);
+            }
+        }
+
+        Ok(Self {
+            src,
+            dst,
+            columns,
+            first_vid,
+            last_vid,
+        })
+    }
+}
+
+impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Construct a query
+        //   insert into {dst}({columns})
+        //   select {columns} from {src}
+        out.push_sql("insert into ");
+        out.push_sql(self.dst.qualified_name.as_str());
+        out.push_sql("(");
+        for column in &self.columns {
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(", ");
+        }
+        out.push_sql("block_range)");
+        out.push_sql("\nselect ");
+        for column in &self.columns {
+            out.push_identifier(column.name.as_str())?;
+            if let ColumnType::Enum(enum_type) = &column.column_type {
+                // Have Postgres convert to the right enum type
+                out.push_sql("::text::");
+                out.push_sql(enum_type.name.as_str());
+            }
+            out.push_sql(", ");
+        }
+        out.push_sql("block_range from ");
+        out.push_sql(self.src.qualified_name.as_str());
+        out.push_sql(" where vid >= ");
+        out.push_bind_param::<BigInt, _>(&self.first_vid)?;
+        out.push_sql(" and vid < ");
+        out.push_bind_param::<BigInt, _>(&self.last_vid)?;
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for CopyEntityBatchQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for CopyEntityBatchQuery<'a> {}
+
+/// Helper struct for returning the id's touched by the RevertRemove and
+/// RevertExtend queries
+#[derive(QueryableByName, PartialEq, Eq, Hash)]
+pub struct CopyVid {
+    #[sql_type = "BigInt"]
+    pub vid: i64,
+}

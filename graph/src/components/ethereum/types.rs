@@ -477,6 +477,12 @@ impl Display for BlockHash {
     }
 }
 
+impl From<Vec<u8>> for BlockHash {
+    fn from(bytes: Vec<u8>) -> Self {
+        BlockHash(bytes.as_slice().into())
+    }
+}
+
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Block numbers are signed 32 bit integers
@@ -547,6 +553,15 @@ impl From<EthereumBlock> for EthereumBlockPointer {
 impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
     fn from(b: &'a EthereumBlock) -> EthereumBlockPointer {
         EthereumBlockPointer::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
+    }
+}
+
+impl From<(Vec<u8>, i32)> for EthereumBlockPointer {
+    fn from((bytes, number): (Vec<u8>, i32)) -> Self {
+        EthereumBlockPointer {
+            hash: BlockHash::from(bytes),
+            number,
+        }
     }
 }
 

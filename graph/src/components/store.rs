@@ -773,6 +773,8 @@ pub enum StoreError {
     UnknownShard(String),
     #[error("Fulltext search not yet deterministic")]
     FulltextSearchNonDeterministic,
+    #[error("operation was canceled")]
+    Canceled,
 }
 
 // Convenience to report a constraint violation

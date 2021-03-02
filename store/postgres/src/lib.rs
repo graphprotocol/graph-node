@@ -29,6 +29,7 @@ mod catalog;
 mod chain_head_listener;
 mod chain_store;
 pub mod connection_pool;
+mod copy;
 mod deployment;
 mod deployment_store;
 mod detail;
