@@ -139,7 +139,6 @@ pub(crate) fn insert(
                 context,
                 creation_block: _,
             } = ds;
-            // Why Option???
             let address = match address {
                 Some(address) => address.as_bytes().to_vec(),
                 None => {

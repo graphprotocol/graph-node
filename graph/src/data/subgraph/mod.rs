@@ -457,6 +457,9 @@ impl UnresolvedSchema {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct Source {
+    /// The contract address for the data source. We allow data sources
+    /// without an address for 'wildcard' triggers that catch all possible
+    /// events with the given `abi`
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<Address>,
     pub abi: String,
