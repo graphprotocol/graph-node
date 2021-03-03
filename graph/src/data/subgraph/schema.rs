@@ -124,7 +124,7 @@ impl SubgraphDeploymentEntity {
             synced,
             fatal_error: None,
             non_fatal_errors: vec![],
-            earliest_block: earliest_block.clone(),
+            earliest_block: earliest_block.cheap_clone(),
             latest_block: earliest_block,
             graft_base: None,
             graft_block: None,

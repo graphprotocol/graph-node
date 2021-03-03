@@ -802,7 +802,7 @@ fn parse_block_triggers(
     let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
     let trigger_every_block = block_filter.trigger_every_block;
     let call_filter = EthereumCallFilter::from(block_filter);
-    let block_ptr2 = block_ptr.clone();
+    let block_ptr2 = block_ptr.cheap_clone();
     let mut triggers = block
         .calls
         .iter()
