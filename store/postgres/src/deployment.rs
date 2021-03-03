@@ -11,13 +11,10 @@ use diesel::{
     prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
     sql_types::Nullable,
 };
+use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
     DeploymentState, EthereumBlockPointer, Schema, StoreError, SubgraphDeploymentId,
-};
-use graph::{
-    components::ethereum::BlockHash,
-    data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature},
 };
 use graph::{data::subgraph::schema::SubgraphError, prelude::SubgraphDeploymentEntity};
 use stable_hash::crypto::SetHasher;
@@ -623,14 +620,14 @@ pub fn create_deployment(
     use subgraph_deployment as d;
     use subgraph_manifest as m;
 
-    fn b(hash: &Option<BlockHash>) -> Option<&[u8]> {
-        hash.as_ref().map(|hash| hash.0.as_ref())
+    fn b(ptr: &Option<EthereumBlockPointer>) -> Option<&[u8]> {
+        ptr.as_ref().map(|ptr| ptr.hash_slice())
     }
 
-    fn n(number: Option<BlockNumber>) -> SqlLiteral<Nullable<Numeric>> {
-        match number {
+    fn n(ptr: &Option<EthereumBlockPointer>) -> SqlLiteral<Nullable<Numeric>> {
+        match ptr {
             None => sql("null"),
-            Some(number) => sql(&format!("{}::numeric", number)),
+            Some(ptr) => sql(&format!("{}::numeric", ptr.number)),
         }
     }
 
@@ -648,13 +645,10 @@ pub fn create_deployment(
         synced,
         fatal_error: _,
         non_fatal_errors: _,
-        earliest_ethereum_block_hash,
-        earliest_ethereum_block_number,
-        latest_ethereum_block_hash,
-        latest_ethereum_block_number,
+        earliest_block,
+        latest_block,
         graft_base,
-        graft_block_hash,
-        graft_block_number,
+        graft_block,
         reorg_count: _,
         current_reorg_depth: _,
         max_reorg_depth: _,
@@ -670,14 +664,14 @@ pub fn create_deployment(
         d::health.eq(SubgraphHealth::Healthy),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
-        d::earliest_ethereum_block_hash.eq(b(&earliest_ethereum_block_hash)),
-        d::earliest_ethereum_block_number.eq(n(earliest_ethereum_block_number)),
-        d::latest_ethereum_block_hash.eq(b(&latest_ethereum_block_hash)),
-        d::latest_ethereum_block_number.eq(n(latest_ethereum_block_number)),
+        d::earliest_ethereum_block_hash.eq(b(&earliest_block)),
+        d::earliest_ethereum_block_number.eq(n(&earliest_block)),
+        d::latest_ethereum_block_hash.eq(b(&latest_block)),
+        d::latest_ethereum_block_number.eq(n(&latest_block)),
         d::entity_count.eq(sql("0")),
         d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),
-        d::graft_block_hash.eq(b(&graft_block_hash)),
-        d::graft_block_number.eq(n(graft_block_number)),
+        d::graft_block_hash.eq(b(&graft_block)),
+        d::graft_block_number.eq(n(&graft_block)),
         d::block_range.eq(UNVERSIONED_RANGE),
     );
 
