@@ -623,10 +623,6 @@ pub fn create_deployment(
     use subgraph_deployment as d;
     use subgraph_manifest as m;
 
-    fn h(hash: &Option<H256>) -> Option<&[u8]> {
-        hash.as_ref().map(|hash| hash.as_bytes())
-    }
-
     fn b(hash: &Option<BlockHash>) -> Option<&[u8]> {
         hash.as_ref().map(|hash| hash.0.as_ref())
     }
@@ -674,9 +670,9 @@ pub fn create_deployment(
         d::health.eq(SubgraphHealth::Healthy),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
-        d::earliest_ethereum_block_hash.eq(h(&earliest_ethereum_block_hash)),
+        d::earliest_ethereum_block_hash.eq(b(&earliest_ethereum_block_hash)),
         d::earliest_ethereum_block_number.eq(n(earliest_ethereum_block_number)),
-        d::latest_ethereum_block_hash.eq(h(&latest_ethereum_block_hash)),
+        d::latest_ethereum_block_hash.eq(b(&latest_ethereum_block_hash)),
         d::latest_ethereum_block_number.eq(n(latest_ethereum_block_number)),
         d::entity_count.eq(sql("0")),
         d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),

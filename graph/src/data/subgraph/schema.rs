@@ -8,7 +8,6 @@ use rand::Rng;
 use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
-use web3::types::H256;
 
 use super::SubgraphDeploymentId;
 use crate::components::{
@@ -106,9 +105,9 @@ pub struct SubgraphDeploymentEntity {
     pub synced: bool,
     pub fatal_error: Option<SubgraphError>,
     pub non_fatal_errors: Vec<SubgraphError>,
-    pub earliest_ethereum_block_hash: Option<H256>,
+    pub earliest_ethereum_block_hash: Option<BlockHash>,
     pub earliest_ethereum_block_number: Option<BlockNumber>,
-    pub latest_ethereum_block_hash: Option<H256>,
+    pub latest_ethereum_block_hash: Option<BlockHash>,
     pub latest_ethereum_block_number: Option<BlockNumber>,
     pub graft_base: Option<SubgraphDeploymentId>,
     pub graft_block_hash: Option<BlockHash>,
@@ -124,6 +123,10 @@ impl SubgraphDeploymentEntity {
         synced: bool,
         earliest_ethereum_block: Option<EthereumBlockPointer>,
     ) -> Self {
+        let (hash, number) = match earliest_ethereum_block {
+            None => (None, None),
+            Some(ptr) => (Some(ptr.hash), Some(ptr.number)),
+        };
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
             failed: false,
@@ -131,10 +134,10 @@ impl SubgraphDeploymentEntity {
             synced,
             fatal_error: None,
             non_fatal_errors: vec![],
-            earliest_ethereum_block_hash: earliest_ethereum_block.clone().map(Into::into),
-            earliest_ethereum_block_number: earliest_ethereum_block.clone().map(Into::into),
-            latest_ethereum_block_hash: earliest_ethereum_block.clone().map(Into::into),
-            latest_ethereum_block_number: earliest_ethereum_block.map(Into::into),
+            earliest_ethereum_block_hash: hash.clone(),
+            earliest_ethereum_block_number: number,
+            latest_ethereum_block_hash: hash,
+            latest_ethereum_block_number: number,
             graft_base: None,
             graft_block_hash: None,
             graft_block_number: None,
