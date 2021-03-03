@@ -10,10 +10,7 @@ use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
 use super::SubgraphDeploymentId;
-use crate::components::{
-    ethereum::{BlockHash, EthereumBlockPointer},
-    store::EntityType,
-};
+use crate::components::{ethereum::EthereumBlockPointer, store::EntityType};
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
@@ -105,13 +102,10 @@ pub struct SubgraphDeploymentEntity {
     pub synced: bool,
     pub fatal_error: Option<SubgraphError>,
     pub non_fatal_errors: Vec<SubgraphError>,
-    pub earliest_ethereum_block_hash: Option<BlockHash>,
-    pub earliest_ethereum_block_number: Option<BlockNumber>,
-    pub latest_ethereum_block_hash: Option<BlockHash>,
-    pub latest_ethereum_block_number: Option<BlockNumber>,
+    pub earliest_block: Option<EthereumBlockPointer>,
+    pub latest_block: Option<EthereumBlockPointer>,
     pub graft_base: Option<SubgraphDeploymentId>,
-    pub graft_block_hash: Option<BlockHash>,
-    pub graft_block_number: Option<BlockNumber>,
+    pub graft_block: Option<EthereumBlockPointer>,
     pub reorg_count: i32,
     pub current_reorg_depth: i32,
     pub max_reorg_depth: i32,
@@ -121,12 +115,8 @@ impl SubgraphDeploymentEntity {
     pub fn new(
         source_manifest: &SubgraphManifest,
         synced: bool,
-        earliest_ethereum_block: Option<EthereumBlockPointer>,
+        earliest_block: Option<EthereumBlockPointer>,
     ) -> Self {
-        let (hash, number) = match earliest_ethereum_block {
-            None => (None, None),
-            Some(ptr) => (Some(ptr.hash), Some(ptr.number)),
-        };
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
             failed: false,
@@ -134,13 +124,10 @@ impl SubgraphDeploymentEntity {
             synced,
             fatal_error: None,
             non_fatal_errors: vec![],
-            earliest_ethereum_block_hash: hash.clone(),
-            earliest_ethereum_block_number: number,
-            latest_ethereum_block_hash: hash,
-            latest_ethereum_block_number: number,
+            earliest_block: earliest_block.clone(),
+            latest_block: earliest_block,
             graft_base: None,
-            graft_block_hash: None,
-            graft_block_number: None,
+            graft_block: None,
             reorg_count: 0,
             current_reorg_depth: 0,
             max_reorg_depth: 0,
@@ -150,12 +137,10 @@ impl SubgraphDeploymentEntity {
     pub fn graft(mut self, base: Option<(SubgraphDeploymentId, EthereumBlockPointer)>) -> Self {
         if let Some((subgraph, ptr)) = base {
             self.graft_base = Some(subgraph);
-            self.graft_block_hash = Some(ptr.hash);
-            self.graft_block_number = Some(ptr.number);
+            self.graft_block = Some(ptr);
             // When we graft, the block pointer is only set after copying
             // from the base subgraph finished successfully
-            self.latest_ethereum_block_hash = None;
-            self.latest_ethereum_block_number = None;
+            self.latest_block = None;
         }
         self
     }
