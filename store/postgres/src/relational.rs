@@ -360,6 +360,10 @@ impl Layout {
         }
     }
 
+    pub fn supports_proof_of_indexing(&self) -> bool {
+        self.tables.contains_key(&*POI_OBJECT)
+    }
+
     pub fn create_relational_schema(
         conn: &PgConnection,
         schema: &Schema,

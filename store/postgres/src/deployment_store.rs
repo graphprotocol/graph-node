@@ -654,7 +654,7 @@ impl DeploymentStore {
             self.with_conn(move |conn, cancel| {
                 cancel.check_cancel()?;
                 let layout = store.layout(conn, &site)?;
-                Ok(layout.tables.contains_key(&*POI_OBJECT))
+                Ok(layout.supports_proof_of_indexing())
             })
             .await
             .map_err(|e| e.into())
@@ -680,7 +680,7 @@ impl DeploymentStore {
 
                     let layout = store.layout(conn, &site4)?;
 
-                    if !layout.tables.contains_key(&*POI_OBJECT) {
+                    if !layout.supports_proof_of_indexing() {
                         return Ok(None);
                     }
 
