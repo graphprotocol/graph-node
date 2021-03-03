@@ -11,7 +11,7 @@ use web3::types::{
     U128, U256, U64,
 };
 
-use crate::prelude::{BlockNumber, EntityKey, SubgraphDeploymentId, ToEntityKey};
+use crate::prelude::{BlockNumber, CheapClone, EntityKey, SubgraphDeploymentId, ToEntityKey};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
@@ -427,6 +427,8 @@ pub struct EthereumBlockPointer {
     pub hash: BlockHash,
     pub number: BlockNumber,
 }
+
+impl CheapClone for EthereumBlockPointer {}
 
 impl StableHash for EthereumBlockPointer {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
