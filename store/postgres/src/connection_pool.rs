@@ -1,8 +1,11 @@
-use diesel::pg::PgConnection;
-use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection};
+use diesel::{connection::SimpleConnection, pg::PgConnection, RunQueryDsl};
+use diesel::{
+    r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection},
+    Connection,
+};
 
 use graph::prelude::{
-    error, info, o, tokio::sync::Semaphore, CancelGuard, CancelHandle, CancelToken as _,
+    debug, error, info, o, tokio::sync::Semaphore, CancelGuard, CancelHandle, CancelToken as _,
     CancelableError, Counter, Gauge, Logger, MetricsRegistry, MovingStats, PoolWaitStats,
     StoreError,
 };
@@ -14,6 +17,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 #[derive(Clone)]
 pub struct ConnectionPool {
+    logger: Logger,
     pool: Pool<ConnectionManager<PgConnection>>,
     limiter: Arc<Semaphore>,
     pub(crate) wait_stats: PoolWaitStats,
@@ -124,7 +128,7 @@ impl ConnectionPool {
         registry: Arc<dyn MetricsRegistry>,
     ) -> ConnectionPool {
         let logger_store = logger.new(o!("component" => "Store"));
-        let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
+        let logger_pool = logger.new(o!("component" => "ConnectionPool"));
         let const_labels = {
             let mut map = HashMap::new();
             map.insert("pool".to_owned(), pool_name.to_owned());
@@ -172,6 +176,7 @@ impl ConnectionPool {
         let limiter = Arc::new(Semaphore::new(pool_size as usize));
         info!(logger_store, "Pool successfully connected to Postgres");
         ConnectionPool {
+            logger: logger_pool,
             pool,
             limiter,
             wait_stats,
@@ -278,5 +283,95 @@ impl ConnectionPool {
                 ),
             }
         }
+    }
+
+    /// Run any pending schema migrations for this database.
+    ///
+    /// # Panics
+    ///
+    /// If any errors happen during the migration, the process panics
+    pub async fn migrate_schema(&self) {
+        let pool = self.clone();
+        self.with_conn(move |conn, _| {
+            let blocking_conn = pool.get().expect("we can get a second connection");
+            migrate_schema(&pool.logger, conn, &blocking_conn);
+            Ok(())
+        })
+        .await
+        .expect("migrations are never canceled");
+    }
+}
+
+embed_migrations!("./migrations");
+
+/// Run all schema migrations.
+///
+/// When multiple `graph-node` processes start up at the same time, we ensure
+/// that they do not run migrations in parallel by using `blocking_conn` to
+/// serialize them. The `conn` is used to run the actual migration.
+fn migrate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConnection) {
+    // Collect migration logging output
+    let mut output = vec![];
+
+    // Make sure the locking table exists so we have something
+    // to lock. We intentionally ignore errors here, because they are most
+    // likely caused by us losing a race to create the table against another
+    // graph-node. If this truly is an error, we will trip over it when
+    // we try to lock the table and report it to the user
+    if let Err(e) = blocking_conn.batch_execute(
+        "create table if not exists \
+         __graph_node_global_lock(id int)",
+    ) {
+        debug!(
+            logger,
+            "Creating lock table failed, this is most likely harmless";
+            "error" => format!("{:?}", e)
+        );
+    }
+
+    // blocking_conn holds the lock on the migrations table for the duration
+    // of the migration on conn. Since all nodes execute this code, only one
+    // of them can run this code at the same time. We need to use two
+    // connections for this because diesel will run each migration in its
+    // own txn, which makes it impossible to hold a lock across all of them
+    // on that connection
+    info!(
+        logger,
+        "Waiting for other graph-node instances to finish migrating"
+    );
+    let result = blocking_conn.transaction(|| {
+        diesel::sql_query("lock table __graph_node_global_lock in exclusive mode")
+            .execute(blocking_conn)?;
+        info!(logger, "Running migrations");
+        embedded_migrations::run_with_output(conn, &mut output)
+    });
+    info!(logger, "Migrations finished");
+
+    // If there was any migration output, log it now
+    let has_output = !output.is_empty();
+    if has_output {
+        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        if result.is_err() {
+            error!(logger, "Postgres migration output"; "output" => msg);
+        } else {
+            debug!(logger, "Postgres migration output"; "output" => msg);
+        }
+    }
+
+    if let Err(e) = result {
+        panic!(
+            "Error setting up Postgres database: \
+             You may need to drop and recreate your database to work with the \
+             latest version of graph-node. Error information: {:?}",
+            e
+        )
+    };
+
+    if has_output {
+        // We take getting output as a signal that a migration was actually
+        // run, which is not easy to tell from the Diesel API, and reset the
+        // query statistics since a schema change makes them not all that
+        // useful. An error here is not serious and can be ignored.
+        conn.batch_execute("select pg_stat_statements_reset()").ok();
     }
 }

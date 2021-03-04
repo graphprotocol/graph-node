@@ -443,7 +443,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
     let registry = Arc::new(MockMetricsRegistry::new());
     std::thread::spawn(move || {
         STORE_RUNTIME.lock().unwrap().block_on(async {
-            let builder = StoreBuilder::new(&*LOGGER, &*NODE_ID, &config, registry);
+            let builder = StoreBuilder::new(&*LOGGER, &*NODE_ID, &config, registry).await;
             let subscription_manager = builder.subscription_manager();
             let primary_pool = builder.primary_pool();
 

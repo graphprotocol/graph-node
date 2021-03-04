@@ -1,6 +1,7 @@
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
+use futures::future::join_all;
 use graph::prelude::{o, MetricsRegistry, NodeId};
 use graph::{
     prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
@@ -26,7 +27,10 @@ pub struct StoreBuilder {
 }
 
 impl StoreBuilder {
-    pub fn new(
+    /// Set up all stores, and run migrations. This does a complete store
+    /// setup whereas other methods here only get connections for an already
+    /// initialized store
+    pub async fn new(
         logger: &Logger,
         node: &NodeId,
         config: &Config,
@@ -41,6 +45,8 @@ impl StoreBuilder {
 
         let (store, pools) =
             Self::make_sharded_store_and_primary_pool(logger, node, config, registry.cheap_clone());
+
+        join_all(pools.values().map(|pool| pool.migrate_schema())).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -60,7 +66,8 @@ impl StoreBuilder {
     }
 
     /// Make a `ShardedStore` across all configured shards, and also return
-    /// the connection pool for the primary shard
+    /// the main connection pools for each shard, but not any pools for
+    /// replicas
     fn make_sharded_store_and_primary_pool(
         logger: &Logger,
         node: &NodeId,

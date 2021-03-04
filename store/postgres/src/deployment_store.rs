@@ -7,7 +7,7 @@ use futures03::FutureExt as _;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
-    error, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
+    CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
 };
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -37,80 +37,6 @@ use crate::relational::{Catalog, Layout};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
-
-embed_migrations!("./migrations");
-
-/// Run all schema migrations.
-///
-/// When multiple `graph-node` processes start up at the same time, we ensure
-/// that they do not run migrations in parallel by using `blocking_conn` to
-/// serialize them. The `conn` is used to run the actual migration.
-fn initiate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConnection) {
-    // Collect migration logging output
-    let mut output = vec![];
-
-    // Make sure the locking table exists so we have something
-    // to lock. We intentionally ignore errors here, because they are most
-    // likely caused by us losing a race to create the table against another
-    // graph-node. If this truly is an error, we will trip over it when
-    // we try to lock the table and report it to the user
-    if let Err(e) = blocking_conn.batch_execute(
-        "create table if not exists \
-         __graph_node_global_lock(id int)",
-    ) {
-        debug!(
-            logger,
-            "Creating lock table failed, this is most likely harmless";
-            "error" => format!("{:?}", e)
-        );
-    }
-
-    // blocking_conn holds the lock on the migrations table for the duration
-    // of the migration on conn. Since all nodes execute this code, only one
-    // of them can run this code at the same time. We need to use two
-    // connections for this because diesel will run each migration in its
-    // own txn, which makes it impossible to hold a lock across all of them
-    // on that connection
-    info!(
-        logger,
-        "Waiting for other graph-node instances to finish migrating"
-    );
-    let result = blocking_conn.transaction(|| {
-        diesel::sql_query("lock table __graph_node_global_lock in exclusive mode")
-            .execute(blocking_conn)?;
-        info!(logger, "Running migrations");
-        embedded_migrations::run_with_output(conn, &mut output)
-    });
-    info!(logger, "Migrations finished");
-
-    // If there was any migration output, log it now
-    let has_output = !output.is_empty();
-    if has_output {
-        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
-        if result.is_err() {
-            error!(logger, "Postgres migration output"; "output" => msg);
-        } else {
-            debug!(logger, "Postgres migration output"; "output" => msg);
-        }
-    }
-
-    if let Err(e) = result {
-        panic!(
-            "Error setting up Postgres database: \
-             You may need to drop and recreate your database to work with the \
-             latest version of graph-node. Error information: {:?}",
-            e
-        )
-    };
-
-    if has_output {
-        // We take getting output as a signal that a migration was actually
-        // run, which is not easy to tell from the Diesel API, and reset the
-        // query statistics since a schema change makes them not all that
-        // useful. An error here is not serious and can be ignored.
-        conn.batch_execute("select pg_stat_statements_reset()").ok();
-    }
-}
 
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -184,8 +110,6 @@ impl DeploymentStore {
     ) -> Self {
         // Create a store-specific logger
         let logger = logger.new(o!("component" => "Store"));
-
-        initiate_schema(&logger, &pool.get().unwrap(), &pool.get().unwrap());
 
         // Create a list of replicas with repetitions according to the weights
         // and shuffle the resulting list. Any missing weights in the list
