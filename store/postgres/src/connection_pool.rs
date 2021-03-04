@@ -1,8 +1,5 @@
-use diesel::{connection::SimpleConnection, pg::PgConnection, RunQueryDsl};
-use diesel::{
-    r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection},
-    Connection,
-};
+use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection};
+use diesel::{connection::SimpleConnection, pg::PgConnection, sql_query, RunQueryDsl};
 
 use graph::prelude::{
     debug, error, info, o, tokio::sync::Semaphore, CancelGuard, CancelHandle, CancelToken as _,
@@ -291,10 +288,34 @@ impl ConnectionPool {
     ///
     /// If any errors happen during the migration, the process panics
     pub async fn migrate_schema(&self) {
+        #[derive(QueryableByName)]
+        struct LockResult {
+            #[sql_type = "diesel::sql_types::Bool"]
+            migrate: bool,
+        }
+
         let pool = self.clone();
         self.with_conn(move |conn, _| {
-            let blocking_conn = pool.get().expect("we can get a second connection");
-            migrate_schema(&pool.logger, conn, &blocking_conn);
+            // Get an advisory session-level lock. The graph-node process
+            // that acquires the lock will run the migration. Everybody else
+            // will skip running migrations.
+            //
+            // We use two locks: one so we can tell whether we were the
+            // lucky ones that should run the migration, and one that blocks
+            // every process that is not running migrations until the
+            // migration is finished
+            let lock = sql_query("select pg_try_advisory_lock(1) as migrate, pg_advisory_lock(2)")
+                .get_result::<LockResult>(conn)
+                .expect("we can try to get advisory locks 1 and 2");
+            let result = if lock.migrate {
+                migrate_schema(&pool.logger, conn)
+            } else {
+                Ok(())
+            };
+            sql_query("select pg_advisory_unlock(1), pg_advisory_unlock(2)")
+                .execute(conn)
+                .expect("we can unlock the advisory locks");
+            result.expect("migration succeeds");
             Ok(())
         })
         .await
@@ -309,42 +330,18 @@ embed_migrations!("./migrations");
 /// When multiple `graph-node` processes start up at the same time, we ensure
 /// that they do not run migrations in parallel by using `blocking_conn` to
 /// serialize them. The `conn` is used to run the actual migration.
-fn migrate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConnection) {
+fn migrate_schema(
+    logger: &Logger,
+    conn: &PgConnection,
+) -> Result<(), diesel::migration::RunMigrationsError> {
     // Collect migration logging output
     let mut output = vec![];
 
-    // Make sure the locking table exists so we have something
-    // to lock. We intentionally ignore errors here, because they are most
-    // likely caused by us losing a race to create the table against another
-    // graph-node. If this truly is an error, we will trip over it when
-    // we try to lock the table and report it to the user
-    if let Err(e) = blocking_conn.batch_execute(
-        "create table if not exists \
-         __graph_node_global_lock(id int)",
-    ) {
-        debug!(
-            logger,
-            "Creating lock table failed, this is most likely harmless";
-            "error" => format!("{:?}", e)
-        );
-    }
-
-    // blocking_conn holds the lock on the migrations table for the duration
-    // of the migration on conn. Since all nodes execute this code, only one
-    // of them can run this code at the same time. We need to use two
-    // connections for this because diesel will run each migration in its
-    // own txn, which makes it impossible to hold a lock across all of them
-    // on that connection
     info!(
         logger,
         "Waiting for other graph-node instances to finish migrating"
     );
-    let result = blocking_conn.transaction(|| {
-        diesel::sql_query("lock table __graph_node_global_lock in exclusive mode")
-            .execute(blocking_conn)?;
-        info!(logger, "Running migrations");
-        embedded_migrations::run_with_output(conn, &mut output)
-    });
+    let result = embedded_migrations::run_with_output(conn, &mut output);
     info!(logger, "Migrations finished");
 
     // If there was any migration output, log it now
@@ -353,19 +350,11 @@ fn migrate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConnec
         let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
         if result.is_err() {
             error!(logger, "Postgres migration output"; "output" => msg);
+            return result;
         } else {
             debug!(logger, "Postgres migration output"; "output" => msg);
         }
     }
-
-    if let Err(e) = result {
-        panic!(
-            "Error setting up Postgres database: \
-             You may need to drop and recreate your database to work with the \
-             latest version of graph-node. Error information: {:?}",
-            e
-        )
-    };
 
     if has_output {
         // We take getting output as a signal that a migration was actually
@@ -374,4 +363,6 @@ fn migrate_schema(logger: &Logger, conn: &PgConnection, blocking_conn: &PgConnec
         // useful. An error here is not serious and can be ignored.
         conn.batch_execute("select pg_stat_statements_reset()").ok();
     }
+
+    Ok(())
 }
