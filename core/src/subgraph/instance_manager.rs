@@ -923,6 +923,14 @@ where
         info!(&logger, "Applying {} entity operation(s)", mods.len());
     }
 
+    let err_count = block_state.deterministic_errors.len();
+    for (i, e) in block_state.deterministic_errors.iter().enumerate() {
+        error!(&logger, "Subgraph error {}/{}", i + 1, err_count;
+            "error" => e.to_string(),
+            "code" => LogCode::SubgraphSyncingFailure
+        );
+    }
+
     // Transact entity operations into the store and update the
     // subgraph's block stream pointer
     let _section = ctx.host_metrics.stopwatch.start_section("transact_block");
