@@ -133,12 +133,16 @@ where
     }
 
     /// Serves a static file.
-    fn serve_file(&self, contents: &'static str) -> GraphQLServiceResponse {
+    fn serve_file(
+        &self,
+        contents: &'static str,
+        content_type: &'static str,
+    ) -> GraphQLServiceResponse {
         async move {
             Ok(Response::builder()
                 .status(200)
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .header(CONTENT_TYPE, "text/html")
+                .header(CONTENT_TYPE, content_type)
                 .body(Body::from(contents))
                 .unwrap())
         }
@@ -279,10 +283,10 @@ where
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => self.index().boxed(),
             (Method::GET, ["graphiql.css"]) => {
-                self.serve_file(include_str!("../assets/graphiql.css"))
+                self.serve_file(include_str!("../assets/graphiql.css"), "text/css")
             }
             (Method::GET, ["graphiql.min.js"]) => {
-                self.serve_file(include_str!("../assets/graphiql.min.js"))
+                self.serve_file(include_str!("../assets/graphiql.min.js"), "text/javascript")
             }
 
             (Method::GET, &["subgraphs", "id", _, "graphql"])

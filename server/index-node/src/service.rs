@@ -63,10 +63,10 @@ where
     }
 
     /// Serves a static file.
-    fn serve_file(contents: &'static str) -> Response<Body> {
+    fn serve_file(contents: &'static str, content_type: &'static str) -> Response<Body> {
         Response::builder()
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-            .header(CONTENT_TYPE, "text/html")
+            .header(CONTENT_TYPE, content_type)
             .status(200)
             .body(Body::from(contents))
             .unwrap()
@@ -82,7 +82,7 @@ where
     }
 
     fn handle_graphiql() -> Response<Body> {
-        Self::serve_file(Self::graphiql_html())
+        Self::serve_file(Self::graphiql_html(), "text/html")
     }
 
     async fn handle_graphql_query(
@@ -184,12 +184,14 @@ where
 
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => Ok(Self::index()),
-            (Method::GET, ["graphiql.css"]) => {
-                Ok(Self::serve_file(include_str!("../assets/graphiql.css")))
-            }
-            (Method::GET, ["graphiql.min.js"]) => {
-                Ok(Self::serve_file(include_str!("../assets/graphiql.min.js")))
-            }
+            (Method::GET, ["graphiql.css"]) => Ok(Self::serve_file(
+                include_str!("../assets/graphiql.css"),
+                "text/css",
+            )),
+            (Method::GET, ["graphiql.min.js"]) => Ok(Self::serve_file(
+                include_str!("../assets/graphiql.min.js"),
+                "text/javascript",
+            )),
 
             (Method::GET, path @ ["graphql"]) => {
                 let dest = format!("/{}/playground", path.join("/"));
