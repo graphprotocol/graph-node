@@ -125,38 +125,40 @@ pub mod unused {
 /// document](https://github.com/graphprotocol/graph-node/blob/master/docs/sharding.md)
 ///
 /// The primary uses the following database tables:
-/// - `public.deployment_schemas`: immutable data about deployments, including
-///   the shard that stores the deployment data and metadata, the namespace in
-///   the shard that contains the deployment data, and the network/chain that
-///   the  deployment is indexing
-/// - `subgraphs.subgraph` and `subgraphs.subgraph_version`: information about
-///   named subgraphs and how they map to deployments
-/// - `subgraphs.subgraph_deployment_assignment`: which index node is indexing
-///   what deployment
+/// - `public.deployment_schemas`: immutable data about deployments,
+///   including the shard that stores the deployment data and metadata, the
+///   namespace in the shard that contains the deployment data, and the
+///   network/chain that the  deployment is indexing
+/// - `subgraphs.subgraph` and `subgraphs.subgraph_version`: information
+///   about named subgraphs and how they map to deployments
+/// - `subgraphs.subgraph_deployment_assignment`: which index node is
+///   indexing what deployment
+///
+/// The primary is also the database that is used to send and receive
+/// notifications through Postgres' `LISTEN`/`NOTIFY` mechanism. That is
+/// used to send notifications about new blocks that a block ingestor has
+/// discovered, and to send `StoreEvents`, which are used to broadcast
+/// changes in deployment assignments and changes in subgraph data to
+/// trigger updates on GraphQL subscriptions.
 ///
 /// For each deployment, the corresponding shard contains a namespace for
 /// the deployment data; the schema in that namespace is generated from the
-/// deployment's GraphQL schema by the [crate::relational::Layout], which
-/// is also responsible for modifying and querying subgraph
-/// data. Deployment metadata is stored in tables in the `subgraphs`
-/// namespace in the same shard as the deployment data. The most important
-/// of these tables are
+/// deployment's GraphQL schema by the [crate::relational::Layout], which is
+/// also responsible for modifying and querying subgraph data. Deployment
+/// metadata is stored in tables in the `subgraphs` namespace in the same
+/// shard as the deployment data. The most important of these tables are
 ///
-/// - `subgraphs.subgraph_deployment`: the main table for deployment metadata;
-///   most importantly, it stores the pointer to the current subgraph head, i.e.,
-///   the block up to which the subgraph has indexed the chain, together with
-///   other things like whether the subgraph has synced, whether it has failed
-///   and whether it encountered any errors
-/// - `subgraphs.subgraph_manifest`: immutable information derived from the YAML
-///   manifest for the deployment
-/// - `subgraphs.dynamic_ethereum_contract_data_source`: the data sources that
-///   the subgraph has created from templates in the manifest.
-/// - `subgraphs.subgraph_error`: details about errors that the deployment has
-///   encountered
-///
-/// There are more metadata tables, but they are rarely if ever read, only
-/// written to when a deployment is created and should be removed in a
-/// future version of `graph-node`
+/// - `subgraphs.subgraph_deployment`: the main table for deployment
+///   metadata; most importantly, it stores the pointer to the current
+///   subgraph head, i.e., the block up to which the subgraph has indexed
+///   the chain, together with other things like whether the subgraph has
+///   synced, whether it has failed and whether it encountered any errors
+/// - `subgraphs.subgraph_manifest`: immutable information derived from the
+///   YAML manifest for the deployment
+/// - `subgraphs.dynamic_ethereum_contract_data_source`: the data sources
+///   that the subgraph has created from templates in the manifest.
+/// - `subgraphs.subgraph_error`: details about errors that the deployment
+///   has encountered
 ///
 /// The `SubgraphStore` mostly orchestrates access to the primary and the
 /// shards.  The actual work is done by code in the `primary` module for
