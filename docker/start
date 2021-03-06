@@ -49,12 +49,34 @@ wait_for_ipfs() {
     fi
 }
 
+run_graph_node() {
+    if [ -n "$GRAPH_NODE_CONFIG" ]
+    then
+        # Start with a configuration file; we don't do a check whether
+        # postgres is up in this case, though we probably should
+        graph-node \
+            --node-id "${node_id//-/_}" \
+            --config "$GRAPH_NODE_CONFIG" \
+            --ipfs "$ipfs"
+    else
+        postgres_port=${postgres_port:-5432}
+        postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host:$postgres_port/$postgres_db"
+
+        wait_for_ipfs "$ipfs"
+        wait_for "$postgres_host:$postgres_port" -t 120
+        sleep 5
+
+        graph-node \
+            --node-id "${node_id//-/_}" \
+            --postgres-url "$postgres_url" \
+            --ethereum-rpc $ethereum \
+            --ipfs "$ipfs"
+    fi
+}
+
 start_query_node() {
     export DISABLE_BLOCK_INGESTOR=true
-    graph-node \
-        --postgres-url "$postgres_url" \
-        --ethereum-rpc $ethereum \
-        --ipfs "$ipfs"
+    run_graph_node
 }
 
 start_index_node() {
@@ -64,26 +86,12 @@ start_index_node() {
         export DISABLE_BLOCK_INGESTOR=true
     fi
 
-    graph-node \
-        --node-id "${node_id//-/_}" \
-        --postgres-url "$postgres_url" \
-        --ethereum-rpc $ethereum \
-        --ipfs "$ipfs"
+    run_graph_node
 }
 
 start_combined_node() {
-    graph-node \
-        --postgres-url "$postgres_url" \
-        --ethereum-rpc $ethereum \
-        --ipfs "$ipfs"
+    run_graph_node
 }
-
-postgres_port=${postgres_port:-5432}
-postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host:$postgres_port/$postgres_db"
-
-wait_for_ipfs "$ipfs"
-wait_for "$postgres_host:$postgres_port" -t 120
-sleep 5
 
 trap save_coredumps EXIT
 
