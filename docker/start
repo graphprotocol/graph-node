@@ -93,6 +93,11 @@ start_combined_node() {
     run_graph_node
 }
 
+if [ -n "$disable_core_dumps" ]
+then
+    ulimit -c 0
+fi
+
 trap save_coredumps EXIT
 
 export PGAPPNAME="${node_id-$HOSTNAME}"

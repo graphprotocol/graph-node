@@ -58,6 +58,10 @@ ENV ethereum_polling_interval ""
 # change in backwards-incompatible ways
 ENV GRAPH_NODE_CONFIG ""
 
+# Disable core dumps; this is useful for query nodes with large caches. Set
+# this to anything to disable coredumps (via 'ulimit -c 0')
+ENV disable_core_dumps ""
+
 # HTTP port
 EXPOSE 8000
 # WebSocket port
