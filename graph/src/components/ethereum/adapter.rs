@@ -361,14 +361,6 @@ impl EthereumCallFilter {
         } = self;
         contract_addresses_function_signatures.is_empty()
     }
-
-    pub fn start_blocks(&self) -> Vec<BlockNumber> {
-        self.contract_addresses_function_signatures
-            .values()
-            .filter(|(start_block, _fn_sigs)| start_block > &0)
-            .map(|(start_block, _fn_sigs)| *start_block)
-            .collect()
-    }
 }
 
 impl FromIterator<(BlockNumber, Address, [u8; 4])> for EthereumCallFilter {
@@ -474,15 +466,6 @@ impl EthereumBlockFilter {
                 addresses
             },
         );
-    }
-
-    pub fn start_blocks(&self) -> Vec<BlockNumber> {
-        self.contract_addresses
-            .iter()
-            .cloned()
-            .filter(|(start_block, _fn_sigs)| start_block > &0)
-            .map(|(start_block, _fn_sigs)| start_block)
-            .collect()
     }
 }
 
