@@ -235,6 +235,7 @@ impl ToSql<Text, Pg> for Namespace {
 /// the database namespace for the deployment as that information is only
 /// stored in the primary database
 pub struct Site {
+    pub id: i32,
     /// The subgraph deployment
     pub deployment: SubgraphDeploymentId,
     /// The name of the database shard
@@ -260,6 +261,7 @@ impl TryFrom<Schema> for Site {
         })?;
         let shard = Shard::new(schema.shard)?;
         Ok(Self {
+            id: schema.id,
             deployment,
             namespace,
             shard,
@@ -637,16 +639,16 @@ impl<'a> Connection<'a> {
         }
 
         // Create a schema for the deployment.
-        let schemas: Vec<String> = diesel::insert_into(ds::table)
+        let schemas: Vec<(i32, String)> = diesel::insert_into(ds::table)
             .values((
                 ds::subgraph.eq(subgraph.as_str()),
                 ds::shard.eq(shard.as_str()),
                 ds::version.eq(v::Relational),
                 ds::network.eq(network.as_str()),
             ))
-            .returning(ds::name)
+            .returning((ds::id, ds::name))
             .get_results(conn)?;
-        let namespace = schemas
+        let (id, namespace) = schemas
             .first()
             .cloned()
             .ok_or_else(|| anyhow!("failed to read schema name for {} back", subgraph))?;
@@ -655,6 +657,7 @@ impl<'a> Connection<'a> {
         })?;
 
         Ok(Site {
+            id,
             deployment: subgraph.clone(),
             namespace,
             shard,

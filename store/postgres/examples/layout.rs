@@ -150,6 +150,7 @@ pub fn main() {
         "Failed to construct catalog",
     );
     let site = Site {
+        id: 1,
         deployment: subgraph,
         shard: PRIMARY_SHARD.clone(),
         namespace: namespace,

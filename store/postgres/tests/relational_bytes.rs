@@ -118,6 +118,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
     conn.batch_execute(&*query).unwrap();
 
     let site = Site {
+        id: 1,
         deployment: THINGS_SUBGRAPH_ID.clone(),
         shard: PRIMARY_SHARD.clone(),
         namespace: NAMESPACE.clone(),

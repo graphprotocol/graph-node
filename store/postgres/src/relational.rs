@@ -1327,6 +1327,7 @@ mod tests {
         let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
         let catalog = Catalog::make_empty(namespace.clone()).expect("Can not create catalog");
         let site = Site {
+            id: 1,
             deployment: subgraph,
             shard: PRIMARY_SHARD.clone(),
             namespace: namespace,

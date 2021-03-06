@@ -400,6 +400,7 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
 fn insert_test_data(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = Site {
+        id: 1,
         deployment: THINGS_SUBGRAPH_ID.clone(),
         shard: PRIMARY_SHARD.clone(),
         namespace: NAMESPACE.clone(),
