@@ -1060,32 +1060,67 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_base: Option<(Arc<Site>, EthereumBlockPointer)>,
+        graft_src: Option<(Arc<Site>, EthereumBlockPointer)>,
     ) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
+        let (dst, graft_info) = {
+            let conn = self.get_conn()?;
+            let dst = self.layout(&conn, site.clone())?;
+            match graft_src {
+                Some((src, block)) => {
+                    let src = self.layout(&conn, src.clone())?;
+                    (dst, Some((src, block)))
+                }
+                None => (dst, None),
+            }
+        };
 
         // Do any cleanup to bring the subgraph into a known good state
-        conn.transaction(|| {
-            let layout = self.layout(&conn, site.clone())?;
-            if let Some((base, block)) = graft_base {
-                let base_layout = self.layout(&conn, base.clone())?;
+        if let Some((src, block)) = graft_info {
+            let start = Instant::now();
+
+            info!(
+                logger,
+                "Initializing graft by copying data from {} to {}",
+                src.catalog.namespace,
+                dst.catalog.namespace
+            );
+
+            // 1. Copy subgraph data
+            // We allow both not copying tables at all from the source, as well
+            // as adding new tables in `self`; we only need to check that tables
+            // that actually need to be copied from the source are compatible
+            // with the corresponding tables in `self`
+            let copy_conn = crate::copy::Connection::new(self.conn.clone());
+            copy_conn.copy_data(src.clone(), dst.clone(), block.clone())?;
+
+            let conn = self.get_conn()?;
+            conn.transaction(|| -> Result<(), StoreError> {
+                // 2. Copy dynamic data sources and adjust their ID
+                let count = dynds::copy(&conn, &src.site.deployment, &dst.site.deployment)?;
+                info!(logger, "Copied {} dynamic data sources", count;
+                      "time_ms" => start.elapsed().as_millis());
+
+                // 3. Rewind the subgraph. `revert_block` gets rid of everything
+                // including the block passed to it. We want to preserve `block`
+                // and therefore revert `block+1`
                 let start = Instant::now();
-                layout.copy_from(
-                    logger,
-                    &conn,
-                    &site.deployment,
-                    &base_layout,
-                    &base.deployment,
-                    block.clone(),
-                )?;
+                let block_to_revert: BlockNumber = (block.number + 1)
+                    .try_into()
+                    .expect("block numbers fit into an i32");
+                dst.revert_block(&conn, &dst.site.deployment, block_to_revert)?;
+                Layout::revert_metadata(&conn, &dst.site.deployment, block_to_revert)?;
+                info!(logger, "Rewound subgraph to block {}", block.number;
+                      "time_ms" => start.elapsed().as_millis());
+
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
-                deployment::forward_block_ptr(&conn, &site.deployment, block)?;
+                crate::deployment::forward_block_ptr(&conn, &dst.site.deployment, block)?;
                 info!(logger, "Subgraph successfully initialized";
                     "time_ms" => start.elapsed().as_millis());
-            }
-            Ok(())
-        })
+                Ok(())
+            })?;
+        }
+        Ok(())
     }
 
     pub(crate) fn unfail(&self, site: Arc<Site>) -> Result<(), StoreError> {

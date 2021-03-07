@@ -12,7 +12,7 @@ use graph::prelude::{q, s, StopwatchMetrics};
 use inflector::Inflector;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::convert::{From, TryFrom, TryInto};
+use std::convert::{From, TryFrom};
 use std::env;
 use std::fmt::{self, Write};
 use std::str::FromStr;
@@ -22,8 +22,8 @@ use std::time::{Duration, Instant};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
-        self as rq, ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection,
-        FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection, FilterQuery,
+        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -33,13 +33,12 @@ use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, Entity, EntityChange, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError,
-    StoreEvent, SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
+    EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError, StoreEvent,
+    SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::BLOCK_RANGE_COLUMN;
 pub use crate::catalog::Catalog;
-use crate::dynds;
 
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
@@ -397,58 +396,6 @@ impl Layout {
             .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql)?;
         Ok(layout)
-    }
-
-    pub fn copy_from(
-        &self,
-        logger: &Logger,
-        conn: &PgConnection,
-        dest_subgraph: &SubgraphDeploymentId,
-        base_layout: &Layout,
-        base_subgraph: &SubgraphDeploymentId,
-        block: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        info!(
-            logger,
-            "Initializing graft by copying data from {} to {}",
-            base_layout.catalog.namespace,
-            self.catalog.namespace
-        );
-
-        // 1. Copy subgraph data
-        // We allow both not copying tables at all from the source, as well
-        // as adding new tables in `self`; we only need to check that tables
-        // that actually need to be copied from the source are compatible
-        // with the corresponding tables in `self`
-        for (dst, src) in self
-            .tables
-            .values()
-            .filter_map(|dst| base_layout.table(&dst.name).map(|src| (dst, src)))
-        {
-            let start = Instant::now();
-            let count = rq::CopyEntityDataQuery::new(dst, src)?.execute(conn)?;
-            info!(logger, "Copied {} {} entities", count, src.object;
-                  "time_ms" => start.elapsed().as_millis());
-        }
-
-        // 2. Copy dynamic data sources and adjust their ID
-        let start = Instant::now();
-        let count = dynds::copy(conn, base_subgraph, dest_subgraph)?;
-        info!(logger, "Copied {} dynamic data sources", count;
-              "time_ms" => start.elapsed().as_millis());
-
-        // 3. Rewind the subgraph. `revert_block` gets rid of everything
-        // including the block passed to it. We want to preserve `block`
-        // and therefore revert `block+1`
-        let start = Instant::now();
-        let block_to_revert: BlockNumber = (block.number + 1)
-            .try_into()
-            .expect("block numbers fit into an i32");
-        self.revert_block(conn, dest_subgraph, block_to_revert)?;
-        Layout::revert_metadata(conn, dest_subgraph, block_to_revert)?;
-        info!(logger, "Rewound subgraph to block {}", block.number;
-              "time_ms" => start.elapsed().as_millis());
-        Ok(())
     }
 
     /// Determine if it is possible to copy the data of `source` into `self`
