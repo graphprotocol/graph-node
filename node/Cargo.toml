@@ -40,7 +40,7 @@ serde_regex = "1.1.0"
 structopt = "0.3.20"
 toml = "0.5.7"
 shellexpand = "2.0.0"
-diesel = "1.4.5"
+diesel = "1.4.6"
 fail = "0.4"
 
 [dev-dependencies]
