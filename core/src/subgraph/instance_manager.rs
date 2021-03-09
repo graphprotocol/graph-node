@@ -754,22 +754,7 @@ where
     )
     .await
     {
-        // The triggers were processed but some were skipped due to deterministic errors, if the
-        // `nonFatalErrors` feature is not present, return early with an error.
-        Ok(block_state)
-            if block_state.has_errors()
-                && !ctx
-                    .inputs
-                    .features
-                    .contains(&SubgraphFeature::nonFatalErrors) =>
-        {
-            // Take just the first error to report.
-            return Err(BlockProcessingError::Deterministic(
-                block_state.deterministic_errors.into_iter().next().unwrap(),
-            ));
-        }
-
-        // Triggers processed with no errors.
+        // Triggers processed with no errors or with only determinstic errors.
         Ok(block_state) => block_state,
 
         // Some form of unknown or non-deterministic error ocurred.
@@ -877,6 +862,21 @@ where
         }
     }
 
+    // The triggers were processed but some were skipped due to deterministic errors, if the
+    // `nonFatalErrors` feature is not present, return early with an error.
+    let has_errors = block_state.has_errors();
+    if has_errors
+        && !ctx
+            .inputs
+            .features
+            .contains(&SubgraphFeature::nonFatalErrors)
+    {
+        // Take just the first error to report.
+        return Err(BlockProcessingError::Deterministic(
+            block_state.deterministic_errors.into_iter().next().unwrap(),
+        ));
+    }
+
     // Apply entity operations and advance the stream
 
     // Avoid writing to store if block stream has been canceled
@@ -894,8 +894,6 @@ where
         )
         .await?;
     }
-
-    let has_errors = block_state.has_errors();
 
     let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
