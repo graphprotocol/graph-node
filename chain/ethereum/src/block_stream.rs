@@ -362,17 +362,21 @@ where
                             // then we start with the genesis block
                             let from = subgraph_ptr.map_or(0, |ptr| ptr.number + 1);
 
-                            // Get the next subsequent data source start block to ensure the block range
-                            // is aligned with data source.
+                            // Get the next subsequent data source start block to ensure the block
+                            // range is aligned with data source. This is not necessary for
+                            // correctness, but it avoids an ineffecient situation such as the range
+                            // being 0..100 and the start block for a data source being 99, then
+                            // `calls_in_block_range` would request unecessary traces for the blocks
+                            // 0 to 98 because the start block is within the range.
                             let next_start_block: BlockNumber = start_blocks
                                 .into_iter()
                                 .filter(|block_num| block_num > &from)
                                 .min()
                                 .unwrap_or(BLOCK_NUMBER_MAX);
 
-                            // End either just before the the next data source start_block or
-                            // just prior to the reorg threshold. It isn't safe to go any farther
-                            // due to race conditions.
+                            // End either just before the the next data source start_block or just
+                            // prior to the reorg threshold. It isn't safe to go farther than the
+                            // reorg threshold due to race conditions.
                             let to_limit =
                                 cmp::min(head_ptr.number - reorg_threshold, next_start_block - 1);
 
