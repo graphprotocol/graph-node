@@ -12,6 +12,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
 
+//use postgres::config::Config;
+
 #[derive(Clone)]
 pub struct ConnectionPool {
     logger: Logger,

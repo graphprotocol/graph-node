@@ -1,10 +1,9 @@
 use crate::functions::pg_notify;
 use diesel::pg::PgConnection;
 use diesel::select;
-use fallible_iterator::FallibleIterator;
 use lazy_static::lazy_static;
-use postgres::notification::Notification;
-use postgres::{Connection, TlsMode};
+use postgres::Notification;
+use postgres::{fallible_iterator::FallibleIterator, Client, NoTls};
 use std::env;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -123,11 +122,11 @@ impl NotificationListener {
             // We exit the process on panic so unwind safety is irrelevant.
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 // Connect to Postgres
-                let conn = Connection::connect(postgres_url, TlsMode::None)
+                let mut conn = Client::connect(postgres_url.as_str(), NoTls)
                     .expect("failed to connect notification listener to Postgres");
 
                 // Subscribe to the notification channel in Postgres
-                conn.execute(&format!("LISTEN {}", channel_name.0), &[])
+                conn.execute(format!("LISTEN {}", channel_name.0).as_str(), &[])
                     .expect("failed to listen to Postgres notifications");
 
                 // Wait until the listener has been started
@@ -135,11 +134,13 @@ impl NotificationListener {
 
                 // Read notifications until the thread is to be terminated
                 while !terminate.load(Ordering::SeqCst) {
-                    // Obtain a notifications iterator from Postgres
-                    let notifications = conn.notifications();
-
-                    // Read notifications until there hasn't been one for 500ms
-                    for notification in notifications
+                    // Obtain pending notifications from Postgres. We load
+                    // them all into memory, since for large notifications
+                    // we need to query the database again; avoiding this
+                    // load would require that we use a second database
+                    // connection to look up large notifications
+                    let notifications: Vec<_> = conn
+                        .notifications()
                         .timeout_iter(Duration::from_millis(500))
                         .iterator()
                         .filter_map(|item| match item {
@@ -149,20 +150,23 @@ impl NotificationListener {
                                 crit!(logger, "Error receiving message"; "error" => &msg);
                                 eprintln!(
                                     "Connection to Postgres lost while listening for events. \
-                                 Aborting to avoid inconsistent state. ({})",
+                             Aborting to avoid inconsistent state. ({})",
                                     msg
                                 );
                                 std::process::abort();
                             }
                         })
-                        .filter(|notification| notification.channel == channel_name.0)
-                    {
+                        .filter(|notification| notification.channel() == channel_name.0)
+                        .collect();
+
+                    // Read notifications until there hasn't been one for 500ms
+                    for notification in notifications {
                         // Terminate the thread if desired
                         if terminate.load(Ordering::SeqCst) {
                             break;
                         }
 
-                        match JsonNotification::parse(&notification, &conn) {
+                        match JsonNotification::parse(&notification, &mut conn) {
                             Ok(json_notification) => {
                                 // We'll assume here that if sending fails, this means that the
                                 // listener has already been dropped, the receiving
@@ -245,9 +249,9 @@ static LARGE_NOTIFICATION_THRESHOLD: usize = 7800;
 impl JsonNotification {
     pub fn parse(
         notification: &Notification,
-        conn: &Connection,
+        conn: &mut Client,
     ) -> Result<JsonNotification, StoreError> {
-        let value = serde_json::from_str(&notification.payload)?;
+        let value = serde_json::from_str(&notification.payload())?;
 
         match value {
             serde_json::Value::Number(n) => {
@@ -276,20 +280,20 @@ impl JsonNotification {
                         )
                     })?;
 
-                if payload_rows.is_empty() || payload_rows.get(0).is_empty() {
+                if payload_rows.is_empty() || payload_rows.get(0).is_none() {
                     return Err(anyhow!("No payload found for notification {}", payload_id))?;
                 }
-                let payload: String = payload_rows.get(0).get(0);
+                let payload: String = payload_rows.get(0).unwrap().get(0);
 
                 Ok(JsonNotification {
-                    process_id: notification.process_id,
-                    channel: notification.channel.clone(),
+                    process_id: notification.process_id(),
+                    channel: notification.channel().to_string(),
                     payload: serde_json::from_str(&payload)?,
                 })
             }
             serde_json::Value::Object(_) => Ok(JsonNotification {
-                process_id: notification.process_id,
-                channel: notification.channel.clone(),
+                process_id: notification.process_id(),
+                channel: notification.channel().to_string(),
                 payload: value,
             }),
             _ => Err(anyhow!("JSON notifications must be numbers or objects"))?,
