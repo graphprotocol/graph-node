@@ -1181,6 +1181,13 @@ where
             .collect::<HashSet<H160>>()
             .into_iter()
             .collect::<Vec<H160>>();
+
+        if addresses.is_empty() {
+            // The filter has no started data sources in the requested range, nothing to do.
+            // This prevents an expensive call to `trace_filter` with empty `addresses`.
+            return Box::new(stream::empty());
+        }
+
         Box::new(
             eth.trace_stream(&logger, subgraph_metrics, from, to, addresses)
                 .filter_map(|trace| EthereumCall::try_from_trace(&trace))
