@@ -35,7 +35,7 @@ graph-server-websocket = { path = "../server/websocket" }
 graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
 regex = "1.4.2"
-serde = { version = "1.0.117", features = ["derive", "rc"] }
+serde = { version = "1.0.124", features = ["derive", "rc"] }
 serde_regex = "1.1.0"
 structopt = "0.3.20"
 toml = "0.5.7"
