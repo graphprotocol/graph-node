@@ -46,7 +46,15 @@ impl StoreBuilder {
         let (store, pools) =
             Self::make_sharded_store_and_primary_pool(logger, node, config, registry.cheap_clone());
 
-        join_all(pools.values().map(|pool| pool.migrate_schema())).await;
+        // Perform setup for all the pools
+        let details = pools
+            .values()
+            .map(|pool| pool.connection_detail())
+            .collect::<Result<Vec<_>, _>>()
+            .expect("connection url's contain enough detail");
+        let details = Arc::new(details);
+
+        join_all(pools.iter().map(|(_, pool)| pool.setup(details.clone()))).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())

@@ -1,6 +1,6 @@
-use diesel::pg::PgConnection;
 use diesel::prelude::RunQueryDsl;
 use diesel::sql_types::Text;
+use diesel::{pg::PgConnection, sql_query};
 use std::collections::{HashMap, HashSet};
 
 use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
@@ -89,4 +89,17 @@ pub fn supports_proof_of_indexing(
         .bind::<Text, _>(POI_TABLE)
         .load(conn)?;
     Ok(result.len() > 0)
+}
+
+pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
+    #[derive(QueryableByName)]
+    struct Srv {
+        #[sql_type = "Text"]
+        srvname: String,
+    }
+    Ok(sql_query("select srvname from pg_foreign_server")
+        .get_results::<Srv>(conn)?
+        .into_iter()
+        .map(|srv| srv.srvname)
+        .collect())
 }
