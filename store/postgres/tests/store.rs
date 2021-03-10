@@ -928,16 +928,10 @@ fn find() {
     });
 }
 
-fn make_entity_change(
-    entity_type: &str,
-    entity_id: &str,
-    op: EntityChangeOperation,
-) -> EntityChange {
+fn make_entity_change(entity_type: &str) -> EntityChange {
     EntityChange::Data {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
         entity_type: EntityType::new(entity_type.to_owned()),
-        entity_id: entity_id.to_owned(),
-        operation: op,
     }
 }
 
@@ -1052,11 +1046,7 @@ async fn check_basic_revert(
 #[test]
 fn revert_block_basic_user() {
     run_test(|store| async move {
-        let expected = StoreEvent::new(vec![make_entity_change(
-            USER,
-            "3",
-            EntityChangeOperation::Set,
-        )]);
+        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
 
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         check_basic_revert(store.clone(), expected, &TEST_SUBGRAPH_ID, USER).await;
@@ -1115,11 +1105,7 @@ fn revert_block_with_delete() {
         assert_eq!(&test_value, returned_name.unwrap());
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(
-            USER,
-            "2",
-            EntityChangeOperation::Set,
-        )]);
+        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
 
         // The last event is the one for the reversion
         check_events(subscription, vec![expected]).await
@@ -1176,11 +1162,7 @@ fn revert_block_with_partial_update() {
         assert_eq!(reverted_entity, original_entity);
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(
-            USER,
-            "1",
-            EntityChangeOperation::Set,
-        )]);
+        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
 
         check_events(subscription, vec![expected]).await
     })
@@ -1299,8 +1281,6 @@ fn revert_block_with_dynamic_data_source_operations() {
                 vec![EntityChange::Data {
                     subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
                     entity_type: EntityType::new(USER.into()),
-                    entity_id: "1".into(),
-                    operation: EntityChangeOperation::Set,
                 }]
                 .into_iter(),
             ),
@@ -1409,28 +1389,20 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
-                    entity_id: added_entities[0].clone().0,
-                    operation: EntityChangeOperation::Set,
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
-                    entity_id: added_entities[1].clone().0,
-                    operation: EntityChangeOperation::Set,
                 },
             ]),
             StoreEvent::new(vec![
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
-                    entity_id: "1".to_owned(),
-                    operation: EntityChangeOperation::Set,
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: user_type.clone(),
-                    entity_id: added_entities[1].clone().0,
-                    operation: EntityChangeOperation::Removed,
                 },
             ]),
         ];
@@ -1472,11 +1444,7 @@ fn throttle_subscription_delivers() {
         )
         .unwrap();
 
-        let expected = StoreEvent::new(vec![make_entity_change(
-            USER,
-            "4",
-            EntityChangeOperation::Set,
-        )]);
+        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
 
         check_events(subscription, vec![expected]).await
     })

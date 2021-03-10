@@ -460,10 +460,6 @@ pub enum EntityChange {
         subgraph_id: SubgraphDeploymentId,
         /// Entity type name of the changed entity.
         entity_type: EntityType,
-        /// ID of the changed entity.
-        entity_id: String,
-        /// Operation that caused the change.
-        operation: EntityChangeOperation,
     },
     Assignment {
         subgraph_id: SubgraphDeploymentId,
@@ -472,12 +468,10 @@ pub enum EntityChange {
 }
 
 impl EntityChange {
-    pub fn for_data(key: EntityKey, operation: EntityChangeOperation) -> Self {
+    pub fn for_data(key: EntityKey) -> Self {
         Self::Data {
             subgraph_id: key.subgraph_id,
             entity_type: key.entity_type,
-            entity_id: key.entity_id,
-            operation,
         }
     }
 
@@ -527,11 +521,8 @@ impl<'a> FromIterator<&'a EntityModification> for StoreEvent {
             .map(|op| {
                 use self::EntityModification::*;
                 match op {
-                    Insert { key, .. } | Overwrite { key, .. } => {
-                        EntityChange::for_data(key.clone(), EntityChangeOperation::Set)
-                    }
-                    Remove { key } => {
-                        EntityChange::for_data(key.clone(), EntityChangeOperation::Removed)
+                    Insert { key, .. } | Overwrite { key, .. } | Remove { key } => {
+                        EntityChange::for_data(key.clone())
                     }
                 }
             })

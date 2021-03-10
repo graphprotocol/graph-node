@@ -32,9 +32,9 @@ use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYP
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
-    anyhow, info, BlockNumber, Entity, EntityChange, EntityChangeOperation, EntityCollection,
-    EntityFilter, EntityKey, EntityOrder, EntityRange, EthereumBlockPointer, Logger,
-    QueryExecutionError, StoreError, StoreEvent, SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
+    anyhow, info, BlockNumber, Entity, EntityChange, EntityCollection, EntityFilter, EntityKey,
+    EntityOrder, EntityRange, EthereumBlockPointer, Logger, QueryExecutionError, StoreError,
+    StoreEvent, SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::BLOCK_RANGE_COLUMN;
@@ -701,19 +701,15 @@ impl Layout {
             let deleted = removed
                 .into_iter()
                 .filter(|id| !unclamped.contains(id))
-                .map(|id| EntityChange::Data {
+                .map(|_| EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
                     entity_type: table.object.clone(),
-                    entity_id: id,
-                    operation: EntityChangeOperation::Removed,
                 });
             changes.extend(deleted);
             // EntityChange for versions that we just updated or inserted
-            let set = unclamped.into_iter().map(|id| EntityChange::Data {
+            let set = unclamped.into_iter().map(|_| EntityChange::Data {
                 subgraph_id: subgraph_id.clone(),
                 entity_type: table.object.clone(),
-                entity_id: id,
-                operation: EntityChangeOperation::Set,
             });
             changes.extend(set);
         }
