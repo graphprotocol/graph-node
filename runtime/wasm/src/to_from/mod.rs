@@ -93,8 +93,8 @@ impl FromAscObj<AscString> for String {
         asc_string: AscString,
         _: &H,
     ) -> Result<Self, DeterministicHostError> {
-        let mut string =
-            String::from_utf16(&asc_string.content).expect("asc string was not UTF-16");
+        let mut string = String::from_utf16(&asc_string.content)
+            .map_err(|e| DeterministicHostError(e.into()))?;
 
         // Strip null characters since they are not accepted by Postgres.
         if string.contains("\u{0000}") {
