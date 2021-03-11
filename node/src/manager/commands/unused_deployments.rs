@@ -58,7 +58,11 @@ pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
     let recorded = store.record_unused_deployments()?;
 
     for deployment in store.list_unused_deployments(unused::Filter::New)? {
-        if recorded.iter().find(|r| r.id == deployment.id).is_some() {
+        if recorded
+            .iter()
+            .find(|r| r.deployment == deployment.id)
+            .is_some()
+        {
             add_row(&mut list, deployment);
         }
     }

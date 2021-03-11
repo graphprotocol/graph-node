@@ -26,7 +26,8 @@ type Bytes = Vec<u8>;
 #[allow(dead_code)]
 pub struct DeploymentDetail {
     vid: i64,
-    pub id: String,
+    id: i32,
+    pub deployment: String,
     manifest: String,
     pub failed: bool,
     health: HealthType,
@@ -46,7 +47,6 @@ pub struct DeploymentDetail {
     reorg_count: i32,
     current_reorg_depth: i32,
     max_reorg_depth: i32,
-    block_range: (Bound<i32>, Bound<i32>),
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -143,8 +143,7 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
         let DetailAndError(detail, error, sites) = detail_and_error;
 
         let DeploymentDetail {
-            vid: _,
-            id,
+            deployment,
             manifest: _,
             failed: _,
             health,
@@ -164,20 +163,20 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
 
         let site = sites
             .iter()
-            .find(|site| site.deployment.as_str() == &id)
-            .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", id))?;
+            .find(|site| site.deployment.as_str() == &deployment)
+            .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", deployment))?;
 
         // This needs to be filled in later since it lives in a
         // different shard
         let chain_head_block = None;
         let earliest_block = block(
-            &id,
+            &deployment,
             "earliest_ethereum_block",
             earliest_ethereum_block_hash,
             earliest_ethereum_block_number,
         )?;
         let latest_block = block(
-            &id,
+            &deployment,
             "latest_ethereum_block",
             latest_ethereum_block_hash,
             latest_ethereum_block_number,
@@ -190,12 +189,15 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
             latest_block,
         };
         let entity_count = entity_count.to_u64().ok_or_else(|| {
-            constraint_violation!("the entityCount for {} is not representable as a u64", id)
+            constraint_violation!(
+                "the entityCount for {} is not representable as a u64",
+                deployment
+            )
         })?;
         let fatal_error = error.map(|e| SubgraphError::try_from(e)).transpose()?;
         // 'node' needs to be filled in later from a different shard
         Ok(status::Info {
-            subgraph: id,
+            subgraph: deployment,
             synced,
             health,
             fatal_error,
@@ -219,7 +221,7 @@ pub(crate) fn deployment_details(
         d::table.load::<DeploymentDetail>(conn)?
     } else {
         d::table
-            .filter(d::id.eq_any(&deployments))
+            .filter(d::deployment.eq_any(&deployments))
             .load::<DeploymentDetail>(conn)?
     };
     Ok(details)
@@ -248,7 +250,7 @@ pub(crate) fn deployment_statuses(
 
         d::table
             .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .filter(d::id.eq_any(&ids))
+            .filter(d::deployment.eq_any(&ids))
             .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
             .into_iter()
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))

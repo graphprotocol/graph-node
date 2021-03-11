@@ -21,7 +21,10 @@ use stable_hash::crypto::SetHasher;
 use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 
-use crate::block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE};
+use crate::{
+    block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE},
+    primary::Site,
+};
 use graph::constraint_violation;
 
 #[derive(DbEnum, Debug, Clone, Copy)]
@@ -47,7 +50,8 @@ impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
 table! {
     subgraphs.subgraph_deployment (vid) {
         vid -> BigInt,
-        id -> Text,
+        id -> Integer,
+        deployment -> Text,
         manifest -> Text,
         failed -> Bool,
         health -> crate::deployment::SubgraphHealthMapping,
@@ -67,7 +71,6 @@ table! {
         reorg_count -> Integer,
         current_reorg_depth -> Integer,
         max_reorg_depth -> Integer,
-        block_range -> Range<Integer>,
     }
 }
 
@@ -112,7 +115,7 @@ fn graft(
 
     let graft_query = sd::table
         .select((sd::graft_base, sd::graft_block_hash, sd::graft_block_number))
-        .filter(sd::id.eq(id.as_str()));
+        .filter(sd::deployment.eq(id.as_str()));
     // The name of the base subgraph, the hash, and block number
     let graft: (Option<String>, Option<Vec<u8>>, Option<BigDecimal>) = if pending_only {
         graft_query
@@ -219,7 +222,7 @@ pub fn forward_block_ptr(
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
 
-    update(d::table.filter(d::id.eq(id.as_str())))
+    update(d::table.filter(d::deployment.eq(id.as_str())))
         .set((
             d::latest_ethereum_block_number.eq(sql(&number)),
             d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
@@ -240,7 +243,7 @@ pub fn revert_block_ptr(
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
 
-    update(d::table.filter(d::id.eq(id.as_str())))
+    update(d::table.filter(d::deployment.eq(id.as_str())))
         .set((
             d::latest_ethereum_block_number.eq(sql(&number)),
             d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
@@ -260,7 +263,7 @@ pub fn block_ptr(
     use subgraph_deployment as d;
 
     let (number, hash) = d::table
-        .filter(d::id.eq(id.as_str()))
+        .filter(d::deployment.eq(id.as_str()))
         .select((
             d::latest_ethereum_block_number,
             d::latest_ethereum_block_hash,
@@ -315,9 +318,9 @@ pub fn state(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<Deployment
     use subgraph_deployment as d;
 
     match d::table
-        .filter(d::id.eq(id.as_str()))
+        .filter(d::deployment.eq(id.as_str()))
         .select((
-            d::id,
+            d::deployment,
             d::reorg_count,
             d::max_reorg_depth,
             d::latest_ethereum_block_number,
@@ -352,7 +355,7 @@ pub fn set_synced(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), 
 
     update(
         d::table
-            .filter(d::id.eq(id.as_str()))
+            .filter(d::deployment.eq(id.as_str()))
             .filter(d::synced.eq(false)),
     )
     .set(d::synced.eq(true))
@@ -365,7 +368,7 @@ pub fn exists(conn: &PgConnection, id: &str) -> Result<bool, StoreError> {
     use subgraph_deployment as d;
 
     let exists = d::table
-        .filter(d::id.eq(id))
+        .filter(d::deployment.eq(id))
         .count()
         .get_result::<i64>(conn)?
         > 0;
@@ -377,7 +380,7 @@ pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreErr
     use subgraph_deployment as d;
 
     let synced = d::table
-        .filter(d::id.eq(id))
+        .filter(d::deployment.eq(id))
         .select(d::synced)
         .first(conn)
         .optional()?
@@ -430,7 +433,7 @@ pub fn fail(
     use subgraph_deployment as d;
 
     let error_id = insert_subgraph_error(conn, error)?;
-    update(d::table.filter(d::id.eq(id.as_str())))
+    update(d::table.filter(d::deployment.eq(id.as_str())))
         .set((
             d::failed.eq(true),
             d::health.eq(SubgraphHealth::Failed),
@@ -452,7 +455,7 @@ pub(crate) fn has_non_fatal_errors(
     let block = match block {
         Some(block) => d::table.select(sql(&block.to_string())).into_boxed(),
         None => d::table
-            .filter(d::id.eq(id.as_str()))
+            .filter(d::deployment.eq(id.as_str()))
             .select(d::latest_ethereum_block_number)
             .into_boxed(),
     };
@@ -485,7 +488,7 @@ pub fn unfail(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), Stor
     };
 
     let fatal_error_id = match d::table
-        .filter(d::id.eq(id.as_str()))
+        .filter(d::deployment.eq(id.as_str()))
         .select(d::fatal_error)
         .get_result::<Option<String>>(conn)?
     {
@@ -496,7 +499,7 @@ pub fn unfail(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), Stor
     };
 
     // Unfail the deployment.
-    update(d::table.filter(d::id.eq(id.as_str())))
+    update(d::table.filter(d::deployment.eq(id.as_str())))
         .set((
             d::failed.eq(false),
             d::health.eq(prev_health),
@@ -555,7 +558,7 @@ fn check_health(
 
     update(
         d::table
-            .filter(d::id.eq(id.as_str()))
+            .filter(d::deployment.eq(id.as_str()))
             .filter(d::health.eq(old)),
     )
     .set(d::health.eq(new))
@@ -603,7 +606,7 @@ pub fn drop_metadata(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(
 
     // We don't need to delete from subgraph_error since that cascades from
     // deleting the subgraph_deployment
-    let manifest: String = delete(d::table.filter(d::id.eq(id.as_str())))
+    let manifest: String = delete(d::table.filter(d::deployment.eq(id.as_str())))
         .returning(d::manifest)
         .get_result(conn)?;
     delete(m::table.filter(m::id.eq(manifest))).execute(conn)?;
@@ -612,7 +615,7 @@ pub fn drop_metadata(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(
 
 pub fn create_deployment(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    site: &Site,
     deployment: SubgraphDeploymentEntity,
     exists: bool,
     replace: bool,
@@ -654,10 +657,11 @@ pub fn create_deployment(
         max_reorg_depth: _,
     } = deployment;
 
-    let manifest_id = SubgraphManifestEntity::id(id);
+    let manifest_id = SubgraphManifestEntity::id(&site.deployment);
 
     let deployment_values = (
-        d::id.eq(id.as_str()),
+        d::id.eq(site.id),
+        d::deployment.eq(site.deployment.as_str()),
         d::manifest.eq(&manifest_id),
         d::failed.eq(failed),
         d::synced.eq(synced),
@@ -672,7 +676,6 @@ pub fn create_deployment(
         d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),
         d::graft_block_hash.eq(b(&graft_block)),
         d::graft_block_number.eq(n(&graft_block)),
-        d::block_range.eq(UNVERSIONED_RANGE),
     );
 
     let manifest_values = (
@@ -686,7 +689,7 @@ pub fn create_deployment(
     );
 
     if exists && replace {
-        update(d::table.filter(d::id.eq(id.as_str())))
+        update(d::table.filter(d::deployment.eq(site.deployment.as_str())))
             .set(deployment_values)
             .execute(conn)?;
 
@@ -707,7 +710,7 @@ pub fn create_deployment(
 
 pub fn update_entity_count(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    site: &Site,
     full_count_query: &str,
     count: i32,
 ) -> Result<(), StoreError> {
@@ -735,13 +738,13 @@ pub fn update_entity_count(
            set entity_count =
                  coalesce((nullif(entity_count, -1)) + $1,
                           ({full_count_query}))
-         where id = $2
+         where deployment = $2
         ",
         full_count_query = full_count_query
     );
     Ok(diesel::sql_query(query)
         .bind::<Integer, _>(count)
-        .bind::<Text, _>(id.as_str())
+        .bind::<Text, _>(site.deployment.as_str())
         .execute(conn)
         .map(|_| ())?)
 }

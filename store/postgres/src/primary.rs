@@ -978,7 +978,7 @@ impl<'a> Connection<'a> {
 
         for detail in details {
             let (latest_hash, latest_number) = block(
-                &detail.id,
+                &detail.deployment,
                 "latest_ethereum_block",
                 detail.latest_ethereum_block_hash.clone(),
                 detail.latest_ethereum_block_number.clone(),
@@ -988,7 +988,7 @@ impl<'a> Connection<'a> {
             .unwrap_or((None, None));
             let entity_count = detail.entity_count.to_u64().unwrap_or(0) as i32;
 
-            update(u::table.filter(u::id.eq(&detail.id)))
+            update(u::table.filter(u::id.eq(&detail.deployment)))
                 .set((
                     u::entity_count.eq(entity_count),
                     u::latest_ethereum_block_hash.eq(latest_hash),
