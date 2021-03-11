@@ -242,15 +242,17 @@ impl WasmInstance {
         };
 
         if let Some(deterministic_error) = deterministic_error {
+            let message = format!("{:#}", deterministic_error).replace("\n", "\t");
+
             // Log the error and restore the updates snapshot, effectively reverting the handler.
             error!(&self.instance_ctx().ctx.logger,
                 "Handler skipped due to execution failure";
                 "handler" => handler,
-                "error" => format!("{:#}", deterministic_error)
+                "error" => &message,
             );
             let subgraph_error = SubgraphError {
                 subgraph_id: self.instance_ctx().ctx.host_exports.subgraph_id.clone(),
-                message: format!("{:#}", deterministic_error),
+                message,
                 block_ptr: Some(self.instance_ctx().ctx.block.block_ptr()),
                 handler: Some(handler.to_string()),
                 deterministic: true,

@@ -319,7 +319,7 @@ dependencies = [
  "thiserror",
  "tokio 1.2.0",
  "tokio-util 0.6.3",
- "url 2.2.0",
+ "url 2.2.1",
  "winapi 0.3.9",
 ]
 
