@@ -494,7 +494,7 @@ where
                         logger,
                         "Reverting block to get back to main chain";
                         "block_number" => format!("{}", subgraph_ptr.number),
-                        "block_hash" => format!("{}", subgraph_ptr.hash_as_h256())
+                        "block_hash" => format!("{}", subgraph_ptr.hash)
                     );
 
                     // We would like to revert the DB state to the parent of the current block.
@@ -627,16 +627,17 @@ where
 
                 // Handle unexpected stream errors by marking the subgraph as failed.
                 Err(e) => {
+                    let message = format!("{:#}", e).replace("\n", "\t");
                     error!(
                         &logger,
-                        "Subgraph instance failed to run: {}", e;
+                        "Subgraph instance failed to run: {}", message;
                         "id" => id_for_err.to_string(),
                         "code" => LogCode::SubgraphSyncingFailure
                     );
 
                     let error = SubgraphError {
                         subgraph_id: id_for_err.clone(),
-                        message: e.to_string(),
+                        message,
                         block_ptr: Some(block_ptr),
                         handler: None,
                         deterministic: e.is_deterministic(),
@@ -705,7 +706,7 @@ where
     let block_ptr = EthereumBlockPointer::from(&block);
     let logger = logger.new(o!(
         "block_number" => format!("{:?}", block_ptr.number),
-        "block_hash" => format!("{:?}", block_ptr.hash)
+        "block_hash" => format!("{}", block_ptr.hash)
     ));
 
     if triggers.len() == 1 {
@@ -923,8 +924,9 @@ where
 
     let err_count = block_state.deterministic_errors.len();
     for (i, e) in block_state.deterministic_errors.iter().enumerate() {
+        let message = format!("{:#}", e).replace("\n", "\t");
         error!(&logger, "Subgraph error {}/{}", i + 1, err_count;
-            "error" => e.to_string(),
+            "error" => message,
             "code" => LogCode::SubgraphSyncingFailure
         );
     }

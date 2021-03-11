@@ -593,7 +593,7 @@ impl Layout {
                 return;
             }
 
-            let mut text = debug_query(&query).to_string().replace("\n", " ");
+            let mut text = debug_query(&query).to_string().replace("\n", "\t");
             // If the query + bind variables is more than MAXLEN, truncate it;
             // this will happen when queries have very large bind variables
             // (e.g., long arrays of string ids)

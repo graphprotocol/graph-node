@@ -3,7 +3,7 @@ use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 use std::{cmp::Ordering, convert::TryFrom};
 use std::{fmt, str::FromStr};
 use web3::types::{
@@ -416,6 +416,12 @@ pub struct BlockHash(pub Box<[u8]>);
 impl From<H256> for BlockHash {
     fn from(hash: H256) -> Self {
         BlockHash(hash.as_bytes().into())
+    }
+}
+
+impl Display for BlockHash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "0x{}", hex::encode(&self.0))
     }
 }
 
