@@ -25,7 +25,6 @@ type Bytes = Vec<u8>;
 // don't need all the fields
 #[allow(dead_code)]
 pub struct DeploymentDetail {
-    vid: i64,
     id: i32,
     pub deployment: String,
     manifest: String,

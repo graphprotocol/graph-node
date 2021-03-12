@@ -4,7 +4,7 @@
 use diesel::{
     connection::SimpleConnection,
     dsl::{delete, insert_into, select, sql, update},
-    sql_types::{Integer, Text},
+    sql_types::Integer,
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
 use diesel::{
@@ -48,8 +48,7 @@ impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
 }
 
 table! {
-    subgraphs.subgraph_deployment (vid) {
-        vid -> BigInt,
+    subgraphs.subgraph_deployment (id) {
         id -> Integer,
         deployment -> Text,
         manifest -> Text,
@@ -738,13 +737,13 @@ pub fn update_entity_count(
            set entity_count =
                  coalesce((nullif(entity_count, -1)) + $1,
                           ({full_count_query}))
-         where deployment = $2
+         where id = $2
         ",
         full_count_query = full_count_query
     );
     Ok(diesel::sql_query(query)
         .bind::<Integer, _>(count)
-        .bind::<Text, _>(site.deployment.as_str())
+        .bind::<Integer, _>(site.id)
         .execute(conn)
         .map(|_| ())?)
 }
