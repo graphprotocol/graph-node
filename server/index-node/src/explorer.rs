@@ -287,10 +287,12 @@ impl<T> Cache<T> {
     /// as it is assumed that, after returning `None`, the caller will
     /// immediately overwrite that entry with a call to `set`
     fn get(&self, key: &str) -> Option<Arc<T>> {
+        self.get_at(key, Instant::now())
+    }
+
+    fn get_at(&self, key: &str, now: Instant) -> Option<Arc<T>> {
         match self.entries.read().unwrap().get(key) {
-            Some(CacheEntry { value, expires }) if *expires >= Instant::now() => {
-                Some(value.clone())
-            }
+            Some(CacheEntry { value, expires }) if *expires >= now => Some(value.clone()),
             _ => None,
         }
     }
@@ -298,9 +300,13 @@ impl<T> Cache<T> {
     /// Associate `key` with `value` in the cache. The `value` will be
     /// valid for `self.ttl` duration
     fn set(&self, key: String, value: Arc<T>) {
+        self.set_at(key, value, Instant::now())
+    }
+
+    fn set_at(&self, key: String, value: Arc<T>, now: Instant) {
         let entry = CacheEntry {
             value,
-            expires: Instant::now() + self.ttl,
+            expires: now + self.ttl,
         };
         self.entries.write().unwrap().insert(key, entry);
     }
@@ -310,8 +316,8 @@ impl<T> Cache<T> {
 fn cache() {
     const KEY: &str = "one";
     let cache = Cache::<String>::new(Duration::from_millis(10));
-    cache.set(KEY.to_string(), Arc::new("value".to_string()));
-    assert!(cache.get(KEY).is_some());
-    std::thread::sleep(Duration::from_millis(15));
-    assert!(cache.get(KEY).is_none())
+    let now = Instant::now();
+    cache.set_at(KEY.to_string(), Arc::new("value".to_string()), now);
+    assert!(cache.get_at(KEY, now + Duration::from_millis(5)).is_some());
+    assert!(cache.get_at(KEY, now + Duration::from_millis(15)).is_none());
 }
