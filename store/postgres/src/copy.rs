@@ -24,7 +24,7 @@ use diesel::{
 use graph::{
     components::store::EntityType,
     constraint_violation,
-    prelude::{BlockNumber, EthereumBlockPointer, StoreError},
+    prelude::{info, BlockNumber, EthereumBlockPointer, Logger, StoreError},
 };
 
 use crate::{connection_pool::ConnectionPool, primary::Site, relational::Layout};
@@ -32,6 +32,7 @@ use crate::{relational::Table, relational_queries as rq};
 
 const INITIAL_BATCH_SIZE: i64 = 10_000;
 const TARGET_DURATION: Duration = Duration::from_secs(5 * 60);
+const LOG_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 table! {
     subgraphs.copy_state(dst) {
@@ -385,6 +386,75 @@ impl TableState {
     }
 }
 
+// A helper for logging progress while data is being copied
+struct CopyProgress<'a> {
+    logger: &'a Logger,
+    last_log: Instant,
+    src: Arc<Site>,
+    dst: Arc<Site>,
+    current_vid: i64,
+    target_vid: i64,
+}
+
+impl<'a> CopyProgress<'a> {
+    fn new(logger: &'a Logger, state: &CopyState) -> Self {
+        let target_vid: i64 = state.tables.iter().map(|table| table.target_vid).sum();
+        Self {
+            logger,
+            last_log: Instant::now(),
+            src: state.src.site.clone(),
+            dst: state.dst.site.clone(),
+            current_vid: 0,
+            target_vid,
+        }
+    }
+
+    fn start(&self) {
+        info!(
+            self.logger,
+            "Initialize data copy from {}[{}] to {}[{}]",
+            self.src.deployment,
+            self.src.namespace,
+            self.dst.deployment,
+            self.dst.namespace
+        );
+    }
+
+    fn progress_pct(current_vid: i64, target_vid: i64) -> f64 {
+        if target_vid == 0 {
+            100.0
+        } else {
+            current_vid as f64 / target_vid as f64 * 100.0
+        }
+    }
+
+    fn update(&mut self, table: &TableState) {
+        if self.last_log.elapsed() > LOG_INTERVAL {
+            info!(
+                self.logger,
+                "Copied {:.2}% of `{}` entities ({}/{} entity versions), {:.2}% of overall data",
+                Self::progress_pct(table.next_vid, table.target_vid),
+                table.dst.object,
+                table.next_vid,
+                table.target_vid,
+                Self::progress_pct(self.current_vid + table.next_vid, self.target_vid)
+            );
+            self.last_log = Instant::now();
+        }
+    }
+
+    fn table_finished(&mut self, table: &TableState) {
+        self.current_vid += table.next_vid;
+    }
+
+    fn finished(&self) {
+        info!(
+            self.logger,
+            "Finished copying data into {}[{}]", self.dst.deployment, self.dst.namespace
+        );
+    }
+}
+
 /// A helper for copying subgraphs
 pub struct Connection {
     /// The connection pool for the shard that will contain the destination
@@ -420,18 +490,26 @@ impl Connection {
     /// lower(v.block_range) <= target_block.number }`.
     pub fn copy_data(
         &self,
+        logger: &Logger,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
-        let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
+        let mut state =
+            self.transaction(|conn| CopyState::new(conn, src, dst.clone(), target_block))?;
+        let mut progress = CopyProgress::new(logger, &state);
+        progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
             while !table.finished() {
                 self.transaction(|conn| table.copy_batch(conn))?;
+                progress.update(table);
             }
+            progress.table_finished(table);
         }
+
         self.transaction(|conn| state.record_finished(conn))?;
+        progress.finished();
 
         Ok(())
     }
