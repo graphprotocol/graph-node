@@ -108,9 +108,9 @@ pub mod prelude {
         BLOCK_NUMBER_MAX, SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
-        BlockState, DataSourceLoader, DataSourceTemplateInfo, HostMetrics, RuntimeHost,
-        RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphInstance, SubgraphInstanceManager,
-        SubgraphRegistrar, SubgraphVersionSwitchingMode,
+        BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,
+        SubgraphAssignmentProvider, SubgraphInstance, SubgraphInstanceManager, SubgraphRegistrar,
+        SubgraphVersionSwitchingMode,
     };
     pub use crate::components::{EventConsumer, EventProducer};
 
@@ -133,9 +133,9 @@ pub mod prelude {
         BlockHandlerFilter, CreateSubgraphResult, DataSource, DataSourceContext,
         DataSourceTemplate, DeploymentState, Link, MappingABI, MappingBlockHandler,
         MappingCallHandler, MappingEventHandler, SubgraphAssignmentProviderError,
-        SubgraphAssignmentProviderEvent, SubgraphDeploymentId, SubgraphManifest,
-        SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphName,
-        SubgraphRegistrarError, UnvalidatedSubgraphManifest,
+        SubgraphDeploymentId, SubgraphManifest, SubgraphManifestResolveError,
+        SubgraphManifestValidationError, SubgraphName, SubgraphRegistrarError,
+        UnvalidatedSubgraphManifest,
     };
     pub use crate::data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,

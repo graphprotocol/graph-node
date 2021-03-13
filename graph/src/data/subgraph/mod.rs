@@ -336,19 +336,12 @@ impl From<SubgraphManifestValidationError> for SubgraphRegistrarError {
 #[derive(Error, Debug)]
 pub enum SubgraphAssignmentProviderError {
     #[error("Subgraph resolve error: {0}")]
-    ResolveError(SubgraphManifestResolveError),
-    #[error("Failed to load dynamic data sources: {0}")]
-    DynamicDataSourcesError(anyhow::Error),
+    ResolveError(Error),
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[error("Subgraph with ID {0} already running")]
     AlreadyRunning(SubgraphDeploymentId),
     #[error("Subgraph with ID {0} is not running")]
     NotRunning(SubgraphDeploymentId),
-    /// Occurs when a subgraph's GraphQL schema is invalid.
-    #[error("GraphQL schema error: {0}")]
-    SchemaValidationError(anyhow::Error),
-    #[error("Error building index for subgraph {0}, entity {1} and attribute {2}")]
-    BuildIndexesError(String, String, String),
     #[error("Subgraph provider error: {0}")]
     Unknown(anyhow::Error),
 }
@@ -363,15 +356,6 @@ impl From<::diesel::result::Error> for SubgraphAssignmentProviderError {
     fn from(e: ::diesel::result::Error) -> Self {
         SubgraphAssignmentProviderError::Unknown(e.into())
     }
-}
-
-/// Events emitted by [SubgraphAssignmentProvider](trait.SubgraphAssignmentProvider.html) implementations.
-#[derive(Debug, PartialEq)]
-pub enum SubgraphAssignmentProviderEvent {
-    /// A subgraph with the given manifest should start processing.
-    SubgraphStart(SubgraphManifest),
-    /// The subgraph with the given ID should stop processing.
-    SubgraphStop(SubgraphDeploymentId),
 }
 
 #[derive(Error, Debug)]
@@ -833,7 +817,6 @@ impl Graft {
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<S, D, T> {
     pub id: SubgraphDeploymentId,
-    pub location: String,
     pub spec_version: String,
     #[serde(default)]
     pub features: BTreeSet<SubgraphFeature>,
@@ -844,13 +827,6 @@ pub struct BaseSubgraphManifest<S, D, T> {
     pub graft: Option<Graft>,
     #[serde(default)]
     pub templates: Vec<T>,
-}
-
-/// Consider two subgraphs to be equal if they come from the same IPLD link.
-impl<S, D, T> PartialEq for BaseSubgraphManifest<S, D, T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.location == other.location
-    }
 }
 
 /// SubgraphManifest with IPFS links unresolved
@@ -868,12 +844,12 @@ impl UnvalidatedSubgraphManifest {
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub async fn resolve(
-        link: Link,
+        id: SubgraphDeploymentId,
         resolver: Arc<impl LinkResolver>,
         logger: &Logger,
     ) -> Result<Self, SubgraphManifestResolveError> {
         Ok(Self(
-            SubgraphManifest::resolve(link, resolver.deref(), logger).await?,
+            SubgraphManifest::resolve(id, resolver.deref(), logger).await?,
         ))
     }
 
@@ -983,10 +959,13 @@ impl SubgraphManifest {
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub async fn resolve(
-        link: Link,
+        id: SubgraphDeploymentId,
         resolver: &impl LinkResolver,
         logger: &Logger,
     ) -> Result<Self, SubgraphManifestResolveError> {
+        let link = Link {
+            link: id.to_string(),
+        };
         info!(logger, "Resolve manifest"; "link" => &link.link);
 
         let file_bytes = resolver
@@ -996,28 +975,30 @@ impl SubgraphManifest {
 
         let file = String::from_utf8(file_bytes.to_vec())
             .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
-        let mut raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
+        let raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
 
-        let raw_mapping = raw
-            .as_mapping_mut()
-            .ok_or(SubgraphManifestResolveError::InvalidFormat)?;
+        let raw_mapping = match raw {
+            serde_yaml::Value::Mapping(m) => m,
+            _ => return Err(SubgraphManifestResolveError::InvalidFormat),
+        };
 
-        // Inject the IPFS hash as the ID of the subgraph
-        // into the definition.
-        raw_mapping.insert(
+        Self::resolve_from_raw(id, raw_mapping, resolver, logger).await
+    }
+
+    pub async fn resolve_from_raw(
+        id: SubgraphDeploymentId,
+        mut raw: serde_yaml::Mapping,
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<Self, SubgraphManifestResolveError> {
+        // Inject the IPFS hash as the ID of the subgraph into the definition.
+        raw.insert(
             serde_yaml::Value::from("id"),
-            serde_yaml::Value::from(link.link.trim_start_matches("/ipfs/")),
-        );
-
-        // Inject the IPFS link as the location of the data
-        // source into the definition
-        raw_mapping.insert(
-            serde_yaml::Value::from("location"),
-            serde_yaml::Value::from(link.link),
+            serde_yaml::Value::from(id.to_string()),
         );
 
         // Parse the YAML data into an UnresolvedSubgraphManifest
-        let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw)?;
+        let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw.into())?;
 
         debug!(logger, "Features {:?}", unresolved.features);
 
@@ -1090,7 +1071,6 @@ impl UnresolvedSubgraphManifest {
     ) -> Result<SubgraphManifest, anyhow::Error> {
         let UnresolvedSubgraphManifest {
             id,
-            location,
             spec_version,
             features,
             description,
@@ -1132,7 +1112,6 @@ impl UnresolvedSubgraphManifest {
 
         Ok(SubgraphManifest {
             id,
-            location,
             spec_version,
             features,
             description,

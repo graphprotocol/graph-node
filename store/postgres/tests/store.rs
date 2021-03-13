@@ -145,7 +145,6 @@ where
 fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     let manifest = SubgraphManifest {
         id: TEST_SUBGRAPH_ID.clone(),
-        location: "/ipfs/test".to_owned(),
         spec_version: "1".to_owned(),
         features: Default::default(),
         description: None,
@@ -1297,7 +1296,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
         let manifest = SubgraphManifest {
             id: subgraph_id.clone(),
-            location: "/ipfs/test".to_owned(),
             spec_version: "1".to_owned(),
             features: Default::default(),
             description: None,

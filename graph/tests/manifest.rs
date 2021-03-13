@@ -60,26 +60,26 @@ const MAPPING: &str = "export function handleGet(call: getCall): void {}";
 
 async fn resolve_manifest(text: &str) -> SubgraphManifest {
     let mut resolver = TextResolver::default();
-    let link = Link::from("/ipfs/Qmmanifest".to_owned());
+    let id = SubgraphDeploymentId::new("Qmmanifest").unwrap();
 
-    resolver.add(link.link.as_str(), text);
+    resolver.add(id.as_str(), text);
     resolver.add("/ipfs/Qmschema", GQL_SCHEMA);
     resolver.add("/ipfs/Qmabi", ABI);
     resolver.add("/ipfs/Qmmapping", MAPPING);
 
-    SubgraphManifest::resolve(link, &resolver, &LOGGER)
+    SubgraphManifest::resolve(id, &resolver, &LOGGER)
         .await
         .expect("Parsing simple manifest works")
 }
 
 async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest {
     let mut resolver = TextResolver::default();
-    let link = Link::from("/ipfs/Qmmanifest".to_owned());
+    let id = SubgraphDeploymentId::new("Qmmanifest").unwrap();
 
-    resolver.add(link.link.as_str(), text);
+    resolver.add(id.as_str(), text);
     resolver.add("/ipfs/Qmschema", GQL_SCHEMA);
 
-    UnvalidatedSubgraphManifest::resolve(link, Arc::new(resolver), &LOGGER)
+    UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
         .await
         .expect("Parsing simple manifest works")
 }

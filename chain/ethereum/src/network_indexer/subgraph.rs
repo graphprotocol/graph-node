@@ -19,7 +19,6 @@ fn create_subgraph(
     // Create a fake manifest
     let manifest = SubgraphManifest {
         id: subgraph_id.clone(),
-        location: subgraph_name.to_string(),
         spec_version: String::from("0.0.2"),
         features: BTreeSet::new(),
         description: None,

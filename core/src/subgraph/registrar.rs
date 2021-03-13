@@ -284,13 +284,10 @@ where
     ) -> Result<(), SubgraphRegistrarError> {
         let logger = self.logger_factory.subgraph_logger(&hash);
 
-        let unvalidated = UnvalidatedSubgraphManifest::resolve(
-            hash.to_ipfs_link(),
-            self.resolver.clone(),
-            &logger,
-        )
-        .map_err(SubgraphRegistrarError::ResolveError)
-        .await?;
+        let unvalidated =
+            UnvalidatedSubgraphManifest::resolve(hash, self.resolver.clone(), &logger)
+                .map_err(SubgraphRegistrarError::ResolveError)
+                .await?;
 
         let (manifest, validation_warnings) = unvalidated
             .validate(self.store.clone())
@@ -399,7 +396,7 @@ async fn start_subgraph(
     );
 
     let start_time = Instant::now();
-    let result = provider.start(&subgraph_id).await;
+    let result = provider.start(subgraph_id.cheap_clone()).await;
 
     debug!(
         logger,

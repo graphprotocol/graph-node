@@ -10,7 +10,6 @@ use std::time::Duration;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 
-use graph::components::forward;
 use graph::components::{
     ethereum::{EthereumNetworks, NodeCapabilities},
     store::BlockStore,
@@ -349,20 +348,14 @@ async fn main() {
                 runtime_host_builder,
                 block_stream_builder,
                 metrics_registry.clone(),
+                link_resolver.cheap_clone(),
             );
 
             // Create IPFS-based subgraph provider
-            let mut subgraph_provider = IpfsSubgraphAssignmentProvider::new(
+            let subgraph_provider = IpfsSubgraphAssignmentProvider::new(
                 &logger_factory,
                 link_resolver.clone(),
-                network_store.subgraph_store(),
-            );
-
-            // Forward subgraph events from the subgraph provider to the subgraph instance manager
-            graph::spawn(
-                forward(&mut subgraph_provider, &subgraph_instance_manager)
-                    .unwrap()
-                    .compat(),
+                subgraph_instance_manager,
             );
 
             // Check version switching mode environment variable

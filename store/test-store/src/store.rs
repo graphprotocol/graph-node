@@ -152,7 +152,6 @@ fn create_subgraph(
 
     let manifest = SubgraphManifest {
         id: subgraph_id.clone(),
-        location: String::new(),
         spec_version: "1".to_owned(),
         features: BTreeSet::new(),
         description: Some(format!("manifest for {}", subgraph_id)),
