@@ -43,6 +43,12 @@ impl ForeignServer {
         format!("shard_{}", shard.as_str())
     }
 
+    /// The name of the schema under which the `subgraphs` schema for `shard`
+    /// is accessible in shards that are not `shard`
+    pub fn metadata_schema(shard: &Shard) -> String {
+        format!("{}_subgraphs", Self::name(shard))
+    }
+
     fn new(shard: Shard, postgres_url: &str) -> Result<Self, anyhow::Error> {
         let config: Config = match postgres_url.parse() {
             Ok(config) => config,
@@ -155,6 +161,19 @@ impl ForeignServer {
         };
         conn.batch_execute(&query)?;
         Ok(())
+    }
+
+    /// Map the `subgraphs` schema from the foreign server `self` into the
+    /// database accessible through `conn`
+    fn map_metadata(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        let query = format!(
+            "drop schema if exists {nsp} cascade;\
+             create schema {nsp};
+             import foreign schema subgraphs from server {srvname} into {nsp};",
+            nsp = Self::metadata_schema(&self.shard),
+            srvname = self.name
+        );
+        Ok(conn.batch_execute(&query)?)
     }
 }
 
@@ -465,9 +484,10 @@ impl ConnectionPool {
                 .get_result::<LockResult>(conn)
                 .expect("we can try to get advisory locks 1 and 2");
             let result = if lock.migrate {
-                pool.configure_fdw(servers)
+                pool.configure_fdw(servers.as_ref())
                     .and_then(|_| migrate_schema(&pool.logger, conn))
                     .and_then(|_| pool.map_primary())
+                    .and_then(|_| pool.map_metadata(servers.as_ref()))
             } else {
                 Ok(())
             };
@@ -481,7 +501,7 @@ impl ConnectionPool {
         .expect("migrations are never canceled");
     }
 
-    fn configure_fdw(&self, servers: Arc<Vec<ForeignServer>>) -> Result<(), StoreError> {
+    fn configure_fdw(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
         let conn = self.get()?;
         conn.transaction(|| {
@@ -506,6 +526,19 @@ impl ConnectionPool {
         info!(&self.logger, "Mapping primary");
         let conn = self.get()?;
         conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))
+    }
+
+    // Map the `subgraphs` metadata schema from foreign servers to
+    // ourselves. The mapping is recreated on every server start so that we
+    // pick up possible schema changes in the mappings
+    fn map_metadata(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {
+        let conn = self.get()?;
+        conn.transaction(|| {
+            for server in servers.iter().filter(|server| server.shard != self.shard) {
+                server.map_metadata(&conn)?;
+            }
+            Ok(())
+        })
     }
 }
 
