@@ -181,7 +181,7 @@ trait ForeignKeyClauses {
     /// Generate a clause
     ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
     /// using the right types to bind `$ids` into `out`
-    fn is_in(&self, ids: &Vec<&str>, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn is_in(&self, ids: &[&str], out: &mut AstPass<Pg>) -> QueryResult<()> {
         out.push_sql("exists (select 1 from unnest(");
         self.bind_ids(ids, out)?;
         out.push_sql(") as p(g$id) where id = p.g$id)");
@@ -1230,50 +1230,52 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindManyQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    key: &'a EntityKey,
-    entity: Entity,
+    entities: &'a mut Vec<(EntityKey, Entity)>,
     block: BlockNumber,
 }
 
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        key: &'a EntityKey,
-        entity: Entity,
+        _entity_type: &'a EntityType,
+        entities: &'a mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
-        let mut entity = entity;
-        for column in table.columns.iter() {
-            match column.fulltext_fields.as_ref() {
-                Some(fields) => {
-                    let fulltext_field_values = fields
-                        .iter()
-                        .filter_map(|field| entity.get(field))
-                        .cloned()
-                        .collect::<Vec<Value>>();
-                    if !fulltext_field_values.is_empty() {
-                        entity.insert(column.field.to_string(), Value::List(fulltext_field_values));
+        for (entity_key, entity) in entities.iter_mut() {
+            for column in table.columns.iter() {
+                match column.fulltext_fields.as_ref() {
+                    Some(fields) => {
+                        let fulltext_field_values = fields
+                            .iter()
+                            .filter_map(|field| entity.get(field))
+                            .cloned()
+                            .collect::<Vec<Value>>();
+                        if !fulltext_field_values.is_empty() {
+                            entity.insert(
+                                column.field.to_string(),
+                                Value::List(fulltext_field_values),
+                            );
+                        }
                     }
+                    None => (),
                 }
-                None => (),
-            }
-            if !column.is_nullable() && !entity.contains_key(&column.field) {
-                return Err(StoreError::QueryExecutionError(format!(
+                if !column.is_nullable() && !entity.contains_key(&column.field) {
+                    return Err(StoreError::QueryExecutionError(format!(
                     "can not insert entity {}[{}] since value for non-nullable attribute {} is missing. \
                      To fix this, mark the attribute as nullable in the GraphQL schema or change the \
                      mapping code to always set this attribute.",
-                    key.entity_type, key.entity_id, column.field
+                    entity_key.entity_type, entity_key.entity_id, column.field
                 )));
+                }
             }
         }
 
         Ok(InsertQuery {
             table,
-            key,
-            entity,
+            entities,
             block,
         })
     }
@@ -1291,24 +1293,50 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         out.push_sql(self.table.qualified_name.as_str());
 
         out.push_sql("(");
-        for column in self.table.columns.iter() {
-            if self.entity.contains_key(&column.field) {
-                out.push_identifier(column.name.as_str())?;
-                out.push_sql(", ");
+
+        // Build the column name list using the subset of all keys among our entities.
+        let unique_column_names: Vec<&Column> = {
+            let mut btreemap = BTreeMap::new();
+            for (_key, entity) in self.entities.iter() {
+                for column in &self.table.columns {
+                    if entity.get(&column.field).is_some() {
+                        btreemap.entry(column.name.as_str()).or_insert(column);
+                    }
+                }
             }
+            btreemap.into_iter().map(|(_key, value)| value).collect()
+        };
+        for &column in unique_column_names.iter() {
+            out.push_identifier(column.name.as_str())?;
+            out.push_sql(", ");
         }
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
 
-        out.push_sql(")\nvalues(");
-        for column in self.table.columns.iter() {
-            if let Some(value) = self.entity.get(&column.field) {
-                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
+        out.push_sql(") values\n");
+
+        // Use a `Peekable` iterator to help us decide how to finalize each line.
+        let mut iter = self.entities.iter().map(|(_key, entity)| entity).peekable();
+        while let Some(entity) = iter.next() {
+            out.push_sql("(");
+            for column in &unique_column_names {
+                // If the column name is not within this entity's fields, we will issue the
+                // null value in its place
+                if let Some(value) = entity.get(&column.field) {
+                    QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
+                } else {
+                    out.push_sql("null");
+                }
                 out.push_sql(", ");
             }
+            let block_range: BlockRange = (self.block..).into();
+            out.push_bind_param::<Range<Integer>, _>(&block_range)?;
+            out.push_sql(")");
+
+            // finalize line according to remaining entities to insert
+            if iter.peek().is_some() {
+                out.push_sql(",\n");
+            }
         }
-        let block_range: BlockRange = (self.block..).into();
-        out.push_bind_param::<Range<Integer>, _>(&block_range)?;
-        out.push_sql(")");
         Ok(())
     }
 }
@@ -2465,7 +2493,8 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct ClampRangeQuery<'a> {
     table: &'a Table,
-    key: &'a EntityKey,
+    entity_type: &'a EntityType,
+    entity_keys: &'a [&'a EntityKey],
     block: BlockNumber,
 }
 
@@ -2473,7 +2502,7 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
-        //  where id = $id
+        //  where id  in (id1, id2, ..., idN)
         //    and block_range @> INTMAX
         out.unsafe_to_cache_prepared();
         out.push_sql("update ");
@@ -2485,7 +2514,14 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         out.push_sql("), ");
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql(")\n where ");
-        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
+
+        let entity_ids: Vec<&str> = self
+            .entity_keys
+            .iter()
+            .map(|key| key.entity_id.as_ref())
+            .collect();
+
+        self.table.primary_key().is_in(&entity_ids, &mut out)?;
         out.push_sql(" and (");
         out.push_sql(BLOCK_RANGE_CURRENT);
         out.push_sql(")");

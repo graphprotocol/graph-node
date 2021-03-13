@@ -560,13 +560,12 @@ impl Layout {
     pub fn insert(
         &self,
         conn: &PgConnection,
-        key: &EntityKey,
-        entity: Entity,
+        entity_type: &EntityType,
+        entities: &mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
-        let query = InsertQuery::new(table, key, entity, block)?;
-        query.execute(conn)?;
+        let table = self.table_for_entity(&entity_type)?;
+        InsertQuery::new(table, &entity_type, entities, block)?.execute(conn)?;
         Ok(())
     }
 
@@ -664,25 +663,27 @@ impl Layout {
     pub fn update(
         &self,
         conn: &PgConnection,
-        key: &EntityKey,
-        entity: Entity,
+        entity_type: &EntityType,
+        entities: &mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
-        ClampRangeQuery::new(table, key, block).execute(conn)?;
-        let query = InsertQuery::new(table, key, entity, block)?;
-        query.execute(conn)?;
+        let table = self.table_for_entity(&entity_type)?;
+        let entity_keys: Vec<&EntityKey> = entities.iter().map(|(key, _)| key).collect();
+        ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
+        InsertQuery::new(table, entity_type, entities, block)?.execute(conn)?;
         Ok(())
     }
 
     pub fn delete(
         &self,
         conn: &PgConnection,
-        key: &EntityKey,
+        entity_type: EntityType,
+        entity_keys: &Vec<EntityKey>,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
-        Ok(ClampRangeQuery::new(table, key, block).execute(conn)?)
+        let table = self.table_for_entity(&entity_type)?;
+        let entity_keys: Vec<&EntityKey> = entity_keys.iter().collect();
+        Ok(ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?)
     }
 
     pub fn revert_block(

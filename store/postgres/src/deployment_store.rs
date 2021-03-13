@@ -281,50 +281,109 @@ impl DeploymentStore {
         ptr: &EthereumBlockPointer,
         stopwatch: StopwatchMetrics,
     ) -> Result<i32, StoreError> {
+        use EntityModification::*;
         let mut count = 0;
 
-        for modification in mods {
-            use EntityModification::*;
-
-            let n = match modification {
-                Overwrite { key, data } => {
-                    let section = stopwatch.start_section("check_interface_entity_uniqueness");
-                    self.check_interface_entity_uniqueness(conn, layout, &key)?;
-                    section.end();
-
-                    let _section = stopwatch.start_section("apply_entity_modifications_update");
-                    layout
-                        .update(conn, &key, data, block_number(ptr))
-                        .map(|_| 0)
-                }
+        // Group `Insert`s and `Overwrite`s by key, and accumulate `Remove`s.
+        let mut inserts = HashMap::new();
+        let mut overwrites = HashMap::new();
+        let mut removals = HashMap::new();
+        for modification in mods.into_iter() {
+            match modification {
                 Insert { key, data } => {
-                    let section = stopwatch.start_section("check_interface_entity_uniqueness");
-                    self.check_interface_entity_uniqueness(conn, layout, &key)?;
-                    section.end();
-
-                    let _section = stopwatch.start_section("apply_entity_modifications_insert");
-                    layout
-                        .insert(conn, &key, data, block_number(ptr))
-                        .map(|_| 1)
+                    inserts
+                        .entry(key.entity_type.clone())
+                        .or_insert_with(Vec::new)
+                        .push((key, data));
                 }
-                Remove { key } => layout
-                    .delete(conn, &key, block_number(ptr))
-                    // This conversion is ok since n will only be 0 or 1
-                    .map(|n| -(n as i32))
-                    .map_err(|e| {
-                        anyhow!(
-                            "Failed to remove entity ({}, {}, {}): {}",
-                            key.subgraph_id,
-                            key.entity_type,
-                            key.entity_id,
-                            e
-                        )
-                        .into()
-                    }),
-            }?;
-            count += n;
+                Overwrite { key, data } => {
+                    overwrites
+                        .entry(key.entity_type.clone())
+                        .or_insert_with(Vec::new)
+                        .push((key, data));
+                }
+                Remove { key } => {
+                    removals
+                        .entry(key.entity_type.clone())
+                        .or_insert_with(Vec::new)
+                        .push(key);
+                }
+            }
+        }
+        // apply modification groups
+        for (entity_type, entities) in inserts.iter_mut() {
+            count += self.insert_entities(entity_type, entities, conn, layout, ptr, &stopwatch)?;
+        }
+        for (entity_type, entities) in overwrites.iter_mut() {
+            count +=
+                self.overwrite_entities(entity_type, entities, conn, layout, ptr, &stopwatch)?;
+        }
+        for (entity_type, entity_keys) in removals.into_iter() {
+            count +=
+                self.remove_entities(entity_type, entity_keys, conn, layout, ptr, &stopwatch)?;
         }
         Ok(count)
+    }
+
+    fn insert_entities(
+        &self,
+        entity_type: &EntityType,
+        data: &mut Vec<(EntityKey, Entity)>,
+        conn: &PgConnection,
+        layout: &Layout,
+        ptr: &EthereumBlockPointer,
+        stopwatch: &StopwatchMetrics,
+    ) -> Result<i32, StoreError> {
+        let section = stopwatch.start_section("check_interface_entity_uniqueness");
+        for (key, _) in data.iter() {
+            // WARNING: This will potentially execute 2 queries for each entity key.
+            self.check_interface_entity_uniqueness(conn, layout, key)?;
+        }
+        section.end();
+
+        let _section = stopwatch.start_section("apply_entity_modifications_insert");
+        layout
+            .insert(conn, entity_type, data, block_number(ptr))
+            .map(|_| 1)
+    }
+
+    fn overwrite_entities(
+        &self,
+        entity_type: &EntityType,
+        data: &mut Vec<(EntityKey, Entity)>,
+        conn: &PgConnection,
+        layout: &Layout,
+        ptr: &EthereumBlockPointer,
+        stopwatch: &StopwatchMetrics,
+    ) -> Result<i32, StoreError> {
+        let section = stopwatch.start_section("check_interface_entity_uniqueness");
+        for (key, _) in data.iter() {
+            // WARNING: This will potentially execute 2 queries for each entity key.
+            self.check_interface_entity_uniqueness(conn, layout, key)?;
+        }
+        section.end();
+
+        let _section = stopwatch.start_section("apply_entity_modifications_update");
+        layout
+            .update(conn, entity_type, data, block_number(ptr))
+            .map(|_| 0)
+    }
+
+    fn remove_entities(
+        &self,
+        entity_type: EntityType,
+        entity_keys: Vec<EntityKey>,
+        conn: &PgConnection,
+        layout: &Layout,
+        ptr: &EthereumBlockPointer,
+        stopwatch: &StopwatchMetrics,
+    ) -> Result<i32, StoreError> {
+        let _section = stopwatch.start_section("apply_entity_modifications_delete");
+        layout
+            .delete(conn, entity_type, &entity_keys, block_number(ptr))
+            // This conversion is ok since n will only be 0 or 1
+            .map(|n| -(n as i32))
+            .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
     }
 
     /// Execute a closure with a connection to the database.
