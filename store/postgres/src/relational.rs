@@ -38,7 +38,9 @@ use graph::prelude::{
 };
 
 use crate::block_range::BLOCK_RANGE_COLUMN;
+use crate::catalog;
 pub use crate::catalog::Catalog;
+use crate::connection_pool::ForeignServer;
 
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
@@ -415,15 +417,7 @@ impl Layout {
             .collect()
     }
 
-    /// Generate the DDL for the entire layout, i.e., all `create table`
-    /// and `create index` etc. statements needed in the database schema
-    ///
-    /// See the unit tests at the end of this file for the actual DDL that
-    /// gets generated
-    pub fn as_ddl(&self) -> Result<String, fmt::Error> {
-        let mut out = String::new();
-
-        // Output enums first
+    fn write_enum_ddl(&self, out: &mut dyn Write) -> Result<(), fmt::Error> {
         for (name, values) in &self.enums {
             let mut sep = "";
             let name = SqlName::from(name.as_str());
@@ -439,6 +433,20 @@ impl Layout {
             }
             writeln!(out, ");")?;
         }
+        Ok(())
+    }
+
+    /// Generate the DDL for the entire layout, i.e., all `create table`
+    /// and `create index` etc. statements needed in the database schema
+    ///
+    /// See the unit tests at the end of this file for the actual DDL that
+    /// gets generated
+    pub fn as_ddl(&self) -> Result<String, fmt::Error> {
+        let mut out = String::new();
+
+        // Output enums first so table definitions can reference them
+        self.write_enum_ddl(&mut out)?;
+
         // We sort tables here solely because the unit tests rely on
         // 'create table' statements appearing in a fixed order
         let mut tables = self.tables.values().collect::<Vec<_>>();
@@ -449,6 +457,41 @@ impl Layout {
         }
 
         Ok(out)
+    }
+
+    /// Import the database schema for this layout from its own database
+    /// shard (in `self.site.shard`) into the database represented by `conn`
+    /// if the schema for this layout does not exist yet
+    pub fn import_schema(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        let make_query = || -> Result<String, fmt::Error> {
+            let nsp = self.site.namespace.as_str();
+            let srvname = ForeignServer::name(&self.site.shard);
+
+            let mut query = String::new();
+            writeln!(query, "create schema {};", nsp)?;
+            // Postgres does not import enums. We recreate them in the target
+            // database, otherwise importing tables that use them fails
+            self.write_enum_ddl(&mut query)?;
+            writeln!(
+                query,
+                "import foreign schema {nsp} from server {srvname} into {nsp}",
+                nsp = nsp,
+                srvname = srvname
+            )?;
+            Ok(query)
+        };
+
+        if !catalog::has_namespace(conn, &self.site.namespace)? {
+            let query = make_query().map_err(|_| {
+                StoreError::Unknown(anyhow!(
+                    "failed to generate SQL to import foreign schema {}",
+                    self.site.namespace
+                ))
+            })?;
+
+            conn.batch_execute(&query)?;
+        }
+        Ok(())
     }
 
     /// Find the table with the provided `name`. The name must exactly match

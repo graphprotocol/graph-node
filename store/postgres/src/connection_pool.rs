@@ -37,7 +37,9 @@ pub struct ForeignServer {
 impl ForeignServer {
     const PRIMARY_PUBLIC: &'static str = "primary_public";
 
-    fn name(shard: &Shard) -> String {
+    /// The name of the foreign server under which data for `shard` is
+    /// accessible
+    pub fn name(shard: &Shard) -> String {
         format!("shard_{}", shard.as_str())
     }
 

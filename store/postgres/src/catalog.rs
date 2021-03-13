@@ -1,11 +1,32 @@
-use diesel::prelude::RunQueryDsl;
-use diesel::sql_types::Text;
+use diesel::{connection::SimpleConnection, prelude::RunQueryDsl};
 use diesel::{pg::PgConnection, sql_query};
+use diesel::{sql_types::Text, ExpressionMethods, QueryDsl};
 use std::collections::{HashMap, HashSet};
 
 use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
 
-use crate::{primary::Namespace, relational::SqlName};
+use crate::{
+    primary::{Namespace, Site},
+    relational::SqlName,
+};
+
+// This is a view not a table. We only read from it
+table! {
+    information_schema.foreign_tables(foreign_table_schema, foreign_table_name) {
+        foreign_table_catalog -> Text,
+        foreign_table_schema -> Text,
+        foreign_table_name -> Text,
+        foreign_server_catalog -> Text,
+        foreign_server_name -> Text,
+    }
+}
+
+// Readonly; we only access the name
+table! {
+    pg_namespace(nspname) {
+        nspname -> Text,
+    }
+}
 
 /// Information about what tables and columns we have in the database
 #[derive(Debug, Clone)]
@@ -102,4 +123,34 @@ pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
         .into_iter()
         .map(|srv| srv.srvname)
         .collect())
+}
+
+pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool, StoreError> {
+    use pg_namespace as nsp;
+
+    Ok(nsp::table
+        .filter(nsp::nspname.eq(namespace.as_str()))
+        .count()
+        .get_result::<i64>(conn)?
+        > 0)
+}
+
+/// Drop the schema for `src` if it is a foreign schema imported from
+/// another database. If the schema does not exist, or is not a foreign
+/// schema, do nothing. This crucially depends on the fact that we never mix
+/// foreign and local tables in the same schema.
+pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreError> {
+    use foreign_tables as ft;
+
+    let is_foreign = ft::table
+        .filter(ft::foreign_table_schema.eq(src.namespace.as_str()))
+        .count()
+        .get_result::<i64>(conn)?
+        > 0;
+
+    if is_foreign {
+        let query = format!("drop schema if exists {} cascade", src.namespace);
+        conn.batch_execute(&query)?;
+    }
+    Ok(())
 }

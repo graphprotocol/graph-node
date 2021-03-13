@@ -81,7 +81,13 @@ impl CopyState {
         target_block: EthereumBlockPointer,
     ) -> Result<CopyState, StoreError> {
         use copy_state as cs;
-        match cs::table
+
+        let crosses_shards = dst.site.shard != src.site.shard;
+        if crosses_shards {
+            src.import_schema(conn)?;
+        }
+
+        let state = match cs::table
             .filter(cs::dst.eq(dst.site.id))
             .select((cs::src, cs::target_block_hash, cs::target_block_number))
             .first::<(i32, Vec<u8>, BlockNumber)>(conn)
@@ -111,7 +117,9 @@ impl CopyState {
                 Self::load(conn, src, dst, target_block)
             }
             None => Self::create(conn, src, dst, target_block),
-        }
+        }?;
+
+        Ok(state)
     }
 
     fn load(
@@ -187,12 +195,43 @@ impl CopyState {
         })
     }
 
-    fn record_finished(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn crosses_shards(&self) -> bool {
+        self.dst.site.shard != self.src.site.shard
+    }
+
+    fn finished(&self, conn: &PgConnection) -> Result<(), StoreError> {
         use copy_state as cs;
 
         update(cs::table.filter(cs::dst.eq(self.dst.site.id)))
             .set(cs::finished_at.eq(sql("now()")))
             .execute(conn)?;
+
+        // If we imported the schema for `src`, and no other in-progress
+        // copy is using it, get rid of it again
+        if self.crosses_shards() {
+            let active_copies = cs::table
+                .filter(cs::src.eq(self.src.site.id))
+                .filter(cs::finished_at.is_null())
+                .count()
+                .get_result::<i64>(conn)?;
+            if active_copies == 0 {
+                // This is a foreign schema that nobody is using anymore,
+                // get rid of it. As a safety check (on top of the one that
+                // drop_foreign_schema does), see that we do not have
+                // metadata for `src`
+                if crate::deployment::exists(conn, &self.src.site)? {
+                    return Err(constraint_violation!(
+                        "we think we are copying {}[{}] across shards from {} to {}, but the \
+                        source subgraph is actually in this shard",
+                        self.src.site.deployment,
+                        self.src.site.id,
+                        self.src.site.shard,
+                        self.dst.site.shard
+                    ));
+                }
+                crate::catalog::drop_foreign_schema(conn, self.src.site.as_ref())?;
+            }
+        }
         Ok(())
     }
 }
@@ -497,6 +536,7 @@ impl Connection {
     ) -> Result<(), StoreError> {
         let mut state =
             self.transaction(|conn| CopyState::new(conn, src, dst.clone(), target_block))?;
+
         let mut progress = CopyProgress::new(logger, &state);
         progress.start();
 
@@ -508,7 +548,7 @@ impl Connection {
             progress.table_finished(table);
         }
 
-        self.transaction(|conn| state.record_finished(conn))?;
+        self.transaction(|conn| state.finished(conn))?;
         progress.finished();
 
         Ok(())
