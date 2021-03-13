@@ -49,7 +49,6 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Subgrap
     let schema = test_schema(id.clone());
     let manifest = SubgraphManifest {
         id: id.clone(),
-        location: String::new(),
         spec_version: "1".to_owned(),
         features,
         description: None,

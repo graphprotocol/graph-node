@@ -118,7 +118,6 @@ where
 fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     let manifest = SubgraphManifest {
         id: TEST_SUBGRAPH_ID.clone(),
-        location: "/ipfs/test".to_owned(),
         spec_version: "1".to_owned(),
         features: Default::default(),
         description: None,

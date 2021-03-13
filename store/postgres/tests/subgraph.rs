@@ -115,7 +115,6 @@ fn create_subgraph() {
 
         let manifest = SubgraphManifest {
             id: id.clone(),
-            location: String::new(),
             spec_version: "1".to_owned(),
             features: Default::default(),
             description: None,

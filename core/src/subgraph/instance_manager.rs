@@ -1,6 +1,5 @@
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
-use futures01::sync::mpsc::{channel, Receiver, Sender};
 use lazy_static::lazy_static;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
@@ -12,10 +11,15 @@ use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIn
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
-use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
+use graph::prelude::{
+    SubgraphInstance as SubgraphInstanceTrait,
+    SubgraphInstanceManager as SubgraphInstanceManagerTrait, *,
+};
 use graph::util::lfu_cache::LfuCache;
 
+use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
+use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -76,9 +80,17 @@ struct IndexingContext<B, T: RuntimeHostBuilder, S, C> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager {
-    logger: Logger,
-    input: Sender<SubgraphAssignmentProviderEvent>,
+pub struct SubgraphInstanceManager<B, S, BS, M, H, L> {
+    logger_factory: LoggerFactory,
+    subgraph_store: Arc<S>,
+    block_store: Arc<BS>,
+    eth_networks: EthereumNetworks,
+    host_builder: H,
+    block_stream_builder: B,
+    metrics_registry: Arc<M>,
+    manager_metrics: SubgraphInstanceManagerMetrics,
+    instances: SharedInstanceKeepAliveMap,
+    link_resolver: Arc<L>,
 }
 
 struct SubgraphInstanceManagerMetrics {
@@ -180,143 +192,155 @@ impl SubgraphInstanceMetrics {
     }
 }
 
-impl SubgraphInstanceManager {
-    /// Creates a new runtime manager.
-    pub fn new<B, S, BS, M>(
+#[async_trait]
+impl<B, S, BS, M, H, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<B, S, BS, M, H, L>
+where
+    S: SubgraphStore,
+    BS: BlockStore,
+    B: BlockStreamBuilder,
+    M: MetricsRegistry,
+    H: RuntimeHostBuilder,
+    L: LinkResolver + Clone,
+{
+    async fn start_subgraph(
+        self: Arc<Self>,
+        id: SubgraphDeploymentId,
+        manifest: serde_yaml::Mapping,
+    ) {
+        let logger = self.logger_factory.subgraph_logger(&id);
+
+        // Blocking due to store interactions. Won't be blocking after #905.
+        match graph::spawn_blocking(Self::start_subgraph_inner(
+            logger.clone(),
+            self.instances.clone(),
+            self.host_builder.clone(),
+            self.block_stream_builder.clone(),
+            self.subgraph_store.cheap_clone(),
+            self.block_store.cheap_clone(),
+            self.eth_networks.clone(),
+            id,
+            manifest,
+            self.metrics_registry.cheap_clone(),
+            self.link_resolver.cheap_clone(),
+        ))
+        .await
+        .map_err(Error::from)
+        .and_then(|e| e)
+        {
+            Ok(()) => self.manager_metrics.subgraph_count.inc(),
+            Err(err) => error!(
+                logger,
+                "Failed to start subgraph";
+                "error" => format!("{}", err),
+                "code" => LogCode::SubgraphStartFailure
+            ),
+        }
+    }
+
+    fn stop_subgraph(&self, id: SubgraphDeploymentId) {
+        let logger = self.logger_factory.subgraph_logger(&id);
+        info!(logger, "Stop subgraph");
+
+        // Drop the cancel guard to shut down the subgraph now
+        let mut instances = self.instances.write().unwrap();
+        instances.remove(&id);
+
+        self.manager_metrics.subgraph_count.dec();
+    }
+}
+
+impl<B, S, BS, M, H, L> SubgraphInstanceManager<B, S, BS, M, H, L>
+where
+    S: SubgraphStore,
+    BS: BlockStore,
+    B: BlockStreamBuilder,
+    M: MetricsRegistry,
+    H: RuntimeHostBuilder,
+    L: LinkResolver + Clone,
+{
+    pub fn new(
         logger_factory: &LoggerFactory,
-        store: Arc<S>,
+        subgraph_store: Arc<S>,
         block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
-        host_builder: impl RuntimeHostBuilder,
+        host_builder: H,
         block_stream_builder: B,
         metrics_registry: Arc<M>,
-    ) -> Self
-    where
-        S: SubgraphStore,
-        BS: BlockStore,
-        B: BlockStreamBuilder,
-        M: MetricsRegistry,
-    {
+        link_resolver: Arc<L>,
+    ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
-        // Create channel for receiving subgraph provider events.
-        let (subgraph_sender, subgraph_receiver) = channel(100);
+        let link_resolver = Arc::new(
+            link_resolver
+                .as_ref()
+                .clone()
+                .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT)
+                .with_retries(),
+        );
 
-        // Handle incoming events from the subgraph provider.
-        Self::handle_subgraph_events(
+        SubgraphInstanceManager {
             logger_factory,
-            subgraph_receiver,
-            store,
+            subgraph_store,
             block_store,
             eth_networks,
             host_builder,
             block_stream_builder,
-            metrics_registry.clone(),
-        );
-
-        SubgraphInstanceManager {
-            logger,
-            input: subgraph_sender,
+            manager_metrics: SubgraphInstanceManagerMetrics::new(metrics_registry.cheap_clone()),
+            metrics_registry,
+            instances: SharedInstanceKeepAliveMap::default(),
+            link_resolver,
         }
     }
 
-    /// Handle incoming events from subgraph providers.
-    fn handle_subgraph_events<B, S, BS, M>(
-        logger_factory: LoggerFactory,
-        receiver: Receiver<SubgraphAssignmentProviderEvent>,
-        store: Arc<S>,
-        block_store: Arc<BS>,
-        eth_networks: EthereumNetworks,
-        host_builder: impl RuntimeHostBuilder,
-        block_stream_builder: B,
-        metrics_registry: Arc<M>,
-    ) where
-        S: SubgraphStore,
-        BS: BlockStore,
-        B: BlockStreamBuilder,
-        M: MetricsRegistry,
-    {
-        let metrics_registry_for_manager = metrics_registry.clone();
-        let metrics_registry_for_subgraph = metrics_registry.clone();
-        let manager_metrics = SubgraphInstanceManagerMetrics::new(metrics_registry_for_manager);
-
-        // Subgraph instance shutdown senders
-        let instances: SharedInstanceKeepAliveMap = Default::default();
-
-        // Blocking due to store interactions. Won't be blocking after #905.
-        graph::spawn_blocking(async move {
-            let mut assignment_stream = receiver.compat();
-
-            // The channel will always be open so it never errors.
-            while let Ok(event) = assignment_stream.next().await.unwrap() {
-                use self::SubgraphAssignmentProviderEvent::*;
-
-                match event {
-                    SubgraphStart(manifest) => {
-                        let logger = logger_factory.subgraph_logger(&manifest.id);
-                        info!(
-                            logger,
-                            "Start subgraph";
-                            "data_sources" => manifest.data_sources.len()
-                        );
-                        let network = manifest.network_name();
-
-                        match Self::start_subgraph(
-                            logger.clone(),
-                            instances.clone(),
-                            host_builder.clone(),
-                            block_stream_builder.clone(),
-                            store.clone(),
-                            block_store.chain_store(&network),
-                            &eth_networks,
-                            manifest,
-                            metrics_registry_for_subgraph.clone(),
-                        )
-                        .await
-                        {
-                            Ok(()) => manager_metrics.subgraph_count.inc(),
-                            Err(err) => error!(
-                                logger,
-                                "Failed to start subgraph";
-                                "error" => format!("{}", err),
-                                "code" => LogCode::SubgraphStartFailure
-                            ),
-                        }
-                    }
-                    SubgraphStop(id) => {
-                        let logger = logger_factory.subgraph_logger(&id);
-                        info!(logger, "Stop subgraph");
-
-                        Self::stop_subgraph(instances.clone(), id);
-                        manager_metrics.subgraph_count.dec();
-                    }
-                };
-            }
-        });
-    }
-
-    async fn start_subgraph<B, S, C, M>(
+    async fn start_subgraph_inner(
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
         stream_builder: B,
         store: Arc<S>,
-        chain_store: Option<Arc<C>>,
-        eth_networks: &EthereumNetworks,
-        manifest: SubgraphManifest,
+        block_store: Arc<BS>,
+        eth_networks: EthereumNetworks,
+        subgraph_id: SubgraphDeploymentId,
+        manifest: serde_yaml::Mapping,
         registry: Arc<M>,
-    ) -> Result<(), Error>
-    where
-        B: BlockStreamBuilder,
-        S: SubgraphStore,
-        C: ChainStore,
-        M: MetricsRegistry,
-    {
+        link_resolver: Arc<L>,
+    ) -> Result<(), Error> {
+        let manifest = {
+            info!(logger, "Resolve subgraph files using IPFS");
+
+            let mut manifest = SubgraphManifest::resolve_from_raw(
+                subgraph_id.cheap_clone(),
+                manifest,
+                &*link_resolver,
+                &logger,
+            )
+            .await
+            .context("Failed to resolve subgraph from IPFS")?;
+
+            let data_sources =
+                load_dynamic_data_sources(&*store, subgraph_id, logger.clone(), manifest.clone())
+                    .await
+                    .context("Failed to load dynamic data sources")?;
+
+            info!(logger, "Successfully resolved subgraph files using IPFS");
+
+            // Add dynamic data sources to the subgraph
+            manifest.data_sources.extend(data_sources);
+
+            info!(
+                logger,
+                "Data source count at start: {}",
+                manifest.data_sources.len()
+            );
+
+            manifest
+        };
+
         let required_capabilities = manifest.required_ethereum_capabilities();
         let network = manifest.network_name();
 
-        let chain_store = chain_store.ok_or_else(|| {
+        let chain_store = block_store.chain_store(&network).ok_or_else(|| {
             anyhow!(
                 "expected chain store that matches subgraph network: {}",
                 &network
@@ -417,24 +441,6 @@ impl SubgraphInstanceManager {
         });
 
         Ok(())
-    }
-
-    fn stop_subgraph(instances: SharedInstanceKeepAliveMap, id: SubgraphDeploymentId) {
-        // Drop the cancel guard to shut down the subgraph now
-        let mut instances = instances.write().unwrap();
-        instances.remove(&id);
-    }
-}
-
-impl EventConsumer<SubgraphAssignmentProviderEvent> for SubgraphInstanceManager {
-    /// Get the wrapped event sink.
-    fn event_sink(
-        &self,
-    ) -> Box<dyn Sink<SinkItem = SubgraphAssignmentProviderEvent, SinkError = ()> + Send> {
-        let logger = self.logger.clone();
-        Box::new(self.input.clone().sink_map_err(move |e| {
-            error!(logger, "Component was dropped: {}", e);
-        }))
     }
 }
 
