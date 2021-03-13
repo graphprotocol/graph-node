@@ -160,6 +160,7 @@ allow_tables_to_appear_in_same_query!(
     subgraph_deployment_assignment,
     deployment_schemas,
     unused_deployments,
+    active_copies,
 );
 
 /// Information about the database schema that stores the entities for a
@@ -939,6 +940,7 @@ impl<'a> Connection<'a> {
     /// `unused_deployments` table. Only values that are available in the
     /// primary will be filled in `unused_deployments`
     pub fn detect_unused_deployments(&self) -> Result<Vec<String>, StoreError> {
+        use active_copies as cp;
         use deployment_schemas as ds;
         use subgraph as s;
         use subgraph_deployment_assignment as a;
@@ -956,6 +958,9 @@ impl<'a> Connection<'a> {
                     .or(v::id.nullable().eq(s::pending_version))),
             )
             .filter(v::deployment.eq(ds::subgraph));
+        // Deployment is the source of an in-progress copy
+        let copy_src = cp::table.filter(cp::src.eq(ds::id));
+
         // Subgraphs that used a deployment
         let used_by = s::table
             .inner_join(v::table.on(s::id.eq(v::subgraph)))
@@ -966,6 +971,7 @@ impl<'a> Connection<'a> {
         let unused = ds::table
             .filter(not(exists(assigned)))
             .filter(not(exists(active)))
+            .filter(not(exists(copy_src)))
             .select((ds::subgraph, ds::name, ds::shard, used_by));
 
         Ok(insert_into(u::table)
