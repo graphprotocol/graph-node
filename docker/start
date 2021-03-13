@@ -59,6 +59,7 @@ run_graph_node() {
             --config "$GRAPH_NODE_CONFIG" \
             --ipfs "$ipfs"
     else
+        unset GRAPH_NODE_CONFIG
         postgres_port=${postgres_port:-5432}
         postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host:$postgres_port/$postgres_db"
 
