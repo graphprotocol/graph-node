@@ -153,7 +153,7 @@ impl DeploymentStore {
         schema: &Schema,
         deployment: SubgraphDeploymentEntity,
         site: Arc<Site>,
-        graft_site: Option<Arc<Site>>,
+        graft_base: Option<Arc<Layout>>,
         replace: bool,
     ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
@@ -178,9 +178,7 @@ impl DeploymentStore {
 
                 let layout = Layout::create_relational_schema(&conn, site.clone(), schema)?;
                 // See if we are grafting and check that the graft is permissible
-                if let Some(graft_site) = graft_site {
-                    let base =
-                        self.layout(&conn, graft_site)?;
+                if let Some(base) = graft_base {
                     let errors = layout.can_copy_from(&base);
                     if !errors.is_empty() {
                         return Err(StoreError::Unknown(anyhow!(
@@ -478,7 +476,7 @@ impl DeploymentStore {
         }
     }
 
-    /// Return the layout for the subgraph. Since constructing a `Layout`
+    /// Return the layout for a deployment. Since constructing a `Layout`
     /// object takes a bit of computation, we cache layout objects that do
     /// not have a pending migration in the Store, i.e., for the lifetime of
     /// the Store. Layout objects with a pending migration can not be
@@ -511,6 +509,18 @@ impl DeploymentStore {
                 .insert(site.deployment.clone(), layout.clone());
         }
         Ok(layout.clone())
+    }
+
+    /// Return the layout for a deployment. This might use a database
+    /// connection for the lookup and should only be called if the caller
+    /// does not have a connection currently. If it does, use `layout`
+    pub(crate) fn find_layout(&self, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+        if let Some(layout) = self.layout_cache.lock().unwrap().get(&site.deployment) {
+            return Ok(layout.clone());
+        }
+
+        let conn = self.get_conn()?;
+        self.layout(&conn, site)
     }
 
     fn subgraph_info_with_conn(
@@ -1060,22 +1070,12 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Site>, EthereumBlockPointer)>,
+        graft_src: Option<(Arc<Layout>, EthereumBlockPointer)>,
     ) -> Result<(), StoreError> {
-        let (dst, graft_info) = {
-            let conn = self.get_conn()?;
-            let dst = self.layout(&conn, site.clone())?;
-            match graft_src {
-                Some((src, block)) => {
-                    let src = self.layout(&conn, src.clone())?;
-                    (dst, Some((src, block)))
-                }
-                None => (dst, None),
-            }
-        };
+        let dst = self.find_layout(site)?;
 
         // Do any cleanup to bring the subgraph into a known good state
-        if let Some((src, block)) = graft_info {
+        if let Some((src, block)) = graft_src {
             let start = Instant::now();
 
             info!(
@@ -1096,7 +1096,7 @@ impl DeploymentStore {
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(), StoreError> {
                 // 2. Copy dynamic data sources and adjust their ID
-                let count = dynds::copy(&conn, &src.site.deployment, &dst.site.deployment)?;
+                let count = dynds::copy(&conn, &src.site, &dst.site)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 

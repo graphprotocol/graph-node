@@ -19,6 +19,9 @@ use graph::{
     },
 };
 
+use crate::connection_pool::ForeignServer;
+use crate::primary::Site;
+
 table! {
     subgraphs.dynamic_ethereum_contract_data_source (vid) {
         vid -> BigInt,
@@ -157,24 +160,29 @@ pub(crate) fn insert(
         .map_err(|e| e.into())
 }
 
-pub(crate) fn copy(
-    conn: &PgConnection,
-    src: &SubgraphDeploymentId,
-    dst: &SubgraphDeploymentId,
-) -> Result<usize, StoreError> {
-    const QUERY: &str = "\
+pub(crate) fn copy(conn: &PgConnection, src: &Site, dst: &Site) -> Result<usize, StoreError> {
+    let src_nsp = if src.shard == dst.shard {
+        "subgraphs".to_string()
+    } else {
+        ForeignServer::metadata_schema(&src.shard)
+    };
+
+    let query = format!(
+        "\
       insert into subgraphs.dynamic_ethereum_contract_data_source(name,
              address, abi, start_block, ethereum_block_hash,
              ethereum_block_number, deployment, context)
       select e.name, e.address, e.abi, e.start_block,
              e.ethereum_block_hash, e.ethereum_block_number, $2 as deployment,
              e.context
-        from subgraphs.dynamic_ethereum_contract_data_source e
-       where e.deployment = $1";
+        from {src_nsp}.dynamic_ethereum_contract_data_source e
+       where e.deployment = $1",
+        src_nsp = src_nsp
+    );
 
-    Ok(sql_query(QUERY)
-        .bind::<Text, _>(src.as_str())
-        .bind::<Text, _>(dst.as_str())
+    Ok(sql_query(&query)
+        .bind::<Text, _>(src.deployment.as_str())
+        .bind::<Text, _>(dst.deployment.as_str())
         .execute(conn)?)
 }
 

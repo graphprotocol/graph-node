@@ -30,7 +30,7 @@ use graph::{
 };
 use store::StoredDynamicDataSource;
 
-use crate::{connection_pool::ConnectionPool, primary, primary::Site};
+use crate::{connection_pool::ConnectionPool, primary, primary::Site, relational::Layout};
 use crate::{
     deployment_store::{DeploymentStore, ReplicaId},
     detail::DeploymentDetail,
@@ -272,6 +272,11 @@ impl SubgraphStore {
         Ok((store, site))
     }
 
+    fn layout(&self, id: &SubgraphDeploymentId) -> Result<Arc<Layout>, StoreError> {
+        let (store, site) = self.store(id)?;
+        store.find_layout(site)
+    }
+
     fn place(
         &self,
         name: &SubgraphName,
@@ -330,18 +335,15 @@ impl SubgraphStore {
             .allocate_site(shard.clone(), &schema.id, network_name)?;
         let site = Arc::new(site);
 
-        let graft_site = deployment
+        let graft_base = deployment
             .graft_base
             .as_ref()
-            .map(|base| self.primary_conn()?.find_existing_site(&base))
-            .transpose()?
-            .map(|site| Arc::new(site));
-        if let Some(ref graft_site) = graft_site {
-            if &graft_site.shard != &shard {
-                return Err(constraint_violation!("Can not graft across shards. {} is in shard {}, and the base {} is in shard {}", site.deployment, site.shard, graft_site.deployment, graft_site.shard));
-            }
+            .map(|base| self.layout(base))
+            .transpose()?;
+
+        if let Some(graft_base) = &graft_base {
             self.primary_conn()?
-                .record_active_copy(graft_site.as_ref(), site.as_ref())?;
+                .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
         }
 
         // Create the actual databases schema and metadata entries
@@ -349,7 +351,7 @@ impl SubgraphStore {
             .stores
             .get(&shard)
             .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
-        deployment_store.create_deployment(schema, deployment, site, graft_site, replace)?;
+        deployment_store.create_deployment(schema, deployment, site, graft_base, replace)?;
 
         let exists_and_synced = |id: &SubgraphDeploymentId| {
             let (store, _) = self.store(id)?;
@@ -784,8 +786,8 @@ impl SubgraphStoreTrait for SubgraphStore {
 
         let graft_base = match store.graft_pending(id)? {
             Some((base_id, base_ptr)) => {
-                let src = self.primary_conn()?.find_existing_site(&base_id)?;
-                Some((Arc::new(src), base_ptr))
+                let src = self.layout(&base_id)?;
+                Some((src, base_ptr))
             }
             None => None,
         };
