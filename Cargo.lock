@@ -315,7 +315,7 @@ dependencies = [
  "dirs-next",
  "futures-core",
  "futures-util",
- "hex 0.4.2",
+ "hex 0.4.3",
  "http 0.2.1",
  "hyper 0.14.4",
  "hyper-unix-connector",
@@ -1630,7 +1630,7 @@ dependencies = [
  "futures 0.1.30",
  "futures 0.3.13",
  "graphql-parser",
- "hex 0.4.2",
+ "hex 0.4.3",
  "http 0.2.1",
  "isatty",
  "lazy_static",
@@ -1716,7 +1716,7 @@ dependencies = [
  "graph-graphql",
  "graph-mock",
  "graphql-parser",
- "hex 0.4.2",
+ "hex 0.4.3",
  "ipfs-api",
  "lazy_static",
  "lru_time_cache",
@@ -1825,7 +1825,7 @@ dependencies = [
  "graph-mock",
  "graph-runtime-derive",
  "graphql-parser",
- "hex 0.4.2",
+ "hex 0.4.3",
  "ipfs-api",
  "lazy_static",
  "never",
@@ -1923,7 +1923,7 @@ dependencies = [
  "graph-graphql",
  "graph-mock",
  "graphql-parser",
- "hex 0.4.2",
+ "hex 0.4.3",
  "hex-literal",
  "lazy_static",
  "lru_time_cache",
@@ -2046,9 +2046,9 @@ checksum = "d6a22814455d41612f41161581c2883c0c6a1c41852729b17d5ed88f01e153aa"
 
 [[package]]
 name = "hex"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hex-literal"
@@ -2290,7 +2290,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24ef1fd95d34b4ff007d3f0590727b5cf33572cace09b42032fc817dc8b16557"
 dependencies = [
  "anyhow",
- "hex 0.4.2",
+ "hex 0.4.3",
  "hyper 0.14.4",
  "pin-project 1.0.5",
  "tokio 1.2.0",
