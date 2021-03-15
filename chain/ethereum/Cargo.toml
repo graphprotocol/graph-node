@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 chrono = "0.4"
 futures = "0.1.21"
-hyper = "0.12.25" # must be compatible with the version rust-web3 uses
+hyper = "0.14.4" # must be compatible with the version rust-web3 uses
 jsonrpc-core = "14.2.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
