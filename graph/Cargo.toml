@@ -22,7 +22,7 @@ reqwest = "0.10"
 # tuple support which isn't upstreamed yet. For now, we shall deviate from
 # ethabi, but long term we want to find a way to drop our fork.
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
-hex = "0.4.2"
+hex = "0.4.3"
 http = "0.2"
 futures = "0.1.21"
 graphql-parser = "0.3"

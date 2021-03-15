@@ -33,7 +33,7 @@ backtrace = "0.3"
 [dev-dependencies]
 clap = "2.33.3"
 graphql-parser = "0.3"
-hex = "0.4.2"
+hex = "0.4.3"
 test-store = { path = "../test-store" }
 hex-literal = "0.3"
 graph-mock = { path = "../../mock" }

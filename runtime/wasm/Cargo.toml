@@ -8,7 +8,7 @@ async-trait = "0.1.41"
 atomic_refcell = "0.1.6"
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 futures = "0.1.21"
-hex = "0.4.2"
+hex = "0.4.3"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 bs58 = "0.4.0"
