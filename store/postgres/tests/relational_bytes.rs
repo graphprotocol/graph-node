@@ -80,8 +80,13 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
         entity_type.to_owned(),
         entity.id().unwrap(),
     );
+
+    let entity_type = EntityType::from(entity_type);
+    let mut entities = vec![(key.clone(), entity)];
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    layout.insert(&conn, &key, entity, 0).expect(&errmsg);
+    layout
+        .insert(&conn, &entity_type, &mut entities, 0)
+        .expect(&errmsg);
 }
 
 fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
@@ -263,14 +268,20 @@ fn update() {
             "Thing".to_owned(),
             entity.id().unwrap().clone(),
         );
+
+        let entity_id = entity.id().unwrap().clone();
+        let entity_type = key.entity_type.clone();
+        let mut entities = vec![(key, entity)];
         layout
-            .update(&conn, &key, entity.clone(), 1)
+            .update(&conn, &entity_type, &mut entities, 1)
             .expect("Failed to update");
 
         let actual = layout
-            .find(conn, &*THING, &entity.id().unwrap(), BLOCK_NUMBER_MAX)
+            .find(conn, &*THING, &entity_id, BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
+
+        let entity = &entities.first().unwrap().1;
         assert_entity_eq!(scrub(&entity), actual);
     });
 }
@@ -286,17 +297,26 @@ fn delete() {
         insert_entity(&conn, &layout, "Thing", two);
 
         // Delete where nothing is getting deleted
-        let mut key = EntityKey::data(
+        let key = EntityKey::data(
             THINGS_SUBGRAPH_ID.clone(),
             "Thing".to_owned(),
             "ffff".to_owned(),
         );
-        let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
+        let entity_type = key.entity_type.clone();
+        let mut entity_keys = vec![key.clone()];
+        let count = layout
+            .delete(&conn, entity_type.clone(), &entity_keys, 1)
+            .expect("Failed to delete");
         assert_eq!(0, count);
 
         // Delete entity two
-        key.entity_id = TWO_ID.to_owned();
-        let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
+        entity_keys
+            .get_mut(0)
+            .map(|key| key.entity_id = TWO_ID.to_owned())
+            .expect("Failed to update entity types");
+        let count = layout
+            .delete(&conn, entity_type, &entity_keys, 1)
+            .expect("Failed to delete");
         assert_eq!(1, count);
     });
 }

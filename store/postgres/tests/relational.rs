@@ -187,8 +187,13 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
         entity_type.to_owned(),
         entity.id().unwrap(),
     );
-    let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    layout.insert(&conn, &key, entity, 0).expect(&errmsg);
+    let entity_id = key.entity_id.clone();
+    let entity_type = EntityType::from(entity_type);
+    let mut entities = vec![(key, entity)];
+    let errmsg = format!("Failed to insert entity {}[{}]", entity_type, entity_id);
+    layout
+        .insert(&conn, &entity_type, &mut entities, 0)
+        .expect(&errmsg);
 }
 
 fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
@@ -197,8 +202,13 @@ fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
         entity_type.to_owned(),
         entity.id().unwrap(),
     );
-    let errmsg = format!("Failed to update entity {}[{}]", entity_type, key.entity_id);
-    layout.update(&conn, &key, entity, 1).expect(&errmsg);
+    let entity_id = key.entity_id.clone();
+    let entity_type = EntityType::from(entity_type);
+    let mut entities = vec![(key, entity)];
+    let errmsg = format!("Failed to insert entity {}[{}]", entity_type, entity_id);
+    layout
+        .update(&conn, &entity_type, &mut entities, 0)
+        .expect(&errmsg);
 }
 
 fn insert_user_entity(
@@ -466,19 +476,23 @@ fn update() {
             "Scalar".to_owned(),
             entity.id().unwrap().clone(),
         );
+
+        let entity_type = EntityType::from("Scalar");
+        let mut entities = vec![(key, entity)];
         layout
-            .update(&conn, &key, entity.clone(), 1)
+            .update(&conn, &entity_type, &mut entities, 0)
             .expect("Failed to update");
 
         // The missing 'strings' will show up as Value::Null in the
         // loaded entity
-        entity.set("strings", Value::Null);
+        let entity_again = &mut entities.get_mut(0).unwrap().1;
+        entity_again.set("strings", Value::Null);
 
         let actual = layout
             .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
-        assert_entity_eq!(scrub(&entity), actual);
+        assert_entity_eq!(scrub(&entity_again), actual);
     });
 }
 
@@ -500,8 +514,10 @@ fn serialize_bigdecimal() {
                 "Scalar".to_owned(),
                 entity.id().unwrap().clone(),
             );
+            let entity_type = EntityType::from("Scalar");
+            let mut entities = vec![(key, entity.clone())];
             layout
-                .update(&conn, &key, entity.clone(), 1)
+                .update(&conn, &entity_type, &mut entities, 0)
                 .expect("Failed to update");
 
             let actual = layout
@@ -546,18 +562,28 @@ fn delete() {
         insert_entity(&conn, &layout, "Scalar", two);
 
         // Delete where nothing is getting deleted
-        let mut key = EntityKey::data(
+        let key = EntityKey::data(
             THINGS_SUBGRAPH_ID.clone(),
             "Scalar".to_owned(),
             "no such entity".to_owned(),
         );
-        let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
+        let entity_type = EntityType::from("Scalar");
+        let mut entity_keys = vec![key];
+        let count = layout
+            .delete(&conn, entity_type.clone(), &entity_keys, 1)
+            .expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout));
 
         // Delete entity two
-        key.entity_id = "two".to_owned();
-        let count = layout.delete(&conn, &key, 1).expect("Failed to delete");
+        entity_keys
+            .get_mut(0)
+            .map(|mut key| key.entity_id = "two".to_owned())
+            .expect("Failed to update key");
+
+        let count = layout
+            .delete(&conn, entity_type, &entity_keys, 1)
+            .expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout));
     });
