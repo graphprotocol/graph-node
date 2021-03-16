@@ -81,12 +81,9 @@ table! {
 }
 
 table! {
-    subgraphs.subgraph_deployment_assignment (vid) {
-        vid -> BigInt,
-        id -> Text,
+    subgraphs.subgraph_deployment_assignment {
+        id -> Integer,
         node_id -> Text,
-        cost -> Numeric,
-        block_range -> Range<Integer>,
     }
 }
 
@@ -325,25 +322,33 @@ impl<'a> Connection<'a> {
     /// Delete all assignments for deployments that are neither the current nor the
     /// pending version of a subgraph and return the deployment id's
     fn remove_unused_assignments(&self) -> Result<Vec<EntityChange>, StoreError> {
-        const QUERY: &str = "
-    delete from subgraphs.subgraph_deployment_assignment a
-    where not exists (select 1
-                        from subgraphs.subgraph s, subgraphs.subgraph_version v
-                       where v.id in (s.current_version, s.pending_version)
-                         and v.deployment = a.id)
-    returning a.id
-    ";
-        #[derive(QueryableByName)]
-        struct Removed {
-            #[sql_type = "Text"]
-            id: String,
-        }
+        use deployment_schemas as ds;
+        use subgraph as s;
+        use subgraph_deployment_assignment as a;
+        use subgraph_version as v;
 
-        Ok(diesel::sql_query(QUERY)
-            .load::<Removed>(self.0.as_ref())?
+        let active = v::table
+            .inner_join(
+                s::table.on(v::id
+                    .nullable()
+                    .eq(s::current_version)
+                    .or(v::id.nullable().eq(s::pending_version))),
+            )
+            .inner_join(ds::table.on(v::deployment.eq(ds::subgraph)))
+            .filter(a::id.eq(ds::id))
+            .select(ds::id);
+
+        let removed = delete(a::table.filter(not(exists(active))))
+            .returning(a::id)
+            .load::<i32>(self.0.as_ref())?;
+
+        let removed = ds::table
+            .filter(ds::id.eq_any(removed))
+            .select(ds::subgraph)
+            .load::<String>(self.0.as_ref())?
             .into_iter()
-            .map(|r| {
-                SubgraphDeploymentId::new(r.id.clone())
+            .map(|deployment| {
+                SubgraphDeploymentId::new(deployment)
                     .map(|id| EntityChange::for_assignment(id, EntityChangeOperation::Removed))
                     .map_err(|id| {
                         StoreError::ConstraintViolation(format!(
@@ -352,7 +357,8 @@ impl<'a> Connection<'a> {
                         ))
                     })
             })
-            .collect::<Result<Vec<_>, _>>()?)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(removed)
     }
 
     /// Promote the deployment `id` to the current version everywhere where it was
@@ -433,7 +439,7 @@ impl<'a> Connection<'a> {
     pub fn create_subgraph_version<F>(
         &self,
         name: SubgraphName,
-        id: &SubgraphDeploymentId,
+        site: &Site,
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
         exists_and_synced: F,
@@ -488,8 +494,10 @@ impl<'a> Connection<'a> {
 
         // Check if we even need to make any changes
         let change_needed = match (mode, current_exists_and_synced) {
-            (Instant, _) | (Synced, false) => current_deployment.as_deref() != Some(id.as_str()),
-            (Synced, true) => pending_deployment.as_deref() != Some(id.as_str()),
+            (Instant, _) | (Synced, false) => {
+                current_deployment.as_deref() != Some(site.deployment.as_str())
+            }
+            (Synced, true) => pending_deployment.as_deref() != Some(site.deployment.as_str()),
         };
         if !change_needed {
             return Ok(vec![]);
@@ -501,7 +509,7 @@ impl<'a> Connection<'a> {
             .values((
                 v::id.eq(&version_id),
                 v::subgraph.eq(&subgraph_id),
-                v::deployment.eq(id.as_str()),
+                v::deployment.eq(site.deployment.as_str()),
                 // using BigDecimal::from(created_at) produced a scale error
                 v::created_at.eq(sql(&format!("{}", created_at))),
                 v::block_range.eq(UNVERSIONED_RANGE),
@@ -510,19 +518,14 @@ impl<'a> Connection<'a> {
 
         // Create a subgraph assignment if there isn't one already
         let new_assignment = a::table
-            .filter(a::id.eq(id.as_str()))
+            .filter(a::id.eq(site.id))
             .select(a::id)
-            .first::<String>(conn)
+            .first::<i32>(conn)
             .optional()?
             .is_none();
         if new_assignment {
             insert_into(a::table)
-                .values((
-                    a::id.eq(id.as_str()),
-                    a::node_id.eq(node_id.as_str()),
-                    a::block_range.eq(UNVERSIONED_RANGE),
-                    a::cost.eq(sql("1")),
-                ))
+                .values((a::id.eq(site.id), a::node_id.eq(node_id.as_str())))
                 .execute(conn)?;
         }
 
@@ -547,7 +550,8 @@ impl<'a> Connection<'a> {
         // Clean up any assignments we might have displaced
         let mut changes = self.remove_unused_assignments()?;
         if new_assignment {
-            let change = EntityChange::for_assignment(id.clone(), EntityChangeOperation::Set);
+            let change =
+                EntityChange::for_assignment(site.deployment.clone(), EntityChangeOperation::Set);
             changes.push(change);
         }
         Ok(changes)
@@ -586,19 +590,22 @@ impl<'a> Connection<'a> {
 
     pub fn reassign_subgraph(
         &self,
-        id: &SubgraphDeploymentId,
+        site: &Site,
         node: &NodeId,
     ) -> Result<Vec<EntityChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.0.as_ref();
-        let updates = update(a::table.filter(a::id.eq(id.as_str())))
+        let updates = update(a::table.filter(a::id.eq(site.id)))
             .set(a::node_id.eq(node.as_str()))
             .execute(conn)?;
         match updates {
-            0 => Err(StoreError::DeploymentNotFound(id.to_string())),
+            0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
-                let change = EntityChange::for_assignment(id.clone(), EntityChangeOperation::Set);
+                let change = EntityChange::for_assignment(
+                    site.deployment.clone(),
+                    EntityChangeOperation::Set,
+                );
                 Ok(vec![change])
             }
             _ => {
@@ -609,20 +616,19 @@ impl<'a> Connection<'a> {
         }
     }
 
-    pub fn unassign_subgraph(
-        &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn unassign_subgraph(&self, site: &Site) -> Result<Vec<EntityChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.0.as_ref();
-        let delete_count = delete(a::table.filter(a::id.eq(id.as_str()))).execute(conn)?;
+        let delete_count = delete(a::table.filter(a::id.eq(site.id))).execute(conn)?;
 
         match delete_count {
             0 => Ok(vec![]),
             1 => {
-                let change =
-                    EntityChange::for_assignment(id.clone(), EntityChangeOperation::Removed);
+                let change = EntityChange::for_assignment(
+                    site.deployment.clone(),
+                    EntityChangeOperation::Removed,
+                );
                 Ok(vec![change])
             }
             _ => {
@@ -795,52 +801,52 @@ impl<'a> Connection<'a> {
             })
     }
 
-    pub fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+    pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         a::table
-            .filter(a::id.eq(id.as_str()))
+            .filter(a::id.eq(site.id))
             .select(a::node_id)
             .first::<String>(self.0.as_ref())
             .optional()?
             .map(|node| {
                 NodeId::new(&node).map_err(|()| {
-                    constraint_violation!("invalid node id `{}` in assignment for `{}`", node, id)
+                    constraint_violation!(
+                        "invalid node id `{}` in assignment for `{}`",
+                        node,
+                        site.deployment
+                    )
                 })
             })
             .transpose()
     }
 
-    pub fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+    pub fn assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
+        use deployment_schemas as ds;
         use subgraph_deployment_assignment as a;
 
-        a::table
+        ds::table
+            .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(a::node_id.eq(node.as_str()))
-            .select(a::id)
-            .load::<String>(self.0.as_ref())?
+            .select(ds::all_columns)
+            .load::<Schema>(self.0.as_ref())?
             .into_iter()
-            .map(|id| {
-                SubgraphDeploymentId::new(id).map_err(|id| {
-                    constraint_violation!(
-                        "invalid deployment id `{}` assigned to node `{}`",
-                        id,
-                        node
-                    )
-                })
-            })
-            .collect()
+            .map(|schema| Site::try_from(schema))
+            .collect::<Result<Vec<Site>, _>>()
     }
 
     pub fn fill_assignments(
         &self,
         mut infos: Vec<status::Info>,
     ) -> Result<Vec<status::Info>, StoreError> {
+        use deployment_schemas as ds;
         use subgraph_deployment_assignment as a;
 
         let ids: Vec<_> = infos.iter().map(|info| &info.subgraph).collect();
         let nodes: HashMap<_, _> = a::table
-            .filter(a::id.eq(any(ids)))
-            .select((a::id, a::node_id))
+            .inner_join(ds::table.on(ds::id.eq(a::id)))
+            .filter(ds::subgraph.eq(any(ids)))
+            .select((ds::subgraph, a::node_id))
             .load::<(String, String)>(self.0.as_ref())?
             .into_iter()
             .collect();
@@ -948,7 +954,7 @@ impl<'a> Connection<'a> {
         use unused_deployments as u;
 
         // Deployment is assigned
-        let assigned = a::table.filter(a::id.eq(ds::subgraph));
+        let assigned = a::table.filter(a::id.eq(ds::id));
         // Deployment is current or pending version
         let active = v::table
             .inner_join(

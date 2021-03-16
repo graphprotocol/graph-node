@@ -1322,7 +1322,7 @@ impl ChainStoreTrait for ChainStore {
                        subgraphs.subgraph_deployment_assignment a,
                        deployment_schemas ds
                  where ds.subgraph = d.deployment
-                   and a.id = d.deployment
+                   and a.id = d.id
                    and not d.failed
                    and ds.network = $2) a;";
         let ancestor_count = i32::try_from(ancestor_count)

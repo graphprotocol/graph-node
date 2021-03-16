@@ -27,7 +27,7 @@ impl Deployment {
         let query = ds::table
             .inner_join(v::table.on(v::deployment.eq(ds::subgraph)))
             .inner_join(s::table.on(v::subgraph.eq(s::id)))
-            .left_outer_join(a::table.on(a::id.eq(ds::subgraph)))
+            .left_outer_join(a::table.on(a::id.eq(ds::id)))
             .select((
                 s::name,
                 sql::<Text>(

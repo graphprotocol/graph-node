@@ -351,7 +351,13 @@ impl SubgraphStore {
             .stores
             .get(&shard)
             .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
-        deployment_store.create_deployment(schema, deployment, site, graft_base, replace)?;
+        deployment_store.create_deployment(
+            schema,
+            deployment,
+            site.clone(),
+            graft_base,
+            replace,
+        )?;
 
         let exists_and_synced = |id: &SubgraphDeploymentId| {
             let (store, _) = self.store(id)?;
@@ -363,13 +369,8 @@ impl SubgraphStore {
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
-            let changes = pconn.create_subgraph_version(
-                name,
-                &schema.id,
-                node_id,
-                mode,
-                exists_and_synced,
-            )?;
+            let changes =
+                pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
             let event = StoreEvent::new(changes);
             pconn.send_store_event(&event)?;
             Ok(())
@@ -539,7 +540,7 @@ impl SubgraphStore {
         let (store, site) = self.store(id)?;
 
         // Check that deployment is not assigned
-        match self.primary_conn()?.assigned_node(id)? {
+        match self.primary_conn()?.assigned_node(site.as_ref())? {
             Some(node) => {
                 return Err(constraint_violation!(
                     "deployment {} can not be removed since it is assigned to node {}",
@@ -862,17 +863,19 @@ impl SubgraphStoreTrait for SubgraphStore {
         id: &SubgraphDeploymentId,
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
+        let site = self.site(id)?;
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = pconn.reassign_subgraph(id, node_id)?;
+            let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
             pconn.send_store_event(&StoreEvent::new(changes))
         })
     }
 
     fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        let site = self.site(id)?;
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = pconn.unassign_subgraph(id)?;
+            let changes = pconn.unassign_subgraph(site.as_ref())?;
             pconn.send_store_event(&StoreEvent::new(changes))
         })
     }
@@ -895,13 +898,16 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+        let site = self.site(id)?;
         let primary = self.primary_conn()?;
-        primary.assigned_node(id)
+        primary.assigned_node(site.as_ref())
     }
 
     fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
         let primary = self.primary_conn()?;
-        primary.assignments(node)
+        primary
+            .assignments(node)
+            .map(|sites| sites.into_iter().map(|site| site.deployment).collect())
     }
 
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
