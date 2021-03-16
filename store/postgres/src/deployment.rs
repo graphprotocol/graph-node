@@ -21,10 +21,7 @@ use stable_hash::crypto::SetHasher;
 use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 
-use crate::{
-    block_range::{BLOCK_RANGE_COLUMN, UNVERSIONED_RANGE},
-    primary::Site,
-};
+use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
 use graph::constraint_violation;
 
 #[derive(DbEnum, Debug, Clone, Copy)]
@@ -51,7 +48,6 @@ table! {
     subgraphs.subgraph_deployment (id) {
         id -> Integer,
         deployment -> Text,
-        manifest -> Text,
         failed -> Bool,
         health -> crate::deployment::SubgraphHealthMapping,
         synced -> Bool,
@@ -87,15 +83,13 @@ table! {
 }
 
 table! {
-    subgraphs.subgraph_manifest (vid) {
-        vid -> BigInt,
-        id -> Text,
+    subgraphs.subgraph_manifest {
+        id -> Integer,
         spec_version -> Text,
         description -> Nullable<Text>,
         repository -> Nullable<Text>,
         features -> Array<Text>,
         schema -> Text,
-        block_range -> Range<Integer>,
     }
 }
 
@@ -168,41 +162,35 @@ pub fn graft_point(
     graft(conn, id, false)
 }
 
-pub fn schema(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<Schema, StoreError> {
+pub fn schema(conn: &PgConnection, site: &Site) -> Result<Schema, StoreError> {
     use subgraph_manifest as sm;
-    let manifest_id = SubgraphManifestEntity::id(&id);
     let s: String = sm::table
         .select(sm::schema)
-        .filter(sm::id.eq(manifest_id.as_str()))
+        .filter(sm::id.eq(site.id))
         .first(conn)?;
-    Schema::parse(s.as_str(), id).map_err(|e| StoreError::Unknown(e))
+    Schema::parse(s.as_str(), site.deployment.clone()).map_err(|e| StoreError::Unknown(e))
 }
 
 pub fn manifest_info(
     conn: &PgConnection,
-    id: SubgraphDeploymentId,
+    site: &Site,
 ) -> Result<(Schema, Option<String>, Option<String>), StoreError> {
     use subgraph_manifest as sm;
-    let manifest_id = SubgraphManifestEntity::id(&id);
     let (s, description, repository): (String, Option<String>, Option<String>) = sm::table
         .select((sm::schema, sm::description, sm::repository))
-        .filter(sm::id.eq(manifest_id.as_str()))
+        .filter(sm::id.eq(site.id))
         .first(conn)?;
-    Schema::parse(s.as_str(), id)
+    Schema::parse(s.as_str(), site.deployment.clone())
         .map_err(|e| StoreError::Unknown(e))
         .map(|schema| (schema, description, repository))
 }
 
-pub fn features(
-    conn: &PgConnection,
-    id: &SubgraphDeploymentId,
-) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
+pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
     use subgraph_manifest as sm;
 
-    let manifest_id = SubgraphManifestEntity::id(&id);
     let features: Vec<String> = sm::table
         .select(sm::features)
-        .filter(sm::id.eq(manifest_id.as_str()))
+        .filter(sm::id.eq(site.id))
         .first(conn)
         .unwrap();
     features
@@ -599,16 +587,12 @@ pub fn drop_schema(
     Ok(conn.batch_execute(&*query)?)
 }
 
-pub fn drop_metadata(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+pub fn drop_metadata(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
     use subgraph_deployment as d;
-    use subgraph_manifest as m;
 
-    // We don't need to delete from subgraph_error since that cascades from
-    // deleting the subgraph_deployment
-    let manifest: String = delete(d::table.filter(d::deployment.eq(id.as_str())))
-        .returning(d::manifest)
-        .get_result(conn)?;
-    delete(m::table.filter(m::id.eq(manifest))).execute(conn)?;
+    // We don't need to delete from subgraph_manifest or subgraph_error
+    // since that cascades from deleting the subgraph_deployment
+    delete(d::table.filter(d::id.eq(site.id))).execute(conn)?;
     Ok(())
 }
 
@@ -656,12 +640,9 @@ pub fn create_deployment(
         max_reorg_depth: _,
     } = deployment;
 
-    let manifest_id = SubgraphManifestEntity::id(&site.deployment);
-
     let deployment_values = (
         d::id.eq(site.id),
         d::deployment.eq(site.deployment.as_str()),
-        d::manifest.eq(&manifest_id),
         d::failed.eq(failed),
         d::synced.eq(synced),
         d::health.eq(SubgraphHealth::Healthy),
@@ -678,13 +659,12 @@ pub fn create_deployment(
     );
 
     let manifest_values = (
-        m::id.eq(&manifest_id),
+        m::id.eq(site.id),
         m::spec_version.eq(spec_version),
         m::description.eq(description),
         m::repository.eq(repository),
         m::features.eq(features),
         m::schema.eq(schema),
-        m::block_range.eq(UNVERSIONED_RANGE),
     );
 
     if exists && replace {
@@ -692,7 +672,7 @@ pub fn create_deployment(
             .set(deployment_values)
             .execute(conn)?;
 
-        update(m::table.filter(m::id.eq(&manifest_id)))
+        update(m::table.filter(m::id.eq(site.id)))
             .set(manifest_values)
             .execute(conn)?;
     } else {

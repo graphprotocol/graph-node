@@ -202,7 +202,7 @@ impl DeploymentStore {
         conn.transaction(|| {
             crate::deployment::drop_schema(&conn, &site.namespace)?;
             crate::dynds::drop(&conn, &site.deployment)?;
-            crate::deployment::drop_metadata(&conn, &site.deployment)
+            crate::deployment::drop_metadata(&conn, site)
         })
     }
 
@@ -233,6 +233,8 @@ impl DeploymentStore {
         layout: &Layout,
         key: &EntityKey,
     ) -> Result<(), StoreError> {
+        assert_eq!(&key.subgraph_id, &layout.site.deployment);
+
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
         //
@@ -243,7 +245,7 @@ impl DeploymentStore {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.subgraph_info_with_conn(&conn, &key.subgraph_id)?.api;
+        let schema = self.subgraph_info_with_conn(&conn, &layout.site)?.api;
         let types_for_interface = schema.types_for_interface();
         let entity_type = key.entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
@@ -491,7 +493,7 @@ impl DeploymentStore {
             return Ok(layout.clone());
         }
 
-        let subgraph_schema = deployment::schema(conn, site.deployment.clone())?;
+        let subgraph_schema = deployment::schema(conn, site.as_ref())?;
         let has_poi = crate::catalog::supports_proof_of_indexing(conn, &site.namespace)?;
         let catalog = Catalog::new(conn, site.namespace.clone())?;
         let layout = Arc::new(Layout::new(
@@ -526,26 +528,25 @@ impl DeploymentStore {
     fn subgraph_info_with_conn(
         &self,
         conn: &PgConnection,
-        subgraph_id: &SubgraphDeploymentId,
+        site: &Site,
     ) -> Result<SubgraphInfo, StoreError> {
-        if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
+        if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
             return Ok(info.clone());
         }
 
-        let (input_schema, description, repository) =
-            deployment::manifest_info(&conn, subgraph_id.to_owned())?;
+        let (input_schema, description, repository) = deployment::manifest_info(&conn, site)?;
 
         let graft_block =
-            deployment::graft_point(&conn, &subgraph_id)?.map(|(_, ptr)| ptr.number as i32);
+            deployment::graft_point(&conn, &site.deployment)?.map(|(_, ptr)| ptr.number as i32);
 
-        let features = deployment::features(&conn, subgraph_id)?;
+        let features = deployment::features(&conn, site)?;
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
         schema.document =
             api_schema(&schema.document, &features).map_err(|e| StoreError::Unknown(e.into()))?;
-        schema.add_subgraph_id_directives(subgraph_id.clone());
+        schema.add_subgraph_id_directives(site.deployment.clone());
 
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
@@ -557,21 +558,18 @@ impl DeploymentStore {
 
         // Insert the schema into the cache.
         let mut cache = self.subgraph_cache.lock().unwrap();
-        cache.insert(subgraph_id.clone(), info);
+        cache.insert(site.deployment.clone(), info);
 
-        Ok(cache.get(&subgraph_id).unwrap().clone())
+        Ok(cache.get(&site.deployment).unwrap().clone())
     }
 
-    pub(crate) fn subgraph_info(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<SubgraphInfo, StoreError> {
-        if let Some(info) = self.subgraph_cache.lock().unwrap().get(&subgraph_id) {
+    pub(crate) fn subgraph_info(&self, site: &Site) -> Result<SubgraphInfo, StoreError> {
+        if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
             return Ok(info.clone());
         }
 
         let conn = self.get_conn()?;
-        self.subgraph_info_with_conn(&conn, subgraph_id)
+        self.subgraph_info_with_conn(&conn, site)
     }
 
     fn block_ptr_with_conn(
@@ -922,7 +920,7 @@ impl DeploymentStore {
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
-            let info = self.subgraph_info_with_conn(&conn, &site.deployment)?;
+            let info = self.subgraph_info_with_conn(&conn, site.as_ref())?;
             if let Some(graft_block) = info.graft_block {
                 if graft_block > block_ptr_to.number {
                     return Err(anyhow!(

@@ -155,12 +155,6 @@ pub struct SubgraphManifestEntity {
     pub schema: String,
 }
 
-impl SubgraphManifestEntity {
-    pub fn id(subgraph_id: &SubgraphDeploymentId) -> String {
-        format!("{}-manifest", subgraph_id)
-    }
-}
-
 impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
     fn from(manifest: &'a super::SubgraphManifest) -> Self {
         Self {

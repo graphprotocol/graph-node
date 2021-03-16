@@ -27,7 +27,6 @@ type Bytes = Vec<u8>;
 pub struct DeploymentDetail {
     id: i32,
     pub deployment: String,
-    manifest: String,
     pub failed: bool,
     health: HealthType,
     pub synced: bool,
@@ -143,7 +142,6 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
 
         let DeploymentDetail {
             deployment,
-            manifest: _,
             failed: _,
             health,
             synced,

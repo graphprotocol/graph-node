@@ -610,7 +610,7 @@ impl SubgraphStore {
             let id = SubgraphDeploymentId::new(deployment_id.clone())
                 .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
-            let statuses = store.deployment_statuses(&vec![site])?;
+            let statuses = store.deployment_statuses(&vec![site.clone()])?;
             let status = statuses
                 .first()
                 .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;
@@ -620,7 +620,7 @@ impl SubgraphStore {
                 .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|ref block| block.number());
-            let subgraph_info = store.subgraph_info(&id)?;
+            let subgraph_info = store.subgraph_info(site.as_ref())?;
             let network = self.network_name(&id)?;
 
             let info = VersionInfo {
@@ -916,14 +916,14 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn input_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
-        let (store, _) = self.store(&id)?;
-        let info = store.subgraph_info(id)?;
+        let (store, site) = self.store(&id)?;
+        let info = store.subgraph_info(site.as_ref())?;
         Ok(info.input)
     }
 
     fn api_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
-        let (store, _) = self.store(&id)?;
-        let info = store.subgraph_info(id)?;
+        let (store, site) = self.store(&id)?;
+        let info = store.subgraph_info(&site)?;
         Ok(info.api)
     }
 
