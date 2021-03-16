@@ -7,8 +7,8 @@ use std::{fs, sync::Arc};
 
 use graph::prelude::{Schema, SubgraphDeploymentId};
 use graph_store_postgres::{
-    command_support::{catalog::Site, Catalog, Column, ColumnType, Layout, Namespace},
-    PRIMARY_SHARD,
+    command_support::{Catalog, Column, ColumnType, Layout, Namespace},
+    layout_for_tests::make_dummy_site,
 };
 
 pub fn usage(msg: &str) -> ! {
@@ -149,13 +149,7 @@ pub fn main() {
         Catalog::make_empty(namespace.clone()),
         "Failed to construct catalog",
     );
-    let site = Site {
-        id: 1,
-        deployment: subgraph,
-        shard: PRIMARY_SHARD.clone(),
-        namespace: namespace,
-        network: "anet".to_string(),
-    };
+    let site = make_dummy_site(subgraph, namespace, "anet".to_string());
     let layout = ensure(
         Layout::new(Arc::new(site), &schema, catalog, false),
         "Failed to construct Mapping",

@@ -16,9 +16,8 @@ use graph::{
     data::store::scalar::{BigDecimal, BigInt},
 };
 use graph_store_postgres::{
-    command_support::catalog::Site,
+    layout_for_tests::make_dummy_site,
     layout_for_tests::{Layout, Namespace},
-    PRIMARY_SHARD,
 };
 
 use test_store::*;
@@ -117,13 +116,11 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    let site = Site {
-        id: 1,
-        deployment: THINGS_SUBGRAPH_ID.clone(),
-        shard: PRIMARY_SHARD.clone(),
-        namespace: NAMESPACE.clone(),
-        network: NETWORK_NAME.to_string(),
-    };
+    let site = make_dummy_site(
+        THINGS_SUBGRAPH_ID.clone(),
+        NAMESPACE.clone(),
+        NETWORK_NAME.to_string(),
+    );
     Layout::create_relational_schema(&conn, Arc::new(site), &schema)
         .expect("Failed to create relational schema")
 }

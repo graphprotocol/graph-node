@@ -1335,7 +1335,7 @@ fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
 mod tests {
     use super::*;
 
-    use crate::PRIMARY_SHARD;
+    use crate::layout_for_tests::make_dummy_site;
 
     const ID_TYPE: ColumnType = ColumnType::String;
 
@@ -1344,13 +1344,7 @@ mod tests {
         let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
         let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
         let catalog = Catalog::make_empty(namespace.clone()).expect("Can not create catalog");
-        let site = Site {
-            id: 1,
-            deployment: subgraph,
-            shard: PRIMARY_SHARD.clone(),
-            namespace: namespace,
-            network: "anet".to_string(),
-        };
+        let site = make_dummy_site(subgraph, namespace, "anet".to_string());
         Layout::new(Arc::new(site), &schema, catalog, false).expect("Failed to construct Layout")
     }
 

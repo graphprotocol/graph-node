@@ -240,7 +240,9 @@ impl ToSql<Text, Pg> for Namespace {
 #[derive(Debug)]
 /// Details about a deployment and the shard in which it is stored. We need
 /// the database namespace for the deployment as that information is only
-/// stored in the primary database
+/// stored in the primary database.
+///
+/// Any instance of this struct must originate in the database
 pub struct Site {
     pub id: i32,
     /// The subgraph deployment
@@ -251,6 +253,8 @@ pub struct Site {
     pub namespace: Namespace,
     /// The name of the network to which this deployment belongs
     pub network: String,
+    /// Only the store and tests can create Sites
+    _creation_disallowed: (),
 }
 
 impl TryFrom<Schema> for Site {
@@ -273,7 +277,28 @@ impl TryFrom<Schema> for Site {
             namespace,
             shard,
             network: schema.network,
+            _creation_disallowed: (),
         })
+    }
+}
+
+/// This is only used for tests to allow them to create a `Site` that does
+/// not originate in the database
+#[cfg(debug_assertions)]
+pub fn make_dummy_site(
+    deployment: SubgraphDeploymentId,
+    namespace: Namespace,
+    network: String,
+) -> Site {
+    use crate::PRIMARY_SHARD;
+
+    Site {
+        id: -7,
+        deployment,
+        shard: PRIMARY_SHARD.clone(),
+        namespace,
+        network,
+        _creation_disallowed: (),
     }
 }
 
@@ -675,9 +700,10 @@ impl<'a> Connection<'a> {
         Ok(Site {
             id,
             deployment: subgraph.clone(),
-            namespace,
             shard,
+            namespace,
             network,
+            _creation_disallowed: (),
         })
     }
 
