@@ -1240,7 +1240,6 @@ pub struct InsertQuery<'a> {
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        _entity_type: &'a EntityType,
         entities: &'a mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
