@@ -386,17 +386,20 @@ impl DeploymentStore {
                 }
             }
         }
+
         // apply modification groups
         for (entity_type, entities) in inserts.iter_mut() {
-            count += self.insert_entities(entity_type, entities, conn, layout, ptr, &stopwatch)?;
+            count +=
+                self.insert_entities(entity_type, entities, conn, layout, ptr, &stopwatch)? as i32
         }
         for (entity_type, entities) in overwrites.iter_mut() {
-            count +=
-                self.overwrite_entities(entity_type, entities, conn, layout, ptr, &stopwatch)?;
+            // not updating count since the number of entities remains the same
+            self.overwrite_entities(entity_type, entities, conn, layout, ptr, &stopwatch)?;
         }
         for (entity_type, entity_keys) in removals.into_iter() {
-            count +=
-                self.remove_entities(entity_type, entity_keys, conn, layout, ptr, &stopwatch)?;
+            count -=
+                self.remove_entities(entity_type, entity_keys, conn, layout, ptr, &stopwatch)?
+                    as i32;
         }
         Ok(count)
     }
@@ -409,7 +412,7 @@ impl DeploymentStore {
         layout: &Layout,
         ptr: &EthereumBlockPointer,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<i32, StoreError> {
+    ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
         for (key, _) in data.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
@@ -418,9 +421,7 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_insert");
-        layout
-            .insert(conn, entity_type, data, block_number(ptr))
-            .map(|_| 1)
+        layout.insert(conn, entity_type, data, block_number(ptr))
     }
 
     fn overwrite_entities(
@@ -431,7 +432,7 @@ impl DeploymentStore {
         layout: &Layout,
         ptr: &EthereumBlockPointer,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<i32, StoreError> {
+    ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
         for (key, _) in data.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
@@ -440,9 +441,7 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout
-            .update(conn, entity_type, data, block_number(ptr))
-            .map(|_| 0)
+        layout.update(conn, entity_type, data, block_number(ptr))
     }
 
     fn remove_entities(
@@ -453,12 +452,10 @@ impl DeploymentStore {
         layout: &Layout,
         ptr: &EthereumBlockPointer,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<i32, StoreError> {
+    ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
         layout
             .delete(conn, entity_type, &entity_keys, block_number(ptr))
-            // This conversion is ok since n will only be 0 or 1
-            .map(|n| -(n as i32))
             .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
     }
 
