@@ -7,7 +7,7 @@ use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 use graph::{components::store::CallCache, ensure};
-use semver::{Version, VersionReq};
+use semver::Version;
 use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
 use tiny_keccak::keccak256;
@@ -206,13 +206,6 @@ impl RuntimeHost {
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Result<Self, Error> {
         let api_version = Version::parse(&config.mapping.api_version)?;
-        if !VersionReq::parse("<= 0.0.4").unwrap().matches(&api_version) {
-            return Err(anyhow!(
-                "This Graph Node only supports mapping API versions <= 0.0.4, but subgraph `{}` uses `{}`",
-                config.subgraph_id,
-                api_version
-            ));
-        }
 
         let data_source_contract_abi = config
             .mapping

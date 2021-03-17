@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context as _, Error};
+use anyhow::{anyhow, ensure, Context as _, Error};
 use ethabi::Contract;
 use futures03::{
     future::{try_join, try_join3},
@@ -6,7 +6,7 @@ use futures03::{
     TryStreamExt as _,
 };
 use lazy_static::lazy_static;
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::de;
 use serde::ser;
 use serde_yaml;
@@ -618,6 +618,11 @@ impl UnresolvedMapping {
             event_handlers,
             file: link,
         } = self;
+
+        ensure!(VersionReq::parse("<= 0.0.4").unwrap().matches(&Version::parse(&api_version)?),
+            "The maximum supported mapping API version of this indexer is 0.0.4, but `{}` was found",
+            api_version
+        );
 
         info!(logger, "Resolve mapping"; "link" => &link.link);
 
