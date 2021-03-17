@@ -181,19 +181,32 @@ fn remove_test_data(conn: &PgConnection) {
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey::data(
-        THINGS_SUBGRAPH_ID.clone(),
-        entity_type.to_owned(),
-        entity.id().unwrap(),
-    );
-    let entity_id = key.entity_id.clone();
+fn insert_entity(
+    conn: &PgConnection,
+    layout: &Layout,
+    entity_type: &str,
+    mut entities: Vec<Entity>,
+) {
+    let mut entities_with_keys = entities
+        .drain(..)
+        .map(|entity| {
+            let key = EntityKey::data(
+                THINGS_SUBGRAPH_ID.clone(),
+                entity_type.to_owned(),
+                entity.id().unwrap(),
+            );
+            (key, entity)
+        })
+        .collect();
     let entity_type = EntityType::from(entity_type);
-    let mut entities = vec![(key, entity)];
-    let errmsg = format!("Failed to insert entity {}[{}]", entity_type, entity_id);
-    layout
-        .insert(&conn, &entity_type, &mut entities, 0)
+    let errmsg = format!(
+        "Failed to insert entities {}[{:?}]",
+        entity_type, entities_with_keys
+    );
+    let inserted = layout
+        .insert(&conn, &entity_type, &mut entities_with_keys, 0)
         .expect(&errmsg);
+    assert_eq!(inserted, entities_with_keys.len());
 }
 
 fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
@@ -248,7 +261,7 @@ fn insert_user_entity(
         user.insert("drinks".to_owned(), drinks.into());
     }
 
-    insert_entity(conn, layout, entity_type, user);
+    insert_entity(conn, layout, entity_type, vec![user]);
 }
 
 fn insert_users(conn: &PgConnection, layout: &Layout) {
@@ -337,7 +350,7 @@ fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str,
     let mut pet = Entity::new();
     pet.set("id", id);
     pet.set("name", name);
-    insert_entity(conn, layout, entity_type, pet);
+    insert_entity(conn, layout, entity_type, vec![pet]);
 }
 
 fn insert_pets(conn: &PgConnection, layout: &Layout) {
@@ -415,7 +428,7 @@ where
 #[test]
 fn find() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
 
         // Happy path: find existing entity
         let entity = layout
@@ -449,7 +462,7 @@ fn insert_null_fulltext_fields() {
             &conn,
             &layout,
             "NullableStrings",
-            EMPTY_NULLABLESTRINGS_ENTITY.clone(),
+            vec![EMPTY_NULLABLESTRINGS_ENTITY.clone()],
         );
 
         // Find entity with null string values
@@ -464,7 +477,7 @@ fn insert_null_fulltext_fields() {
 #[test]
 fn update() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -500,7 +513,7 @@ fn update() {
 #[test]
 fn serialize_bigdecimal() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -556,10 +569,10 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
 #[test]
 fn delete() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", SCALAR_ENTITY.clone());
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two");
-        insert_entity(&conn, &layout, "Scalar", two);
+        insert_entity(&conn, &layout, "Scalar", vec![two]);
 
         // Delete where nothing is getting deleted
         let key = EntityKey::data(
@@ -600,7 +613,7 @@ fn conflicting_entity() {
         let mut fred = Entity::new();
         fred.set("id", id);
         fred.set("name", id);
-        insert_entity(&conn, &layout, "Cat", fred);
+        insert_entity(&conn, &layout, "Cat", vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
         let conflict = layout
