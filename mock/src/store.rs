@@ -83,10 +83,6 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn find(&self, _query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        unimplemented!()
-    }
-
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
         unimplemented!()
     }

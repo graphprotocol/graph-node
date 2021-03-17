@@ -670,6 +670,13 @@ impl SubgraphStore {
         let (store, site) = self.store(&id).unwrap();
         store.clone().get_proof_of_indexing(site, indexer, block)
     }
+
+    // Only used by tests
+    #[cfg(debug_assertions)]
+    pub fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+        let (store, site) = self.store(&query.subgraph_id)?;
+        store.find(site, query)
+    }
 }
 
 #[async_trait::async_trait]
@@ -699,11 +706,6 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         let (store, site) = self.store(&id)?;
         store.get_many(site, ids_for_type)
-    }
-
-    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        let (store, site) = self.store(&query.subgraph_id)?;
-        store.find(site, query)
     }
 
     fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {

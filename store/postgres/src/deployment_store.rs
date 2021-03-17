@@ -807,6 +807,8 @@ impl DeploymentStore {
         layout.find_many(&conn, ids_for_type, BLOCK_NUMBER_MAX)
     }
 
+    // Only used by tests
+    #[cfg(debug_assertions)]
     pub(crate) fn find(
         &self,
         site: Arc<Site>,

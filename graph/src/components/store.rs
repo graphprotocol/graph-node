@@ -872,9 +872,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
 
-    /// Queries the store for entities that match the store query.
-    fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError>;
-
     /// Find the reverse of keccak256 for `hash` through looking it up in the
     /// rainbow table.
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError>;
@@ -1058,10 +1055,6 @@ impl SubgraphStore for MockStore {
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         self.get_many_mock(subgraph_id, ids_for_type)
-    }
-
-    fn find(&self, _query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
-        unimplemented!()
     }
 
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
