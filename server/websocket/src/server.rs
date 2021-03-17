@@ -175,7 +175,7 @@ where
                             .unwrap());
                     }
 
-                *accept_subgraph_id.lock().unwrap() = Some(state);
+                *accept_subgraph_id.lock().unwrap() = Some(state.id);
                 response.headers_mut().insert(
                     "Sec-WebSocket-Protocol",
                     HeaderValue::from_static("graphql-ws"),

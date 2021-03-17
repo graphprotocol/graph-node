@@ -229,11 +229,8 @@ async fn main() {
             graphql_runner.clone(),
             node_id.clone(),
         );
-        let subscription_server = GraphQLSubscriptionServer::new(
-            &logger,
-            graphql_runner.clone(),
-            network_store.subgraph_store(),
-        );
+        let subscription_server =
+            GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 
         let mut index_node_server = IndexNodeServer::new(
             &logger_factory,
