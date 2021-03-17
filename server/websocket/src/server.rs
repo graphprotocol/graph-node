@@ -1,4 +1,7 @@
-use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
+use graph::{
+    data::query::QueryTarget,
+    prelude::{SubscriptionServer as SubscriptionServerTrait, *},
+};
 use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -19,7 +22,7 @@ pub struct SubscriptionServer<Q, S> {
 impl<Q, S> SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphStore,
+    S: QueryStoreManager,
 {
     pub fn new(logger: &Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
         SubscriptionServer {
@@ -32,17 +35,31 @@ where
     async fn subgraph_id_from_url_path(
         store: Arc<S>,
         path: &str,
-    ) -> Result<Option<SubgraphDeploymentId>, Error> {
-        async fn id_from_name<S: SubgraphStore>(
-            store: Arc<S>,
-            name: String,
-        ) -> Option<SubgraphDeploymentId> {
-            let subgraph_name = SubgraphName::new(name).ok()?;
-            store
-                .deployment_state_from_name(subgraph_name)
-                .await
+    ) -> Result<Option<DeploymentState>, Error> {
+        fn target_from_name(name: String) -> Option<QueryTarget> {
+            SubgraphName::new(name)
                 .ok()
-                .map(|state| state.id)
+                .map(|name| QueryTarget::Name(name))
+        }
+
+        fn target_from_id(id: &str) -> Option<QueryTarget> {
+            SubgraphDeploymentId::new(id)
+                .ok()
+                .map(|id| QueryTarget::Deployment(id))
+        }
+
+        async fn state<S: QueryStoreManager>(
+            store: Arc<S>,
+            target: Option<QueryTarget>,
+        ) -> Option<DeploymentState> {
+            let target = match target {
+                Some(target) => target,
+                None => return None,
+            };
+            match store.query_store(target, false).await.ok() {
+                Some(query_store) => query_store.deployment_state().await.ok(),
+                None => None,
+            }
         }
 
         let path_segments = {
@@ -58,12 +75,14 @@ where
         };
 
         match path_segments.as_slice() {
-            &["subgraphs", "id", subgraph_id] => Ok(SubgraphDeploymentId::new(subgraph_id).ok()),
+            &["subgraphs", "id", subgraph_id] => {
+                Ok(state(store, target_from_id(subgraph_id)).await)
+            }
             &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
-                Ok(id_from_name(store, path_segments[2..].join("/")).await)
+                Ok(state(store, target_from_name(path_segments[2..].join("/"))).await)
             }
             &["subgraphs", "network", _, _] => {
-                Ok(id_from_name(store, path_segments[1..].join("/")).await)
+                Ok(state(store, target_from_name(path_segments[1..].join("/"))).await)
             }
             _ => Ok(None),
         }
@@ -74,7 +93,7 @@ where
 impl<Q, S> SubscriptionServerTrait for SubscriptionServer<Q, S>
 where
     Q: GraphQlRunner,
-    S: SubgraphStore,
+    S: QueryStoreManager,
 {
     async fn serve(self, port: u16) {
         info!(
@@ -112,7 +131,7 @@ where
                 // `block_in_place` is not recommended but in this case we have no alternative since
                 // we're in an async context but `tokio_tungstenite` doesn't allow this callback
                 // to be a future.
-                let subgraph_id = tokio::task::block_in_place(|| {
+                let state = tokio::task::block_in_place(|| {
                     graph::block_on(Self::subgraph_id_from_url_path(
                         store.clone(),
                         path.as_ref(),
@@ -132,8 +151,8 @@ where
                         .body(None)
                         .unwrap()
                 })
-                .and_then(|subgraph_id_opt| {
-                    subgraph_id_opt.ok_or_else(|| {
+                .and_then(|state| {
+                    state.ok_or_else(|| {
                         Response::builder()
                             .status(StatusCode::NOT_FOUND)
                             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -144,10 +163,9 @@ where
                 })?;
 
                 // Check if the subgraph is deployed
-                match store.is_deployed(&subgraph_id) {
-                    Err(_) | Ok(false) => {
+                if !state.is_deployed() {
                         error!(logger, "Failed to establish WS connection, no data found for subgraph";
-                                        "subgraph_id" => subgraph_id.to_string(),
+                                        "subgraph_id" => state.id.to_string(),
                         );
                         return Err(Response::builder()
                             .status(StatusCode::NOT_FOUND)
@@ -156,10 +174,8 @@ where
                             .body(None)
                             .unwrap());
                     }
-                    Ok(true) => (),
-                }
 
-                *accept_subgraph_id.lock().unwrap() = Some(subgraph_id);
+                *accept_subgraph_id.lock().unwrap() = Some(state);
                 response.headers_mut().insert(
                     "Sec-WebSocket-Protocol",
                     HeaderValue::from_static("graphql-ws"),

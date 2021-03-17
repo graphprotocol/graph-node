@@ -1102,6 +1102,13 @@ pub struct DeploymentState {
     pub latest_ethereum_block_number: BlockNumber,
 }
 
+impl DeploymentState {
+    /// Is this subgraph deployed and has it processed any blocks?
+    pub fn is_deployed(&self) -> bool {
+        self.latest_ethereum_block_number > 0
+    }
+}
+
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[allow(non_camel_case_types)]
 pub enum SubgraphFeature {
