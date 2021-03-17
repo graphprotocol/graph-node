@@ -209,19 +209,33 @@ fn insert_entity(
     assert_eq!(inserted, entities_with_keys.len());
 }
 
-fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey::data(
-        THINGS_SUBGRAPH_ID.clone(),
-        entity_type.to_owned(),
-        entity.id().unwrap(),
-    );
-    let entity_id = key.entity_id.clone();
+fn update_entity(
+    conn: &PgConnection,
+    layout: &Layout,
+    entity_type: &str,
+    mut entities: Vec<Entity>,
+) {
+    let mut entities_with_keys = entities
+        .drain(..)
+        .map(|entity| {
+            let key = EntityKey::data(
+                THINGS_SUBGRAPH_ID.clone(),
+                entity_type.to_owned(),
+                entity.id().unwrap(),
+            );
+            (key, entity)
+        })
+        .collect();
     let entity_type = EntityType::from(entity_type);
-    let mut entities = vec![(key, entity)];
-    let errmsg = format!("Failed to insert entity {}[{}]", entity_type, entity_id);
-    layout
-        .update(&conn, &entity_type, &mut entities, 0)
+    let errmsg = format!(
+        "Failed to insert entities {}[{:?}]",
+        entity_type, entities_with_keys
+    );
+
+    let updated = layout
+        .update(&conn, &entity_type, &mut entities_with_keys, 0)
         .expect(&errmsg);
+    assert_eq!(updated, entities_with_keys.len());
 }
 
 fn insert_user_entity(
@@ -343,7 +357,7 @@ fn update_user_entity(
         user.insert("drinks".to_owned(), drinks.into());
     }
 
-    update_entity(conn, layout, entity_type, user);
+    update_entity(conn, layout, entity_type, vec![user]);
 }
 
 fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str, name: &str) {

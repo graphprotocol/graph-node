@@ -671,7 +671,9 @@ impl Layout {
         let table = self.table_for_entity(&entity_type)?;
         let entity_keys: Vec<&EntityKey> = entities.iter().map(|(key, _)| key).collect();
         ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
-        Ok(InsertQuery::new(table, entity_type, entities, block)?.execute(conn)?)
+        Ok(InsertQuery::new(table, entity_type, entities, block)?
+            .get_results(conn)
+            .map(|ids| ids.len())?)
     }
 
     pub fn delete(
@@ -683,7 +685,11 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let entity_keys: Vec<&EntityKey> = entity_keys.iter().collect();
-        Ok(ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?)
+        Ok(
+            ClampRangeQuery::new(table, &entity_type, &entity_keys, block)
+                .get_results(conn)
+                .map(|ids| ids.len())?,
+        )
     }
 
     pub fn revert_block(
