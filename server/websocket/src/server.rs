@@ -99,7 +99,6 @@ where
             let logger2 = self.logger.clone();
             let graphql_runner = self.graphql_runner.clone();
             let store = self.store.clone();
-            let store2 = self.store.clone();
 
             // Subgraph that the request is resolved to (if any)
             let subgraph_id = Arc::new(Mutex::new(None));
@@ -173,22 +172,10 @@ where
                         // Obtain the subgraph ID or name that we resolved the request to
                         let subgraph_id = subgraph_id.lock().unwrap().clone().unwrap();
 
-                        // Get the subgraph schema
-                        let schema = match store2.api_schema(&subgraph_id) {
-                            Ok(schema) => schema,
-                            Err(e) => {
-                                error!(logger2, "Failed to establish WS connection, could not find schema";
-                                                "subgraph" => subgraph_id.to_string(),
-                                                "error" => e.to_string(),
-                                );
-                                return;
-                            }
-                        };
-
                         // Spawn a GraphQL over WebSocket connection
                         let service = GraphQlConnection::new(
                             &logger2,
-                            schema,
+                            subgraph_id,
                             ws_stream,
                             graphql_runner.clone(),
                         );
