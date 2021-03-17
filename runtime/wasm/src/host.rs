@@ -17,7 +17,7 @@ use graph::components::ethereum::*;
 use graph::components::store::SubgraphStore;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
-use graph::data::subgraph::{Mapping, Source};
+use graph::data::subgraph::Source;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -38,17 +38,6 @@ lazy_static! {
         std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_3BOX").is_ok();
     static ref ALLOW_NON_DETERMINISTIC_ARWEAVE: bool =
         std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_ARWEAVE").is_ok();
-}
-
-struct RuntimeHostConfig {
-    subgraph_id: SubgraphDeploymentId,
-    mapping: Mapping,
-    data_source_network: String,
-    data_source_name: String,
-    data_source_context: Option<DataSourceContext>,
-    data_source_creation_block: Option<BlockNumber>,
-    contract: Source,
-    templates: Arc<Vec<DataSourceTemplate>>,
 }
 
 pub struct RuntimeHostBuilder<S, CC> {
@@ -161,16 +150,10 @@ where
             self.link_resolver.clone(),
             self.store.clone(),
             cache,
-            RuntimeHostConfig {
-                subgraph_id,
-                mapping: data_source.mapping,
-                data_source_network: network_name,
-                data_source_name: data_source.name,
-                data_source_context: data_source.context,
-                data_source_creation_block: data_source.creation_block,
-                contract: data_source.source,
-                templates,
-            },
+            network_name,
+            subgraph_id,
+            data_source,
+            templates,
             mapping_request_sender,
             metrics,
             self.arweave_adapter.cheap_clone(),
@@ -199,41 +182,44 @@ impl RuntimeHost {
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
-        config: RuntimeHostConfig,
+        network_name: String,
+        subgraph_id: SubgraphDeploymentId,
+        data_source: DataSource,
+        templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Result<Self, Error> {
-        let api_version = Version::parse(&config.mapping.api_version)?;
+        let api_version = Version::parse(&data_source.mapping.api_version)?;
 
-        let data_source_contract_abi = config
+        let data_source_contract_abi = data_source
             .mapping
             .abis
             .iter()
-            .find(|abi| abi.name == config.contract.abi)
+            .find(|abi| abi.name == data_source.source.abi)
             .ok_or_else(|| {
                 anyhow!(
                     "No ABI entry found for the main contract of data source \"{}\": {}",
-                    &config.data_source_name,
-                    config.contract.abi,
+                    &data_source.name,
+                    data_source.source.abi,
                 )
             })?
             .clone();
 
-        let data_source_name = config.data_source_name;
+        let data_source_name = data_source.name;
 
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
-            config.subgraph_id.clone(),
+            subgraph_id,
             api_version,
             data_source_name.clone(),
-            config.contract.address.clone(),
-            config.data_source_network,
-            config.data_source_context,
-            config.templates,
-            config.mapping.abis,
+            data_source.source.address.clone(),
+            network_name,
+            data_source.context,
+            templates,
+            data_source.mapping.abis,
             ethereum_adapter,
             link_resolver,
             store,
@@ -244,12 +230,12 @@ impl RuntimeHost {
 
         Ok(RuntimeHost {
             data_source_name,
-            data_source_contract: config.contract,
+            data_source_contract: data_source.source,
             data_source_contract_abi,
-            data_source_event_handlers: config.mapping.event_handlers,
-            data_source_call_handlers: config.mapping.call_handlers,
-            data_source_block_handlers: config.mapping.block_handlers,
-            data_source_creation_block: config.data_source_creation_block,
+            data_source_event_handlers: data_source.mapping.event_handlers,
+            data_source_call_handlers: data_source.mapping.call_handlers,
+            data_source_block_handlers: data_source.mapping.block_handlers,
+            data_source_creation_block: data_source.creation_block,
             mapping_request_sender,
             host_exports,
             metrics,
