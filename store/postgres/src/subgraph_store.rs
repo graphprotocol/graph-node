@@ -706,11 +706,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         store.find(site, query)
     }
 
-    fn find_one(&self, query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
-        let (store, site) = self.store(&query.subgraph_id)?;
-        store.find_one(site, query)
-    }
-
     fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
         Ok(self.primary_conn()?.find_ens_name(hash)?)
     }

@@ -23,9 +23,9 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, CheapClone, DeploymentState,
-    DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, EntityRange, Error,
-    EthereumBlockPointer, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-    StoreEvent, SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer,
+    Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent,
+    SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -816,24 +816,6 @@ impl DeploymentStore {
             .get_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         self.execute_query(&conn, site, query)
-    }
-
-    pub(crate) fn find_one(
-        &self,
-        site: Arc<Site>,
-        mut query: EntityQuery,
-    ) -> Result<Option<Entity>, QueryExecutionError> {
-        query.range = EntityRange::first(1);
-
-        let conn = self
-            .get_conn()
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-
-        let mut results = self.execute_query(&conn, site, query)?;
-        match results.len() {
-            0 | 1 => Ok(results.pop()),
-            n => panic!("find_one query found {} results", n),
-        }
     }
 
     pub(crate) fn transact_block_operations(

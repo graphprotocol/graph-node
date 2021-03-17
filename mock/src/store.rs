@@ -87,10 +87,6 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn find_one(&self, _query: EntityQuery) -> Result<Option<Entity>, QueryExecutionError> {
-        unimplemented!()
-    }
-
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
         unimplemented!()
     }
