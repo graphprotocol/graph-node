@@ -18,6 +18,7 @@ RUN cd /graph-node \
  && cargo clean \
  && objcopy --only-keep-debug /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graph-node.debug \
  && strip -g /usr/local/cargo/bin/graph-node \
+ && strip -g /usr/local/cargo/bin/graphman \
  && cd /usr/local/cargo/bin \
  && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
  && echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
@@ -75,7 +76,7 @@ RUN apt-get update \
  && apt-get install -y libpq-dev ca-certificates netcat
 
 ADD docker/wait_for docker/start /usr/local/bin/
-COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/bin
+COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graphman /usr/local/bin
 COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY docker/Dockerfile /Dockerfile
 CMD start
