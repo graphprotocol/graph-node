@@ -152,16 +152,11 @@ where
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         mut state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
+        poi: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
         match trigger {
             EthereumTrigger::Log(log) => {
                 let log = Arc::new(log);
-
-                let transaction = block
-                    .transaction_for_log(&log)
-                    .map(Arc::new)
-                    .context("Found no transaction for event")?;
                 let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
                 let hosts_count = matching_hosts.clone().count();
 
@@ -177,29 +172,16 @@ where
 
                 // Process the log in each host in the same order the corresponding data
                 // sources appear in the subgraph manifest
-                let transaction = Arc::new(transaction);
                 for (i, host) in matching_hosts.enumerate() {
                     let host_context = format!("{}/{}", i + 1, hosts_count);
                     let logger = logger.new(o!("runtime_host" => host_context));
                     state = host
-                        .process_log(
-                            &logger,
-                            block,
-                            &transaction,
-                            &log,
-                            state,
-                            proof_of_indexing.cheap_clone(),
-                        )
+                        .process_log(&logger, block, &log, state, poi.cheap_clone())
                         .await?;
                 }
             }
             EthereumTrigger::Call(call) => {
                 let call = Arc::new(call);
-
-                let transaction = block
-                    .transaction_for_call(&call)
-                    .context("Found no transaction for call")?;
-                let transaction = Arc::new(transaction);
                 let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
                 let hosts_count = matching_hosts.clone().count();
 
@@ -217,14 +199,7 @@ where
                     let host_context = format!("{}/{}", i + 1, hosts_count);
                     let logger = logger.new(o!("runtime_host" => host_context));
                     state = host
-                        .process_call(
-                            &logger,
-                            block,
-                            &transaction,
-                            &call,
-                            state,
-                            proof_of_indexing.cheap_clone(),
-                        )
+                        .process_call(&logger, block, &call, state, poi.cheap_clone())
                         .await?;
                 }
             }
@@ -247,13 +222,7 @@ where
                     let host_context = format!("{}/{}", i + 1, hosts_count);
                     let logger = logger.new(o!("runtime_host" => host_context));
                     state = host
-                        .process_block(
-                            &logger,
-                            block,
-                            &trigger_type,
-                            state,
-                            proof_of_indexing.cheap_clone(),
-                        )
+                        .process_block(&logger, block, &trigger_type, state, poi.cheap_clone())
                         .await?;
                 }
             }

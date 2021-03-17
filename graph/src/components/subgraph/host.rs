@@ -10,7 +10,7 @@ use futures::sync::mpsc;
 use crate::components::metrics::HistogramVec;
 use crate::components::subgraph::SharedProofOfIndexing;
 use crate::prelude::*;
-use web3::types::{Log, Transaction};
+use web3::types::Log;
 
 #[derive(Debug)]
 pub enum MappingError {
@@ -52,7 +52,6 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
-        transaction: &Arc<Transaction>,
         log: &Arc<Log>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
@@ -63,7 +62,6 @@ pub trait RuntimeHost: Send + Sync + Debug + 'static {
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
-        transaction: &Arc<Transaction>,
         call: &Arc<EthereumCall>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
