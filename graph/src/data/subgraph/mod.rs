@@ -549,7 +549,7 @@ pub struct Mapping {
     pub api_version: String,
     pub language: String,
     pub entities: Vec<String>,
-    pub abis: Vec<MappingABI>,
+    pub abis: Vec<Arc<MappingABI>>,
     pub block_handlers: Vec<MappingBlockHandler>,
     pub call_handlers: Vec<MappingCallHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
@@ -629,7 +629,11 @@ impl UnresolvedMapping {
         let (abis, runtime) = try_join(
             // resolve each abi
             abis.into_iter()
-                .map(|unresolved_abi| unresolved_abi.resolve(resolver, logger))
+                .map(|unresolved_abi| async {
+                    Result::<_, Error>::Ok(Arc::new(
+                        unresolved_abi.resolve(resolver, logger).await?,
+                    ))
+                })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             async {
@@ -661,7 +665,7 @@ pub struct BaseDataSource<M> {
     pub name: String,
     pub source: Source,
     pub mapping: M,
-    pub context: Option<DataSourceContext>,
+    pub context: Option<Arc<DataSourceContext>>,
     #[serde(skip)]
     pub creation_block: Option<BlockNumber>,
 }
@@ -741,7 +745,7 @@ impl TryFrom<DataSourceTemplateInfo> for DataSource {
                 start_block: 0,
             },
             mapping: template.mapping,
-            context,
+            context: context.map(Arc::new),
             creation_block: Some(creation_block),
         })
     }

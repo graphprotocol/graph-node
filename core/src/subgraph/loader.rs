@@ -49,7 +49,7 @@ pub async fn load_dynamic_data_sources(
             name,
             source,
             mapping: template.mapping.clone(),
-            context,
+            context: context.map(Arc::new),
             creation_block,
         };
 

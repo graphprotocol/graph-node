@@ -74,14 +74,14 @@ pub(crate) struct HostExports {
     data_source_name: String,
     data_source_address: Option<Address>,
     data_source_network: String,
-    data_source_context: Option<DataSourceContext>,
+    data_source_context: Option<Arc<DataSourceContext>>,
     /// Some data sources have indeterminism or different notions of time. These
     /// need to be each be stored separately to separate causality between them,
     /// and merge the results later. Right now, this is just the ethereum
     /// networks but will be expanded for ipfs and the availability chain.
     causality_region: String,
     templates: Arc<Vec<DataSourceTemplate>>,
-    abis: Vec<MappingABI>,
+    abis: Vec<Arc<MappingABI>>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
@@ -104,9 +104,9 @@ impl HostExports {
         data_source_name: String,
         data_source_address: Option<Address>,
         data_source_network: String,
-        data_source_context: Option<DataSourceContext>,
+        data_source_context: Option<Arc<DataSourceContext>>,
         templates: Arc<Vec<DataSourceTemplate>>,
-        abis: Vec<MappingABI>,
+        abis: Vec<Arc<MappingABI>>,
         ethereum_adapter: Arc<dyn EthereumAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
@@ -766,7 +766,10 @@ impl HostExports {
     }
 
     pub(crate) fn data_source_context(&self) -> Entity {
-        self.data_source_context.clone().unwrap_or_default()
+        self.data_source_context
+            .as_ref()
+            .map(|ctx| ctx.as_ref().clone())
+            .unwrap_or_default()
     }
 
     pub(crate) fn arweave_transaction_data(&self, tx_id: &str) -> Option<Bytes> {
