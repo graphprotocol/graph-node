@@ -1351,10 +1351,10 @@ impl<'a> QueryId for InsertQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, RevertEntityData> for InsertQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
+impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for InsertQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| RevertEntityData::bytes_as_str(&self.table, data))
+            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
     }
 }
 
@@ -2551,15 +2551,15 @@ impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
-pub struct RevertEntityData {
+pub struct ReturnedEntityData {
     #[sql_type = "Text"]
     pub id: String,
 }
 
-impl RevertEntityData {
+impl ReturnedEntityData {
     /// Convert primary key ids from Postgres' internal form to the format we
     /// use by stripping `\\x` off the front of bytes strings
-    fn bytes_as_str(table: &Table, mut data: Vec<RevertEntityData>) -> Vec<RevertEntityData> {
+    fn bytes_as_str(table: &Table, mut data: Vec<ReturnedEntityData>) -> Vec<ReturnedEntityData> {
         match table.primary_key().column_type.id_type() {
             IdType::String => data,
             IdType::Bytes => {
@@ -2607,10 +2607,10 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, RevertEntityData> for RevertRemoveQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
+impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertRemoveQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| RevertEntityData::bytes_as_str(&self.table, data))
+            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
     }
 }
 
@@ -2678,10 +2678,10 @@ impl<'a> QueryId for RevertClampQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, RevertEntityData> for RevertClampQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
+impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertClampQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| RevertEntityData::bytes_as_str(&self.table, data))
+            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
     }
 }
 
@@ -2734,10 +2734,10 @@ impl<'a> QueryId for DeleteByPrefixQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, RevertEntityData> for DeleteByPrefixQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<RevertEntityData>> {
+impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for DeleteByPrefixQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| RevertEntityData::bytes_as_str(&self.table, data))
+            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
     }
 }
 
