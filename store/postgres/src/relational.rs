@@ -563,10 +563,11 @@ impl Layout {
         entity_type: &EntityType,
         entities: &mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
-    ) -> Result<(), StoreError> {
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
-        InsertQuery::new(table, &entity_type, entities, block)?.execute(conn)?;
-        Ok(())
+        Ok(InsertQuery::new(table, &entity_type, entities, block)?
+            .get_results(conn)
+            .map(|ids| ids.len())?)
     }
 
     pub fn conflicting_entity(
@@ -666,12 +667,11 @@ impl Layout {
         entity_type: &EntityType,
         entities: &mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
-    ) -> Result<(), StoreError> {
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let entity_keys: Vec<&EntityKey> = entities.iter().map(|(key, _)| key).collect();
         ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
-        InsertQuery::new(table, entity_type, entities, block)?.execute(conn)?;
-        Ok(())
+        Ok(InsertQuery::new(table, entity_type, entities, block)?.execute(conn)?)
     }
 
     pub fn delete(
