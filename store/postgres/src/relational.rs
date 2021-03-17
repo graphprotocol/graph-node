@@ -564,7 +564,7 @@ impl Layout {
         entities: &mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&entity_type)?;
+        let table = self.table_for_entity(entity_type)?;
         Ok(InsertQuery::new(table, &entity_type, entities, block)?
             .get_results(conn)
             .map(|ids| ids.len())?)
