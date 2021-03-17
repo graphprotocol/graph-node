@@ -22,7 +22,7 @@ use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 use graph::util;
-use web3::types::{Log, Transaction};
+use web3::types::Log;
 
 use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
@@ -487,7 +487,6 @@ impl RuntimeHostTrait for RuntimeHost {
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
-        transaction: &Arc<Transaction>,
         call: &Arc<EthereumCall>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
@@ -570,6 +569,12 @@ impl RuntimeHostTrait for RuntimeHost {
             })
             .collect::<Vec<_>>();
 
+        let transaction = Arc::new(
+            block
+                .transaction_for_call(&call)
+                .context("Found no transaction for call")?,
+        );
+
         self.send_mapping_request(
             logger,
             o! {
@@ -579,7 +584,7 @@ impl RuntimeHostTrait for RuntimeHost {
             state,
             &call_handler.handler,
             MappingTrigger::Call {
-                transaction: transaction.cheap_clone(),
+                transaction,
                 call: call.cheap_clone(),
                 inputs,
                 outputs,
@@ -621,7 +626,6 @@ impl RuntimeHostTrait for RuntimeHost {
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
-        transaction: &Arc<Transaction>,
         log: &Arc<Log>,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
@@ -711,6 +715,12 @@ impl RuntimeHostTrait for RuntimeHost {
             )
         );
 
+        let transaction = Arc::new(
+            block
+                .transaction_for_log(&log)
+                .context("Found no transaction for event")?,
+        );
+
         self.send_mapping_request(
             logger,
             o! {
@@ -720,7 +730,7 @@ impl RuntimeHostTrait for RuntimeHost {
             state,
             &event_handler.handler,
             MappingTrigger::Log {
-                transaction: transaction.cheap_clone(),
+                transaction,
                 log: log.cheap_clone(),
                 params,
                 handler: event_handler.clone(),
