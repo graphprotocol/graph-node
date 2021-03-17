@@ -417,6 +417,19 @@ fn execute_subgraph_query_internal(
     result
 }
 
+pub async fn deployment_state(
+    store: &Store,
+    subgraph_id: &SubgraphDeploymentId,
+) -> DeploymentState {
+    store
+        .query_store(QueryTarget::Deployment(subgraph_id.to_owned()), false)
+        .await
+        .expect("could get a query store")
+        .deployment_state()
+        .await
+        .expect("can get deployment state")
+}
+
 pub fn store_is_sharded() -> bool {
     CONFIG.stores.len() > 1
 }

@@ -1008,11 +1008,7 @@ async fn check_basic_revert(
         .desc("name");
 
     let subscription = subscribe(subgraph_id, entity_type);
-    let state = store
-        .subgraph_store()
-        .deployment_state_from_id(subgraph_id.to_owned())
-        .await
-        .expect("can get deployment state");
+    let state = deployment_state(store.as_ref(), subgraph_id).await;
     assert_eq!(subgraph_id, &state.id);
 
     // Revert block 3
@@ -1035,11 +1031,7 @@ async fn check_basic_revert(
     assert!(returned_name.is_some());
     assert_eq!(&test_value, returned_name.unwrap());
 
-    let state = store
-        .subgraph_store()
-        .deployment_state_from_id(subgraph_id.to_owned())
-        .await
-        .expect("can get deployment state");
+    let state = deployment_state(store.as_ref(), subgraph_id).await;
     assert_eq!(subgraph_id, &state.id);
 
     check_events(subscription, vec![expected]).await
@@ -1943,10 +1935,7 @@ fn reorg_tracking() {
          $max_reorg_depth:expr,
          $latest_ethereum_block_number:expr) => {
             let subgraph_id = TEST_SUBGRAPH_ID.to_owned();
-            let state = &$store
-                .deployment_state_from_id(subgraph_id.clone())
-                .await
-                .expect("can get deployment state");
+            let state = deployment_state($store.as_ref(), &subgraph_id).await;
             assert_eq!(&subgraph_id, &state.id, "subgraph_id");
             assert_eq!($reorg_count, state.reorg_count, "reorg_count");
             assert_eq!($max_reorg_depth, state.max_reorg_depth, "max_reorg_depth");
@@ -1960,13 +1949,13 @@ fn reorg_tracking() {
     // Check that reorg_count, max_reorg_depth, and latest_ethereum_block_number
     // are reported correctly in DeploymentState
     run_test(|store| async move {
-        let store = store.subgraph_store();
+        let subgraph_store = store.subgraph_store();
 
         check_state!(store, 0, 0, 2);
 
         // Jump to block 4
         transact_entity_operations(
-            &store,
+            &subgraph_store,
             TEST_SUBGRAPH_ID.clone(),
             TEST_BLOCK_4_PTR.clone(),
             vec![],
@@ -1975,41 +1964,41 @@ fn reorg_tracking() {
         check_state!(store, 0, 0, 4);
 
         // Back to block 3
-        store
+        subgraph_store
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
             .unwrap();
         check_state!(store, 1, 1, 3);
 
         // Back to block 2
-        store
+        subgraph_store
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         check_state!(store, 2, 2, 2);
 
         // Forward to block 3
-        update_john(&store, 70, &TEST_BLOCK_3_PTR);
+        update_john(&subgraph_store, 70, &TEST_BLOCK_3_PTR);
         check_state!(store, 2, 2, 3);
 
         // Forward to block 4
-        update_john(&store, 71, &TEST_BLOCK_4_PTR);
+        update_john(&subgraph_store, 71, &TEST_BLOCK_4_PTR);
         check_state!(store, 2, 2, 4);
 
         // Forward to block 5
-        update_john(&store, 72, &TEST_BLOCK_5_PTR);
+        update_john(&subgraph_store, 72, &TEST_BLOCK_5_PTR);
         check_state!(store, 2, 2, 5);
 
         // Revert all the way back to block 2
-        store
+        subgraph_store
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_4_PTR.clone())
             .unwrap();
         check_state!(store, 3, 2, 4);
 
-        store
+        subgraph_store
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
             .unwrap();
         check_state!(store, 4, 2, 3);
 
-        store
+        subgraph_store
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         check_state!(store, 5, 3, 2);

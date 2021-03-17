@@ -124,25 +124,6 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    async fn deployment_state_from_name(
-        &self,
-        _: SubgraphName,
-    ) -> Result<DeploymentState, StoreError> {
-        unimplemented!()
-    }
-
-    async fn deployment_state_from_id(
-        &self,
-        id: SubgraphDeploymentId,
-    ) -> Result<DeploymentState, StoreError> {
-        Ok(DeploymentState {
-            id,
-            reorg_count: 0,
-            max_reorg_depth: 0,
-            latest_ethereum_block_number: 0,
-        })
-    }
-
     async fn fail_subgraph(
         &self,
         _: SubgraphDeploymentId,

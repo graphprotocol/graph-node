@@ -26,7 +26,7 @@ use graph::{
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
-    execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline,
+    deployment_state, execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline,
     run_test_sequentially, transact_entity_operations, transact_errors, BLOCK_ONE, GENESIS_PTR,
     LOAD_MANAGER, LOGGER, STORE, SUBSCRIPTION_MANAGER,
 };
@@ -1553,11 +1553,7 @@ fn query_detects_reorg() {
         let query = graphql_parser::parse_query(query)
             .expect("invalid test query")
             .into_static();
-        let state = STORE
-            .subgraph_store()
-            .deployment_state_from_id(id.clone())
-            .await
-            .expect("failed to get state");
+        let state = deployment_state(STORE.as_ref(), &id).await;
 
         // Inject a fake initial state; c435c25decbc4ad7bbbadf8e0ced0ff2
         *graph_graphql::test_support::INITIAL_DEPLOYMENT_STATE_FOR_TESTS

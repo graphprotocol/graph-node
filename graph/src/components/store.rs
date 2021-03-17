@@ -918,20 +918,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError>;
 
-    /// Find the deployment for the current version of subgraph `name` and
-    /// return details about it needed for executing queries
-    async fn deployment_state_from_name(
-        &self,
-        name: SubgraphName,
-    ) -> Result<DeploymentState, StoreError>;
-
-    /// Find the deployment for the subgraph deployment `id` and
-    /// return details about it needed for executing queries
-    async fn deployment_state_from_id(
-        &self,
-        id: SubgraphDeploymentId,
-    ) -> Result<DeploymentState, StoreError>;
-
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(
         &self,
@@ -1127,20 +1113,6 @@ impl SubgraphStore for MockStore {
         _subgraph_id: SubgraphDeploymentId,
         _block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    async fn deployment_state_from_name(
-        &self,
-        _: SubgraphName,
-    ) -> Result<DeploymentState, StoreError> {
-        unimplemented!()
-    }
-
-    async fn deployment_state_from_id(
-        &self,
-        _: SubgraphDeploymentId,
-    ) -> Result<DeploymentState, StoreError> {
         unimplemented!()
     }
 

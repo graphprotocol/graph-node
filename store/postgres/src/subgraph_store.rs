@@ -21,11 +21,10 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
-        futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, Error,
-        EthereumBlockPointer, Logger, NodeId, QueryExecutionError, Schema, StopwatchMetrics,
-        StoreError, SubgraphDeploymentId, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema, DynTryFuture,
+        Entity, EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
+        NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
+        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
 };
 use store::StoredDynamicDataSource;
@@ -408,15 +407,6 @@ impl SubgraphStore {
         Ok(primary::Connection::new(conn))
     }
 
-    pub(crate) async fn with_primary_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static + Send + FnOnce(primary::Connection) -> Result<T, StoreError>,
-    ) -> Result<T, StoreError> {
-        self.primary
-            .with_conn(|conn, _| f(primary::Connection::new(conn)).map_err(|e| e.into()))
-            .await
-    }
-
     pub(crate) fn replica_for_query(
         &self,
         target: QueryTarget,
@@ -758,24 +748,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         let (store, site) = self.store(&id)?;
         let event = store.revert_block_operations(site, block_ptr_to)?;
         self.send_store_event(&event)
-    }
-
-    async fn deployment_state_from_name(
-        &self,
-        name: SubgraphName,
-    ) -> Result<DeploymentState, StoreError> {
-        let id = self
-            .with_primary_conn(|conn| conn.current_deployment_for_subgraph(name))
-            .await?;
-        self.deployment_state_from_id(id).await
-    }
-
-    async fn deployment_state_from_id(
-        &self,
-        id: SubgraphDeploymentId,
-    ) -> Result<DeploymentState, StoreError> {
-        let (store, _) = self.store(&id)?;
-        store.deployment_state_from_id(id).await
     }
 
     fn start_subgraph_deployment(
