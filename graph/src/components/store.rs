@@ -861,18 +861,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
         subgraph_id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool>;
 
-    /// A value of None indicates that the table is not available. Re-deploying
-    /// the subgraph fixes this. It is undesirable to force everything to
-    /// re-sync from scratch, so existing deployments will continue without a
-    /// Proof of Indexing. Once all subgraphs have been re-deployed the Option
-    /// can be removed.
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a SubgraphDeploymentId,
-        indexer: &'a Option<Address>,
-        block: EthereumBlockPointer,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>>;
-
     /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
@@ -1060,15 +1048,6 @@ impl SubgraphStore for MockStore {
         self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
-        unimplemented!();
-    }
-
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        _subgraph_id: &'a SubgraphDeploymentId,
-        _indexer: &'a Option<Address>,
-        _block: EthereumBlockPointer,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         unimplemented!();
     }
 

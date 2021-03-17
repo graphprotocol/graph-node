@@ -6,7 +6,7 @@ use graph::components::store::EntityType;
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
-use web3::types::{Address, H256};
+use web3::types::H256;
 
 mock! {
     pub Store {
@@ -80,15 +80,6 @@ impl SubgraphStore for MockStore {
         self: Arc<Self>,
         _subgraph_id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
-        unimplemented!()
-    }
-
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        _subgraph_id: &'a SubgraphDeploymentId,
-        _indexer: &'a Option<Address>,
-        _block: EthereumBlockPointer,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         unimplemented!()
     }
 
