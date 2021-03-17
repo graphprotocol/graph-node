@@ -10,7 +10,6 @@ use graph::{components::store::CallCache, ensure};
 use semver::Version;
 use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
-use tiny_keccak::keccak256;
 
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::ethereum::*;
@@ -229,95 +228,6 @@ impl RuntimeHost {
         })
     }
 
-    fn handlers_for_log(&self, log: &Arc<Log>) -> Result<Vec<MappingEventHandler>, anyhow::Error> {
-        // Get signature from the log
-        let topic0 = log.topics.get(0).context("Ethereum event has no topics")?;
-
-        let handlers = self
-            .data_source
-            .mapping
-            .event_handlers
-            .iter()
-            .filter(|handler| *topic0 == handler.topic0())
-            .cloned()
-            .collect::<Vec<_>>();
-
-        ensure!(
-            !handlers.is_empty(),
-            "No event handler found for event in data source \"{}\"",
-            self.data_source.name,
-        );
-
-        Ok(handlers)
-    }
-
-    fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, Error> {
-        // First four bytes of the input for the call are the first four
-        // bytes of hash of the function signature
-        ensure!(
-            call.input.0.len() >= 4,
-            "Ethereum call has input with less than 4 bytes"
-        );
-
-        let target_method_id = &call.input.0[..4];
-
-        self.data_source
-            .mapping
-            .call_handlers
-            .iter()
-            .find(move |handler| {
-                let fhash = keccak256(handler.function.as_bytes());
-                let actual_method_id = [fhash[0], fhash[1], fhash[2], fhash[3]];
-                target_method_id == actual_method_id
-            })
-            .cloned()
-            .with_context(|| {
-                anyhow!(
-                    "No call handler found for call in data source \"{}\"",
-                    self.data_source.name,
-                )
-            })
-    }
-
-    fn handler_for_block(
-        &self,
-        trigger_type: &EthereumBlockTriggerType,
-    ) -> Result<MappingBlockHandler, anyhow::Error> {
-        match trigger_type {
-            EthereumBlockTriggerType::Every => self
-                .data_source
-                .mapping
-                .block_handlers
-                .iter()
-                .find(move |handler| handler.filter == None)
-                .cloned()
-                .with_context(|| {
-                    anyhow!(
-                        "No block handler for `Every` block trigger \
-                         type found in data source \"{}\"",
-                        self.data_source.name,
-                    )
-                }),
-            EthereumBlockTriggerType::WithCallTo(_address) => self
-                .data_source
-                .mapping
-                .block_handlers
-                .iter()
-                .find(move |handler| {
-                    handler.filter.is_some()
-                        && handler.filter.clone().unwrap() == BlockHandlerFilter::Call
-                })
-                .cloned()
-                .with_context(|| {
-                    anyhow!(
-                        "No block handler for `WithCallTo` block trigger \
-                         type found in data source \"{}\"",
-                        self.data_source.name,
-                    )
-                }),
-        }
-    }
-
     /// Sends a MappingRequest to the thread which owns the host,
     /// and awaits the result.
     async fn send_mapping_request<T: slog::SendSyncRefUnwindSafeKV>(
@@ -392,82 +302,15 @@ impl RuntimeHost {
 #[async_trait]
 impl RuntimeHostTrait for RuntimeHost {
     fn matches_log(&self, log: &Log) -> bool {
-        // The runtime host matches the contract address of the `Log`
-        // if the data source contains the same contract address or
-        // if the data source doesn't have a contract address at all
-        let matches_log_address = self
-            .data_source
-            .source
-            .address
-            .map_or(true, |addr| addr == log.address);
-
-        let matches_log_signature = {
-            let topic0 = match log.topics.iter().next() {
-                Some(topic0) => topic0,
-                None => return false,
-            };
-
-            self.data_source
-                .mapping
-                .event_handlers
-                .iter()
-                .any(|handler| *topic0 == handler.topic0())
-        };
-
-        matches_log_address
-            && matches_log_signature
-            && self.data_source.source.start_block
-                <= BlockNumber::try_from(log.block_number.unwrap().as_u64()).unwrap()
+        self.data_source.matches_log(log)
     }
 
     fn matches_call(&self, call: &EthereumCall) -> bool {
-        // The runtime host matches the contract address of the `EthereumCall`
-        // if the data source contains the same contract address or
-        // if the data source doesn't have a contract address at all
-        let matches_call_address = self
-            .data_source
-            .source
-            .address
-            .map_or(true, |addr| addr == call.to);
-
-        let matches_call_function = {
-            let target_method_id = &call.input.0[..4];
-            self.data_source
-                .mapping
-                .call_handlers
-                .iter()
-                .any(|handler| {
-                    let fhash = keccak256(handler.function.as_bytes());
-                    let actual_method_id = [fhash[0], fhash[1], fhash[2], fhash[3]];
-                    target_method_id == actual_method_id
-                })
-        };
-
-        matches_call_address
-            && matches_call_function
-            && self.data_source.source.start_block <= call.block_number
+        self.data_source.matches_call(call)
     }
 
-    fn matches_block(
-        &self,
-        block_trigger_type: &EthereumBlockTriggerType,
-        block_number: BlockNumber,
-    ) -> bool {
-        let matches_block_trigger = {
-            let source_address_matches = match block_trigger_type {
-                EthereumBlockTriggerType::WithCallTo(address) => {
-                    self.data_source
-                        .source
-                        .address
-                        // Do not match if this datasource has no address
-                        .map_or(false, |addr| addr == *address)
-                }
-                EthereumBlockTriggerType::Every => true,
-            };
-            source_address_matches && self.handler_for_block(block_trigger_type).is_ok()
-        };
-
-        matches_block_trigger && self.data_source.source.start_block <= block_number
+    fn matches_block(&self, trigger_ty: &EthereumBlockTriggerType, block_num: BlockNumber) -> bool {
+        self.data_source.matches_block(trigger_ty, block_num)
     }
 
     async fn process_call(
@@ -479,7 +322,7 @@ impl RuntimeHostTrait for RuntimeHost {
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
         // Identify the call handler for this call
-        let call_handler = self.handler_for_call(&call)?;
+        let call_handler = self.data_source.handler_for_call(&call)?;
 
         // Identify the function ABI in the contract
         let function_abi = util::ethereum::contract_function_with_signature(
@@ -591,7 +434,7 @@ impl RuntimeHostTrait for RuntimeHost {
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
-        let block_handler = self.handler_for_block(trigger_type)?;
+        let block_handler = self.data_source.handler_for_block(trigger_type)?;
         self.send_mapping_request(
             logger,
             o! {
@@ -622,7 +465,7 @@ impl RuntimeHostTrait for RuntimeHost {
         let contract = &self.data_source_contract_abi.contract;
 
         // If there are no matching handlers, fail processing the event
-        let potential_handlers = self.handlers_for_log(&log)?;
+        let potential_handlers = self.data_source.handlers_for_log(&log)?;
 
         // Map event handlers to (event handler, event ABI) pairs; fail if there are
         // handlers that don't exist in the contract ABI
@@ -736,26 +579,6 @@ impl RuntimeHostTrait for RuntimeHost {
 
 impl PartialEq for RuntimeHost {
     fn eq(&self, other: &Self) -> bool {
-        let RuntimeHost {
-            data_source,
-            data_source_contract_abi,
-            host_exports,
-
-            mapping_request_sender: _,
-            metrics: _,
-        } = self;
-
-        // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
-        // used at runtime but not needed to define uniqueness; each runtime host should be for a
-        // unique data source.
-        //
-        // The creation block is ignored for detection duplicate data sources.
-        data_source.name == other.data_source.name
-            && data_source.source == other.data_source.source
-            && data_source_contract_abi == &other.data_source_contract_abi
-            && data_source.mapping.event_handlers == other.data_source.mapping.event_handlers
-            && data_source.mapping.call_handlers == other.data_source.mapping.call_handlers
-            && data_source.mapping.block_handlers == other.data_source.mapping.block_handlers
-            && host_exports.data_source_context() == other.host_exports.data_source_context()
+        self.data_source.is_duplicate_of(&other.data_source)
     }
 }

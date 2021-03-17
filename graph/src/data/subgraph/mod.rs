@@ -1,3 +1,5 @@
+mod data_source;
+
 use anyhow::{anyhow, ensure, Context as _, Error};
 use ethabi::Contract;
 use futures03::{
