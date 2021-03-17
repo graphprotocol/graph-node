@@ -617,6 +617,40 @@ fn delete() {
 }
 
 #[test]
+fn insert_many_and_delete_many() {
+    run_test(|conn, layout| {
+        let one = SCALAR_ENTITY.clone();
+        let mut two = SCALAR_ENTITY.clone();
+        two.set("id", "two");
+        let mut three = SCALAR_ENTITY.clone();
+        three.set("id", "three");
+        insert_entity(&conn, &layout, "Scalar", vec![one, two, three]);
+
+        // confidence test: there should be 3 scalar entities in store right now
+        assert_eq!(3, count_scalar_entities(conn, layout));
+
+        // Delete entities with ids equal to "two" and "three"
+        let entity_type = EntityType::from("Scalar");
+        let entity_keys: Vec<EntityKey> = ["two", "three"]
+            .iter()
+            .map(|id| {
+                EntityKey::data(
+                    THINGS_SUBGRAPH_ID.clone(),
+                    "Scalar".to_owned(),
+                    String::from(*id),
+                )
+            })
+            .collect();
+
+        let num_removed = layout
+            .delete(&conn, entity_type, &entity_keys, 1)
+            .expect("Failed to delete");
+        assert_eq!(2, num_removed);
+        assert_eq!(1, count_scalar_entities(conn, layout));
+    });
+}
+
+#[test]
 fn conflicting_entity() {
     run_test(|conn, layout| {
         let id = "fred";
