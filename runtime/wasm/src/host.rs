@@ -219,17 +219,18 @@ impl RuntimeHost {
         logger: &Logger,
         extra: OwnedKV<T>,
         state: BlockState,
-        handler: &str,
         trigger: MappingTrigger,
         block: &Arc<LightEthereumBlock>,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
         let trigger_type = trigger.as_static();
+        let handler = trigger.handler_name().to_string();
+
         debug!(
             logger, "Start processing Ethereum trigger";
             &extra,
             "trigger_type" => trigger_type,
-            "handler" => handler,
+            "handler" => &handler,
             "data_source" => &self.data_source.name,
         );
 
@@ -259,7 +260,7 @@ impl RuntimeHost {
             .context("Mapping terminated before handling trigger")?;
 
         let elapsed = start_time.elapsed();
-        metrics.observe_handler_execution_time(elapsed.as_secs_f64(), handler);
+        metrics.observe_handler_execution_time(elapsed.as_secs_f64(), &handler);
 
         info!(
             logger, "Done processing Ethereum trigger";
@@ -396,7 +397,6 @@ impl RuntimeHostTrait for RuntimeHost {
                 "to" => format!("{}", &call.to),
             },
             state,
-            &call_handler.handler,
             MappingTrigger::Call {
                 transaction,
                 call: call.cheap_clone(),
@@ -426,7 +426,6 @@ impl RuntimeHostTrait for RuntimeHost {
                 "number" => &block.number.unwrap().to_string(),
             },
             state,
-            &block_handler.handler,
             MappingTrigger::Block {
                 handler: block_handler.clone(),
             },
@@ -542,7 +541,6 @@ impl RuntimeHostTrait for RuntimeHost {
                 "address" => format!("{}", &log.address),
             },
             state,
-            &event_handler.handler,
             MappingTrigger::Log {
                 transaction,
                 log: log.cheap_clone(),

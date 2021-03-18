@@ -138,6 +138,16 @@ pub(crate) enum MappingTrigger {
     },
 }
 
+impl MappingTrigger {
+    pub fn handler_name(&self) -> &str {
+        match self {
+            MappingTrigger::Log { handler, .. } => &handler.handler,
+            MappingTrigger::Call { handler, .. } => &handler.handler,
+            MappingTrigger::Block { handler, .. } => &handler.handler,
+        }
+    }
+}
+
 type MappingResponse = (
     Result<BlockState, MappingError>,
     futures::Finished<Instant, Error>,
