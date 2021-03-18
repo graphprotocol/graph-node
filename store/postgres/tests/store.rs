@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
-use graph::data::subgraph::schema::*;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::{
@@ -295,15 +295,17 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId)
     info.entity_count
 }
 
+fn writable_for_key(store: &Arc<DieselStore>, key: &EntityKey) -> Arc<dyn WritableStore> {
+    store.subgraph_store().writable(&key.subgraph_id)
+}
+
 #[test]
 fn delete_entity() {
     run_test(|store| async move {
         let entity_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
 
         // Check that there is an entity to remove.
-        store
-            .subgraph_store()
-            .writable()
+        writable_for_key(&store, &entity_key)
             .get(entity_key.clone())
             .unwrap()
             .unwrap();
@@ -324,9 +326,7 @@ fn delete_entity() {
         );
 
         // Check that that the deleted entity id is not present
-        assert!(store
-            .subgraph_store()
-            .writable()
+        assert!(writable_for_key(&store, &entity_key)
             .get(entity_key)
             .unwrap()
             .is_none());
@@ -338,7 +338,7 @@ fn delete_entity() {
 fn get_entity_1() {
     run_test(|store| async move {
         let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
-        let result = store.subgraph_store().writable().get(key).unwrap();
+        let result = writable_for_key(&store, &key).get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
@@ -369,7 +369,7 @@ fn get_entity_1() {
 fn get_entity_3() {
     run_test(|store| async move {
         let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "3".to_owned());
-        let result = store.subgraph_store().writable().get(key).unwrap();
+        let result = writable_for_key(&store, &key).get(key).unwrap();
 
         let mut expected_entity = Entity::new();
 
@@ -423,9 +423,7 @@ fn insert_entity() {
         );
 
         // Check that new record is in the store
-        store
-            .subgraph_store()
-            .writable()
+        writable_for_key(&store, &entity_key)
             .get(entity_key)
             .unwrap()
             .unwrap();
@@ -454,9 +452,7 @@ fn update_existing() {
 
         // Verify that the entity before updating is different from what we expect afterwards
         assert_ne!(
-            store
-                .subgraph_store()
-                .writable()
+            writable_for_key(&store, &entity_key)
                 .get(entity_key.clone())
                 .unwrap()
                 .unwrap(),
@@ -483,7 +479,9 @@ fn update_existing() {
         new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(
-            store.subgraph_store().writable().get(entity_key).unwrap(),
+            writable_for_key(&store, &entity_key)
+                .get(entity_key)
+                .unwrap(),
             Some(new_data)
         );
     })
@@ -500,9 +498,7 @@ fn partially_update_existing() {
             ("email", Value::Null),
         ]);
 
-        let original_entity = store
-            .subgraph_store()
-            .writable()
+        let original_entity = writable_for_key(&store, &entity_key)
             .get(entity_key.clone())
             .unwrap()
             .expect("entity not found");
@@ -520,9 +516,7 @@ fn partially_update_existing() {
         .unwrap();
 
         // Obtain the updated entity from the store
-        let updated_entity = store
-            .subgraph_store()
-            .writable()
+        let updated_entity = writable_for_key(&store, &entity_key)
             .get(entity_key)
             .unwrap()
             .expect("entity not found");
@@ -1028,7 +1022,7 @@ async fn check_basic_revert(
     // Revert block 3
     store
         .subgraph_store()
-        .writable()
+        .writable(&*TEST_SUBGRAPH_ID)
         .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_1_PTR.clone())
         .unwrap();
 
@@ -1091,7 +1085,7 @@ fn revert_block_with_delete() {
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .subgraph_store()
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         assert_eq!(
@@ -1133,9 +1127,7 @@ fn revert_block_with_partial_update() {
             ("email", Value::Null),
         ]);
 
-        let original_entity = store
-            .subgraph_store()
-            .writable()
+        let original_entity = writable_for_key(&store, &entity_key)
             .get(entity_key.clone())
             .unwrap()
             .expect("missing entity");
@@ -1158,15 +1150,13 @@ fn revert_block_with_partial_update() {
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
         store
             .subgraph_store()
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
         // Obtain the reverted entity from the store
-        let reverted_entity = store
-            .subgraph_store()
-            .writable()
+        let reverted_entity = writable_for_key(&store, &entity_key)
             .get(entity_key.clone())
             .unwrap()
             .expect("missing entity");
@@ -1235,7 +1225,7 @@ fn mock_abi() -> MappingABI {
 #[test]
 fn revert_block_with_dynamic_data_source_operations() {
     run_test(|store| async move {
-        let store = store.subgraph_store();
+        let subgraph_store = store.subgraph_store();
 
         // Create operations to add a user
         let user_key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), "1".to_owned());
@@ -1246,8 +1236,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         ]);
 
         // Get the original user for comparisons
-        let original_user = store
-            .writable()
+        let original_user = writable_for_key(&store, &user_key)
             .get(user_key.clone())
             .unwrap()
             .expect("missing entity");
@@ -1262,7 +1251,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Add user and dynamic data source to the store
         transact_entities_and_dynamic_data_sources(
-            &store,
+            &subgraph_store,
             TEST_SUBGRAPH_ID.clone(),
             TEST_BLOCK_3_PTR.clone(),
             vec![&data_source],
@@ -1272,8 +1261,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Verify that the user is no longer the original
         assert_ne!(
-            store
-                .writable()
+            writable_for_key(&store, &user_key)
                 .get(user_key.clone())
                 .unwrap()
                 .expect("missing entity"),
@@ -1281,8 +1269,8 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source exists afterwards
-        let loaded_dds = store
-            .writable()
+        let loaded_dds = subgraph_store
+            .writable(&*TEST_SUBGRAPH_ID)
             .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
             .await
             .unwrap();
@@ -1292,15 +1280,14 @@ fn revert_block_with_dynamic_data_source_operations() {
         let subscription = subscribe(&TEST_SUBGRAPH_ID, USER);
 
         // Revert block that added the user and the dynamic data source
-        store
-            .writable()
+        subgraph_store
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .expect("revert block operations failed unexpectedly");
 
         // Verify that the user is the original again
         assert_eq!(
-            store
-                .writable()
+            writable_for_key(&store, &user_key)
                 .get(user_key.clone())
                 .unwrap()
                 .expect("missing entity"),
@@ -1308,8 +1295,8 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source is gone after the reversion
-        let loaded_dds = store
-            .writable()
+        let loaded_dds = subgraph_store
+            .writable(&*TEST_SUBGRAPH_ID)
             .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
             .await
             .unwrap();
@@ -1610,7 +1597,7 @@ fn handle_large_string_with_index() {
 
         store
             .subgraph_store()
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
                 TEST_BLOCK_3_PTR.clone(),
@@ -1991,14 +1978,14 @@ fn reorg_tracking() {
 
         // Back to block 3
         subgraph_store
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
             .unwrap();
         check_state!(store, 1, 1, 3);
 
         // Back to block 2
         subgraph_store
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         check_state!(store, 2, 2, 2);
@@ -2017,19 +2004,19 @@ fn reorg_tracking() {
 
         // Revert all the way back to block 2
         subgraph_store
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_4_PTR.clone())
             .unwrap();
         check_state!(store, 3, 2, 4);
 
         subgraph_store
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
             .unwrap();
         check_state!(store, 4, 2, 3);
 
         subgraph_store
-            .writable()
+            .writable(&*TEST_SUBGRAPH_ID)
             .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
             .unwrap();
         check_state!(store, 5, 3, 2);

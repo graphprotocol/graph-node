@@ -307,12 +307,12 @@ fn graft() {
             .unwrap();
 
         store
-            .writable()
+            .writable(&subgraph_id)
             .revert_block_operations(subgraph_id.clone(), BLOCKS[1].clone())
             .expect("We can revert a block we just created");
 
         let err = store
-            .writable()
+            .writable(&subgraph_id)
             .revert_block_operations(subgraph_id.clone(), BLOCKS[0].clone())
             .expect_err("Reverting past graft point is not allowed");
 

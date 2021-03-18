@@ -210,7 +210,7 @@ where
     ) {
         let logger = self.logger_factory.subgraph_logger(&id);
 
-        let writable = self.subgraph_store.writable();
+        let writable = self.subgraph_store.writable(&id);
 
         match Self::start_subgraph_inner(
             logger.clone(),

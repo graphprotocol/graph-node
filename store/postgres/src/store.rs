@@ -123,7 +123,6 @@ impl StatusStore for Store {
         block: EthereumBlockPointer,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
         self.subgraph_store
-            .clone()
             .get_proof_of_indexing(subgraph_id, indexer, block)
     }
 }

@@ -178,7 +178,7 @@ fn create_subgraph(
         SubgraphVersionSwitchingMode::Instant,
     )?;
     SUBGRAPH_STORE
-        .writable()
+        .writable(&subgraph_id)
         .start_subgraph_deployment(&*LOGGER, &subgraph_id)
 }
 
@@ -218,14 +218,17 @@ pub fn transact_errors(
         subgraph_id.clone(),
         metrics_registry.clone(),
     );
-    store.subgraph_store().writable().transact_block_operations(
-        subgraph_id,
-        block_ptr_to,
-        Vec::new(),
-        stopwatch_metrics,
-        Vec::new(),
-        errs,
-    )
+    store
+        .subgraph_store()
+        .writable(&subgraph_id)
+        .transact_block_operations(
+            subgraph_id,
+            block_ptr_to,
+            Vec::new(),
+            stopwatch_metrics,
+            Vec::new(),
+            errs,
+        )
 }
 
 /// Convenience to transact EntityOperation instead of EntityModification
@@ -245,7 +248,7 @@ pub fn transact_entities_and_dynamic_data_sources(
     data_sources: Vec<&DataSource>,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
-    let store = store.writable();
+    let store = store.writable(&subgraph_id);
     let mut entity_cache = EntityCache::new(store.clone());
     entity_cache.append(ops);
     let mods = entity_cache

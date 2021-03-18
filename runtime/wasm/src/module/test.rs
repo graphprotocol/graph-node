@@ -204,12 +204,12 @@ fn mock_context(
         logger: test_store::LOGGER.clone(),
         block: Arc::new(block),
         host_exports: Arc::new(mock_host_exports(
-            subgraph_id,
+            subgraph_id.clone(),
             data_source,
             store.clone(),
             call_cache,
         )),
-        state: BlockState::new(store.writable(), Default::default()),
+        state: BlockState::new(store.writable(&subgraph_id), Default::default()),
         proof_of_indexing: None,
     }
 }
@@ -382,12 +382,13 @@ async fn ipfs_map() {
                 // Invoke the callback
                 let func = module.get_func("ipfsMap").typed().unwrap().clone();
                 let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
+                let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
                 let mut mods = module
                     .take_ctx()
                     .ctx
                     .state
                     .entity_cache
-                    .as_modifications(store.writable().as_ref())?
+                    .as_modifications(store.writable(&subgraph_id).as_ref())?
                     .modifications;
 
                 // Bring the modifications into a predictable order (by entity_id)
@@ -684,7 +685,7 @@ async fn entity_store() {
     let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
     let user_type = EntityType::from("User");
     test_store::insert_entities(
-        subgraph_id,
+        subgraph_id.clone(),
         vec![(user_type.clone(), alex), (user_type, steve)],
     )
     .unwrap();
@@ -721,7 +722,7 @@ async fn entity_store() {
     load_and_set_user_name(&mut module, "steve", "Steve-O");
 
     // We need to empty the cache for the next test
-    let writable = store.writable();
+    let writable = store.writable(&subgraph_id);
     let cache = std::mem::replace(
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(writable.clone()),
@@ -750,7 +751,7 @@ async fn entity_store() {
         .ctx
         .state
         .entity_cache
-        .as_modifications(store.writable().as_ref())
+        .as_modifications(writable.as_ref())
         .unwrap()
         .modifications;
     assert_eq!(1, mods.len());

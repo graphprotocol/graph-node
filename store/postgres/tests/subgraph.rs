@@ -194,10 +194,8 @@ fn create_subgraph() {
         assert!(pending.is_none());
 
         // Sync deployment
-        store
-            .writable()
-            .deployment_synced(&SubgraphDeploymentId::new(ID2).unwrap())
-            .unwrap();
+        let id = SubgraphDeploymentId::new(ID2).unwrap();
+        store.writable(&id).deployment_synced(&id).unwrap();
 
         // Deploying again still overwrites current
         let mut expected = deploy_event(ID3);
@@ -261,10 +259,8 @@ fn create_subgraph() {
         assert!(pending.is_none());
 
         // Deploy when current is synced leaves current alone and adds pending
-        store
-            .writable()
-            .deployment_synced(&SubgraphDeploymentId::new(ID2).unwrap())
-            .unwrap();
+        let id = SubgraphDeploymentId::new(ID2).unwrap();
+        store.writable(&id).deployment_synced(&id).unwrap();
         let expected = deploy_event(ID3);
 
         let events = deploy(store.as_ref(), ID3, MODE);
@@ -384,7 +380,7 @@ fn status() {
 
         store
             .subgraph_store()
-            .writable()
+            .writable(&id)
             .fail_subgraph(id.clone(), error)
             .await
             .unwrap();
@@ -526,7 +522,7 @@ fn fatal_vs_non_fatal() {
 
         store
             .subgraph_store()
-            .writable()
+            .writable(&id)
             .fail_subgraph(id.clone(), error())
             .await
             .unwrap();
@@ -568,12 +564,8 @@ fn fail_unfail() {
             deterministic: true,
         };
 
-        store
-            .subgraph_store()
-            .writable()
-            .fail_subgraph(id.clone(), error)
-            .await
-            .unwrap();
+        let writable = store.subgraph_store().writable(&id);
+        writable.fail_subgraph(id.clone(), error).await.unwrap();
 
         assert!(!query_store
             .has_non_fatal_errors(id.cheap_clone(), None)
@@ -581,7 +573,7 @@ fn fail_unfail() {
             .unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
-        store.subgraph_store().writable().unfail(&id).unwrap();
+        writable.unfail(&id).unwrap();
 
         // Advance the block ptr to the block of the deleted error.
         transact_entity_operations(

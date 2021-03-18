@@ -58,7 +58,7 @@ pub fn ensure_subgraph_exists(
 
     let logger_for_created = logger.clone();
 
-    check_subgraph_exists(store.writable(), subgraph_id.clone())
+    check_subgraph_exists(store.writable(&subgraph_id), subgraph_id.clone())
         .from_err()
         .and_then(move |subgraph_exists| {
             if subgraph_exists {

@@ -22,8 +22,8 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema, DynTryFuture,
-        Entity, EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer, Logger,
-        NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
+        Entity, EntityKey, EntityModification, Error, EthereumBlockPointer, Logger, NodeId,
+        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
 };
@@ -207,7 +207,7 @@ impl SubgraphStore {
         self: Arc<Self>,
         id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
-        self.writable().supports_proof_of_indexing(id)
+        self.writable(id).supports_proof_of_indexing(id)
     }
 }
 
@@ -728,7 +728,10 @@ impl SubgraphStoreInner {
 
     // Only used by tests
     #[cfg(debug_assertions)]
-    pub fn find(&self, query: EntityQuery) -> Result<Vec<Entity>, QueryExecutionError> {
+    pub fn find(
+        &self,
+        query: graph::prelude::EntityQuery,
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
         store.find(site, query)
     }
@@ -817,7 +820,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(info.api)
     }
 
-    fn writable(&self) -> Arc<dyn store::WritableStore> {
+    fn writable(&self, _id: &SubgraphDeploymentId) -> Arc<dyn store::WritableStore> {
         Arc::new(WritableStore {
             store: self.clone(),
         })

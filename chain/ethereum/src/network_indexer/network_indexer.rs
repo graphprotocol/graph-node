@@ -102,7 +102,12 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
         context.metrics,
         load_local_head,
         load_local_head_problems,
-        future::result(context.store.writable().block_ptr(&context.subgraph_id))
+        future::result(
+            context
+                .store
+                .writable(&context.subgraph_id)
+                .block_ptr(&context.subgraph_id)
+        )
     ))
 }
 
@@ -289,7 +294,7 @@ fn load_parent_block_from_store(
         future::result(
             context
                 .store
-                .writable()
+                .writable(&context.subgraph_id)
                 .get(block_ptr.to_entity_key(context.subgraph_id.clone()))
                 .map_err(|e| e.into())
                 .and_then(|entity| {
@@ -353,7 +358,7 @@ fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> Rev
             .and_then(move |parent_block| {
                 future::result(
                     store
-                        .writable()
+                        .writable(&subgraph_id)
                         .revert_block_operations(subgraph_id.clone(), parent_block.clone())
                         .map_err(|e| e.into())
                         .map(|_| (local_head, parent_block)),
@@ -1164,7 +1169,7 @@ impl NetworkIndexer {
         let block_writer = Arc::new(BlockWriter::new(
             subgraph_id.clone(),
             &logger,
-            store.writable(),
+            store.writable(&subgraph_id),
             stopwatch,
             metrics_registry.clone(),
         ));
