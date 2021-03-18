@@ -189,8 +189,4 @@ impl SubgraphStore for MockStore {
     fn api_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
         unimplemented!()
     }
-
-    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<String, StoreError> {
-        unimplemented!()
-    }
 }

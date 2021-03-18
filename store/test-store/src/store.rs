@@ -6,7 +6,8 @@ use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::{
-    components::store::EntityType, components::store::StoredDynamicDataSource, prelude::NodeId,
+    components::store::EntityType, components::store::StatusStore,
+    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
@@ -376,7 +377,12 @@ fn execute_subgraph_query_internal(
         _ => unreachable!("tests do not use this"),
     };
     let schema = SUBGRAPH_STORE.api_schema(&id).unwrap();
-    let network = Some(SUBGRAPH_STORE.network_name(&id).unwrap());
+    let status = StatusStore::status(
+        STORE.as_ref(),
+        status::Filter::Deployments(vec![id.to_string()]),
+    )
+    .unwrap();
+    let network = Some(status[0].chains[0].network.clone());
     let query = return_err!(PreparedQuery::new(
         &logger,
         schema,

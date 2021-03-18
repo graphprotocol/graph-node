@@ -990,10 +990,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
-
-    /// Return the name of the network that the subgraph is indexing from. The
-    /// names returned are things like `mainnet` or `ropsten`
-    fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<String, StoreError>;
 }
 
 #[async_trait]
@@ -1161,10 +1157,6 @@ impl SubgraphStore for MockStore {
     }
 
     fn api_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
-        unimplemented!()
-    }
-
-    fn network_name(&self, _: &SubgraphDeploymentId) -> Result<String, StoreError> {
         unimplemented!()
     }
 }

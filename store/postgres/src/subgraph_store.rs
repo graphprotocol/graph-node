@@ -611,7 +611,7 @@ impl SubgraphStore {
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|ref block| block.number());
             let subgraph_info = store.subgraph_info(site.as_ref())?;
-            let network = self.network_name(&id)?;
+            let network = site.network.clone();
 
             let info = VersionInfo {
                 created_at,
@@ -894,11 +894,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         let (store, site) = self.store(&id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.api)
-    }
-
-    fn network_name(&self, id: &SubgraphDeploymentId) -> Result<String, StoreError> {
-        let (_, site) = self.store(&id)?;
-        Ok(site.network.to_string())
     }
 }
 
