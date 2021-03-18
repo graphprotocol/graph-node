@@ -18,5 +18,5 @@ pub use self::types::{
     BlockFinality, BlockHash, EthereumBlock, EthereumBlockData, EthereumBlockPointer,
     EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
     EthereumCallData, EthereumEventData, EthereumTransactionData, EthereumTrigger,
-    LightEthereumBlock, LightEthereumBlockExt,
+    LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
 };
