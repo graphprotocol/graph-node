@@ -74,7 +74,7 @@ pub(crate) struct HostExports {
     data_source_name: String,
     data_source_address: Option<Address>,
     data_source_network: String,
-    data_source_context: Option<Arc<DataSourceContext>>,
+    data_source_context: Arc<Option<DataSourceContext>>,
     /// Some data sources have indeterminism or different notions of time. These
     /// need to be each be stored separately to separate causality between them,
     /// and merge the results later. Right now, this is just the ethereum
@@ -104,7 +104,7 @@ impl HostExports {
         data_source_name: String,
         data_source_address: Option<Address>,
         data_source_network: String,
-        data_source_context: Option<Arc<DataSourceContext>>,
+        data_source_context: Arc<Option<DataSourceContext>>,
         templates: Arc<Vec<DataSourceTemplate>>,
         abis: Vec<Arc<MappingABI>>,
         ethereum_adapter: Arc<dyn EthereumAdapter>,
@@ -721,7 +721,6 @@ impl HostExports {
 
         // Remember that we need to create this data source
         state.push_created_data_source(DataSourceTemplateInfo {
-            data_source: self.data_source_name.clone(),
             template,
             params,
             context,
@@ -768,7 +767,7 @@ impl HostExports {
     pub(crate) fn data_source_context(&self) -> Entity {
         self.data_source_context
             .as_ref()
-            .map(|ctx| ctx.as_ref().clone())
+            .clone()
             .unwrap_or_default()
     }
 

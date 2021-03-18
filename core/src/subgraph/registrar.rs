@@ -422,7 +422,7 @@ async fn start_subgraph(
 
 /// Resolves the subgraph's earliest block and the manifest's graft base block
 fn resolve_subgraph_chain_blocks(
-    manifest: SubgraphManifest,
+    manifest: &SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<dyn EthereumAdapter>,
     logger: &Logger,
@@ -437,6 +437,7 @@ fn resolve_subgraph_chain_blocks(
 > {
     let logger1 = logger.clone();
     let chain_store1 = chain_store.clone();
+    let graft = manifest.graft.clone();
 
     Box::new(
         // If the minimum start block is 0 (i.e. the genesis block),
@@ -463,7 +464,7 @@ fn resolve_subgraph_chain_blocks(
             ) as Box<dyn Future<Item = _, Error = _> + Send>,
         }
         .and_then(move |start_block_ptr| {
-            match manifest.graft {
+            match graft {
                 None => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
                 Some(base) => {
                     let base_block = base.block;
@@ -498,7 +499,6 @@ fn create_subgraph_version(
     version_switching_mode: SubgraphVersionSwitchingMode,
 ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
     let logger = logger.clone();
-    let manifest = manifest.clone();
     let store = store.clone();
     let deployment_store = store.clone();
 
@@ -519,7 +519,7 @@ fn create_subgraph_version(
 
     Box::new(
             resolve_subgraph_chain_blocks(
-                manifest.clone(),
+                &manifest,
                 chain_store.clone(),
                 ethereum_adapter.clone(),
                 &logger.clone(),

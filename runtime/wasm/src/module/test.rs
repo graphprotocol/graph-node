@@ -1,4 +1,4 @@
-use ethabi::Token;
+use ethabi::{Contract, Token};
 use hex;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
@@ -117,8 +117,30 @@ fn mock_data_source(path: &str) -> DataSource {
             },
             runtime: Arc::new(runtime.clone()),
         },
-        context: None,
+        context: Default::default(),
         creation_block: None,
+        contract_abi: Arc::new(mock_abi()),
+    }
+}
+
+fn mock_abi() -> MappingABI {
+    MappingABI {
+        name: "mock_abi".to_string(),
+        contract: Contract::load(
+            r#"[
+            {
+                "inputs": [
+                    {
+                        "name": "a",
+                        "type": "address"
+                    }
+                ],
+                "type": "constructor"
+            }
+        ]"#
+            .as_bytes(),
+        )
+        .unwrap(),
     }
 }
 
@@ -614,12 +636,10 @@ async fn data_source_create() {
     };
 
     // Test with a valid template
-    let data_source = String::from("example data source");
     let template = String::from("example template");
     let params = vec![String::from("0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95")];
     let result = run_data_source_create(template.clone(), params.clone())
         .expect("unexpected error returned from dataSourceCreate");
-    assert_eq!(result[0].data_source, data_source);
     assert_eq!(result[0].params, params.clone());
     assert_eq!(result[0].template.name, template);
 

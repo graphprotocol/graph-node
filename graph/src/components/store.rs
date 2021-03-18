@@ -825,6 +825,7 @@ impl From<&DataSource> for StoredDynamicDataSource {
             context: ds
                 .context
                 .as_ref()
+                .as_ref()
                 .map(|ctx| serde_json::to_string(&ctx).unwrap()),
             creation_block: ds.creation_block,
         }

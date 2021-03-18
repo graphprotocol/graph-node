@@ -163,7 +163,6 @@ where
 #[derive(Debug)]
 pub struct RuntimeHost {
     data_source: DataSource,
-    data_source_contract_abi: Arc<MappingABI>,
     mapping_request_sender: Sender<MappingRequest>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
@@ -186,20 +185,6 @@ impl RuntimeHost {
     ) -> Result<Self, Error> {
         let api_version = Version::parse(&data_source.mapping.api_version)?;
 
-        let data_source_contract_abi = data_source
-            .mapping
-            .abis
-            .iter()
-            .find(|abi| abi.name == data_source.source.abi)
-            .ok_or_else(|| {
-                anyhow!(
-                    "No ABI entry found for the main contract of data source \"{}\": {}",
-                    &data_source.name,
-                    data_source.source.abi,
-                )
-            })?
-            .cheap_clone();
-
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
@@ -221,7 +206,6 @@ impl RuntimeHost {
 
         Ok(RuntimeHost {
             data_source,
-            data_source_contract_abi,
             mapping_request_sender,
             host_exports,
             metrics,
@@ -326,7 +310,7 @@ impl RuntimeHostTrait for RuntimeHost {
 
         // Identify the function ABI in the contract
         let function_abi = util::ethereum::contract_function_with_signature(
-            &self.data_source_contract_abi.contract,
+            &self.data_source.contract_abi.contract,
             call_handler.function.as_str(),
         )
         .with_context(|| {
@@ -334,7 +318,7 @@ impl RuntimeHostTrait for RuntimeHost {
                 "Function with the signature \"{}\" not found in \
                     contract \"{}\" of data source \"{}\"",
                 call_handler.function,
-                self.data_source_contract_abi.name,
+                self.data_source.contract_abi.name,
                 self.data_source.name
             )
         })?;
@@ -461,8 +445,8 @@ impl RuntimeHostTrait for RuntimeHost {
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
         let data_source_name = &self.data_source.name;
-        let abi_name = &self.data_source_contract_abi.name;
-        let contract = &self.data_source_contract_abi.contract;
+        let abi_name = &self.data_source.contract_abi.name;
+        let contract = &self.data_source.contract_abi.contract;
 
         // If there are no matching handlers, fail processing the event
         let potential_handlers = self.data_source.handlers_for_log(&log)?;

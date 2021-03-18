@@ -9,13 +9,12 @@ pub async fn load_dynamic_data_sources(
     store: &impl SubgraphStore,
     deployment_id: SubgraphDeploymentId,
     logger: Logger,
-    manifest: SubgraphManifest,
+    templates: Vec<DataSourceTemplate>,
 ) -> Result<Vec<DataSource>, Error> {
     let start_time = Instant::now();
 
     let template_map: HashMap<&str, &DataSourceTemplate> = HashMap::from_iter(
-        manifest
-            .templates
+        templates
             .iter()
             .map(|template| (template.name.as_str(), template)),
     );
@@ -43,14 +42,17 @@ pub async fn load_dynamic_data_sources(
             .map(|ctx| serde_json::from_str::<Entity>(&ctx))
             .transpose()?;
 
+        let contract_abi = template.mapping.find_abi(&template.source.abi)?;
+
         let ds = DataSource {
             kind: template.kind.clone(),
             network: template.network.clone(),
             name,
             source,
             mapping: template.mapping.clone(),
-            context: context.map(Arc::new),
+            context: Arc::new(context),
             creation_block,
+            contract_abi,
         };
 
         // The data sources are ordered by the creation block.
