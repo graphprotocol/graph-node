@@ -345,7 +345,7 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_insert");
-        layout.insert(conn, entity_type, data, block_number(ptr))
+        layout.insert(conn, entity_type, data, block_number(ptr), stopwatch)
     }
 
     fn overwrite_entities(
@@ -365,7 +365,7 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, entity_type, data, block_number(ptr))
+        layout.update(conn, entity_type, data, block_number(ptr), stopwatch)
     }
 
     fn remove_entities(
@@ -379,7 +379,13 @@ impl DeploymentStore {
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
         layout
-            .delete(conn, entity_type, &entity_keys, block_number(ptr))
+            .delete(
+                conn,
+                entity_type,
+                &entity_keys,
+                block_number(ptr),
+                stopwatch,
+            )
             .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
     }
 
