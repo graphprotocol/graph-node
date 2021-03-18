@@ -122,11 +122,6 @@ impl<T> SubgraphInstanceTrait<T::Host> for SubgraphInstance<T>
 where
     T: RuntimeHostBuilder,
 {
-    /// Returns true if the subgraph has a handler for an Ethereum event.
-    fn matches_log(&self, log: &Log) -> bool {
-        self.hosts.iter().any(|host| host.matches_log(log))
-    }
-
     async fn process_trigger(
         &self,
         logger: &Logger,
