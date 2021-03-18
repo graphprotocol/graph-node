@@ -523,6 +523,101 @@ fn update() {
     });
 }
 
+#[test]
+fn update_many() {
+    run_test(|conn, layout| {
+        let mut one = SCALAR_ENTITY.clone();
+        let mut two = SCALAR_ENTITY.clone();
+        two.set("id", "two");
+        let mut three = SCALAR_ENTITY.clone();
+        three.set("id", "three");
+        insert_entity(
+            &conn,
+            &layout,
+            "Scalar",
+            vec![one.clone(), two.clone(), three.clone()],
+        );
+
+        // confidence test: there should be 3 scalar entities in store right now
+        assert_eq!(3, count_scalar_entities(conn, layout));
+
+        // update with overwrite
+        one.set("string", "updated");
+        one.remove("strings");
+
+        two.set("string", "updated too");
+        two.set("bool", false);
+
+        three.set("string", "updated in a different way");
+        three.remove("strings");
+        three.set("color", "red");
+
+        // generate keys
+        let entity_type = EntityType::from("Scalar");
+        let keys: Vec<EntityKey> = ["one", "two", "three"]
+            .iter()
+            .map(|id| {
+                EntityKey::data(
+                    THINGS_SUBGRAPH_ID.clone(),
+                    "Scalar".to_owned(),
+                    String::from(*id),
+                )
+            })
+            .collect();
+
+        let mut entities = keys
+            .into_iter()
+            .zip(vec![one, two, three].into_iter())
+            .collect();
+
+        layout
+            .update(&conn, &entity_type, &mut entities, 0)
+            .expect("Failed to update");
+
+        // check updates took effect
+        let updated: Vec<Entity> = ["one", "two", "three"]
+            .iter()
+            .map(|id| {
+                layout
+                    .find(conn, &*SCALAR, id, BLOCK_NUMBER_MAX)
+                    .expect(&format!("Failed to read Scalar[{}]", id))
+                    .unwrap()
+            })
+            .collect();
+        let new_one = &updated[0];
+        let new_two = &updated[1];
+        let new_three = &updated[2];
+
+        // check they have the same id
+        assert_eq!(new_one.get("id"), Some(&Value::String("one".to_string())));
+        assert_eq!(new_two.get("id"), Some(&Value::String("two".to_string())));
+        assert_eq!(
+            new_three.get("id"),
+            Some(&Value::String("three".to_string()))
+        );
+
+        // check their fields got updated as expected
+        assert_eq!(
+            new_one.get("string"),
+            Some(&Value::String("updated".to_string()))
+        );
+        assert_eq!(new_one.get("strings"), None);
+        assert_eq!(
+            new_two.get("string"),
+            Some(&Value::String("updated too".to_string()))
+        );
+        assert_eq!(new_two.get("bool"), Some(&Value::Bool(false)));
+        assert_eq!(
+            new_three.get("string"),
+            Some(&Value::String("updated in a different way".to_string()))
+        );
+        assert_eq!(
+            new_three.get("color"),
+            Some(&Value::String("red".to_string()))
+        );
+    });
+}
+
 /// Test that we properly handle BigDecimal values with a negative scale.
 #[test]
 fn serialize_bigdecimal() {
