@@ -107,9 +107,6 @@ impl BlockState {
 /// Represents a loaded instance of a subgraph.
 #[async_trait]
 pub trait SubgraphInstance<H: RuntimeHost> {
-    /// Returns true if the subgraph has a handler for an Ethereum event.
-    fn matches_log(&self, log: &Log) -> bool;
-
     /// Process and Ethereum trigger and return the resulting entity operations as a future.
     async fn process_trigger(
         &self,
