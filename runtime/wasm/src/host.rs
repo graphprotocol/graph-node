@@ -22,7 +22,7 @@ use graph::prelude::{
 use graph::util;
 use web3::types::Log;
 
-use crate::mapping::{MappingContext, MappingRequest, MappingTrigger};
+use crate::mapping::{MappingContext, MappingRequest};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 
 lazy_static! {

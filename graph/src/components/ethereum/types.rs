@@ -3,15 +3,22 @@ use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
-use std::fmt::{Display, Write};
 use std::{cmp::Ordering, convert::TryFrom};
 use std::{fmt, str::FromStr};
+use std::{
+    fmt::{Display, Write},
+    sync::Arc,
+};
+use strum_macros::AsStaticStr;
 use web3::types::{
     Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H160, H256,
     U128, U256, U64,
 };
 
-use crate::prelude::{BlockNumber, CheapClone, EntityKey, SubgraphDeploymentId, ToEntityKey};
+use crate::prelude::{
+    BlockNumber, CheapClone, EntityKey, MappingBlockHandler, MappingCallHandler,
+    MappingEventHandler, SubgraphDeploymentId, ToEntityKey,
+};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
@@ -267,6 +274,36 @@ impl Ord for EthereumTrigger {
 impl PartialOrd for EthereumTrigger {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug, AsStaticStr)]
+pub enum MappingTrigger {
+    Log {
+        transaction: Arc<Transaction>,
+        log: Arc<Log>,
+        params: Vec<LogParam>,
+        handler: MappingEventHandler,
+    },
+    Call {
+        transaction: Arc<Transaction>,
+        call: Arc<EthereumCall>,
+        inputs: Vec<LogParam>,
+        outputs: Vec<LogParam>,
+        handler: MappingCallHandler,
+    },
+    Block {
+        handler: MappingBlockHandler,
+    },
+}
+
+impl MappingTrigger {
+    pub fn handler_name(&self) -> &str {
+        match self {
+            MappingTrigger::Log { handler, .. } => &handler.handler,
+            MappingTrigger::Call { handler, .. } => &handler.handler,
+            MappingTrigger::Block { handler, .. } => &handler.handler,
+        }
     }
 }
 

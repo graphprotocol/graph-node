@@ -1,5 +1,4 @@
 use crate::module::{ExperimentalFeatures, WasmInstance};
-use ethabi::LogParam;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
 use graph::components::ethereum::*;
@@ -9,8 +8,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
-use strum_macros::AsStaticStr;
-use web3::types::{Log, Transaction};
 
 lazy_static! {
     /// Verbose logging of mapping inputs
@@ -116,36 +113,6 @@ pub fn spawn_module(
     .context("Spawning WASM runtime thread failed")?;
 
     Ok(mapping_request_sender)
-}
-
-#[derive(Debug, AsStaticStr)]
-pub(crate) enum MappingTrigger {
-    Log {
-        transaction: Arc<Transaction>,
-        log: Arc<Log>,
-        params: Vec<LogParam>,
-        handler: MappingEventHandler,
-    },
-    Call {
-        transaction: Arc<Transaction>,
-        call: Arc<EthereumCall>,
-        inputs: Vec<LogParam>,
-        outputs: Vec<LogParam>,
-        handler: MappingCallHandler,
-    },
-    Block {
-        handler: MappingBlockHandler,
-    },
-}
-
-impl MappingTrigger {
-    pub fn handler_name(&self) -> &str {
-        match self {
-            MappingTrigger::Log { handler, .. } => &handler.handler,
-            MappingTrigger::Call { handler, .. } => &handler.handler,
-            MappingTrigger::Block { handler, .. } => &handler.handler,
-        }
-    }
 }
 
 type MappingResponse = (
