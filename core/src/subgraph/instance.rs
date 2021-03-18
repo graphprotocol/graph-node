@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use web3::types::{Log, H256};
+use web3::types::H256;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")

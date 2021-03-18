@@ -445,7 +445,6 @@ impl RuntimeHostTrait for RuntimeHost {
     ) -> Result<BlockState, MappingError> {
         let data_source_name = &self.data_source.name;
         let abi_name = &self.data_source.contract_abi.name;
-        let contract = &self.data_source.contract_abi.contract;
 
         // If there are no matching handlers, fail processing the event
         let potential_handlers = self.data_source.handlers_for_log(&log)?;
@@ -456,19 +455,18 @@ impl RuntimeHostTrait for RuntimeHost {
             .into_iter()
             .map(|event_handler| {
                 // Identify the event ABI in the contract
-                let event_abi = util::ethereum::contract_event_with_signature(
-                    contract,
-                    event_handler.event.as_str(),
-                )
-                .with_context(|| {
-                    anyhow!(
-                        "Event with the signature \"{}\" not found in \
+                let event_abi = self
+                    .data_source
+                    .contract_event_with_signature(event_handler.event.as_str())
+                    .with_context(|| {
+                        anyhow!(
+                            "Event with the signature \"{}\" not found in \
                                 contract \"{}\" of data source \"{}\"",
-                        event_handler.event,
-                        abi_name,
-                        data_source_name,
-                    )
-                })?;
+                            event_handler.event,
+                            abi_name,
+                            data_source_name,
+                        )
+                    })?;
                 Ok((event_handler, event_abi))
             })
             .collect::<Result<Vec<_>, anyhow::Error>>()?;
