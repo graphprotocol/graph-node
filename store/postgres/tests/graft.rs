@@ -259,7 +259,7 @@ fn remove_test_data(store: Arc<DieselSubgraphStore>) {
 
 #[test]
 fn graft() {
-    run_test(move |store| -> Result<(), ()> {
+    run_test(move |store| -> Result<(), StoreError> {
         const SUBGRAPH: &str = "grafted";
 
         let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
@@ -307,12 +307,12 @@ fn graft() {
             .unwrap();
 
         store
-            .writable(&subgraph_id)
+            .writable(&subgraph_id)?
             .revert_block_operations(subgraph_id.clone(), BLOCKS[1].clone())
             .expect("We can revert a block we just created");
 
         let err = store
-            .writable(&subgraph_id)
+            .writable(&subgraph_id)?
             .revert_block_operations(subgraph_id.clone(), BLOCKS[0].clone())
             .expect_err("Reverting past graft point is not allowed");
 

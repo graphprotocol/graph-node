@@ -178,7 +178,7 @@ fn create_subgraph(
         SubgraphVersionSwitchingMode::Instant,
     )?;
     SUBGRAPH_STORE
-        .writable(&subgraph_id)
+        .writable(&subgraph_id)?
         .start_subgraph_deployment(&*LOGGER, &subgraph_id)
 }
 
@@ -220,7 +220,7 @@ pub fn transact_errors(
     );
     store
         .subgraph_store()
-        .writable(&subgraph_id)
+        .writable(&subgraph_id)?
         .transact_block_operations(
             subgraph_id,
             block_ptr_to,
@@ -248,7 +248,7 @@ pub fn transact_entities_and_dynamic_data_sources(
     data_sources: Vec<&DataSource>,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
-    let store = store.writable(&subgraph_id);
+    let store = store.writable(&subgraph_id)?;
     let mut entity_cache = EntityCache::new(store.clone());
     entity_cache.append(ops);
     let mods = entity_cache
@@ -273,6 +273,19 @@ pub fn transact_entities_and_dynamic_data_sources(
         data_sources,
         Vec::new(),
     )
+}
+
+pub fn revert_block(
+    store: &Arc<Store>,
+    subgraph_id: &SubgraphDeploymentId,
+    ptr: &EthereumBlockPointer,
+) {
+    store
+        .subgraph_store()
+        .writable(subgraph_id)
+        .expect("can get writable")
+        .revert_block_operations(subgraph_id.clone(), ptr.clone())
+        .unwrap();
 }
 
 pub fn insert_ens_name(hash: &str, name: &str) {

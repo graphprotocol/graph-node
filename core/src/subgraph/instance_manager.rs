@@ -210,14 +210,12 @@ where
     ) {
         let logger = self.logger_factory.subgraph_logger(&id);
 
-        let writable = self.subgraph_store.writable(&id);
-
         match Self::start_subgraph_inner(
             logger.clone(),
             self.instances.clone(),
             self.host_builder.clone(),
             self.block_stream_builder.clone(),
-            writable,
+            self.subgraph_store.clone(),
             self.block_store.cheap_clone(),
             self.eth_networks.clone(),
             id,
@@ -298,7 +296,7 @@ where
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
         stream_builder: B,
-        store: Arc<dyn WritableStore>,
+        store: Arc<dyn SubgraphStore>,
         block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
         subgraph_id: SubgraphDeploymentId,
@@ -306,6 +304,8 @@ where
         registry: Arc<M>,
         link_resolver: Arc<L>,
     ) -> Result<(), Error> {
+        let store = store.writable(&subgraph_id)?;
+
         let manifest = {
             info!(logger, "Resolve subgraph files using IPFS");
 

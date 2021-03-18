@@ -16,7 +16,7 @@ use graph::{
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 use test_store::*;
 
 const SUBGRAPH_GQL: &str = "
@@ -151,6 +151,14 @@ fn create_subgraph() {
         changes
     }
 
+    fn deployment_synced(store: &Arc<SubgraphStore>, id: &SubgraphDeploymentId) {
+        store
+            .writable(&id)
+            .expect("can get writable")
+            .deployment_synced(&id)
+            .unwrap();
+    }
+
     // Test VersionSwitchingMode::Instant
     run_test_sequentially(remove_subgraphs, |store, _| async move {
         let store = store.subgraph_store();
@@ -195,7 +203,7 @@ fn create_subgraph() {
 
         // Sync deployment
         let id = SubgraphDeploymentId::new(ID2).unwrap();
-        store.writable(&id).deployment_synced(&id).unwrap();
+        deployment_synced(&store, &id);
 
         // Deploying again still overwrites current
         let mut expected = deploy_event(ID3);
@@ -260,7 +268,7 @@ fn create_subgraph() {
 
         // Deploy when current is synced leaves current alone and adds pending
         let id = SubgraphDeploymentId::new(ID2).unwrap();
-        store.writable(&id).deployment_synced(&id).unwrap();
+        deployment_synced(&store, &id);
         let expected = deploy_event(ID3);
 
         let events = deploy(store.as_ref(), ID3, MODE);
@@ -381,6 +389,7 @@ fn status() {
         store
             .subgraph_store()
             .writable(&id)
+            .expect("can get writable")
             .fail_subgraph(id.clone(), error)
             .await
             .unwrap();
@@ -523,6 +532,7 @@ fn fatal_vs_non_fatal() {
         store
             .subgraph_store()
             .writable(&id)
+            .expect("can get writable")
             .fail_subgraph(id.clone(), error())
             .await
             .unwrap();
@@ -564,7 +574,10 @@ fn fail_unfail() {
             deterministic: true,
         };
 
-        let writable = store.subgraph_store().writable(&id);
+        let writable = store
+            .subgraph_store()
+            .writable(&id)
+            .expect("can get writable");
         writable.fail_subgraph(id.clone(), error).await.unwrap();
 
         assert!(!query_store

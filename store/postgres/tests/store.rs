@@ -296,7 +296,10 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId)
 }
 
 fn writable_for_key(store: &Arc<DieselStore>, key: &EntityKey) -> Arc<dyn WritableStore> {
-    store.subgraph_store().writable(&key.subgraph_id)
+    store
+        .subgraph_store()
+        .writable(&key.subgraph_id)
+        .expect("can get writable")
 }
 
 #[test]
@@ -1020,11 +1023,7 @@ async fn check_basic_revert(
     assert_eq!(subgraph_id, &state.id);
 
     // Revert block 3
-    store
-        .subgraph_store()
-        .writable(&*TEST_SUBGRAPH_ID)
-        .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_1_PTR.clone())
-        .unwrap();
+    revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_1_PTR);
 
     let returned_entities = store
         .subgraph_store()
@@ -1083,11 +1082,7 @@ fn revert_block_with_delete() {
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        store
-            .subgraph_store()
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
-            .unwrap();
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_2_PTR);
         assert_eq!(
             count + 1,
             get_entity_count(store.clone(), &TEST_SUBGRAPH_ID)
@@ -1148,11 +1143,7 @@ fn revert_block_with_partial_update() {
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &TEST_SUBGRAPH_ID);
-        store
-            .subgraph_store()
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
-            .unwrap();
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_2_PTR);
         assert_eq!(count, get_entity_count(store.clone(), &TEST_SUBGRAPH_ID));
 
         // Obtain the reverted entity from the store
@@ -1271,6 +1262,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         // Verify that the dynamic data source exists afterwards
         let loaded_dds = subgraph_store
             .writable(&*TEST_SUBGRAPH_ID)
+            .expect("can get writable")
             .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
             .await
             .unwrap();
@@ -1280,10 +1272,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let subscription = subscribe(&TEST_SUBGRAPH_ID, USER);
 
         // Revert block that added the user and the dynamic data source
-        subgraph_store
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
-            .expect("revert block operations failed unexpectedly");
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_2_PTR);
 
         // Verify that the user is the original again
         assert_eq!(
@@ -1297,6 +1286,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         // Verify that the dynamic data source is gone after the reversion
         let loaded_dds = subgraph_store
             .writable(&*TEST_SUBGRAPH_ID)
+            .expect("can get writable")
             .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
             .await
             .unwrap();
@@ -1598,6 +1588,7 @@ fn handle_large_string_with_index() {
         store
             .subgraph_store()
             .writable(&*TEST_SUBGRAPH_ID)
+            .expect("can get writable")
             .transact_block_operations(
                 TEST_SUBGRAPH_ID.clone(),
                 TEST_BLOCK_3_PTR.clone(),
@@ -1977,17 +1968,11 @@ fn reorg_tracking() {
         check_state!(store, 0, 0, 4);
 
         // Back to block 3
-        subgraph_store
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
-            .unwrap();
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_3_PTR);
         check_state!(store, 1, 1, 3);
 
         // Back to block 2
-        subgraph_store
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
-            .unwrap();
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_2_PTR);
         check_state!(store, 2, 2, 2);
 
         // Forward to block 3
@@ -2003,22 +1988,13 @@ fn reorg_tracking() {
         check_state!(store, 2, 2, 5);
 
         // Revert all the way back to block 2
-        subgraph_store
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_4_PTR.clone())
-            .unwrap();
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_4_PTR);
         check_state!(store, 3, 2, 4);
 
-        subgraph_store
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_3_PTR.clone())
-            .unwrap();
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_3_PTR);
         check_state!(store, 4, 2, 3);
 
-        subgraph_store
-            .writable(&*TEST_SUBGRAPH_ID)
-            .revert_block_operations(TEST_SUBGRAPH_ID.clone(), TEST_BLOCK_2_PTR.clone())
-            .unwrap();
+        revert_block(&store, &*TEST_SUBGRAPH_ID, &*TEST_BLOCK_2_PTR);
         check_state!(store, 5, 3, 2);
     })
 }

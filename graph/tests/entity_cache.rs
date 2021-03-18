@@ -26,7 +26,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[test]
 fn empty_cache_modifications() {
-    let store = MockStore::new().writable(&*SUBGRAPH_ID);
+    let store = MockStore::new().writable(&*SUBGRAPH_ID).unwrap();
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications(&*store);
     assert_eq!(result.unwrap().modifications, vec![]);

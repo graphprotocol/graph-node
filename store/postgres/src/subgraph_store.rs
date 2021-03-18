@@ -207,7 +207,10 @@ impl SubgraphStore {
         self: Arc<Self>,
         id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
-        self.writable(id).supports_proof_of_indexing(id)
+        match self.writable(id) {
+            Ok(writable) => writable.supports_proof_of_indexing(id),
+            Err(e) => Box::pin(std::future::ready(Err(e.into()))),
+        }
     }
 }
 
@@ -820,10 +823,21 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(info.api)
     }
 
-    fn writable(&self, _id: &SubgraphDeploymentId) -> Arc<dyn store::WritableStore> {
-        Arc::new(WritableStore {
+    fn writable(
+        &self,
+        _id: &SubgraphDeploymentId,
+    ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
+        Ok(Arc::new(WritableStore {
             store: self.clone(),
-        })
+        }))
+    }
+
+    fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+        match self.site(id) {
+            Ok(_) => Ok(true),
+            Err(StoreError::DeploymentNotFound(_)) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
     }
 }
 

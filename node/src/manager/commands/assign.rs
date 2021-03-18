@@ -8,7 +8,7 @@ pub fn unassign(store: Arc<SubgraphStore>, id: String) -> Result<(), Error> {
         SubgraphDeploymentId::new(id).map_err(|id| anyhow!("illegal deployment id `{}`", id))?;
 
     println!("unassigning {}", id.as_str());
-    store.writable(&id).unassign_subgraph(&id)?;
+    store.writable(&id)?.unassign_subgraph(&id)?;
 
     Ok(())
 }

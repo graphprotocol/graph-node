@@ -209,7 +209,7 @@ fn mock_context(
             store.clone(),
             call_cache,
         )),
-        state: BlockState::new(store.writable(&subgraph_id), Default::default()),
+        state: BlockState::new(store.writable(&subgraph_id).unwrap(), Default::default()),
         proof_of_indexing: None,
     }
 }
@@ -388,7 +388,7 @@ async fn ipfs_map() {
                     .ctx
                     .state
                     .entity_cache
-                    .as_modifications(store.writable(&subgraph_id).as_ref())?
+                    .as_modifications(store.writable(&subgraph_id)?.as_ref())?
                     .modifications;
 
                 // Bring the modifications into a predictable order (by entity_id)
@@ -722,7 +722,7 @@ async fn entity_store() {
     load_and_set_user_name(&mut module, "steve", "Steve-O");
 
     // We need to empty the cache for the next test
-    let writable = store.writable(&subgraph_id);
+    let writable = store.writable(&subgraph_id).unwrap();
     let cache = std::mem::replace(
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(writable.clone()),

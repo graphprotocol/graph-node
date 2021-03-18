@@ -9,7 +9,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use graph::prelude::*;
+use graph::{components::store::WritableStore, prelude::*};
 
 use super::block_writer::BlockWriter;
 use super::metrics::NetworkIndexerMetrics;
@@ -106,7 +106,8 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
             context
                 .store
                 .writable(&context.subgraph_id)
-                .block_ptr(&context.subgraph_id)
+                .map_err(Error::from)
+                .and_then(|store| store.block_ptr(&context.subgraph_id))
         )
     ))
 }
@@ -293,8 +294,7 @@ fn load_parent_block_from_store(
         // Load the block itself from the store
         future::result(
             context
-                .store
-                .writable(&context.subgraph_id)
+                .writable
                 .get(block_ptr.to_entity_key(context.subgraph_id.clone()))
                 .map_err(|e| e.into())
                 .and_then(|entity| {
@@ -339,7 +339,7 @@ fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> Rev
         "block" => format!("{}", local_head),
     );
 
-    let store = context.store.clone();
+    let writable = context.writable.clone();
     let event_sink = context.event_sink.clone();
     let subgraph_id = context.subgraph_id.clone();
 
@@ -357,8 +357,7 @@ fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> Rev
         load_parent_block_from_store(context, local_head.clone())
             .and_then(move |parent_block| {
                 future::result(
-                    store
-                        .writable(&subgraph_id)
+                    writable
                         .revert_block_operations(subgraph_id.clone(), parent_block.clone())
                         .map_err(|e| e.into())
                         .map(|_| (local_head, parent_block)),
@@ -450,6 +449,7 @@ pub struct Context {
     logger: Logger,
     adapter: Arc<dyn EthereumAdapter>,
     store: Arc<dyn SubgraphStore>,
+    writable: Arc<dyn WritableStore>,
     metrics: Arc<NetworkIndexerMetrics>,
     block_writer: Arc<BlockWriter>,
     event_sink: Sender<NetworkIndexerEvent>,
@@ -1166,10 +1166,13 @@ impl NetworkIndexer {
             metrics_registry.clone(),
         ));
 
+        let writable = store
+            .writable(&subgraph_id)
+            .expect("can get writable store");
         let block_writer = Arc::new(BlockWriter::new(
             subgraph_id.clone(),
             &logger,
-            store.writable(&subgraph_id),
+            writable.clone(),
             stopwatch,
             metrics_registry.clone(),
         ));
@@ -1182,6 +1185,7 @@ impl NetworkIndexer {
             logger,
             adapter,
             store,
+            writable,
             metrics,
             block_writer,
             event_sink,
