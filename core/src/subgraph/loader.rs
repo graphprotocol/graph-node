@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::time::Instant;
 
-use graph::components::store::StoredDynamicDataSource;
+use graph::components::store::{StoredDynamicDataSource, WritableStore};
 use graph::prelude::*;
 
 pub async fn load_dynamic_data_sources(
-    store: &impl SubgraphStore,
+    store: Arc<dyn WritableStore>,
     deployment_id: SubgraphDeploymentId,
     logger: Logger,
     templates: Vec<DataSourceTemplate>,

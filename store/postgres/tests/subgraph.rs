@@ -195,6 +195,7 @@ fn create_subgraph() {
 
         // Sync deployment
         store
+            .writable()
             .deployment_synced(&SubgraphDeploymentId::new(ID2).unwrap())
             .unwrap();
 
@@ -261,6 +262,7 @@ fn create_subgraph() {
 
         // Deploy when current is synced leaves current alone and adds pending
         store
+            .writable()
             .deployment_synced(&SubgraphDeploymentId::new(ID2).unwrap())
             .unwrap();
         let expected = deploy_event(ID3);
@@ -382,6 +384,7 @@ fn status() {
 
         store
             .subgraph_store()
+            .writable()
             .fail_subgraph(id.clone(), error)
             .await
             .unwrap();
@@ -523,6 +526,7 @@ fn fatal_vs_non_fatal() {
 
         store
             .subgraph_store()
+            .writable()
             .fail_subgraph(id.clone(), error())
             .await
             .unwrap();
@@ -566,6 +570,7 @@ fn fail_unfail() {
 
         store
             .subgraph_store()
+            .writable()
             .fail_subgraph(id.clone(), error)
             .await
             .unwrap();
@@ -576,7 +581,7 @@ fn fail_unfail() {
             .unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
-        store.subgraph_store().unfail(&id).unwrap();
+        store.subgraph_store().writable().unfail(&id).unwrap();
 
         // Advance the block ptr to the block of the deleted error.
         transact_entity_operations(

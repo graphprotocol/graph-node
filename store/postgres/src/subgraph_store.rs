@@ -12,7 +12,7 @@ use std::{fmt, io::Write};
 use graph::{
     components::{
         server::index_node::VersionInfo,
-        store::{self, EntityType},
+        store::{self, EntityType, WritableStore as WritableStoreTrait},
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -164,7 +164,62 @@ pub mod unused {
 /// shards.  The actual work is done by code in the `primary` module for
 /// queries against the primary store, and by the `DeploymentStore` for
 /// access to deployment data and metadata.
+#[derive(Clone)]
 pub struct SubgraphStore {
+    inner: Arc<SubgraphStoreInner>,
+}
+
+impl SubgraphStore {
+    /// Create a new store for subgraphs that distributes deployments across
+    /// multiple databases
+    ///
+    /// `stores` is a list of the shards. The tuple contains the shard name, the main
+    /// connection pool for the database, a list of read-only connections
+    /// for the same database, and a list of weights determining how often
+    /// to use the main pool and the read replicas for queries. The list
+    /// of weights must be one longer than the list of read replicas, and
+    /// `weights[0]` is used for the main pool.
+    ///
+    /// All write operations for a shard are performed against the main
+    /// pool. One of the shards must be named `primary`
+    ///
+    /// The `placer` determines where `create_subgraph_deployment` puts a new deployment
+    pub fn new(
+        logger: &Logger,
+        stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
+        placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
+    ) -> Self {
+        Self {
+            inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer)),
+        }
+    }
+
+    pub(crate) fn get_proof_of_indexing<'a>(
+        &self,
+        id: &'a SubgraphDeploymentId,
+        indexer: &'a Option<Address>,
+        block: EthereumBlockPointer,
+    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
+        self.inner.clone().get_proof_of_indexing(id, indexer, block)
+    }
+
+    pub(crate) fn supports_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        id: &'a SubgraphDeploymentId,
+    ) -> DynTryFuture<'a, bool> {
+        self.writable().supports_proof_of_indexing(id)
+    }
+}
+
+impl std::ops::Deref for SubgraphStore {
+    type Target = SubgraphStoreInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+pub struct SubgraphStoreInner {
     logger: Logger,
     primary: ConnectionPool,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
@@ -173,7 +228,7 @@ pub struct SubgraphStore {
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
 }
 
-impl SubgraphStore {
+impl SubgraphStoreInner {
     /// Create a new store for subgraphs that distributes deployments across
     /// multiple databases
     ///
@@ -215,7 +270,7 @@ impl SubgraphStore {
         ));
         let sites = RwLock::new(HashMap::new());
         let logger = logger.new(o!("shard" => PRIMARY_SHARD.to_string()));
-        Self {
+        SubgraphStoreInner {
             logger,
             primary,
             stores,
@@ -681,116 +736,8 @@ impl SubgraphStore {
 
 #[async_trait::async_trait]
 impl SubgraphStoreTrait for SubgraphStore {
-    fn block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
-        let (store, site) = self.store(id)?;
-        store.block_ptr(site.as_ref())
-    }
-
-    fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        id: &'a SubgraphDeploymentId,
-    ) -> DynTryFuture<'a, bool> {
-        let (store, site) = self.store(&id).unwrap();
-        store.clone().supports_proof_of_indexing(site)
-    }
-
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        let (store, site) = self.store(&key.subgraph_id)?;
-        store.get(site, key)
-    }
-
-    fn get_many(
-        &self,
-        id: &SubgraphDeploymentId,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        let (store, site) = self.store(&id)?;
-        store.get_many(site, ids_for_type)
-    }
-
     fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
         Ok(self.primary_conn()?.find_ens_name(hash)?)
-    }
-
-    fn transact_block_operations(
-        &self,
-        id: SubgraphDeploymentId,
-        block_ptr_to: EthereumBlockPointer,
-        mods: Vec<EntityModification>,
-        stopwatch: StopwatchMetrics,
-        data_sources: Vec<StoredDynamicDataSource>,
-        deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
-        assert!(
-            same_subgraph(&mods, &id),
-            "can only transact operations within one shard"
-        );
-        let (store, site) = self.store(&id)?;
-        let event = store.transact_block_operations(
-            site,
-            block_ptr_to,
-            mods,
-            stopwatch,
-            data_sources,
-            deterministic_errors,
-        )?;
-        self.send_store_event(&event)
-    }
-
-    fn revert_block_operations(
-        &self,
-        id: SubgraphDeploymentId,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
-        let event = store.revert_block_operations(site, block_ptr_to)?;
-        self.send_store_event(&event)
-    }
-
-    fn start_subgraph_deployment(
-        &self,
-        logger: &Logger,
-        id: &SubgraphDeploymentId,
-    ) -> Result<(), StoreError> {
-        let (store, site) = self.store(id)?;
-
-        let graft_base = match store.graft_pending(id)? {
-            Some((base_id, base_ptr)) => {
-                let src = self.layout(&base_id)?;
-                Some((src, base_ptr))
-            }
-            None => None,
-        };
-        store.start_subgraph(logger, site.clone(), graft_base)?;
-        self.primary_conn()?.copy_finished(site.as_ref())
-    }
-
-    fn unfail(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        let (store, site) = self.store(id)?;
-        store.unfail(site)
-    }
-
-    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
-        let (store, _) = self.store(&id)?;
-        Ok(store.exists_and_synced(&id)?)
-    }
-
-    fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
-        let event = {
-            // Make sure we drop `pconn` before we call into the deployment
-            // store so that we do not hold two database connections which
-            // might come from the same pool and could therefore deadlock
-            let pconn = self.primary_conn()?;
-            pconn.transaction(|| -> Result<_, Error> {
-                let changes = pconn.promote_deployment(id)?;
-                Ok(StoreEvent::new(changes))
-            })?
-        };
-
-        let (dstore, _) = self.store(id)?;
-        dstore.deployment_synced(id)?;
-
-        Ok(self.primary_conn()?.send_store_event(&event)?)
     }
 
     // FIXME: This method should not get a node_id
@@ -840,32 +787,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        let site = self.site(id)?;
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = pconn.unassign_subgraph(site.as_ref())?;
-            pconn.send_store_event(&StoreEvent::new(changes))
-        })
-    }
-
-    async fn load_dynamic_data_sources(
-        &self,
-        id: SubgraphDeploymentId,
-    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        let (store, _) = self.store(&id)?;
-        store.load_dynamic_data_sources(id).await
-    }
-
-    async fn fail_subgraph(
-        &self,
-        id: SubgraphDeploymentId,
-        error: SubgraphError,
-    ) -> Result<(), StoreError> {
-        let (store, _) = self.store(&id)?;
-        store.fail_subgraph(id, error).await
-    }
-
     fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
         let site = self.site(id)?;
         let primary = self.primary_conn()?;
@@ -894,6 +815,161 @@ impl SubgraphStoreTrait for SubgraphStore {
         let (store, site) = self.store(&id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.api)
+    }
+
+    fn writable(&self) -> Arc<dyn store::WritableStore> {
+        Arc::new(WritableStore {
+            store: self.clone(),
+        })
+    }
+}
+
+struct WritableStore {
+    store: SubgraphStore,
+}
+
+impl std::ops::Deref for WritableStore {
+    type Target = SubgraphStore;
+
+    fn deref(&self) -> &Self::Target {
+        &self.store
+    }
+}
+
+#[async_trait::async_trait]
+impl WritableStoreTrait for WritableStore {
+    fn block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
+        let (store, site) = self.store(id)?;
+        store.block_ptr(site.as_ref())
+    }
+
+    fn start_subgraph_deployment(
+        &self,
+        logger: &Logger,
+        id: &SubgraphDeploymentId,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(id)?;
+
+        let graft_base = match store.graft_pending(id)? {
+            Some((base_id, base_ptr)) => {
+                let src = self.layout(&base_id)?;
+                Some((src, base_ptr))
+            }
+            None => None,
+        };
+        store.start_subgraph(logger, site.clone(), graft_base)?;
+        self.primary_conn()?.copy_finished(site.as_ref())
+    }
+
+    fn revert_block_operations(
+        &self,
+        id: SubgraphDeploymentId,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        let event = store.revert_block_operations(site, block_ptr_to)?;
+        self.send_store_event(&event)
+    }
+
+    fn unfail(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        let (store, site) = self.store(id)?;
+        store.unfail(site)
+    }
+
+    async fn fail_subgraph(
+        &self,
+        id: SubgraphDeploymentId,
+        error: SubgraphError,
+    ) -> Result<(), StoreError> {
+        let (store, _) = self.store(&id)?;
+        store.fail_subgraph(id, error).await
+    }
+
+    fn supports_proof_of_indexing<'a>(
+        self: Arc<Self>,
+        id: &'a SubgraphDeploymentId,
+    ) -> DynTryFuture<'a, bool> {
+        let (store, site) = self.store(&id).unwrap();
+        store.clone().supports_proof_of_indexing(site)
+    }
+
+    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+        let (store, site) = self.store(&key.subgraph_id)?;
+        store.get(site, key)
+    }
+
+    fn transact_block_operations(
+        &self,
+        id: SubgraphDeploymentId,
+        block_ptr_to: EthereumBlockPointer,
+        mods: Vec<EntityModification>,
+        stopwatch: StopwatchMetrics,
+        data_sources: Vec<StoredDynamicDataSource>,
+        deterministic_errors: Vec<SubgraphError>,
+    ) -> Result<(), StoreError> {
+        assert!(
+            same_subgraph(&mods, &id),
+            "can only transact operations within one shard"
+        );
+        let (store, site) = self.store(&id)?;
+        let event = store.transact_block_operations(
+            site,
+            block_ptr_to,
+            mods,
+            stopwatch,
+            data_sources,
+            deterministic_errors,
+        )?;
+        self.send_store_event(&event)
+    }
+
+    fn get_many(
+        &self,
+        id: &SubgraphDeploymentId,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        let (store, site) = self.store(&id)?;
+        store.get_many(site, ids_for_type)
+    }
+
+    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+        let (store, _) = self.store(&id)?;
+        Ok(store.exists_and_synced(&id)?)
+    }
+
+    fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+        let site = self.site(id)?;
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = pconn.unassign_subgraph(site.as_ref())?;
+            pconn.send_store_event(&StoreEvent::new(changes))
+        })
+    }
+
+    async fn load_dynamic_data_sources(
+        &self,
+        id: SubgraphDeploymentId,
+    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        let (store, _) = self.store(&id)?;
+        store.load_dynamic_data_sources(id).await
+    }
+
+    fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
+        let event = {
+            // Make sure we drop `pconn` before we call into the deployment
+            // store so that we do not hold two database connections which
+            // might come from the same pool and could therefore deadlock
+            let pconn = self.primary_conn()?;
+            pconn.transaction(|| -> Result<_, Error> {
+                let changes = pconn.promote_deployment(id)?;
+                Ok(StoreEvent::new(changes))
+            })?
+        };
+
+        let (dstore, _) = self.store(id)?;
+        dstore.deployment_synced(id)?;
+
+        Ok(self.primary_conn()?.send_store_event(&event)?)
     }
 }
 

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use graph::prelude::*;
+use graph::{components::store::WritableStore, prelude::*};
 
 use super::*;
 
@@ -43,7 +43,7 @@ pub struct BlockWriter {
     logger: Logger,
 
     /// Store that manages the network subgraph.
-    store: Arc<dyn SubgraphStore>,
+    store: Arc<dyn WritableStore>,
 
     /// Metrics for analyzing the block writer performance.
     metrics: Arc<BlockWriterMetrics>,
@@ -54,7 +54,7 @@ impl BlockWriter {
     pub fn new(
         subgraph_id: SubgraphDeploymentId,
         logger: &Logger,
-        store: Arc<dyn SubgraphStore>,
+        store: Arc<dyn WritableStore>,
         stopwatch: StopwatchMetrics,
         metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
@@ -97,7 +97,7 @@ impl BlockWriter {
 struct WriteContext {
     logger: Logger,
     subgraph_id: SubgraphDeploymentId,
-    store: Arc<dyn SubgraphStore>,
+    store: Arc<dyn WritableStore>,
     cache: EntityCache,
     metrics: Arc<BlockWriterMetrics>,
 }

@@ -4,10 +4,7 @@ use std::sync::Arc;
 use graph::{
     components::{
         server::index_node::VersionInfo,
-        store::{
-            BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore,
-            SubgraphStore as SubgraphStoreTrait,
-        },
+        store::{BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore},
     },
     constraint_violation,
     data::subgraph::status,

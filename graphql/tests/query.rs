@@ -1571,6 +1571,7 @@ fn query_detects_reorg() {
         // Revert one block
         STORE
             .subgraph_store()
+            .writable()
             .revert_block_operations(id.clone(), GENESIS_PTR.clone())
             .unwrap();
         // A query is still fine since we implicitly query at block 0; we were
@@ -1759,6 +1760,7 @@ fn non_fatal_errors() {
             // Test error reverts.
             STORE
                 .subgraph_store()
+                .writable()
                 .revert_block_operations(id.clone(), BLOCK_ONE.clone())
                 .unwrap();
             let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";

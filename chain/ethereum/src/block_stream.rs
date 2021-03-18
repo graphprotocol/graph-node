@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use graph::components::{
     ethereum::{blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities},
-    store::BlockStore,
+    store::{BlockStore, WritableStore},
 };
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
@@ -80,8 +80,8 @@ enum ReconciliationStep {
     Done,
 }
 
-struct BlockStreamContext<S, C> {
-    subgraph_store: Arc<S>,
+struct BlockStreamContext<C> {
+    subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<C>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     node_id: NodeId,
@@ -103,7 +103,7 @@ struct BlockStreamContext<S, C> {
     max_block_range_size: BlockNumber,
 }
 
-impl<S, C> Clone for BlockStreamContext<S, C> {
+impl<C> Clone for BlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
             subgraph_store: self.subgraph_store.cheap_clone(),
@@ -126,11 +126,11 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
     }
 }
 
-pub struct BlockStream<S, C> {
+pub struct BlockStream<C> {
     state: BlockStreamState,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
-    ctx: BlockStreamContext<S, C>,
+    ctx: BlockStreamContext<C>,
 }
 
 // This is the same as `ReconciliationStep` but without retries.
@@ -143,13 +143,12 @@ enum NextBlocks {
     Done,
 }
 
-impl<S, C> BlockStream<S, C>
+impl<C> BlockStream<C>
 where
-    S: SubgraphStore,
     C: ChainStore,
 {
     pub fn new(
-        subgraph_store: Arc<S>,
+        subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<C>,
         eth_adapter: Arc<dyn EthereumAdapter>,
         node_id: NodeId,
@@ -191,9 +190,8 @@ where
     }
 }
 
-impl<S, C> BlockStreamContext<S, C>
+impl<C> BlockStreamContext<C>
 where
-    S: SubgraphStore,
     C: ChainStore,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
@@ -587,9 +585,9 @@ where
     }
 }
 
-impl<S: SubgraphStore, C: ChainStore> BlockStreamTrait for BlockStream<S, C> {}
+impl<C: ChainStore> BlockStreamTrait for BlockStream<C> {}
 
-impl<S: SubgraphStore, C: ChainStore> Stream for BlockStream<S, C> {
+impl<C: ChainStore> Stream for BlockStream<C> {
     type Item = BlockStreamEvent;
     type Error = Error;
 
@@ -747,8 +745,8 @@ impl<S: SubgraphStore, C: ChainStore> Stream for BlockStream<S, C> {
     }
 }
 
-pub struct BlockStreamBuilder<S, B, M> {
-    subgraph_store: Arc<S>,
+pub struct BlockStreamBuilder<B, M> {
+    subgraph_store: Arc<dyn SubgraphStore>,
     block_store: Arc<B>,
     eth_networks: EthereumNetworks,
     node_id: NodeId,
@@ -756,7 +754,7 @@ pub struct BlockStreamBuilder<S, B, M> {
     metrics_registry: Arc<M>,
 }
 
-impl<S, B, M> Clone for BlockStreamBuilder<S, B, M> {
+impl<B, M> Clone for BlockStreamBuilder<B, M> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
@@ -769,14 +767,13 @@ impl<S, B, M> Clone for BlockStreamBuilder<S, B, M> {
     }
 }
 
-impl<S, B, M> BlockStreamBuilder<S, B, M>
+impl<B, M> BlockStreamBuilder<B, M>
 where
-    S: SubgraphStore,
     B: BlockStore,
     M: MetricsRegistry,
 {
     pub fn new(
-        subgraph_store: Arc<S>,
+        subgraph_store: Arc<dyn SubgraphStore>,
         block_store: Arc<B>,
         eth_networks: EthereumNetworks,
         node_id: NodeId,
@@ -795,13 +792,12 @@ where
 }
 
 #[async_trait]
-impl<S, B, M> BlockStreamBuilderTrait for BlockStreamBuilder<S, B, M>
+impl<B, M> BlockStreamBuilderTrait for BlockStreamBuilder<B, M>
 where
-    S: SubgraphStore,
     B: BlockStore,
     M: MetricsRegistry,
 {
-    type Stream = BlockStream<S, B::ChainStore>;
+    type Stream = BlockStream<B::ChainStore>;
 
     fn build(
         &self,
@@ -843,7 +839,7 @@ where
 
         // Create the actual subgraph-specific block stream
         BlockStream::new(
-            self.subgraph_store.clone(),
+            self.subgraph_store.writable(),
             chain_store,
             eth_adapter.clone(),
             self.node_id.clone(),

@@ -1,10 +1,6 @@
 use mockall::predicate::*;
 use mockall::*;
-use std::collections::BTreeMap;
 
-use graph::components::store::EntityType;
-use graph::components::store::StoredDynamicDataSource;
-use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
 use web3::types::H256;
 
@@ -57,61 +53,7 @@ mock! {
 
 #[async_trait]
 impl SubgraphStore for MockStore {
-    fn block_ptr(
-        &self,
-        _subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error> {
-        unimplemented!()
-    }
-
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        self.get_mock(key)
-    }
-
-    fn get_many(
-        &self,
-        _subgraph_id: &SubgraphDeploymentId,
-        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        unimplemented!()
-    }
-
-    fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        _subgraph_id: &'a SubgraphDeploymentId,
-    ) -> DynTryFuture<'a, bool> {
-        unimplemented!()
-    }
-
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        unimplemented!()
-    }
-
-    fn transact_block_operations(
-        &self,
-        _subgraph_id: SubgraphDeploymentId,
-        _block_ptr_to: EthereumBlockPointer,
-        _mods: Vec<EntityModification>,
-        _stopwatch: StopwatchMetrics,
-        _data_sources: Vec<StoredDynamicDataSource>,
-        _deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn revert_block_operations(
-        &self,
-        _subgraph_id: SubgraphDeploymentId,
-        _block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    async fn fail_subgraph(
-        &self,
-        _: SubgraphDeploymentId,
-        _: SubgraphError,
-    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -139,37 +81,6 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn unassign_subgraph(&self, _: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn start_subgraph_deployment(
-        &self,
-        _logger: &Logger,
-        _subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn unfail(&self, _: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn is_deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
-        unimplemented!()
-    }
-
-    fn deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    async fn load_dynamic_data_sources(
-        &self,
-        _: SubgraphDeploymentId,
-    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        unimplemented!()
-    }
-
     fn assigned_node(&self, _: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
         unimplemented!()
     }
@@ -188,5 +99,9 @@ impl SubgraphStore for MockStore {
 
     fn api_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
         unimplemented!()
+    }
+
+    fn writable(&self) -> Arc<dyn graph::components::store::WritableStore> {
+        todo!()
     }
 }

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use graph::prelude::{
-    Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, Value,
+    Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, SubgraphStore, Value,
 };
 use graph::{components::store::EntityType, mock::MockStore};
 
@@ -22,7 +22,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[test]
 fn empty_cache_modifications() {
-    let store = Arc::new(MockStore::new());
+    let store = MockStore::new().writable();
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications(&*store);
     assert_eq!(result.unwrap().modifications, vec![]);

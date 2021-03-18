@@ -1,6 +1,6 @@
-use crate::data::subgraph::schema::SubgraphError;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
+use crate::{components::store::WritableStore, data::subgraph::schema::SubgraphError};
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo {
@@ -25,7 +25,7 @@ pub struct BlockState {
 
 impl BlockState {
     pub fn new(
-        store: Arc<dyn SubgraphStore>,
+        store: Arc<dyn WritableStore>,
         lfu_cache: LfuCache<EntityKey, Option<Entity>>,
     ) -> Self {
         BlockState {

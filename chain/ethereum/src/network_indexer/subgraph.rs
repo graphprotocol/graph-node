@@ -1,9 +1,10 @@
 use super::*;
 use futures::future::FutureResult;
+use graph::components::store::WritableStore;
 use std::collections::BTreeSet;
 
 fn check_subgraph_exists(
-    store: Arc<dyn SubgraphStore>,
+    store: Arc<dyn WritableStore>,
     subgraph_id: SubgraphDeploymentId,
 ) -> impl Future<Item = bool, Error = Error> {
     future::result(store.is_deployed(&subgraph_id))
@@ -57,7 +58,7 @@ pub fn ensure_subgraph_exists(
 
     let logger_for_created = logger.clone();
 
-    check_subgraph_exists(store.clone(), subgraph_id.clone())
+    check_subgraph_exists(store.writable(), subgraph_id.clone())
         .from_err()
         .and_then(move |subgraph_exists| {
             if subgraph_exists {
