@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use web3::types::Log;
 
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;

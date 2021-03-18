@@ -8,7 +8,6 @@ use std::str::FromStr;
 
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
-use web3::types::H256;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -147,81 +146,28 @@ where
         block: &Arc<LightEthereumBlock>,
         trigger: EthereumTrigger,
         mut state: BlockState,
-        poi: SharedProofOfIndexing,
+        proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
-        match trigger {
-            EthereumTrigger::Log(log) => {
-                let log = Arc::new(log);
-                let matching_hosts = hosts.iter().filter(|host| host.matches_log(&log));
-                let hosts_count = matching_hosts.clone().count();
+        for host in hosts {
+            let mapping_trigger = match host.match_and_decode(&trigger, &block, logger)? {
+                // Trigger matches and was decoded as a mapping trigger.
+                Some(mapping_trigger) => mapping_trigger,
 
-                if hosts_count > 1 {
-                    info!(
-                        logger,
-                        "{} matching runtime hosts found for log trigger.", hosts_count;
-                        "address" => &log.address.to_string(),
-                        "topic0" => &log.topics.iter().next().unwrap_or(&H256::zero()).to_string(),
-                        "transaction" => log.transaction_hash.unwrap_or(H256::zero()).to_string(),
-                    );
-                }
+                // Trigger does not match, do not process it.
+                None => continue,
+            };
 
-                // Process the log in each host in the same order the corresponding data
-                // sources appear in the subgraph manifest
-                for (i, host) in matching_hosts.enumerate() {
-                    let host_context = format!("{}/{}", i + 1, hosts_count);
-                    let logger = logger.new(o!("runtime_host" => host_context));
-                    state = host
-                        .process_log(&logger, block, &log, state, poi.cheap_clone())
-                        .await?;
-                }
-            }
-            EthereumTrigger::Call(call) => {
-                let call = Arc::new(call);
-                let matching_hosts = hosts.iter().filter(|host| host.matches_call(&call));
-                let hosts_count = matching_hosts.clone().count();
-
-                if hosts_count > 1 {
-                    info!(
-                        logger,
-                        "{} matching runtime hosts found for call trigger.", hosts_count;
-                        "from" => &call.from.to_string(),
-                        "to" => &call.to.to_string(),
-                        "transaction" => &call.transaction_hash.map(|hash| hash.to_string()).unwrap_or("unkown".to_string()),
-                    );
-                }
-
-                for (i, host) in matching_hosts.enumerate() {
-                    let host_context = format!("{}/{}", i + 1, hosts_count);
-                    let logger = logger.new(o!("runtime_host" => host_context));
-                    state = host
-                        .process_call(&logger, block, &call, state, poi.cheap_clone())
-                        .await?;
-                }
-            }
-            EthereumTrigger::Block(ptr, trigger_type) => {
-                let matching_hosts = hosts
-                    .iter()
-                    .filter(|host| host.matches_block(&trigger_type, ptr.number));
-                let hosts_count = matching_hosts.clone().count();
-
-                if hosts_count > 1 {
-                    info!(
-                        logger,
-                        "{} matching runtime hosts found for block trigger.", hosts_count;
-                        "number" => &ptr.number,
-                        "hash" => &ptr.number,
-                    );
-                }
-
-                for (i, host) in matching_hosts.enumerate() {
-                    let host_context = format!("{}/{}", i + 1, hosts_count);
-                    let logger = logger.new(o!("runtime_host" => host_context));
-                    state = host
-                        .process_block(&logger, block, &trigger_type, state, poi.cheap_clone())
-                        .await?;
-                }
-            }
+            state = host
+                .process_mapping_trigger(
+                    logger,
+                    block,
+                    mapping_trigger,
+                    state,
+                    proof_of_indexing.cheap_clone(),
+                )
+                .await?;
         }
+
         Ok(state)
     }
 
