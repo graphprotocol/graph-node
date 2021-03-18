@@ -12,7 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
 use lazy_static::lazy_static;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
 use std::fmt::{self, Display};
@@ -1284,15 +1284,15 @@ impl<'a> InsertQuery<'a> {
 
     /// Build the column name list using the subset of all keys among present entities.
     fn unique_columns(table: &'a Table, entities: &'a Vec<(EntityKey, Entity)>) -> Vec<&'a Column> {
-        let mut btreemap = BTreeMap::new();
+        let mut hashmap = HashMap::new();
         for (_key, entity) in entities.iter() {
             for column in &table.columns {
                 if entity.get(&column.field).is_some() {
-                    btreemap.entry(column.name.as_str()).or_insert(column);
+                    hashmap.entry(column.name.as_str()).or_insert(column);
                 }
             }
         }
-        btreemap.into_iter().map(|(_key, value)| value).collect()
+        hashmap.into_iter().map(|(_key, value)| value).collect()
     }
 }
 
