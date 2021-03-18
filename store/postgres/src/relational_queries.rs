@@ -1233,7 +1233,8 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    entities: &'a mut Vec<(EntityKey, Entity)>,
+    entities: &'a Vec<(EntityKey, Entity)>,
+    unique_columns: Vec<&'a Column>,
     block: BlockNumber,
 }
 
@@ -1271,12 +1272,27 @@ impl<'a> InsertQuery<'a> {
                 }
             }
         }
+        let unique_columns = InsertQuery::unique_columns(table, entities);
 
         Ok(InsertQuery {
             table,
             entities,
+            unique_columns,
             block,
         })
+    }
+
+    /// Build the column name list using the subset of all keys among present entities.
+    fn unique_columns(table: &'a Table, entities: &'a Vec<(EntityKey, Entity)>) -> Vec<&'a Column> {
+        let mut btreemap = BTreeMap::new();
+        for (_key, entity) in entities.iter() {
+            for column in &table.columns {
+                if entity.get(&column.field).is_some() {
+                    btreemap.entry(column.name.as_str()).or_insert(column);
+                }
+            }
+        }
+        btreemap.into_iter().map(|(_key, value)| value).collect()
     }
 }
 
@@ -1293,19 +1309,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
 
         out.push_sql("(");
 
-        // Build the column name list using the subset of all keys among our entities.
-        let unique_column_names: Vec<&Column> = {
-            let mut btreemap = BTreeMap::new();
-            for (_key, entity) in self.entities.iter() {
-                for column in &self.table.columns {
-                    if entity.get(&column.field).is_some() {
-                        btreemap.entry(column.name.as_str()).or_insert(column);
-                    }
-                }
-            }
-            btreemap.into_iter().map(|(_key, value)| value).collect()
-        };
-        for &column in unique_column_names.iter() {
+        for &column in &self.unique_columns {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(", ");
         }
@@ -1317,7 +1321,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         let mut iter = self.entities.iter().map(|(_key, entity)| entity).peekable();
         while let Some(entity) = iter.next() {
             out.push_sql("(");
-            for column in &unique_column_names {
+            for column in &self.unique_columns {
                 // If the column name is not within this entity's fields, we will issue the
                 // null value in its place
                 if let Some(value) = entity.get(&column.field) {
