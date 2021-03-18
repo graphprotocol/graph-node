@@ -40,7 +40,7 @@ fn insert_modifications() {
     // operation as an insert.
     store
         .expect_get_many_mock()
-        .returning(|_, _| Ok(BTreeMap::new()));
+        .returning(|_| Ok(BTreeMap::new()));
 
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store.clone());
@@ -79,7 +79,7 @@ fn overwrite_modifications() {
 
     // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
-    store.expect_get_many_mock().returning(|_, _| {
+    store.expect_get_many_mock().returning(|_| {
         let mut map = BTreeMap::new();
 
         map.insert(
@@ -146,7 +146,7 @@ fn consecutive_modifications() {
 
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
-    store.expect_get_many_mock().returning(|_, _| {
+    store.expect_get_many_mock().returning(|_| {
         let mut map = BTreeMap::new();
 
         map.insert(

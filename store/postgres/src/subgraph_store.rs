@@ -208,7 +208,7 @@ impl SubgraphStore {
         id: &'a SubgraphDeploymentId,
     ) -> DynTryFuture<'a, bool> {
         match self.writable(id) {
-            Ok(writable) => writable.supports_proof_of_indexing(id),
+            Ok(writable) => writable.supports_proof_of_indexing(),
             Err(e) => Box::pin(std::future::ready(Err(e.into()))),
         }
     }
@@ -327,6 +327,12 @@ impl SubgraphStoreInner {
             .get(&site.shard)
             .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))?;
         Ok((store, site))
+    }
+
+    fn for_site(&self, site: &Site) -> Result<&Arc<DeploymentStore>, StoreError> {
+        self.stores
+            .get(&site.shard)
+            .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))
     }
 
     fn layout(&self, id: &SubgraphDeploymentId) -> Result<Arc<Layout>, StoreError> {
@@ -825,10 +831,12 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn writable(
         &self,
-        _id: &SubgraphDeploymentId,
+        id: &SubgraphDeploymentId,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
+        let site = self.site(id)?;
         Ok(Arc::new(WritableStore {
             store: self.clone(),
+            site,
         }))
     }
 
@@ -843,6 +851,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
 struct WritableStore {
     store: SubgraphStore,
+    site: Arc<Site>,
 }
 
 impl std::ops::Deref for WritableStore {
@@ -853,61 +862,60 @@ impl std::ops::Deref for WritableStore {
     }
 }
 
+impl WritableStore {
+    fn writable(&self) -> Result<&Arc<DeploymentStore>, StoreError> {
+        self.store.for_site(self.site.as_ref())
+    }
+}
+
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
-    fn block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
-        let (store, site) = self.store(id)?;
-        store.block_ptr(site.as_ref())
+    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+        let store = self.writable()?;
+        store.block_ptr(self.site.as_ref())
     }
 
-    fn start_subgraph_deployment(
-        &self,
-        logger: &Logger,
-        id: &SubgraphDeploymentId,
-    ) -> Result<(), StoreError> {
-        let (store, site) = self.store(id)?;
+    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
+        let store = self.writable()?;
 
-        let graft_base = match store.graft_pending(id)? {
+        let graft_base = match store.graft_pending(&self.site.deployment)? {
             Some((base_id, base_ptr)) => {
                 let src = self.layout(&base_id)?;
                 Some((src, base_ptr))
             }
             None => None,
         };
-        store.start_subgraph(logger, site.clone(), graft_base)?;
-        self.primary_conn()?.copy_finished(site.as_ref())
+        store.start_subgraph(logger, self.site.clone(), graft_base)?;
+        self.primary_conn()?.copy_finished(self.site.as_ref())
     }
 
     fn revert_block_operations(
         &self,
-        id: SubgraphDeploymentId,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
-        let event = store.revert_block_operations(site, block_ptr_to)?;
+        let store = self.writable()?;
+        let event = store.revert_block_operations(self.site.clone(), block_ptr_to)?;
         self.send_store_event(&event)
     }
 
-    fn unfail(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        let (store, site) = self.store(id)?;
-        store.unfail(site)
+    fn unfail(&self) -> Result<(), StoreError> {
+        let store = self.writable()?;
+        store.unfail(self.site.clone())
     }
 
-    async fn fail_subgraph(
-        &self,
-        id: SubgraphDeploymentId,
-        error: SubgraphError,
-    ) -> Result<(), StoreError> {
-        let (store, _) = self.store(&id)?;
-        store.fail_subgraph(id, error).await
+    async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {
+        let store = self.writable()?;
+        store
+            .fail_subgraph(self.site.deployment.clone(), error)
+            .await
     }
 
-    fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        id: &'a SubgraphDeploymentId,
-    ) -> DynTryFuture<'a, bool> {
-        let (store, site) = self.store(&id).unwrap();
-        store.clone().supports_proof_of_indexing(site)
+    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool> {
+        let store = match self.writable() {
+            Ok(store) => store,
+            Err(e) => return Box::pin(std::future::ready(Err(e.into()))),
+        };
+        store.clone().supports_proof_of_indexing(self.site.clone())
     }
 
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
@@ -917,7 +925,6 @@ impl WritableStoreTrait for WritableStore {
 
     fn transact_block_operations(
         &self,
-        id: SubgraphDeploymentId,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
@@ -925,12 +932,12 @@ impl WritableStoreTrait for WritableStore {
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
         assert!(
-            same_subgraph(&mods, &id),
+            same_subgraph(&mods, &self.site.deployment),
             "can only transact operations within one shard"
         );
-        let (store, site) = self.store(&id)?;
+        let store = self.writable()?;
         let event = store.transact_block_operations(
-            site,
+            self.site.clone(),
             block_ptr_to,
             mods,
             stopwatch,
@@ -942,49 +949,46 @@ impl WritableStoreTrait for WritableStore {
 
     fn get_many(
         &self,
-        id: &SubgraphDeploymentId,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        let (store, site) = self.store(&id)?;
-        store.get_many(site, ids_for_type)
+        let store = self.writable()?;
+        store.get_many(self.site.clone(), ids_for_type)
     }
 
-    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
-        let (store, _) = self.store(&id)?;
-        Ok(store.exists_and_synced(&id)?)
+    fn is_deployment_synced(&self) -> Result<bool, Error> {
+        let store = self.writable()?;
+        Ok(store.exists_and_synced(&self.site.deployment)?)
     }
 
-    fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        let site = self.site(id)?;
+    fn unassign_subgraph(&self) -> Result<(), StoreError> {
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = pconn.unassign_subgraph(site.as_ref())?;
+            let changes = pconn.unassign_subgraph(self.site.as_ref())?;
             pconn.send_store_event(&StoreEvent::new(changes))
         })
     }
 
-    async fn load_dynamic_data_sources(
-        &self,
-        id: SubgraphDeploymentId,
-    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        let (store, _) = self.store(&id)?;
-        store.load_dynamic_data_sources(id).await
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        let store = self.writable()?;
+        store
+            .load_dynamic_data_sources(self.site.deployment.clone())
+            .await
     }
 
-    fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error> {
+    fn deployment_synced(&self) -> Result<(), Error> {
         let event = {
             // Make sure we drop `pconn` before we call into the deployment
             // store so that we do not hold two database connections which
             // might come from the same pool and could therefore deadlock
             let pconn = self.primary_conn()?;
             pconn.transaction(|| -> Result<_, Error> {
-                let changes = pconn.promote_deployment(id)?;
+                let changes = pconn.promote_deployment(&self.site.deployment)?;
                 Ok(StoreEvent::new(changes))
             })?
         };
 
-        let (dstore, _) = self.store(id)?;
-        dstore.deployment_synced(id)?;
+        let dstore = self.writable()?;
+        dstore.deployment_synced(&self.site.deployment)?;
 
         Ok(self.primary_conn()?.send_store_event(&event)?)
     }

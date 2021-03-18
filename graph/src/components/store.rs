@@ -915,42 +915,25 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error>;
+    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
     /// Start an existing subgraph deployment.
-    fn start_subgraph_deployment(
-        &self,
-        logger: &Logger,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<(), StoreError>;
+    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
-    fn revert_block_operations(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError>;
+    fn revert_block_operations(&self, block_ptr_to: EthereumBlockPointer)
+        -> Result<(), StoreError>;
 
     /// Remove the fatal error from a subgraph and check if it is healthy or unhealthy.
-    fn unfail(&self, subgraph_id: &SubgraphDeploymentId) -> Result<(), StoreError>;
+    fn unfail(&self) -> Result<(), StoreError>;
 
     /// Set subgraph status to failed with the given error as the cause.
-    async fn fail_subgraph(
-        &self,
-        id: SubgraphDeploymentId,
-        error: SubgraphError,
-    ) -> Result<(), StoreError>;
+    async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
 
-    fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a SubgraphDeploymentId,
-    ) -> DynTryFuture<'a, bool>;
+    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool>;
 
     /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
@@ -961,7 +944,6 @@ pub trait WritableStore: Send + Sync + 'static {
     /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
     fn transact_block_operations(
         &self,
-        subgraph_id: SubgraphDeploymentId,
         block_ptr_to: EthereumBlockPointer,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
@@ -973,26 +955,22 @@ pub trait WritableStore: Send + Sync + 'static {
     /// entities by type.
     fn get_many(
         &self,
-        subgraph_id: &SubgraphDeploymentId,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
 
     /// The deployment `id` finished syncing, mark it as synced in the database
     /// and promote it to the current version in the subgraphs where it was the
     /// pending version so far
-    fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), Error>;
+    fn deployment_synced(&self) -> Result<(), Error>;
 
     /// Return true if the deployment with the given id is fully synced,
     /// and return false otherwise. Errors from the store are passed back up
-    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
+    fn is_deployment_synced(&self) -> Result<bool, Error>;
 
-    fn unassign_subgraph(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError>;
+    fn unassign_subgraph(&self) -> Result<(), StoreError>;
 
     /// Load the dynamic data sources for the given deployment
-    async fn load_dynamic_data_sources(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
-    ) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
 }
 
 #[async_trait]
@@ -1017,7 +995,6 @@ mock! {
     pub Store {
         fn get_many_mock<'a>(
             &self,
-            _subgraph_id: &SubgraphDeploymentId,
             _ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
         ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
     }
@@ -1090,42 +1067,27 @@ impl SubgraphStore for MockStore {
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl WritableStore for MockStore {
-    fn block_ptr(&self, _: &SubgraphDeploymentId) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
         unimplemented!()
     }
 
-    fn start_subgraph_deployment(
-        &self,
-        _: &Logger,
-        _: &SubgraphDeploymentId,
-    ) -> Result<(), StoreError> {
+    fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    fn revert_block_operations(
-        &self,
-        _: SubgraphDeploymentId,
-        _: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    fn revert_block_operations(&self, _: EthereumBlockPointer) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    fn unfail(&self, _: &SubgraphDeploymentId) -> Result<(), StoreError> {
+    fn unfail(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    async fn fail_subgraph(
-        &self,
-        _: SubgraphDeploymentId,
-        _: SubgraphError,
-    ) -> Result<(), StoreError> {
+    async fn fail_subgraph(&self, _: SubgraphError) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        _: &'a SubgraphDeploymentId,
-    ) -> DynTryFuture<'a, bool> {
+    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool> {
         unimplemented!()
     }
 
@@ -1135,7 +1097,6 @@ impl WritableStore for MockStore {
 
     fn transact_block_operations(
         &self,
-        _: SubgraphDeploymentId,
         _: EthereumBlockPointer,
         _: Vec<EntityModification>,
         _: StopwatchMetrics,
@@ -1147,28 +1108,24 @@ impl WritableStore for MockStore {
 
     fn get_many(
         &self,
-        subgraph_id: &SubgraphDeploymentId,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.get_many_mock(subgraph_id, ids_for_type)
+        self.get_many_mock(ids_for_type)
     }
 
-    fn is_deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
+    fn is_deployment_synced(&self) -> Result<bool, Error> {
         unimplemented!()
     }
 
-    fn unassign_subgraph(&self, _: &SubgraphDeploymentId) -> Result<(), StoreError> {
+    fn unassign_subgraph(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    async fn load_dynamic_data_sources(
-        &self,
-        _: SubgraphDeploymentId,
-    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         unimplemented!()
     }
 
-    fn deployment_synced(&self, _: &SubgraphDeploymentId) -> Result<(), Error> {
+    fn deployment_synced(&self) -> Result<(), Error> {
         unimplemented!()
     }
 }
@@ -1614,7 +1571,7 @@ impl EntityCache {
         }
 
         for (subgraph_id, keys) in missing_by_subgraph {
-            for (entity_type, entities) in store.get_many(subgraph_id, keys)? {
+            for (entity_type, entities) in store.get_many(keys)? {
                 for entity in entities {
                     let key = EntityKey {
                         subgraph_id: subgraph_id.clone(),

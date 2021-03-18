@@ -27,8 +27,8 @@ use graph::{
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
     deployment_state, execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline,
-    run_test_sequentially, transact_entity_operations, transact_errors, BLOCK_ONE, GENESIS_PTR,
-    LOAD_MANAGER, LOGGER, STORE, SUBSCRIPTION_MANAGER,
+    revert_block, run_test_sequentially, transact_entity_operations, transact_errors, BLOCK_ONE,
+    GENESIS_PTR, LOAD_MANAGER, LOGGER, STORE, SUBSCRIPTION_MANAGER,
 };
 
 const NETWORK_NAME: &str = "fake_network";
@@ -1569,12 +1569,7 @@ fn query_detects_reorg() {
         );
 
         // Revert one block
-        STORE
-            .subgraph_store()
-            .writable(&id)
-            .expect("can get writable")
-            .revert_block_operations(id.clone(), GENESIS_PTR.clone())
-            .unwrap();
+        revert_block(&*STORE, &id, &*GENESIS_PTR);
         // A query is still fine since we implicitly query at block 0; we were
         // at block 1 when we got `state`, and reorged once by one block, which
         // can not affect block 0, and it's therefore ok to query at block 0
@@ -1759,12 +1754,7 @@ fn non_fatal_errors() {
             assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
             // Test error reverts.
-            STORE
-                .subgraph_store()
-                .writable(&id)
-                .expect("can get writable")
-                .revert_block_operations(id.clone(), BLOCK_ONE.clone())
-                .unwrap();
+            revert_block(&*STORE, &id, &*BLOCK_ONE);
             let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
             let query = graphql_parser::parse_query(query).unwrap().into_static();
             let result = execute_query_document(&id, query).await;

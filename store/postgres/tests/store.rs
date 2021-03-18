@@ -1263,7 +1263,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let loaded_dds = subgraph_store
             .writable(&*TEST_SUBGRAPH_ID)
             .expect("can get writable")
-            .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
+            .load_dynamic_data_sources()
             .await
             .unwrap();
         assert_eq!(1, loaded_dds.len());
@@ -1287,7 +1287,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let loaded_dds = subgraph_store
             .writable(&*TEST_SUBGRAPH_ID)
             .expect("can get writable")
-            .load_dynamic_data_sources(TEST_SUBGRAPH_ID.clone())
+            .load_dynamic_data_sources()
             .await
             .unwrap();
         assert_eq!(0, loaded_dds.len());
@@ -1590,7 +1590,6 @@ fn handle_large_string_with_index() {
             .writable(&*TEST_SUBGRAPH_ID)
             .expect("can get writable")
             .transact_block_operations(
-                TEST_SUBGRAPH_ID.clone(),
                 TEST_BLOCK_3_PTR.clone(),
                 vec![
                     make_insert_op(ONE, &long_text),

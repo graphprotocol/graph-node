@@ -155,7 +155,7 @@ fn create_subgraph() {
         store
             .writable(&id)
             .expect("can get writable")
-            .deployment_synced(&id)
+            .deployment_synced()
             .unwrap();
     }
 
@@ -390,7 +390,7 @@ fn status() {
             .subgraph_store()
             .writable(&id)
             .expect("can get writable")
-            .fail_subgraph(id.clone(), error)
+            .fail_subgraph(error)
             .await
             .unwrap();
         let infos = store
@@ -533,7 +533,7 @@ fn fatal_vs_non_fatal() {
             .subgraph_store()
             .writable(&id)
             .expect("can get writable")
-            .fail_subgraph(id.clone(), error())
+            .fail_subgraph(error())
             .await
             .unwrap();
 
@@ -578,7 +578,7 @@ fn fail_unfail() {
             .subgraph_store()
             .writable(&id)
             .expect("can get writable");
-        writable.fail_subgraph(id.clone(), error).await.unwrap();
+        writable.fail_subgraph(error).await.unwrap();
 
         assert!(!query_store
             .has_non_fatal_errors(id.cheap_clone(), None)
@@ -586,7 +586,7 @@ fn fail_unfail() {
             .unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
-        writable.unfail(&id).unwrap();
+        writable.unfail().unwrap();
 
         // Advance the block ptr to the block of the deleted error.
         transact_entity_operations(

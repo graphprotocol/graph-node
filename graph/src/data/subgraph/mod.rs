@@ -757,7 +757,7 @@ impl Graft {
             Ok(store) => store,
             Err(e) => return gbi(e.to_string()),
         };
-        match store.block_ptr(&self.base) {
+        match store.block_ptr() {
             Err(e) => gbi(e.to_string()),
             Ok(None) => gbi(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",

@@ -20,10 +20,7 @@ pub async fn load_dynamic_data_sources(
     );
     let mut data_sources: Vec<DataSource> = vec![];
 
-    for stored in store
-        .load_dynamic_data_sources(deployment_id.clone())
-        .await?
-    {
+    for stored in store.load_dynamic_data_sources().await? {
         let StoredDynamicDataSource {
             name,
             source,

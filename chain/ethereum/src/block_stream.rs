@@ -239,7 +239,7 @@ where
                 return Box::new(future::err(e)) as Box<dyn Future<Item = _, Error = _> + Send>
             }
         };
-        let subgraph_ptr = match ctx.subgraph_store.block_ptr(&ctx.subgraph_id) {
+        let subgraph_ptr = match ctx.subgraph_store.block_ptr() {
             Ok(ptr) => ptr,
             Err(e) => {
                 return Box::new(future::err(e)) as Box<dyn Future<Item = _, Error = _> + Send>
@@ -569,7 +569,7 @@ where
     /// caught up to the head block pointer.
     fn update_subgraph_synced_status(&self) -> Result<(), Error> {
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.subgraph_store.block_ptr(&self.subgraph_id)?;
+        let subgraph_ptr = self.subgraph_store.block_ptr()?;
 
         if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
             // Not synced yet
@@ -580,7 +580,7 @@ where
             // Stop recording time-to-sync metrics.
             self.metrics.stopwatch.disable();
 
-            self.subgraph_store.deployment_synced(&self.subgraph_id)
+            self.subgraph_store.deployment_synced()
         }
     }
 }

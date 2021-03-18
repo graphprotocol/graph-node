@@ -179,7 +179,7 @@ fn create_subgraph(
     )?;
     SUBGRAPH_STORE
         .writable(&subgraph_id)?
-        .start_subgraph_deployment(&*LOGGER, &subgraph_id)
+        .start_subgraph_deployment(&*LOGGER)
 }
 
 pub fn create_test_subgraph(subgraph_id: &SubgraphDeploymentId, schema: &str) {
@@ -222,7 +222,6 @@ pub fn transact_errors(
         .subgraph_store()
         .writable(&subgraph_id)?
         .transact_block_operations(
-            subgraph_id,
             block_ptr_to,
             Vec::new(),
             stopwatch_metrics,
@@ -266,7 +265,6 @@ pub fn transact_entities_and_dynamic_data_sources(
         .map(|ds| StoredDynamicDataSource::from(ds))
         .collect();
     store.transact_block_operations(
-        subgraph_id,
         block_ptr_to,
         mods,
         stopwatch_metrics,
@@ -284,7 +282,7 @@ pub fn revert_block(
         .subgraph_store()
         .writable(subgraph_id)
         .expect("can get writable")
-        .revert_block_operations(subgraph_id.clone(), ptr.clone())
+        .revert_block_operations(ptr.clone())
         .unwrap();
 }
 

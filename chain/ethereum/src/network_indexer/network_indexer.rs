@@ -107,7 +107,7 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
                 .store
                 .writable(&context.subgraph_id)
                 .map_err(Error::from)
-                .and_then(|store| store.block_ptr(&context.subgraph_id))
+                .and_then(|store| store.block_ptr())
         )
     ))
 }
@@ -341,7 +341,6 @@ fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> Rev
 
     let writable = context.writable.clone();
     let event_sink = context.event_sink.clone();
-    let subgraph_id = context.subgraph_id.clone();
 
     let logger_for_complete = context.logger.clone();
 
@@ -358,7 +357,7 @@ fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> Rev
             .and_then(move |parent_block| {
                 future::result(
                     writable
-                        .revert_block_operations(subgraph_id.clone(), parent_block.clone())
+                        .revert_block_operations(parent_block.clone())
                         .map_err(|e| e.into())
                         .map(|_| (local_head, parent_block)),
                 )

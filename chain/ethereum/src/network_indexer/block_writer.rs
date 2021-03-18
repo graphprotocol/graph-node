@@ -143,7 +143,6 @@ impl WriteContext {
                     let cache = context.cache;
                     let metrics = context.metrics;
                     let store = context.store;
-                    let subgraph_id = context.subgraph_id;
 
                     let stopwatch = metrics.stopwatch.clone();
 
@@ -161,7 +160,6 @@ impl WriteContext {
                     future::result(
                         store
                             .transact_block_operations(
-                                subgraph_id.clone(),
                                 block_ptr.clone(),
                                 modifications,
                                 stopwatch,

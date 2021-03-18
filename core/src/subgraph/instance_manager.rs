@@ -361,12 +361,11 @@ where
         {
             let store = store.clone();
             let logger = logger.clone();
-            let id = manifest.id.clone();
 
             // `start_subgraph_deployment` is blocking.
             task::spawn_blocking(move || {
                 store
-                    .start_subgraph_deployment(&logger, &id)
+                    .start_subgraph_deployment(&logger)
                     .map_err(Error::from)
             })
             .await
@@ -555,10 +554,7 @@ where
                             // Revert entity changes from this block, and update subgraph ptr.
                             ctx.inputs
                                 .store
-                                .revert_block_operations(
-                                    ctx.inputs.deployment_id.clone(),
-                                    parent_ptr,
-                                )
+                                .revert_block_operations(parent_ptr)
                                 .map_err(Into::into)
                         })
                     {
@@ -634,7 +630,7 @@ where
                     if first_run {
                         first_run = false;
 
-                        ctx.inputs.store.unfail(&ctx.inputs.deployment_id)?;
+                        ctx.inputs.store.unfail()?;
                     }
 
                     if needs_restart {
@@ -672,7 +668,7 @@ where
                     };
 
                     store_for_err
-                        .fail_subgraph(id_for_err.clone(), error)
+                        .fail_subgraph(error)
                         .await
                         .context("Failed to set subgraph status to `failed`")?;
 
@@ -753,7 +749,7 @@ where
         .inputs
         .store
         .clone()
-        .supports_proof_of_indexing(&ctx.inputs.deployment_id)
+        .supports_proof_of_indexing()
         .await?
     {
         Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
@@ -958,21 +954,18 @@ where
     // Transact entity operations into the store and update the
     // subgraph's block stream pointer
     let _section = ctx.host_metrics.stopwatch.start_section("transact_block");
-    let subgraph_id = ctx.inputs.deployment_id.clone();
     let stopwatch = ctx.host_metrics.stopwatch.clone();
     let start = Instant::now();
 
     let store = &ctx.inputs.store;
-    let id = &ctx.inputs.deployment_id;
     let fail_fast = || -> Result<bool, BlockProcessingError> {
         Ok(!*DISABLE_FAIL_FAST
             && !store
-                .is_deployment_synced(id)
+                .is_deployment_synced()
                 .map_err(BlockProcessingError::Unknown)?)
     };
 
     match ctx.inputs.store.transact_block_operations(
-        subgraph_id.cheap_clone(),
         block_ptr_after,
         mods,
         stopwatch,
@@ -987,7 +980,7 @@ where
             // present the subgraph will be unassigned.
             if has_errors && fail_fast()? {
                 store
-                    .unassign_subgraph(&subgraph_id)
+                    .unassign_subgraph()
                     .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
 
                 // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
