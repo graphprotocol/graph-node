@@ -10,7 +10,6 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo {
-    pub data_source: String,
     pub template: DataSourceTemplate,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,

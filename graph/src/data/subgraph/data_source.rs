@@ -1,16 +1,60 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
+use ethabi::Address;
+use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
 use web3::types::Log;
 
-use crate::prelude::{BlockNumber, EthereumBlockTriggerType, EthereumCall};
+use crate::prelude::{BlockNumber, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall};
 
 use super::{
-    BlockHandlerFilter, DataSource, MappingBlockHandler, MappingCallHandler, MappingEventHandler,
+    BlockHandlerFilter, DataSourceContext, Mapping, MappingABI, MappingBlockHandler,
+    MappingCallHandler, MappingEventHandler, Source,
 };
 
+/// Runtime representation of a data source.
+// Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
+// of thousands of data sources in memory at once.
+#[derive(Clone, Debug)]
+pub struct DataSource {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub source: Source,
+    pub mapping: Mapping,
+    pub context: Arc<Option<DataSourceContext>>,
+    pub creation_block: Option<BlockNumber>,
+    pub contract_abi: Arc<MappingABI>,
+}
+
 impl super::DataSource {
+    pub(super) fn from_manifest(
+        kind: String,
+        network: Option<String>,
+        name: String,
+        source: Source,
+        mapping: Mapping,
+        context: Option<DataSourceContext>,
+    ) -> Result<Self, Error> {
+        // Data sources in the manifest are created "before genesis" so they have no creation block.
+        let creation_block = None;
+        let contract_abi = mapping
+            .find_abi(&source.abi)
+            .with_context(|| format!("data source `{}`", name))?;
+
+        Ok(DataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            context: Arc::new(context),
+            creation_block,
+            contract_abi,
+        })
+    }
+
     pub fn matches_log(&self, log: &Log) -> bool {
         // The runtime host matches the contract address of the `Log`
         // if the data source contains the same contract address or
@@ -174,7 +218,9 @@ impl super::DataSource {
             context,
 
             // The creation block is ignored for detection duplicate data sources.
+            // Contract ABI equality is implicit in `source` and `mapping.abis` equality.
             creation_block: _,
+            contract_abi: _,
         } = self;
 
         // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
@@ -189,5 +235,56 @@ impl super::DataSource {
             && mapping.call_handlers == other.mapping.call_handlers
             && mapping.block_handlers == other.mapping.block_handlers
             && context == &other.context
+    }
+}
+
+impl TryFrom<DataSourceTemplateInfo> for DataSource {
+    type Error = anyhow::Error;
+
+    fn try_from(info: DataSourceTemplateInfo) -> Result<Self, anyhow::Error> {
+        let DataSourceTemplateInfo {
+            template,
+            params,
+            context,
+            creation_block,
+        } = info;
+
+        // Obtain the address from the parameters
+        let string = params
+            .get(0)
+            .with_context(|| {
+                format!(
+                    "Failed to create data source from template `{}`: address parameter is missing",
+                    template.name
+                )
+            })?
+            .trim_start_matches("0x");
+
+        let address = Address::from_str(string).with_context(|| {
+            format!(
+                "Failed to create data source from template `{}`, invalid address provided",
+                template.name
+            )
+        })?;
+
+        let contract_abi = template
+            .mapping
+            .find_abi(&template.source.abi)
+            .with_context(|| format!("template `{}`", template.name))?;
+
+        Ok(DataSource {
+            kind: template.kind,
+            network: template.network,
+            name: template.name,
+            source: Source {
+                address: Some(address),
+                abi: template.source.abi,
+                start_block: 0,
+            },
+            mapping: template.mapping,
+            context: Arc::new(context),
+            creation_block: Some(creation_block),
+            contract_abi,
+        })
     }
 }

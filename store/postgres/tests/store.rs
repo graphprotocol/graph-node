@@ -6,14 +6,17 @@ use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
-use graph::components::store::{
-    BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType, StatusStore,
-    SubscriptionManager as _,
-};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
+use graph::{
+    components::store::{
+        BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType,
+        StatusStore, SubscriptionManager as _,
+    },
+    prelude::ethabi::Contract,
+};
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
 use web3::types::{Address, H256};
@@ -1191,8 +1194,30 @@ fn mock_data_source() -> DataSource {
             },
             runtime: Arc::new(Vec::new()),
         },
-        context: None,
+        context: Default::default(),
         creation_block: None,
+        contract_abi: Arc::new(mock_abi()),
+    }
+}
+
+fn mock_abi() -> MappingABI {
+    MappingABI {
+        name: "mock_abi".to_string(),
+        contract: Contract::load(
+            r#"[
+            {
+                "inputs": [
+                    {
+                        "name": "a",
+                        "type": "address"
+                    }
+                ],
+                "type": "constructor"
+            }
+        ]"#
+            .as_bytes(),
+        )
+        .unwrap(),
     }
 }
 
