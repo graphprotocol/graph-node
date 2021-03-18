@@ -762,7 +762,7 @@ fn parse_log_triggers(
                 .logs
                 .iter()
                 .filter(move |log| log_filter.matches(log))
-                .map(move |log| EthereumTrigger::Log(log.clone()))
+                .map(move |log| EthereumTrigger::Log(Arc::new(log.clone())))
         })
         .collect()
 }
@@ -775,7 +775,7 @@ fn parse_call_triggers(
         .calls
         .iter()
         .filter(move |call| call_filter.matches(call))
-        .map(move |call| EthereumTrigger::Call(call.clone()))
+        .map(move |call| EthereumTrigger::Call(Arc::new(call.clone())))
         .collect()
 }
 
@@ -887,7 +887,12 @@ pub async fn blocks_with_triggers(
     if !log_filter.is_empty() {
         trigger_futs.push(Box::new(
             eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
-                .map_ok(|logs: Vec<Log>| logs.into_iter().map(EthereumTrigger::Log).collect())
+                .map_ok(|logs: Vec<Log>| {
+                    logs.into_iter()
+                        .map(Arc::new)
+                        .map(EthereumTrigger::Log)
+                        .collect()
+                })
                 .compat(),
         ))
     }
@@ -895,6 +900,7 @@ pub async fn blocks_with_triggers(
     if !call_filter.is_empty() {
         trigger_futs.push(Box::new(
             eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
+                .map(Arc::new)
                 .map(EthereumTrigger::Call)
                 .collect(),
         ));

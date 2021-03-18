@@ -1,12 +1,16 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
-use ethabi::{Address, Event, ParamType};
+use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
+use slog::{info, Logger};
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
 use web3::types::Log;
 
-use crate::prelude::{BlockNumber, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall};
+use crate::prelude::{
+    BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall,
+    EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
+};
 
 use super::{
     BlockHandlerFilter, DataSourceContext, Mapping, MappingABI, MappingBlockHandler,
@@ -55,75 +59,7 @@ impl super::DataSource {
         })
     }
 
-    pub fn matches_log(&self, log: &Log) -> bool {
-        // The runtime host matches the contract address of the `Log`
-        // if the data source contains the same contract address or
-        // if the data source doesn't have a contract address at all
-        let matches_log_address = self.source.address.map_or(true, |addr| addr == log.address);
-
-        let matches_log_signature = {
-            let topic0 = match log.topics.iter().next() {
-                Some(topic0) => topic0,
-                None => return false,
-            };
-
-            self.mapping
-                .event_handlers
-                .iter()
-                .any(|handler| *topic0 == handler.topic0())
-        };
-
-        matches_log_address
-            && matches_log_signature
-            && self.source.start_block
-                <= BlockNumber::try_from(log.block_number.unwrap().as_u64()).unwrap()
-    }
-
-    pub fn matches_call(&self, call: &EthereumCall) -> bool {
-        // The runtime host matches the contract address of the `EthereumCall`
-        // if the data source contains the same contract address or
-        // if the data source doesn't have a contract address at all
-        let matches_call_address = self.source.address.map_or(true, |addr| addr == call.to);
-
-        let matches_call_function = {
-            let target_method_id = &call.input.0[..4];
-            self.mapping.call_handlers.iter().any(|handler| {
-                let fhash = keccak256(handler.function.as_bytes());
-                let actual_method_id = [fhash[0], fhash[1], fhash[2], fhash[3]];
-                target_method_id == actual_method_id
-            })
-        };
-
-        matches_call_address
-            && matches_call_function
-            && self.source.start_block <= call.block_number
-    }
-
-    pub fn matches_block(
-        &self,
-        block_trigger_type: &EthereumBlockTriggerType,
-        block_number: BlockNumber,
-    ) -> bool {
-        let matches_block_trigger = {
-            let source_address_matches = match block_trigger_type {
-                EthereumBlockTriggerType::WithCallTo(address) => {
-                    self.source
-                        .address
-                        // Do not match if this datasource has no address
-                        .map_or(false, |addr| addr == *address)
-                }
-                EthereumBlockTriggerType::Every => true,
-            };
-            source_address_matches && self.handler_for_block(block_trigger_type).is_ok()
-        };
-
-        matches_block_trigger && self.source.start_block <= block_number
-    }
-
-    pub fn handlers_for_log(
-        &self,
-        log: &Arc<Log>,
-    ) -> Result<Vec<MappingEventHandler>, anyhow::Error> {
+    fn handlers_for_log(&self, log: &Log) -> Result<Vec<MappingEventHandler>, Error> {
         // Get signature from the log
         let topic0 = log.topics.get(0).context("Ethereum event has no topics")?;
 
@@ -135,16 +71,10 @@ impl super::DataSource {
             .cloned()
             .collect::<Vec<_>>();
 
-        ensure!(
-            !handlers.is_empty(),
-            "No event handler found for event in data source \"{}\"",
-            self.name,
-        );
-
         Ok(handlers)
     }
 
-    pub fn handler_for_call(&self, call: &EthereumCall) -> Result<MappingCallHandler, Error> {
+    fn handler_for_call(&self, call: &EthereumCall) -> Result<Option<MappingCallHandler>, Error> {
         // First four bytes of the input for the call are the first four
         // bytes of hash of the function signature
         ensure!(
@@ -154,7 +84,8 @@ impl super::DataSource {
 
         let target_method_id = &call.input.0[..4];
 
-        self.mapping
+        Ok(self
+            .mapping
             .call_handlers
             .iter()
             .find(move |handler| {
@@ -162,33 +93,20 @@ impl super::DataSource {
                 let actual_method_id = [fhash[0], fhash[1], fhash[2], fhash[3]];
                 target_method_id == actual_method_id
             })
-            .cloned()
-            .with_context(|| {
-                anyhow!(
-                    "No call handler found for call in data source \"{}\"",
-                    self.name,
-                )
-            })
+            .cloned())
     }
 
-    pub fn handler_for_block(
+    fn handler_for_block(
         &self,
         trigger_type: &EthereumBlockTriggerType,
-    ) -> Result<MappingBlockHandler, anyhow::Error> {
+    ) -> Option<MappingBlockHandler> {
         match trigger_type {
             EthereumBlockTriggerType::Every => self
                 .mapping
                 .block_handlers
                 .iter()
                 .find(move |handler| handler.filter == None)
-                .cloned()
-                .with_context(|| {
-                    anyhow!(
-                        "No block handler for `Every` block trigger \
-                         type found in data source \"{}\"",
-                        self.name,
-                    )
-                }),
+                .cloned(),
             EthereumBlockTriggerType::WithCallTo(_address) => self
                 .mapping
                 .block_handlers
@@ -197,14 +115,7 @@ impl super::DataSource {
                     handler.filter.is_some()
                         && handler.filter.clone().unwrap() == BlockHandlerFilter::Call
                 })
-                .cloned()
-                .with_context(|| {
-                    anyhow!(
-                        "No block handler for `WithCallTo` block trigger \
-                         type found in data source \"{}\"",
-                        self.name,
-                    )
-                }),
+                .cloned(),
         }
     }
 
@@ -238,7 +149,7 @@ impl super::DataSource {
     }
 
     /// Returns the contract event with the given signature, if it exists.
-    pub fn contract_event_with_signature(&self, signature: &str) -> Option<&Event> {
+    fn contract_event_with_signature(&self, signature: &str) -> Option<&Event> {
         // Returns an `Event(uint256,address)` signature for an event, without `indexed` hints.
         fn ambiguous_event_signature(event: &Event) -> String {
             format!(
@@ -334,6 +245,255 @@ impl super::DataSource {
                     None
                 }
             })
+    }
+
+    fn contract_function_with_signature(&self, target_signature: &str) -> Option<&Function> {
+        self.contract_abi
+            .contract
+            .functions()
+            .filter(|function| match function.state_mutability {
+                ethabi::StateMutability::Payable | ethabi::StateMutability::NonPayable => true,
+                ethabi::StateMutability::Pure | ethabi::StateMutability::View => false,
+            })
+            .find(|function| {
+                // Construct the argument function signature:
+                // `address,uint256,bool`
+                let mut arguments = function
+                    .inputs
+                    .iter()
+                    .map(|input| format!("{}", input.kind))
+                    .collect::<Vec<String>>()
+                    .join(",");
+                // `address,uint256,bool)
+                arguments.push_str(")");
+                // `operation(address,uint256,bool)`
+                let actual_signature = vec![function.name.clone(), arguments].join("(");
+                target_signature == actual_signature
+            })
+    }
+
+    fn matches_trigger_address(&self, trigger: &EthereumTrigger) -> bool {
+        let ds_address = match self.source.address {
+            Some(addr) => addr,
+
+            // 'wildcard' data sources match any trigger address.
+            None => return true,
+        };
+
+        let trigger_address = match trigger {
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::WithCallTo(address)) => address,
+            EthereumTrigger::Call(call) => &call.to,
+            EthereumTrigger::Log(log) => &log.address,
+
+            // Unfiltered block triggers match any data source address.
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => return true,
+        };
+
+        ds_address == *trigger_address
+    }
+
+    /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
+    /// A return of `Ok(None)` mean the trigger does not match.
+    pub fn match_and_decode(
+        &self,
+        trigger: &EthereumTrigger,
+        block: &LightEthereumBlock,
+        logger: &Logger,
+    ) -> Result<Option<MappingTrigger>, Error> {
+        if !self.matches_trigger_address(&trigger) {
+            return Ok(None);
+        }
+
+        if self.source.start_block > block.number() {
+            return Ok(None);
+        }
+
+        match trigger {
+            EthereumTrigger::Block(_, trigger_type) => {
+                let handler = match self.handler_for_block(trigger_type) {
+                    Some(handler) => handler,
+                    None => return Ok(None),
+                };
+                Ok(Some(MappingTrigger::Block { handler }))
+            }
+            EthereumTrigger::Log(log) => {
+                let potential_handlers = self.handlers_for_log(log)?;
+
+                // Map event handlers to (event handler, event ABI) pairs; fail if there are
+                // handlers that don't exist in the contract ABI
+                let valid_handlers = potential_handlers
+                    .into_iter()
+                    .map(|event_handler| {
+                        // Identify the event ABI in the contract
+                        let event_abi = self
+                            .contract_event_with_signature(event_handler.event.as_str())
+                            .with_context(|| {
+                                anyhow!(
+                                    "Event with the signature \"{}\" not found in \
+                                            contract \"{}\" of data source \"{}\"",
+                                    event_handler.event,
+                                    self.contract_abi.name,
+                                    self.name,
+                                )
+                            })?;
+                        Ok((event_handler, event_abi))
+                    })
+                    .collect::<Result<Vec<_>, anyhow::Error>>()?;
+
+                // Filter out handlers whose corresponding event ABIs cannot decode the
+                // params (this is common for overloaded events that have the same topic0
+                // but have indexed vs. non-indexed params that are encoded differently).
+                //
+                // Map (handler, event ABI) pairs to (handler, decoded params) pairs.
+                let mut matching_handlers = valid_handlers
+                    .into_iter()
+                    .filter_map(|(event_handler, event_abi)| {
+                        event_abi
+                            .parse_log(RawLog {
+                                topics: log.topics.clone(),
+                                data: log.data.clone().0,
+                            })
+                            .map(|log| log.params)
+                            .map_err(|e| {
+                                info!(
+                                    logger,
+                                    "Skipping handler because the event parameters do not \
+                                    match the event signature. This is typically the case \
+                                    when parameters are indexed in the event but not in the \
+                                    signature or the other way around";
+                                    "handler" => &event_handler.handler,
+                                    "event" => &event_handler.event,
+                                    "error" => format!("{}", e),
+                                );
+                            })
+                            .ok()
+                            .map(|params| (event_handler, params))
+                    })
+                    .collect::<Vec<_>>();
+
+                if matching_handlers.is_empty() {
+                    return Ok(None);
+                }
+
+                // Process the event with the matching handler
+                let (event_handler, params) = matching_handlers.pop().unwrap();
+
+                ensure!(
+                    matching_handlers.is_empty(),
+                    format!(
+                        "Multiple handlers defined for event `{}`, only one is supported",
+                        &event_handler.event
+                    )
+                );
+
+                let transaction = Arc::new(
+                    block
+                        .transaction_for_log(&log)
+                        .context("Found no transaction for event")?,
+                );
+
+                Ok(Some(MappingTrigger::Log {
+                    transaction,
+                    log: log.cheap_clone(),
+                    params,
+                    handler: event_handler.clone(),
+                }))
+            }
+            EthereumTrigger::Call(call) => {
+                // Identify the call handler for this call
+                let handler = match self.handler_for_call(&call)? {
+                    Some(handler) => handler,
+                    None => return Ok(None),
+                };
+
+                // Identify the function ABI in the contract
+                let function_abi = self
+                    .contract_function_with_signature(handler.function.as_str())
+                    .with_context(|| {
+                        anyhow!(
+                            "Function with the signature \"{}\" not found in \
+                    contract \"{}\" of data source \"{}\"",
+                            handler.function,
+                            self.contract_abi.name,
+                            self.name
+                        )
+                    })?;
+
+                // Parse the inputs
+                //
+                // Take the input for the call, chop off the first 4 bytes, then call
+                // `function.decode_input` to get a vector of `Token`s. Match the `Token`s
+                // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
+                let tokens = function_abi
+                    .decode_input(&call.input.0[4..])
+                    .with_context(|| {
+                        format!(
+                            "Generating function inputs for the call {:?} failed, raw input: {}",
+                            &function_abi,
+                            hex::encode(&call.input.0)
+                        )
+                    })?;
+
+                ensure!(
+                    tokens.len() == function_abi.inputs.len(),
+                    "Number of arguments in call does not match \
+                    number of inputs in function signature."
+                );
+
+                let inputs = tokens
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, token)| LogParam {
+                        name: function_abi.inputs[i].name.clone(),
+                        value: token,
+                    })
+                    .collect::<Vec<_>>();
+
+                // Parse the outputs
+                //
+                // Take the output for the call, then call `function.decode_output` to
+                // get a vector of `Token`s. Match the `Token`s with the `Param`s in
+                // `function.outputs` to create a `Vec<LogParam>`.
+                let tokens = function_abi
+                    .decode_output(&call.output.0)
+                    .with_context(|| {
+                        format!(
+                            "Decoding function outputs for the call {:?} failed, raw output: {}",
+                            &function_abi,
+                            hex::encode(&call.output.0)
+                        )
+                    })?;
+
+                ensure!(
+                    tokens.len() == function_abi.outputs.len(),
+                    "Number of parameters in the call output does not match \
+                        number of outputs in the function signature."
+                );
+
+                let outputs = tokens
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, token)| LogParam {
+                        name: function_abi.outputs[i].name.clone(),
+                        value: token,
+                    })
+                    .collect::<Vec<_>>();
+
+                let transaction = Arc::new(
+                    block
+                        .transaction_for_call(&call)
+                        .context("Found no transaction for call")?,
+                );
+
+                Ok(Some(MappingTrigger::Call {
+                    transaction,
+                    call: call.cheap_clone(),
+                    inputs,
+                    outputs,
+                    handler,
+                }))
+            }
+        }
     }
 }
 

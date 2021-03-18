@@ -10,7 +10,6 @@ use futures::sync::mpsc;
 use crate::components::metrics::HistogramVec;
 use crate::components::subgraph::SharedProofOfIndexing;
 use crate::prelude::*;
-use web3::types::Log;
 
 #[derive(Debug)]
 pub enum MappingError {
@@ -38,41 +37,18 @@ impl MappingError {
 /// Common trait for runtime host implementations.
 #[async_trait]
 pub trait RuntimeHost: Send + Sync + Debug + 'static {
-    /// Returns true if the RuntimeHost has a handler for an Ethereum event.
-    fn matches_log(&self, log: &Log) -> bool;
+    fn match_and_decode(
+        &self,
+        trigger: &EthereumTrigger,
+        block: &LightEthereumBlock,
+        logger: &Logger,
+    ) -> Result<Option<MappingTrigger>, Error>;
 
-    /// Returns true if the RuntimeHost has a handler for an Ethereum call.
-    fn matches_call(&self, call: &EthereumCall) -> bool;
-
-    /// Returns true if the RuntimeHost has a handler for an Ethereum block.
-    fn matches_block(&self, call: &EthereumBlockTriggerType, block_number: BlockNumber) -> bool;
-
-    /// Process an Ethereum event and return a vector of entity operations.
-    async fn process_log(
+    async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
-        log: &Arc<Log>,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError>;
-
-    /// Process an Ethereum call and return a vector of entity operations
-    async fn process_call(
-        &self,
-        logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
-        call: &Arc<EthereumCall>,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError>;
-
-    /// Process an Ethereum block and return a vector of entity operations
-    async fn process_block(
-        &self,
-        logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
-        trigger_type: &EthereumBlockTriggerType,
+        trigger: MappingTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError>;

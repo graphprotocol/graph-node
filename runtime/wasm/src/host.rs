@@ -3,12 +3,10 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use ethabi::{LogParam, RawLog};
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
-use graph::{components::store::CallCache, ensure};
+use graph::components::store::CallCache;
 use semver::Version;
-use slog::{o, OwnedKV};
 use strum::AsStaticRef as _;
 
 use graph::components::arweave::ArweaveAdapter;
@@ -19,8 +17,6 @@ use graph::components::three_box::ThreeBoxAdapter;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
-use graph::util;
-use web3::types::Log;
 
 use crate::mapping::{MappingContext, MappingRequest};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
@@ -214,10 +210,9 @@ impl RuntimeHost {
 
     /// Sends a MappingRequest to the thread which owns the host,
     /// and awaits the result.
-    async fn send_mapping_request<T: slog::SendSyncRefUnwindSafeKV>(
+    async fn send_mapping_request(
         &self,
         logger: &Logger,
-        extra: OwnedKV<T>,
         state: BlockState,
         trigger: MappingTrigger,
         block: &Arc<LightEthereumBlock>,
@@ -226,9 +221,10 @@ impl RuntimeHost {
         let trigger_type = trigger.as_static();
         let handler = trigger.handler_name().to_string();
 
+        let extras = trigger.logging_extras();
         debug!(
             logger, "Start processing Ethereum trigger";
-            &extra,
+            &extras,
             "trigger_type" => trigger_type,
             "handler" => &handler,
             "data_source" => &self.data_source.name,
@@ -264,8 +260,7 @@ impl RuntimeHost {
 
         info!(
             logger, "Done processing Ethereum trigger";
-            extra,
-
+            &extras,
             "trigger_type" => trigger_type,
             "total_ms" => elapsed.as_millis(),
             "handler" => handler,
@@ -286,270 +281,25 @@ impl RuntimeHost {
 
 #[async_trait]
 impl RuntimeHostTrait for RuntimeHost {
-    fn matches_log(&self, log: &Log) -> bool {
-        self.data_source.matches_log(log)
+    fn match_and_decode(
+        &self,
+        trigger: &EthereumTrigger,
+        block: &LightEthereumBlock,
+        logger: &Logger,
+    ) -> Result<Option<MappingTrigger>, Error> {
+        self.data_source.match_and_decode(trigger, block, logger)
     }
 
-    fn matches_call(&self, call: &EthereumCall) -> bool {
-        self.data_source.matches_call(call)
-    }
-
-    fn matches_block(&self, trigger_ty: &EthereumBlockTriggerType, block_num: BlockNumber) -> bool {
-        self.data_source.matches_block(trigger_ty, block_num)
-    }
-
-    async fn process_call(
+    async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
-        call: &Arc<EthereumCall>,
+        trigger: MappingTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
-        // Identify the call handler for this call
-        let call_handler = self.data_source.handler_for_call(&call)?;
-
-        // Identify the function ABI in the contract
-        let function_abi = util::ethereum::contract_function_with_signature(
-            &self.data_source.contract_abi.contract,
-            call_handler.function.as_str(),
-        )
-        .with_context(|| {
-            anyhow!(
-                "Function with the signature \"{}\" not found in \
-                    contract \"{}\" of data source \"{}\"",
-                call_handler.function,
-                self.data_source.contract_abi.name,
-                self.data_source.name
-            )
-        })?;
-
-        // Parse the inputs
-        //
-        // Take the input for the call, chop off the first 4 bytes, then call
-        // `function.decode_input` to get a vector of `Token`s. Match the `Token`s
-        // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
-        let tokens = function_abi
-            .decode_input(&call.input.0[4..])
-            .with_context(|| {
-                format!(
-                    "Generating function inputs for the call {:?} failed, raw input: {}",
-                    &function_abi,
-                    hex::encode(&call.input.0)
-                )
-            })?;
-
-        ensure!(
-            tokens.len() == function_abi.inputs.len(),
-            "Number of arguments in call does not match \
-                    number of inputs in function signature."
-        );
-
-        let inputs = tokens
-            .into_iter()
-            .enumerate()
-            .map(|(i, token)| LogParam {
-                name: function_abi.inputs[i].name.clone(),
-                value: token,
-            })
-            .collect::<Vec<_>>();
-
-        // Parse the outputs
-        //
-        // Take the output for the call, then call `function.decode_output` to
-        // get a vector of `Token`s. Match the `Token`s with the `Param`s in
-        // `function.outputs` to create a `Vec<LogParam>`.
-        let tokens = function_abi
-            .decode_output(&call.output.0)
-            .with_context(|| {
-                format!(
-                    "Decoding function outputs for the call {:?} failed, raw output: {}",
-                    &function_abi,
-                    hex::encode(&call.output.0)
-                )
-            })?;
-
-        ensure!(
-            tokens.len() == function_abi.outputs.len(),
-            "Number of parameters in the call output does not match \
-                        number of outputs in the function signature."
-        );
-
-        let outputs = tokens
-            .into_iter()
-            .enumerate()
-            .map(|(i, token)| LogParam {
-                name: function_abi.outputs[i].name.clone(),
-                value: token,
-            })
-            .collect::<Vec<_>>();
-
-        let transaction = Arc::new(
-            block
-                .transaction_for_call(&call)
-                .context("Found no transaction for call")?,
-        );
-
-        self.send_mapping_request(
-            logger,
-            o! {
-                "function" => &call_handler.function,
-                "to" => format!("{}", &call.to),
-            },
-            state,
-            MappingTrigger::Call {
-                transaction,
-                call: call.cheap_clone(),
-                inputs,
-                outputs,
-                handler: call_handler.clone(),
-            },
-            block,
-            proof_of_indexing,
-        )
-        .await
-    }
-
-    async fn process_block(
-        &self,
-        logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
-        trigger_type: &EthereumBlockTriggerType,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError> {
-        let block_handler = self.data_source.handler_for_block(trigger_type)?;
-        self.send_mapping_request(
-            logger,
-            o! {
-                "hash" => block.hash.unwrap().to_string(),
-                "number" => &block.number.unwrap().to_string(),
-            },
-            state,
-            MappingTrigger::Block {
-                handler: block_handler.clone(),
-            },
-            block,
-            proof_of_indexing,
-        )
-        .await
-    }
-
-    async fn process_log(
-        &self,
-        logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
-        log: &Arc<Log>,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError> {
-        let data_source_name = &self.data_source.name;
-        let abi_name = &self.data_source.contract_abi.name;
-
-        // If there are no matching handlers, fail processing the event
-        let potential_handlers = self.data_source.handlers_for_log(&log)?;
-
-        // Map event handlers to (event handler, event ABI) pairs; fail if there are
-        // handlers that don't exist in the contract ABI
-        let valid_handlers = potential_handlers
-            .into_iter()
-            .map(|event_handler| {
-                // Identify the event ABI in the contract
-                let event_abi = self
-                    .data_source
-                    .contract_event_with_signature(event_handler.event.as_str())
-                    .with_context(|| {
-                        anyhow!(
-                            "Event with the signature \"{}\" not found in \
-                                contract \"{}\" of data source \"{}\"",
-                            event_handler.event,
-                            abi_name,
-                            data_source_name,
-                        )
-                    })?;
-                Ok((event_handler, event_abi))
-            })
-            .collect::<Result<Vec<_>, anyhow::Error>>()?;
-
-        // Filter out handlers whose corresponding event ABIs cannot decode the
-        // params (this is common for overloaded events that have the same topic0
-        // but have indexed vs. non-indexed params that are encoded differently).
-        //
-        // Map (handler, event ABI) pairs to (handler, decoded params) pairs.
-        let mut matching_handlers = valid_handlers
-            .into_iter()
-            .filter_map(|(event_handler, event_abi)| {
-                event_abi
-                    .parse_log(RawLog {
-                        topics: log.topics.clone(),
-                        data: log.data.clone().0,
-                    })
-                    .map(|log| log.params)
-                    .map_err(|e| {
-                        info!(
-                            logger,
-                            "Skipping handler because the event parameters do not \
-                            match the event signature. This is typically the case \
-                            when parameters are indexed in the event but not in the \
-                            signature or the other way around";
-                            "handler" => &event_handler.handler,
-                            "event" => &event_handler.event,
-                            "error" => format!("{}", e),
-                        );
-                    })
-                    .ok()
-                    .map(|params| (event_handler, params))
-            })
-            .collect::<Vec<_>>();
-
-        if matching_handlers.is_empty() {
-            warn!(
-                logger,
-                "No matching handlers found for event with topic0 `{}`",
-                log.topics
-                .iter()
-                .next()
-                .map_or(String::from("none"), |topic0| format!("{:x}", topic0));
-                "data_source" => &data_source_name,
-            );
-            return Ok(state);
-        }
-
-        // Process the event with the matching handler
-        let (event_handler, params) = matching_handlers.pop().unwrap();
-
-        ensure!(
-            matching_handlers.is_empty(),
-            format!(
-                "Multiple handlers defined for event `{}`, only one is supported",
-                &event_handler.event
-            )
-        );
-
-        let transaction = Arc::new(
-            block
-                .transaction_for_log(&log)
-                .context("Found no transaction for event")?,
-        );
-
-        self.send_mapping_request(
-            logger,
-            o! {
-                "signature" => &event_handler.event,
-                "address" => format!("{}", &log.address),
-            },
-            state,
-            MappingTrigger::Log {
-                transaction,
-                log: log.cheap_clone(),
-                params,
-                handler: event_handler.clone(),
-            },
-            block,
-            proof_of_indexing,
-        )
-        .err_into()
-        .await
+        self.send_mapping_request(logger, state, trigger, block, proof_of_indexing)
+            .await
     }
 
     fn creation_block_number(&self) -> Option<BlockNumber> {

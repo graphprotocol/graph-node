@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
+use slog::{o, SendSyncRefUnwindSafeKV};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
 use std::{cmp::Ordering, convert::TryFrom};
@@ -183,8 +184,8 @@ impl EthereumCall {
 #[derive(Clone, Debug)]
 pub enum EthereumTrigger {
     Block(EthereumBlockPointer, EthereumBlockTriggerType),
-    Call(EthereumCall),
-    Log(Log),
+    Call(Arc<EthereumCall>),
+    Log(Arc<Log>),
 }
 
 impl PartialEq for EthereumTrigger {
@@ -303,6 +304,20 @@ impl MappingTrigger {
             MappingTrigger::Log { handler, .. } => &handler.handler,
             MappingTrigger::Call { handler, .. } => &handler.handler,
             MappingTrigger::Block { handler, .. } => &handler.handler,
+        }
+    }
+
+    pub fn logging_extras(&self) -> impl SendSyncRefUnwindSafeKV {
+        match self {
+            MappingTrigger::Log { handler, log, .. } => o! {
+                "signature" => handler.event.to_string(),
+                "address" => format!("{}", &log.address),
+            },
+            MappingTrigger::Call { handler, call, .. } => o! {
+                "function" => handler.function.to_string(),
+                "to" => format!("{}", &call.to),
+            },
+            MappingTrigger::Block { .. } => o! { "" => String::new(), "" => String::new() },
         }
     }
 }
@@ -624,6 +639,8 @@ impl ToEntityKey for EthereumBlockPointer {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use super::{EthereumBlockPointer, EthereumBlockTriggerType, EthereumCall, EthereumTrigger};
     use web3::types::*;
 
@@ -641,23 +658,23 @@ mod test {
 
         let mut call1 = EthereumCall::default();
         call1.transaction_index = 1;
-        let call1 = EthereumTrigger::Call(call1);
+        let call1 = EthereumTrigger::Call(Arc::new(call1));
 
         let mut call2 = EthereumCall::default();
         call2.transaction_index = 2;
-        let call2 = EthereumTrigger::Call(call2);
+        let call2 = EthereumTrigger::Call(Arc::new(call2));
 
         let mut call3 = EthereumCall::default();
         call3.transaction_index = 3;
-        let call3 = EthereumTrigger::Call(call3);
+        let call3 = EthereumTrigger::Call(Arc::new(call3));
 
         // Call with the same tx index as call2
         let mut call4 = EthereumCall::default();
         call4.transaction_index = 2;
-        let call4 = EthereumTrigger::Call(call4);
+        let call4 = EthereumTrigger::Call(Arc::new(call4));
 
-        fn create_log(tx_index: u64, log_index: u64) -> Log {
-            Log {
+        fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
+            Arc::new(Log {
                 address: H160::default(),
                 topics: vec![],
                 data: Bytes::default(),
@@ -669,7 +686,7 @@ mod test {
                 transaction_log_index: Some(log_index.into()),
                 log_type: Some("".into()),
                 removed: Some(false),
-            }
+            })
         }
 
         // Event with transaction_index 1 and log_index 0;
