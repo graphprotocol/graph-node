@@ -1,14 +1,17 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::prelude::{
+    o, slog, web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
+    EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, SubgraphDeploymentId, Value,
+    ValueType, BLOCK_NUMBER_MAX,
+};
+use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::str::FromStr;
+use std::sync::Arc;
 
-use graph::prelude::{
-    web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder, EntityQuery,
-    EntityRange, Schema, SubgraphDeploymentId, Value, ValueType, BLOCK_NUMBER_MAX,
-};
 use graph::{
     components::store::EntityType,
     data::store::scalar::{BigDecimal, BigInt, Bytes},
@@ -172,6 +175,11 @@ lazy_static! {
     static ref SCALAR: EntityType = EntityType::from("Scalar");
     static ref NO_ENTITY: EntityType = EntityType::from("NoEntity");
     static ref NULLABLE_STRINGS: EntityType = EntityType::from("NullableStrings");
+    static ref MOCK_STOPWATCH: StopwatchMetrics = StopwatchMetrics::new(
+        Logger::root(slog::Discard, o!()),
+        THINGS_SUBGRAPH_ID.clone(),
+        Arc::new(MockMetricsRegistry::new()),
+    );
 }
 
 /// Removes test data from the database behind the store.
@@ -204,7 +212,13 @@ fn insert_entity(
         entity_type, entities_with_keys
     );
     let inserted = layout
-        .insert(&conn, &entity_type, &mut entities_with_keys, 0)
+        .insert(
+            &conn,
+            &entity_type,
+            &mut entities_with_keys,
+            0,
+            &MOCK_STOPWATCH,
+        )
         .expect(&errmsg);
     assert_eq!(inserted, entities_with_keys.len());
 }
@@ -233,7 +247,13 @@ fn update_entity(
     );
 
     let updated = layout
-        .update(&conn, &entity_type, &mut entities_with_keys, 0)
+        .update(
+            &conn,
+            &entity_type,
+            &mut entities_with_keys,
+            0,
+            &MOCK_STOPWATCH,
+        )
         .expect(&errmsg);
     assert_eq!(updated, entities_with_keys.len());
 }
@@ -507,7 +527,7 @@ fn update() {
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(key, entity)];
         layout
-            .update(&conn, &entity_type, &mut entities, 0)
+            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // The missing 'strings' will show up as Value::Null in the
@@ -571,7 +591,7 @@ fn update_many() {
             .collect();
 
         layout
-            .update(&conn, &entity_type, &mut entities, 0)
+            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // check updates took effect
@@ -639,7 +659,7 @@ fn serialize_bigdecimal() {
             let entity_type = EntityType::from("Scalar");
             let mut entities = vec![(key, entity.clone())];
             layout
-                .update(&conn, &entity_type, &mut entities, 0)
+                .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
                 .expect("Failed to update");
 
             let actual = layout
@@ -692,7 +712,7 @@ fn delete() {
         let entity_type = EntityType::from("Scalar");
         let mut entity_keys = vec![key];
         let count = layout
-            .delete(&conn, entity_type.clone(), &entity_keys, 1)
+            .delete(&conn, entity_type.clone(), &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout));
@@ -704,7 +724,7 @@ fn delete() {
             .expect("Failed to update key");
 
         let count = layout
-            .delete(&conn, entity_type, &entity_keys, 1)
+            .delete(&conn, entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout));
@@ -738,7 +758,7 @@ fn insert_many_and_delete_many() {
             .collect();
 
         let num_removed = layout
-            .delete(&conn, entity_type, &entity_keys, 1)
+            .delete(&conn, entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
         assert_eq!(1, count_scalar_entities(conn, layout));

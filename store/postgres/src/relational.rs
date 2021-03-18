@@ -8,7 +8,7 @@
 //! information about mapping a GraphQL schema to database tables
 use diesel::connection::SimpleConnection;
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
-use graph::prelude::{q, s};
+use graph::prelude::{q, s, StopwatchMetrics};
 use inflector::Inflector;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -549,8 +549,10 @@ impl Layout {
         entity_type: &EntityType,
         entities: &mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
+        stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(entity_type)?;
+        let _section = stopwatch.start_section("insert_modification_insert_query");
         Ok(InsertQuery::new(table, entities, block)?
             .get_results(conn)
             .map(|ids| ids.len())?)
@@ -646,10 +648,14 @@ impl Layout {
         entity_type: &EntityType,
         entities: &mut Vec<(EntityKey, Entity)>,
         block: BlockNumber,
+        stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let entity_keys: Vec<&EntityKey> = entities.iter().map(|(key, _)| key).collect();
+        let section = stopwatch.start_section("update_modification_clamp_range_query");
         ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
+        section.end();
+        let _section = stopwatch.start_section("update_modification_insert_query");
         Ok(InsertQuery::new(table, entities, block)?
             .get_results(conn)
             .map(|ids| ids.len())?)
@@ -661,9 +667,11 @@ impl Layout {
         entity_type: EntityType,
         entity_keys: &Vec<EntityKey>,
         block: BlockNumber,
+        stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let entity_keys: Vec<&EntityKey> = entity_keys.iter().collect();
+        let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         Ok(
             ClampRangeQuery::new(table, &entity_type, &entity_keys, block)
                 .get_results(conn)
