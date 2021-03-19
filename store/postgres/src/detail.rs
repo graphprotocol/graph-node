@@ -14,8 +14,11 @@ use graph::{data::subgraph::status, prelude::web3::types::H256};
 use std::convert::TryFrom;
 use std::{ops::Bound, sync::Arc};
 
-use crate::deployment::{subgraph_deployment, subgraph_error, SubgraphHealth as HealthType};
 use crate::primary::Site;
+use crate::{
+    deployment::{subgraph_deployment, subgraph_error, SubgraphHealth as HealthType},
+    primary::DeploymentId,
+};
 
 type Bytes = Vec<u8>;
 
@@ -25,7 +28,7 @@ type Bytes = Vec<u8>;
 // don't need all the fields
 #[allow(dead_code)]
 pub struct DeploymentDetail {
-    id: i32,
+    pub id: DeploymentId,
     pub deployment: String,
     pub failed: bool,
     health: HealthType,

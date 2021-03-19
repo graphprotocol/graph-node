@@ -29,7 +29,12 @@ use graph::{
 };
 use store::StoredDynamicDataSource;
 
-use crate::{connection_pool::ConnectionPool, primary, primary::Site, relational::Layout};
+use crate::{
+    connection_pool::ConnectionPool,
+    primary,
+    primary::{DeploymentId, Site},
+    relational::Layout,
+};
 use crate::{
     deployment_store::{DeploymentStore, ReplicaId},
     detail::DeploymentDetail,
@@ -296,15 +301,28 @@ impl SubgraphStoreInner {
         Ok(site)
     }
 
-    /// Look up the sites for the given ids in bulk and cache them
-    fn cache_sites(&self, ids: &Vec<SubgraphDeploymentId>) -> Result<(), StoreError> {
-        let sites = self
-            .primary_conn()?
-            .find_sites(ids)?
-            .into_iter()
-            .map(|site| (site.deployment.clone(), Arc::new(site)));
-        self.sites.write().unwrap().extend(sites);
-        Ok(())
+    fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
+        if let Some(site) = self
+            .sites
+            .read()
+            .unwrap()
+            .values()
+            .find(|site| site.id == id)
+        {
+            return Ok(site.clone());
+        }
+
+        let conn = self.primary_conn()?;
+        let site = conn
+            .find_site_by_ref(id)?
+            .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
+        let site = Arc::new(site);
+
+        self.sites
+            .write()
+            .unwrap()
+            .insert(site.deployment.clone(), site.clone());
+        Ok(site)
     }
 
     fn store(
@@ -501,35 +519,18 @@ impl SubgraphStoreInner {
         Ok(())
     }
 
-    /// Partition the list of deployments by the shard they belong to. If
-    /// deployments is empty, return a partition of all deployments
+    /// Partition the list of deployments by the shard they belong to. As a
+    /// side-effect, add all `sites` to the cache
     fn deployments_by_shard(
         &self,
-        deployments: Vec<String>,
+        sites: Vec<Site>,
     ) -> Result<HashMap<Shard, Vec<Arc<Site>>>, StoreError> {
-        let sites: Vec<_> = if deployments.is_empty() {
-            self.primary_conn()?
-                .sites()?
-                .into_iter()
-                .map(|site| Arc::new(site))
-                .collect()
-        } else {
-            // Ignore invalid subgraph ids
-            let deployments: Vec<SubgraphDeploymentId> = deployments
+        let sites: Vec<_> = sites.into_iter().map(|site| Arc::new(site)).collect();
+        self.sites.write().unwrap().extend(
+            sites
                 .iter()
-                .filter_map(|d| SubgraphDeploymentId::new(d).ok())
-                .collect();
-
-            self.cache_sites(&deployments)?;
-
-            // For each deployment, find the shard it lives in, but ignore
-            // deployments that do not exist
-            deployments
-                .into_iter()
-                .map(|id| self.site(&id))
-                .filter(|res| !matches!(res, Err(StoreError::DeploymentNotFound(_))))
-                .collect::<Result<Vec<_>, StoreError>>()?
-        };
+                .map(|site| (site.deployment.clone(), site.clone())),
+        );
 
         // Partition the list of deployments by shard
         let by_shard: HashMap<Shard, Vec<Arc<Site>>> =
@@ -580,15 +581,16 @@ impl SubgraphStoreInner {
     /// Remove a deployment, i.e., all its data and metadata. This is only permissible
     /// if the deployment is unused in the sense that it is neither the current nor
     /// pending version of any subgraph, and is not currently assigned to any node
-    pub fn remove_deployment(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
-        let (store, site) = self.store(id)?;
+    pub fn remove_deployment(&self, id: DeploymentId) -> Result<(), StoreError> {
+        let site = self.find_site(id)?;
+        let store = self.for_site(site.as_ref())?;
 
         // Check that deployment is not assigned
         match self.primary_conn()?.assigned_node(site.as_ref())? {
             Some(node) => {
                 return Err(constraint_violation!(
                     "deployment {} can not be removed since it is assigned to node {}",
-                    id.as_str(),
+                    site.deployment.as_str(),
                     node.as_str()
                 ));
             }
@@ -596,25 +598,27 @@ impl SubgraphStoreInner {
         }
 
         // Check that it is not current/pending for any subgraph
-        let versions = self.primary_conn()?.subgraphs_using_deployment(id)?;
+        let versions = self
+            .primary_conn()?
+            .subgraphs_using_deployment(site.as_ref())?;
         if versions.len() > 0 {
             return Err(constraint_violation!(
                 "deployment {} can not be removed \
                 since it is the current or pending version for the subgraph(s) {}",
-                id.as_str(),
+                site.deployment.as_str(),
                 versions.join(", "),
             ));
         }
 
         store.drop_deployment(&site)?;
 
-        self.primary_conn()?.drop_site(&site.deployment)?;
+        self.primary_conn()?.drop_site(site.as_ref())?;
 
         Ok(())
     }
 
     pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        let deployments = match filter {
+        let sites = match filter {
             status::Filter::SubgraphName(name) => {
                 let deployments = self.primary_conn()?.deployments_for_subgraph(name)?;
                 if deployments.is_empty() {
@@ -631,10 +635,12 @@ impl SubgraphStoreInner {
                     }
                 }
             }
-            status::Filter::Deployments(deployments) => deployments,
+            status::Filter::Deployments(deployments) => {
+                self.primary_conn()?.find_sites(deployments)?
+            }
         };
 
-        let by_shard: HashMap<Shard, Vec<Arc<Site>>> = self.deployments_by_shard(deployments)?;
+        let by_shard: HashMap<Shard, Vec<Arc<Site>>> = self.deployments_by_shard(sites)?;
 
         // Go shard-by-shard to look up deployment statuses
         let mut infos = Vec::new();

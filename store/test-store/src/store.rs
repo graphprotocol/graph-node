@@ -193,7 +193,9 @@ pub fn remove_subgraph(id: &SubgraphDeploymentId) {
         SubgraphName::new(name).unwrap()
     };
     SUBGRAPH_STORE.remove_subgraph(name).unwrap();
-    SUBGRAPH_STORE.remove_deployment(id).unwrap();
+    for detail in SUBGRAPH_STORE.record_unused_deployments().unwrap() {
+        SUBGRAPH_STORE.remove_deployment(detail.id).unwrap();
+    }
 }
 
 pub fn create_grafted_subgraph(

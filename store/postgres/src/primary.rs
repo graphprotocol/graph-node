@@ -130,8 +130,11 @@ table! {
     /// deployment has been removed, the entry in this table is the only
     /// trace in the system that it ever existed
     unused_deployments(id) {
-        // The deployment id
-        id -> Text,
+        // This is the same as what deployment_schemas.id was when the
+        // deployment was still around
+        id -> Integer,
+        // The IPFS hash of the deployment
+        deployment -> Text,
         // When we first detected that the deployment was unsued
         unused_at -> Timestamptz,
         // When we actually deleted the deployment
@@ -178,7 +181,8 @@ struct Schema {
 #[derive(Clone, Queryable, QueryableByName, Debug)]
 #[table_name = "unused_deployments"]
 pub struct UnusedDeployment {
-    pub id: String,
+    pub id: DeploymentId,
+    pub deployment: String,
     pub unused_at: PgTimestamp,
     pub removed_at: Option<PgTimestamp>,
     pub subgraphs: Option<Vec<String>>,
@@ -740,15 +744,17 @@ impl<'a> Connection<'a> {
 
     /// Remove all subgraph versions and the entry in `deployment_schemas` for
     /// subgraph `id` in a transaction
-    pub fn drop_site(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+    pub fn drop_site(&self, site: &Site) -> Result<(), StoreError> {
         use deployment_schemas as ds;
         use subgraph_version as v;
         use unused_deployments as u;
 
         self.transaction(|| {
-            delete(v::table.filter(v::deployment.eq(id.as_str()))).execute(self.0.as_ref())?;
-            delete(ds::table.filter(ds::subgraph.eq(id.as_str()))).execute(self.0.as_ref())?;
-            update(u::table.filter(u::id.eq(id.as_str())))
+            delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
+                .execute(self.0.as_ref())?;
+            delete(ds::table.filter(ds::subgraph.eq(site.deployment.as_str())))
+                .execute(self.0.as_ref())?;
+            update(u::table.filter(u::id.eq(site.id)))
                 .set(u::removed_at.eq(sql("now()")))
                 .execute(self.0.as_ref())?;
             Ok(())
@@ -771,11 +777,26 @@ impl<'a> Connection<'a> {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
-    pub fn find_sites(&self, ids: &Vec<SubgraphDeploymentId>) -> Result<Vec<Site>, StoreError> {
-        let ids: Vec<_> = ids.iter().map(|id| id.to_string()).collect();
-        let schemas = deployment_schemas::table
-            .filter(deployment_schemas::subgraph.eq_any(ids))
-            .load::<Schema>(self.0.as_ref())?;
+    pub fn find_site_by_ref(&self, id: DeploymentId) -> Result<Option<Site>, StoreError> {
+        let schema = deployment_schemas::table
+            .find(id)
+            .first::<Schema>(self.0.as_ref())
+            .optional()?;
+        schema.map(|schema| schema.try_into()).transpose()
+    }
+
+    /// Find sites by their subgraph deployment ids. If `ids` is empty,
+    /// return all sites
+    pub fn find_sites(&self, ids: Vec<String>) -> Result<Vec<Site>, StoreError> {
+        let schemas = if ids.is_empty() {
+            deployment_schemas::table
+                .filter(deployment_schemas::subgraph.eq_any(ids))
+                .load::<Schema>(self.0.as_ref())?
+        } else {
+            deployment_schemas::table
+                .filter(deployment_schemas::subgraph.eq_any(ids))
+                .load::<Schema>(self.0.as_ref())?
+        };
         schemas
             .into_iter()
             .map(|schema| schema.try_into())
@@ -901,40 +922,51 @@ impl<'a> Connection<'a> {
         Ok(infos)
     }
 
-    pub(crate) fn deployments_for_subgraph(&self, name: String) -> Result<Vec<String>, StoreError> {
+    pub(crate) fn deployments_for_subgraph(&self, name: String) -> Result<Vec<Site>, StoreError> {
+        use deployment_schemas as ds;
         use subgraph as s;
         use subgraph_version as v;
 
-        Ok(v::table
+        ds::table
+            .inner_join(v::table.on(ds::subgraph.eq(v::deployment)))
             .inner_join(s::table.on(v::subgraph.eq(s::id)))
             .filter(s::name.eq(&name))
             .order_by(v::created_at.asc())
-            .select(v::deployment)
-            .load(self.0.as_ref())?)
+            .select(ds::all_columns)
+            .load::<Schema>(self.0.as_ref())?
+            .into_iter()
+            .map(|schema| Site::try_from(schema))
+            .collect::<Result<Vec<Site>, _>>()
     }
 
     pub fn subgraph_version(
         &self,
         name: String,
         use_current: bool,
-    ) -> Result<Option<String>, StoreError> {
+    ) -> Result<Option<Site>, StoreError> {
+        use deployment_schemas as ds;
         use subgraph as s;
         use subgraph_version as v;
 
         let deployment = if use_current {
-            v::table
-                .select(v::deployment.nullable())
+            ds::table
+                .select(ds::all_columns)
+                .inner_join(v::table.on(ds::subgraph.eq(v::deployment)))
                 .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
                 .filter(s::name.eq(&name))
-                .first::<Option<String>>(self.0.as_ref())
+                .first::<Schema>(self.0.as_ref())
         } else {
-            v::table
-                .select(v::deployment.nullable())
+            ds::table
+                .select(ds::all_columns)
+                .inner_join(v::table.on(ds::subgraph.eq(v::deployment)))
                 .inner_join(s::table.on(s::pending_version.eq(v::id.nullable())))
                 .filter(s::name.eq(&name))
-                .first::<Option<String>>(self.0.as_ref())
+                .first::<Schema>(self.0.as_ref())
         };
-        Ok(deployment.optional()?.flatten())
+        deployment
+            .optional()?
+            .map(|schema| Site::try_from(schema))
+            .transpose()
     }
 
     #[cfg(debug_assertions)]
@@ -990,7 +1022,7 @@ impl<'a> Connection<'a> {
     /// Find all deployments that are not in use and add them to the
     /// `unused_deployments` table. Only values that are available in the
     /// primary will be filled in `unused_deployments`
-    pub fn detect_unused_deployments(&self) -> Result<Vec<String>, StoreError> {
+    pub fn detect_unused_deployments(&self) -> Result<Vec<Site>, StoreError> {
         use active_copies as cp;
         use deployment_schemas as ds;
         use subgraph as s;
@@ -1023,15 +1055,25 @@ impl<'a> Connection<'a> {
             .filter(not(exists(assigned)))
             .filter(not(exists(active)))
             .filter(not(exists(copy_src)))
-            .select((ds::subgraph, ds::name, ds::shard, used_by));
+            .select((ds::id, ds::subgraph, ds::name, ds::shard, used_by));
 
-        Ok(insert_into(u::table)
+        let ids = insert_into(u::table)
             .values(unused)
-            .into_columns((u::id, u::namespace, u::shard, u::subgraphs))
+            .into_columns((u::id, u::deployment, u::namespace, u::shard, u::subgraphs))
             .on_conflict(u::id)
             .do_nothing()
             .returning(u::id)
-            .get_results::<String>(self.0.as_ref())?)
+            .get_results::<DeploymentId>(self.0.as_ref())?;
+
+        // We need to load again since we do not record the network in
+        // unused_deployments
+        ds::table
+            .filter(ds::id.eq_any(ids))
+            .select(ds::all_columns)
+            .load::<Schema>(self.0.as_ref())?
+            .into_iter()
+            .map(|schema| Site::try_from(schema))
+            .collect()
     }
 
     /// Add details from the deployment shard to unuseddeployments
@@ -1054,7 +1096,7 @@ impl<'a> Connection<'a> {
             .unwrap_or((None, None));
             let entity_count = detail.entity_count.to_u64().unwrap_or(0) as i32;
 
-            update(u::table.filter(u::id.eq(&detail.deployment)))
+            update(u::table.filter(u::id.eq(&detail.id)))
                 .set((
                     u::entity_count.eq(entity_count),
                     u::latest_ethereum_block_hash.eq(latest_hash),
@@ -1085,10 +1127,7 @@ impl<'a> Connection<'a> {
         }
     }
 
-    pub fn subgraphs_using_deployment(
-        &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<Vec<String>, StoreError> {
+    pub fn subgraphs_using_deployment(&self, site: &Site) -> Result<Vec<String>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
 
@@ -1099,7 +1138,7 @@ impl<'a> Connection<'a> {
                     .eq(s::current_version)
                     .or(v::subgraph.nullable().eq(s::pending_version))),
             )
-            .filter(v::deployment.eq(id.as_str()))
+            .filter(v::deployment.eq(site.deployment.as_str()))
             .select(s::name)
             .distinct()
             .load(self.0.as_ref())?)

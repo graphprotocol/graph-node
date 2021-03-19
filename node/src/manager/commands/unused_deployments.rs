@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
-use graph::prelude::{anyhow::anyhow, anyhow::Error, SubgraphDeploymentId};
+use graph::prelude::anyhow::Error;
 use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
 
 use crate::manager::display::List;
@@ -21,7 +21,7 @@ fn add_row(list: &mut List, deployment: UnusedDeployment) {
     let subgraphs = subgraphs.unwrap_or(vec![]).join(", ");
 
     list.append(vec![
-        id,
+        id.to_string(),
         shard,
         namespace,
         subgraphs,
@@ -57,13 +57,13 @@ pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
     println!("Recording unused deployments. This might take a while.");
     let recorded = store.record_unused_deployments()?;
 
-    for deployment in store.list_unused_deployments(unused::Filter::New)? {
+    for unused in store.list_unused_deployments(unused::Filter::New)? {
         if recorded
             .iter()
-            .find(|r| r.deployment == deployment.id)
+            .find(|r| r.deployment == unused.deployment)
             .is_some()
         {
-            add_row(&mut list, deployment);
+            add_row(&mut list, unused);
         }
     }
 
@@ -83,7 +83,7 @@ pub fn remove(
         None => unused,
         Some(deployment) => unused
             .into_iter()
-            .filter(|u| u.id.as_str() == deployment)
+            .filter(|u| u.deployment.as_str() == deployment)
             .collect::<Vec<_>>(),
     };
 
@@ -96,15 +96,12 @@ pub fn remove(
     }
 
     for (i, deployment) in unused.iter().take(count).enumerate() {
-        let id = SubgraphDeploymentId::new(&deployment.id)
-            .map_err(|s| anyhow!("illegal subgraph deployment id: {}", s))?;
-
         println!("{:=<36} {:4} {:=<36}", "", i + 1, "");
         println!(
             "removing {} from {}",
             deployment.namespace, deployment.shard
         );
-        println!("  {:>14}: {}", "deployment id", deployment.id);
+        println!("  {:>14}: {}", "deployment id", deployment.deployment);
         println!("  {:>14}: {}", "entities", deployment.entity_count);
         if let Some(subgraphs) = &deployment.subgraphs {
             let mut first = true;
@@ -119,7 +116,7 @@ pub fn remove(
         }
 
         let start = Instant::now();
-        match store.remove_deployment(&id) {
+        match store.remove_deployment(deployment.id) {
             Ok(()) => {
                 println!(
                     "done removing {} from {} in {:.1}s\n",
