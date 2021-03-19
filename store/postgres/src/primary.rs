@@ -6,7 +6,7 @@ use diesel::{
     dsl::{any, exists, not},
     pg::Pg,
     serialize::Output,
-    sql_types::{Array, Text},
+    sql_types::{Array, Integer, Text},
     types::{FromSql, ToSql},
 };
 use diesel::{
@@ -165,7 +165,7 @@ allow_tables_to_appear_in_same_query!(
 #[derive(Clone, Queryable, QueryableByName, Debug)]
 #[table_name = "deployment_schemas"]
 struct Schema {
-    id: i32,
+    id: DeploymentId,
     pub subgraph: String,
     pub name: String,
     pub shard: String,
@@ -237,6 +237,31 @@ impl ToSql<Text, Pg> for Namespace {
     }
 }
 
+/// A marker that an `i32` references a deployment. Values of this type hold
+/// the primary key from the `deployment_schemas` table
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
+#[sql_type = "diesel::sql_types::Integer"]
+pub struct DeploymentId(i32);
+
+impl fmt::Display for DeploymentId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromSql<Integer, Pg> for DeploymentId {
+    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
+        Ok(DeploymentId(id))
+    }
+}
+
+impl ToSql<Integer, Pg> for DeploymentId {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
+    }
+}
+
 #[derive(Debug)]
 /// Details about a deployment and the shard in which it is stored. We need
 /// the database namespace for the deployment as that information is only
@@ -244,7 +269,7 @@ impl ToSql<Text, Pg> for Namespace {
 ///
 /// Any instance of this struct must originate in the database
 pub struct Site {
-    pub id: i32,
+    pub id: DeploymentId,
     /// The subgraph deployment
     pub deployment: SubgraphDeploymentId,
     /// The name of the database shard
@@ -299,7 +324,7 @@ pub fn make_dummy_site(
     use crate::PRIMARY_SHARD;
 
     Site {
-        id: -7,
+        id: DeploymentId(-7),
         deployment,
         shard: PRIMARY_SHARD.clone(),
         namespace,
@@ -686,7 +711,7 @@ impl<'a> Connection<'a> {
         }
 
         // Create a schema for the deployment.
-        let schemas: Vec<(i32, String)> = diesel::insert_into(ds::table)
+        let schemas: Vec<(DeploymentId, String)> = diesel::insert_into(ds::table)
             .values((
                 ds::subgraph.eq(subgraph.as_str()),
                 ds::shard.eq(shard.as_str()),

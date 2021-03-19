@@ -27,7 +27,8 @@ use graph::{
     prelude::{info, BlockNumber, EthereumBlockPointer, Logger, StoreError},
 };
 
-use crate::{connection_pool::ConnectionPool, primary::Site, relational::Layout};
+use crate::primary::{DeploymentId, Site};
+use crate::{connection_pool::ConnectionPool, relational::Layout};
 use crate::{relational::Table, relational_queries as rq};
 
 const INITIAL_BATCH_SIZE: i64 = 10_000;
@@ -90,7 +91,7 @@ impl CopyState {
         let state = match cs::table
             .filter(cs::dst.eq(dst.site.id))
             .select((cs::src, cs::target_block_hash, cs::target_block_number))
-            .first::<(i32, Vec<u8>, BlockNumber)>(conn)
+            .first::<(DeploymentId, Vec<u8>, BlockNumber)>(conn)
             .optional()?
         {
             Some((src_id, hash, number)) => {
@@ -298,7 +299,7 @@ impl TableState {
             layout: &Layout,
             kind: &str,
             entity_type: &EntityType,
-            dst: i32,
+            dst: DeploymentId,
             id: i32,
         ) -> Result<Arc<Table>, StoreError> {
             layout
