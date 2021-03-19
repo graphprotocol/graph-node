@@ -177,15 +177,12 @@ fn mock_host_exports(
         },
     }];
 
+    let network = data_source.network.clone().unwrap();
     HostExports::new(
         subgraph_id,
-        data_source.mapping.api_version,
-        data_source.name,
-        data_source.source.address,
-        data_source.network.unwrap(),
-        data_source.context,
+        &data_source,
+        network,
         Arc::new(templates),
-        data_source.mapping.abis,
         mock_ethereum_adapter,
         Arc::new(graph_core::LinkResolver::from(
             ipfs_api::IpfsClient::default(),
