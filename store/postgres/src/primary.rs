@@ -261,6 +261,12 @@ impl TryFrom<Schema> for Site {
     type Error = StoreError;
 
     fn try_from(schema: Schema) -> Result<Self, Self::Error> {
+        if matches!(schema.version, DeploymentSchemaVersion::Split) {
+            return Err(constraint_violation!(
+                "the subgraph {} uses JSONB layout which is not supported any longer",
+                schema.subgraph.as_str()
+            ));
+        }
         let deployment = SubgraphDeploymentId::new(&schema.subgraph)
             .map_err(|s| constraint_violation!("Invalid deployment id {}", s))?;
         let namespace = Namespace::new(schema.name.clone()).map_err(|nsp| {
@@ -747,19 +753,7 @@ impl<'a> Connection<'a> {
             .load::<Schema>(self.0.as_ref())?;
         schemas
             .into_iter()
-            .map(|schema| {
-                let Schema {
-                    version, subgraph, ..
-                } = &schema;
-                if matches!(version, DeploymentSchemaVersion::Split) {
-                    Err(constraint_violation!(
-                        "the subgraph {} uses JSONB layout which is not supported any longer",
-                        subgraph.as_str()
-                    ))
-                } else {
-                    schema.try_into()
-                }
-            })
+            .map(|schema| schema.try_into())
             .collect()
     }
 
