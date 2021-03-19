@@ -182,13 +182,9 @@ impl RuntimeHost {
         // implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
             subgraph_id,
-            data_source.mapping.api_version.clone(),
-            data_source.name.clone(),
-            data_source.source.address.clone(),
+            &data_source,
             network_name,
-            data_source.context.cheap_clone(),
             templates,
-            data_source.mapping.abis.clone(),
             ethereum_adapter,
             link_resolver,
             store,
