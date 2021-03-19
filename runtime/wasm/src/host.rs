@@ -251,7 +251,7 @@ impl RuntimeHost {
             .await
             .context("Mapping terminated before passing in trigger")?;
 
-        let (result, send_time) = result_receiver
+        let result = result_receiver
             .await
             .context("Mapping terminated before handling trigger")?;
 
@@ -264,15 +264,6 @@ impl RuntimeHost {
             "trigger_type" => trigger_type,
             "total_ms" => elapsed.as_millis(),
             "handler" => handler,
-
-            // How much time the result spent in the channel,
-            // waiting in the tokio threadpool queue. Anything
-            // larger than 0 is bad here. The `.wait()` is instant.
-            "waiting_ms" => send_time
-                .wait()
-                .unwrap()
-                .elapsed()
-                .as_millis(),
         );
 
         result

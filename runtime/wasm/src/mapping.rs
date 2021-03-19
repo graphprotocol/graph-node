@@ -7,7 +7,6 @@ use graph::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
 
 lazy_static! {
     /// Verbose logging of mapping inputs
@@ -98,7 +97,7 @@ pub fn spawn_module(
                     section.end();
 
                     result_sender
-                        .send((result, future::ok(Instant::now())))
+                        .send(result)
                         .map_err(|_| anyhow::anyhow!("WASM module result receiver dropped."))
                 })
                 .wait()
@@ -115,16 +114,11 @@ pub fn spawn_module(
     Ok(mapping_request_sender)
 }
 
-type MappingResponse = (
-    Result<BlockState, MappingError>,
-    futures::Finished<Instant, Error>,
-);
-
 #[derive(Debug)]
 pub struct MappingRequest {
     pub(crate) ctx: MappingContext,
     pub(crate) trigger: MappingTrigger,
-    pub(crate) result_sender: Sender<MappingResponse>,
+    pub(crate) result_sender: Sender<Result<BlockState, MappingError>>,
 }
 
 #[derive(Debug)]
