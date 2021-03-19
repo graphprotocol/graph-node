@@ -1,6 +1,5 @@
 alter table unused_deployments
-      add column new_id int
-          references subgraphs.subgraph_deployment(id) on delete cascade;
+      add column new_id int;
 
 create temp sequence unused_pk;
 

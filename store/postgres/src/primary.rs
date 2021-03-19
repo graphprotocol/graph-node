@@ -789,9 +789,7 @@ impl<'a> Connection<'a> {
     /// return all sites
     pub fn find_sites(&self, ids: Vec<String>) -> Result<Vec<Site>, StoreError> {
         let schemas = if ids.is_empty() {
-            deployment_schemas::table
-                .filter(deployment_schemas::subgraph.eq_any(ids))
-                .load::<Schema>(self.0.as_ref())?
+            deployment_schemas::table.load::<Schema>(self.0.as_ref())?
         } else {
             deployment_schemas::table
                 .filter(deployment_schemas::subgraph.eq_any(ids))
