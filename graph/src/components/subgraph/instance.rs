@@ -1,11 +1,6 @@
-use async_trait::async_trait;
-
+use crate::data::subgraph::schema::SubgraphError;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
-use crate::{
-    components::subgraph::{MappingError, SharedProofOfIndexing},
-    data::subgraph::schema::SubgraphError,
-};
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo {
@@ -101,39 +96,4 @@ impl BlockState {
         assert!(self.in_handler);
         self.handler_created_data_sources.push(ds);
     }
-}
-
-/// Represents a loaded instance of a subgraph.
-#[async_trait]
-pub trait SubgraphInstance<H: RuntimeHost> {
-    /// Process and Ethereum trigger and return the resulting entity operations as a future.
-    async fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
-        trigger: EthereumTrigger,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError>;
-
-    /// Like `process_trigger` but processes an Ethereum event in a given list of hosts.
-    async fn process_trigger_in_runtime_hosts(
-        logger: &Logger,
-        hosts: &[Arc<H>],
-        block: &Arc<LightEthereumBlock>,
-        trigger: EthereumTrigger,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError>;
-
-    /// Adds dynamic data sources to the subgraph.
-    fn add_dynamic_data_source(
-        &mut self,
-        logger: &Logger,
-        data_source: DataSource,
-        top_level_templates: Arc<Vec<DataSourceTemplate>>,
-        metrics: Arc<HostMetrics>,
-    ) -> Result<Option<Arc<H>>, anyhow::Error>;
-
-    fn revert_data_sources(&mut self, reverted_block: BlockNumber);
 }

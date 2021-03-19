@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures01::sync::mpsc::Sender;
 use lazy_static::lazy_static;
 
@@ -7,7 +6,7 @@ use std::env;
 use std::str::FromStr;
 
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::prelude::{SubgraphInstance as SubgraphInstanceTrait, *};
+use graph::prelude::*;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -114,14 +113,8 @@ where
             host_metrics,
         )
     }
-}
 
-#[async_trait]
-impl<T> SubgraphInstanceTrait<T::Host> for SubgraphInstance<T>
-where
-    T: RuntimeHostBuilder,
-{
-    async fn process_trigger(
+    pub(crate) async fn process_trigger(
         &self,
         logger: &Logger,
         block: &Arc<LightEthereumBlock>,
@@ -140,7 +133,7 @@ where
         .await
     }
 
-    async fn process_trigger_in_runtime_hosts(
+    pub(crate) async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: &[Arc<T::Host>],
         block: &Arc<LightEthereumBlock>,
@@ -171,7 +164,7 @@ where
         Ok(state)
     }
 
-    fn add_dynamic_data_source(
+    pub(crate) fn add_dynamic_data_source(
         &mut self,
         logger: &Logger,
         data_source: DataSource,
@@ -205,7 +198,7 @@ where
         })
     }
 
-    fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
+    pub(crate) fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
         // `hosts` is ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         while self
