@@ -372,7 +372,7 @@ async fn ipfs_map() {
         let runtime = tokio::runtime::Handle::current();
         std::thread::spawn(move || {
             runtime.enter(|| {
-                let (mut module, store) = test_valid_module_and_store(
+                let (mut module, _) = test_valid_module_and_store(
                     subgraph_id,
                     mock_data_source("wasm_test/ipfs_map.wasm"),
                 );
@@ -382,13 +382,12 @@ async fn ipfs_map() {
                 // Invoke the callback
                 let func = module.get_func("ipfsMap").typed().unwrap().clone();
                 let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
-                let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
                 let mut mods = module
                     .take_ctx()
                     .ctx
                     .state
                     .entity_cache
-                    .as_modifications(store.writable(&subgraph_id)?.as_ref())?
+                    .as_modifications()?
                     .modifications;
 
                 // Bring the modifications into a predictable order (by entity_id)
@@ -727,10 +726,7 @@ async fn entity_store() {
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(writable.clone()),
     );
-    let mut mods = cache
-        .as_modifications(writable.as_ref())
-        .unwrap()
-        .modifications;
+    let mut mods = cache.as_modifications().unwrap().modifications;
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Overwrite { data, .. } => {
@@ -751,7 +747,7 @@ async fn entity_store() {
         .ctx
         .state
         .entity_cache
-        .as_modifications(writable.as_ref())
+        .as_modifications()
         .unwrap()
         .modifications;
     assert_eq!(1, mods.len());

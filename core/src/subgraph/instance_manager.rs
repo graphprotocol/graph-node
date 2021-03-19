@@ -923,7 +923,7 @@ where
         entity_lfu_cache: mut cache,
     } = block_state
         .entity_cache
-        .as_modifications(ctx.inputs.store.as_ref())
+        .as_modifications()
         .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
     section.end();
 

@@ -1541,10 +1541,7 @@ impl EntityCache {
     /// to the current state is actually needed.
     ///
     /// Also returns the updated `LfuCache`.
-    pub fn as_modifications(
-        mut self,
-        store: &(impl WritableStore + ?Sized),
-    ) -> Result<ModificationsAndCache, QueryExecutionError> {
+    pub fn as_modifications(mut self) -> Result<ModificationsAndCache, QueryExecutionError> {
         assert!(!self.in_handler);
 
         // The first step is to make sure all entities being set are in `self.current`.
@@ -1566,7 +1563,7 @@ impl EntityCache {
         }
 
         for (subgraph_id, keys) in missing_by_subgraph {
-            for (entity_type, entities) in store.get_many(keys)? {
+            for (entity_type, entities) in self.store.get_many(keys)? {
                 for entity in entities {
                     let key = EntityKey {
                         subgraph_id: subgraph_id.clone(),
