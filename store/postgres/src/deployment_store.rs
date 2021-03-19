@@ -306,7 +306,7 @@ impl DeploymentStore {
                     removals
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push(key);
+                        .push(key.entity_id);
                 }
             }
         }
@@ -316,11 +316,11 @@ impl DeploymentStore {
             count +=
                 self.insert_entities(entity_type, entities, conn, layout, ptr, &stopwatch)? as i32
         }
-        for (entity_type, entities) in overwrites.iter_mut() {
+        for (entity_type, entities) in overwrites.drain() {
             // not updating count since the number of entities remains the same
             self.overwrite_entities(entity_type, entities, conn, layout, ptr, &stopwatch)?;
         }
-        for (entity_type, entity_keys) in removals.into_iter() {
+        for (entity_type, entity_keys) in removals.iter() {
             count -=
                 self.remove_entities(entity_type, entity_keys, conn, layout, ptr, &stopwatch)?
                     as i32;
@@ -350,8 +350,8 @@ impl DeploymentStore {
 
     fn overwrite_entities(
         &self,
-        entity_type: &EntityType,
-        data: &mut Vec<(EntityKey, Entity)>,
+        entity_type: EntityType,
+        data: Vec<(EntityKey, Entity)>,
         conn: &PgConnection,
         layout: &Layout,
         ptr: &EthereumBlockPointer,
@@ -370,8 +370,8 @@ impl DeploymentStore {
 
     fn remove_entities(
         &self,
-        entity_type: EntityType,
-        entity_keys: Vec<EntityKey>,
+        entity_type: &EntityType,
+        entity_keys: &Vec<String>,
         conn: &PgConnection,
         layout: &Layout,
         ptr: &EthereumBlockPointer,
@@ -379,13 +379,7 @@ impl DeploymentStore {
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
         layout
-            .delete(
-                conn,
-                entity_type,
-                &entity_keys,
-                block_number(ptr),
-                stopwatch,
-            )
+            .delete(conn, entity_type, entity_keys, block_number(ptr), stopwatch)
             .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
     }
 
