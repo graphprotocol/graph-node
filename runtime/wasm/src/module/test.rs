@@ -105,7 +105,7 @@ fn mock_data_source(path: &str) -> DataSource {
         },
         mapping: Mapping {
             kind: String::from("ethereum/events"),
-            api_version: String::from("0.1.0"),
+            api_version: Version::parse("0.1.0").unwrap(),
             language: String::from("wasm/assemblyscript"),
             entities: vec![],
             abis: vec![],
@@ -163,7 +163,7 @@ fn mock_host_exports(
         },
         mapping: Mapping {
             kind: String::from("ethereum/events"),
-            api_version: String::from("0.1.0"),
+            api_version: Version::parse("0.1.0").unwrap(),
             language: String::from("wasm/assemblyscript"),
             entities: vec![],
             abis: vec![],
@@ -179,7 +179,7 @@ fn mock_host_exports(
 
     HostExports::new(
         subgraph_id,
-        Version::parse(&data_source.mapping.api_version).unwrap(),
+        data_source.mapping.api_version,
         data_source.name,
         data_source.source.address,
         data_source.network.unwrap(),

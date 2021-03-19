@@ -6,7 +6,6 @@ use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
 use test_store::*;
 
-use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
@@ -17,6 +16,7 @@ use graph::{
     },
     prelude::ethabi::Contract,
 };
+use graph::{data::store::scalar, semver::Version};
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
 use web3::types::{Address, H256};
@@ -1182,7 +1182,7 @@ fn mock_data_source() -> DataSource {
         },
         mapping: Mapping {
             kind: String::from("ethereum/events"),
-            api_version: String::from("0.1.0"),
+            api_version: Version::parse("0.1.0").unwrap(),
             language: String::from("wasm/assemblyscript"),
             entities: vec![],
             abis: vec![],
