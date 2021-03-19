@@ -910,6 +910,15 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
 
     fn writable(&self, id: &SubgraphDeploymentId) -> Result<Arc<dyn WritableStore>, StoreError>;
+
+    /// Return the minimum block pointer of all deployments with this `id`
+    /// that we would use to query or copy from; in particular, this will
+    /// ignore any instances of this deployment that are in the process of
+    /// being set up
+    fn least_block_ptr(
+        &self,
+        id: &SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error>;
 }
 
 #[async_trait]
@@ -1060,6 +1069,13 @@ impl SubgraphStore for MockStore {
     }
 
     fn is_deployed(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
+    fn least_block_ptr(
+        &self,
+        _: &SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
         unimplemented!()
     }
 }

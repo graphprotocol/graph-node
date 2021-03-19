@@ -111,4 +111,11 @@ impl SubgraphStore for MockStore {
     fn is_deployed(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
         todo!()
     }
+
+    fn least_block_ptr(
+        &self,
+        _: &SubgraphDeploymentId,
+    ) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!()
+    }
 }

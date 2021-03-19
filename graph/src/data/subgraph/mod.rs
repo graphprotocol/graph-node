@@ -753,11 +753,7 @@ impl Graft {
             vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
         }
 
-        let store = match store.writable(&self.base) {
-            Ok(store) => store,
-            Err(e) => return gbi(e.to_string()),
-        };
-        match store.block_ptr() {
+        match store.least_block_ptr(&self.base) {
             Err(e) => gbi(e.to_string()),
             Ok(None) => gbi(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
