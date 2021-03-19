@@ -147,11 +147,10 @@ trait ForeignKeyClauses {
     }
 
     /// Add `ids`  as a bind variable to `out`, using the right SQL type
-    fn bind_ids<S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>>(
-        &self,
-        ids: &[S],
-        out: &mut AstPass<Pg>,
-    ) -> QueryResult<()> {
+    fn bind_ids<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
+    where
+        S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+    {
         match self.column_type().id_type() {
             IdType::String => out.push_bind_param::<Array<Text>, _>(&ids)?,
             IdType::Bytes => {
@@ -181,7 +180,10 @@ trait ForeignKeyClauses {
     /// Generate a clause
     ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
     /// using the right types to bind `$ids` into `out`
-    fn is_in(&self, ids: &[&str], out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn is_in<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
+    where
+        S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+    {
         out.push_sql("exists (select 1 from unnest(");
         self.bind_ids(ids, out)?;
         out.push_sql(") as p(g$id) where id = p.g$id)");
@@ -2505,14 +2507,17 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 /// Reduce the upper bound of the current entry's block range to `block` as
 /// long as that does not result in an empty block range
 #[derive(Debug, Clone, Constructor)]
-pub struct ClampRangeQuery<'a> {
+pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
     entity_type: &'a EntityType,
-    entity_keys: &'a [&'a EntityKey],
+    entity_ids: &'a [S],
     block: BlockNumber,
 }
 
-impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
+impl<'a, S> QueryFragment<Pg> for ClampRangeQuery<'a, S>
+where
+    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+{
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
@@ -2529,13 +2534,7 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql(")\n where ");
 
-        let entity_ids: Vec<&str> = self
-            .entity_keys
-            .iter()
-            .map(|key| key.entity_id.as_ref())
-            .collect();
-
-        self.table.primary_key().is_in(&entity_ids, &mut out)?;
+        self.table.primary_key().is_in(self.entity_ids, &mut out)?;
         out.push_sql(" and (");
         out.push_sql(BLOCK_RANGE_CURRENT);
         out.push_sql(")");
@@ -2548,20 +2547,26 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
     }
 }
 
-impl<'a> QueryId for ClampRangeQuery<'a> {
+impl<'a, S> QueryId for ClampRangeQuery<'a, S>
+where
+    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+{
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for ClampRangeQuery<'a> {
+impl<'a, S> LoadQuery<PgConnection, ReturnedEntityData> for ClampRangeQuery<'a, S>
+where
+    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+{
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
             .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
     }
 }
 
-impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
+impl<'a, S, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a, S> {}
 
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries

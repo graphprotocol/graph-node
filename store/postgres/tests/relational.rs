@@ -229,7 +229,7 @@ fn update_entity(
     entity_type: &str,
     mut entities: Vec<Entity>,
 ) {
-    let mut entities_with_keys = entities
+    let entities_with_keys: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
             let key = EntityKey::data(
@@ -240,6 +240,7 @@ fn update_entity(
             (key, entity)
         })
         .collect();
+
     let entity_type = EntityType::from(entity_type);
     let errmsg = format!(
         "Failed to insert entities {}[{:?}]",
@@ -249,8 +250,8 @@ fn update_entity(
     let updated = layout
         .update(
             &conn,
-            &entity_type,
-            &mut entities_with_keys,
+            entity_type,
+            entities_with_keys.clone(),
             0,
             &MOCK_STOPWATCH,
         )
@@ -527,7 +528,7 @@ fn update() {
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(key, entity)];
         layout
-            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+            .update(&conn, entity_type, entities.clone(), 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // The missing 'strings' will show up as Value::Null in the
@@ -585,13 +586,13 @@ fn update_many() {
             })
             .collect();
 
-        let mut entities = keys
+        let entities = keys
             .into_iter()
             .zip(vec![one, two, three].into_iter())
             .collect();
 
         layout
-            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+            .update(&conn, entity_type, entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // check updates took effect
@@ -657,9 +658,9 @@ fn serialize_bigdecimal() {
                 entity.id().unwrap().clone(),
             );
             let entity_type = EntityType::from("Scalar");
-            let mut entities = vec![(key, entity.clone())];
+            let entities = vec![(key, entity.clone())];
             layout
-                .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+                .update(&conn, entity_type, entities, 0, &MOCK_STOPWATCH)
                 .expect("Failed to update");
 
             let actual = layout
@@ -710,9 +711,15 @@ fn delete() {
             "no such entity".to_owned(),
         );
         let entity_type = EntityType::from("Scalar");
-        let mut entity_keys = vec![key];
+        let mut entity_keys = vec![key.entity_id];
         let count = layout
-            .delete(&conn, entity_type.clone(), &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(
+                &conn,
+                &entity_type.clone(),
+                &entity_keys,
+                1,
+                &MOCK_STOPWATCH,
+            )
             .expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout));
@@ -720,11 +727,11 @@ fn delete() {
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|mut key| key.entity_id = "two".to_owned())
+            .map(|key| *key = "two".to_owned())
             .expect("Failed to update key");
 
         let count = layout
-            .delete(&conn, entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout));
@@ -746,19 +753,9 @@ fn insert_many_and_delete_many() {
 
         // Delete entities with ids equal to "two" and "three"
         let entity_type = EntityType::from("Scalar");
-        let entity_keys: Vec<EntityKey> = ["two", "three"]
-            .iter()
-            .map(|id| {
-                EntityKey::data(
-                    THINGS_SUBGRAPH_ID.clone(),
-                    "Scalar".to_owned(),
-                    String::from(*id),
-                )
-            })
-            .collect();
-
+        let entity_keys = vec!["two".to_string(), "three".to_string()];
         let num_removed = layout
-            .delete(&conn, entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
         assert_eq!(1, count_scalar_entities(conn, layout));
