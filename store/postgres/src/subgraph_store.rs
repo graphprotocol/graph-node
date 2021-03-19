@@ -202,16 +202,6 @@ impl SubgraphStore {
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         self.inner.clone().get_proof_of_indexing(id, indexer, block)
     }
-
-    pub(crate) fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        id: &'a SubgraphDeploymentId,
-    ) -> DynTryFuture<'a, bool> {
-        match self.writable(id) {
-            Ok(writable) => writable.supports_proof_of_indexing(),
-            Err(e) => Box::pin(std::future::ready(Err(e.into()))),
-        }
-    }
 }
 
 impl std::ops::Deref for SubgraphStore {

@@ -1298,11 +1298,6 @@ pub trait StatusStore: Send + Sync + 'static {
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError>;
 
-    fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a SubgraphDeploymentId,
-    ) -> DynTryFuture<'a, bool>;
-
     /// A value of None indicates that the table is not available. Re-deploying
     /// the subgraph fixes this. It is undesirable to force everything to
     /// re-sync from scratch, so existing deployments will continue without a

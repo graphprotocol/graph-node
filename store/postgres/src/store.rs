@@ -107,15 +107,6 @@ impl StatusStore for Store {
         self.subgraph_store.versions_for_subgraph_id(subgraph_id)
     }
 
-    fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a SubgraphDeploymentId,
-    ) -> graph::prelude::DynTryFuture<'a, bool> {
-        self.subgraph_store
-            .clone()
-            .supports_proof_of_indexing(subgraph_id)
-    }
-
     fn get_proof_of_indexing<'a>(
         self: Arc<Self>,
         subgraph_id: &'a SubgraphDeploymentId,
