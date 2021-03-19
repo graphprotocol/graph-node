@@ -76,7 +76,7 @@ RUN apt-get update \
  && apt-get install -y libpq-dev ca-certificates netcat
 
 ADD docker/wait_for docker/start /usr/local/bin/
-COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graphman /usr/local/bin
+COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graphman /usr/local/bin/
 COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY docker/Dockerfile /Dockerfile
 CMD start
