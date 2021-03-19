@@ -546,7 +546,7 @@ pub struct UnresolvedMapping {
 #[derive(Clone, Debug)]
 pub struct Mapping {
     pub kind: String,
-    pub api_version: String,
+    pub api_version: Version,
     pub language: String,
     pub entities: Vec<String>,
     pub abis: Vec<Arc<MappingABI>>,
@@ -628,7 +628,9 @@ impl UnresolvedMapping {
             file: link,
         } = self;
 
-        ensure!(VersionReq::parse("<= 0.0.4").unwrap().matches(&Version::parse(&api_version)?),
+        let api_version = Version::parse(&api_version)?;
+
+        ensure!(VersionReq::parse("<= 0.0.4").unwrap().matches(&api_version),
             "The maximum supported mapping API version of this indexer is 0.0.4, but `{}` was found",
             api_version
         );

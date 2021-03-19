@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 use graph::components::store::CallCache;
-use semver::Version;
 use strum::AsStaticRef as _;
 
 use graph::components::arweave::ArweaveAdapter;
@@ -179,13 +178,11 @@ impl RuntimeHost {
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Result<Self, Error> {
-        let api_version = Version::parse(&data_source.mapping.api_version)?;
-
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
             subgraph_id,
-            api_version,
+            data_source.mapping.api_version.clone(),
             data_source.name.clone(),
             data_source.source.address.clone(),
             network_name,

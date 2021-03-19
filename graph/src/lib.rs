@@ -30,6 +30,7 @@ pub use task_spawn::{
 
 pub use bytes;
 pub use prometheus;
+pub use semver;
 pub use stable_hash;
 pub use url;
 
