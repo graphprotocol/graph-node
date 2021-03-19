@@ -8,7 +8,7 @@ mod registrar;
 pub use crate::prelude::Entity;
 
 pub use self::host::{HostMetrics, MappingError, RuntimeHost, RuntimeHostBuilder};
-pub use self::instance::{BlockState, DataSourceTemplateInfo, SubgraphInstance};
+pub use self::instance::{BlockState, DataSourceTemplateInfo};
 pub use self::instance_manager::SubgraphInstanceManager;
 pub use self::proof_of_indexing::{
     BlockEventStream, ProofOfIndexing, ProofOfIndexingEvent, ProofOfIndexingFinisher,

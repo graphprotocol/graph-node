@@ -11,10 +11,7 @@ use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIn
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
-use graph::prelude::{
-    SubgraphInstance as SubgraphInstanceTrait,
-    SubgraphInstanceManager as SubgraphInstanceManagerTrait, *,
-};
+use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 
 use super::loader::load_dynamic_data_sources;
