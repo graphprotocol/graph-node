@@ -122,6 +122,10 @@ table! {
         /// The subgraph layout scheme used for this subgraph
         version -> crate::primary::DeploymentSchemaVersionMapping,
         network -> Text,
+        /// If there are multiple entries for the same IPFS hash (`subgraph`)
+        /// only one of them will be active. That's the one we use for
+        /// querying
+        active -> Bool,
     }
 }
 
@@ -176,6 +180,7 @@ struct Schema {
     /// schemas from the database with `Split` produce an error
     version: DeploymentSchemaVersion,
     pub network: String,
+    pub(crate) active: bool,
 }
 
 #[derive(Clone, Queryable, QueryableByName, Debug)]
@@ -282,6 +287,10 @@ pub struct Site {
     pub namespace: Namespace,
     /// The name of the network to which this deployment belongs
     pub network: String,
+    /// Whether this is the site that should be used for queries. There's
+    /// exactly one for each `deployment`, i.e., other entries for that
+    /// deployment have `active = false`
+    pub(crate) active: bool,
     /// Only the store and tests can create Sites
     _creation_disallowed: (),
 }
@@ -312,6 +321,7 @@ impl TryFrom<Schema> for Site {
             namespace,
             shard,
             network: schema.network,
+            active: schema.active,
             _creation_disallowed: (),
         })
     }
@@ -333,6 +343,7 @@ pub fn make_dummy_site(
         shard: PRIMARY_SHARD.clone(),
         namespace,
         network,
+        active: true,
         _creation_disallowed: (),
     }
 }
@@ -721,6 +732,7 @@ impl<'a> Connection<'a> {
                 ds::shard.eq(shard.as_str()),
                 ds::version.eq(v::Relational),
                 ds::network.eq(network.as_str()),
+                ds::active.eq(true),
             ))
             .returning((ds::id, ds::name))
             .get_results(conn)?;
@@ -738,6 +750,7 @@ impl<'a> Connection<'a> {
             shard,
             namespace,
             network,
+            active: true,
             _creation_disallowed: (),
         })
     }

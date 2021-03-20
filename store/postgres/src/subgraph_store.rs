@@ -221,7 +221,9 @@ pub struct SubgraphStoreInner {
     logger: Logger,
     primary: ConnectionPool,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
-    /// Cache for the mapping from deployment id to shard/namespace/id
+    /// Cache for the mapping from deployment id to shard/namespace/id. Only
+    /// active sites are cached here to ensure we have a unique mapping
+    /// from `SubgraphDeploymentId` to `Site`
     sites: RwLock<HashMap<SubgraphDeploymentId, Arc<Site>>>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
 }
@@ -286,6 +288,15 @@ impl SubgraphStoreInner {
         self.sites.write().unwrap().clear();
     }
 
+    fn cache_active(&self, site: &Arc<Site>) {
+        if site.active {
+            self.sites
+                .write()
+                .unwrap()
+                .insert(site.deployment.clone(), site.clone());
+        }
+    }
+
     fn site(&self, id: &SubgraphDeploymentId) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.read().unwrap().get(id) {
             return Ok(site.clone());
@@ -297,7 +308,7 @@ impl SubgraphStoreInner {
             .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
         let site = Arc::new(site);
 
-        self.sites.write().unwrap().insert(id.clone(), site.clone());
+        self.cache_active(&site);
         Ok(site)
     }
 
@@ -318,10 +329,7 @@ impl SubgraphStoreInner {
             .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
         let site = Arc::new(site);
 
-        self.sites
-            .write()
-            .unwrap()
-            .insert(site.deployment.clone(), site.clone());
+        self.cache_active(&site);
         Ok(site)
     }
 
@@ -526,11 +534,9 @@ impl SubgraphStoreInner {
         sites: Vec<Site>,
     ) -> Result<HashMap<Shard, Vec<Arc<Site>>>, StoreError> {
         let sites: Vec<_> = sites.into_iter().map(|site| Arc::new(site)).collect();
-        self.sites.write().unwrap().extend(
-            sites
-                .iter()
-                .map(|site| (site.deployment.clone(), site.clone())),
-        );
+        for site in &sites {
+            self.cache_active(site);
+        }
 
         // Partition the list of deployments by shard
         let by_shard: HashMap<Shard, Vec<Arc<Site>>> =
