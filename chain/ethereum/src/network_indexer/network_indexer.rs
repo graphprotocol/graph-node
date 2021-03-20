@@ -105,7 +105,7 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
         future::result(
             context
                 .store
-                .writable(&context.subgraph_id)
+                .writable_for_network_indexer(&context.subgraph_id)
                 .map_err(Error::from)
                 .and_then(|store| store.block_ptr())
         )
@@ -1166,7 +1166,7 @@ impl NetworkIndexer {
         ));
 
         let writable = store
-            .writable(&subgraph_id)
+            .writable_for_network_indexer(&subgraph_id)
             .expect("can get writable store");
         let block_writer = Arc::new(BlockWriter::new(
             subgraph_id.clone(),

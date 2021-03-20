@@ -118,4 +118,11 @@ impl SubgraphStore for MockStore {
     ) -> Result<Option<EthereumBlockPointer>, Error> {
         unimplemented!()
     }
+
+    fn writable_for_network_indexer(
+        &self,
+        _: &SubgraphDeploymentId,
+    ) -> Result<Arc<dyn graph::components::store::WritableStore>, StoreError> {
+        unimplemented!()
+    }
 }

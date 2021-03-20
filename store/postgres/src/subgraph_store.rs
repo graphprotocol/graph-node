@@ -845,6 +845,13 @@ impl SubgraphStoreTrait for SubgraphStore {
         }))
     }
 
+    fn writable_for_network_indexer(
+        &self,
+        id: &SubgraphDeploymentId,
+    ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
+        self.writable(id)
+    }
+
     fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
         match self.site(id) {
             Ok(_) => Ok(true),

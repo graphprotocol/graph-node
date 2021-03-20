@@ -909,7 +909,18 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
 
+    /// Return a `WritableStore` that is used for indexing subgraphs. Only
+    /// code that is part of indexing a subgraph should ever use this.
     fn writable(&self, id: &SubgraphDeploymentId) -> Result<Arc<dyn WritableStore>, StoreError>;
+
+    /// The network indexer does not follow the normal flow of how subgraphs
+    /// are indexed, and therefore needs a special way to get a
+    /// `WritableStore`. This method should not be used outside of that, and
+    /// `writable` should be used instead
+    fn writable_for_network_indexer(
+        &self,
+        id: &SubgraphDeploymentId,
+    ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
     /// Return the minimum block pointer of all deployments with this `id`
     /// that we would use to query or copy from; in particular, this will
@@ -1076,6 +1087,13 @@ impl SubgraphStore for MockStore {
         &self,
         _: &SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error> {
+        unimplemented!()
+    }
+
+    fn writable_for_network_indexer(
+        &self,
+        _: &SubgraphDeploymentId,
+    ) -> Result<Arc<dyn WritableStore>, StoreError> {
         unimplemented!()
     }
 }
