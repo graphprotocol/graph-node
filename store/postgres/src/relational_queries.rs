@@ -1304,7 +1304,12 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
 
         // Construct a query
         //   insert into schema.table(column, ...)
-        //   values ($1, ...)
+        //   values
+        //   (a, b, c),
+        //   (d, e, f)
+        //   [...]
+        //   (x, y, z)
+        //
         // and convert and bind the entity's values into it
         out.push_sql("insert into ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -2521,7 +2526,7 @@ where
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
-        //  where id  in (id1, id2, ..., idN)
+        //  where id in (id1, id2, ..., idN)
         //    and block_range @> INTMAX
         out.unsafe_to_cache_prepared();
         out.push_sql("update ");
@@ -2539,10 +2544,6 @@ where
         out.push_sql(BLOCK_RANGE_CURRENT);
         out.push_sql(")");
 
-        out.push_sql("\nreturning ");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text");
-
         Ok(())
     }
 }
@@ -2554,16 +2555,6 @@ where
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a, S> LoadQuery<PgConnection, ReturnedEntityData> for ClampRangeQuery<'a, S>
-where
-    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
-{
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
-    }
 }
 
 impl<'a, S, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a, S> {}
