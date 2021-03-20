@@ -721,7 +721,7 @@ impl<'a> Connection<'a> {
 
         let conn = self.0.as_ref();
 
-        if let Some(schema) = self.find_site(subgraph)? {
+        if let Some(schema) = self.find_active_site(subgraph)? {
             return Ok(schema);
         }
 
@@ -774,9 +774,13 @@ impl<'a> Connection<'a> {
         })
     }
 
-    pub fn find_site(&self, subgraph: &SubgraphDeploymentId) -> Result<Option<Site>, StoreError> {
+    pub fn find_active_site(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+    ) -> Result<Option<Site>, StoreError> {
         let schema = deployment_schemas::table
             .filter(deployment_schemas::subgraph.eq(subgraph.to_string()))
+            .filter(deployment_schemas::active.eq(true))
             .first::<Schema>(self.0.as_ref())
             .optional()?;
         if let Some(Schema { version, .. }) = schema {

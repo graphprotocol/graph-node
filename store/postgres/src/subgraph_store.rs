@@ -297,6 +297,7 @@ impl SubgraphStoreInner {
         }
     }
 
+    /// Return the active `Site` for this deployment hash
     fn site(&self, id: &SubgraphDeploymentId) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.read().unwrap().get(id) {
             return Ok(site.clone());
@@ -304,7 +305,7 @@ impl SubgraphStoreInner {
 
         let conn = self.primary_conn()?;
         let site = conn
-            .find_site(id)?
+            .find_active_site(id)?
             .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
         let site = Arc::new(site);
 
@@ -333,6 +334,8 @@ impl SubgraphStoreInner {
         Ok(site)
     }
 
+    /// Return the store and site for the active deployment of this
+    /// deployment hash
     fn store(
         &self,
         id: &SubgraphDeploymentId,
