@@ -680,9 +680,7 @@ impl Layout {
         ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
         section.end();
         let _section = stopwatch.start_section("update_modification_insert_query");
-        Ok(InsertQuery::new(table, &mut entities, block)?
-            .get_results(conn)
-            .map(|ids| ids.len())?)
+        Ok(InsertQuery::new(table, &mut entities, block)?.execute(conn)?)
     }
 
     pub fn delete(
@@ -695,9 +693,7 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
-        Ok(ClampRangeQuery::new(table, &entity_type, entity_ids, block)
-            .get_results(conn)
-            .map(|ids| ids.len())?)
+        Ok(ClampRangeQuery::new(table, &entity_type, entity_ids, block).execute(conn)?)
     }
 
     pub fn revert_block(
