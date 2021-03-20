@@ -814,11 +814,6 @@ impl<'a> Connection<'a> {
             .collect()
     }
 
-    pub fn find_existing_site(&self, subgraph: &SubgraphDeploymentId) -> Result<Site, StoreError> {
-        self.find_site(subgraph)?
-            .ok_or_else(|| StoreError::DeploymentNotFound(subgraph.to_string()))
-    }
-
     pub fn sites(&self) -> Result<Vec<Site>, StoreError> {
         use deployment_schemas as ds;
 
