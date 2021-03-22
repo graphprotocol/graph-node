@@ -9,4 +9,4 @@ tokio = {version = "1.2.0", features = ["rt", "macros", "process"]}
 tokio-stream = "0.1"
 futures = "0.3.13"
 port_check = "0.1.5"
-anyhow = "1.0.38"
+anyhow = "1.0.39"
