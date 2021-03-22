@@ -105,7 +105,7 @@ impl StoreResolver {
     ) -> Result<EthereumBlockPointer, QueryExecutionError> {
         match bc {
             BlockConstraint::Number(number) => store
-                .block_ptr(subgraph.clone())
+                .block_ptr()
                 .map_err(|e| StoreError::from(e).into())
                 .and_then(|ptr| {
                     let ptr = ptr.expect("we should have already checked that the subgraph exists");
@@ -147,7 +147,7 @@ impl StoreResolver {
                     })
             }
             BlockConstraint::Latest => store
-                .block_ptr(subgraph.clone())
+                .block_ptr()
                 .map_err(|e| StoreError::from(e).into())
                 .and_then(|ptr| {
                     let ptr = ptr.expect("we should have already checked that the subgraph exists");

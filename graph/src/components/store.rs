@@ -1345,10 +1345,7 @@ pub trait QueryStore: Send + Sync {
 
     fn is_deployment_synced(&self) -> Result<bool, Error>;
 
-    fn block_ptr(
-        &self,
-        subgraph_id: SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error>;
+    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
