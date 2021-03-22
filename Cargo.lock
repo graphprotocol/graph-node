@@ -1625,7 +1625,7 @@ dependencies = [
  "petgraph 0.5.1",
  "priority-queue",
  "prometheus",
- "rand 0.6.5",
+ "rand 0.8.3",
  "reqwest",
  "semver 0.10.0",
  "serde",
@@ -1741,7 +1741,7 @@ dependencies = [
  "graph-graphql",
  "graphql-parser",
  "mockall",
- "rand 0.6.5",
+ "rand 0.8.3",
 ]
 
 [[package]]
@@ -1911,7 +1911,7 @@ dependencies = [
  "lru_time_cache",
  "maybe-owned",
  "postgres",
- "rand 0.6.5",
+ "rand 0.8.3",
  "serde",
  "stable-hash",
  "test-store",
