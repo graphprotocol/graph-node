@@ -4,7 +4,7 @@ version = "0.22.0"
 edition = "2018"
 
 [dependencies]
-async-trait = "0.1.41"
+async-trait = "0.1.48"
 atomic_refcell = "0.1.6"
 bytes = "0.5"
 futures01 = { package="futures", version="0.1.29" }
