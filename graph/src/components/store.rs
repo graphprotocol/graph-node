@@ -6,13 +6,16 @@ use mockall::predicate::*;
 use mockall::*;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
-use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    fmt::Display,
+};
 use thiserror::Error;
 use web3::types::{Address, H256};
 
@@ -462,7 +465,7 @@ pub enum EntityChange {
         entity_type: EntityType,
     },
     Assignment {
-        subgraph_id: SubgraphDeploymentId,
+        deployment: DeploymentLocator,
         operation: EntityChangeOperation,
     },
 }
@@ -475,12 +478,9 @@ impl EntityChange {
         }
     }
 
-    pub fn for_assignment(
-        subgraph_id: SubgraphDeploymentId,
-        operation: EntityChangeOperation,
-    ) -> Self {
+    pub fn for_assignment(deployment: DeploymentLocator, operation: EntityChangeOperation) -> Self {
         Self::Assignment {
-            subgraph_id,
+            deployment,
             operation,
         }
     }
@@ -847,6 +847,58 @@ pub trait SubscriptionManager: Send + Sync + 'static {
     fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
 }
 
+/// An internal identifer for the specific instance of a deployment. The
+/// identifier only has meaning in the context of a specific instance of
+/// graph-node. Only store code should ever construct or consume it; all
+/// other code passes it around as an opaque token.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct DeploymentId(pub i32);
+
+impl Display for DeploymentId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl DeploymentId {
+    pub fn new(id: i32) -> Self {
+        Self(id)
+    }
+}
+
+/// A unique identifier for a deployment that specifies both its external
+/// identifier (`hash`) and its unique internal identifier (`id`) which
+/// ensures we are talking about a unique location for the deployment's data
+/// in the store
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct DeploymentLocator {
+    pub id: DeploymentId,
+    pub hash: SubgraphDeploymentId,
+}
+
+impl slog::Value for DeploymentLocator {
+    fn serialize(
+        &self,
+        record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        slog::Value::serialize(&self.to_string(), record, key, serializer)
+    }
+}
+
+impl DeploymentLocator {
+    pub fn new(id: DeploymentId, hash: SubgraphDeploymentId) -> Self {
+        Self { id, hash }
+    }
+}
+
+impl Display for DeploymentLocator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}[{}]", self.hash, self.id)
+    }
+}
+
 /// Common trait for store implementations.
 #[async_trait]
 pub trait SubgraphStore: Send + Sync + 'static {
@@ -871,7 +923,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         node_id: NodeId,
         network: String,
         mode: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError>;
+    ) -> Result<DeploymentLocator, StoreError>;
 
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
@@ -887,16 +939,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// assignment for the given deployment, report an error.
     fn reassign_subgraph(
         &self,
-        id: &SubgraphDeploymentId,
+        deployment: &DeploymentLocator,
         node_id: &NodeId,
     ) -> Result<(), StoreError>;
 
-    fn assigned_node(
-        &self,
-        subgraph_id: &SubgraphDeploymentId,
-    ) -> Result<Option<NodeId>, StoreError>;
+    fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError>;
 
-    fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError>;
+    fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Return `true` if a subgraph `name` exists, regardless of whether the
     /// subgraph has any deployments attached to it
@@ -911,7 +960,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
     /// code that is part of indexing a subgraph should ever use this.
-    fn writable(&self, id: &SubgraphDeploymentId) -> Result<Arc<dyn WritableStore>, StoreError>;
+    fn writable(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
     /// The network indexer does not follow the normal flow of how subgraphs
     /// are indexed, and therefore needs a special way to get a
@@ -930,6 +982,9 @@ pub trait SubgraphStore: Send + Sync + 'static {
         &self,
         id: &SubgraphDeploymentId,
     ) -> Result<Option<EthereumBlockPointer>, Error>;
+
+    /// Find the deployment locators for the subgraph with the given hash
+    fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }
 
 #[async_trait]
@@ -1039,7 +1094,7 @@ impl SubgraphStore for MockStore {
         _: NodeId,
         _: String,
         _: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError> {
+    ) -> Result<DeploymentLocator, StoreError> {
         unimplemented!()
     }
 
@@ -1051,15 +1106,15 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn reassign_subgraph(&self, _: &SubgraphDeploymentId, _: &NodeId) -> Result<(), StoreError> {
+    fn reassign_subgraph(&self, _: &DeploymentLocator, _: &NodeId) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    fn assigned_node(&self, _: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
+    fn assigned_node(&self, _: &DeploymentLocator) -> Result<Option<NodeId>, StoreError> {
         unimplemented!()
     }
 
-    fn assignments(&self, _: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+    fn assignments(&self, _: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
         unimplemented!()
     }
 
@@ -1075,7 +1130,7 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn writable(&self, _: &SubgraphDeploymentId) -> Result<Arc<dyn WritableStore>, StoreError> {
+    fn writable(&self, _: &DeploymentLocator) -> Result<Arc<dyn WritableStore>, StoreError> {
         Ok(Arc::new(MockStore::new()))
     }
 
@@ -1094,6 +1149,10 @@ impl SubgraphStore for MockStore {
         &self,
         _: &SubgraphDeploymentId,
     ) -> Result<Arc<dyn WritableStore>, StoreError> {
+        unimplemented!()
+    }
+
+    fn locators(&self, _: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         unimplemented!()
     }
 }

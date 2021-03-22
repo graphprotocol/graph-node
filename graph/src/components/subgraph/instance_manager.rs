@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::prelude::SubgraphDeploymentId;
+use crate::components::store::DeploymentLocator;
 
 /// A `SubgraphInstanceManager` loads and manages subgraph instances.
 ///
@@ -11,8 +11,8 @@ use crate::prelude::SubgraphDeploymentId;
 pub trait SubgraphInstanceManager: Send + Sync + 'static {
     async fn start_subgraph(
         self: Arc<Self>,
-        id: SubgraphDeploymentId,
+        deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
     );
-    fn stop_subgraph(&self, id: SubgraphDeploymentId);
+    fn stop_subgraph(&self, deployment: DeploymentLocator);
 }

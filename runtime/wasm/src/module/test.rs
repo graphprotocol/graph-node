@@ -23,7 +23,7 @@ mod abi;
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
-) -> (WasmInstance, Arc<impl SubgraphStore>) {
+) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
     test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
 }
 
@@ -31,7 +31,7 @@ fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
     timeout: Option<Duration>,
-) -> (WasmInstance, Arc<impl SubgraphStore>) {
+) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
     let store = STORE.clone();
     let call_cache = store
         .block_store()
@@ -39,7 +39,7 @@ fn test_valid_module_and_store_with_timeout(
         .expect("call cache for test network");
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
-    test_store::create_test_subgraph(
+    let deployment = test_store::create_test_subgraph(
         &deployment_id,
         "type User @entity {
             id: ID!,
@@ -72,7 +72,7 @@ fn test_valid_module_and_store_with_timeout(
     let module = WasmInstance::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(
-            deployment_id,
+            deployment.clone(),
             data_source,
             store.subgraph_store(),
             call_cache,
@@ -83,7 +83,7 @@ fn test_valid_module_and_store_with_timeout(
     )
     .unwrap();
 
-    (module, store.subgraph_store())
+    (module, store.subgraph_store(), deployment)
 }
 
 fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstance {
@@ -192,7 +192,7 @@ fn mock_host_exports(
 }
 
 fn mock_context(
-    subgraph_id: SubgraphDeploymentId,
+    deployment: DeploymentLocator,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     call_cache: Arc<impl EthereumCallCache>,
@@ -204,12 +204,12 @@ fn mock_context(
         logger: test_store::LOGGER.clone(),
         block: Arc::new(block),
         host_exports: Arc::new(mock_host_exports(
-            subgraph_id.clone(),
+            deployment.hash.clone(),
             data_source,
             store.clone(),
             call_cache,
         )),
-        state: BlockState::new(store.writable(&subgraph_id).unwrap(), Default::default()),
+        state: BlockState::new(store.writable(&deployment).unwrap(), Default::default()),
         proof_of_indexing: None,
     }
 }
@@ -372,7 +372,7 @@ async fn ipfs_map() {
         let runtime = tokio::runtime::Handle::current();
         std::thread::spawn(move || {
             runtime.enter(|| {
-                let (mut module, _) = test_valid_module_and_store(
+                let (mut module, _, _) = test_valid_module_and_store(
                     subgraph_id,
                     mock_data_source("wasm_test/ipfs_map.wasm"),
                 );
@@ -672,7 +672,7 @@ async fn ens_name_by_hash() {
 
 #[tokio::test]
 async fn entity_store() {
-    let (mut module, store) =
+    let (mut module, store, deployment) =
         test_valid_module_and_store("entityStore", mock_data_source("wasm_test/store.wasm"));
 
     let mut alex = Entity::new();
@@ -681,10 +681,9 @@ async fn entity_store() {
     let mut steve = Entity::new();
     steve.set("id", "steve");
     steve.set("name", "Steve");
-    let subgraph_id = SubgraphDeploymentId::new("entityStore").unwrap();
     let user_type = EntityType::from("User");
     test_store::insert_entities(
-        subgraph_id.clone(),
+        &deployment,
         vec![(user_type.clone(), alex), (user_type, steve)],
     )
     .unwrap();
@@ -721,7 +720,7 @@ async fn entity_store() {
     load_and_set_user_name(&mut module, "steve", "Steve-O");
 
     // We need to empty the cache for the next test
-    let writable = store.writable(&subgraph_id).unwrap();
+    let writable = store.writable(&deployment).unwrap();
     let cache = std::mem::replace(
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(writable.clone()),

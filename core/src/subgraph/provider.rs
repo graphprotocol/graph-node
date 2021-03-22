@@ -3,11 +3,14 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
-use graph::prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *};
+use graph::{
+    components::store::{DeploymentId, DeploymentLocator},
+    prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *},
+};
 
 pub struct SubgraphAssignmentProvider<L, I> {
     logger_factory: LoggerFactory,
-    subgraphs_running: Arc<Mutex<HashSet<SubgraphDeploymentId>>>,
+    subgraphs_running: Arc<Mutex<HashSet<DeploymentId>>>,
     link_resolver: Arc<L>,
     instance_manager: Arc<I>,
 }
@@ -37,19 +40,21 @@ where
     L: LinkResolver,
     I: SubgraphInstanceManager,
 {
-    async fn start(&self, id: SubgraphDeploymentId) -> Result<(), SubgraphAssignmentProviderError> {
-        let logger = self.logger_factory.subgraph_logger(&id);
+    async fn start(&self, loc: DeploymentLocator) -> Result<(), SubgraphAssignmentProviderError> {
+        let logger = self.logger_factory.subgraph_logger(&loc.hash);
 
         // If subgraph ID already in set
-        if !self.subgraphs_running.lock().unwrap().insert(id.clone()) {
+        if !self.subgraphs_running.lock().unwrap().insert(loc.id) {
             info!(logger, "Subgraph deployment is already running");
 
-            return Err(SubgraphAssignmentProviderError::AlreadyRunning(id.clone()));
+            return Err(SubgraphAssignmentProviderError::AlreadyRunning(
+                loc.hash.clone(),
+            ));
         }
 
         let file_bytes = self
             .link_resolver
-            .cat(&logger, &id.to_ipfs_link())
+            .cat(&logger, &loc.hash.to_ipfs_link())
             .await
             .map_err(SubgraphAssignmentProviderError::ResolveError)?;
 
@@ -58,20 +63,28 @@ where
 
         self.instance_manager
             .cheap_clone()
-            .start_subgraph(id, raw)
+            .start_subgraph(loc, raw)
             .await;
 
         Ok(())
     }
 
-    async fn stop(&self, id: SubgraphDeploymentId) -> Result<(), SubgraphAssignmentProviderError> {
+    async fn stop(
+        &self,
+        deployment: DeploymentLocator,
+    ) -> Result<(), SubgraphAssignmentProviderError> {
         // If subgraph ID was in set
-        if self.subgraphs_running.lock().unwrap().remove(&id) {
+        if self
+            .subgraphs_running
+            .lock()
+            .unwrap()
+            .remove(&deployment.id)
+        {
             // Shut down subgraph processing
-            self.instance_manager.stop_subgraph(id);
+            self.instance_manager.stop_subgraph(deployment);
             Ok(())
         } else {
-            Err(SubgraphAssignmentProviderError::NotRunning(id))
+            Err(SubgraphAssignmentProviderError::NotRunning(deployment))
         }
     }
 }

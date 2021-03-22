@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
-use graph::components::store::SubscriptionManager;
+use graph::components::store::{DeploymentLocator, SubscriptionManager};
 use graph::components::{ethereum::EthereumNetworks, store::BlockStore};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
@@ -167,24 +167,23 @@ where
                     .map(|change| match change {
                         EntityChange::Data { .. } => unreachable!(),
                         EntityChange::Assignment {
-                            subgraph_id,
-                            operation,
-                        } => (subgraph_id.clone(), operation.clone()),
+                            deployment ,                      operation,
+                        } => (deployment.clone(), operation.clone()),
                     })
                     .collect::<Vec<_>>();
                 stream::iter_ok(assignments)
             })
             .flatten()
             .and_then(
-                move |(subgraph_hash, operation)| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
+                move |(deployment, operation)| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
                     trace!(logger, "Received assignment change";
-                                   "deployment" => subgraph_hash.as_str(),
+                                   "deployment" => &deployment,
                                    "operation" => format!("{:?}", operation));
 
                     match operation {
                         EntityChangeOperation::Set => {
                             store
-                                .assigned_node(&subgraph_hash)
+                                .assigned_node(&deployment)
                                 .map_err(|e| {
                                     anyhow!("Failed to get subgraph assignment entity: {}", e)
                                 })
@@ -193,13 +192,13 @@ where
                                         if assigned == node_id {
                                             // Start subgraph on this node
                                             Box::new(stream::once(Ok(AssignmentEvent::Add {
-                                                subgraph_id: subgraph_hash,
+                                                deployment,
                                                 node_id: node_id.clone(),
                                             })))
                                         } else {
                                             // Ensure it is removed from this node
                                             Box::new(stream::once(Ok(AssignmentEvent::Remove {
-                                                subgraph_id: subgraph_hash,
+                                                deployment,
                                                 node_id: node_id.clone(),
                                             })))
                                         }
@@ -215,7 +214,7 @@ where
                             // If node ID does not match, then this is a no-op when handled in
                             // assignment provider.
                             Ok(Box::new(stream::once(Ok(AssignmentEvent::Remove {
-                                subgraph_id: subgraph_hash,
+                                deployment,
                                 node_id: node_id.clone(),
                             }))))
                         }
@@ -231,14 +230,14 @@ where
 
         future::result(self.store.assignments(&self.node_id))
             .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))
-            .and_then(move |subgraph_ids| {
+            .and_then(move |deployments| {
                 // This operation should finish only after all subgraphs are
                 // started. We wait for the spawned tasks to complete by giving
                 // each a `sender` and waiting for all of them to be dropped, so
                 // the receiver terminates without receiving anything.
-                let subgraph_ids = HashSet::<SubgraphDeploymentId>::from_iter(subgraph_ids);
+                let deployments = HashSet::<DeploymentLocator>::from_iter(deployments);
                 let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
-                for id in subgraph_ids {
+                for id in deployments {
                     let sender = sender.clone();
                     let logger = logger.clone();
 
@@ -349,10 +348,16 @@ where
     /// subgraph syncing process.
     async fn reassign_subgraph(
         &self,
-        id: SubgraphDeploymentId,
-        node_id: NodeId,
+        hash: &SubgraphDeploymentId,
+        node_id: &NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
-        self.store.reassign_subgraph(&id, &node_id)?;
+        let locations = self.store.locators(hash)?;
+        let deployment = match locations.len() {
+            0 => return Err(SubgraphRegistrarError::StoreError(anyhow!("boo").into())),
+            1 => locations[0].clone(),
+            _ => return Err(SubgraphRegistrarError::StoreError(anyhow!("boo").into())),
+        };
+        self.store.reassign_subgraph(&deployment, node_id)?;
 
         Ok(())
     }
@@ -369,13 +374,13 @@ async fn handle_assignment_event(
 
     match event {
         AssignmentEvent::Add {
-            subgraph_id,
+            deployment,
             node_id: _,
-        } => Ok(start_subgraph(subgraph_id, provider.clone(), logger).await),
+        } => Ok(start_subgraph(deployment, provider.clone(), logger).await),
         AssignmentEvent::Remove {
-            subgraph_id,
+            deployment,
             node_id: _,
-        } => match provider.stop(subgraph_id).await {
+        } => match provider.stop(deployment).await {
             Ok(()) => Ok(()),
             Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
             Err(e) => Err(CancelableError::Error(e)),
@@ -384,23 +389,23 @@ async fn handle_assignment_event(
 }
 
 async fn start_subgraph(
-    subgraph_id: SubgraphDeploymentId,
+    deployment: DeploymentLocator,
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
     logger: Logger,
 ) {
     trace!(
         logger,
         "Start subgraph";
-        "subgraph_id" => subgraph_id.to_string()
+        "subgraph_id" => &deployment.hash
     );
 
     let start_time = Instant::now();
-    let result = provider.start(subgraph_id.cheap_clone()).await;
+    let result = provider.start(deployment.clone()).await;
 
     debug!(
         logger,
         "Subgraph started";
-        "subgraph_id" => subgraph_id.to_string(),
+        "subgraph_id" => &deployment.hash,
         "start_ms" => start_time.elapsed().as_millis()
     );
 
@@ -413,7 +418,7 @@ async fn start_subgraph(
                 logger,
                 "Subgraph instance failed to start";
                 "error" => e.to_string(),
-                "subgraph_id" => subgraph_id.to_string()
+                "subgraph_id" => &deployment.hash
             );
         }
     }
@@ -548,7 +553,7 @@ fn create_subgraph_version(
                     ).graft(base_block);
                     deployment_store
                         .create_subgraph_deployment(name, &manifest.schema, deployment, node_id, network, version_switching_mode)
-                        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
+                        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e)).map(|_| ())
             })
     )
 }

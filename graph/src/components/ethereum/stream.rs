@@ -1,7 +1,7 @@
 use anyhow::Error;
 use futures::Stream;
 
-use crate::prelude::*;
+use crate::{components::store::DeploymentLocator, prelude::*};
 
 pub enum BlockStreamEvent {
     Block(EthereumBlockWithTriggers),
@@ -16,7 +16,7 @@ pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
     fn build(
         &self,
         logger: Logger,
-        deployment_id: SubgraphDeploymentId,
+        deployment: DeploymentLocator,
         network_name: String,
         start_blocks: Vec<BlockNumber>,
         log_filter: EthereumLogFilter,

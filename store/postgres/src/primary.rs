@@ -21,7 +21,9 @@ use diesel::{
     },
     Connection as _,
 };
+use graph::components::store::DeploymentId as GraphDeploymentId;
 use graph::{
+    components::store::DeploymentLocator,
     constraint_violation,
     data::subgraph::status,
     prelude::{
@@ -258,6 +260,18 @@ impl fmt::Display for DeploymentId {
     }
 }
 
+impl From<DeploymentId> for GraphDeploymentId {
+    fn from(id: DeploymentId) -> Self {
+        GraphDeploymentId::new(id.0)
+    }
+}
+
+impl From<GraphDeploymentId> for DeploymentId {
+    fn from(id: GraphDeploymentId) -> Self {
+        DeploymentId(id.0)
+    }
+}
+
 impl FromSql<Integer, Pg> for DeploymentId {
     fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
         let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
@@ -324,6 +338,12 @@ impl TryFrom<Schema> for Site {
             active: schema.active,
             _creation_disallowed: (),
         })
+    }
+}
+
+impl From<&Site> for DeploymentLocator {
+    fn from(site: &Site) -> Self {
+        DeploymentLocator::new(site.id.into(), site.deployment.clone())
     }
 }
 
@@ -415,12 +435,17 @@ impl<'a> Connection<'a> {
 
         let removed = ds::table
             .filter(ds::id.eq_any(removed))
-            .select(ds::subgraph)
-            .load::<String>(self.0.as_ref())?
+            .select((ds::id, ds::subgraph))
+            .load::<(DeploymentId, String)>(self.0.as_ref())?
             .into_iter()
-            .map(|deployment| {
-                SubgraphDeploymentId::new(deployment)
-                    .map(|id| EntityChange::for_assignment(id, EntityChangeOperation::Removed))
+            .map(|(id, hash)| {
+                SubgraphDeploymentId::new(hash)
+                    .map(|hash| {
+                        EntityChange::for_assignment(
+                            DeploymentLocator::new(id.into(), hash),
+                            EntityChangeOperation::Removed,
+                        )
+                    })
                     .map_err(|id| {
                         StoreError::ConstraintViolation(format!(
                             "invalid id `{}` for deployment assignment",
@@ -621,8 +646,7 @@ impl<'a> Connection<'a> {
         // Clean up any assignments we might have displaced
         let mut changes = self.remove_unused_assignments()?;
         if new_assignment {
-            let change =
-                EntityChange::for_assignment(site.deployment.clone(), EntityChangeOperation::Set);
+            let change = EntityChange::for_assignment(site.into(), EntityChangeOperation::Set);
             changes.push(change);
         }
         Ok(changes)
@@ -673,10 +697,7 @@ impl<'a> Connection<'a> {
         match updates {
             0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
-                let change = EntityChange::for_assignment(
-                    site.deployment.clone(),
-                    EntityChangeOperation::Set,
-                );
+                let change = EntityChange::for_assignment(site.into(), EntityChangeOperation::Set);
                 Ok(vec![change])
             }
             _ => {
@@ -696,10 +717,8 @@ impl<'a> Connection<'a> {
         match delete_count {
             0 => Ok(vec![]),
             1 => {
-                let change = EntityChange::for_assignment(
-                    site.deployment.clone(),
-                    EntityChangeOperation::Removed,
-                );
+                let change =
+                    EntityChange::for_assignment(site.into(), EntityChangeOperation::Removed);
                 Ok(vec![change])
             }
             _ => {

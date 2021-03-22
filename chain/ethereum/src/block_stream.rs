@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use graph::components::{
     ethereum::{blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities},
-    store::{BlockStore, WritableStore},
+    store::{BlockStore, DeploymentLocator, WritableStore},
 };
 use graph::prelude::{
     BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
@@ -802,7 +802,7 @@ where
     fn build(
         &self,
         logger: Logger,
-        deployment_id: SubgraphDeploymentId,
+        deployment: DeploymentLocator,
         network_name: String,
         start_blocks: Vec<BlockNumber>,
         log_filter: EthereumLogFilter,
@@ -840,12 +840,12 @@ where
         // Create the actual subgraph-specific block stream
         BlockStream::new(
             self.subgraph_store
-                .writable(&deployment_id)
-                .expect(&format!("no store for deployment `{}`", deployment_id)),
+                .writable(&deployment)
+                .expect(&format!("no store for deployment `{}`", deployment.hash)),
             chain_store,
             eth_adapter.clone(),
             self.node_id.clone(),
-            deployment_id,
+            deployment.hash,
             log_filter,
             call_filter,
             block_filter,

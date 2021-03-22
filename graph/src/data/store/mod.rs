@@ -1,5 +1,5 @@
 use crate::{
-    components::store::EntityType,
+    components::store::{DeploymentLocator, EntityType},
     prelude::{q, s, CacheWeight, EntityKey, QueryExecutionError},
 };
 use crate::{data::subgraph::SubgraphDeploymentId, prelude::EntityChange};
@@ -95,11 +95,11 @@ impl<'de> de::Deserialize<'de> for NodeId {
 #[serde(tag = "type")]
 pub enum AssignmentEvent {
     Add {
-        subgraph_id: SubgraphDeploymentId,
+        deployment: DeploymentLocator,
         node_id: NodeId,
     },
     Remove {
-        subgraph_id: SubgraphDeploymentId,
+        deployment: DeploymentLocator,
         node_id: NodeId,
     },
 }

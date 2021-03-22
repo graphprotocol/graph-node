@@ -41,7 +41,8 @@ fn create_subgraph(
                 network_name,
                 SubgraphVersionSwitchingMode::Instant,
             )
-            .map_err(|e| e.into()),
+            .map_err(|e| e.into())
+            .map(|_| ()),
     )
 }
 

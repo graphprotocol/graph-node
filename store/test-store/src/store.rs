@@ -6,8 +6,9 @@ use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::{
-    components::store::EntityType, components::store::StatusStore,
-    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
+    components::store::DeploymentLocator, components::store::EntityType,
+    components::store::StatusStore, components::store::StoredDynamicDataSource,
+    data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
@@ -148,7 +149,7 @@ fn create_subgraph(
     subgraph_id: &SubgraphDeploymentId,
     schema: &str,
     base: Option<(SubgraphDeploymentId, EthereumBlockPointer)>,
-) -> Result<(), StoreError> {
+) -> Result<DeploymentLocator, StoreError> {
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
     let manifest = SubgraphManifest {
@@ -169,7 +170,7 @@ fn create_subgraph(
         name.truncate(32);
         SubgraphName::new(name).unwrap()
     };
-    SUBGRAPH_STORE.create_deployment_replace(
+    let deployment = SUBGRAPH_STORE.create_deployment_replace(
         name,
         &schema,
         deployment,
@@ -178,11 +179,12 @@ fn create_subgraph(
         SubgraphVersionSwitchingMode::Instant,
     )?;
     SUBGRAPH_STORE
-        .writable(&subgraph_id)?
-        .start_subgraph_deployment(&*LOGGER)
+        .writable(&deployment)?
+        .start_subgraph_deployment(&*LOGGER)?;
+    Ok(deployment)
 }
 
-pub fn create_test_subgraph(subgraph_id: &SubgraphDeploymentId, schema: &str) {
+pub fn create_test_subgraph(subgraph_id: &SubgraphDeploymentId, schema: &str) -> DeploymentLocator {
     create_subgraph(subgraph_id, schema, None).unwrap()
 }
 
@@ -203,26 +205,26 @@ pub fn create_grafted_subgraph(
     schema: &str,
     base_id: &str,
     base_block: EthereumBlockPointer,
-) -> Result<(), StoreError> {
+) -> Result<DeploymentLocator, StoreError> {
     let base = Some((SubgraphDeploymentId::new(base_id).unwrap(), base_block));
     create_subgraph(subgraph_id, schema, base)
 }
 
 pub fn transact_errors(
     store: &Arc<Store>,
-    subgraph_id: SubgraphDeploymentId,
+    deployment: &DeploymentLocator,
     block_ptr_to: EthereumBlockPointer,
     errs: Vec<SubgraphError>,
 ) -> Result<(), StoreError> {
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
-        subgraph_id.clone(),
+        deployment.hash.clone(),
         metrics_registry.clone(),
     );
     store
         .subgraph_store()
-        .writable(&subgraph_id)?
+        .writable(&deployment)?
         .transact_block_operations(
             block_ptr_to,
             Vec::new(),
@@ -235,21 +237,21 @@ pub fn transact_errors(
 /// Convenience to transact EntityOperation instead of EntityModification
 pub fn transact_entity_operations(
     store: &Arc<DieselSubgraphStore>,
-    subgraph_id: SubgraphDeploymentId,
+    deployment: &DeploymentLocator,
     block_ptr_to: EthereumBlockPointer,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
-    transact_entities_and_dynamic_data_sources(store, subgraph_id, block_ptr_to, vec![], ops)
+    transact_entities_and_dynamic_data_sources(store, deployment.clone(), block_ptr_to, vec![], ops)
 }
 
 pub fn transact_entities_and_dynamic_data_sources(
     store: &Arc<DieselSubgraphStore>,
-    subgraph_id: SubgraphDeploymentId,
+    deployment: DeploymentLocator,
     block_ptr_to: EthereumBlockPointer,
     data_sources: Vec<&DataSource>,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
-    let store = store.writable(&subgraph_id)?;
+    let store = store.writable(&deployment)?;
     let mut entity_cache = EntityCache::new(store.clone());
     entity_cache.append(ops);
     let mods = entity_cache
@@ -259,7 +261,7 @@ pub fn transact_entities_and_dynamic_data_sources(
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
-        subgraph_id.clone(),
+        deployment.hash.clone(),
         metrics_registry.clone(),
     );
     let data_sources = data_sources
@@ -277,12 +279,12 @@ pub fn transact_entities_and_dynamic_data_sources(
 
 pub fn revert_block(
     store: &Arc<Store>,
-    subgraph_id: &SubgraphDeploymentId,
+    deployment: &DeploymentLocator,
     ptr: &EthereumBlockPointer,
 ) {
     store
         .subgraph_store()
-        .writable(subgraph_id)
+        .writable(deployment)
         .expect("can get writable")
         .revert_block_operations(ptr.clone())
         .unwrap();
@@ -303,14 +305,14 @@ pub fn insert_ens_name(hash: &str, name: &str) {
 }
 
 pub fn insert_entities(
-    subgraph_id: SubgraphDeploymentId,
+    deployment: &DeploymentLocator,
     entities: Vec<(EntityType, Entity)>,
 ) -> Result<(), StoreError> {
     let insert_ops = entities
         .into_iter()
         .map(|(entity_type, data)| EntityOperation::Set {
             key: EntityKey {
-                subgraph_id: subgraph_id.clone(),
+                subgraph_id: deployment.hash.clone(),
                 entity_type: entity_type.to_owned(),
                 entity_id: data["id"].clone().as_string().unwrap(),
             },
@@ -319,7 +321,7 @@ pub fn insert_entities(
 
     transact_entity_operations(
         &*SUBGRAPH_STORE,
-        subgraph_id.clone(),
+        deployment,
         GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
     )
@@ -332,17 +334,17 @@ pub fn insert_entities(
 /// requires. Of course, this does not test that events that are sent are
 /// actually received by anything, but makes ensuring that the right events
 /// get sent much more convenient than trying to receive them
-pub fn tap_store_events<F>(f: F) -> Vec<StoreEvent>
+pub fn tap_store_events<F, R>(f: F) -> (R, Vec<StoreEvent>)
 where
-    F: FnOnce(),
+    F: FnOnce() -> R,
 {
     use graph_store_postgres::layout_for_tests::{EVENT_TAP, EVENT_TAP_ENABLED};
 
     EVENT_TAP.lock().unwrap().clear();
     *EVENT_TAP_ENABLED.lock().unwrap() = true;
-    f();
+    let res = f();
     *EVENT_TAP_ENABLED.lock().unwrap() = false;
-    EVENT_TAP.lock().unwrap().clone()
+    (res, EVENT_TAP.lock().unwrap().clone())
 }
 
 /// Run a GraphQL query against the `STORE`

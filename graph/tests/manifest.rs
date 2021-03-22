@@ -143,7 +143,7 @@ specVersion: 0.0.2
         //
         // Validation against subgraph that hasn't synced anything fails
         //
-        test_store::create_test_subgraph(&subgraph, GQL_SCHEMA);
+        let deployment = test_store::create_test_subgraph(&subgraph, GQL_SCHEMA);
         // This check is awkward since the test manifest has other problems
         // that the validation complains about as setting up a valid manifest
         // would be a bit more work; we just want to make sure that
@@ -163,7 +163,7 @@ specVersion: 0.0.2
 
         let mut thing = Entity::new();
         thing.set("id", "datthing");
-        test_store::insert_entities(subgraph, vec![(EntityType::from("Thing"), thing)])
+        test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
             .expect("Can insert a thing");
 
         // Validation against subgraph that has not reached the graft point fails

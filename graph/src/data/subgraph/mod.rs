@@ -19,8 +19,10 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
 
-use crate::components::link_resolver::LinkResolver;
-use crate::components::store::{StoreError, SubgraphStore};
+use crate::components::{
+    link_resolver::LinkResolver,
+    store::{DeploymentLocator, StoreError, SubgraphStore},
+};
 use crate::data::graphql::TryFromValue;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
@@ -343,7 +345,7 @@ pub enum SubgraphAssignmentProviderError {
     #[error("Subgraph with ID {0} already running")]
     AlreadyRunning(SubgraphDeploymentId),
     #[error("Subgraph with ID {0} is not running")]
-    NotRunning(SubgraphDeploymentId),
+    NotRunning(DeploymentLocator),
     #[error("Subgraph provider error: {0}")]
     Unknown(anyhow::Error),
 }

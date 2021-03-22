@@ -2,14 +2,20 @@ use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::prelude::{
-    Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, SubgraphStore, Value,
-};
 use graph::{components::store::EntityType, mock::MockStore};
+use graph::{
+    components::store::{DeploymentId, DeploymentLocator},
+    prelude::{
+        Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, SubgraphStore,
+        Value,
+    },
+};
 
 lazy_static! {
     static ref SUBGRAPH_ID: SubgraphDeploymentId =
         SubgraphDeploymentId::new("entity_cache").unwrap();
+    static ref DEPLOYMENT: DeploymentLocator =
+        DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
 }
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
@@ -26,7 +32,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[test]
 fn empty_cache_modifications() {
-    let store = MockStore::new().writable(&*SUBGRAPH_ID).unwrap();
+    let store = MockStore::new().writable(&*DEPLOYMENT).unwrap();
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications();
     assert_eq!(result.unwrap().modifications, vec![]);

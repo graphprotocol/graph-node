@@ -132,7 +132,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
     let name = SubgraphName::new("test/graft").unwrap();
     let node_id = NodeId::new("test").unwrap();
-    store
+    let deployment = store
         .create_subgraph_deployment(
             name,
             &TEST_SUBGRAPH_SCHEMA,
@@ -153,13 +153,8 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
         false,
         None,
     );
-    transact_entity_operations(
-        &store,
-        TEST_SUBGRAPH_ID.clone(),
-        BLOCKS[0].clone(),
-        vec![test_entity_1],
-    )
-    .unwrap();
+    transact_entity_operations(&store, &deployment, BLOCKS[0].clone(), vec![test_entity_1])
+        .unwrap();
 
     let test_entity_2 = create_test_entity(
         "2",
@@ -183,7 +178,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     );
     transact_entity_operations(
         &store,
-        TEST_SUBGRAPH_ID.clone(),
+        &deployment,
         BLOCKS[1].clone(),
         vec![test_entity_2, test_entity_3_1],
     )
@@ -201,7 +196,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
     );
     transact_entity_operations(
         &store,
-        TEST_SUBGRAPH_ID.clone(),
+        &deployment,
         BLOCKS[2].clone(),
         vec![test_entity_3_2],
     )
@@ -263,13 +258,13 @@ fn graft() {
         const SUBGRAPH: &str = "grafted";
 
         let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
-        let res = test_store::create_grafted_subgraph(
+        let deployment = test_store::create_grafted_subgraph(
             &subgraph_id,
             GRAFT_GQL,
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1].clone(),
-        );
-        assert!(res.is_ok());
+        )
+        .expect("can create grafted subgraph");
 
         let query = EntityQuery::new(
             subgraph_id.clone(),
@@ -303,16 +298,15 @@ fn graft() {
             key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "3".to_owned()),
             data: shaq,
         };
-        transact_entity_operations(&store, subgraph_id.clone(), BLOCKS[2].clone(), vec![op])
-            .unwrap();
+        transact_entity_operations(&store, &deployment, BLOCKS[2].clone(), vec![op]).unwrap();
 
         store
-            .writable(&subgraph_id)?
+            .writable(&deployment)?
             .revert_block_operations(BLOCKS[1].clone())
             .expect("We can revert a block we just created");
 
         let err = store
-            .writable(&subgraph_id)?
+            .writable(&deployment)?
             .revert_block_operations(BLOCKS[0].clone())
             .expect_err("Reverting past graft point is not allowed");
 

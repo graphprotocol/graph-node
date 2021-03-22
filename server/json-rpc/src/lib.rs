@@ -138,7 +138,7 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
 
         match self
             .registrar
-            .reassign_subgraph(params.ipfs_hash.clone(), params.node_id.clone())
+            .reassign_subgraph(&params.ipfs_hash, &params.node_id)
             .await
         {
             Ok(_) => Ok(Value::Null),

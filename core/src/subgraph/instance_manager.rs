@@ -6,7 +6,9 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
 
-use graph::components::store::{BlockStore, ModificationsAndCache};
+use graph::components::store::{
+    BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache,
+};
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
 use graph::components::{
     ethereum::{triggers_in_block, EthereumNetworks},
@@ -37,10 +39,10 @@ lazy_static! {
         std::env::var("GRAPH_DISABLE_FAIL_FAST").is_ok();
 }
 
-type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<SubgraphDeploymentId, CancelGuard>>>;
+type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
 struct IndexingInputs<B, C> {
-    deployment_id: SubgraphDeploymentId,
+    deployment: DeploymentLocator,
     features: BTreeSet<SubgraphFeature>,
     network_name: String,
     start_blocks: Vec<BlockNumber>,
@@ -205,10 +207,10 @@ where
 {
     async fn start_subgraph(
         self: Arc<Self>,
-        id: SubgraphDeploymentId,
+        loc: DeploymentLocator,
         manifest: serde_yaml::Mapping,
     ) {
-        let logger = self.logger_factory.subgraph_logger(&id);
+        let logger = self.logger_factory.subgraph_logger(&loc.hash);
 
         match Self::start_subgraph_inner(
             logger.clone(),
@@ -218,7 +220,7 @@ where
             self.subgraph_store.clone(),
             self.block_store.cheap_clone(),
             self.eth_networks.clone(),
-            id,
+            loc,
             manifest,
             self.metrics_registry.cheap_clone(),
             self.link_resolver.cheap_clone(),
@@ -235,13 +237,13 @@ where
         }
     }
 
-    fn stop_subgraph(&self, id: SubgraphDeploymentId) {
-        let logger = self.logger_factory.subgraph_logger(&id);
+    fn stop_subgraph(&self, loc: DeploymentLocator) {
+        let logger = self.logger_factory.subgraph_logger(&loc.hash);
         info!(logger, "Stop subgraph");
 
         // Drop the cancel guard to shut down the subgraph now
         let mut instances = self.instances.write().unwrap();
-        instances.remove(&id);
+        instances.remove(&loc.id);
 
         self.manager_metrics.subgraph_count.dec();
     }
@@ -299,18 +301,18 @@ where
         store: Arc<dyn SubgraphStore>,
         block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
-        subgraph_id: SubgraphDeploymentId,
+        deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         registry: Arc<M>,
         link_resolver: Arc<L>,
     ) -> Result<(), Error> {
-        let store = store.writable(&subgraph_id)?;
+        let store = store.writable(&deployment)?;
 
         let manifest = {
             info!(logger, "Resolve subgraph files using IPFS");
 
             let mut manifest = SubgraphManifest::resolve_from_raw(
-                subgraph_id.cheap_clone(),
+                deployment.hash.cheap_clone(),
                 manifest,
                 &*link_resolver,
                 &logger,
@@ -320,7 +322,7 @@ where
 
             let data_sources = load_dynamic_data_sources(
                 store.clone(),
-                subgraph_id,
+                &deployment.hash,
                 logger.clone(),
                 manifest.templates.clone(),
             )
@@ -373,8 +375,6 @@ where
             .and_then(|x| x)?;
         }
 
-        // Clone the deployment ID for later
-        let deployment_id = manifest.id.clone();
         let network_name = manifest.network_name();
 
         // Obtain filters from the manifest
@@ -393,22 +393,25 @@ where
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
         let stopwatch_metrics =
-            StopwatchMetrics::new(logger.clone(), deployment_id.clone(), registry.clone());
+            StopwatchMetrics::new(logger.clone(), deployment.hash.clone(), registry.clone());
         let subgraph_metrics = Arc::new(SubgraphInstanceMetrics::new(
             registry.clone(),
-            deployment_id.as_str(),
+            deployment.hash.as_str(),
         ));
         let subgraph_metrics_unregister = subgraph_metrics.clone();
         let host_metrics = Arc::new(HostMetrics::new(
             registry.clone(),
-            deployment_id.as_str(),
+            deployment.hash.as_str(),
             stopwatch_metrics.clone(),
         ));
-        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(registry.clone(), &deployment_id));
+        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(
+            registry.clone(),
+            &deployment.hash,
+        ));
         let block_stream_metrics = Arc::new(BlockStreamMetrics::new(
             registry.clone(),
             ethrpc_metrics.clone(),
-            &deployment_id,
+            &deployment.hash,
             manifest.network_name(),
             stopwatch_metrics,
         ));
@@ -419,7 +422,7 @@ where
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
             inputs: IndexingInputs {
-                deployment_id: deployment_id.clone(),
+                deployment: deployment.clone(),
                 features,
                 network_name,
                 start_blocks,
@@ -455,7 +458,7 @@ where
         // its own thread. When upgrading to tokio 1.0 it would be logical to run this with
         // `task::unconstrained`, since it has a dedicated OS thread so the OS will handle the
         // preemption.
-        graph::spawn_thread(deployment_id.to_string(), move || {
+        graph::spawn_thread(deployment.to_string(), move || {
             if let Err(e) = graph::block_on(run_subgraph(ctx)) {
                 error!(
                     &logger,
@@ -480,7 +483,7 @@ where
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
     let store_for_err = ctx.inputs.store.cheap_clone();
     let logger = ctx.state.logger.cheap_clone();
-    let id_for_err = ctx.inputs.deployment_id.clone();
+    let id_for_err = ctx.inputs.deployment.hash.clone();
     let mut first_run = true;
 
     loop {
@@ -493,7 +496,7 @@ where
             .stream_builder
             .build(
                 logger.clone(),
-                ctx.inputs.deployment_id.clone(),
+                ctx.inputs.deployment.clone(),
                 ctx.inputs.network_name.clone(),
                 ctx.inputs.start_blocks.clone(),
                 ctx.state.log_filter.clone(),
@@ -512,7 +515,7 @@ where
             .instances
             .write()
             .unwrap()
-            .insert(ctx.inputs.deployment_id.clone(), block_stream_canceler);
+            .insert(ctx.inputs.deployment.id, block_stream_canceler);
 
         debug!(logger, "Starting block stream");
 
@@ -639,7 +642,7 @@ where
                             .instances
                             .write()
                             .unwrap()
-                            .remove(&ctx.inputs.deployment_id);
+                            .remove(&ctx.inputs.deployment.id);
 
                         // And restart the subgraph
                         break;
@@ -784,7 +787,7 @@ where
             info!(ctx.state.logger,
                     "Possible reorg detected, retrying";
                     "error" => format!("{:#}", e),
-                    "id" => ctx.inputs.deployment_id.to_string(),
+                    "id" => ctx.inputs.deployment.hash.to_string(),
             );
 
             // In case of a possible reorg, we want this function to do nothing and restart the
@@ -910,7 +913,7 @@ where
         update_proof_of_indexing(
             proof_of_indexing,
             &ctx.host_metrics.stopwatch,
-            &ctx.inputs.deployment_id,
+            &ctx.inputs.deployment.hash,
             &mut block_state.entity_cache,
         )
         .await?;

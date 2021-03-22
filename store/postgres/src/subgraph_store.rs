@@ -12,7 +12,7 @@ use std::{fmt, io::Write};
 use graph::{
     components::{
         server::index_node::VersionInfo,
-        store::{self, EntityType, WritableStore as WritableStoreTrait},
+        store::{self, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait},
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -405,7 +405,7 @@ impl SubgraphStoreInner {
         // replace == true is only used in tests; for non-test code, it must
         // be 'false'
         replace: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<DeploymentLocator, StoreError> {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
@@ -456,7 +456,8 @@ impl SubgraphStoreInner {
             let event = StoreEvent::new(changes);
             pconn.send_store_event(&event)?;
             Ok(())
-        })
+        })?;
+        Ok(site.as_ref().into())
     }
 
     // Only for tests to simplify their handling of test fixtures, so that
@@ -470,7 +471,7 @@ impl SubgraphStoreInner {
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError> {
+    ) -> Result<DeploymentLocator, StoreError> {
         self.create_deployment_internal(name, schema, deployment, node_id, network_name, mode, true)
     }
 
@@ -766,7 +767,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
-    ) -> Result<(), StoreError> {
+    ) -> Result<DeploymentLocator, StoreError> {
         self.create_deployment_internal(
             name,
             schema,
@@ -793,10 +794,10 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn reassign_subgraph(
         &self,
-        id: &SubgraphDeploymentId,
+        deployment: &DeploymentLocator,
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
-        let site = self.site(id)?;
+        let site = self.find_site(deployment.id.into())?;
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
@@ -804,17 +805,17 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn assigned_node(&self, id: &SubgraphDeploymentId) -> Result<Option<NodeId>, StoreError> {
-        let site = self.site(id)?;
+    fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError> {
+        let site = self.find_site(deployment.id.into())?;
         let primary = self.primary_conn()?;
         primary.assigned_node(site.as_ref())
     }
 
-    fn assignments(&self, node: &NodeId) -> Result<Vec<SubgraphDeploymentId>, StoreError> {
+    fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
         let primary = self.primary_conn()?;
         primary
             .assignments(node)
-            .map(|sites| sites.into_iter().map(|site| site.deployment).collect())
+            .map(|sites| sites.iter().map(|site| site.into()).collect())
     }
 
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
@@ -836,9 +837,9 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn writable(
         &self,
-        id: &SubgraphDeploymentId,
+        deployment: &DeploymentLocator,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
-        let site = self.site(id)?;
+        let site = self.find_site(deployment.id.into())?;
         Ok(Arc::new(WritableStore {
             store: self.clone(),
             site,
@@ -849,7 +850,11 @@ impl SubgraphStoreTrait for SubgraphStore {
         &self,
         id: &SubgraphDeploymentId,
     ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
-        self.writable(id)
+        let site = self.site(id)?;
+        Ok(Arc::new(WritableStore {
+            store: self.clone(),
+            site,
+        }))
     }
 
     fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
@@ -866,6 +871,16 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<Option<EthereumBlockPointer>, Error> {
         let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())
+    }
+
+    /// Find the deployment locators for the subgraph with the given hash
+    fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
+        Ok(self
+            .primary_conn()?
+            .find_sites(vec![hash.to_string()])?
+            .iter()
+            .map(|site| site.into())
+            .collect())
     }
 }
 

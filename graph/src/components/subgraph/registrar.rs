@@ -37,7 +37,7 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
 
     async fn reassign_subgraph(
         &self,
-        hash: SubgraphDeploymentId,
-        node_id: NodeId,
+        hash: &SubgraphDeploymentId,
+        node_id: &NodeId,
     ) -> Result<(), SubgraphRegistrarError>;
 }

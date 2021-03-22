@@ -15,7 +15,7 @@ fn insert_and_query(
     query: &str,
 ) -> Result<QueryResult, StoreError> {
     let subgraph_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
-    create_test_subgraph(&subgraph_id, schema);
+    let deployment = create_test_subgraph(&subgraph_id, schema);
 
     let insert_ops = entities
         .into_iter()
@@ -30,7 +30,7 @@ fn insert_and_query(
 
     transact_entity_operations(
         &STORE.subgraph_store(),
-        subgraph_id.clone(),
+        &deployment,
         GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
     )?;
