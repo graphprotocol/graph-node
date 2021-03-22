@@ -76,7 +76,7 @@ impl StoreResolver {
         .and_then(|x| x)?; // Propagate panics.
 
         let has_non_fatal_errors = store
-            .has_non_fatal_errors(deployment.clone(), Some(block_ptr.block_number()))
+            .has_non_fatal_errors(Some(block_ptr.block_number()))
             .await?;
 
         let resolver = StoreResolver {

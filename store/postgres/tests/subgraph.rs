@@ -527,17 +527,11 @@ fn fatal_vs_non_fatal() {
             .await
             .unwrap();
 
-        assert!(!query_store
-            .has_non_fatal_errors(deployment.hash.cheap_clone(), None)
-            .await
-            .unwrap());
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
 
         transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error()]).unwrap();
 
-        assert!(query_store
-            .has_non_fatal_errors(deployment.hash.cheap_clone(), None)
-            .await
-            .unwrap());
+        assert!(query_store.has_non_fatal_errors(None).await.unwrap());
     })
 }
 
@@ -569,10 +563,7 @@ fn fail_unfail() {
             .expect("can get writable");
         writable.fail_subgraph(error).await.unwrap();
 
-        assert!(!query_store
-            .has_non_fatal_errors(deployment.hash.cheap_clone(), None)
-            .await
-            .unwrap());
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
         writable.unfail().unwrap();
@@ -587,10 +578,7 @@ fn fail_unfail() {
         .unwrap();
 
         // We still have no fatal errors.
-        assert!(!query_store
-            .has_non_fatal_errors(deployment.hash.cheap_clone(), None)
-            .await
-            .unwrap());
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
 
         test_store::remove_subgraphs();
     })
