@@ -2260,6 +2260,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-tls"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
+dependencies = [
+ "bytes 1.0.1",
+ "hyper 0.14.4",
+ "native-tls",
+ "tokio 1.2.0",
+ "tokio-native-tls",
+]
+
+[[package]]
 name = "hyper-unix-connector"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2675,16 +2688,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
 
 [[package]]
-name = "mime_guess"
-version = "2.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2684d4c2e97d99848d30b324b00c8fcc7e5c897b7cbb5819b09e7c90e8baf212"
-dependencies = [
- "mime 0.3.16",
- "unicase 2.6.0",
-]
-
-[[package]]
 name = "miniz_oxide"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2794,9 +2797,9 @@ checksum = "0debeb9fcf88823ea64d64e4a815ab1643f33127d995978e099942ce38f25238"
 
 [[package]]
 name = "native-tls"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fcc7939b5edc4e4f86b1b4a04bb1498afaaf871b1a6691838ed06fcb48d3a3f"
+checksum = "b8d96b2e1c8da3957d58100b09f102c6d9cfdfced01b7ec5a8974044bb09dbd4"
 dependencies = [
  "lazy_static",
  "libc",
@@ -3797,32 +3800,31 @@ checksum = "05a51ad2b1c5c710fa89e6b1631068dab84ed687bc6a5fe061ad65da3d0c25b2"
 
 [[package]]
 name = "reqwest"
-version = "0.10.8"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9eaa17ac5d7b838b7503d118fa16ad88f440498bf9ffe5424e621f93190d61e"
+checksum = "bf12057f289428dbf5c591c74bf10392e4a8003f993405a902f20117019022d4"
 dependencies = [
- "base64 0.12.3",
- "bytes 0.5.6",
+ "base64 0.13.0",
+ "bytes 1.0.1",
  "encoding_rs",
  "futures-core",
  "futures-util",
  "http 0.2.1",
- "http-body 0.3.1",
- "hyper 0.13.9",
- "hyper-tls 0.4.3",
+ "http-body 0.4.0",
+ "hyper 0.14.4",
+ "hyper-tls 0.5.0",
  "ipnet",
  "js-sys",
  "lazy_static",
  "log 0.4.11",
  "mime 0.3.16",
- "mime_guess",
  "native-tls",
  "percent-encoding 2.1.0",
- "pin-project-lite 0.1.11",
+ "pin-project-lite 0.2.6",
  "serde",
- "serde_urlencoded 0.6.1",
- "tokio 0.2.23",
- "tokio-tls 0.3.1",
+ "serde_urlencoded 0.7.0",
+ "tokio 1.2.0",
+ "tokio-native-tls",
  "url 2.2.1",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -4793,6 +4795,16 @@ dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
  "syn 1.0.62",
+]
+
+[[package]]
+name = "tokio-native-tls"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
+dependencies = [
+ "native-tls",
+ "tokio 1.2.0",
 ]
 
 [[package]]
