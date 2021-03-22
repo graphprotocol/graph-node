@@ -12,7 +12,7 @@ graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 state_machine_future = "0.2"
 serde = "1.0"
-config = { version = "0.10", features = ["toml"], default-features = false }
+config = { version = "0.11", features = ["toml"], default-features = false }
 dirs = "3.0"
 anyhow = "1.0"
 fail = "0.4"
