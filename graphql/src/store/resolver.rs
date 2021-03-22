@@ -13,7 +13,7 @@ use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
 use crate::{prelude::*, schema::api::ErrorPolicy};
 
-use crate::store::query::{collect_entities_from_query_field, parse_subgraph_id};
+use crate::store::query::collect_entities_from_query_field;
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
@@ -289,14 +289,12 @@ impl Resolver for StoreResolver {
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
         // Subscribe to the store and return the entity change stream
-        let deployment_id = parse_subgraph_id(object_type)?;
         Ok(self
             .subscription_manager
             .subscribe(entities)
             .throttle_while_syncing(
                 &self.logger,
                 self.store.clone(),
-                deployment_id,
                 *SUBSCRIPTION_THROTTLE_INTERVAL,
             ))
     }

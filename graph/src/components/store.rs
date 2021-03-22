@@ -632,7 +632,6 @@ where
         self,
         logger: &Logger,
         store: Arc<dyn QueryStore>,
-        deployment: SubgraphDeploymentId,
         interval: Duration,
     ) -> StoreEventStreamBox {
         // We refresh the synced flag every SYNC_REFRESH_FREQ*interval to
@@ -643,10 +642,7 @@ where
         static SYNC_REFRESH_FREQ: u32 = 4;
 
         // Check whether a deployment is marked as synced in the store
-        let check_synced = |store: &dyn QueryStore, deployment: &SubgraphDeploymentId| {
-            store.is_deployment_synced(deployment).unwrap_or(false)
-        };
-        let mut synced = check_synced(&*store, &deployment);
+        let mut synced = store.is_deployment_synced().unwrap_or(false);
         let synced_check_interval = interval.checked_mul(SYNC_REFRESH_FREQ).unwrap();
         let mut synced_last_refreshed = Instant::now();
 
@@ -668,7 +664,7 @@ where
             }
 
             if !synced && synced_last_refreshed.elapsed() > synced_check_interval {
-                synced = check_synced(&*store, &deployment);
+                synced = store.is_deployment_synced().unwrap_or(false);
                 synced_last_refreshed = Instant::now();
             }
 
@@ -1347,7 +1343,7 @@ pub trait QueryStore: Send + Sync {
         query: EntityQuery,
     ) -> Result<Vec<BTreeMap<String, q::Value>>, QueryExecutionError>;
 
-    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
+    fn is_deployment_synced(&self) -> Result<bool, Error>;
 
     fn block_ptr(
         &self,

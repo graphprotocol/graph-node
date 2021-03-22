@@ -47,9 +47,8 @@ impl QueryStoreTrait for QueryStore {
 
     /// Return true if the deployment with the given id is fully synced,
     /// and return false otherwise. Errors from the store are passed back up
-    fn is_deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
-        assert_eq!(&self.site.deployment, id);
-        Ok(self.store.exists_and_synced(id)?)
+    fn is_deployment_synced(&self) -> Result<bool, Error> {
+        Ok(self.store.exists_and_synced(&self.site.deployment)?)
     }
 
     fn block_ptr(

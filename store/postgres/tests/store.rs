@@ -1398,7 +1398,6 @@ fn throttle_subscription_delivers() {
                 .query_store(deployment.hash.clone().into(), true)
                 .await
                 .unwrap(),
-            deployment.hash.clone(),
             Duration::from_millis(500),
         );
 
@@ -1438,7 +1437,6 @@ fn throttle_subscription_throttles() {
                 .query_store(deployment.hash.clone().into(), true)
                 .await
                 .unwrap(),
-            deployment.hash.clone(),
             Duration::from_secs(30),
         );
 
