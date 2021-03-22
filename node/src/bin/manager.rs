@@ -1,4 +1,4 @@
-use std::{env, sync::Arc};
+use std::{collections::HashMap, env, sync::Arc};
 
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
@@ -14,7 +14,7 @@ use graph::{
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{
-    connection_pool::ConnectionPool, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
+    connection_pool::ConnectionPool, Store, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
 };
 
 use crate::config::Config as Cfg;
@@ -122,6 +122,8 @@ pub enum Command {
     Config(ConfigCommand),
     /// Listen for store events and print them
     Listen(ListenCommand),
+    /// Manage deployment copies and grafts
+    Copy(CopyCommand),
 }
 
 impl Command {
@@ -190,6 +192,28 @@ pub enum ListenCommand {
         entity_types: Vec<String>,
     },
 }
+#[derive(Clone, Debug, StructOpt)]
+pub enum CopyCommand {
+    /// Create a copy of an existing subgraph
+    ///
+    /// The copy will be treated as its own deployment. The deployment with
+    /// IPFS hash `src` will be copied to a new deployment in the database
+    /// shard `shard` and will be assigned to `node` for indexing. The new
+    /// subgraph will start as a copy of all blocks of `src` that are
+    /// `offset` behind the current subgraph head of `src`. The offset
+    /// should be chosen such that only final blocks are copied
+    Create {
+        /// How far behind `src` subgraph head to copy
+        #[structopt(long, short, default_value = "200")]
+        offset: u32,
+        /// The IPFS hash of the source deployment
+        src: String,
+        /// The name of the database shard into which to copy
+        shard: String,
+        /// The name of the node that should index the copy
+        node: String,
+    },
+}
 
 impl From<Opt> for config::Opt {
     fn from(opt: Opt) -> Self {
@@ -246,6 +270,23 @@ impl Context {
             self.logger.clone(),
             primary.connection.to_owned(),
         ))
+    }
+
+    fn store(self) -> Arc<Store> {
+        let (subgraph_store, pools) = StoreBuilder::make_subgraph_store_and_pools(
+            &self.logger,
+            &self.node_id,
+            &self.config,
+            self.registry,
+        );
+
+        StoreBuilder::make_store(
+            &self.logger,
+            pools,
+            subgraph_store,
+            HashMap::default(),
+            vec![],
+        )
     }
 }
 
@@ -344,6 +385,17 @@ async fn main() {
                     commands::listen::entities(ctx.subscription_manager(), deployment, entity_types)
                         .await
                 }
+            }
+        }
+        Copy(cmd) => {
+            use CopyCommand::*;
+            match cmd {
+                Create {
+                    src,
+                    shard,
+                    node,
+                    offset,
+                } => commands::copy::create(ctx.store(), src, shard, node, offset).await,
             }
         }
     };

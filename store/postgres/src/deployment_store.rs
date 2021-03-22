@@ -195,6 +195,14 @@ impl DeploymentStore {
         })
     }
 
+    pub(crate) fn load_deployment(
+        &self,
+        site: &Site,
+    ) -> Result<SubgraphDeploymentEntity, StoreError> {
+        let conn = self.get_conn()?;
+        detail::deployment_entity(&conn, site)
+    }
+
     // Remove the data and metadata for the deployment `site`. This operation
     // is not reversible
     pub(crate) fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {

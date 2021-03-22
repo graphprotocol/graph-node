@@ -1,5 +1,6 @@
 pub mod assign;
 pub mod config;
+pub mod copy;
 pub mod info;
 pub mod listen;
 pub mod remove;

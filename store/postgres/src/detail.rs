@@ -5,9 +5,10 @@ use diesel::prelude::{
 };
 use graph::{
     constraint_violation,
-    data::subgraph::schema::SubgraphError,
+    data::subgraph::schema::{SubgraphError, SubgraphManifestEntity},
     prelude::{
-        bigdecimal::ToPrimitive, BigDecimal, EthereumBlockPointer, StoreError, SubgraphDeploymentId,
+        bigdecimal::ToPrimitive, BigDecimal, EthereumBlockPointer, StoreError,
+        SubgraphDeploymentEntity, SubgraphDeploymentId,
     },
 };
 use graph::{data::subgraph::status, prelude::web3::types::H256};
@@ -16,7 +17,9 @@ use std::{ops::Bound, sync::Arc};
 
 use crate::primary::Site;
 use crate::{
-    deployment::{subgraph_deployment, subgraph_error, SubgraphHealth as HealthType},
+    deployment::{
+        subgraph_deployment, subgraph_error, subgraph_manifest, SubgraphHealth as HealthType,
+    },
     primary::DeploymentId,
 };
 
@@ -256,4 +259,104 @@ pub(crate) fn deployment_statuses(
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
             .collect()
     }
+}
+
+#[derive(Queryable, QueryableByName)]
+#[table_name = "subgraph_manifest"]
+// We never read the id field but map it to make the interaction with Diesel
+// simpler
+#[allow(dead_code)]
+struct StoredSubgraphManifest {
+    id: i32,
+    spec_version: String,
+    description: Option<String>,
+    repository: Option<String>,
+    features: Vec<String>,
+    schema: String,
+}
+
+impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
+    fn from(value: StoredSubgraphManifest) -> Self {
+        SubgraphManifestEntity {
+            spec_version: value.spec_version,
+            description: value.description,
+            repository: value.repository,
+            features: value.features,
+            schema: value.schema,
+        }
+    }
+}
+
+struct StoredDeploymentEntity(crate::detail::DeploymentDetail, StoredSubgraphManifest);
+
+impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
+    type Error = StoreError;
+
+    fn try_from(ent: StoredDeploymentEntity) -> Result<Self, Self::Error> {
+        let (detail, manifest) = (ent.0, ent.1.into());
+
+        let earliest_block = block(
+            &detail.deployment,
+            "earliest_block",
+            detail.earliest_ethereum_block_hash,
+            detail.earliest_ethereum_block_number,
+        )?
+        .map(|block| block.to_ptr());
+
+        let latest_block = block(
+            &detail.deployment,
+            "latest_block",
+            detail.latest_ethereum_block_hash,
+            detail.latest_ethereum_block_number,
+        )?
+        .map(|block| block.to_ptr());
+
+        let graft_block = block(
+            &detail.deployment,
+            "graft_block",
+            detail.graft_block_hash,
+            detail.graft_block_number,
+        )?
+        .map(|block| block.to_ptr());
+
+        let graft_base = detail
+            .graft_base
+            .map(|b| SubgraphDeploymentId::new(b))
+            .transpose()
+            .map_err(|b| constraint_violation!("invalid graft base `{}`", b))?;
+
+        Ok(SubgraphDeploymentEntity {
+            manifest,
+            failed: detail.failed,
+            health: detail.health.into(),
+            synced: detail.synced,
+            fatal_error: None,
+            non_fatal_errors: vec![],
+            earliest_block,
+            latest_block,
+            graft_base,
+            graft_block,
+            reorg_count: detail.reorg_count,
+            current_reorg_depth: detail.current_reorg_depth,
+            max_reorg_depth: detail.max_reorg_depth,
+        })
+    }
+}
+
+pub fn deployment_entity(
+    conn: &PgConnection,
+    site: &Site,
+) -> Result<SubgraphDeploymentEntity, StoreError> {
+    use subgraph_deployment as d;
+    use subgraph_manifest as m;
+
+    let manifest = m::table
+        .find(site.id)
+        .first::<StoredSubgraphManifest>(conn)?;
+
+    let detail = d::table
+        .find(site.id)
+        .first::<crate::detail::DeploymentDetail>(conn)?;
+
+    SubgraphDeploymentEntity::try_from(StoredDeploymentEntity(detail, manifest))
 }

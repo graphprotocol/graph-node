@@ -708,6 +708,22 @@ impl<'a> Connection<'a> {
         }
     }
 
+    pub fn assign_subgraph(
+        &self,
+        site: &Site,
+        node: &NodeId,
+    ) -> Result<Vec<EntityChange>, StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        let conn = self.0.as_ref();
+        insert_into(a::table)
+            .values((a::id.eq(site.id), a::node_id.eq(node.as_str())))
+            .execute(conn)?;
+
+        let change = EntityChange::for_assignment(site.into(), EntityChangeOperation::Set);
+        Ok(vec![change])
+    }
+
     pub fn unassign_subgraph(&self, site: &Site) -> Result<Vec<EntityChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
@@ -774,6 +790,49 @@ impl<'a> Connection<'a> {
         })
     }
 
+    /// Create a copy of the site `src` in the shard `shard`, but mark it as
+    /// not active. If there already is a site in `shard`, return that
+    /// instead.
+    pub fn copy_site(&self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
+        use deployment_schemas as ds;
+        use DeploymentSchemaVersion as v;
+
+        let conn = self.0.as_ref();
+
+        if let Some(schema) = self.find_site_in_shard(&src.deployment, &shard)? {
+            return Ok(schema);
+        }
+
+        // Create a schema for the deployment.
+        let schemas: Vec<(DeploymentId, String)> = diesel::insert_into(ds::table)
+            .values((
+                ds::subgraph.eq(src.deployment.as_str()),
+                ds::shard.eq(shard.as_str()),
+                ds::version.eq(v::Relational),
+                ds::network.eq(src.network.as_str()),
+                ds::active.eq(false),
+            ))
+            .returning((ds::id, ds::name))
+            .get_results(conn)?;
+        let (id, namespace) = schemas
+            .first()
+            .cloned()
+            .ok_or_else(|| anyhow!("failed to read schema name for {} back", src.deployment))?;
+        let namespace = Namespace::new(namespace).map_err(|name| {
+            constraint_violation!("Generated database schema name {} is invalid", name)
+        })?;
+
+        Ok(Site {
+            id,
+            deployment: src.deployment.clone(),
+            shard,
+            namespace,
+            network: src.network.clone(),
+            active: false,
+            _creation_disallowed: (),
+        })
+    }
+
     /// Remove all subgraph versions and the entry in `deployment_schemas` for
     /// subgraph `id` in a transaction
     pub fn drop_site(&self, site: &Site) -> Result<(), StoreError> {
@@ -802,14 +861,19 @@ impl<'a> Connection<'a> {
             .filter(deployment_schemas::active.eq(true))
             .first::<Schema>(self.0.as_ref())
             .optional()?;
-        if let Some(Schema { version, .. }) = schema {
-            if matches!(version, DeploymentSchemaVersion::Split) {
-                return Err(constraint_violation!(
-                    "the subgraph {} uses JSONB layout which is not supported any longer",
-                    subgraph.as_str()
-                ));
-            }
-        }
+        schema.map(|schema| schema.try_into()).transpose()
+    }
+
+    pub fn find_site_in_shard(
+        &self,
+        subgraph: &SubgraphDeploymentId,
+        shard: &Shard,
+    ) -> Result<Option<Site>, StoreError> {
+        let schema = deployment_schemas::table
+            .filter(deployment_schemas::subgraph.eq(subgraph.as_str()))
+            .filter(deployment_schemas::shard.eq(shard.as_str()))
+            .first::<Schema>(self.0.as_ref())
+            .optional()?;
         schema.map(|schema| schema.try_into()).transpose()
     }
 

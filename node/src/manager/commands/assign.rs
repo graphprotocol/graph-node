@@ -1,31 +1,9 @@
 use std::sync::Arc;
 
-use graph::{
-    components::store::DeploymentLocator,
-    prelude::{
-        anyhow::{anyhow, bail},
-        Error, NodeId, SubgraphStore as _,
-    },
-};
+use graph::prelude::{anyhow::anyhow, Error, NodeId, SubgraphStore as _};
 use graph_store_postgres::SubgraphStore;
 
-fn locate(store: &SubgraphStore, hash: String) -> Result<DeploymentLocator, Error> {
-    let locators = store.locators(&hash)?;
-
-    match locators.len() {
-        0 => {
-            bail!("no matching assignment");
-        }
-        1 => Ok(locators[0].clone()),
-        _ => {
-            bail!(
-                "deployment hash `{}` is ambiguous: {} locations found",
-                hash,
-                locators.len()
-            );
-        }
-    }
-}
+use crate::manager::deployment::locate;
 
 pub fn unassign(store: Arc<SubgraphStore>, hash: String) -> Result<(), Error> {
     let deployment = locate(store.as_ref(), hash)?;

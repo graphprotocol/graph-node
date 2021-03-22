@@ -1,8 +1,14 @@
 use diesel::{dsl::sql, prelude::*};
 use diesel::{sql_types::Text, PgConnection};
 
-use graph::prelude::anyhow;
-use graph_store_postgres::command_support::catalog as store_catalog;
+use graph::{
+    components::store::DeploymentLocator,
+    prelude::{
+        anyhow::{self, bail},
+        Error, SubgraphStore as _,
+    },
+};
+use graph_store_postgres::{command_support::catalog as store_catalog, SubgraphStore};
 
 use crate::manager::display::List;
 
@@ -79,5 +85,23 @@ impl Deployment {
         }
 
         list.render();
+    }
+}
+
+pub fn locate(store: &SubgraphStore, hash: String) -> Result<DeploymentLocator, Error> {
+    let locators = store.locators(&hash)?;
+
+    match locators.len() {
+        0 => {
+            bail!("no matching assignment");
+        }
+        1 => Ok(locators[0].clone()),
+        _ => {
+            bail!(
+                "deployment hash `{}` is ambiguous: {} locations found",
+                hash,
+                locators.len()
+            );
+        }
     }
 }

@@ -21,9 +21,9 @@ use graph::{
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
-        futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema, DynTryFuture,
-        Entity, EntityKey, EntityModification, Error, EthereumBlockPointer, Logger, NodeId,
-        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
+        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
+        DynTryFuture, Entity, EntityKey, EntityModification, Error, EthereumBlockPointer, Logger,
+        NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
 };
@@ -458,6 +458,68 @@ impl SubgraphStoreInner {
             Ok(())
         })?;
         Ok(site.as_ref().into())
+    }
+
+    pub fn copy_deployment(
+        &self,
+        src: &DeploymentLocator,
+        shard: Shard,
+        node: NodeId,
+        block: EthereumBlockPointer,
+    ) -> Result<DeploymentLocator, StoreError> {
+        let src = self.find_site(src.id.into())?;
+        let src_store = self.for_site(src.as_ref())?;
+        let src_info = src_store.subgraph_info(src.as_ref())?;
+
+        let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone())?);
+
+        let mut deployment = src_store.load_deployment(src.as_ref())?;
+        if deployment.failed {
+            return Err(StoreError::Unknown(anyhow!(
+                "can not copy deployment {}[{}] because it has failed",
+                src.deployment,
+                src.id
+            )));
+        }
+
+        // Transmogrify the deployment into a new one
+        deployment.fatal_error = None;
+        deployment.non_fatal_errors = vec![];
+        deployment.reorg_count = 0;
+        deployment.max_reorg_depth = 0;
+        deployment.current_reorg_depth = 0;
+        deployment.latest_block = deployment.earliest_block.clone();
+        deployment.graft_base = Some(src.deployment.clone());
+        deployment.graft_block = Some(block);
+
+        let graft_base = self.layout(&src.deployment)?;
+
+        self.primary_conn()?
+            .record_active_copy(src.as_ref(), dst.as_ref())?;
+
+        // Create the actual databases schema and metadata entries
+        let deployment_store = self
+            .stores
+            .get(&shard)
+            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
+
+        deployment_store.create_deployment(
+            &src_info.input,
+            deployment,
+            dst.clone(),
+            Some(graft_base),
+            false,
+        )?;
+
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| -> Result<_, StoreError> {
+            // Create subgraph, subgraph version, and assignment
+            let changes = pconn.assign_subgraph(dst.as_ref(), &node)?;
+            let event = StoreEvent::new(changes);
+            pconn.send_store_event(&event)?;
+            Ok(())
+        })?;
+        Ok(dst.as_ref().into())
     }
 
     // Only for tests to simplify their handling of test fixtures, so that

@@ -80,7 +80,7 @@ impl StoreBuilder {
     /// Make a `ShardedStore` across all configured shards, and also return
     /// the main connection pools for each shard, but not any pools for
     /// replicas
-    fn make_subgraph_store_and_pools(
+    pub fn make_subgraph_store_and_pools(
         logger: &Logger,
         node: &NodeId,
         config: &Config,
@@ -127,6 +127,31 @@ impl StoreBuilder {
         registry: Arc<dyn MetricsRegistry>,
     ) -> Arc<SubgraphStore> {
         Self::make_subgraph_store_and_pools(logger, node, config, registry).0
+    }
+
+    pub fn make_store(
+        logger: &Logger,
+        pools: HashMap<ShardName, ConnectionPool>,
+        subgraph_store: Arc<SubgraphStore>,
+        chains: HashMap<String, ShardName>,
+        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
+    ) -> Arc<DieselStore> {
+        let networks = networks
+            .into_iter()
+            .map(|(name, idents)| {
+                let shard = chains.get(&name).unwrap_or(&*PRIMARY_SHARD).clone();
+                (name, idents, shard)
+            })
+            .collect();
+
+        let logger = logger.new(o!("component" => "BlockStore"));
+
+        let block_store = Arc::new(
+            DieselBlockStore::new(logger, networks, pools.clone())
+                .expect("Creating the BlockStore works"),
+        );
+
+        Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
     /// Create a connection pool for the main database of hte primary shard
@@ -208,6 +233,14 @@ impl StoreBuilder {
         self,
         networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
     ) -> Arc<DieselStore> {
+        Self::make_store(
+            &self.logger,
+            self.pools,
+            self.subgraph_store,
+            self.chains,
+            networks,
+        )
+        /*
         let networks = networks
             .into_iter()
             .map(|(name, ident)| {
@@ -226,7 +259,7 @@ impl StoreBuilder {
         Arc::new(DieselStore::new(
             self.subgraph_store.cheap_clone(),
             block_store,
-        ))
+        ))*/
     }
 
     pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {
