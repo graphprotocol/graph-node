@@ -1271,9 +1271,6 @@ pub trait ChainStore: Send + Sync + 'static {
     /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
     fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
-    /// Subscribe to chain head updates.
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream;
-
     /// Get the current head block pointer for this chain.
     /// Any changes to the head block pointer will be to a block with a larger block number, never
     /// to a block with a smaller or equal block number.

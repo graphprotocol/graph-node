@@ -1,14 +1,11 @@
 use lazy_static;
 use std::{sync::Arc, time::Duration};
 
-use graph::{
-    prelude::{
-        error, info, o, stream, tokio, trace, warn, web3::types::H256, BlockNumber, ChainStore,
-        ComponentLoggerConfig, ElasticComponentLoggerConfig, Error, EthereumAdapter,
-        EthereumAdapterError, EthereumBlock, Future, Future01CompatExt, LogCode, Logger,
-        LoggerFactory, MetricsRegistry, Stream,
-    },
-    prometheus::GaugeVec,
+use graph::prelude::{
+    error, info, o, stream, tokio, trace, warn, web3::types::H256, BlockNumber, ChainStore,
+    ComponentLoggerConfig, ElasticComponentLoggerConfig, Error, EthereumAdapter,
+    EthereumAdapterError, EthereumBlock, Future, Future01CompatExt, LogCode, Logger, LoggerFactory,
+    Stream,
 };
 
 lazy_static! {
@@ -18,30 +15,6 @@ lazy_static! {
         .ok()
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-}
-
-pub struct BlockIngestorMetrics {
-    chain_head_number: Box<GaugeVec>,
-}
-
-impl BlockIngestorMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
-        Self {
-            chain_head_number: registry
-                .new_gauge_vec(
-                    "ethereum_chain_head_number",
-                    "Block number of the most recent block synced from Ethereum",
-                    vec![String::from("network")],
-                )
-                .unwrap(),
-        }
-    }
-
-    pub fn set_chain_head_number(&self, network_name: &str, chain_head_number: i64) {
-        self.chain_head_number
-            .with_label_values(vec![network_name].as_slice())
-            .set(chain_head_number as f64);
-    }
 }
 
 pub struct BlockIngestor<S>

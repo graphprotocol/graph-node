@@ -4,7 +4,10 @@ use std::mem;
 use std::time::Duration;
 
 use graph::components::{
-    ethereum::{blocks_with_triggers, triggers_in_block, EthereumNetworks, NodeCapabilities},
+    ethereum::{
+        blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, EthereumNetworks,
+        NodeCapabilities,
+    },
     store::{BlockStore, DeploymentLocator, WritableStore},
 };
 use graph::prelude::{
@@ -150,6 +153,7 @@ where
     pub fn new(
         subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<C>,
+        chain_head_update_stream: ChainHeadUpdateStream,
         eth_adapter: Arc<dyn EthereumAdapter>,
         node_id: NodeId,
         subgraph_id: SubgraphDeploymentId,
@@ -165,7 +169,7 @@ where
         BlockStream {
             state: BlockStreamState::BeginReconciliation,
             consecutive_err_count: 0,
-            chain_head_update_stream: chain_store.chain_head_updates(),
+            chain_head_update_stream,
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,
@@ -748,6 +752,7 @@ impl<C: ChainStore> Stream for BlockStream<C> {
 pub struct BlockStreamBuilder<B, M> {
     subgraph_store: Arc<dyn SubgraphStore>,
     block_store: Arc<B>,
+    chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     eth_networks: EthereumNetworks,
     node_id: NodeId,
     reorg_threshold: BlockNumber,
@@ -759,6 +764,7 @@ impl<B, M> Clone for BlockStreamBuilder<B, M> {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
             block_store: self.block_store.clone(),
+            chain_head_update_listener: self.chain_head_update_listener.clone(),
             eth_networks: self.eth_networks.clone(),
             node_id: self.node_id.clone(),
             reorg_threshold: self.reorg_threshold,
@@ -775,6 +781,7 @@ where
     pub fn new(
         subgraph_store: Arc<dyn SubgraphStore>,
         block_store: Arc<B>,
+        chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
         eth_networks: EthereumNetworks,
         node_id: NodeId,
         reorg_threshold: BlockNumber,
@@ -783,6 +790,7 @@ where
         BlockStreamBuilder {
             subgraph_store,
             block_store,
+            chain_head_update_listener,
             eth_networks,
             node_id,
             reorg_threshold,
@@ -824,6 +832,10 @@ where
             ))
             .clone();
 
+        let chain_head_update_stream = self
+            .chain_head_update_listener
+            .subscribe(network_name.clone());
+
         let requirements = NodeCapabilities {
             archive: false,
             traces: include_calls_in_blocks,
@@ -843,6 +855,7 @@ where
                 .writable(&deployment)
                 .expect(&format!("no store for deployment `{}`", deployment.hash)),
             chain_store,
+            chain_head_update_stream,
             eth_adapter.clone(),
             self.node_id.clone(),
             deployment.hash,

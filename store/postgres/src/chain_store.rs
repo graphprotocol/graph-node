@@ -1,6 +1,6 @@
 use graph::{
     constraint_violation,
-    prelude::{ethabi, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
+    prelude::{async_trait, ethabi, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
 };
 
 use diesel::pg::PgConnection;
@@ -10,19 +10,16 @@ use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 
 use graph::ensure;
-use graph::prelude::async_trait;
-use std::sync::Arc;
 use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, iter::FromIterator};
 
 use graph::prelude::{
-    web3::types::H256, BlockNumber, ChainHeadUpdateStream, Error, EthereumBlock,
-    EthereumBlockPointer, EthereumNetworkIdentifier, Future, LightEthereumBlock, Stream,
+    web3::types::H256, BlockNumber, Error, EthereumBlock, EthereumBlockPointer,
+    EthereumNetworkIdentifier, Future, LightEthereumBlock, Stream,
 };
 
 use crate::{
-    block_store::ChainStatus,
-    chain_head_listener::{ChainHeadUpdateListener, ChainHeadUpdateSender},
+    block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender,
     connection_pool::ConnectionPool,
 };
 
@@ -1062,7 +1059,6 @@ pub struct ChainStore {
     storage: data::Storage,
     genesis_block_ptr: EthereumBlockPointer,
     status: ChainStatus,
-    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     chain_head_update_sender: ChainHeadUpdateSender,
 }
 
@@ -1072,7 +1068,6 @@ impl ChainStore {
         storage: data::Storage,
         net_identifier: &EthereumNetworkIdentifier,
         status: ChainStatus,
-        chain_head_update_listener: Arc<ChainHeadUpdateListener>,
         chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
     ) -> Self {
@@ -1082,7 +1077,6 @@ impl ChainStore {
             storage,
             genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
             status,
-            chain_head_update_listener,
             chain_head_update_sender,
         };
 
@@ -1233,11 +1227,6 @@ impl ChainStoreTrait for ChainStore {
         }
 
         Ok(missing)
-    }
-
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
-        self.chain_head_update_listener
-            .subscribe(self.chain.to_owned())
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {

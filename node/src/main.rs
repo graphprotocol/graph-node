@@ -210,6 +210,7 @@ async fn main() {
         let (eth_networks, idents) = connect_networks(&logger, eth_networks).await;
 
         let subscription_manager = store_builder.subscription_manager();
+        let chain_head_update_listener = store_builder.chain_head_update_listener();
         let network_store = store_builder.network_store(idents);
         let load_manager = Arc::new(LoadManager::new(
             &logger,
@@ -295,6 +296,7 @@ async fn main() {
         let block_stream_builder = BlockStreamBuilder::new(
             network_store.subgraph_store(),
             network_store.block_store(),
+            chain_head_update_listener.clone(),
             eth_networks.clone(),
             node_id.clone(),
             *REORG_THRESHOLD,

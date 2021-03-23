@@ -29,8 +29,6 @@ mock! {
 
         fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
-        fn chain_head_updates(&self) -> ChainHeadUpdateStream;
-
         fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 
         fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error>;

@@ -19,9 +19,8 @@ pub struct StoreBuilder {
     logger: Logger,
     subgraph_store: Arc<SubgraphStore>,
     pools: HashMap<ShardName, ConnectionPool>,
-    primary_shard: Shard,
     subscription_manager: Arc<SubscriptionManager>,
-    registry: Arc<dyn MetricsRegistry>,
+    chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
     /// Map network names to the shards where they are/should be stored
     chains: HashMap<String, ShardName>,
 }
@@ -62,13 +61,18 @@ impl StoreBuilder {
             (name.to_string(), shard)
         }));
 
+        let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
+            &logger,
+            registry.cheap_clone(),
+            primary_shard.connection.to_owned(),
+        ));
+
         Self {
             logger: logger.cheap_clone(),
             subgraph_store: store,
             pools,
             subscription_manager,
-            primary_shard,
-            registry,
+            chain_head_update_listener,
             chains,
         }
     }
@@ -204,12 +208,6 @@ impl StoreBuilder {
         self,
         networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
     ) -> Arc<DieselStore> {
-        let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-            &self.logger,
-            self.registry.cheap_clone(),
-            self.primary_shard.connection.to_owned(),
-        ));
-
         let networks = networks
             .into_iter()
             .map(|(name, ident)| {
@@ -221,13 +219,8 @@ impl StoreBuilder {
         let logger = self.logger.new(o!("component" => "BlockStore"));
 
         let block_store = Arc::new(
-            DieselBlockStore::new(
-                logger,
-                networks,
-                self.pools.clone(),
-                chain_head_update_listener.clone(),
-            )
-            .expect("Creating the BlockStore works"),
+            DieselBlockStore::new(logger, networks, self.pools.clone())
+                .expect("Creating the BlockStore works"),
         );
 
         Arc::new(DieselStore::new(
@@ -238,6 +231,10 @@ impl StoreBuilder {
 
     pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {
         self.subscription_manager.cheap_clone()
+    }
+
+    pub fn chain_head_update_listener(&self) -> Arc<PostgresChainHeadUpdateListener> {
+        self.chain_head_update_listener.clone()
     }
 
     // This is used in the test-store, but rustc keeps complaining that it

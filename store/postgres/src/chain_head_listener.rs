@@ -1,17 +1,23 @@
-use graph::parking_lot::Mutex;
+use graph::{
+    parking_lot::Mutex,
+    prelude::{ChainHeadUpdate, ChainHeadUpdateStream, StoreError},
+    prometheus::GaugeVec,
+};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
-use tokio::sync::{mpsc::Receiver, watch};
 
 use crate::{
     connection_pool::ConnectionPool,
     notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
 };
+use graph::components::ethereum::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
+use graph::prelude::futures03::prelude::stream::{StreamExt, TryStreamExt};
 use graph::prelude::serde_json::{self, json};
-use graph::prelude::*;
-use graph_chain_ethereum::BlockIngestorMetrics;
+use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
+use graph::prelude::{crit, o, CheapClone, Logger, MetricsRegistry};
 
 lazy_static! {
     pub static ref CHANNEL_NAME: SafeChannelName =
@@ -35,6 +41,29 @@ impl Watcher {
     }
 }
 
+pub struct BlockIngestorMetrics {
+    chain_head_number: Box<GaugeVec>,
+}
+
+impl BlockIngestorMetrics {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
+        Self {
+            chain_head_number: registry
+                .new_gauge_vec(
+                    "ethereum_chain_head_number",
+                    "Block number of the most recent block synced from Ethereum",
+                    vec![String::from("network")],
+                )
+                .unwrap(),
+        }
+    }
+
+    pub fn set_chain_head_number(&self, network_name: &str, chain_head_number: i64) {
+        self.chain_head_number
+            .with_label_values(vec![network_name].as_slice())
+            .set(chain_head_number as f64);
+    }
+}
 pub struct ChainHeadUpdateListener {
     /// Update watchers keyed by network.
     watchers: Arc<Mutex<BTreeMap<String, Watcher>>>,
@@ -115,8 +144,10 @@ impl ChainHeadUpdateListener {
         // We're ready, start listening to chain head updates
         listener.start();
     }
+}
 
-    pub fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
+impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
+    fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
         let update_receiver = self
             .watchers
             .lock()

@@ -15,8 +15,7 @@ use graph::{
 };
 
 use crate::{
-    chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool,
-    ChainHeadUpdateListener, ChainStore,
+    chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool, ChainStore,
 };
 use crate::{subgraph_store::PRIMARY_SHARD, Shard};
 
@@ -167,7 +166,6 @@ pub struct BlockStore {
     stores: RwLock<HashMap<String, Arc<ChainStore>>>,
     pools: HashMap<Shard, ConnectionPool>,
     primary: ConnectionPool,
-    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
 }
 
 impl BlockStore {
@@ -188,7 +186,6 @@ impl BlockStore {
         chains: Vec<(String, Vec<EthereumNetworkIdentifier>, Shard)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
-        chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     ) -> Result<Self, StoreError> {
         let primary = pools
             .get(&PRIMARY_SHARD)
@@ -201,7 +198,6 @@ impl BlockStore {
             stores: RwLock::new(HashMap::new()),
             pools,
             primary,
-            chain_head_update_listener,
         };
 
         fn reduce_idents(
@@ -337,7 +333,6 @@ impl BlockStore {
             chain.storage.clone(),
             &ident,
             status,
-            self.chain_head_update_listener.clone(),
             sender,
             pool,
         );
