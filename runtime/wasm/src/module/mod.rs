@@ -439,6 +439,11 @@ impl WasmInstance {
 
                     // Happens when calling a host fn in Wasm start.
                     if instance.is_none() {
+                        error!(
+                            ctx.borrow().as_ref().unwrap().logger,
+                            "contract calls in globals are deprecated"
+                        );
+
                         *instance = Some(
                             WasmInstanceContext::from_caller(
                                 caller,
