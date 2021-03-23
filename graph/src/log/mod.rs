@@ -51,7 +51,7 @@ pub fn logger(show_debug: bool) -> Logger {
         )
         .build();
     let drain = slog_async::Async::new(drain)
-        .chan_size(10000)
+        .chan_size(20000)
         .build()
         .fuse();
     Logger::root(drain, o!())

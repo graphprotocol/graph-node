@@ -208,7 +208,7 @@ impl ElasticDrain {
                         return;
                     }
 
-                    trace!(
+                    debug!(
                         flush_logger,
                         "Flushing {} logs to Elasticsearch",
                         logs_to_send.len()
@@ -371,7 +371,7 @@ impl Drain for ElasticDrain {
 pub fn elastic_logger(config: ElasticDrainConfig, error_logger: Logger) -> Logger {
     let elastic_drain = ElasticDrain::new(config, error_logger).fuse();
     let async_drain = slog_async::Async::new(elastic_drain)
-        .chan_size(10000)
+        .chan_size(20000)
         .build()
         .fuse();
     Logger::root(async_drain, o!())
